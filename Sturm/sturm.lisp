@@ -1,0 +1,480 @@
+(defparameter *sturm-var* nil) ;; Variable
+
+(defparameter *sturm-rews* '("polylist_const" "polylist_monom" "polylist_sum" "polylist_neg" 
+			     "polylist_minus" "polylist_prod" "polylist_div" "polylist_pow" "polylist_sq" 
+			     "expt_x1" "expt_x0"))
+
+(defparameter *sturm-invalid-forms* nil) 
+
+(defun sturm-poly-exprs-rec (exprs vars)
+  (when exprs
+    (let* ((e    (car exprs))
+	   (xprs (cdr exprs))
+	   (pe   (catch '*sturm-error*
+		   (setq *sturm-var* nil)
+		   (sturm-poly-expr-rec e vars))))
+      (cons (cons *sturm-var* pe)
+	    (cond (pe (sturm-poly-exprs-rec xprs vars))
+		  (t (push e *sturm-invalid-forms*)
+		     (sturm-poly-exprs-rec xprs vars)))))))
+
+(defun sturm-poly-exprs (exprs &optional vars)
+  (setq *sturm-invalid-forms* nil)
+  (extra-reset-evalexprs)
+  (sturm-poly-exprs-rec exprs vars))
+
+(defun is-sturm-var (expr vars)
+  (when (is-variable-expr expr vars)
+    (let ((name (expr2str expr)))
+      (cond ((null *sturm-var*) 
+	     (setq *sturm-var* name))
+	    ((string= *sturm-var* name) t)
+	    (t (throw '*sturm-error*))))))
+
+(defun sturm-var-deg (expr vars)
+  (cond ((is-sturm-var expr vars) 1)
+	((and (is-function-expr expr "^")
+	      (is-sturm-var (args1 expr) vars))
+	 (extra-add-evalexpr (args2 expr)))))
+
+(defun sturm-monom-expr (expr vars)
+  (let ((tk-deg (sturm-var-deg expr vars)))
+    (if tk-deg 
+	(cons 1 tk-deg)
+      (when (is-function-expr expr "*")
+	(let ((val (extra-add-evalexpr (args1 expr))))
+	  (when val
+	    (let ((tk-deg (sturm-var-deg (args2 expr) vars)))
+	      (when tk-deg
+		(cons val tk-deg)))))))))
+
+(defun sturm-poly-expr-rec (expr vars)
+  (let ((val (extra-add-evalexpr expr)))
+    (if val
+	(format nil "pconst(~a)" val)
+      (let ((monom (sturm-monom-expr expr vars)))
+	(if monom (format nil "pmonom(~a,~a)" (car monom) (cdr monom))
+	  (cond ((and (unary-application? expr) (is-function-expr expr "-"))
+		 (format nil "pneg(~a)" (sturm-poly-expr-rec (args1 expr) vars)))
+		((is-function-expr expr "^") 
+		 (let ((val (extra-add-evalexpr (args2 expr))))
+		   (if val
+		       (format nil "ppow(~a,~a)" 
+			       (sturm-poly-expr-rec (args1 expr) vars) val)
+		     (throw '*sturm-error*))))
+		((is-function-expr expr "/") 
+		 (let ((val (extra-add-evalexpr (args2 expr))))
+		   (if val
+		       (format nil "pdiv(~a,~a)" 
+			       (sturm-poly-expr-rec (args1 expr) vars) val)
+		     (throw '*sturm-error*))))
+		((is-function-expr expr "+")
+		 (format nil "psum(~a,~a)" 
+			 (sturm-poly-expr-rec (args1 expr) vars) 
+			 (sturm-poly-expr-rec (args2 expr) vars)))
+		((is-function-expr expr "-")
+		 (format nil "pminus(~a,~a)" 
+			 (sturm-poly-expr-rec (args1 expr) vars) 
+			 (sturm-poly-expr-rec (args2 expr) vars)))
+		((is-function-expr expr "*")
+		 (format nil "pprod(~a,~a)" 
+			 (sturm-poly-expr-rec (args1 expr) vars) 
+			 (sturm-poly-expr-rec (args2 expr) vars)))
+		((is-function-expr expr "sq")
+		 (format nil "psq(~a)" (sturm-poly-expr-rec (args1 expr) vars)))
+		(t (throw '*sturm-error*))))))))
+
+(defun last-to-first (l)
+  (when l
+    (let ((lst (car (last l)))
+	  (rst (subseq l 0 (1- (length l)))))
+      (cons lst rst))))
+
+(defun sturm-relation (expr fnum)
+  (let ((rel (car (is-function-expr expr '(< <= > >= = /=)))))
+    (when rel
+      (cond ((and (> fnum 0) (not (equal rel '=)))
+	     rel)
+	    ((and (< fnum 0) (not (equal rel '/=)))
+	     (not-relation rel))))))
+
+(defun sturm-rel-str (rel)
+  (if (member rel '(< <= > >=))
+      (format nil "reals.~a" rel) (format nil "~a[real]" rel)))
+
+(defun sturm-get-expr-fms (expr quant)
+  (when expr
+    (cond ((< quant 0) 
+	   (last-to-first (get-ands-expr (expression expr))))
+	  ((> quant 0)
+	   (get-hypotheses (expression expr)))
+	  (t (list expr)))))
+
+(defun sturm-expr-wrt0 (expr1 expr2 &optional sign)
+  (let ((num (number-from-expr expr2)))
+    (if (or (null num) (/= 0 num))
+	(mk-application (if sign '+ '-) expr1 expr2)
+      expr1)))
+
+(defun sturm-get-xval (var fms)
+  (when var
+    (extra-get-var-ranges fms (enlist-it var))
+    (let* ((xv  (gethash var *extra-varranges*))
+	   (lb  (cond ((null xv) -1)
+		      ((null (xterval-lb xv)) 
+		       (1- (xterval-ub xv)))
+		      (t (xterval-lb xv))))
+	   (ub  (cond ((null xv) 1)
+		      ((null (xterval-ub xv))
+		       (1+ (xterval-lb xv)))
+		      (t (xterval-ub xv)))))
+      (format nil 
+	      "mk_realint(~a,~a,~:[FALSE~;TRUE~],~:[FALSE~;TRUE~],~:[FALSE~;TRUE~],~:[FALSE~;TRUE~])"
+	      lb ub (and xv (xterval-lb xv)) (and xv (xterval-ub xv)) 
+	      (and xv (xterval-lb-closed xv)) (and xv (xterval-ub-closed xv))))))
+
+(defstep sturm (&optional (fnum 1) (preds? t) dont-fail?)
+  (let ((fn       (extra-get-fnum fnum))
+	(expr     (extra-get-formula-from-fnum fn))
+	(quant    (when fn 
+		    (cond ((forall-expr? expr) 1)
+			  ((exists-expr? expr) -1)
+			  (t 0)))) ;; forall: quant > 0, exists: quant < 0, none: 0
+	(exprfms  (when fn 
+		    (sturm-get-expr-fms 
+		     (if (= quant 0) expr 
+		       (lift-predicates-in-quantifier expr (list *real*)))
+		     quant)))
+	(st-fms   (cdr exprfms))
+	(st-rel   (when fn (sturm-relation (car exprfms) (if (= quant 0) fn quant))))
+	(st-fm    (when st-rel (car exprfms)))
+	(st-expr  (when st-rel (sturm-expr-wrt0 (args1 st-fm) (args2 st-fm))))
+	(st-qvars (when (/= quant 0)
+		    (mapcar #'(lambda (x) (format nil "~a" (id x))) (bindings expr))))
+	(st-vpoly (when st-expr (car (sturm-poly-exprs (list st-expr) st-qvars))))
+	(st-var   (car st-vpoly))
+	(st-poly  (cdr st-vpoly))
+	(st-inval (car *sturm-invalid-forms*))
+	(msg      (cond 
+		   ((null expr)
+		    (format nil "Formula ~a not found." fnum))
+		   ((not (check-name "SturmStrategy__"))
+		    (format nil "This strategy requires importing Sturm@strategies."))
+		   ((null st-rel)
+		    (format nil "Formula ~a is not supported by this strategy." fnum))
+		   (st-inval
+		    (format nil "The following expression doesn't appear to be a polynomial~@[ on variable ~a~]:~%~a."
+			    st-var st-inval))
+		   ((null st-var)
+		    (format nil "No variable found in formula ~a." fnum)))))
+    (if msg (printf msg) 
+      (then (sturm__$ fn quant st-poly st-var st-qvars st-fms st-rel preds?)
+	    (unless dont-fail? (fail)))))
+  "[Sturm] Applies decision procedure for single variable polynomials
+based on Sturm's Theorem to formula FNUM. Type predicates are
+introduced as hypotheses when PREDS? is t. If DONT-FAIL? is set to t,
+strategy skips instead of failing when sequent cannot be discharged."
+  "Applying Sturm's Theorem to formula ~a")
+
+(defhelper sturm__ (fnum quant poly var qvars fms rel preds?)
+  (with-fresh-names
+   ((stu_) (lst_))
+   (let ((relstr   (sturm-rel-str rel))
+	 (sat      (< (* fnum quant) 0))
+	 (degeq    (format nil "deg(~a) = deg(~a)" stu_ lst_))
+	 (tpreds   (and preds? (= quant 0))))
+     (with-fresh-labels
+      ((!stu fnum) (!stu-lst) (!stu-deg) (!stu-tccs))
+      (when tpreds (discriminate (typepred var) :label !stu-tccs))
+      (let ((fns  (if (= quant 0) 
+		      (append (mapcar #'(lambda (f) (extra-get-formula-from-fnum f))
+				      (extra-get-fnums `(-^ ,fnum)))
+			      (mapcar #'(lambda (f) 
+					  (make-negation
+					   (extra-get-formula-from-fnum f)))
+				      (extra-get-fnums `(+^ ,fnum))))
+		    fms))
+	    (xval (sturm-get-xval var fns))
+	    (ri   (xterval2str (gethash var *extra-varranges*))))
+	(then
+	 (name-label stu_ poly :hide? t)
+	 (eval-expr stu_)
+	 (name-label lst_ (! -1 r) -1 :hide? t)
+	 (label !stu-lst -1)
+	 (spread 
+	  (case degeq)
+	  ((then (eval-expr (! -1 2))
+		 (replaces -1 -2)
+		 (label !stu-deg -1)
+		 (lemma "polylist_sat_rational_def")
+		 (with-fresh-labels
+		  ((!stlm -1))
+		  (spread (inst !stlm xval stu_ relstr)
+			  ((then (replaces !stu-deg)
+				 (assert !stlm)
+				 (expand stu_ !stlm 2)
+				 (replaces !stu-lst :in !stlm)
+				 (let ((fnlem (extra-get-fnum !stlm)))
+				   (if fnlem
+				       (then
+					(eval-expr (! !stlm 1))
+					(let ((b        (args2 (extra-get-formula -1)))
+					      (is-true  (extra-is-true b)))
+					  (if (iff sat is-true) 
+					      (printf "Formula ~a doesn't hold for ~a in ~a."
+						      fnum var ri)
+					    (then 
+					     (replaces -1)
+					     (flatten !stlm)
+					     (let ((fa  (cond (sat !stlm)
+							      ((> (* fnum quant) 0) !stu)))
+						   (ex  (if sat !stu !stlm))
+						   (nn (when fa (freshnames "x" (length qvars))))
+						   (vs (if fa 
+							   (let ((pns (pair-lists qvars nn)))
+							     (cdr (assoc var pns :test #'string=)))
+							 var))
+						   (rws *sturm-rews*)
+						   (eqs (extra-evalexprs)))
+					       (if sat
+						   (then
+						    (skolem fa nn)
+						    (expand "contains?")
+						    (flatten)
+						    (with-fresh-labels
+						     (!steqs)
+						     (extra-evalexprs$ eqs !steqs)
+						     (reveal !steqs) 
+						     (spread (inst ex vs)
+							     ((rewrite* rws !stlm)))
+						     (replaces !steqs)
+						     (expand* "[||]" "##" "contains?")
+						     (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+						     (flatten)
+						     (assert)))
+						 (then
+						  (when fa (skolem fa nn :skolem-typepreds? preds?))
+						  (inst ex vs)
+						  (extra-evalexprs$ eqs)
+						  (expand* "[||]" "##" "contains?")
+						  (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+						  (flatten)
+						  (rewrite* rws !stlm)
+						  (assert))))))))
+				     (if sat
+					 (printf "Domain of variable ~a is the empty interval ~a. Formula ~a doesn't hold."
+						 var ri fnum)
+				       (then
+					(printf "Domain of variable ~a is the empty interval ~a. Formula ~a trivially holds."
+						var ri fnum)
+					(discriminate (skosimp* :preds? t) !stlm)
+					(hide-all-but !stlm)
+					(grind))))))
+			   (then (hide-all-but 1) (expand "SturmRel?"))))))
+	   (replaces !stu-lst)
+	   (eval-formula))))))))
+  "[Sturm] Internal strategy." "")
+
+(defun mono-poly-get-xval (var1 var2 rel fms)
+  (extra-get-var-ranges fms (list var1 var2))
+  (let* ((xv1  (or (gethash var1 *extra-varranges*)
+		   (make-xterval)))
+	 (xv2  (or (gethash var2 *extra-varranges*)
+		   (make-xterval)))
+	 (xv (if (member rel '(< <=))
+		 (make-xterval :lb (xterval-lb xv1)
+			       :lb-closed (xterval-lb-closed xv1)
+			       :ub (xterval-ub xv2)
+			       :ub-closed (xterval-ub-closed xv2))
+	       (make-xterval :lb (xterval-lb xv2)
+			     :lb-closed (xterval-lb-closed xv2)
+			     :ub (xterval-ub xv1)
+			     :ub-closed (xterval-ub-closed xv1))))
+	 (lb (cond ((and (null (xterval-lb xv))
+			 (null (xterval-ub xv))) -1)
+		   ((null (xterval-lb xv)) 
+		    (1- (xterval-ub xv)))
+		   (t (xterval-lb xv))))
+	 (ub  (cond ((and (null (xterval-lb xv))
+			  (null (xterval-ub xv))) 1)
+		    ((null (xterval-ub xv))
+		     (1+ (xterval-lb xv)))
+		    (t (xterval-ub xv)))))
+    (format nil 
+	    "mk_realint(~a,~a,~:[FALSE~;TRUE~],~:[FALSE~;TRUE~],~:[FALSE~;TRUE~],~:[FALSE~;TRUE~])"
+	    lb ub (xterval-lb xv) (xterval-ub xv) (xterval-lb-closed xv) (xterval-ub-closed xv))))
+
+(defstep mono-poly (&optional (fnum 1) (preds? t) dont-fail?)
+  (let ((fn       (extra-get-fnum fnum))
+	(expr     (extra-get-formula-from-fnum fn))
+	(quant    (when fn 
+		    (cond ((forall-expr? expr) 1)
+			  ((exists-expr? expr) -1)
+			  (t 0)))) ;; forall: quant > 0, exists: quant < 0, none: 0
+	(exprfms  (when fn (sturm-get-expr-fms 
+			    (if (= quant 0) expr 
+			      (lift-predicates-in-quantifier expr (list *real*)))
+			    quant)))
+	(mn-qvars (when (/= quant 0)
+		    (mapcar #'(lambda (x) (format nil "~a" (id x))) (bindings expr))))
+	(mn-fms   (cdr exprfms))
+	(mn-rel   (when fn (sturm-relation (car exprfms) (if (= quant 0) fn quant))))
+	(mn-fm    (when mn-rel (car exprfms)))
+	(mn-vpols (when mn-fm
+		    (sturm-poly-exprs (list (args1 mn-fm) (args2 mn-fm)) mn-qvars)))
+	(mn-varl  (car (nth 0 mn-vpols)))
+	(mn-polyl (cdr (nth 0 mn-vpols)))
+	(mn-varr  (car (nth 1 mn-vpols)))
+	(mn-polyr (cdr (nth 1 mn-vpols)))
+	(msg      (cond 
+		   ((null expr)
+		    (format nil "Formula ~a not found." fnum))
+		   ((not (check-name "SturmStrategy__"))
+		    (format nil "This strategy requires importing Sturm@strategies."))
+		   ((null mn-rel) 
+		    (format nil "Formula ~a is not supported by this strategy." fnum))
+		   ((null mn-varl)
+		    (format nil "No variables found in left-hand side of formula ~a." fnum))
+		   ((null mn-varr)
+		    (format nil "No variables found in right-hand side of formula ~a." fnum))
+		   (*sturm-invalid-forms*
+		    (format nil "The following expressions don't appear to be univariate polynomials:~%~{~a~%~}"
+			    *sturm-invalid-forms*)))))
+    (if msg (printf msg) 
+      (then (mono-poly__$ fn quant mn-polyl mn-polyr mn-varl mn-varr
+			  mn-qvars mn-fms mn-rel preds?)
+	    (printf "Formula ~a may not hold." fnum)
+	    (unless dont-fail? (fail)))))
+  "[Sturm] Applies decision procedure for polynomial monotonicity
+based on Sturm's Theorem to formula FNUM. Type predicates are
+introduced as hypotheses when PREDS? is t. If DONT-FAIL? is set to t,
+strategy skips instead of failing when sequent cannot be discharged."
+  "Proving polynomial monotonicity in formula ~a using Sturm's Theorem")
+
+(defhelper mono-poly__ (fnum quant poly1 poly2 var1 var2 qvars fms rel preds?)
+  (with-fresh-labels
+   ((!mono fnum) (!p1) (!p2) (!mono-tccs))
+   (with-fresh-names 
+    ((p1_ poly1) (p2_ poly2))
+    (eval-expr p1_)
+    (relabel !p1 -1)
+    (eval-expr p2_)
+    (relabel !p2 -1)
+    (let ((vars   (list var1 var2))
+	  (tpreds (and preds? (= quant 0)))
+	  (p1r    (extra-get-expr '(! -2 r)))
+	  (p2r    (extra-get-expr '(! -1 r)))
+	  (eq12   (extra-is-true (evalexpr (mk-equation p1r p2r)))))
+      (if eq12
+	  (with-fresh-names
+	   (pl_ (! !p1 r))
+	   (replace !p1 !p2 rl)
+	   (when tpreds
+	     (discriminate (typepred var1) :label !mono-tccs)
+	     (discriminate (typepred var2) :label !mono-tccs))
+	   (let ((fns (if (= quant 0) 
+			  (append (mapcar #'(lambda (f) (extra-get-formula-from-fnum f))
+					  (extra-get-fnums `(-^ ,fnum)))
+				  (mapcar #'(lambda (f) 
+					      (make-negation
+					       (extra-get-formula-from-fnum f)))
+					  (extra-get-fnums `(+^ ,fnum))))
+			fms))
+		 (relvar (extra-get-var-var-relation fns var1 var2)))
+	     (if relvar
+		 (let ((xval      (mono-poly-get-xval var1 var2 relvar fns))
+		       (lp        (format nil "list2array[rat](0)(~a)" pl_))
+		       (deg       (format nil "length[rat](~a)-1" pl_))
+		       (relstr    (sturm-rel-str rel))
+		       (relvarstr (sturm-rel-str relvar)))
+		   (with-fresh-names
+		    ((xval_ xval) (lp_ lp :tcc-step (eval-formula))
+		     (deg_ deg) (rel_ relstr) (relvar_ relvarstr))
+		    (lemma "compute_poly_monotonic_def")
+		    (branch 
+		     (inst -1 xval_ lp_ deg_ rel_ relvar_)
+		     ((then 
+		       (delete *lp_-tccs*)
+		       (branch 
+			(split -1)
+			((with-fresh-labels 
+			  (!l -1)
+			  (eval-expr (! !l 2))
+			  (let ((b       (args2 (extra-get-formula -1)))
+				(is-true (extra-is-true b))
+				(nn      (when qvars (freshnames "x" (length qvars))))
+				(vs      (if qvars 
+					     (let ((pns (pair-lists qvars nn)))
+					       (mapcar #'(lambda (x) (cdr (assoc x pns :test #'string=)))
+						       vars))
+					   vars))
+				(fall    (>= (* fnum quant) 0))
+				(fa      (if fall !mono !l))
+				(ex      (if fall !l !mono))
+				(eqs     (extra-evalexprs))
+				(holds   (iff fall is-true))
+				(rws     *sturm-rews*))
+			    (when holds
+			      (replaces -1)
+			      (prop)
+			      (if fall
+				  (then
+				   (when qvars (skolem fa nn :skolem-typepreds? preds?))
+				   (inst ex :terms vs)
+				   (flatten)
+				   (extra-evalexprs$ eqs)
+				   (expand* xval_ "[||]" "##" "contains?")
+				   (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+				   (flatten)
+				   (expand* rel_ relvar_ lp_ deg_)
+				   (branch 
+				    (rewrite* "polylist_eval" :dir rl)
+				    ((then 
+				      (expand pl_ !l 2)
+				      (replace !p1 :dir rl)
+				      (replaces !p1 !p2)
+				      (expand pl_)
+				      (replaces !p2 :dir rl)
+				      (expand* p1_ p2_)
+				      (rewrite* rws)
+				      (assert))
+				     (eval-formula))))
+				(then
+				 (skolem fa nn)
+				 (expand* xval_ "contains?" rel_ relvar_ lp_ deg_)
+				 (flatten)
+				 (branch 
+				  (rewrite* "polylist_eval" :dir rl)
+				  ((then 
+				    (expand pl_ !l 2)
+				    (replace !p1 :dir rl)
+				    (replaces !p1 !p2)
+				    (expand pl_)
+				    (replaces !p2 :dir rl)
+				    (expand* p1_ p2_)
+				    (with-fresh-labels
+				     (!steqs)
+				     (extra-evalexprs$ eqs !steqs)
+				     (reveal !steqs) 
+				     (spread (inst ex :terms vs)
+					     ((rewrite* rws)))
+				     (replaces !steqs)
+				     (expand* "[||]" "##" "contains?")
+				     (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+				     (flatten)
+				     (assert)))
+				   (eval-formula))))))))
+			 (eval-formula))))
+		      (then (hide-all-but 1) 
+			    (expand* "SturmRel?" relvar_))
+		      (then (hide-all-but 1)
+			    (expand* "SturmRel?" rel_))
+		      (then (hide-all-but 1)
+			    (branch (splash 1 :reverse? t)
+				    ((assert)
+				     (eval-formula))))))))
+	       (printf "Variables ~a and ~a don't appear to be related" var1 var2)))
+	   (when tpreds (delete !mono-tccs)))
+	(printf "Left- and right-hand side polynomials appear to be different")))))
+  "[Sturm] Internal strategy." "")
+

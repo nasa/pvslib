@@ -1,0 +1,472 @@
+polynomials: THEORY
+%------------------------------------------------------------------------------
+%
+%          Anthony Narkawicz		   NASA
+%
+%          David Lester                    Manchester University
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+  IMPORTING sigma_nat
+  IMPORTING factorial, % series@nth_derivatives, 
+            binomial,
+	    sigma_swap[nat]
+
+  IMPORTING real_fun_ops
+
+  x,y,c,r,MM,A,B: VAR real
+  n,m,i,j: VAR nat
+  pn:  VAR posnat
+  a,b: VAR sequence[real]
+  lb,ub: VAR bool
+
+  expt_plus2: LEMMA x^(i+j) = x^i*x^j
+
+  polynomial(a,n): [real->real] = LAMBDA (x:real): 
+             sigma(0,n, LAMBDA (i:nat): a(i)*(IF i = 0 THEN 1 ELSE x^i ENDIF))
+
+  polynomial_n0: LEMMA polynomial(a,0)    = LAMBDA (x:real): a(0)
+  polynomial_x0: LEMMA polynomial(a,n)(0) = a(0)
+  polynomial_x1: LEMMA polynomial(a,n)(1) = sigma(0,n,a)
+
+  polynomial_eq_a0_plus: LEMMA n>0 IMPLIES polynomial(a,n)(x) = a(0) + x*polynomial(LAMBDA (i:nat): a(i+1),n-1)(x)
+
+  polynomial_rec: LEMMA n>0 IMPLIES polynomial(a,n)(x) = polynomial(a,n-1)(x) + a(n)*x^n
+
+
+% derivable_polynomial: LEMMA derivable(polynomial(a,n))
+
+% deriv_polynomial    : LEMMA deriv(polynomial(a,n))
+%                       = IF n = 0 THEN (LAMBDA (x:real): 0)
+%                         ELSE polynomial((LAMBDA (i:nat): (i+1)*a(i+1)),n-1) 
+%                         ENDIF
+
+% derivable_n_times_polynomial: LEMMA derivable_n_times(polynomial(b,m),n)
+
+% nderiv_polynomial  : LEMMA nderiv(n,polynomial(b,m))
+%           = IF n > m THEN (LAMBDA (x:real): 0)
+%             ELSE polynomial(LAMBDA (i:nat): C(i+n,n)*factorial(n)*b(i+n),m-n)
+%             ENDIF
+
+
+  extend_polynomial  : LEMMA (FORALL (i:posnat): a(n+i) = 0) IMPLIES
+                                   polynomial(a,n) = polynomial(a,n+m)
+
+  sum_polynomial     : LEMMA (FORALL (i:posnat): a(n+i) = 0) AND
+                             (FORALL (i:posnat): b(m+i) = 0)
+         IMPLIES polynomial(a,n) + polynomial(b,m) = polynomial(a+b,max(n,m))
+
+  sum_polynomial_eq_degree     : LEMMA 
+    polynomial(a,n) + polynomial(b,n) = polynomial(a+b,n)
+
+  sum_polynomial_eq_degree_eval: LEMMA
+    polynomial(a,n)(x) + polynomial(b,n)(x) = polynomial(a+b,n)(x)
+
+  neg_polynomial     : LEMMA - polynomial(a,n) = polynomial(-a,n)
+
+  diff_polynomial    : LEMMA (FORALL (i:posnat): a(n+i) = 0) AND
+                      (FORALL (i:posnat): b(m+i) = 0)
+        IMPLIES polynomial(a,n) - polynomial(b,m) = polynomial(a-b,max(n,m))
+
+  polynomial_sub: LEMMA polynomial(a-b,n) = polynomial(a,n)-polynomial(b,n)
+
+  mul_x_to_n_polynomial: LEMMA   polynomial(a,n) * (LAMBDA (x:real): x^pn)
+       = polynomial(LAMBDA (i:nat): IF i < pn THEN 0 ELSE a(i-pn) ENDIF,n+pn)
+
+  first_polynomial   : LEMMA polynomial(a,pn)(x) = 
+                         a(0) + x*polynomial(LAMBDA (i:nat): a(i+1),pn-1)(x)
+
+  scal_polynomial    : LEMMA const_fun(y) * polynomial(a,n) 
+                               = polynomial(const_fun(y)*a,n)
+
+  scal_polynomial2   : LEMMA polynomial(c*a,n)(x) = c*polynomial(a,n)(x)
+
+  even_fs?(a:sequence[real]):bool = (FORALL (i:nat): odd?(i) => a(i) = 0)
+
+  even_polynomial    : LEMMA even_fs?(a) IMPLIES
+         polynomial(a,2*n)(x) = polynomial(LAMBDA (i:nat): a(2*i),n)(x^2)
+
+  odd_fs?(a:sequence[real]):bool = (FORALL (i:nat): even?(i) => a(i) = 0)
+
+  odd_polynomial: LEMMA odd_fs?(a) IMPLIES
+    polynomial(a,2*n+1)(x) = x*polynomial(LAMBDA (i:nat): a(2*i+1),n)(x^2)
+
+  alternating_fs?(a:sequence[real],n:nat):bool
+     = FORALL (i:nat): 0 <= i AND i < n IMPLIES a(i)*a(i+1) < 0
+
+  neg_even_polynomial: LEMMA even_fs?(a) IMPLIES
+    polynomial(a,n)(-x) = polynomial(a,n)(x)
+
+  abs_polynomial_le: LEMMA
+    abs(polynomial(a,n)(x)) <= polynomial(LAMBDA (i:nat): abs(a(i)),n)(abs(x))
+
+  nn_le_polynomial : LEMMA
+    (FORALL (i:nat): a(i) >= 0) AND (FORALL (i:nat): b(i) >= a(i)) AND
+     x >= 0 AND n <= m IMPLIES polynomial(a,n)(x) <= polynomial(b,m)(x)
+
+  power_fs(n:nat): [nat->nat] =
+    (LAMBDA (i:nat): IF i > n THEN 0 ELSE C(n,i) ENDIF)
+
+  power_polynomial : LEMMA (LAMBDA (x:real): (1+x)^pn) 
+                          = polynomial(power_fs(pn),pn)
+
+  neg_power_fs(n:nat):[nat->int] = 
+    (LAMBDA (i:nat): IF i > n THEN 0 ELSE (-1)^i * C(n,i) ENDIF)
+
+  neg_power_polynomial: LEMMA
+    (LAMBDA (x:real): (1-x)^pn) = polynomial(neg_power_fs(pn),pn)
+
+  binomial_theorem: LEMMA
+    (x+y)^n = sigma(0,n,(LAMBDA (i:nat): IF i > n THEN 0 ELSE C(n,i)*x^i*y^(n-i) ENDIF))
+
+  power_linear(c,r,n)(i:nat): real =
+    IF i > n THEN 0 ELSE r^i*c^(n-i)*C(n,i) ENDIF
+
+  power_linear_polynomial: LEMMA FORALL (k:nat): k>=n IMPLIES
+    (c+r*x)^n = polynomial(power_linear(c,r,n),k)(x)
+
+  polynomial_prod(a,n,b,m)(i:nat): real = sigma(max(i-m,0),n,LAMBDA (k:nat): IF k<=i THEN a(k)*b(i-k) ELSE 0 ENDIF)
+
+  polynomial_prod_def: LEMMA
+    polynomial(a,n)(x)*polynomial(b,m)(x) = polynomial(polynomial_prod(a,n,b,m),n+m)(x)
+
+  % Added May 2010
+
+  poly_shift(a,n)(c): sequence[real] =
+    (LAMBDA (j:nat): sigma(j,n,(LAMBDA (i:nat): If (i<j OR i>n) THEN 0 ELSE a(i)*C(i,j)*c^(i-j) ENDIF)))
+
+  poly_shift_id: LEMMA
+    polynomial(a,n)(x+c) = polynomial(poly_shift(a,n)(c),n)(x)
+
+  % Added March 2012
+
+  poly_scal(a,n,c): sequence[real] =
+    (LAMBDA (j:nat): c^j*a(j))
+
+  poly_scal_def: LEMMA
+    polynomial(a,n)(c*x) = polynomial(poly_scal(a,n,c),n)(x)
+
+  % Added Dec 2012
+
+  poly_eq_le_degree: LEMMA
+    (FORALL (ii:nat): ii<=n IMPLIES a(ii) = b(ii))
+    IMPLIES
+    polynomial(a,n)(x) = polynomial(b,n)(x)
+
+  poly_reduce_degree: LEMMA
+    m<=n AND
+    (FORALL (ii:nat): ii>m AND ii<=n IMPLIES a(ii)=0)
+    IMPLIES
+    polynomial(a,n)(x) = polynomial(a,m)(x)
+
+  poly_eq: LEMMA
+    (FORALL (ii:nat): ii>min(n,m) IMPLIES 
+      (ii<=n IMPLIES a(ii)=0) AND (ii<=m IMPLIES b(ii)=0)) AND
+    (FORALL (ii:nat): ii<=min(n,m) IMPLIES a(ii)=b(ii))
+    IMPLIES
+    polynomial(a,n)(x) = polynomial(b,m)(x)
+
+  %poly_translate_rat(a,n)(A,B,C,D:real): =
+
+  prop_extends_monomial: LEMMA
+    LET eventzero = (LAMBDA (ab:sequence[real]): EXISTS (kk:nat): FORALL (mm:nat):
+                          mm>kk IMPLIES ab(mm) = 0)
+    IN
+    FORALL (P:[sequence[real]->bool]):
+    (FORALL (j:nat,ar:real): P(LAMBDA (i:nat): IF i = j THEN ar ELSE 0 ENDIF))
+    AND
+    (FORALL (a,b): P(a) AND P(b) IMPLIES P(a+b))
+    IMPLIES
+    (FORALL (a): eventzero(a) IMPLIES P(a))
+  
+
+  % The next function turns a polynomial on [A,B] into a polynomial on [0,1]
+
+  poly_translate(a,n)(A:real,B:real): sequence[real] =
+    (LAMBDA (j:nat): (B-A)^j*sigma(j,n,(LAMBDA (i:nat): If (i<j OR i>n) THEN 0 ELSE a(i)*C(i,j)*A^(i-j) ENDIF)))
+
+  poly_translate_id: LEMMA FORALL (A:real,(B:real|A/=B)):polynomial(a,n)(x) = polynomial(poly_translate(a,n)(A,B),n)((x-A)/(B-A))
+
+  polynomial_zero_factor: LEMMA
+    polynomial(a,pn)(y) = 0 IMPLIES
+    EXISTS (g:sequence[real]):
+    (FORALL (x:real): polynomial(a,pn)(x) = (x-y)*polynomial(g,pn-1)(x))
+
+  polynomial_zero_factor2: LEMMA
+    polynomial(a,pn)(y)=0 IMPLIES
+      LET g = poly_shift(LAMBDA (i): poly_shift(a,pn)(y)(i+1),pn-1)(-y) IN
+        (FORALL (x:real): polynomial(a,pn)(x) = (x-y)*polynomial(g,pn-1)(x))
+
+  polynomial_linear_divisor: LEMMA
+    EXISTS (g:sequence[real]): FORALL (x:real): polynomial(a,pn)(x) = (x-y)*polynomial(g,pn-1)(x)+polynomial(a,pn)(y)
+  
+  polynomial_eq_coeff: LEMMA
+    polynomial(a,n) = polynomial(b,n)
+    IFF
+    (FORALL (jj: upto(n)): a(jj) = b(jj))
+
+  poly_eq_0_le_degree: LEMMA
+    (FORALL (ii:nat): ii<=n IMPLIES a(ii)=0)
+    IFF
+    (FORALL (x:real): polynomial(a,n)(x)=0)
+
+  poly_image_size: LEMMA n>0 AND
+    (EXISTS (fp:[below(n+1)->real]): FORALL (i,j:below(n+1)):
+      (i/=j IMPLIES fp(i)/=fp(j)) AND polynomial(a,n)(fp(i))=polynomial(a,n)(fp(j)))
+    IMPLIES FORALL (k:subrange(1,n)): a(k)=0
+
+  poly_constant_on_interval: LEMMA
+    x<y AND (FORALL (r1,r2:real): x<r1 AND r1<=r2 AND r2<y IMPLIES polynomial(a,n)(r1)=polynomial(a,n)(r2))
+    IMPLIES FORALL (k:subrange(1,n)): a(k)=0
+      
+
+  polynomial_div_id: LEMMA LET idf = (LAMBDA (x:real): x) IN
+    idf*polynomial(a,n) = idf*polynomial(b,n) IMPLIES
+    polynomial(a,n) = polynomial(b,n)
+
+  % The next function gives the translation of a polynomial on x when x is translated
+  % by the fractional linear transformation x -> (A*x + B)/(C*x + D)
+
+  poly_translate_rat(A,B,C,D:real)(a,n)(d:nat): real =
+    sigma(0,n,LAMBDA (i:nat): a(i)*sigma(0, n - i, LAMBDA (k: nat): IF (k < d - i OR k > d OR k > n - i) THEN 0
+                            ELSE (C(n - i, k) * D ^ (-1 * k - i + n)) * C ^ k * ((C(i, d - k) * B ^ (k - d + i)) * A ^ (d - k)) ENDIF))
+
+  poly_translate_rat_def: LEMMA FORALL (A,B,C,D,x:real): C*x+D/=0 IMPLIES
+    (C*x+D)^n*polynomial(a,n)((A*x+B)/(C*x+D)) = polynomial(poly_translate_rat(A,B,C,D)(a,n),n)(x)
+
+  poly_translate_rat_bounded_left: LEMMA
+    x/=A IMPLIES (x-A)^n*polynomial(a,n)(((B+1)*x-B*(A+1))/(x-A)) =
+      polynomial(poly_translate_rat(B+1,-B*(A+1),1,-A)(a,n),n)(x)
+
+  poly_translate_rat_bounded_right: LEMMA
+    x/=B IMPLIES (B-x)^n*polynomial(a,n)(((1-A)*x + A*(B-1))/(B-x)) =
+      polynomial(poly_translate_rat(1-A,A*(B-1),-1,B)(a,n),n)(x)
+
+  poly_translate_rat2(A,B,C,D,E,F:real)(a,n)(q:nat): real=
+    sigma(0,n,LAMBDA (k:nat): a(k)*sigma(0, n, LAMBDA (i: nat): sigma(0,k,LAMBDA (j: nat):
+  	       IF (q > 2 * n-k OR i < n - q OR i > -1 * q - k + 2 * n 
+  	           OR j < i - n + k OR j > i OR j > k OR k>n) THEN 0
+  	       ELSE C(k,j)*B^j*A^(k-j)*C(n-k,i-j)*D^(i-j)*C^(j-i-k+n)*
+  		    C(n-k,-1*i-q-k+2*n)*F^(-1*i-q-k+2*n)*E^(i+q-n)
+               ENDIF)))
+
+  poly_translate_rat2_def: LEMMA FORALL (A,B,C,D,E,F,x:real): (C*x+D)/=0 AND (E*x+F)/=0 IMPLIES
+    (C*x+D)^n*(E*x+F)^n*polynomial(a,n)((A*x+B)/((C*x+D)*(E*x+F))) =
+    polynomial(poly_translate_rat2(A,B,C,D,E,F)(a,n),2*n)(x)
+
+  poly_translate_inf_pos(a,n)(A:real) : sequence[real] = 
+    (LAMBDA (j:nat): IF j>n THEN 0 ELSE sigma(n-j,n,LAMBDA (i:nat): IF (i<n-j OR i>n) THEN 0 ELSE
+    	    	     	    	   			   a(i)*C(i,i-n+j)*(A-1)^(i-n+j) ENDIF) ENDIF)
+
+  poly_translate_inf_neg(a,n)(A:real) : sequence[real] = 
+    (LAMBDA (j:nat): IF j>n THEN 0 ELSE sigma(n-j,n,LAMBDA (i:nat): IF (i<n-j OR i>n) THEN 0 ELSE
+    	    	     	    	   			   (-1)^i*a(i)*C(i,i-n+j)*(-A-1)^(i-n+j) ENDIF) ENDIF)
+
+  poly_translate_inf_pos_def: LEMMA x/=0 IMPLIES x^n*polynomial(a,n)((1+x*(A-1))/x) = polynomial(poly_translate_inf_pos(a,n)(A),n)(x)
+
+  poly_translate_inf_pos_def_rev: LEMMA x/=A-1 IMPLIES polynomial(a,n)(x) = (x-A+1)^n*polynomial(poly_translate_inf_pos(a,n)(A),n)(1/(x-A+1))
+
+  poly_translate_inf_neg_def: LEMMA x/=0 IMPLIES x^n*polynomial(a,n)((-1-x*(-A-1))/x) = polynomial(poly_translate_inf_neg(a,n)(A),n)(x)
+
+
+
+  poly_translate_inf_neg_def_rev: LEMMA x/=A+1 IMPLIES polynomial(a,n)(x) = (A+1-x)^n*polynomial(poly_translate_inf_neg(a,n)(A),n)(1/(A+1-x))
+
+  rel : VAR [[real,real]->bool]
+
+  poly_translate_inf_pos_rel: LEMMA ((rel = (<=)) OR (rel = (<)) OR (rel = (>=)) OR (rel = (>)))
+  			      IMPLIES
+			      ((FORALL (x:real): x>=A IMPLIES rel(polynomial(a,n)(x),0))
+			       IFF
+			       (FORALL (x:real): 0<x AND x<=1 IMPLIES rel(polynomial(poly_translate_inf_pos(a,n)(A),n)(x),0)))
+
+  poly_translate_inf_neg_rel: LEMMA ((rel = (<=)) OR (rel = (<)) OR (rel = (>=)) OR (rel = (>)))
+  			      IMPLIES
+			      ((FORALL (x:real): x<=A IMPLIES rel(polynomial(a,n)(x),0))
+			       IFF
+			       (FORALL (x:real): 0<x AND x<=1 IMPLIES rel(polynomial(poly_translate_inf_neg(a,n)(A),n)(x),0)))
+
+  %%% Special Derivatives: Derivatives of Polynomials. This does not import analysis. %%%
+
+  poly_deriv(a)(n): real = (n+1)*a(n+1)
+
+  poly_deriv_plus: LEMMA
+    poly_deriv(a+b)(n) = poly_deriv(a)(n) + poly_deriv(b)(n)
+
+  poly_deriv_scal: LEMMA FORALL (cc:real):
+    poly_deriv(cc*a) = cc*poly_deriv(a)
+
+  poly_deriv_minus: LEMMA
+    poly_deriv(a-b)(n) = poly_deriv(a)(n) - poly_deriv(b)(n)
+
+  poly_deriv_sub: LEMMA
+    poly_deriv(a-b) = poly_deriv(a) - poly_deriv(b)
+
+  poly_deriv_plus_eval: LEMMA
+    polynomial(poly_deriv(a+b),n) = polynomial(poly_deriv(a),n) + polynomial(poly_deriv(b),n)
+
+  poly_eq_deriv_plus: LEMMA
+    n > 0 IMPLIES
+    EXISTS (nseq:[nat->nat],pseq:[nat->sequence[real]]):
+        FORALL (h:real,x): polynomial(a,n)(x+h) = polynomial(a,n)(x)+ h*polynomial(poly_deriv(a),n-1)(x) + h^2*polynomial(LAMBDA (ii:nat): polynomial(pseq(ii),nseq(ii))(h),n-1)(x)
+
+  poly_deriv_const: LEMMA
+    poly_deriv(c*a) = c*poly_deriv(a)
+
+  %%% deriv properties
+
+  poly_product_rule: LEMMA n>0 AND m>0 IMPLIES
+    polynomial(poly_deriv(polynomial_prod(a,n,b,m)),n+m-1)(x) =
+    polynomial(a,n)(x)*polynomial(poly_deriv(b),m-1)(x) +
+    polynomial(poly_deriv(a),n-1)(x)*polynomial(b,m)(x)
+
+  deriv_power_linear: LEMMA
+    poly_deriv(power_linear(c,r,n)) =
+    r*n*power_linear(c,r,max(n-1,0))
+
+  %%% n derivatives
+
+  poly_n_deriv(a,n)(i): real = C(n+i,n)*factorial(n)*a(n+i)
+
+  poly_n_deriv_def: LEMMA
+    poly_n_deriv(a,0) = a AND
+    poly_n_deriv(a,1) = poly_deriv(a) AND
+    FORALL (n): poly_deriv(poly_n_deriv(a,n)) = poly_n_deriv(a,n+1)
+
+  poly_n_deriv_0: LEMMA m>=n IMPLIES
+    polynomial(poly_n_deriv(a,n),m)(0) = factorial(n)*a(n)
+
+
+  %%% Polynomials are continuous
+
+  poly_continuous: LEMMA FORALL (x:real,epsil:posreal): EXISTS (delta:posreal):
+    FORALL (y:real): abs(x-y)<=delta IMPLIES abs(polynomial(a,n)(x)-polynomial(a,n)(y)) < epsil
+
+  %%% Polys attain maximum
+
+  poly_attains_maximum: LEMMA
+    x<=y IMPLIES EXISTS (c:real): x<=c AND c<=y AND
+    FORALL (cc:real): x<=cc AND cc<=y IMPLIES polynomial(a,n)(cc)<=polynomial(a,n)(c)
+
+  poly_attains_minimum: LEMMA
+    x<=y IMPLIES EXISTS (c:real): x<=c AND c<=y AND
+    FORALL (cc:real): x<=cc AND cc<=y IMPLIES polynomial(a,n)(cc)>=polynomial(a,n)(c)
+
+  %%% increasing from derivative
+
+  poly_strictly_increasing: LEMMA
+    n > 0 AND x < y AND
+    (FORALL (c): x <= c AND c <= y IMPLIES polynomial(poly_deriv(a),n-1)(c) > 0)
+    IMPLIES
+    polynomial(a,n)(x) < polynomial(a,n)(y)
+
+  poly_increasing: LEMMA
+    x <= y AND n > 0 AND
+    (FORALL (c): x <= c AND c <= y IMPLIES polynomial(poly_deriv(a),n-1)(c) >= 0)
+    IMPLIES
+    polynomial(a,n)(x) <= polynomial(a,n)(y)
+
+  poly_strictly_decreasing: LEMMA
+    n > 0 AND x < y AND
+    (FORALL (c): x <= c AND c <= y IMPLIES polynomial(poly_deriv(a),n-1)(c) < 0)
+    IMPLIES
+    polynomial(a,n)(x) > polynomial(a,n)(y)
+
+  poly_decreasing: LEMMA
+    x <= y AND n > 0 AND
+    (FORALL (c): x <= c AND c <= y IMPLIES polynomial(poly_deriv(a),n-1)(c) <= 0)
+    IMPLIES
+    polynomial(a,n)(x) >= polynomial(a,n)(y)
+
+  poly_intermediate_value_increasing_0: LEMMA
+    x<=y AND polynomial(a,n)(x) <= 0 AND polynomial(a,n)(y)>=0 IMPLIES
+    EXISTS (cc:real): x<=cc AND cc<=y AND polynomial(a,n)(cc) = 0
+
+  poly_intermediate_value_inc: LEMMA
+    x<=y AND polynomial(a,n)(x) <= c AND polynomial(a,n)(y)>=c IMPLIES
+    EXISTS (cc:real): x<=cc AND cc<=y AND polynomial(a,n)(cc) = c
+
+  poly_intermediate_value_dec: LEMMA
+    x<=y AND polynomial(a,n)(x) >=c AND polynomial(a,n)(y)<=c IMPLIES
+    EXISTS (cc:real): x<=cc AND cc<=y AND polynomial(a,n)(cc) = c
+
+  %%% Polynomial mean value
+
+  poly_Rolle: LEMMA
+    x<y AND n>0 AND polynomial(a,n)(x) = polynomial(a,n)(y) IMPLIES
+    EXISTS (c:real): x<c AND c<y AND polynomial(poly_deriv(a),n-1)(c)=0
+
+  poly_mean_value: LEMMA x < y AND n > 0 IMPLIES
+    EXISTS (cc:real): x<=cc AND cc<=y AND
+      polynomial(poly_deriv(a),n-1)(cc) = (polynomial(a,n)(y)-polynomial(a,n)(x))/(y-x)
+
+  %%% Integration of polynomials
+
+  poly_integral(a,c)(n): real = IF n = 0 THEN c ELSE a(n-1)/n ENDIF
+
+  polynomial_int(a,n,x,y): real = polynomial(poly_integral(a,0),n+1)(y)-
+  			   	  polynomial(poly_integral(a,0),n+1)(x)
+
+  polynomial_int_sum: LEMMA polynomial_int(a,n,x,y) + polynomial_int(b,n,x,y) = polynomial_int(a+b,n,x,y)
+
+  polynomial_ftc: THEOREM n>0 IMPLIES polynomial_int(poly_deriv(a),n-1,x,y) =
+  		  	  polynomial(a,n)(y) - polynomial(a,n)(x)
+
+  antideriv_power_linear: LEMMA r/=0 IMPLIES
+    poly_deriv(1/r*1/(n+1)*power_linear(c,r,n+1)) =
+    power_linear(c,r,n)
+
+  poly_local_max_deriv: LEMMA FORALL (epsil:posreal):
+    n>0 AND (FORALL (y): abs(x-y)<epsil IMPLIES
+      polynomial(a,n)(y)<=polynomial(a,n)(x))
+    IMPLIES polynomial(poly_deriv(a),n-1)(x)=0
+
+  poly_local_min_deriv: LEMMA FORALL (epsil:posreal):
+    n>0 AND (FORALL (y): abs(x-y)<epsil IMPLIES
+      polynomial(a,n)(y)>=polynomial(a,n)(x))
+    IMPLIES polynomial(poly_deriv(a),n-1)(x)=0
+
+  %%% Integration by Parts
+
+  polynomial_integration_by_parts: LEMMA % int u*dv = u*v - int du*v
+    n>0 AND m>0 IMPLIES
+    polynomial_int(polynomial_prod(a,n,poly_deriv(b),m-1),n+m-1,x,y) =
+    (polynomial(a,n)(y)*polynomial(b,m)(y) - polynomial(a,n)(x)*polynomial(b,m)(x)) - polynomial_int(polynomial_prod(poly_deriv(a),n-1,b,m),n+m-1,x,y)
+
+
+  %%% Taylor Series
+
+  poly_maclaurin: LEMMA FORALL (k:nat,br:real): k>=n AND n>0 AND br>0 AND
+    (FORALL (ii:nat): ii>k IMPLIES a(ii) = 0)
+    IMPLIES
+    EXISTS (c:real): 0<=c AND c<=br AND
+    LET fk = polynomial(a,k),
+    	fn1 = polynomial(a,n-1) IN
+      fk(br) = fn1(br) + (1/factorial(n))*polynomial(poly_n_deriv(a,n),k-n)(c)*br^n
+
+  % Expansion point is y
+
+  % n is the power to go to in the expansion and k is the actual degree of the polynomial
+
+  taylor_poly(a,(k:nat),n,(rr:real))(i:nat): real = 
+  	sigma(i,n,LAMBDA (d:nat): 
+		IF i<=d AND d<=k THEN 
+		  (polynomial(poly_n_deriv(a,d),k-d)(rr)/factorial(d))*C(d,i)*(-rr)^(d-i) 
+		ELSE 0 ENDIF)
+
+  taylor_poly_def: LEMMA FORALL (k:nat,rr:real): polynomial(taylor_poly(a,k,0,rr),k)(x) = polynomial(a,k)(rr) AND
+  		     FORALL (n): n<k IMPLIES polynomial(taylor_poly(a,k,n+1,rr),k)(x) = 
+		     	    	 polynomial(taylor_poly(a,k,n,rr),k)(x)+
+				 (polynomial(poly_n_deriv(a,n+1),k-n-1)(rr)/factorial(n+1))*(x-rr)^(n+1)
+
+  poly_taylor: LEMMA FORALL (k:nat): k>=n AND n>0 IMPLIES
+    EXISTS (c:real): ((y<=c AND c<=x) OR (x<=c AND c<=y)) AND
+    LET fk = polynomial(a,k),
+    	fn1 = polynomial(taylor_poly(a,k,n-1,y),n-1) IN
+      fk(x) = fn1(x) + (1/factorial(n))*polynomial(poly_n_deriv(a,n),k-n)(c)*(x-y)^n
+
+
+
+
+END polynomials

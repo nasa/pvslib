@@ -1,0 +1,88 @@
+%-----------------------------------------------------------------------------
+% Append an element to a sequence of countable length defined as a coalgebraic
+% datatype.  This operation has no effect if the sequence is infinite.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_append[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_insert[T]
+  IMPORTING csequence_codt_coreduce[T, [csequence, T, bool]]
+
+  n: VAR nat
+  t, u: VAR T
+  p: VAR pred[T]
+  state: VAR [csequence, T, bool]
+  cseq, cseq1, cseq2: VAR csequence
+  nseq: VAR nonempty_csequence
+  fseq: VAR finite_csequence
+  iseq: VAR infinite_csequence
+
+  % The boolean distinguishes between the two cases when the sequence part of
+  % the state is empty?: (1) the T has been appended; and (2) the T has not
+  % been appended.
+  append_struct(state): csequence_struct =
+      IF state`3 THEN inj_empty_cseq
+      ELSIF empty?(state`1)
+        THEN inj_add(state`2, (state`1, state`2, TRUE))
+      ELSE inj_add(first(state`1), (rest(state`1), state`2, FALSE))
+      ENDIF
+
+  append(t, cseq): nonempty_csequence =
+      coreduce(append_struct)(cseq, t, FALSE)
+
+  append_finite: JUDGEMENT append(t, fseq) HAS_TYPE nonempty_finite_csequence
+
+  append_first: THEOREM
+    FORALL t, cseq:
+      first(append(t, cseq)) = IF empty?(cseq) THEN t ELSE first(cseq) ENDIF
+
+  append_rest: THEOREM
+    FORALL t, nseq: rest(append(t, nseq)) = append(t, rest(nseq))
+
+  append_finite_def: THEOREM
+    FORALL t, fseq: append(t, fseq) = insert(t, length(fseq), fseq)
+
+  append_infinite_def: THEOREM FORALL t, iseq: append(t, iseq) = iseq
+
+  append_length: THEOREM
+    FORALL t, fseq: length(append(t, fseq)) = length(fseq) + 1
+
+  append_index: THEOREM
+    FORALL t, cseq, n:
+      index?(append(t, cseq))(n) IFF
+       (is_finite(cseq) AND n = length(cseq)) OR index?(cseq)(n)
+
+  append_nth: THEOREM
+    FORALL t, cseq, (n: indexes(cseq)):
+      nth(append(t, cseq), n) = nth(cseq, n)
+
+  append_add: THEOREM
+    FORALL t, u, cseq: add(u, append(t, cseq)) = append(t, add(u, cseq))
+
+  append_last: THEOREM FORALL t, fseq: last(append(t, fseq)) = t
+
+  append_extensionality: THEOREM
+    FORALL t, cseq1, cseq2:
+      append(t, cseq1) = append(t, cseq2) IMPLIES cseq1 = cseq2
+
+  append_some: THEOREM
+    FORALL t, cseq, p:
+      some(p)(append(t, cseq)) IFF
+       some(p)(cseq) OR (is_finite(cseq) AND p(t))
+
+  append_every: THEOREM
+    FORALL t, cseq, p:
+      every(p)(append(t, cseq)) IFF
+       every(p)(cseq) AND (is_infinite(cseq) OR p(t))
+
+ END csequence_append

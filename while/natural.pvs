@@ -1,0 +1,90 @@
+%------------------------------------------------------------------------------
+% A Natural Semantics and its Equivalence to a Structural Operational Semantics
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+natural[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING State[V], AExp[V], BExp[V], Stm[V], Cont[V]
+
+  tree: DATATYPE
+  BEGIN
+    leaf(d:[Stm,State,State])               : leaf?
+    branch1(d:[Stm,State,State],t1:tree)    : branch1?
+    branch2(d:[Stm,State,State],t1,t2:tree) : branch2?
+  END tree
+
+  depth(t:tree): RECURSIVE nat =
+    CASES t OF
+      leaf(d)          : 0,
+      branch1(d,t1)    : depth(t1)+1,
+      branch2(d,t1,t2) : max(depth(t1),depth(t2))+1
+    ENDCASES MEASURE t by <<
+
+  x: VAR V
+  s,s0,s1: VAR State
+  S: VAR Stm
+
+  S(d:[Stm,State,State]):  Stm   = d`1
+  s0(d:[Stm,State,State]): State = d`2
+  s1(d:[Stm,State,State]): State = d`3
+
+  S(t:tree):  Stm   = S(d(t))
+  s0(t:tree): State = s0(d(t))
+  s1(t:tree): State = s1(d(t))
+
+  derivation_tree?(t:tree): RECURSIVE bool =
+    CASES t OF
+      leaf(d):
+               (Assign?(S(d)) AND s1(d)= assign(x(S(d)),A(a(S(d))))(s0(d))) OR
+               (Skip?(S(d))   AND s1(d)= s0(d)) OR
+               (While?(S(d)) AND (NOT B(b(S(d)))(s0(d))) AND s1(d) = s0(d)),
+      branch2(d,t1,t2):
+               derivation_tree?(t1) AND derivation_tree?(t2) AND
+               ((Sequence?(S(d)) AND
+                S1(S(d)) = S(t1) AND S2(S(d)) = S(t2) AND
+                s0(t1) = s0(d) AND s1(t1) = s0(t2) AND s1(t) = s1(t2)) OR
+               (While?(S(d)) AND B(b(S(d)))(s0(d)) AND
+                S1(S(d)) = S(t1) AND S(t2) = S(d) AND
+                s0(t1) = s0(d) AND s1(t1) = s0(t2) AND s1(t) = s1(t2))),
+      branch1(d,t1):
+               Conditional?(S(d)) AND derivation_tree?(t1) AND
+               s0(t1) = s0(d) AND s1(t1) = s1(d) AND
+               ((B(b(S(d)))(s0(d)) AND S1(S(d)) = S(t1)) OR
+                ((NOT B(b(S(d)))(s0(d))) AND S2(S(d)) = S(t1)))
+    ENDCASES MEASURE t by <<
+
+  derivation_tree: TYPE+ = (derivation_tree?)
+                           CONTAINING leaf((Skip,lambda x: 0,lambda x: 0))
+
+  d,d1,d2: VAR derivation_tree
+
+  dt_eq: LEMMA S(d1) = S(d2) AND s0(d1) = s0(d2) => d1 = d2
+
+  SS(S): Cont
+    = lambda s:
+        IF EXISTS d: S(d) = S AND s0(d) = s
+        THEN up(choose({s1 | EXISTS d: S(d) = S AND s0(d) = s AND s1(d) = s1}))
+        ELSE bottom ENDIF
+
+  SS_deterministic: LEMMA (EXISTS d: S(d) = S AND s0(d) = s AND s1(d) = s1)
+                          IFF SS(S)(s) = up(s1)                       % N%N 2.9
+
+  IMPORTING sos, continuation
+
+  natural_le_sos: LEMMA sq_le(SS(S),sos.SS(S))                       % N&N 2.27
+
+  sos_le_natural: LEMMA sq_le(sos.SS(S),SS(S))                       % N&N 2.28
+
+  natural_eq_sos: LEMMA SS(S) = sos.SS(S)                            % N&N 2.26
+
+END natural

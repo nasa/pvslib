@@ -1,0 +1,114 @@
+
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%                   
+%% Last Modified On: September 29, 2009                                      
+%%                                                                          
+%%----------------------------------------------------------------------------
+
+
+critical_pairs[variable:TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+
+ BEGIN
+
+   ASSUMING
+ 
+     IMPORTING variables_term[variable,symbol, arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+ 
+       var_countable: ASSUMPTION is_countably_infinite(V)
+      
+   ENDASSUMING
+
+    IMPORTING critical_pairs_aux[variable,symbol, arity],
+              reduction[variable,symbol, arity],
+              unification[variable,symbol, arity]
+ 
+
+          s, t, t1, t2: VAR term
+       sigma, sg1, sg2, 
+          alpha, delta: VAR Sub
+       rho, rho1, rho2: VAR Ren 
+           e1, e2, e2p: VAR rewrite_rule
+                     E: VAR set[rewrite_rule]
+                     R: VAR pred[[term, term]]
+                     x: VAR (V)
+ 
+
+%%%% Definition of Critical Pair (CP?) %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ CP?(E)(t1, t2): bool = 
+    EXISTS (sigma,rho,
+           (e1 | member(e1, E)), 
+           (e2p | member(e2p, E)), 
+           (p: positions?(lhs(e1)))): 
+         LET e2 = (# lhs := ext(rho)(lhs(e2p)), rhs := ext(rho)(rhs(e2p)) #) IN
+               disjoint?(Vars(lhs(e1)),Vars(lhs(e2)))                        &
+               NOT vars?(subtermOF(lhs(e1), p))                              &
+               mgu(sigma)(subtermOF(lhs(e1), p), lhs(e2))                    &
+               t1 = ext(sigma)(rhs(e1))                                      &
+               t2 = replaceTerm(ext(sigma)(lhs(e1)), ext(sigma)(rhs(e2)), p)
+
+
+%%%% The case critical overlap %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+CP_lemma_aux1a: LEMMA 
+ FORALL E, (p: position), (e1 | member(e1, E)), (e2 | member(e2, E)):
+ ( positionsOF(lhs(e1))(p)                                                    & 
+   NOT vars?(subtermOF(lhs(e1), p))                                           &
+   ext(sg1)(subtermOF(lhs(e1), p)) = ext(sg2)(lhs(e2)) )
+        => 
+          EXISTS alpha, rho: 
+             disjoint?(Vars(lhs(e1)), Vars(ext(rho)(lhs(e2))))                &
+             ext(sg1)(subtermOF(lhs(e1), p)) = ext(comp(alpha, rho))(lhs(e2))
+
+
+ CP_lemma_aux1: LEMMA
+  FORALL E, (p: position), (e1 | member(e1, E)), (e2 | member(e2, E)):
+  ( positionsOF(lhs(e1))(p)                                                & 
+    NOT vars?(subtermOF(lhs(e1), p))                                       &
+    ext(sg1)(subtermOF(lhs(e1), p)) = ext(sg2)(lhs(e2)) )
+         => 
+          EXISTS t1, t2, delta: 
+            CP?(E)(t1, t2)                                                 &
+            ext(delta)(t1) = ext(sg1)(rhs(e1))                             &
+          ext(delta)(t2) = replaceTerm(ext(sg1)(lhs(e1)), ext(sg2)(rhs(e2)), p)
+
+
+
+%%%% The case non-critical overlap %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+ CP_lemma_aux2: LEMMA
+   FORALL R, t, x, sg1, sg2:
+    LET Posv = Pos_var(t, x),
+        seqv = set2seq(Posv) IN
+     comp_cont?(R) & 
+     RSigma(R, sg1, sg2, x) 
+        => 
+        (FORALL (i: below[length(seqv)]):
+          RTC(R)(replace_pos(ext(sg1)(t), ext(sg2)(x), #(seqv(i))),ext(sg2)(t)))
+                                  &
+                  RTC(R)(ext(sg1)(t), ext(sg2)(t))
+
+
+
+
+%%%% Critical Pair Theorem %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+CP_Theorem: THEOREM 
+ FORALL E: 
+   LET RRE = reduction?(E) IN
+   locally_confluent?(RRE)
+               <=> 
+(FORALL t1, t2: CP?(E)(t1, t2) => joinable?(RRE)(t1,t2))
+
+END critical_pairs

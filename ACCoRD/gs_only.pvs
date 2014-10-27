@@ -1,0 +1,164 @@
+%------------------------------------------------------------------------------
+% gs_only.pvs
+% ACCoRD v.1.0
+%
+% Line solutions. Solve the following equation on k and l:
+%   k*v = l*vo-vi.
+%
+% Circle solutions. Solve the following equation on l:
+%   sq(s+t*(l*vo-vi)) = sq(D).
+%
+%------------------------------------------------------------------------------
+
+gs_only[D:posreal] : THEORY
+BEGIN
+  
+  IMPORTING reals@min_max,
+            vectors@vectors_2D, 
+	    vectors@det_2D,
+            reals@quadratic_2b,
+            horizontal[D]
+
+  j,k      : VAR real
+  vo,vi,    
+  s,v,nvo,
+  v1,v2    : VAR Vect2
+  t        : VAR posreal
+  dir,irt  : VAR Sign
+  u,
+  vnzo     : VAR Nz_vect2
+
+  %---------------%
+  % Line Solution %
+  %---------------%
+
+  k_l_det: LEMMA
+    FORALL (l:real):  
+      k*v+vi = l*vo 
+      IMPLIES
+        k*det(vo,v) = det(vi,vo) AND
+        l*det(vo,v) = det(vi,v)
+
+  k_l_det_nz: LEMMA 
+    FORALL (l:real):
+      det(vo,v) /= 0 AND
+      k = det(vi,vo)/det(vo,v) AND
+      l = det(vi,v)/det(vo,v) 
+      IMPLIES
+        k*v = l*vo-vi 
+
+
+  % Vector v is a directional vector
+  % l=0 indicates no solution
+  gs_only_line_k_l(v,vo,vi): {k:real,l:nnreal | l > 0 => 
+  			                        k*v = l*vo-vi} =
+    IF det(vo,v) /= 0 THEN  
+      LET k = det(vi,vo)/det(vo,v),
+          l = det(vi,v)/det(vo,v) IN
+        (k,max(l,0))
+    ELSE
+      (0,0) 
+    ENDIF
+
+  gs_only_line_k_l_complete : LEMMA
+    FORALL (l:posreal):
+      (det(vi,vo) /= 0 OR det(vo,v) /= 0) AND
+      k*v = l*vo-vi IMPLIES
+      (k,l) = gs_only_line_k_l(v,vo,vi)
+
+  % Vector v is a directional vector
+  % Zero indicates no ground speed solution. 
+  gs_only_line(v,vo,vi): {k:real,nvo:Vect2 | nz_vect2?(nvo) => 
+                                             gs_only?(vo)(nvo) AND
+                                             k*v = nvo-vi} =
+    LET (k,l) = gs_only_line_k_l(v,vo,vi) IN
+      (k,l*vo)
+
+  % gs_only_line computes the same resolutions for same dir vectors
+  same_gs_only_line: LEMMA 
+    FORALL (l:posreal) :
+      v2 = l*v1
+      IMPLIES 
+        gs_only_line(v,v1,vi)`2 = gs_only_line(v,v2,vi)`2
+
+  gs_only_line?(v,vo,vi)(k,nvo) : bool =
+    nz_vect2?(nvo) AND
+    (k,nvo) = gs_only_line(v,vo,vi)
+
+  gs_only_line_complete : LEMMA
+    gs_only?(vo)(nvo) AND
+    (det(vi,vo) /= 0 OR det(vo,v) /= 0) AND
+    k*v = nvo-vi IMPLIES
+      gs_only_line?(v,vo,vi)(k,nvo)
+
+  % Solves equation on nvo: u*(nvo-vi) = j, such that exists l > 0: nvo = l*vo
+  gs_only_dot(u,vo,vi,j) : {nvo | nz_vect2?(nvo) => 
+                                  gs_only?(vo)(nvo) AND
+                                  u*(nvo-vi) = j} =
+    gs_only_line(Vdir(u,vo-vi),vo,vi+W0(u,j))`2 
+
+  gs_only_dot_complete : LEMMA
+    gs_only?(vnzo)(nvo) AND
+    (det(vi+W0(u,j),vnzo) /= 0 OR det(vnzo,Vdir(u,vnzo-vi)) /= 0) AND
+    u*(nvo-vi) = j IMPLIES
+    nvo = gs_only_dot(u,vnzo,vi,j)
+
+  %-----------------%
+  % Circle Solution %
+  %-----------------%
+
+  %% zero indicates no solution
+
+  gs_only_circle(s,vnzo,vi,t,dir,irt): {nvo | nz_vect2?(nvo) => 
+                                              gs_only?(vnzo)(nvo) } =
+    LET w = s-t*vi, 
+        a = sq(t)*sqv(vnzo),                
+        b = t*(w*vnzo),
+        c = sqv(w)-sq(D) IN
+    IF discr2b(a,b,c) >= 0 THEN
+      LET l   = root2b(a,b,c,irt),
+          nvo = max(l,0)*vnzo IN
+      IF horizontal_dir_at?(s,nvo-vi,t,dir) THEN
+        nvo
+      ELSE
+        zero
+      ENDIF
+    ELSE
+      zero
+    ENDIF
+
+  gs_only_circle?(s,vnzo,vi,t,dir)(nvo): bool =
+     nz_vect2?(nvo) AND
+     EXISTS (irt:Sign): nvo = gs_only_circle(s,vnzo,vi,t,dir,irt)
+
+  gs_only_circle_solution : LEMMA
+    gs_only_circle?(s,vnzo,vi,t,dir)(nvo) IMPLIES
+    circle_solution_2D?(s,nvo-vi,t,dir)
+
+  gs_only_circle_complete : LEMMA
+    gs_only?(vnzo)(nvo) AND
+    circle_solution_2D?(s,nvo-vi,t,dir) IMPLIES
+      gs_only_circle?(s,vnzo,vi,t,dir)(nvo)
+
+  gs_only_vertical(s,vo,vi,t,dir): {nvo | nz_vect2?(nvo) => 
+                                          gs_only?(vo)(nvo)} =
+    LET v = vo-vi IN
+    IF Delta(s,v) > 0 AND Theta_D(s,v,dir) > 0 THEN
+      LET p = s + Theta_D(s,v,dir)*v IN
+        gs_only_dot(t*p,vo,vi,sq(D)-s*p) 
+    ELSE
+      zero
+    ENDIF
+
+  gs_only_vertical?(s,vo,vi,t,dir)(nvo) : bool = 
+    nz_vect2?(nvo) AND
+    nvo =  gs_only_vertical(s,vo,vi,t,dir)
+
+  gs_only_vertical_on_D: LEMMA
+    LET v = vo-vi IN
+    gs_only_vertical?(s,vo,vi,t,dir)(nvo) IMPLIES
+      Delta(s,v) > 0 AND
+      Theta_D(s,v,dir) > 0 AND
+      (s+t*(nvo-vi))*(s+Theta_D(s,v,dir)*v) = sq(D) 
+
+END gs_only

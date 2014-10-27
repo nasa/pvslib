@@ -1,0 +1,116 @@
+%------------------------------------------------------------------------------
+% vertical_criterion.pvs
+%------------------------------------------------------------------------------
+
+vertical_criterion[D,H: posreal]: THEORY
+BEGIN
+
+  IMPORTING predicate_coordination,
+  	    circle_criterion[D,H],
+  	    analysis@interm_value_thm
+
+  s,p	  : VAR Vect3 
+  v,w,nv,
+  nw,
+  vo,nvo,
+  vi,nvi  : VAR Vect3
+  eps,dir : VAR Sign
+  tztime,
+  theta   : VAR real
+
+  % p is a point on one of the two edges of the cylinder
+  % eps = 1 for the top edge, eps = -1 for the bottom edge
+  % Here, we define our 3-D region.
+
+  closed_region_3D(s,p,eps,dir)(v): bool = 
+    vect2(v)*vect2(p) /= 0 AND sign(vect2(v)*vect2(p)) = dir AND
+    LET t = (sq(D)-vect2(s)*vect2(p))/(vect2(v)*vect2(p)) IN
+    t >= 0 AND
+    eps*(s`z + t*v`z) >= H AND
+    (abs(s`z) >= H AND dir = eps*sign(s`z)
+     OR
+     abs(s`z) < H AND dir = -1)
+
+  closed_region_3D_t_def: LEMMA
+    vect2(v)*vect2(p) /= 0 IMPLIES
+    LET t = (sq(D)-vect2(s)*vect2(p))/(vect2(v)*vect2(p)) IN
+      (vect2(s) + t*vect2(v))*vect2(p) = sq(D)
+
+  closed_region_3D_t_direction: LEMMA
+    vect2(v)*vect2(p) /= 0 IMPLIES
+    LET t = (sq(D)-vect2(s)*vect2(p))/(vect2(v)*vect2(p)) IN
+    t /= tztime IMPLIES
+    sign(vect2(v)*vect2(p))*sign(t-tztime) = sign(sq(D) - (vect2(s) + tztime*vect2(v))*vect2(p))
+
+  closed_region_3D_sum_closed: LEMMA
+    closed_region_3D(s,p,eps,dir)(v) AND
+    closed_region_3D(s,p,eps,dir)(w)
+    IMPLIES
+    closed_region_3D(s,p,eps,dir)(v+w)
+
+  % The previous predicate defines the half-sheet over (or under)
+  % the point p. What we need now is to determine which points p
+  % we want to consider for a given s and v.
+
+  vertical_criterion?: SignedCrit = 
+    LAMBDA (eps:Sign): (LAMBDA (s,v:Vect3): (LAMBDA (nv:Vect3):
+    (vect2(v) = zero AND eps*nv`z >= 0 AND eps*s`z >= H
+    OR
+     Delta(s,v) > 0 AND
+      LET dir : Sign = IF abs(s`z) >= H THEN eps*sign(s`z) ELSE Entry ENDIF,
+          p          = (s + Theta_D(s,v,dir)*v) WITH [z := eps*H] IN
+      Theta_D(s,v,dir) > 0
+      AND
+      closed_region_3D(s,p,eps,dir)(nv))))
+
+  vertical_criterion_sum_closed: LEMMA
+    crit_sum_closed?(vertical_criterion?(eps))
+
+  vertical_criterion_antisymmetric: LEMMA
+    crit_antisymmetric?(vertical_criterion?)
+
+  vertical_criterion_independence: LEMMA
+    vertical_criterion?(eps)(s,v)(nv) IMPLIES
+    NOT conflict?(s,nv)
+
+  vertical_criterion_coordination: LEMMA
+    conflict?(s,vo-vi) AND
+    vertical_criterion?(eps)(s,vo-vi)(nvo-vi) AND
+    vertical_criterion?(-eps)(-s,vi-vo)(nvi-vo)
+    IMPLIES
+    NOT conflict?(s,nvo-nvi)
+
+  horizontal_meets_vertical_criterion : LEMMA
+    LET v = vo-vi,
+        dir: Sign = IF abs(s`z) >= H THEN eps * sign(s`z) ELSE -1 ENDIF
+    IN
+      Delta(s,v) > 0 AND vo`z /= vi`z AND 
+      Theta_D(s,v,dir) > 0 AND Theta_H(s`z,v`z,-dir) > 0 AND
+      eps = sign(s`z + Theta_H(s`z,v`z,-dir)*v`z) AND
+      (vect2(s)+Theta_H(s`z,v`z,-dir)*vect2(nvo-vi))*(vect2(s)+Theta_D(s,v,dir)*vect2(v)) = sq(D) AND
+      horizontal_only?(vo)(nvo)
+      IMPLIES
+        vertical_criterion?(eps)(s,v)(nvo-vi)
+
+
+  %%%%%%%%%%%%%%%%%% Simplified Version of Criterion for Executive Lever Paper %%%%%%%%%%%%%%%%%%
+
+  intersects_half_plane?(s,v,p,eps) : bool =
+    vect2(v)*vect2(p) /= 0 AND 
+    LET t = (sq(D)-vect2(s)*vect2(p))/(vect2(v)*vect2(p)) IN
+    t >= 0 AND
+    eps*(s`z + t*v`z) >= eps*p`z
+
+  safe_dir(s,v,eps) : Sign = IF abs(s`z) >= H THEN eps*sign(s`z) ELSE Entry ENDIF
+
+  safe_p(s:Vect3,v | Delta(s,v) > 0,eps) : Vect3 = (s + Theta_D(s,v,safe_dir(s,v,eps))*v) WITH [z := eps*H]
+
+  vertical_criterion_rewrite: LEMMA
+    vertical_criterion?(eps)(s,v)(nv)
+    IFF
+    (vect2(v) = zero AND eps*nv`z >= 0 AND eps*s`z >= H
+    OR
+    Delta(s,v) > 0 AND Theta_D(s,v,safe_dir(s,v,eps)) > 0  AND intersects_half_plane?(s,nv,safe_p(s,v,eps),eps))
+
+END vertical_criterion
+

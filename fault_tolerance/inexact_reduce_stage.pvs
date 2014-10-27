@@ -1,0 +1,147 @@
+%
+%
+% Purpose : the validity and agreement properties of a median select
+%           voter in the inexact communication case
+%
+%
+
+
+inexact_reduce_stage[
+  S:    posnat,
+  D:    posnat,
+  error: real
+]: THEORY  
+
+
+  BEGIN
+
+  IMPORTING 
+    reduce_choice[S, D, real, <=, error],
+    inexact_comm_stage[S, D]
+
+  s, s1, s2: VAR below(S)
+  d, d1, d2: VAR below(D)
+  v: VAR real
+  eps_l, eps_u, epsilon, delta: VAR nonneg_real
+
+  sent: VAR sent_vec_stage
+  rcvd: VAR rcvd_matrix_stage
+  check: VAR check_stage
+
+  src_set: VAR non_empty_finite_set[below(S)]
+  dst_set: VAR non_empty_finite_set[below(D)]
+
+  tau: VAR tau_type
+  cf, cf1, cf2: VAR consensus_function
+  ok?: VAR pred[ne_seqs]
+  
+
+  n, n1, n2: VAR nat
+  k: VAR posnat
+
+  reduce_lower_validity: LEMMA
+      quorum_lower?(sent, rcvd, check, tau, eps_l)
+    IMPLIES
+      EXISTS s: enabled(rcvd, check)(d)(s) AND 
+        sent(s) - eps_l <= reduce_choice(tau, cf)(rcvd, check)(d)
+
+  reduce_upper_validity: LEMMA
+      quorum_upper?(sent, rcvd, check, tau, eps_u)
+    IMPLIES
+      EXISTS s: enabled(rcvd, check)(d)(s) AND
+        reduce_choice(tau, cf)(rcvd, check)(d) <= sent(s) + eps_u
+
+  reduce_master_slave: COROLLARY
+      quorum_accuracy?(sent, rcvd, check, tau, eps_l, eps_u) AND
+      enabled_within?(rcvd, check)(src_set) AND
+      diameter?(sent, delta)(src_set) AND
+      src_set(s)
+    IMPLIES
+      abs(sent(s) - reduce_choice(tau, cf)(rcvd, check)(d)) <= delta + max(eps_l, eps_u)
+ 
+  reduce_agreement_propagation: THEOREM
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon) AND
+      diameter?(sent, delta)(src_set) AND
+      enabled_within?(rcvd, check)(src_set)
+    IMPLIES
+      reduce_choice(tau, cf1)(rcvd, check)(d1) - reduce_choice(tau, cf2)(rcvd, check)(d2) <= delta + epsilon
+
+  overlap_imprecision?(rcvd, check, tau, epsilon): bool =
+    EXISTS (src_set: finite_set[below(S)]):
+      reduce_overlap?(rcvd, check, tau)(src_set) AND
+      single_imprecision?(rcvd, check, epsilon)(src_set)
+
+  overlap?(rcvd, check, tau, epsilon): bool =
+    FORALL d1, d2:  
+      reduce_choice(tau, min)(rcvd, check)(d1) - reduce_choice(tau, max)(rcvd, check)(d2) <= epsilon
+
+  convergence_overlap: LEMMA
+      overlap_imprecision?(rcvd, check, tau, epsilon)
+    IMPLIES
+      overlap?(rcvd, check, tau, epsilon)
+
+  reduce_convergence: THEOREM
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon) AND
+      diameter?(sent, delta)(src_set) AND
+      enabled_within?(rcvd, check)(src_set) AND
+      overlap_imprecision?(rcvd, check, tau, epsilon) AND
+      convergent?(cf, max_length(rcvd, check, tau), k)
+    IMPLIES
+      reduce_choice(tau, cf)(rcvd, check)(d1) 
+        - reduce_choice(tau, cf)(rcvd, check)(d2) 
+          <= delta * ((k - 1) / k) + epsilon
+
+  reduce_agreement_generation: LEMMA
+      all_symmetric?(rcvd, check, epsilon) AND
+      inexact_consensus?(cf)
+    IMPLIES
+      reduce_choice(tau, cf)(rcvd, check)(d1) - reduce_choice(tau, cf)(rcvd, check)(d2) <= epsilon
+
+
+  IMPORTING select_minmax[S, real, <=], select_minmax[D, real, <=]
+
+  reduce_min_validity: LEMMA
+      quorum_lower?(sent, rcvd, check, tau, eps_l) AND
+      enabled_within?(rcvd, check)(src_set)
+    IMPLIES
+      v_min(sent, src_set) - eps_l <= v_min(reduce_choice(tau, cf)(rcvd, check), dst_set)
+
+  reduce_max_validity: LEMMA
+      quorum_upper?(sent, rcvd, check, tau, eps_u) AND
+      enabled_within?(rcvd, check)(src_set)
+    IMPLIES
+      v_max(reduce_choice(tau, cf)(rcvd, check), dst_set) 
+        <= v_max(sent, src_set) + eps_u
+
+  minmax_diameter: LEMMA
+      v_max(sent, src_set) - v_min(sent, src_set) <= delta
+    IMPLIES
+      diameter?(sent, delta)(src_set)
+
+  agreement_propagation: LEMMA
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon) AND
+      enabled_within?(rcvd, check)(src_set) AND
+      v_max(sent, src_set) - v_min(sent, src_set) <= delta
+    IMPLIES
+      v_max(reduce_choice(tau, cf1)(rcvd, check), dst_set) -
+      v_min(reduce_choice(tau, cf2)(rcvd, check), dst_set) <= delta + epsilon
+
+  agreement_generation: LEMMA
+      all_symmetric?(rcvd, check, epsilon) AND
+      inexact_consensus?(cf)
+    IMPLIES
+      v_max(reduce_choice(tau, cf)(rcvd, check), dst_set) -
+      v_min(reduce_choice(tau, cf)(rcvd, check), dst_set) <= epsilon
+
+  convergence: LEMMA
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon) AND
+      overlap_imprecision?(rcvd, check, tau, epsilon) AND
+      convergent?(cf, max_length(rcvd, check, tau), k) AND
+      enabled_within?(rcvd, check)(src_set) AND
+      v_max(sent, src_set) - v_min(sent, src_set) <= delta
+    IMPLIES
+      v_max(reduce_choice(tau, cf)(rcvd, check), dst_set) -
+        v_min(reduce_choice(tau, cf)(rcvd, check), dst_set) 
+          <= delta * ((k - 1) / k) + epsilon
+
+  END inexact_reduce_stage

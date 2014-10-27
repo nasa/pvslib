@@ -1,0 +1,156 @@
+cantor_bernstein_schroeder[A,B:Type]: THEORY
+
+% A proof of the Cantor-Bernstein-Schroeder Theorem
+% for sets
+%
+% Author: Anthony Narkawicz  April 2012
+
+BEGIN
+
+  f : VAR [A->B]
+  g : VAR [B->A]
+  hab : VAR [A->B]
+  hba : VAR [B->A]
+
+  preim_B?(f)(b:B): bool = EXISTS (a:A): f(a) = b
+  preim_A?(g)(a:A): bool = EXISTS (b:B): g(b) = a
+
+  Afun(f,g)(a:A)(i:nat): RECURSIVE [A,B] =
+    IF i = 0 THEN (a,f(a))
+    ELSE LET bo = Afun(f,g)(a)(i-1)`2 IN
+         (g(bo),f(g(bo)))
+    ENDIF MEASURE i
+
+  Afundef: LEMMA FORALL (i:nat,aa:A): LET (a,b) = Afun(f,g)(aa)(i) IN
+    f(a) = b
+
+  Afundef2: LEMMA FORALL (i:nat,a:A):
+    g(Afun(f,g)(a)(i)`2) = Afun(f,g)(a)(i+1)`1
+
+  Afuncomp: LEMMA FORALL (i,j:nat,a:A):
+    Afun(f,g)(Afun(f,g)(a)(i)`1)(j) = Afun(f,g)(a)(i+j)
+
+  Afuneq: LEMMA FORALL (i,j:nat,a1,a2:A):
+    injective?(f) AND injective?(g) AND
+    (Afun(f,g)(a1)(i)`1 = Afun(f,g)(a2)(j)`1 OR
+     Afun(f,g)(a1)(i)`2 = Afun(f,g)(a2)(j)`2)
+    IMPLIES
+    FORALL (k:nat): k<=i AND k<=j IMPLIES
+     Afun(f,g)(a1)(i-k) = Afun(f,g)(a2)(j-k)
+
+  Bfun(f,g)(b:B)(i:nat): RECURSIVE [A,B] =
+    IF i = 0 THEN 
+      IF (EXISTS (a:A): f(a) = b)
+      THEN LET a = choose({aa:A|f(aa)=b}) IN (a,b)
+      ELSE (g(b),b) ENDIF
+    ELSE LET bo = Bfun(f,g)(b)(i-1)`2 IN
+         (g(bo),f(g(bo)))
+    ENDIF MEASURE i
+
+  Bfundef: LEMMA FORALL (b:B,i:nat):
+    g(Bfun(f,g)(b)(i)`2) = Bfun(f,g)(b)(i+1)`1
+
+  Bfundef2: LEMMA FORALL (b:B,i:posnat):
+    f(Bfun(f,g)(b)(i)`1) = Bfun(f,g)(b)(i)`2
+
+  Bfuneq: LEMMA FORALL (i,j:nat,b:B):
+    injective?(f) AND injective?(g) AND
+    (Bfun(f,g)(b)(i)`1 = Bfun(f,g)(b)(j)`1 OR
+     Bfun(f,g)(b)(i)`2 = Bfun(f,g)(b)(j)`2)
+    IMPLIES
+    FORALL (k:nat): k<i AND k<j IMPLIES
+     Bfun(f,g)(b)(i-k) = Bfun(f,g)(b)(j-k)
+
+  ABfun: LEMMA FORALL (a:A,i:posnat):
+    Afun(f,g)(a)(i) = Bfun(f,g)(f(a))(i)
+
+  BAfun: LEMMA FORALL (b:B,i:nat):
+    Bfun(f,g)(b)(i+1) = Afun(f,g)(g(b))(i)
+
+  ABfuneq: LEMMA FORALL (i,j:nat,b:B,a:A):
+    injective?(f) AND injective?(g) AND
+    (Bfun(f,g)(b)(i)`1 = Afun(f,g)(a)(j)`1 OR
+     Bfun(f,g)(b)(i)`2 = Afun(f,g)(a)(j)`2)
+    IMPLIES
+    FORALL (k:nat): k<i AND k<=j IMPLIES
+     Bfun(f,g)(b)(i-k) = Afun(f,g)(a)(j-k)
+
+  ABrel(f,g)(a:A)(b:B): bool = 
+    (EXISTS (i:nat): b = Afun(f,g)(a)(i)`2)
+    OR
+    (EXISTS (i:nat): a = Bfun(f,g)(b)(i)`1)
+
+  BArel(f,g)(b:B)(a:A): bool = ABrel(f,g)(a)(b)
+
+  Arel(f,g)(a1:A)(a2:A): bool =
+    (EXISTS (i:nat): a1 = Afun(f,g)(a2)(i)`1)
+    OR
+    (EXISTS (i:nat): a2 = Afun(f,g)(a1)(i)`1)
+
+  Brel(f,g)(b1:B)(b2:B): bool =
+    (EXISTS (i:nat): b1 = Bfun(f,g)(b2)(i)`2)
+    OR
+    (EXISTS (i:nat): b2 = Bfun(f,g)(b1)(i)`2)
+
+  % --------------------------- %
+  %    If b has no preimage     %
+  % --------------------------- %
+
+  ABrel_Arel_equiv: LEMMA FORALL (b:B,a,aa:A):
+    (NOT preim_B?(f)(b)) AND ABrel(f,g)(a)(b) AND
+    Arel(f,g)(a)(aa) AND injective?(f) AND 
+    injective?(g) IMPLIES ABrel(f,g)(aa)(b)
+
+  ABrel_Brel_equiv: LEMMA FORALL (b,bb:B,a:A):
+    (NOT preim_B?(f)(b)) AND ABrel(f,g)(a)(b) AND
+    Brel(f,g)(b)(bb) AND injective?(f) AND 
+    injective?(g) IMPLIES BArel(f,g)(bb)(a)
+
+  Brel_Arel: LEMMA FORALL (b,bb:B):
+    injective?(g) IMPLIES
+    (Brel(f,g)(b)(bb) IFF Arel(f,g)(g(b))(g(bb)))
+
+  Arel_Brel: LEMMA FORALL (a,aa:A):
+    injective?(f) IMPLIES
+    (Arel(f,g)(a)(aa) = Brel(f,g)(f(a))(f(aa)))
+
+  ABrel_Brel: LEMMA FORALL (b:B,a:A):
+    injective?(f) AND injective?(g) IMPLIES
+    (ABrel(f,g)(a)(b) IFF Brel(f,g)(f(a))(b))
+
+  % --------------------------- %
+
+  Afununique: LEMMA FORALL (a1,a2:A,i,j:nat):
+    injective?(f) AND injective?(g) AND
+    Afun(f,g)(a1)(i) = Afun(f,g)(a2)(j) IMPLIES
+    Arel(f,g)(a1)(a2)
+
+  af_fun(f,g)(a:A): [(Arel(f,g)(a)) -> (ABrel(f,g)(a))] = (LAMBDA (an:(Arel(f,g)(a))): f(an))
+
+  ag_fun(f,g)(a:A): [(ABrel(f,g)(a)) -> (Arel(f,g)(a))] = (LAMBDA (bn:(ABrel(f,g)(a))): g(bn))
+
+  aginj: LEMMA FORALL (a:A):
+  	   injective?(g) AND injective?(f)
+	   IMPLIES bijective?(ag_fun(f,g)(a))
+	   	   OR
+		   bijective?(af_fun(f,g)(a))
+
+  Arel_union: LEMMA FORALL (a:A): EXISTS (aa:A): Arel(f,g)(aa)(a)
+
+  Arel_disjoint: LEMMA FORALL (a1,a2,a:A): Arel(f,g)(a1)(a) AND Arel(f,g)(a2)(a) AND injective?(g) AND injective?(f)
+    IMPLIES Arel(f,g)(a1) = Arel(f,g)(a2)
+
+  Brel_disjoint: LEMMA FORALL (b1,b2,b:B): Brel(f,g)(b1)(b) AND Brel(f,g)(b2)(b) AND injective?(g) AND injective?(f) IMPLIES
+   Brel(f,g)(b1) = Brel(f,g)(b2)
+
+  ABrel_union: LEMMA FORALL (b:B): EXISTS (a:A): ABrel(f,g)(a)(b)
+
+  ABrel_disjoint: LEMMA FORALL (a1,a2:A,b:B): ABrel(f,g)(a1)(b) AND ABrel(f,g)(a2)(b) AND injective?(g) AND injective?(f)
+    IMPLIES ABrel(f,g)(a1) = ABrel(f,g)(a2)
+
+  Cantor_Bernstein_Schroeder: LEMMA
+    injective?(f) AND
+    injective?(g) IMPLIES
+    EXISTS (hab): bijective?(hab)
+
+END cantor_bernstein_schroeder

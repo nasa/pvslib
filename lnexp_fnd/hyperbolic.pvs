@@ -1,0 +1,311 @@
+hyperbolic: THEORY
+%------------------------------------------------------------------------
+%   Definition of Hyperbolic Trig Functions
+%
+%   Version 1.0    12/3/03 
+%   Version 1.1    8/25/04  
+%   Version 1.2    10/27/04        added exp_approx, ln_approx
+%
+%   Author:  David Lester
+%
+%   Formula labels are from Handbook of Mathematical Functions
+%                           by Abramowitz and Stegun
+%
+%------------------------------------------------------------------------
+BEGIN
+
+  IMPORTING reals@sq, reals@sqrt,
+	    analysis@sqrt_derivative, analysis@restrict2_deriv, analysis@deriv_domains,
+            analysis@nth_derivatives, analysis@taylors,
+            analysis@polynomial_deriv,
+            ln_exp,  %% RWB
+            reals@binomial
+
+
+
+  posreal_ge1:  NONEMPTY_TYPE = {x:real    | x >= 1         } CONTAINING 1
+  posreal_gt1:  NONEMPTY_TYPE = {x:real    | x >  1         } CONTAINING 2
+  posreal_le1:  NONEMPTY_TYPE = {x:posreal | x <= 1         } CONTAINING 1/2
+  real_abs_lt1: NONEMPTY_TYPE = {x:real    | -1 < x &  x < 1} CONTAINING 0
+  real_abs_gt1: NONEMPTY_TYPE = {x:real    | x < -1 OR 1 < x} CONTAINING 2
+
+
+  noa_abs_lt1         : LEMMA not_one_element?[real_abs_lt1];
+  noa_posreal_gt1     : LEMMA not_one_element?[posreal_gt1];
+  conn_abs_lt1        : LEMMA connected?[real_abs_lt1];
+  conn_real           : LEMMA connected?[real]
+  deriv_domain_abs_lt1: LEMMA deriv_domain?[real_abs_lt1]
+  deriv_domain_posreal_gt1: LEMMA deriv_domain?[posreal_gt1]
+
+  AUTO_REWRITE+ noa_abs_lt1    
+  AUTO_REWRITE+ noa_posreal_gt1
+  AUTO_REWRITE+ conn_abs_lt1   
+  AUTO_REWRITE+ conn_real
+  AUTO_REWRITE+ deriv_domain_abs_lt1
+  AUTO_REWRITE+ deriv_domain_posreal_gt1
+
+
+
+  x,y:     VAR real
+  pxle1:   VAR posreal_le1
+  pxge1:   VAR posreal_ge1
+  xalt1:   VAR real_abs_lt1
+  n0x,n0y: VAR nzreal
+  n,m:     VAR nat
+
+% A&S Section 4.5 Hyperbolic Functions
+
+  sinh(x:  real)  :real         = (exp(x)-exp(-x))/2                   % 4.5.1
+  cosh(x:  real)  :posreal_ge1  = (exp(x)+exp(-x))/2                   % 4.5.2
+  tanh(x:  real)  :real_abs_lt1 = sinh(x)/cosh(x)                      % 4.5.3
+  csch(n0x:nzreal):real         = 1/sinh(n0x)                          % 4.5.4
+  sech(x  :real)  :posreal_le1  = 1/cosh(x)                            % 4.5.5
+  coth(n0x:nzreal):real_abs_gt1 = 1/tanh(n0x)                          % 4.5.6
+
+% Restrictions for Branch Properties
+
+  nnreal_cosh (nnx:nnreal):posreal_ge1  = cosh(nnx)
+  posreal_csch(px:posreal):posreal      = csch(px)
+  nnreal_sech (nnx:nnreal):posreal_le1  = sech(nnx)
+  posreal_coth(px:posreal):posreal_gt1  = coth(px)
+
+% Monotonicity Properties
+
+  sinh_strict_increasing: LEMMA strict_increasing?(sinh)  
+  cosh_strict_increasing: LEMMA strict_increasing?(nnreal_cosh)
+  tanh_strict_increasing: LEMMA strict_increasing?(tanh)
+  csch_strict_decreasing: LEMMA strict_decreasing?(posreal_csch)
+  sech_strict_decreasing: LEMMA strict_decreasing?(nnreal_sech)
+  coth_strict_decreasing: LEMMA strict_decreasing?(posreal_coth)
+
+% Special Values of the Hyperbolic Functions
+
+  sinh_0: LEMMA sinh(0) = 0                                            % 4.5.61
+  cosh_0: LEMMA cosh(0) = 1                                            % 4.5.61
+  tanh_0: LEMMA tanh(0) = 0                                            % 4.5.61
+  sech_0: LEMMA sech(0) = 1                                            % 4.5.61
+
+% Relations between Hyperbolic Functions
+
+  cosh_sinh_one:   LEMMA sq(cosh(x))   - sq(sinh(x))   = 1             % 4.5.16
+  tanh_sech_one:   LEMMA sq(tanh(x))   + sq(sech(x))   = 1             % 4.5.17
+  coth_csch_one:   LEMMA sq(coth(n0x)) - sq(csch(n0x)) = 1             % 4.5.18
+  cosh_plus_sinh:  LEMMA cosh(x)       + sinh(x)       = exp(x)        % 4.5.19
+  cosh_minus_sinh: LEMMA cosh(x)       - sinh(x)       = exp(-x)       % 4.5.20
+
+% Negative Angle FormulasMA FORALL (k:{i:nat| i<n}): C(n,k+1) = C(n,k)*((n-k)/(k+1))
+
+
+  sinh_neg: LEMMA sinh(-x)   = -sinh(x)                                % 4.5.21
+  cosh_neg: LEMMA cosh(-x)   = cosh(x)                                 % 4.5.22
+  tanh_neg: LEMMA tanh(-x)   = -tanh(x)                                % 4.5.23
+  csch_neg: LEMMA csch(-n0x) = -csch(n0x)
+  sech_neg: LEMMA sech(-x)   = sech(x)
+  coth_neg: LEMMA coth(-n0x) = -coth(n0x)
+
+% Addition Formulas
+
+  sinh_sum:  LEMMA sinh(x+y) = sinh(x)*cosh(y) + cosh(x)*sinh(y)       % 4.5.24
+  sinh_diff: LEMMA sinh(x-y) = sinh(x)*cosh(y) - cosh(x)*sinh(y)
+  cosh_sum:  LEMMA cosh(x+y) = cosh(x)*cosh(y) + sinh(x)*sinh(y)       % 4.5.25
+  cosh_diff: LEMMA cosh(x-y) = cosh(x)*cosh(y) - sinh(x)*sinh(y)
+  tanh_sum:  LEMMA tanh(x+y) = (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))   % 4.5.26
+  coth_sum:  LEMMA n0x+n0y /= 0 IMPLIES                                % 4.5.27
+                   coth(n0x+n0y)
+                             = (1+coth(n0x)*coth(n0y))/(coth(n0x)+coth(n0y))
+
+% Half-angle Formulas
+
+  sinh_half:  LEMMA sinh(x/2) = LET y = sqrt((cosh(x)-1)/2) IN         % 4.5.28
+                                IF x >= 0 THEN y ELSE -y ENDIF
+  cosh_half:  LEMMA cosh(x/2) = sqrt((cosh(x)+1)/2)                    % 4.5.29
+  tanh_half1: LEMMA tanh(x/2) = LET y = sqrt((cosh(x)-1)/(cosh(x)+1))  % 4.5.30
+                                IN IF x >= 0 THEN y ELSE -y ENDIF
+  tanh_half2: LEMMA tanh(n0x/2) = (cosh(n0x)-1)/sinh(n0x)              % 4.5.30
+  tanh_half3: LEMMA tanh(x/2) = sinh(x)/(cosh(x)+1)                    % 4.5.30
+
+% Multiple-angle Formulas
+
+  sinh2x:     LEMMA sinh(2*x) = 2*sinh(x)*cosh(x)                      % 4.5.31
+  sinh2x_B:   LEMMA sinh(2*x) = 2*tanh(x)/(1-sq(tanh(x)))              % 4.5.31
+  cosh2x:     LEMMA cosh(2*x) = 2*sq(cosh(x))-1                        % 4.5.32
+  cosh2x_B:   LEMMA cosh(2*x) = 2*sq(sinh(x))+1                        % 4.5.32
+  cosh2x_C:   LEMMA cosh(2*x) = sq(cosh(x)) + sq(sinh(x))              % 4.5.32
+  tanh2x:     LEMMA tanh(2*x) = 2*tanh(x)/(1+sq(tanh(x)))              % 4.5.33
+  sinh3x:     LEMMA sinh(3*x) = 3*sinh(x) + 4*sinh(x)^3                % 4.5.34
+  cosh3x:     LEMMA cosh(3*x) = 4*cosh(x)^3-3*cosh(x)                  % 4.5.35
+  sinh4x:     LEMMA sinh(4*x)                                          % 4.5.36
+                              = 4*sinh(x)*cosh(x)*(sq(sinh(x)) + sq(cosh(x)))
+  cosh4x:     LEMMA cosh(4*x)                                          % 4.5.37
+                              = cosh(x)^4+6*sq(sinh(x)*cosh(x))+sinh(x)^4
+
+% Products
+
+  sinh_times_sinh: LEMMA sinh(x)*sinh(y) = (cosh(x+y)-cosh(x-y))/2     % 4.5.38
+  cosh_times_cosh: LEMMA cosh(x)*cosh(y) = (cosh(x+y)+cosh(x-y))/2     % 4.5.39
+  sinh_times_cosh: LEMMA sinh(x)*cosh(y) = (sinh(x+y)+sinh(x-y))/2     % 4.5.40
+
+% Addition and Subtraction
+
+  sum_sinh:   LEMMA sinh(x)+sinh(y) = 2*sinh((x+y)/2)*cosh((x-y)/2)    % 4.5.41
+  diff_sinh:  LEMMA sinh(x)-sinh(y) = 2*cosh((x+y)/2)*sinh((x-y)/2)    % 4.5.42
+  sum_cosh:   LEMMA cosh(x)+cosh(y) = 2*cosh((x+y)/2)*cosh((x-y)/2)    % 4.5.43
+  diff_cosh:  LEMMA cosh(x)-cosh(y) = 2*sinh((x+y)/2)*sinh((x-y)/2)    % 4.5.44
+  sum_tanh:   LEMMA tanh(x)+tanh(y) = sinh(x+y)/(cosh(x)*cosh(y))      % 4.5.45
+  sum_coth:   LEMMA coth(n0x)+coth(n0y)                                % 4.5.46
+                                    = sinh(n0x+n0y)/(sinh(n0x)*sinh(n0y))
+
+% Relations between squares of hyperbolic sines and cosines
+
+  diff_sinh_sq: LEMMA sq(sinh(x))-sq(sinh(y)) = sinh(x+y)*sinh(x-y)    % 4.5.47
+  diff_cosh_sq: LEMMA sq(cosh(x))-sq(cosh(y)) = sinh(x+y)*sinh(x-y)    % 4.5.47
+  sum_cosh_sinh_sq: LEMMA sq(sinh(x))+sq(cosh(y))                      % 4.5.48
+                                              = cosh(x+y)*cosh(x-y)
+
+% De Moivre's Theorem
+
+  hyperbolic_deMoivre: LEMMA (cosh(x)+sinh(x))^n = cosh(n*x)+sinh(n*x) % 4.5.53
+
+% Derivatives
+
+  sinh_derivable2:  LEMMA derivable?(sinh)
+  cosh_derivable2:  LEMMA derivable?(cosh)
+
+  tanh_derivable2:  LEMMA derivable?(tanh)
+
+  deriv_sinh:       LEMMA deriv(sinh) = cosh                           % 4.5.71
+  deriv_cosh:       LEMMA deriv(cosh) = sinh                           % 4.5.72
+  deriv_tanh:       LEMMA deriv(tanh) = sech*sech                      % 4.5.73
+
+% Series expansions
+
+  sinh_series_n(x:real,n:nat):real
+    = sigma(0,n,LAMBDA (i:nat): x^(2*i+1)/factorial(2*i+1))
+
+  sinh_taylors: LEMMA EXISTS (c: between[real](0,x)):                  % 4.5.62
+             sinh(x) = sinh_series_n(x,n) + cosh(c)*x^(2*n+3)/factorial(2*n+3)
+
+
+
+
+
+
+
+% Logarithmic representations of inverse hyperbolics
+
+  asinh(x:real):       real   = ln(x+sqrt(sq(x)+1))                    % 4.6.20
+  acosh(x:posreal_ge1):nnreal = ln(x+sqrt(sq(x)-1))                    % 4.6.21
+  atanh(x:real_abs_lt1):real  = ln((1+x)/(1-x))/2                      % 4.6.22
+   
+% Bijection relations
+
+  sinh_bij: LEMMA bijective?[real,real](sinh)
+  cosh_bij: LEMMA bijective?[nnreal,posreal_ge1](nnreal_cosh)
+  tanh_bij: LEMMA bijective?[real,real_abs_lt1](tanh)
+  csch_bij: LEMMA bijective?[posreal,posreal](posreal_csch)
+  sech_bij: LEMMA bijective?[nnreal,posreal_le1](nnreal_sech)
+  coth_bij: LEMMA bijective?[posreal,posreal_gt1](posreal_coth)
+
+  asinh_alt_def: LEMMA asinh(x) = inverse(sinh)(x)
+
+  asinh_sinh:              LEMMA asinh(sinh(x)) = x
+  sinh_asinh:              LEMMA sinh(asinh(x)) = x
+  asinh_strict_increasing: LEMMA strict_increasing?(asinh)
+  asinh_bij:               LEMMA bijective?[real,real](asinh)
+
+% Derivatives
+
+  asinh_derivable2: LEMMA derivable?(asinh)
+  acosh_derivable2: LEMMA
+                     derivable?[posreal_gt1](LAMBDA (x:posreal_gt1): acosh(x))
+  atanh_derivable2: LEMMA derivable?[real_abs_lt1](atanh)
+
+  deriv_asinh:      LEMMA deriv(asinh)                 	              % 4.6.37
+                                =  (LAMBDA (x:real): 1/sqrt(1+sq(x)))
+  deriv_acosh:      LEMMA                                              % 4.6.38
+              deriv[posreal_gt1](LAMBDA (x:posreal_gt1): acosh(x))
+                                = (LAMBDA (x:posreal_gt1): 1/sqrt(sq(x)-1))
+  deriv_atanh:      LEMMA deriv[real_abs_lt1](atanh)                   % 4.6.39
+                                =  (LAMBDA (x:real_abs_lt1): 1/(1-sq(x)))
+
+% Taylor Series for atanh
+
+  z:  VAR real_abs_lt1
+  pn: VAR posnat
+
+  atanhF(n:nat)(i:nat):int
+    = IF i > 2*n OR odd?(i) THEN 0 ELSE factorial(2*n)*C(2*n+1,i) ENDIF
+
+  atanhD(n:nat)(x:real):real = (1-sq(x))^(2*n+1)
+
+  atanhN(n:nat):[real->real] = polynomial(atanhF(n),2*n)
+
+  atanh_taylors_prep1: LEMMA
+    derivable_n_times?(atanhN(n),m) AND derivable_n_times?(atanhD(n),m)
+
+  atanh_taylors_prep2: LEMMA
+    deriv(atanhN(n))
+      = IF n = 0 THEN const_fun(0)
+                 ELSE polynomial(LAMBDA (i:nat): (i+1)*atanhF(n)(i+1),2*n-1)
+        ENDIF
+
+  atanh_taylors_prep3: LEMMA
+    deriv(atanhD(n)) = (LAMBDA (z:real): -(4*n+2)*z*
+                    IF n = 0 THEN 1 ELSE (1-sq(z))*atanhD(n-1)(z) ENDIF)
+
+  atanh_taylors_prep4: LEMMA
+    deriv(deriv(atanhN(n)))
+      = IF n = 0 THEN const_fun(0)
+                 ELSE polynomial(LAMBDA (i:nat): (i+2)*(i+1)*atanhF(n)(i+2),2*n-2)
+        ENDIF
+
+  atanh_taylors_prep5: LEMMA FORALL (f:[real_abs_lt1->real],
+                                     g:[real_abs_lt1->nzreal]):
+    derivable?[real_abs_lt1](f) AND derivable?[real_abs_lt1](g) IMPLIES
+       derivable?[real_abs_lt1](f/g^pn) AND
+       deriv[real_abs_lt1](f/g^pn)
+          = (deriv[real_abs_lt1](f)*g-pn*f*deriv[real_abs_lt1](g))/(g^(pn+1))
+
+  atanhND(n:nat):[real_abs_lt1->real]
+      = (LAMBDA (x:real_abs_lt1): atanhN(n)(x)/atanhD(n)(x))
+
+  atanh_taylors_prep6: LEMMA
+    nderiv[real_abs_lt1](2,LAMBDA (x:real_abs_lt1): atanhN(n)(x)/atanhD(n)(x))
+      = (LAMBDA (x:real_abs_lt1): atanhN(n+1)(x)/atanhD(n+1)(x))
+
+  atanh_taylors_prep7: LEMMA
+    derivable_n_times?[real_abs_lt1](atanhND(n),2*m)
+
+  atanh_taylors_prep8: LEMMA nderiv[real_abs_lt1](2*m,atanhND(n))=atanhND(n+m)
+
+  atanh_nderiv: LEMMA
+    nderiv[real_abs_lt1](n,atanh)
+      = IF    n = 0    THEN atanh
+        ELSIF even?(n) THEN deriv[real_abs_lt1](atanhND(n/2-1))
+                       ELSE atanhND((n-1)/2) ENDIF
+
+  atanh_nderiv_0: LEMMA
+    nderiv[real_abs_lt1](n,atanh)(0)
+      = IF even?(n) THEN 0 ELSE factorial(n-1) ENDIF
+
+  atanh_n_times_derivable: LEMMA derivable_n_times?[real_abs_lt1](atanh,n)
+
+  atanh_series_term(z:real_abs_lt1):[nat->real]
+      = (LAMBDA (n:nat): z^(2*n+1)/(2*n+1))
+  atanh_series_n(z:real_abs_lt1,n:nat):real = sigma(0,n,atanh_series_term(z))
+
+  atanh_series_eqv: LEMMA
+   atanh_series_n(z,n) = sigma(0,2*n+2,
+      LAMBDA (nn:nat): IF nn > 2*n+2 OR nn = 0 THEN 0 ELSE
+                         nderiv[real_abs_lt1](nn,atanh)(0)*
+                                                     z^nn/factorial(nn) ENDIF)
+
+  atanh_taylors: LEMMA (EXISTS (c: between[real_abs_lt1](0,z)): 
+               atanh(z) = atanh_series_n(z,n) + 
+                                 nderiv[real_abs_lt1](2*n+3,atanh)(c)*
+                                                    z^(2*n+3)/factorial(2*n+3))
+
+  atanh_series: LEMMA abs(atanh(z)-atanh_series_n(z,n)) <=
+                   ((1+z)^(2*n+3)+(1-z)^(2*n+3))/(2*(2*n+3)*(1-sq(z))^(2*n+3))
+
+END hyperbolic

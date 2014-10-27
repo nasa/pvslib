@@ -1,0 +1,134 @@
+power_series_derivseq[T: TYPE from real]: THEORY
+%----------------------------------------------------------------------------
+%
+% Term by term differentiation of power series:
+%
+%  		                      n
+%		                    ----
+%  series(deriv_powerseq(a, x)) =   \     k*a(k)*x^(k-1)
+%		                    /
+%		                    ----
+%		                    k = 0
+%
+%  		                     n-1
+%		                    ----
+%                               =   \     (k+1)*a(k+1)*x^k
+%		                    /
+%		                    ----
+%		                    k = 0
+%
+% The intention here is that one passes in the domain of convergence [T]
+% of the power series.  This will either be all of the reals or {x| -R < x < R}
+% where R is the range of convergence.  Most of the lemmas assume
+% convergence of the power series a: conv_powerseries?(a) =
+%     (FORALL (x: T): convergent?(powerseries(a)(x))) 
+%
+%
+% Author: Ricky W. Butler        10/2/00
+%
+% NOTES
+%  * Prelude restrictions on ^ [i.e. ^(r: real, i:{i:int | r /= 0 OR i >= 0}]
+%    lead to IF-THEN-ELSE on definition of "deriv_powerseq"
+%  * The alternate form: derivseq(a): (LAMBDA (k: nat): (k+1)*a(k+1))avoids
+%    the difficulty by shifting (i.e. starting with 2nd term)
+%  * These are shown to be equivalent in lemma "eriv_series_shift"
+%
+%----------------------------------------------------------------------------
+BEGIN
+ 
+   ASSUMING  %% T is either "real" or a open ball of radius R about 0
+
+     IMPORTING analysis@deriv_domain_def
+
+     connected_domain : ASSUMPTION connected?[T]
+
+     not_one_element : ASSUMPTION not_one_element?[T]
+
+     open            : ASSUMPTION 
+         FORALL (x : T) : EXISTS (delta : posreal): FORALL (y: real):
+                            abs(x-y) < delta IMPLIES T_pred(y) 
+
+
+    ball: ASSUMPTION FORALL (x: T): T_pred(x) IMPLIES T_pred(-x)
+
+   ENDASSUMING
+
+
+  
+   IMPORTING power_series_conv[T], analysis@derivatives
+
+   AUTO_REWRITE- abs_0
+   AUTO_REWRITE- abs_nat
+
+   x,x0: VAR T
+   k,n: VAR nat
+   a: VAR sequence[real]
+   t: VAR real
+
+   epsilon: VAR posreal
+
+
+   deriv_powerseq(a,x): sequence[real] = (LAMBDA k: IF k = 0 THEN 0
+                                                    ELSIF k = 1 THEN a(1)
+                                                    ELSE  k*a(k)*x^(k-1)
+                                                    ENDIF)
+
+%  -------- term by term derivative is  convergent ------------------------
+
+   deriv_powerseries_conv: THEOREM    % Rosenlicht page 152
+                          conv_powerseries?(a) IMPLIES
+              (FORALL (x: T): convergent?(series(deriv_powerseq(a, x))))
+
+
+
+% ----------- alternate form: starting with term 2 via shifting ------------
+
+
+   derivseq(a): sequence[real] = (LAMBDA (k: nat): (k+1)*a(k+1))
+
+
+   derivseq_conv: LEMMA conv_powerseries?(a) IMPLIES
+                          convergent?(series(powerseq(derivseq(a),x)))
+
+   deriv_series_shift: LEMMA conv_powerseries?(a) IMPLIES
+                    limit(series(deriv_powerseq(a,x))) =
+                         limit(series(powerseq(derivseq(a),x)))
+
+   conv_derivseq: LEMMA conv_powerseries?(a) IMPLIES
+                           conv_powerseries?[T](derivseq(a))
+
+
+%  ------ term by term differentiation of power sequence --------
+   
+   deriv_powerseq_lem: LEMMA derivable?[T](LAMBDA x: powerseq(a, x)(n)) AND
+                             deriv[T](LAMBDA x: powerseq(a, x)(n)) =
+                                (LAMBDA x: deriv_powerseq(a,x)(n))
+
+   sigma_power_derivable: LEMMA derivable?[T](LAMBDA x: sigma(0,n,powerseq(a,x)))
+
+
+%  ------ finite sum of power sequence ------
+
+   deriv_sigma_power: LEMMA deriv[T](LAMBDA x: sigma(0, n, powerseq(a, x))) =
+                               (LAMBDA x: sigma(0, n, deriv_powerseq(a,x)))
+
+
+   deriv_sigma_power_conv: LEMMA  conv_powerseries?(a) IMPLIES       
+           convergent?(LAMBDA (n: nat):
+                       deriv[T](LAMBDA x: sigma(0, n, powerseq(a, x)))(x))
+
+
+   deriv_conv_prep: LEMMA conv_powerseries?(a) IMPLIES       
+            convergent?(LAMBDA (n: nat): sigma(0, n, deriv_powerseq(a,x)))
+
+%  x_to_n_continuous: LEMMA continuous(LAMBDA x: x^n) %% moved to analysis lib
+
+   deriv_powerseq_cont: LEMMA 
+           continuous?(LAMBDA x: sigma(0,n,deriv_powerseq(a,x)))
+
+   lim_deriv_alt: LEMMA conv_powerseries?(a) IMPLIES
+                          limit(series(deriv_powerseq(a,x))) =
+                          limit(series(deriv_powerseq(a,x),1))
+
+
+END power_series_derivseq

@@ -1,0 +1,185 @@
+bands_2D[D:posreal,B:nnreal,T: {AB: posreal|AB>B},gsmin,gsmax:posreal] : THEORY
+BEGIN
+
+  ASSUMING
+    gs_min_lt_max: ASSUMPTION gsmin < gsmax
+  ENDASSUMING	
+  
+  IMPORTING gs_bands_2D[D,B,T],
+  	    trk_bands_2D[D,B,T],
+            fseqs_aux_2D[gsmin,gsmax]
+
+
+  nvo	  : VAR Vect2
+  vo,vi	  : VAR Nz_vect2
+  sp   	  : VAR Sp_vect2
+  s	  : VAR Vect2
+  trkb    : VAR (trk_fseq?)
+  gsb     : VAR (gs_fseq?)
+  x       : VAR real
+  trk	  : VAR nnreal_lt_2pi
+  trk2	  : VAR {r: real | 0<=r AND r<=2*pi}
+  gsp	  : VAR {r: real | gsmin<=r AND r<=gsmax}
+
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  trk_critical(nvo:Vect2) : (trk_fseq?) =
+    IF nvo /= zero THEN addend(track(nvo),emptyseq)
+    ELSE emptyseq
+    ENDIF
+
+  trk_critical_rew: LEMMA
+    trk_critical(nvo) = IF nvo /= zero THEN singleton(track(nvo))
+    		      	ELSE emptyseq
+			ENDIF
+
+  member_trk_critical: LEMMA
+  		       member(x,trk_critical(nvo))
+		       IMPLIES
+		       x = track(nvo)
+
+  trk_critical_composition: LEMMA
+    FORALL (trkfs: fseq, nvo:Vect2, x:real):
+    	   member(x,trkfs o trk_critical(nvo))
+	   IFF
+	   ((nvo /= zero AND x = track(nvo))
+	   OR
+	   member(x,trkfs))
+
+  trk_bands(s,vo,vi) : {fs : (trk_fseq?) | increasing?(fs)} =
+    sort(
+    LET fs2 : (trk_fseq?) = 
+      IF horizontal_sep?(s) THEN
+        trk_critical(trk_line_eps_irt(s,vo,vi,-1,-1)) o 
+        trk_critical(trk_line_eps_irt(s,vo,vi,-1, 1)) o 
+        trk_critical(trk_line_eps_irt(s,vo,vi, 1,-1)) o 
+        trk_critical(trk_line_eps_irt(s,vo,vi, 1, 1)) o 
+	trk_critical(trk_only_circle(s,vo,vi,T,Entry,-1)) o
+	trk_critical(trk_only_circle(s,vo,vi,T,Entry, 1)) 
+      ELSE
+	emptyseq
+      ENDIF,
+        fs3 : (trk_fseq?) =
+      IF B > 0 THEN
+        trk_critical(trk_only_circle(s,vo,vi,B,Exit,-1)) o
+    	trk_critical(trk_only_circle(s,vo,vi,B,Exit, 1))
+      ELSE
+        emptyseq 
+      ENDIF 
+    IN
+	(fs2 o fs3) o 
+	(addend(0,emptyseq) o addend(2*pi,emptyseq)))
+
+
+  trk_bands_not_empty : LEMMA
+    trk_bands(s,vo,vi)`length > 1
+
+
+  AUTO_REWRITE- member
+
+  trk_bands_critical: LEMMA
+     (trk_critical?(s,vo,vi)(trk2) OR to2pi(trk2) = 0) IFF
+     member(trk2,trk_bands(s,vo,vi))
+    
+  gs_critical(nvo:Vect2) : (gs_fseq?) =
+    IF nvo/=zero AND gsmin<=gs(nvo) AND gs(nvo)<=gsmax THEN addend(gs(nvo),emptyseq)
+    ELSE emptyseq
+    ENDIF
+
+  gs_critical_rew: LEMMA
+    FORALL (nvo:Vect2):
+    gs_critical(nvo) = IF nvo/=zero AND gsmin<=gs(nvo) AND gs(nvo)<=gsmax THEN singleton(gs(nvo))
+    		      	ELSE emptyseq
+			ENDIF
+
+  member_gs_critical: LEMMA
+    FORALL (nvo:Vect2,x:real):
+  		       member(x,gs_critical(nvo))
+		       IMPLIES
+		       x = gs(nvo)
+
+  gs_critical_composition: LEMMA
+    FORALL (gsfs: (gs_fseq?), nvo:Vect2, x:real):
+    	   member(x,gsfs o gs_critical(nvo))
+	   IFF
+	   ((nz_vect2?(nvo) AND x = gs(nvo) AND gsmin<=gs(nvo) AND gs(nvo)<=gsmax)
+	   OR
+	   member(x,gsfs))
+
+  gs_bands(s,vo,vi) : {fs: (gs_fseq?) | increasing?(fs)} =
+    sort(
+    LET fs2 : (gs_fseq?) = 
+      IF horizontal_sep?(s) THEN
+        gs_critical(gs_line_eps(s,vo,vi,-1)) o 
+        gs_critical(gs_line_eps(s,vo,vi, 1)) o
+	gs_critical(gs_only_circle(s,vo,vi,T,Entry,-1)) o
+	gs_critical(gs_only_circle(s,vo,vi,T,Entry, 1)) 
+      ELSE
+	emptyseq
+      ENDIF,
+        fs3 : (gs_fseq?) =
+      IF B > 0 THEN
+        gs_critical(gs_only_circle(s,vo,vi,B,Exit,-1)) o
+    	gs_critical(gs_only_circle(s,vo,vi,B,Exit, 1))
+      ELSE
+        emptyseq 
+      ENDIF 
+    IN
+	(fs2 o fs3) o
+    	(addend(gsmin,emptyseq) o addend(gsmax,emptyseq)))
+
+  gs_bands_not_empty : LEMMA
+    gs_bands(s,vo,vi)`length > 1
+
+
+  gs_bands_critical: LEMMA
+     (gs_critical?(s,vo,vi)(gsp) OR gsp = gsmin OR gsp = gsmax) IFF
+     member(gsp,gs_bands(s,vo,vi))
+
+  %------------%
+  % THEOREMS   %
+  %------------%
+
+  red_trk_band?(s,vo,vi,trkb)(i:subrange(0,trkb`length-2)) : bool =
+    LET mp = (trkb`seq(i)+trkb`seq(i+1))/2 in
+    cd2d?(s,Vtrk(vo,vi)(mp))
+
+  trk_red_bands : THEOREM
+    LET trkb = trk_bands(s,vo,vi) IN
+     FORALL (i:{ii: subrange(0,trkb`length-2)| trkb`seq(ii) /= trkb`seq(ii+1)}) : 
+       red_trk_band?(s,vo,vi,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         conflict_2D?(s,Vtrk(vo,vi)(x)))
+
+  trk_green_bands : THEOREM
+    LET trkb = trk_bands(s,vo,vi) IN
+     FORALL (i:{ii: subrange(0,trkb`length-2)| trkb`seq(ii) /= trkb`seq(ii+1)}) : 
+       NOT red_trk_band?(s,vo,vi,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         NOT conflict_2D?(s,Vtrk(vo,vi)(x)))
+
+
+
+  red_gs_band?(s,vo,vi,gsb)(i:subrange(0,gsb`length-2)) : bool =
+    LET mp = (gsb`seq(i)+gsb`seq(i+1))/2 in
+    cd2d?(s,Vgs(vo,vi)(mp))  
+
+  gs_red_bands : THEOREM
+    LET gsb = gs_bands(s,vo,vi) IN
+     FORALL (i:{ii: subrange(0,gsb`length-2)| gsb`seq(ii) /= gsb`seq(ii+1)}) :  
+       red_gs_band?(s,vo,vi,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         conflict_2D?(s,Vgs(vo,vi)(x)))
+
+  gs_green_bands : THEOREM
+    LET gsb = gs_bands(s,vo,vi) IN
+     FORALL (i:{ii: subrange(0,gsb`length-2)| gsb`seq(ii) /= gsb`seq(ii+1)}) :  
+       NOT red_gs_band?(s,vo,vi,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         NOT conflict_2D?(s,Vgs(vo,vi)(x)))
+
+
+END bands_2D

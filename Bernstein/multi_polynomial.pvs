@@ -1,0 +1,218 @@
+multi_polynomial : THEORY
+BEGIN
+
+  IMPORTING reals@product_nat, 
+            reals@polynomials,
+	    sigma_set@sigma_bijection[nat],
+            util,
+	    reals@sq
+
+  %%%%%%%%%%%%%%%%%%%%%% Variables %%%%%%%%%%%%%%%%%%%%%%
+
+  polydegmono,
+  polydegmono1,
+  polydegmono2    : VAR DegreeMono
+  mpoly,
+  mpoly1,mpoly2   : VAR MultiPolynomial
+  pprod,
+  pprod1,pprod2   : VAR Polyproduct
+  a               : VAR real
+  X,Avars,Bvars   : VAR Vars
+  v,jj            : VAR nat
+  nvars,terms,
+  terms1,terms2   : VAR posnat
+  cf,cf1,cf2      : VAR Coeff
+  rel    	  : VAR [[real,real]->bool]
+  boundedpts,
+  intendpts	  : VAR IntervalEndpoints
+
+  %%%%%%%%%%%%%%%%%%%%%% Evaluating Polynomials %%%%%%%%%%%%%%%%%%%%
+
+  polyproduct_eval(pprod,polydegmono,nvars)(X) : real = 
+    product(0,nvars-1,LAMBDA (i:nat):polynomial(pprod(i),polydegmono(i))(X(i)))
+
+  multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X) : real =
+    sigma(0,terms-1,LAMBDA (i:nat): cf(i)*polyproduct_eval(mpoly(i),polydegmono,nvars)(X))
+
+  %%%%%%%%%%%%% Translating to the Interval [0,1] %%%%%%%%%%%%
+
+  polyprod_translate(pprod,polydegmono,nvars)(Avars,Bvars,boundedpts)(i:nat) : Polynomial =
+    IF    boundedpts(i)`1 AND boundedpts(i)`2 THEN
+      poly_translate(pprod(i),polydegmono(i))(Avars(i),Bvars(i))
+    ELSIF boundedpts(i)`1 THEN poly_translate_inf_pos(pprod(i),polydegmono(i))(Avars(i))
+    ELSE  poly_translate_inf_neg(pprod(i),polydegmono(i))(Bvars(i))
+    ENDIF
+
+  multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars)(k:nat) :  Polyproduct = 
+    polyprod_translate(mpoly(k),polydegmono,nvars)(Avars,Bvars,boundedpts)
+
+  multipoly_translate_denormalize: LEMMA 
+    lt_below?(nvars)(Avars,Bvars) AND bounded_points_exclusive?(nvars)(boundedpts) AND
+    (FORALL (ii:below(nvars)): (NOT (boundedpts(ii)`1 AND boundedpts(ii)`2)) IMPLIES X(ii)/=0)
+    IMPLIES
+      LET pconst = product(0,nvars-1,LAMBDA (i:nat): 
+                                     IF NOT (boundedpts(i)`1 AND boundedpts(i)`2) THEN 
+                                       X(i)^polydegmono(i) 
+                                     ELSE 1 ENDIF)
+      IN
+        multipoly_eval(multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars),
+                     polydegmono,cf,nvars,terms)(X) 
+        =
+        pconst*multipoly_eval(mpoly,polydegmono,cf,nvars,terms)
+                             (denormalize_lambda(nvars,X,boundedpts)(Avars,Bvars))
+
+  multipoly_translate_normalize: LEMMA 
+    lt_below?(nvars)(Avars,Bvars)
+    AND (FORALL (ii:below(nvars)): (boundedpts(ii)`1 IMPLIES 
+         X(ii)/=Avars(ii)-1) AND (boundedpts(ii)`2 IMPLIES X(ii)/=Bvars(ii)+1))
+    AND bounded_points_exclusive?(nvars)(boundedpts)
+      IMPLIES
+      LET pconst = product(0,nvars-1,LAMBDA (i:nat): 
+                                     IF (boundedpts(i)`1 AND NOT boundedpts(i)`2) THEN 
+                                       (X(i)-Avars(i)+1)^polydegmono(i)
+      			       	     ELSIF (boundedpts(i)`2 AND NOT boundedpts(i)`1) THEN 
+                                       (Bvars(i)+1-X(i))^polydegmono(i)
+				     ELSE 1 ENDIF)
+      IN
+        pconst*multipoly_eval(multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars),
+                     polydegmono,cf,nvars,terms)(normalize_lambda(nvars,X,boundedpts)(Avars,Bvars)) =
+        multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X)
+
+  multipoly_translate_bounded_def: LEMMA 
+    boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) AND 
+    bounded_points_true?(nvars)(boundedpts) IMPLIES
+    multipoly_eval(multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars),
+                   polydegmono,cf,nvars,terms)(normalize_lambda(nvars,X,boundedpts)(Avars,Bvars)) =
+    multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X)
+
+  multipoly_translate_def: LEMMA 
+    lt_below?(nvars)(Avars,Bvars) AND 
+    bounded_points_exclusive?(nvars)(boundedpts) IMPLIES
+    FORALL (rel:RealOrder):
+      (FORALL (X): boxbetween?(nvars)(zeroes,ones,
+       interval_endpoints_inf_trans(Avars,Bvars,intendpts,boundedpts),boundedpts_true)(X) IMPLIES 
+       rel(multipoly_eval(multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars),
+                          polydegmono,cf,nvars,terms)(X),0))
+      IFF
+       (FORALL (X): boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) IMPLIES 
+                    rel(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X),0))
+
+  %%%%%%% Forall X For Polynomials %%%%%%%
+
+  eval_X_poly_rel(rel,a)(mpoly,polydegmono,cf,nvars,terms)(X) : MACRO bool =
+    rel(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X),a)
+
+  forall_X_poly_rel(rel,a)(mpoly,polydegmono,cf,nvars,terms,Avars,Bvars,
+	intendpts,boundedpts) : bool =
+    FORALL (X): boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) IMPLIES 
+      eval_X_poly_rel(rel,a)(mpoly,polydegmono,cf,nvars,terms)(X)
+
+  eval_X_poly_between(amin,amax:real)(mpoly,polydegmono,cf,nvars,terms)(X) : MACRO bool =
+      	eval_X_poly_rel(>=,amin)(mpoly,polydegmono,cf,nvars,terms)(X) AND
+      	eval_X_poly_rel(<=,amax)(mpoly,polydegmono,cf,nvars,terms)(X)
+
+  forall_X_poly_between(amin,amax:real)(mpoly,polydegmono,cf,nvars,terms,Avars,Bvars,
+	intendpts,boundedpts) : bool =
+    FORALL (X): boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) IMPLIES 
+      eval_X_poly_between(amin,amax)(mpoly,polydegmono,cf,nvars,terms)(X)
+
+  forall_X_poly_interval(mpoly,polydegmono,cf,nvars,terms,Avars,Bvars,
+    intendpts,boundedpts,rel,a) : bool =
+    FORALL (X): boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) IMPLIES 
+      rel(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X),a)
+
+  %%%%%%%%%%%%%%%%%%%%%% Adding, Subtracting, Multiplying, Scalaring Polynomials %%%%%%%%%%%%%%%%%%%%
+
+  multipoly_zero_above(mpoly,polydegmono)(t:nat)(v:nat)(d:nat): real = 
+    IF d>polydegmono(v) THEN 0 ELSE mpoly(t)(v)(d) ENDIF
+
+  multipoly_zero_above_def: LEMMA 
+    multipoly_eval(mpoly,polydegmono,cf,nvars,terms) = 
+    multipoly_eval(multipoly_zero_above(mpoly,polydegmono),polydegmono,cf,nvars,terms)
+
+  multipoly_add_coeff(cf1,cf2,terms1,terms2)(i:nat): real =
+    IF i<terms1 THEN cf1(i) ELSE cf2(i-terms1) ENDIF
+
+  multipoly_add(mpoly1,mpoly2,terms1,terms2)(i:nat) : Polyproduct =
+    IF i<terms1 THEN mpoly1(i) ELSE mpoly2(i-terms1) ENDIF
+
+  multipoly_add_def: LEMMA 
+    multipoly_eval(mpoly1,polydegmono1,cf1,nvars,terms1)(X)+
+    multipoly_eval(mpoly2,polydegmono2,cf2,nvars,terms2)(X) =
+    multipoly_eval(multipoly_add(multipoly_zero_above(mpoly1,polydegmono1),
+                   multipoly_zero_above(mpoly2,polydegmono2),terms1,terms2),
+                   mono_max(polydegmono1,polydegmono2),
+                   multipoly_add_coeff(cf1,cf2,terms1,terms2),nvars,terms1+terms2)(X)
+
+  multipoly_scalar_coeff(a,cf)(i:nat): real = a*cf(i)
+
+  multipoly_scalar_def: LEMMA 
+    a*multipoly_eval(mpoly,polydegmono,cf,nvars,terms) = 
+    multipoly_eval(mpoly,polydegmono,multipoly_scalar_coeff(a,cf),nvars,terms)
+
+  multipoly_sub_def: LEMMA 
+    multipoly_eval(mpoly1,polydegmono1,cf1,nvars,terms1)(X)-
+    multipoly_eval(mpoly2,polydegmono2,cf2,nvars,terms2)(X) =
+    multipoly_eval(multipoly_add(multipoly_zero_above(mpoly1,polydegmono1),
+                   multipoly_zero_above(mpoly2,polydegmono2),terms1,terms2),
+                   mono_max(polydegmono1,polydegmono2),
+                   multipoly_add_coeff(cf1,multipoly_scalar_coeff(-1,cf2),terms1,terms2),
+                                       nvars,terms1+terms2)(X)
+
+  polyproduct_product(pprod1,pprod2,polydegmono1,polydegmono2)(v:nat)(d:nat): real = 
+      IF d<=mono_sum(polydegmono1,polydegmono2)(v) THEN
+        sigma(0,d,LAMBDA (i:nat):IF i<=polydegmono1(v) THEN pprod1(v)(i) 
+                                 ELSE 0 ENDIF*
+                                 IF i<=d AND d-i<=polydegmono2(v) THEN pprod2(v)(d-i) 
+                                 ELSE 0 ENDIF)
+      ELSE 0 ENDIF
+
+  polyproduct_product_def: LEMMA 
+    polyproduct_eval(polyproduct_product(pprod1,pprod2,polydegmono1,polydegmono2),
+                     mono_sum(polydegmono1,polydegmono2),nvars)(X) =
+    polyproduct_eval(pprod1,polydegmono1,nvars)(X)*polyproduct_eval(pprod2,polydegmono2,nvars)(X)
+
+  multipoly_product_coeff(cf1,cf2,terms1,terms2,jj)(i:nat): RECURSIVE real =
+    IF jj = 0 THEN
+      IF   i<terms1 THEN cf1(i)*cf2(jj)
+      ELSE 0        ENDIF
+    ELSE
+      IF    i<jj*terms1     THEN multipoly_product_coeff(cf1,cf2,terms1,terms2,jj-1)(i)
+      ELSIF i<(jj+1)*terms1 THEN cf1(i-jj*terms1)*cf2(jj)
+      ELSE  0 		    ENDIF
+    ENDIF
+    MEASURE jj
+
+  multipoly_product(mpoly1,mpoly2,polydegmono1,polydegmono2,terms1,terms2,jj)(i:nat): 
+  RECURSIVE Polyproduct =
+    IF jj=0 THEN
+      IF i<terms1 THEN polyproduct_product(mpoly1(i),mpoly2(jj),polydegmono1,polydegmono2)
+      ELSE zero_poly_prod ENDIF
+    ELSE
+      IF i<jj*terms1	THEN 
+        multipoly_product(mpoly1,mpoly2,polydegmono1,polydegmono2,terms1,terms2,jj-1)(i)
+      ELSIF i<(jj+1)*terms1	THEN 
+        polyproduct_product(mpoly1(i-jj*terms1),mpoly2(jj),polydegmono1,polydegmono2)
+      ELSE zero_poly_prod ENDIF
+    ENDIF
+    MEASURE jj
+
+  multipoly_product_def: LEMMA 
+    multipoly_eval(mpoly1,polydegmono1,cf1,nvars,terms1)(X)*
+    multipoly_eval(mpoly2,polydegmono2,cf2,nvars,terms2)(X) =
+    multipoly_eval(multipoly_product(mpoly1,mpoly2,polydegmono1,polydegmono2,terms1,terms2,terms2-1),
+                   mono_sum(polydegmono1,polydegmono2),
+                   multipoly_product_coeff(cf1,cf2,terms1,terms2,terms2-1),nvars,terms1*terms2)(X)
+
+  multipoly_sq_coeff(cf,terms)(i:nat): real = multipoly_product_coeff(cf,cf,terms,terms,terms-1)(i)
+
+  multipoly_sq(mpoly,polydegmono,terms)(i:nat): Polyproduct = 
+    multipoly_product(mpoly,mpoly,polydegmono,polydegmono,terms,terms,terms-1)(i)
+
+  const_degmono(cc:nat,polydegmono)(i:nat): nat = cc*polydegmono(i)
+
+  multipoly_sq_def: LEMMA
+    sq(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(X)) = 
+    multipoly_eval(multipoly_sq(mpoly,polydegmono,terms),const_degmono(2,polydegmono),multipoly_sq_coeff(cf,terms),nvars,sq(terms))(X)
+
+END multi_polynomial

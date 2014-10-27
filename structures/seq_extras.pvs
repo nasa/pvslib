@@ -1,0 +1,257 @@
+%%----------------------------------------------------------------------------
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%                   
+%%----------------------------------------------------------------------------
+
+
+seq_extras[T: TYPE]: THEORY
+  BEGIN
+
+   IMPORTING finite_sequences[T],
+             finite_sets@finite_sets_inductions[T]
+
+                   i, n: VAR nat
+                      j: VAR int
+                   x, y: VAR T
+             seq, seq1, 
+       seq2, seq3, seq4: VAR finseq
+
+          not_empty_seq: TYPE = {seq: finseq | length(seq) /= 0}
+                  
+              fs_len(n): TYPE = {seq: finseq | length(seq) = n}
+
+
+%%%%%%%%%%%% Definition: Elements of sequences %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  first(seq: not_empty_seq): T = seq(0)
+
+  last(seq: not_empty_seq): T = seq(seq`length - 1)
+
+  rest(seq): finseq = IF seq`length = 0 
+                      THEN seq
+                      ELSE ^(seq,(1, seq`length - 1))
+                      ENDIF
+
+  delete(seq, (n: below[length(seq)])): finseq =
+    (IF seq`length = 0
+     THEN 
+       seq
+     ELSE
+       (# length := seq`length - 1,
+             seq := (LAMBDA (i: below[seq`length - 1]):
+                               (IF i < n THEN seq(i)
+                                ELSE seq(i + 1) 
+                                ENDIF)) #)
+        ENDIF)
+
+
+
+  insert?(x, seq, (n: upto[length(seq)])): finseq =
+          (# length := seq`length + 1,
+                seq := (LAMBDA (i: below[seq`length + 1]):
+                            (IF i < n THEN seq(i)
+                             ELSIF i = n THEN x
+                             ELSE seq(i - 1) ENDIF)) #)
+
+
+  add_first(x, seq): finseq = insert?(x, seq, 0)
+
+  add_last(seq, x): finseq = insert?(x, seq, length(seq))
+
+%%%%%%%%%%%% Definition: replace x in a seq %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  replace(x, seq, (n: below[length(seq)])): finseq = 
+        (IF seq`length = 0 THEN seq
+         ELSE
+          (# length := seq`length,
+                seq := (LAMBDA (i: below[seq`length]):
+                            (IF i < n THEN seq(i)
+                             ELSIF i = n THEN x
+                             ELSE seq(i) ENDIF)) #)
+         ENDIF)
+
+
+%%%%%%%%%%%% Definition: replace seq1 in a seq2 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+   replace_seq(seq1, seq2): finseq = 
+        (IF seq2`length = 0 THEN seq2
+         ELSE
+          (# length := seq2`length,
+                seq := (LAMBDA (i: below[seq2`length]):
+                            (IF i < seq1`length
+                             THEN seq1(i)
+                             ELSE seq2(i) ENDIF)) #)
+         ENDIF);
+
+%%%%%%%%%%%% Equivatent sequences %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ different_elements(seq): bool = 
+           FORALL (i, j: below[seq`length]): 
+                 i /= j => seq(i) /= seq(j)
+
+ equivalent(seq1, seq2): bool = 
+                         seq1`length = seq2`length &
+                         different_elements(seq1)   &
+                         different_elements(seq2)   &
+                         FORALL (i: below[seq1`length]):
+                           EXISTS (j: below[seq2`length]): seq1(i) = seq2(j)
+
+%%%%%% Utility functions for converting from sets and sequences           %%%
+
+IMPORTING set2seq[T] 
+
+%%%%%%%%%%%% Properties %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+
+  empty_0: LEMMA length(seq) = 0 <=> seq = empty_seq
+
+  empty_o_seq: LEMMA empty_seq o seq = seq
+
+  seq_o_empty: LEMMA seq o empty_seq = seq
+
+  length_rest: LEMMA seq`length /= 0 IMPLIES length(rest(seq)) < length(seq)
+
+  length_delete: LEMMA seq`length /= 0 IMPLIES
+                          length(delete(seq, length(seq) - 1)) < length(seq)
+
+  seq_empty: LEMMA seq1 o seq2 = empty_seq IMPLIES 
+                                         length(seq1) = 0 AND length(seq2) = 0
+
+  seq_first_rest: LEMMA seq`length /= 0 IMPLIES 
+                         seq = add_first(first(seq), rest(seq))
+
+  seq_first_rest_1: LEMMA seq`length /= 0 IMPLIES 
+                         seq = #(first(seq)) o rest(seq)
+ 
+  add_first_empty_seq: LEMMA  add_first(x, empty_seq) = #(x)
+
+  
+  length_rest_0: LEMMA seq`length /= 0 AND length(rest(seq)) = 0 
+                       IFF  length(seq) = 1
+
+  rest_add_first: LEMMA rest(add_first(x, seq)) = seq
+
+  first_add: LEMMA first(add_first(x,seq)) = x
+
+  nth_add_first: LEMMA FORALL (i: below[seq`length + 1]):
+                      IF i = 0 
+                      THEN add_first(x, seq)(i) = x 
+                      ELSE add_first(x, seq)(i) = seq(i - 1)
+                      ENDIF
+ 
+  first_add_last: LEMMA seq`length /= 0 IMPLIES
+                            first(add_last(seq, x)) = first(seq)
+
+  rest_add_last: LEMMA seq`length /= 0 IMPLIES
+                           rest(add_last(seq, x)) = add_last(rest(seq), x)
+
+  add_first_last_commute:LEMMA 
+                add_first(x, add_last(seq, y)) = add_last(add_first(x, seq), y)
+
+  add_first_last: LEMMA seq`length /= 0 IMPLIES
+         add_first(first(seq), add_last(rest(seq), x)) = add_last(seq, x)
+
+  
+  add_last_delete: LEMMA seq`length /= 0 IMPLIES
+                      seq = add_last(delete(seq, seq`length - 1), last(seq))
+
+  add_last_delete_is_o: LEMMA seq`length /= 0 IMPLIES
+     add_last(delete(seq, seq`length - 1), last(seq)) =
+                        delete(seq, seq`length - 1)o#(seq(seq`length - 1))
+
+
+  nth_add_last: LEMMA FORALL (i: below[seq`length + 1]):
+                      IF i =  seq`length
+                      THEN add_last(seq, x)(i) = x 
+                      ELSE add_last(seq, x)(i) = seq(i)
+                      ENDIF
+
+ 
+  add_first_compo: LEMMA  add_first(x, seq2) o seq3 = add_first(x, seq2 o seq3)
+
+
+  first_compo: LEMMA seq1`length /= 0 IMPLIES first(seq1 o seq2) = first(seq1)
+
+ 
+  rest_compo: LEMMA seq1`length /= 0 IMPLIES 
+                                         rest(seq1 o seq2) = rest(seq1) o seq2
+
+  rest_pos: LEMMA rest(seq)`length /= 0 IMPLIES 
+              FORALL (i: below[length(seq) - 1]): seq(i + 1) = rest(seq)(i)
+
+
+  delete_is_empty: LEMMA seq`length = 1  IMPLIES
+                         delete(seq, 0) = empty_seq
+
+
+  delete_pos: LEMMA seq`length /= 0  IMPLIES
+   FORALL (i: below[length(seq) - 1]): seq(i) = delete(seq, length(seq) - 1)(i)
+
+
+
+  insert_delete: LEMMA seq`length /= 0 IMPLIES
+                        FORALL (n: below[seq`length]): 
+                                      insert?(seq(n), delete(seq, n), n) = seq
+
+  
+ add_first_delete: LEMMA seq`length /= 0 IMPLIES
+    FORALL (n: below[seq`length]): n /= 0 
+        => add_first(seq(0), rest(delete(seq, n))) = delete(seq, n)
+                                     
+ delete_rest: LEMMA FORALL (n: below[seq`length]): 
+                      IF n = 0
+                      THEN
+                        delete(seq, 0) = rest(seq)
+                      ELSE
+                        delete(rest(seq), n - 1) = rest(delete(seq, n))
+                      ENDIF
+
+
+ first_equal: LEMMA add_first(x, seq1) = add_first(y, seq2) IMPLIES 
+                                                         x = y AND seq1 = seq2
+
+                                                    
+ nth_x: LEMMA 
+         FORALL (n: below[length(seq)]): replace(x, seq, n)(n) = x
+
+ replace_nth: LEMMA 
+         FORALL (n: below[length(seq)]):replace(seq(n), seq, n) = seq
+
+ replace_n2: LEMMA length(seq) /= 0 IMPLIES FORALL (n: below[length(seq)]): 
+                        replace(x, replace(y, seq, n), n) = replace(x, seq, n)
+
+ delete_equivalent: LEMMA  
+         FORALL (i: below[seq1`length]), (j: below[seq2`length]):
+            equivalent(seq1, seq2) & 
+            seq1(i) = seq2(j) 
+                       =>
+                equivalent(delete(seq1, i), delete(seq2, j))
+
+
+ equal_prefix : LEMMA
+    seq o seq1 = seq o seq2 IMPLIES seq1 = seq2
+
+ o_equals_o : LEMMA
+    seq1 o seq2 = seq3 o seq4 AND length(seq1) = length(seq3)
+     IMPLIES seq1 = seq3
+
+ o_length_o : LEMMA
+    seq1 o seq2 = seq3 o seq4 AND length(seq1) < length(seq3)
+       IMPLIES EXISTS seq: seq3 = seq1 o seq
+
+ add_last_is_o : LEMMA
+    add_last(seq, x) = seq o #(x)
+
+ add_first_is_o : LEMMA
+    add_first(x, seq) = #(x) o seq
+  
+END seq_extras

@@ -1,0 +1,154 @@
+integral_prep[T: TYPE FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%  Basic Properties of Integral (Introduction to Analysis (Maxwell Rosenlicht))
+%
+%  Author: Rick Butler   NASA Langley Research Center
+%------------------------------------------------------------------------------
+
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+
+   IMPORTING integral_def[T], reals@real_fun_ops
+
+
+
+   a,b,c,x,y,z: VAR T
+   D,m,M,v1,v2,cc,RS1,RS2: VAR real
+
+   f,g,G: VAR [T -> real]
+
+   integral_const_fun: LEMMA a < b IMPLIES integrable?(a,b,const_fun(D))
+                               AND integral(a, b, const_fun[T](D)) = D*(b-a)
+
+
+
+   integral_const_restrict: LEMMA a < b AND 
+               (FORALL (x: closed_interval(a,b)): f(x) = D) IMPLIES
+                                  integral?(a,b,f,D*(b-a))
+   
+
+   IMPORTING continuous_functions[T], convergence_sequences
+
+
+
+%  ------------ Linearity Properties of Integral
+
+   integral_scal: LEMMA a < b AND integrable?(a,b,f) IMPLIES
+                            integrable?(a,b,D*f) AND
+                               integral(a,b,D*f) = D*integral(a,b,f)
+
+
+   integral_sum: LEMMA a < b AND integrable?(a,b,f) AND integrable?(a,b,g) 
+                      IMPLIES
+                         integrable?(a,b,(LAMBDA x: f(x) + g(x)))  AND
+                             integral(a,b,(LAMBDA x: f(x) + g(x))) =
+                                  integral(a,b,f) + integral(a,b,g)
+
+
+   integral?_sum: LEMMA a < b AND integral?(a,b,f,v1) AND 
+                                    integral?(a,b,g,v2) 
+                      IMPLIES
+                         integral?(a,b,(LAMBDA x: f(x) + g(x)),v1+v2)
+
+   integral_diff: LEMMA a < b AND integrable?(a,b,f) AND integrable?(a,b,g) 
+                      IMPLIES
+                         integrable?(a,b,(LAMBDA x: f(x) - g(x)))  AND
+                             integral(a,b,(LAMBDA x: f(x) - g(x))) =
+                                  integral(a,b,f) - integral(a,b,g)
+
+
+   integral_ge_0: LEMMA a < b AND integrable?(a,b,f) AND 
+                    (FORALL (x: closed_interval(a,b)): f(x) >= 0) IMPLIES
+                           integral(a,b,f) >= 0
+
+
+   integral_jmp: LEMMA a < b AND a <= z AND z <= b AND f(z) = cc AND % Example2
+                   (FORALL x: x /= z IMPLIES f(x) = 0) IMPLIES
+                       integrable?(a,b,f) AND integral(a,b,f) = 0
+
+
+   yv: VAR real
+   integral_chg_one_pt: LEMMA a < b IMPLIES       
+                              FORALL y: a <= y AND y <= b AND
+                              integrable?(a,b,f) 
+                    IMPLIES integrable?(a,b,f WITH [(y) := yv]) AND
+                       integral(a,b,f) = integral(a,b,f WITH [(y) := yv])
+
+   integral_restr_eq: LEMMA a < b AND          
+                                (FORALL x: a < x AND x < b IMPLIES
+                                          f(x) = g(x)) AND
+                               integrable?(a,b,f)
+                          IMPLIES integrable?(a,b,g) AND
+                                   integral(a,b,g) = integral(a,b,f)
+
+
+   integral_bound: LEMMA a < b AND integrable?(a,b,f) AND 
+                           (FORALL (x: closed_interval(a,b)): 
+                                    m <= f(x) AND f(x) <= M )
+           IMPLIES m*(b-a) <= integral(a,b,f) AND integral(a,b,f) <= M*(b-a)
+
+
+   integral_bound_abs: LEMMA a < b AND integrable?(a,b,f) AND 
+                           (FORALL (x: closed_interval(a,b)): 
+                                    abs(f(x)) <= M )
+                                IMPLIES abs(integral(a,b,f)) <= M*(b-a)
+
+
+   integral_le : LEMMA a < b AND integrable?(a,b,f) AND integrable?(a,b,g) 
+                       AND (FORALL (x: closed_interval(a,b)): f(x) <= g(x)) 
+                    IMPLIES 
+                       integral(a,b,f) <= integral(a,b,g) 
+
+
+%  One direction of Rosenlicht Lemma 1 on page 118 
+
+   eps, delta: VAR posreal
+
+   Lemma_1: LEMMA a < b IMPLIES                 
+               (integrable?(a,b,f) IMPLIES
+                  (FORALL eps: EXISTS delta:
+                      (FORALL (P1,P2: partition[T](a,b),
+                               xis1:(xis?(a,b,P1)),
+                               xis2:(xis?(a,b,P2))):
+                        LET S1 = Rie_sum(a,b,P1,xis1,f), 
+                            S2 = Rie_sum(a,b,P2,xis2,f) IN
+                        (width(a,b,P1) < delta AND
+                         width(a,b,P2) < delta)
+                           IMPLIES
+                              abs(S1 - S2) < eps )))
+
+   integrable_lem: THEOREM  a < b IMPLIES      %% Lemma 1 page 118         
+                     (integrable?(a,b,f) IFF
+                        (FORALL (epsi: posreal): (EXISTS (delta: posreal):
+                             (FORALL (P1,P2: partition(a,b)):
+                               width(a,b,P1) < delta AND
+                               width(a,b,P2) < delta IMPLIES
+                               (FORALL (RS1: (Riemann_sum?(a,b,P1,f)),
+                                        RS2: (Riemann_sum?(a,b,P2,f))):
+                                   abs(RS1 - RS2) < epsi )))))
+
+   gxis(a:T, b:{x:T|a<x}, P: partition[T](a,b), j: below(length(P)-1), 
+                flag: bool,xx: closed_interval(P(j),P(j+1))):
+          (xis?(a,b,P)) = (LAMBDA (ii: below(length(P)-1)): P(ii))
+                               WITH [(j) := IF flag then P(j)
+                                            ELSE xx
+                                            ENDIF ]
+
+
+END integral_prep
+
+
+
+
+

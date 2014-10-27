@@ -1,0 +1,242 @@
+#!/usr/bin/env perl
+# Script for generating a library dependency graph (requires dot) 
+# Based on code wriiten by George Hagen (NASA)
+
+use Getopt::Long;
+use File::Basename;
+
+@prelude = ("bitvector", "finite_sets");
+
+$usageln = "Usage: dependencygraph [--help] [<option> ...] [<file>]";
+
+sub usage() {
+  print <<EOF;
+dependencygraph -- generates a library dependency graph for <file>.
+
+This script builds a dot graph of library dependecies. It will then call 
+Graphviz's dot utility on that file to produce a pdf graph.
+
+$usageln
+<option> is
+  --dot                    don't generate PDF unless --pdf is specified
+  --pdf                    generate a pdf file (default)
+  --title=<string>         use <string> as the title of the graph
+  --out=<outfile>          use <outfile> as name of the output file
+  --zoom=<dir1>,...,<dirn> zoom into libraries <dir1>,...,<dirn>
+  --help                   print this message
+  --after=<dir>            process all libraries after <dir>, exclusive
+  --before=<dir>           process all libraries before <dir>, exclusive
+  --but=<dir1>,..,<dirn>   do not process libraries <dir1>,...,<dirn>
+  --do=all                 process all libraries. This is the default,
+                           except when the option --zoom is also specified
+  --do=<dir1>,..,<dirn>    process libraries <dir1>,...,<dirn> 
+  --from=<dir>             process all libraries from <dir>, inclusive
+  --to=<dir>               process all libraries to <dir>, inclusive
+  --top=<topfile>          specify name of the top file directory
+
+File <file> is an ordered list of libraries as used by the script provethem.
+By default <file> is nasalib.all. If <outfile> is not specified, 
+<file><postfix> is used. The <postfix> depends on library selection option, i.e.,
+--do,--but,--from,--to,--after,--before,--zoom. When the option --zoom is 
+used in conjunction with one of the other options, the libraries that are selected,
+except for those in --zoom, will appear unzoomed in the dependency graph.
+
+except when the option zoom is used.
+EOF
+  exit;
+}
+
+sub deslash($)
+{
+  my $string = shift;
+  $string =~ s|/||g;
+  return $string;
+}
+
+sub trim($)
+{
+	my $string = shift;
+	$string =~ s/^\s+//;
+	$string =~ s/\s+$//;
+	return $string;
+}
+
+sub writeedge {
+  my ($from, $to) = @_;
+  if (!(grep {$_ eq $to} @prelude)) {
+    print "*** Warning: Library $to is out of order. It should appear before $from in $file\n"
+      if !(grep {$_ eq $to} @nodes) && (grep {$_ eq $to} @libraries);    
+    push(@external,$to)
+      if !(grep {$_ eq $to} @libraries) &&
+	!(grep {$_ eq $to} @external);
+    $graph .= "  \"$from\" -> \"$to\";\n";
+  }
+}
+
+sub writesubgraph {
+  my ($lib, $from, $tos) = @_;
+  @tolist = split /,/,$tos;
+  foreach $to (@tolist) {
+    @libto = split /@/,$to;
+    if ($libto[1] && !(grep {$_ eq $libto[0]} @prelude)) {
+      if (grep {$_ eq $libto[0]} @libraries) {
+	print "*** Warning: Library $libto[0] is out of order. It should appear before $lib in $file\n"
+	  if !(grep {$_ eq $libto[0]} @nodes);
+	$subgraph{$lib} .= "    \"$from\" -> \"$libto[1]\";\n";
+      } else {
+	writeedge($from,$to);
+      } 
+    } elsif (!$libto[1]) {
+      $subgraph{$lib} .= "    \"$from\" -> \"$to\";\n";
+    }
+  }
+}
+
+GetOptions('dot'=>\$dot,
+	   'pdf'=>\$pdf,
+	   'out=s'=>\$out,
+	   'title=s'=>\$title,
+           'after=s'=>\$after,
+           'before=s'=>\$before,
+	   'but=s'=>\@but,
+	   'do=s'=>\@do,
+	   'zoom=s'=>\@zoom,
+           'from=s'=>\$from,
+	   'help'=>\$help,
+	   'top=s'=>\$top,
+           'to=s'=>\$to) or exit 1;
+
+$after = deslash($after);
+$before = deslash($before);
+$to = deslash($to);
+$from = deslash($from);
+$do = deslash(join(',',@do));
+$but = deslash(join(',',@but));
+$zoom = deslash(join(',',@zoom));
+if ($do eq "all") {
+  $do = "";
+  $all=1;
+}
+
+usage if $help;
+
+$file = shift;
+$file = "nasalib.all" if !$file;
+die "$usageln\n" if shift; 
+
+@butlist = split /,/,$but;
+@dolist = split /,/,$do;
+@zoomlist = split /,/,$zoom;
+
+die "$file is a directory\n" if -d $file;
+open (INFILE,$file) || die "File $file doesn't exist\n";
+
+if (!$out) {
+  my ($base,$path,$type) = fileparse($file,qr{\..*});  
+  $out  = "$path$base";
+  my $dol = join('_',@dolist);
+  $out .= "-$dol" if $dol;
+  my $butl = join('_',@butlist);
+  $out .= "-but_$butl" if $butl;
+  $out .= "-from_$from" if $from;
+  $out .= "-to_$to" if $to;
+  $out .= "-after_$after" if $after;
+  $out .= "-below_$below" if $below;
+  my $zooml = join('_',@zoomlist);
+  $out .= "-zoom_$zooml" if $zooml;
+}
+
+$go = "ok" if $all || !($from || $after || @dolist || @zoomlist);
+
+while (<INFILE>) {
+  $line = $_;
+  $line =~ s/\#.*$//;
+  $line = trim($line);
+  if ($line) {
+    @listline = split /:/,$line;
+    $lib = trim($listline[0]);
+    if ($lib) {
+      $go = "ok" if $from eq $lib;
+      last if $before eq $lib;
+      if (($go && !(grep { "$_" eq $lib } @butlist)) || 
+	  grep { "$_" eq $lib } @dolist || 
+	  grep { "$_" eq $lib } @zoomlist) { 
+	if (-d $lib) {
+	  push(@libraries,$lib);
+	} else {
+	  die "Directory $lib not found\n";
+	}
+      }
+      $go = "ok" if $after eq $lib;
+      last if $to eq $lib;
+    } 
+  }
+}
+close(INFILE);
+if ($top) {
+  $thetop = $top;
+} else {
+  $thetop = "top";
+}
+$topfile = $thetop;
+foreach $lib (@libraries) {
+  $topfile = $lib if !$top;
+  push(@nodes,$lib);
+  if (-f "$lib/pvsbin/$topfile.dep") {
+    open(FILE,"$lib/pvsbin/$topfile.dep");
+    $zoom = grep { "$_" eq $lib } @zoomlist;
+    $graph .= "  \"$lib\";\n" if !$zoom;
+    while($line = <FILE>) {
+      if ($zoom) {
+	if ($line =~/(.+):(.*)/ && $1 ne "$thetop") {
+	  $subgraph{$lib} .= "    \"$1\";\n";
+	  writesubgraph($lib,$1,$2) if $2;
+	}
+      } elsif ($line =~/(.+)\//) {
+	  writeedge($lib,$1);
+	}
+    } 
+    close FILE;
+  } else {
+    print "File $lib/pvsbin/$topfile.dep not found\n";
+  }
+}
+
+foreach $ext (@external) {
+  $graph .= "  \"$ext\" [style=filled, fillcolor=yellow]\n";
+}
+
+foreach $lib (@zoomlist) {
+  $graph .= "  subgraph cluster_$lib {\n";
+  $graph .= $subgraph{$lib};
+  $graph .= "    label=\"$lib\";\n";
+  $graph .= "    style=filled;\n";
+  $graph .= "  }\n";
+}
+
+my ($graphname,$path,$type) = fileparse($out);
+$graphname =~ s/-/_/g;
+
+open(DOT,">$out.dot") or die "can't open $out.dot\n";
+print DOT "digraph $graphname {\n";
+if ($title) {
+  print DOT "labelloc=\"t\"";
+  print DOT "label=\"$title\"";
+}
+print DOT "  rankdir=LR;\n";
+#print DOT "  node [shape=box]\n" if !$zoom;
+print DOT "  concentrate=true;\n";
+print DOT "  splines=true;\n";  # splines=ortho for a more circuit diagram form, splines=true for default curves
+print DOT $graph;
+print DOT "}\n";
+close(DOT);
+print "File $out.dot has been generated\n" if $dot;
+if (!$dot || $pdf) {
+  die "To produce $out.pdf, install Graphviz and add it to PATH\n" if !`which dot`;
+  `dot -Tpdf $out.dot -o $out.pdf`;
+  print "File $out.pdf has been generated\n";
+} 
+
+`rm $out.dot` if !$dot;
+
+

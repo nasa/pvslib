@@ -1,0 +1,194 @@
+interval_bexpr : THEORY
+BEGIN
+
+  IMPORTING interval_expr,
+            structures@Maybe,
+	    reals@RealInt
+
+  bexpr : VAR BoolExpr
+  vs    : VAR Env
+  b     : VAR bool
+  box   : VAR Box
+  pox   : VAR ProperBox 
+  n     : VAR nat
+
+  b2B(b) : BoolExpr =
+    BCONST(b)
+
+  CONVERSIOn b2B
+
+  REL(rel:RealOrder)(e1,e2:RealExpr) : MACRO BoolExpr = 
+    BREL(rel,e1,e2)
+
+  EQ(e1,e2:RealExpr) : MACRO BoolExpr =
+   BAND(BREL(<=,e1,e2),BREL(>=,e1,e2))
+
+  POS?(e:RealExpr) : MACRO BoolExpr =
+    BREL(>,e,0)
+
+  BINCLUDEX(op:RealExpr,opi:Interval) : MACRO BoolExpr =
+    BINCLUDES(op,opi)
+
+  BINCLUDEX(op:RealExpr,ri:RealInt) : MACRO BoolExpr =
+    IF ri`bounded_below AND ri`bounded_above THEN
+      BAND(BREL(IF ri`closed_below THEN <= ELSE < ENDIF,
+                r2E(ri`lb),op),
+           BREL(IF ri`closed_above THEN <= ELSE < ENDIF,
+                op,r2E(ri`ub)))
+    ELSIF ri`bounded_below THEN
+       BREL(IF ri`closed_below THEN <= ELSE < ENDIF,
+            r2E(ri`lb),op)
+    ELSIF ri`bounded_above THEN
+       BREL(IF ri`closed_above THEN <= ELSE < ENDIF,
+            op,r2E(ri`ub))
+    ELSE b2B(TRUE)
+    ENDIF
+
+  beval(bexpr,vs,n) : RECURSIVE bool =
+    IF bconst?(bexpr) THEN opb(bexpr)
+    ELSIF bnot?(bexpr) THEN  
+      NOT beval(bop(bexpr),vs,n)   
+    ELSIF band?(bexpr) THEN  
+      beval(bop1(bexpr),vs,n) AND beval(bop2(bexpr),vs,n)
+    ELSIF bor?(bexpr) THEN  
+      beval(bop1(bexpr),vs,n) OR beval(bop2(bexpr),vs,n)
+    ELSIF bimplies?(bexpr) THEN  
+      beval(bop1(bexpr),vs,n) IMPLIES beval(bop2(bexpr),vs,n)
+    ELSIF brel?(bexpr) THEN 
+      rel(bexpr)(eval(op1(bexpr),vs,n),eval(op2(bexpr),vs,n)) 
+    ELSIF bincludes?(bexpr) THEN
+      eval(op(bexpr),vs,n) ## opi(bexpr) 
+    ELSIF bletin?(bexpr) THEN
+      IF realexpr?(blet(bexpr)) THEN
+        LET blet = eval(blet(bexpr),vs,n) IN
+          beval(bin(bexpr),vs WITH [`n := blet],n+1)
+      ELSE
+        LET blet = beval(blet(bexpr),vs,n) IN
+          beval(bin(bexpr),vs WITH [`n := IF blet THEN 1 ELSE -1 ENDIF],n+1)
+      ENDIF 
+    ELSIF beval(bif(bexpr),vs,n) THEN 
+      beval(bthen(bexpr),vs,n) 
+    ELSE beval(belse(bexpr),vs,n)
+    ENDIF
+  MEASURE bexpr BY <<
+
+  BEval(bexpr,box) : RECURSIVE Maybe[bool] =
+    IF bconst?(bexpr) THEN 
+      Some(opb(bexpr))
+    ELSIF bnot?(bexpr) THEN
+      LET bop = BEval(bop(bexpr),box) IN
+      IF none?(bop) THEN None
+      ELSE Some(NOT val(bop))
+      ENDIF
+    ELSIF band?(bexpr) THEN 
+      LET bop1 = BEval(bop1(bexpr),box) IN
+      IF none?(bop1) OR val(bop1) THEN
+        LET bop2 = BEval(bop2(bexpr),box) IN
+        IF some?(bop2) AND val(bop2) THEN bop1
+        ELSE bop2
+        ENDIF
+      ELSE bop1
+      ENDIF
+    ELSIF bor?(bexpr) THEN  
+      LET bop1 = BEval(bop1(bexpr),box) IN
+      IF none?(bop1) OR NOT val(bop1) THEN
+        LET bop2 = BEval(bop2(bexpr),box) IN
+        IF some?(bop2) AND (val(bop2) OR some?(bop1)) THEN bop2
+        ELSE None
+        ENDIF
+      ELSE bop1
+      ENDIF
+    ELSIF bimplies?(bexpr) THEN  
+      LET bop1 = BEval(bop1(bexpr),box) IN
+      IF none?(bop1) OR val(bop1) THEN
+        LET bop2 = BEval(bop2(bexpr),box) IN
+        IF some?(bop2) AND (val(bop2) OR some?(bop1)) THEN bop2
+        ELSE None
+        ENDIF
+      ELSE Some(TRUE)
+      ENDIF
+    ELSIF brel?(bexpr) THEN 
+      LET op1 = Eval(op1(bexpr),box) IN
+      IF Proper?(op1) THEN
+        LET op2 = Eval(op2(bexpr),box) IN
+        IF Proper?(op2) THEN
+          IF rel(bexpr)(0,1) THEN % Case <= or <
+            IF rel(bexpr)(op1`ub,op2`lb) THEN Some(TRUE)
+            ELSIF neg_rel(rel(bexpr))(op1`lb,op2`ub) THEN Some(FALSE)
+            ELSE None
+            ENDIF
+          ELSIF rel(bexpr)(op1`lb,op2`ub) THEN Some(TRUE) % Case >, >=
+          ELSIF neg_rel(rel(bexpr))(op1`ub,op2`lb) THEN Some(FALSE)
+          ELSE None
+          ENDIF
+        ELSE None
+        ENDIF
+      ELSE None
+      ENDIF
+    ELSIF bincludes?(bexpr) THEN
+      LET op = Eval(op(bexpr),box) IN
+      IF Proper?(op) THEN
+        LET opi = opi(bexpr) IN
+        IF Proper?(opi) THEN
+          IF op << opi THEN Some(TRUE)
+          ELSIF opi`ub < op`lb OR op`ub < opi`lb THEN Some(FALSE)
+          ELSE None
+          ENDIF
+        ELSE 
+          None
+        ENDIF
+      ELSE
+        None
+      ENDIF
+    ELSIF bletin?(bexpr) THEN
+      IF realexpr?(blet(bexpr)) THEN
+        LET blet = Eval(blet(bexpr),box) IN
+        IF Proper?(blet) THEN
+          BEval(bin(bexpr),append(box,(: blet :)))
+        ELSE None 
+        ENDIF
+      ELSE
+        LET blet = BEval(blet(bexpr),box) IN
+        BEval(bin(bexpr),
+              append(box,(: IF none?(blet) THEN [|-1,1|] 
+                            ELSIF val(blet) THEN [|1/2,1|]
+                            ELSE [|-1,-1/2|] ENDIF :)))
+      ENDIF 
+    ELSE 
+      LET bif = BEval(bif(bexpr),box) IN
+      IF some?(bif) AND val(bif) THEN
+        BEval(bthen(bexpr),box)
+      ELSIF some?(bif) AND NOT val(bif) THEN
+        BEval(belse(bexpr),box)
+      ELSE 
+        LET bt = BEval(bthen(bexpr),box) IN
+        IF some?(bt) THEN
+          LET be = BEval(belse(bexpr),box) IN
+            IF some?(be) AND val(bt)=val(be) THEN bt
+            ELSE None
+            ENDIF
+          ELSE None
+        ENDIF
+      ENDIF
+    ENDIF
+  MEASURE bexpr BY <<
+
+  BEval_inclusion : THEOREM
+    FORALL (box:Box,vs:(vars_in_box?(box)),bexpr) :
+      LET be = BEval(bexpr,box) IN
+      some?(be) IMPLIES
+        val(be) = beval(bexpr,vs,length(box)) 
+
+  BEval_inclusion_Proper : THEOREM
+    LET be = BEval(bexpr,pox) IN
+    some?(be) IMPLIES
+      val(be) = FORALL(vs:(vars_in_box?(pox))): beval(bexpr,vs,length(pox)) 
+
+  BEval_fundamental : THEOREM
+    Inclusion?(pox,box) IMPLIES
+      LET beb = BEval(bexpr,box),
+          bep = BEval(bexpr,pox) IN
+      some?(beb) IMPLIES 
+      some?(bep) AND val(bep) = val(beb)
+
+END interval_bexpr

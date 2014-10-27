@@ -1,0 +1,93 @@
+%------------------------------------------------------------------------------
+% vs_bands.pvs
+% ACCoRD v.1.0
+%------------------------------------------------------------------------------
+
+vs_bands[H:posreal,B:nnreal,T: {AB: posreal|AB>B}] : THEORY
+BEGIN
+
+  IMPORTING  cd_vertical[H,B,T],
+  	     util,
+	     reals@connected_set
+
+  sz,vz,t,
+  voz,viz,
+  vsp     : VAR real
+  nzvz    : VAR nzreal
+  eps,dir : VAR Sign
+  nzt     : VAR nzreal
+  pt      : VAR posreal
+  band	  : VAR Connected
+  BT	  : VAR nnreal
+  drc	  : VAR Sign
+
+  %-----------------------------------------------%
+  % Vertical Speed Critical Points                %
+  %-----------------------------------------------%
+
+  vs_critical?(sz,viz)(vsp) : bool =
+    vs_circle_at?(sz,viz,B,T)(vsp)
+
+  vs_bands_vertical_dir_exclusive: LEMMA
+    ((BT = T AND drc = 1) OR (BT = B AND drc = -1))
+    AND on_H?(sz + BT*(vsp-viz))
+    IMPLIES
+    (vertical_dir_at?(sz,vsp-viz,BT,drc)
+    IFF
+    (vsp-viz = 0 OR conflict_vertical?(sz,vsp-viz)))
+
+  band_critical_on_H: LEMMA FORALL (vsp1,vsp2: (band),tlh: Lookahead):
+    abs(sz + B*(vsp1-viz)) >= H AND abs(sz + T*(vsp1-viz)) >= H AND
+    sign(sz + B*(vsp1-viz)) = sign(sz + T*(vsp1-viz)) AND
+    abs(sz + tlh*(vsp2-viz)) < H
+    IMPLIES
+    (EXISTS (vsp: (band)): (B>0 AND abs(sz + B*(vsp-viz)) = H AND vertical_dir_at?(sz,vsp-viz,B,1)) OR 
+                           (abs(sz + T*(vsp-viz)) = H AND vertical_dir_at?(sz,vsp-viz,T,-1)))
+
+  vs_band_critical_B_sz_sign: LEMMA 
+    on_H?(sz + B*(vsp-viz)) AND
+    B > 0 IMPLIES
+    (vertical_dir_at?(sz,vsp-viz,B,1)
+    IFF
+    sign(sz + B*(vsp-viz))*sz <= H)
+
+  vs_band_critical_T_sz_sign: LEMMA 
+    on_H?(sz + T*(vsp-viz)) IMPLIES
+    (vertical_dir_at?(sz,vsp-viz,T,-1)
+    IFF
+    sign(sz + T*(vsp-viz))*sz >= H)
+  
+  % Bands do not contain critical points
+  vs_band?(sz,viz)(band) : bool =
+    FORALL (vsp:(band)) :
+      NOT vs_critical?(sz,viz)(vsp)
+
+  vs_green?(sz,viz)(band) : bool =
+    FORALL (vsp:(band)) :
+      NOT conflict_vertical?(sz,vsp-viz)
+
+  vs_red?(sz,viz)(band) : bool =
+    FORALL (vsp:(band)) :
+      conflict_vertical?(sz,vsp-viz)
+
+  %--------------------------------------------------%
+  % THEOREM: Vertical Speed Green Bands Correctness  %
+  %--------------------------------------------------%
+
+  vs_green_band : THEOREM
+    FORALL (vsp:(band)) :
+       vs_band?(sz,viz)(band) IMPLIES
+       (NOT cd_vertical?(sz,vsp-viz) IFF
+        vs_green?(sz,viz)(band))
+
+  %-------------------------------------------------%
+  % THEOREM: Vertical Speed Red Bands Correctness   %
+  %-------------------------------------------------%
+
+  vs_red_band : THEOREM
+    FORALL (vsp:(band)) :
+       vs_band?(sz,viz)(band) IMPLIES
+       (cd_vertical?(sz,vsp-viz) IFF
+        vs_red?(sz,viz)(band))
+
+END vs_bands

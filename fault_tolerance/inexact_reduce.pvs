@@ -1,0 +1,89 @@
+%
+%
+% Purpose : validity and agreement properties for a multi-stage inexact 
+%           exchange with the results-based fault model.
+%
+%
+
+
+inexact_reduce
+[
+    N   : [nat -> posnat],  
+    error: [nat -> real]
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    inexact_comm[N],
+    protocol[N, real],
+    k_ordered[N, real, <=, error],
+    inexact_reduce_stage,
+    reals@sigma_nat
+
+  i, j, k: VAR nat
+  v: VAR real
+
+  sent:  VAR sent_vec
+  rcvd:  VAR rcvd_matrix
+  check: VAR check_function
+
+  epsilon, eps_u, eps_l, eps: VAR [nat -> nonneg_real]
+  delta : VAR nonneg_real
+
+  node_set: VAR [i: nat -> non_empty_finite_set[below(N(i))]] 
+
+  tau: VAR [j: nat -> tau_type]
+  idx: VAR [nat -> nat]
+  cf: VAR k_consensus_function
+
+
+% Main results
+  lower_validity: THEOREM
+      protocol(reduce_choice(tau, cf), sent, rcvd, check, j, j + k) AND
+      quorum_lower?(sent, rcvd, check, tau, eps_l, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(node_set)
+    IMPLIES
+      v_min(sent, node_set)(j) - sigma(j, j + k - 1, eps_l) <= v_min(sent, node_set)(j + k)
+
+  upper_validity: THEOREM
+      protocol(reduce_choice(tau, cf), sent, rcvd, check, j, j + k) AND
+      quorum_upper?(sent, rcvd, check, tau, eps_u, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(node_set)
+    IMPLIES
+      v_max(sent, node_set)(j + k) <= v_max(sent, node_set)(j) + sigma(j, j + k - 1, eps_u)
+
+  agreement_propagation: THEOREM
+      protocol(reduce_choice(tau, cf), sent, rcvd, check, j, j + k) AND
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(node_set) AND
+      v_max(sent, node_set)(j) - v_min(sent, node_set)(j) <= delta
+    IMPLIES
+      v_max(sent, node_set)(j + k) - v_min(sent, node_set)(j + k) 
+        <= delta + sigma(j, j + k - 1, epsilon)
+
+  X: VAR posnat
+
+  convergent_stage?(rcvd, check, tau, epsilon, cf, X, j, k): bool = 
+    EXISTS i: j <= i AND i < k AND
+      overlap_imprecision?[N(i), N(i + 1), error(i)](rcvd(i), check(i), tau(i), epsilon(i)) AND
+      convergent?(cf(i), max_length[N(i), N(i + 1), real, <=, error(i)](rcvd(i), check(i), tau(i)), X)
+
+  convergence: THEOREM
+      protocol(reduce_choice(tau, cf), sent, rcvd, check, j, j + k) AND
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(node_set) AND
+      convergent_stage?(rcvd, check, tau, epsilon, cf, X, j, j + k) AND
+      v_max(sent, node_set)(j) - v_min(sent, node_set)(j) <= delta
+    IMPLIES
+      v_max(sent, node_set)(j + k) - v_min(sent, node_set)(j + k) 
+        <= delta * ((X - 1) / X) + sigma(j, j + k - 1, epsilon)
+
+  agreement_generation: THEOREM
+      protocol(reduce_choice(tau, cf), sent, rcvd, check, j, j + k) AND
+      exists_all_symmetric?(sent, rcvd, check, tau, epsilon, cf, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(node_set)
+    IMPLIES
+      v_max(sent, node_set)(j + k) - v_min(sent, node_set)(j + k) <= sigma(j, j + k - 1, epsilon)
+
+END inexact_reduce

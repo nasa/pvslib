@@ -1,0 +1,183 @@
+fseqs [T: TYPE+]: THEORY
+%------------------------------------------------------------------------
+%
+% A new finite sequences theory
+%
+% This theory defines finite sequences as a simple record type. Unlike the prelude
+% version, this record is not a dependent type. The domain of all finite_sequences
+% are identical and therefore operators over them are greatly simplified.  However,
+% the built-in equality is no longer valid.  This theory provides a new equality
+% but unfortunately many PVS strategies and commands do not work with this new
+% equality.  Therefore, this theory should be considered highly experimental.
+%
+% Two finite sequences are concatenated with the operator 'o', and a
+% subsequence can be extracted with the operator '^'.  Note that ^
+% allows any natural numbers m and n to define the range; if m > n then
+% the empty sequence is returned
+%
+% This theory creates two levels of finite_sequence
+%   (1) fsq -- simple structure but equality reasoning not available (see fsq.pvs)
+%   (2) fseq -- adds mechanisms to make equality reasoning possible
+% though it is expected that most users will use only (2)
+%
+%
+% AUTHORS: Rick Butler and Jeff Maddalon
+%
+% Difference between this theory and prelude
+%    (1) domain fs`seq is "nat" rather than below[l(fs)]
+%    (2) ^ operator does not have "min" in the type
+%    (3) provides auxiliary functions such as fseq1, fseq2, const_seq, rev
+%    (4) provides ne_fseq: TYPE = {s: fseq  | length(s) > 0}
+%
+% Warning: The prelude "finseq_appl" conversion seems to take precedence over 
+%          cnvfsq it in many theories that import fseqs
+% Warning: sometimes seq(fs) is confused with prelude definitions. Use
+%           seqn(fs) in that case.
+%------------------------------------------------------------------------
+BEGIN
+
+  IMPORTING fsq[T]
+
+  default: T = choose({t:T | TRUE})
+  barray(n: nat): TYPE = { f: [nat -> T] | FORALL (i: nat): i >= n IMPLIES f(i) = default}
+
+  fseq: TYPE = [# length: nat, seq: barray(length) #]
+  ne_fseq: TYPE = {s: fseq  | length(s) > 0}   %% non-empty fseqs
+
+  member(x:T, fs:fseq): bool = EXISTS (i: below(fs`length)): x = fs`seq(i);
+
+  empty_seq: fsq =
+    (# length := 0,
+       seq := (LAMBDA (x: nat): default ) #) 
+
+  emptyseq: MACRO fsq = empty_seq 
+
+
+  fseq_subtype  : JUDGEMENT fseq SUBTYPE_OF fsq[T]
+  empty_seq_fseq: JUDGEMENT empty_seq HAS_TYPE fseq
+  emptyseq_fseq : JUDGEMENT emptyseq HAS_TYPE fseq
+
+  fs, fs1, fs2, fs3: VAR fseq
+  m, n: VAR nat   
+
+
+  %% singleton
+  singleton(x:T): ne_fseq = 
+    (# length := 1, seq := (LAMBDA (n: nat): IF n = 0 THEN x ELSE default ENDIF) #)
+
+  singleton?(fs: fseq): bool = EXISTS (x: T): fs = singleton(x)
+
+
+  tofs(f:[nat->T], len: nat): MACRO [nat -> T] = 
+       (LAMBDA (i:nat): IF i < len THEN f(i) ELSE default ENDIF) ;
+
+
+%   deflt(f: fsq[T]): fseq = (# length := l(f),
+%                               seq := (LAMBDA (n: nat): IF n < l(f) THEN f`seq(n)
+%                                                        ELSE default
+%                                                        ENDIF)
+%                             #)
+
+  tofseq(f: fsq[T]): fseq = (# length := l(f),
+                               seq := tofs(f`seq,l(f))
+                            #)
+
+
+  singleton_length: LEMMA singleton?(fs) IFF fs`length = 1
+
+
+  % ---------- Equality ---------- 
+
+  fseqs_eq: LEMMA fs1 = fs2 IFF fs1`length = fs2`length AND
+            (FORALL (n:nat): n < fs1`length IMPLIES fs1`seq(n) = fs2`seq(n)) 
+
+  fseq_length_zero: LEMMA fs`length = 0 IMPLIES fs = emptyseq ;
+
+
+  %% ------------ Concatenation ---------
+
+  o(fs1, fs2): fseq =
+     LET l1 = fs1`length, l2 = fs2`length IN
+        (# length := l1+l2,
+            seq := (LAMBDA (n: nat):
+                      IF n < l1 THEN fs1`seq(n)
+                      ELSIF n < l1+l2 THEN fs2`seq(n-l1)
+                      ELSE default
+                      ENDIF) #);
+
+  concat(fs1, fs2): MACRO fseq = o(fs1,fs2) 
+
+  concat_length_add: LEMMA concat(fs1,fs2)`length = fs1`length + fs2`length
+
+  % member and o
+
+  x,y	: VAR T
+  member_composition: LEMMA 
+    member(x,fs1 o fs2) IFF member(x,fs1) OR member(x,fs2)
+
+  concat_right_emptyseq: LEMMA
+    fs o emptyseq = fs
+
+  concat_left_emptyseq: LEMMA
+    emptyseq o fs = fs
+
+  member_singleton: LEMMA
+    member(x,singleton(y)) IFF x = y
+
+  %% ------------ Extraction ---------
+
+  mmin(m,n:nat): MACRO nat = IF m > n THEN n ELSE m ENDIF ;
+
+  ^(fs: fseq, p:[nat, nat]): fseq =
+    LET (m, n) = p
+     IN IF m > n OR m >= fs`length
+        THEN empty_seq
+        ELSE LET len = mmin(n - m + 1, fs`length - m) IN
+             (# length := len,
+                seq := (LAMBDA (x: nat): IF x < len THEN fs`seq(x + m)
+                                             ELSE default ENDIF) #)
+        ENDIF
+
+%  p: VAR [nat, nat]
+%  hat_rewrite: LEMMA ^(fs, p) = tofseq(fs^^p)
+
+  extract1(fs:{fs | fs`length = 1}): T = fs`seq(0)
+
+
+  CONVERSION extract1
+
+
+%% GET AROUND bleed-in from prelude
+%%
+%% o_assoc: LEMMA fs1 o (fs2 o fs3) = (fs1 o fs2) o fs3
+
+  o_assoc: LEMMA concat(fs1,concat(fs2,fs3)) = concat(concat(fs1,fs2),fs3)
+
+
+%% ----- Some Special Functions that operate on fseqs ----------
+
+  fseq1(t:T): fseq = (# length := 1,
+                        seq := (LAMBDA (n: nat): IF n < 1 THEN t ELSE default ENDIF) #)
+
+  fseq2(u,v: T): fseq = (# length := 2,
+                           seq := (LAMBDA (i: nat): IF i = 0 THEN u 
+                                                    ELSIF i= 1 THEN v 
+                                                    ELSE default ENDIF) #)
+
+  fseq1_def: LEMMA fseq1(x)`seq(0) = x
+
+  const_seq(n: nat,c:T): fseq = (# length := n,
+                                   seq := (LAMBDA (i: nat): IF i < n THEN c ELSE default ENDIF)
+                                #)
+
+
+  rev(fs:fseq): fseq = (# length := l(fs),
+                           seq := (LAMBDA (i: nat): 
+                                        IF i < l(fs) THEN seq(fs)(l(fs)-1-i)
+                                        ELSE default ENDIF)
+                         #)
+
+  AUTO_REWRITE+ fseq1_def
+
+
+END fseqs

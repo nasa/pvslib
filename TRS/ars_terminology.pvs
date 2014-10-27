@@ -1,0 +1,178 @@
+%%-------------------** Abstract Reduction System (ARS) **-------------------
+%%                                                                          
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%              
+%% Last Modified On: December 02, 2006                                      
+%%                                                                          
+%%---------------------------------------------------------------------------
+
+
+%%----------------------------** Notations **--------------------------------
+%%
+%% These concepts can be found in the file relations_closure
+%%
+%% The binary relation R on the set T is defined as predicate
+%% PRED: TYPE = [[T,T] -> bool]
+%%
+%% RC(R) : Reflexive Closure of R            ( ->= )
+%% SC(R) : Symmetric Closure of R            ( <-> )
+%% TC(R) : Transitive Closure of R           ( ->+ )
+%% RTC(R): Reflexive Transitive Closure of R ( ->* )
+%% EC(R) : Equivalence Closure of R          ( <->*)
+%%
+%%---------------------------------------------------------------------------
+
+
+%%----------------------------** Reductions **-------------------------------
+%%
+%% An ARS is a pair (T,->), where the reduction -> is a binary relation on 
+%% the set T, noted by R. So the relation R(x,y) means x reduces to y, and
+%% y is called a reduct of x.
+%%
+%%--------------------------------------------------------------------------
+
+
+ars_terminology[T : TYPE] : THEORY
+BEGIN
+
+  IMPORTING relations_closure[T]
+  
+   R, R1, R2 : VAR PRED[[T, T]]
+  x, y, z, r : VAR T
+
+
+%%-----------------------** Some Terminology **------------------------------
+%%
+%% - x is reducible iff there is a y such that  x -> y
+%%
+%% - y is a reduct of x iff x -> y
+%%
+%% - x is in normal form iff it is not reducible
+%%
+%% - y is a normal form of x iff x ->* y and y is in normal form
+%%
+%% - normalizing iff every elememt has a normal form
+%%
+%% - has_unique_nf(R,x) means x has a unique normal form w.r.t. R 
+%%
+%% - unique_nf?(R)(x,y) means y is the unique normal form of x  w.r.t. R
+%%
+%% - y is a direct successor of x iff x -> y
+%%                               
+%% - y is a successor of x iff x ->+ y
+%%
+%% - x and y are joinable iff there is a z such that x ->* z *<- y
+%%
+%%---------------------------------------------------------------------------
+
+
+ reducible?(R)(x): bool = EXISTS y: R(x,y)
+
+ reduct?(R)(x): PRED[T] = {y: T | RTC(R)(x, y)}
+
+ is_normal_form?(R)(x): bool = NOT reducible?(R)(x)
+
+ normal_form?(R)(x,y): bool = RTC(R)(x,y) & is_normal_form?(R)(y)
+
+ normalizing?(R): bool = FORALL x: EXISTS y: normal_form?(R)(x,y)
+
+ has_unique_nf?(R,x): bool = EXISTS y: normal_form?(R)(x,y) 
+                                 &  FORALL z: normal_form?(R)(x,z)  => y = z
+
+ unique_nf?(R)(x,y): bool = normal_form?(R)(x,y) 
+                                 &  FORALL z: normal_form?(R)(x,z)  => y = z
+
+ direct_successor?(R)(x,y): bool = R(x,y)
+
+ successor?(R)(x,y): bool = TC(R)(x,y)
+
+ joinable?(R)(x,y): bool = EXISTS z: RTC(R)(x,z) & RTC(R)(y, z)
+
+
+
+
+
+
+%%-------------------------** Notions of Confluence **----------------------
+%%
+%% A reduction -> (relation R) is
+%%
+%% - Church-Rosser (CR) iff x <->* y implies x and y are joinable.
+%%
+%% - locally confluent iff  y <- x -> z implies y and z are joinable.
+%%
+%% - semi-confluent iff y <- x ->* z implies y and z are joinable.
+%%
+%% - strongly confluent iff y <- x -> z implies exists r such that
+%%   y ->* r =<- z.
+%%
+%% - has the diamond property iff y <- x -> z implies exists r such that
+%%   y -> r <- z.
+%%
+%%--------------------------------------------------------------------------
+
+
+ church_rosser?(R): bool = FORALL x, y: EC(R)(x,y) => joinable?(R)(x,y)
+
+ locally_confluent?(R): bool = FORALL x, y, z: R(x,y) & R(x,z) => 
+                                                      joinable?(R)(y,z)
+
+ semi_confluent?(R): bool = FORALL x, y, z: R(x,y) & RTC(R)(x,z) => 
+                                                     joinable?(R)(y,z)
+
+ confluent?(R): bool = FORALL x, y, z: RTC(R)(x,y) & RTC(R)(x,z) => 
+                                                     joinable?(R)(y,z)
+ 
+ strong_confluent?(R): bool = FORALL x, y, z: R(x,y) & R(x,z) => 
+                                          EXISTS r: RTC(R)(y,r) & RC(R)(z,r)
+ 
+ diamond_property?(R): bool = FORALL x, y, z: R(x,y) & R(x,z) => 
+                                                   EXISTS r: R(y,r) & R(z,r)
+
+
+
+
+%%---------------------------** Commutation **-------------------------------
+%%
+%% The relations -> and -->
+%%
+%% - commute iff y *<- x -->* z implies exists r such that
+%%   y -->* r *<- z
+%%
+%% - strongly commute iff y <- x --> z implies exists r such that
+%%   y -->= r *<- z
+%%
+%% - locally commute iff  y <- x --> z implies exists r such that
+%%   y -->* r *<- z
+%%
+%% - have the commuting diamond property iff
+%%   y <- x --> z implies exists r such that y --> r <- z
+%%
+%%--------------------------------------------------------------------------
+
+
+ commute?(R1,R2): bool = FORALL x, y, z: RTC(R1)(x,y) & RTC(R2)(x,z) =>
+                                        EXISTS r: RTC(R2)(y,r) & RTC(R1)(z,r)
+
+ strong_commute?(R1,R2): bool = FORALL x, y, z: R1(x,y) & R2(x,z) =>
+                                          EXISTS r: RC(R2)(y,r) & RTC(R1)(z,r)
+
+
+ locally_commute?(R1,R2): bool = FORALL x, y, z: R1(x,y) & R2(x,z) =>
+                                          EXISTS r: RTC(R2)(y,r) & RTC(R1)(z,r)
+
+
+ commute_DP?(R1,R2): bool = FORALL x, y, z: R1(x,y) & R2(x,z) =>
+                                                  EXISTS r: R2(y,r) & R1(z,r)
+
+
+
+
+
+end ars_terminology

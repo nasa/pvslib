@@ -1,0 +1,409 @@
+%------------------------------------------------------------------------------
+% horizontal.pvs
+% ACCoRD v1.0
+%
+% This theory provides definitions for horizontal separation and conflict.
+%
+% It also provides solutions to the times when a velocity vector
+% intersects the circular protected zone. Given a current position s,
+% a vector v intersects the circle of radius D at times Theta_D's that 
+% are roots to the quadratic equation
+%    a = sqv(v)
+%    b = 2*(s*v)
+%    c = sqv(s) - D^2
+% The discriminant of this equation is 4*Delta. 
+%------------------------------------------------------------------------------
+
+horizontal[D: posreal]: THEORY
+BEGIN
+  
+  IMPORTING reals@sign,
+            reals@quadratic_2b,
+	    reals@quad_minmax,
+            vectors@det_2D,
+            vectors@closest_approach_2D,
+            definitions,
+	    vectors@parallel_2D,
+	    horizontal_dist_convexity[D]
+
+  s,v,w     : VAR Vect2
+  nzv     : VAR Nz_vect2
+  eps,dir : VAR Sign
+  t,
+  t1,t2   : VAR real
+  nzk     : VAR nzreal
+  pt,pr   : VAR posreal
+ 
+  %% Horizontal separation at current time
+  horizontal_sep?(s): MACRO bool = 
+    sqv(s) >= sq(D)
+  
+  horizontal_sep_at?(s,v,t): MACRO bool =
+    horizontal_sep?(s+t*v)
+
+  %% Strict horizontal separation
+  strict_horizontal_sep?(s): MACRO bool = 
+    sqv(s) > sq(D)
+
+  on_D?(s): MACRO bool =
+    sqv(s) = sq(D)
+
+  Sp_vect2  : TYPE = (horizontal_sep?)
+  Ss_vect2  : TYPE = (strict_horizontal_sep?)
+
+  sp : VAR Sp_vect2
+  ss : VAR Ss_vect2
+
+  ss_nzv : JUDGEMENT
+    Ss_vect2 SUBTYPE_OF Nz_vect2
+
+  ss_sp : JUDGEMENT
+    Ss_vect2 SUBTYPE_OF Sp_vect2
+
+  neg_ss : JUDGEMENT
+    -(ss) HAS_TYPE Ss_vect2
+
+  neg_sp : JUDGEMENT
+    -(sp) HAS_TYPE Sp_vect2
+
+  %% Horizontal separation in the direction given by dir (1=after,-1=before)
+  horizontal_sep_dir_at?(s,v,t1,dir): MACRO bool =
+    FORALL(t2): dir*t2 >= dir*t1 IMPLIES horizontal_sep_at?(s,v,t2)
+
+  horizontal_sep_after?(s,v,t): MACRO bool = 
+    horizontal_sep_dir_at?(s,v,t,1)
+
+  %% Horizontal loss of separation
+  horizontal_los?(s): MACRO bool = 
+    sqv(s) < sq(D)
+
+  horizontal_los_at?(s,v,t): MACRO bool =
+    horizontal_los?(s+t*v)
+
+  LoS_vect2 : TYPE  = {s: Nz_vect2 | horizontal_los?(s)}
+
+  %% Horizontal conflict ever (infinite look-ahead time)
+  horizontal_conflict_ever?(s,v): bool =
+    EXISTS (t:real) : horizontal_los_at?(s,v,t)
+
+  %% Horizontal conflict in the future (infinite look-ahead time)
+  horizontal_conflict?(s,v):bool =
+    EXISTS (nnt:nnreal) : horizontal_los_at?(s,v,nnt) 
+
+  horizontal_conflict_sum_closed: LEMMA
+    horizontal_conflict?(s,v) AND horizontal_conflict?(s,w)
+    IMPLIES
+    horizontal_conflict?(s,v+w)
+
+  horizontal_conflict_neg : LEMMA
+    horizontal_conflict?(-s,-v) IMPLIES horizontal_conflict?(s,v)
+
+  horizontal_conflict_symm : LEMMA
+    horizontal_conflict?(-s,-v) IFF horizontal_conflict?(s,v)
+
+  horizontal_conflict_scal : LEMMA
+    horizontal_conflict?(s,v) IFF horizontal_conflict?(s,pt*v)    
+
+  horizontal_conflict_ever : LEMMA
+    horizontal_conflict?(s,v) IMPLIES
+    horizontal_conflict_ever?(s,v) 
+
+  horizontal_conflict_ever_scal : LEMMA
+    horizontal_conflict_ever?(s,v) IFF
+    horizontal_conflict_ever?(s,nzk*v)    
+
+  Delta(s,v) : real = 
+    sq(D)*sqv(v) - sq(det(s,v))
+
+  Delta_zero_eq_0 : LEMMA
+    Delta(s,zero) = 0
+
+  Delta_scal: LEMMA
+    Delta(s,t*v) = sq(t)*Delta(s,v)
+
+  Delta_eq : LEMMA
+    Delta(s,v) = Delta(s+t*v,v) 
+
+  Delta_symm : LEMMA 
+    Delta(-s,-v) = Delta(s,v) 
+
+  Delta_discr2b : LEMMA
+    LET a = sqv(nzv),
+        b = s*nzv,
+        c = sqv(s) - sq(D) IN
+    Delta(s,nzv) = discr2b(a,b,c)
+
+  Delta_gt_0_nzv : LEMMA           
+    Delta(s,v) > 0
+    IMPLIES
+      nz_vector?(v)
+
+  ground_speed : LEMMA
+    horizontal_conflict_ever?(sp,v)
+    IMPLIES
+      nz_vector?(v)
+
+  Delta_gt_0 : LEMMA
+    (horizontal_sep?(s) OR nz_vector?(v)) AND
+    horizontal_conflict_ever?(s,v)
+    IMPLIES 
+      Delta(s,v) > 0
+
+  Delta_gt_0_on_D: LEMMA on_D?(s) AND 
+    s*v /= 0 IMPLIES
+    Delta(s,v) > 0
+
+  Delta_eq_0_dot_on_D: LEMMA on_D?(s) 
+    AND s*v = 0 IMPLIES
+    Delta(s,v) = 0
+
+  Delta_ge_0 : LEMMA
+    Delta(s,nzv) >= 0 IFF 
+    (EXISTS (t: real): on_D?(s+t*nzv))
+
+  Delta_ge_0_2: LEMMA
+    Delta(s,nzv) >= 0 IFF 
+    (EXISTS (t: real): sqv(s+t*nzv) <= sq(D))
+
+  Delta_eq_0_eq_tca: LEMMA
+    Delta(s,nzv) = 0 AND on_D?(s+t*nzv) IMPLIES
+    ((s+t*nzv)*nzv = 0 AND t = horizontal_tca(s,nzv))
+
+  sdotv_lt_0 : LEMMA  
+    horizontal_conflict?(sp,v)
+    IMPLIES
+      sp*v < 0 
+
+  %% eps chooses between the two solutions of the quadratic equation
+  %% eps = Entry:  entry time into protected zone
+  %% eps = Exit :  exit time from protected zone
+
+  Theta_D(s,(nzv|Delta(s,nzv)>=0),eps):real =
+    LET a = sqv(nzv),
+        b = s*nzv,
+        c = sqv(s) - sq(D) IN
+    root2b(a,b,c,eps)
+
+  Theta_D_on_D : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      LET t = Theta_D(s,nzv,eps) IN
+      on_D?(s+t*nzv)
+
+  Theta_D_unique_eps: LEMMA
+    Delta(s,nzv) >= 0
+    IMPLIES
+      (on_D?(s+t*nzv) IFF
+       EXISTS (eps): t = Theta_D(s,nzv,eps))
+
+  Theta_D_unique: LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      (on_D?(s+t*nzv) IFF
+       t = Theta_D(s,nzv,Entry) OR t = Theta_D(s,nzv,Exit))
+
+  Theta_D_symm : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      Theta_D(-s,-nzv,eps) = Theta_D(s,nzv,eps) 
+
+  Theta_D_scal: LEMMA
+     Delta(s,nzv) >= 0 IMPLIES
+      nzk*Theta_D(s,nzk*nzv,eps) = Theta_D(s,nzv,sign(nzk)*eps)
+
+  Theta_D_neg_nzv: LEMMA  
+      Delta(s,nzv) >= 0 IMPLIES
+      Theta_D(s,-nzv,-eps) = -Theta_D(s,nzv,eps) 
+
+  Theta_D_le : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      Theta_D(s,nzv,Entry) <= Theta_D(s,nzv,Exit)
+
+  Theta_D_lt : LEMMA
+    Delta(s,v) > 0 IMPLIES
+      Theta_D(s,v,Entry) < Theta_D(s,v,Exit)
+
+  Theta_D_Delta_eq_0: LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+    (Delta(s,nzv) = 0 IFF
+     Theta_D(s,nzv,Entry) = Theta_D(s,nzv,Exit))
+
+  Theta_D_eq_0 : LEMMA
+    on_D?(s) AND
+    Delta(s,nzv) >= 0 AND
+    horizontal_entry?(s,nzv)
+    IMPLIES
+    Theta_D(s,nzv,Entry) = 0
+
+  Theta_D_ge_0 : LEMMA 
+    Delta(sp,nzv) >= 0 AND
+    horizontal_entry?(sp,nzv)
+    IMPLIES 
+      Theta_D(sp,nzv,Entry) >= 0
+
+  Theta_D_neq_0 : LEMMA 
+    Delta(ss,nzv) >= 0 
+    IMPLIES 
+      Theta_D(ss,nzv,eps) /= 0
+
+  horizontal_conflict : LEMMA
+    horizontal_conflict?(s,nzv) IFF
+    Delta(s,nzv) > 0 AND 
+    (horizontal_los?(s) OR horizontal_entry?(s,nzv))
+
+  horizontal_conflict_on_D: LEMMA
+    on_D?(s) IMPLIES
+    (horizontal_conflict?(s,v) IFF s*v < 0)
+
+  horizontal_entry_le : LEMMA
+    t1 <= t2 AND
+    sqv(s+t2*v) = sq(D) AND
+    horizontal_entry_at?(s,v,t2) IMPLIES
+    sqv(s+t1*v) >= sq(D) 
+
+  not_horizontal_entry_lt : LEMMA
+    LET t1 = max(0,horizontal_tca(s,nzv)) IN
+      t2 > 0 AND
+      sqv(s+t2*nzv) = sq(D) AND
+      NOT horizontal_entry_at?(s,nzv,t2) IMPLIES
+      t1 < t2 AND 
+      horizontal_los?(s+t1*nzv)
+
+  horizontal_los_inside_Theta : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      (t > Theta_D(s,nzv,Entry) AND
+       t < Theta_D(s,nzv,Exit) IFF
+       horizontal_los?(s+t*nzv))  
+
+  horizontal_sep_outside_Theta : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+    (t < Theta_D(s,nzv,Entry) OR
+    t > Theta_D(s,nzv,Exit) IFF
+    sqv(s + t*nzv) > sq(D))
+
+  not_horiz_sep_inside_closed_Theta: LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      (t >= Theta_D(s,nzv,Entry) AND  
+       t <= Theta_D(s,nzv,Exit) IFF
+      sqv(s+t*nzv) <= sq(D))
+
+  Theta_D_entry_gt_0 : LEMMA
+    horizontal_conflict?(ss,nzv) IMPLIES
+      Theta_D(ss,nzv,Entry) > 0
+
+  Theta_D_exit_gt_0 : LEMMA
+    Delta(s,v) > 0
+    IMPLIES
+      (horizontal_los?(s) OR horizontal_entry?(s,v)
+       IFF 
+       Theta_D(s,v,Exit) > 0)
+
+  Theta_D_entry_lt_t :LEMMA
+    LET d = Delta(s,v),
+        a = sqv(v),
+	b = s*v IN
+    d > 0 IMPLIES
+      (d > sq(a*t+b) or a*t+b >= 0 
+       IFF 
+       Theta_D(s,v,Entry) < t)
+
+  horizontal_conflict_entry : LEMMA
+    horizontal_conflict?(sp,nzv) AND
+    t <= Theta_D(sp,nzv,Entry)
+    IMPLIES
+      horizontal_conflict?(sp+t*nzv,nzv)
+
+  not_horizontal_conflict_exit : LEMMA
+    horizontal_conflict?(s,nzv) AND
+    t >= Theta_D(s,nzv,Exit)
+    IMPLIES
+      NOT horizontal_conflict?(s+t*nzv,nzv)
+
+  Theta_D_horizontal_dir: LEMMA
+    nz_vect2?(v) AND Delta(s,v) >= 0 OR
+    Delta(s,v) > 0 
+    IMPLIES
+    horizontal_dir_at?(s,v,Theta_D(s,v,eps),eps)
+
+  horizontal_tca_midpoint : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+      horizontal_tca(s,nzv) = (Theta_D(s,nzv,Entry)+Theta_D(s,nzv,Exit))/2
+
+  horizontal_tca_entry_exit : LEMMA
+    Delta(s,nzv) > 0 IMPLIES
+      horizontal_tca(s,nzv) > Theta_D(s,nzv,Entry) AND 
+      horizontal_tca(s,nzv) < Theta_D(s,nzv,Exit) 
+
+  horizontal_tca_los : LEMMA
+    Delta(s,nzv) > 0 IMPLIES
+    horizontal_los?(s+horizontal_tca(s,nzv)*nzv)
+
+  horizontal_tca_le_D : LEMMA
+    Delta(s,nzv) >= 0 IMPLIES
+    sqv(s+horizontal_tca(s,nzv)*nzv) <= sq(D)
+
+  horizontal_tca_pos : LEMMA
+    Delta(sp,nzv) > 0 AND
+    horizontal_entry?(sp,nzv)
+    IMPLIES 
+      horizontal_tca(sp,nzv) > 0
+
+  Theta_D_positive_conflict: LEMMA
+    Delta(s,v) > 0 IMPLIES
+    (horizontal_conflict?(s,v) IFF
+    Theta_D(s,v,Exit) > 0)
+
+  %% Circle solutions are vectors v such that at time t the ownship is on the 
+  %% circle of radius D. If dir=-1, v points into the circle; if dir=1, v points
+  %% outside the circle.
+
+  circle_solution_2D?(s,v,t,dir): bool =
+    on_D?(s+t*v) AND
+    horizontal_dir_at?(s,v,t,dir)
+
+  circle_solution_2D_horizontal_sep : LEMMA
+    circle_solution_2D?(s,v,t,Entry) IMPLIES
+    FORALL (tt:real) : tt <= t IMPLIES horizontal_sep_at?(s,v,tt)
+
+  Theta_D_circle_solution_2D: LEMMA
+    nz_vect2?(v) AND Delta(s,v) >= 0 OR
+    Delta(s,v) > 0 IMPLIES
+    circle_solution_2D?(s,v,Theta_D(s,v,eps),eps)
+
+  circle_solution_2D_Delta_ge_0 : LEMMA
+    circle_solution_2D?(s,nzv,t,dir) IMPLIES
+    Delta(s,nzv) >= 0 
+
+  circle_solution_2D_Theta_D: LEMMA
+    circle_solution_2D?(s,nzv,t,dir) IMPLIES
+    t = Theta_D(s,nzv,dir)
+
+  circle_solution_2D_strict_horizontal_sep : LEMMA
+    circle_solution_2D?(s,nzv,t,Entry) IMPLIES
+    FORALL (tt:real) : tt < t IMPLIES strict_horizontal_sep?(s+tt*nzv)
+
+  Theta_D_line_intersection: LEMMA
+    Delta(s,v) > 0 IMPLIES
+    LET ppoint = s + Theta_D(s,v,eps)*v IN
+    v*ppoint /= 0
+    IMPLIES
+    (sq(D) - s*ppoint)/(v*ppoint) = Theta_D(s,v,eps)
+
+  tangent_line_intersection_v_independent: LEMMA
+    sqv(s+pt*v) = (s+pr*w)*(s+pt*v)
+    IMPLIES
+    sign(v*(s+pt*v)) = sign(w*(s+pt*v))
+
+  tangent_vector_not_conflict: LEMMA
+    Delta(s,v) > 0 AND
+    (s+t*w)*(s+Theta_D(s,v,dir)*v) = sq(D) AND
+    w*(s+Theta_D(s,v,dir)*v) = 0 AND
+    Theta_D(s,v,dir) /= 0
+    IMPLIES
+    NOT horizontal_conflict?(s,v)
+
+  horizontal_conflict_is_an_open_set: LEMMA
+      FORALL (ss, vv: Vect2):
+      horizontal_conflict?(ss, vv) IMPLIES
+      (EXISTS (epsilon: posreal):
+      FORALL (ww: Vect2):
+      norm(ww) < epsilon IMPLIES horizontal_conflict?(ss, vv + ww))
+
+END horizontal

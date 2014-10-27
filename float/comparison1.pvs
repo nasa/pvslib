@@ -1,0 +1,92 @@
+comparison1 
+  [b,p:above(1),
+   E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min]
+
+  num,num1,num2: var {fp:fp_num| finite?(fp) or infinite?(fp)}
+
+% extend value function so that infinities can be compared to finite
+% numbers
+  n_value(num): real =
+    IF infinite?(num) THEN (-1) ^ i_sign(num) * b ^ (E_max + 1)
+    ELSE value(num)
+    ENDIF
+  
+
+% From section 5.7 of IEEE-854:
+%   ``Four mutually exclusive relations are possible: "less than,"
+%  "equal," "greater than," and "unordered."  The last case arises only
+%  when at least one operand is a NaN.'' ...
+
+%  ``The result of a comparison shall be delivered in one of two ways at
+%  the implementor's option: either as a condition code identifying one
+%  of the four relations listed above, or as a true/false response to a
+%  predicate that names the specific comparison desired.''
+
+% fp_compare, below, defines the first option:
+
+  comparison_code: type = {gt, lt, eq, un}
+
+  fp_compare((fp1, fp2: fp_num)): comparison_code =
+    IF NaN?(fp1) OR NaN?(fp2) THEN un
+    ELSIF n_value(fp1) > n_value(fp2) THEN gt
+    ELSIF n_value(fp1) < n_value(fp2) THEN lt
+    ELSE eq
+    ENDIF
+
+  fp,fp1,fp2: var fp_num
+
+  posinf_ge: LEMMA
+        gt?(fp_compare(infinite(pos), num))
+          OR eq?(fp_compare(infinite(pos), num))
+
+  NaN_unordered: LEMMA 
+      NaN?(fp1) OR NaN?(fp2) => un?(fp_compare(fp1, fp2))
+
+% option 2, minimal set of predicates is {eq, ne, gt, ge, lt, le} also
+% should include un.  These predicates are defined below the level
+% where invalid will be signalled.
+
+% The follwing predicates are from table 3, page 12 of IEEE-854.  They
+% do not include the signalling of the invalid exception.  That test
+% may be applied prior to invoking these predicates.
+
+% shall include
+  eq?(fp1,fp2) :bool = eq?(fp_compare(fp1,fp2))
+  ne?(fp1,fp2) :bool = not eq?(fp_compare(fp1,fp2))
+  gt?(fp1,fp2) :bool = gt?(fp_compare(fp1,fp2))
+  ge?(fp1,fp2) :bool = gt?(fp_compare(fp1,fp2)) or eq?(fp_compare(fp1,fp2))
+  lt?(fp1,fp2) :bool = lt?(fp_compare(fp1,fp2))
+  le?(fp1,fp2) :bool = lt?(fp_compare(fp1,fp2)) or eq?(fp_compare(fp1,fp2))
+
+% should include
+  un?(fp1,fp2) :bool = un?(fp_compare(fp1,fp2))
+
+% other
+  lg?(fp1,fp2) :bool = gt?(fp_compare(fp1,fp2)) or lt?(fp_compare(fp1,fp2))
+  leg?(fp1,fp2):bool = not un?(fp_compare(fp1,fp2))
+  ug?(fp1,fp2) :bool = gt?(fp_compare(fp1,fp2)) or un?(fp_compare(fp1,fp2))
+  uge?(fp1,fp2):bool = not lt?(fp_compare(fp1,fp2))
+  ul?(fp1,fp2) :bool = lt?(fp_compare(fp1,fp2)) or un?(fp_compare(fp1,fp2))
+  ule?(fp1,fp2):bool = not gt?(fp_compare(fp1,fp2))
+  ue?(fp1,fp2) :bool = eq?(fp_compare(fp1,fp2)) or un?(fp_compare(fp1,fp2))
+
+  eq_def: lemma  eq?(num1,num2) <=> n_value(num1) = n_value(num2)
+
+  ne_def: lemma  ne?(num1,num2) <=> n_value(num1) /= n_value(num2)
+
+  gt_def: lemma  gt?(num1,num2) <=> n_value(num1) > n_value(num2)
+
+  ge_def: lemma  ge?(num1,num2) <=> n_value(num1) >= n_value(num2)
+
+  lt_def: lemma  lt?(num1,num2) <=> n_value(num1) < n_value(num2)
+
+  le_def: lemma  le?(num1,num2) <=> n_value(num1) <= n_value(num2)
+
+  un_def: lemma  un?(fp1,fp2)   <=> (NaN?(fp1) or NaN?(fp2))
+
+  END comparison1

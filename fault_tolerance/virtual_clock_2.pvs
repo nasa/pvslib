@@ -1,0 +1,107 @@
+%
+% Purpose      : There are two common scenarios for synchronization
+%                protocols to apply instantaneous adjustments.  The
+%                first is to compute a correction term for the current
+%                interval, and apply the correction when the Clocktime
+%                reaches a specific value.  The second is to set the
+%                local counter to a specific value in response to some
+%                event.  This file presents a virtual clock based upon
+%                the second scenario and shows that is satisfies the
+%                precision  and accuracy requirement of clock
+%                synchronization. 
+%
+virtual_clock_2
+[(IMPORTING synch_protocol_invariants)
+    P: posnat,     % Nominal duration of a synchronization interval
+    T0: int,       % Clocktime at start of protocol
+    rho: nnreal,   % Bound on drift for a good oscillator
+    alpha_l, alpha_u: nnreal,  % negative and positive read error bounds
+    pi_0: {pi_0: posreal | P_bound?(P, rho, alpha_l, alpha_u, pi_0)}
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+    synch_protocol_invariants[P, T0, rho, alpha_l, alpha_u, pi_0],
+    virtual_clocks[P, T0, rho]
+
+  hst: VAR [nat -> non_empty_finite_set[good_clock]]
+  ic, ic1, ic2: VAR interval_clock
+  ac, ac1, ac2: VAR weakly_accurate_clock
+  t1: VAR real
+  j: VAR nat
+  
+  % required properties of t(ac) event_sequence
+
+  t_increasing: LEMMA increasing?(t(ac))
+  t_unbounded: LEMMA unbounded?(t(ac))
+  t_event_sequence: JUDGEMENT t(ac) HAS_TYPE event_sequence
+
+  t_nonoverlap: LEMMA
+      compatible?(ac1, ac2, pi_0 + max(alpha_l, alpha_u))
+    IMPLIES
+      nonoverlap?(t(ac1), t(ac2))
+
+  t_early: LEMMA earliest_adjustment?(ac, 0)(t(ac))
+  t_self: LEMMA self_adjustment?(ac, ADJ + 1)(t(ac))
+  t_cross: LEMMA
+      compatible?(ac1, ac2, pi_0 + max(alpha_l, alpha_u))
+    IMPLIES
+      cross_adjustment?(ac1, ADJ + 1)(t(ac2))
+  
+  % main results
+
+  VC2(ac)(t1): int = VC(t(ac))(ac)(t1)
+
+  VC_j: LEMMA VC2(ac)(t(ac)(j)) = T(j)
+
+  VC2_precision: THEOREM
+      trace?(ic1, hst) AND
+      trace?(ic2, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper) AND
+      max(t(ic1)(0),t(ic2)(0)) <= t1
+    IMPLIES
+      abs(VC2(ic1)(t1) - VC2(ic2)(t1)) <= Pi
+
+  VC2_accuracy_lower: THEOREM
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper) AND
+      t(ic)(0) <= t1
+    IMPLIES 
+      ((t1 - t(ic)(0)) * (1 - alpha_u / p_lower) 
+        - pi_0 * (1 + alpha_u / p_lower)) / rate 
+          < 1 + VC2(ic)(t1) - T(0)
+
+  VC2_optimal_accuracy_lower: COROLLARY
+      alpha_u = 0 AND
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper) AND
+      t(ic)(0) <= t1
+    IMPLIES 
+      ((t1 - t(ic)(0)) - pi_0) / rate 
+          < 1 + VC2(ic)(t1) - T(0)
+
+  VC2_accuracy_upper: THEOREM
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper) AND
+      t(ic)(0) <= t1
+    IMPLIES 
+      VC2(ic)(t1) - T(0) 
+         <= ((t1 - t(ic)(0)) * (1 + alpha_l / p_lower)
+              + pi_0 * (1 + alpha_l / p_lower)) * rate
+
+  VC2_optimal_accuracy_upper: COROLLARY
+      alpha_l = 0 AND
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper) AND
+      t(ic)(0) <= t1
+    IMPLIES 
+      VC2(ic)(t1) - T(0) 
+         <= ((t1 - t(ic)(0)) + pi_0) * rate
+
+ END virtual_clock_2

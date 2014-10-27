@@ -1,0 +1,119 @@
+%------------------------------------------------------------------------------
+% Measure Theory
+%
+%     Author: David Lester, Manchester University
+%
+%     Version 1.0            05/11/07  Initial Version
+%------------------------------------------------------------------------------
+measure_theory[T:TYPE,          (IMPORTING subset_algebra_def[T])
+               S:sigma_algebra, (IMPORTING measure_def[T,S])
+               m:measure_type]: THEORY
+
+BEGIN
+
+  IMPORTING measure_space_def[T,S],
+            sigma_algebra[T,S],
+            measure_props[T,S,m],
+            sets_aux@countable_indexed_sets
+
+  a,b: VAR measurable_set
+  X,Y: VAR set[T]
+  P:   VAR set[T]
+  p:   VAR pred[[real,real]]
+  f,g: VAR [T->real]
+  F,G: VAR sequence[[T->real]]
+  x:   VAR T
+  i,j,n: VAR nat
+  Z:   VAR setofsets[T]
+
+  null_set?(X):bool = measurable_set?(X) AND mu_fin?(X) AND mu(X) = 0   % 4.2.1
+
+  negligible_set?(Y):bool = EXISTS X: null_set?(X) AND subset?(Y,X)
+
+  null_set:   TYPE+ = (null_set?)       CONTAINING emptyset[T]
+  negligible: TYPE+ = (negligible_set?) CONTAINING emptyset[T]
+
+  N,N1,N2: VAR null_set
+  NS:      VAR sequence[null_set]
+  E,E1,E2: VAR negligible
+  ES:      VAR sequence[negligible]
+
+  negligible_iff_measurable_null: LEMMA
+    (negligible_set?(X) AND measurable_set?(X)) <=> null_set?(X)
+
+  null_set_is_measurable: JUDGEMENT null_set    SUBTYPE_OF measurable_set
+  null_is_negligible:     JUDGEMENT null_set    SUBTYPE_OF negligible
+
+  null_emptyset:     JUDGEMENT emptyset[T]         HAS_TYPE null_set
+  null_union:        JUDGEMENT union(N1,N2)        HAS_TYPE null_set
+  null_intersection: JUDGEMENT intersection(N1,N2) HAS_TYPE null_set
+  null_difference:   JUDGEMENT difference(N1,N2)   HAS_TYPE null_set
+  null_IUnion:       JUDGEMENT IUnion(NS)          HAS_TYPE null_set
+
+  null_Union: LEMMA every(null_set?,Z) AND is_countable(Z) =>
+                    null_set?(Union(Z))
+
+  negligible_emptyset:     JUDGEMENT emptyset[T]         HAS_TYPE negligible
+  negligible_union:        JUDGEMENT union(E1,E2)        HAS_TYPE negligible
+  negligible_intersection: JUDGEMENT intersection(E1,E2) HAS_TYPE negligible
+  negligible_IUnion:       JUDGEMENT IUnion(ES)          HAS_TYPE negligible
+
+  negligible_Union:  LEMMA every(negligible_set?,Z) AND is_countable(Z) =>
+                           negligible_set?(Union(Z))
+
+  negligible_subset: LEMMA subset?(X,E) => negligible_set?(X)
+
+  ae_in?(P)(X):bool = EXISTS E: FORALL (x:(X)):
+                                (NOT member(x,E)) => member(x,P)
+  ae?(P):bool       = ae_in?(P)(fullset[T])                             % 4.2.3
+
+  pointwise_ae?(p)(f,g):bool = ae?(LAMBDA x: p(f(x),g(x)))              % 4.2.4
+
+% It's just too cumbersome to use the above directly, so we introduce
+% some useful special cases.
+
+  ae?(p)(f,g):   bool = pointwise_ae?(p)(f,g)
+  ae_0?(f):      bool = pointwise_ae?(=)(f,lambda x: 0)
+  ae_nonneg?(f): bool = pointwise_ae?(<=)((lambda x: 0),f)
+  ae_pos?(f):    bool = pointwise_ae?(<)((lambda x: 0),f)
+  ae_le?(f,g):   bool = pointwise_ae?(<=)(f,g)
+  ae_eq?(f,g):   bool = pointwise_ae?(=)(f,g)
+
+  ae_eq_equivalence:   LEMMA equivalence?(ae_eq?)
+  ae_le_reflexive:     LEMMA reflexive?(ae_le?)
+  ae_le_antisymmetric: LEMMA ae_le?(f,g) AND ae_le?(g,f) => ae_eq?(f,g)
+  ae_le_transitive:    LEMMA transitive?(ae_le?)
+
+  ae_convergence_in?(X)(F,f):bool
+    = ae_in?(LAMBDA x:convergence?(LAMBDA n:F(n)(x),f(x)))(X)
+  ae_cauchy_in?(X)(F):bool
+    = ae_in?(LAMBDA x: cauchy?(LAMBDA n: F(n)(x)))(X)
+
+  ae_convergence?(F,f):bool = ae_convergence_in?(fullset[T])(F,f)
+  ae_cauchy?(F):bool        = ae_cauchy_in?(fullset[T])(F)
+
+  ae_convergence_cauchy: LEMMA ae_convergence?(F,f) => ae_cauchy?(F)    % 4.2.5
+  ae_convergence_eq:     LEMMA ae_convergence?(F,f) =>
+                               (ae_convergence?(F,g) <=> ae_eq?(f,g))
+  ae_eq_convergence:     LEMMA ae_convergence?(F,f) AND
+                               (FORALL n: ae_eq?(F(n),G(n))) =>
+                               ae_convergence?(G,f)
+  ae_increasing?(F):bool
+    = EXISTS E: FORALL x: NOT member(x,E) =>
+             FORALL i,j: i <= j => F(i)(x) <= F(j)(x)
+
+  ae_decreasing?(F):bool
+    = EXISTS E: FORALL x: NOT member(x,E) =>
+             FORALL i,j: i <= j => F(j)(x) <= F(i)(x)
+
+  ae_monotonic_converges?(F,f):bool
+    = ae_convergence?(F,f) AND (ae_increasing?(F) OR ae_decreasing?(F))
+
+%  ae_pointwise_bounded?(F):bool
+%    = EXISTS E:
+%             pointwise_bounded?(lambda n: phi(complement(E))*F(n))
+
+  ae_convergent?(F):bool = EXISTS f: ae_convergence?(F,f)
+
+
+END measure_theory

@@ -1,0 +1,260 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andréia Borges Avelar and
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil 
+%%
+%%                         and 
+%%
+%%                   Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil 
+%%    
+%% Last Modified On: April 27, 2011
+%%
+%%----------------------------------------------------------------------------
+
+robinsonunification[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+BEGIN
+
+   ASSUMING
+
+     IMPORTING variables_term[variable,symbol,arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+
+     var_countable : ASSUMPTION is_countably_infinite(V)
+      var_nonempty : ASSUMPTION nonempty?(V)
+   symbol_nonempty : ASSUMPTION nonempty?({f : symbol | arity(f) = 1})
+   ENDASSUMING
+
+   IMPORTING unification[variable,symbol, arity]
+
+
+                 Vs: VAR set[(V)]
+             V1, V2: VAR finite_set[(V)]
+                 V3: VAR finite_set[term]
+            x, y, z: VAR (V)
+    tau, sig, sigma, 
+  delta, rho, theta: VAR Sub 
+                 xx: (V)
+                 ff: {f : symbol | arity(f) = 1}
+               fail: Sub = id WITH [ xx := app(ff,#(xx)) ]
+            st, stp: VAR finseq[term]
+    r, s, t, t1, t2: VAR term
+                  n: VAR nat
+       p, q, p1, p2: VAR position
+                  R: VAR pred[[term, term]]
+
+          
+%%%% Position of the first difference between %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%% two different terms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ first_diff(s : term, (t : term | s /= t ) ):
+   RECURSIVE position =
+    (CASES s OF
+       vars(s) : empty_seq,
+       app(f, st) :
+       IF length(st) = 0 THEN empty_seq
+       ELSE 
+        (CASES t OF
+           vars(t) : empty_seq,
+           app(fp, stp) : 
+           IF f = fp THEN
+             LET k : below[length(stp)] = 
+                min({kk : below[length(stp)] |
+                          subtermOF(s,#(kk+1)) /= subtermOF(t,#(kk+1))}) IN
+                add_first(k+1,
+                       first_diff(subtermOF(s,#(k+1)),subtermOF(t,#(k+1))))
+           ELSE empty_seq ENDIF
+         ENDCASES)
+       ENDIF
+     ENDCASES)
+ MEASURE s BY << 
+
+
+%%%% Lemmas about first_diff %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+comutative_first_diff : LEMMA
+   FORALL (s : term, t : term | s /= t, p : position) :
+     p = first_diff(s, t) IMPLIES p = first_diff(t,s)
+
+position_s_first_diff : LEMMA 
+   FORALL (s : term, t : term | s /= t, p : position) :
+     p = first_diff(s, t) IMPLIES positionsOF(s)(p)
+
+position_t_first_diff : LEMMA
+   FORALL (s : term, t : term | s /= t, p : position) :
+     p = first_diff(s, t) IMPLIES positionsOF(t)(p)
+
+first_diff_has_diff_argument : LEMMA
+   FORALL (s : term, t : term | s /= t, p : position):
+     p = first_diff(s, t) IMPLIES subtermOF(s, p) /= subtermOF(t, p)
+
+first_diff_unifiable_vars : LEMMA
+   FORALL (s : term, t : term | s /= t, p : position):
+     p = first_diff(s, t) AND unifiable(s,t) IMPLIES
+ 	vars?(subtermOF(s, p)) OR vars?(subtermOF(t, p))
+ 
+fd_equal_symbol : LEMMA
+    FORALL (s : term,
+            t : term | s /= t) :
+      LET fd = first_diff(s, t) IN
+         ( FORALL (p : position | positionsOF(s)(p) AND
+                                  positionsOF(t)(p)):
+                  child(fd, p) =>
+                    f(subtermOF(s, p)) =  f(subtermOF(t, p)) )
+
+%%%% Substitution to fix the %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%% first difference %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ link_of_frst_diff(s : term , (t : term | s /= t )) : Sub =
+  LET k : position = first_diff(s,t) IN
+     LET sp = subtermOF(s,k) , tp = subtermOF(t,k) IN 
+        IF vars?(sp) 
+        THEN IF NOT member(sp, Vars(tp))
+             THEN (LAMBDA (x : (V)) : IF x = sp THEN tp ELSE x ENDIF)
+             ELSE fail ENDIF 
+        ELSE 
+           IF vars?(tp) 
+           THEN IF NOT member(tp, Vars(sp))
+                THEN (LAMBDA (x : (V)) : IF x = tp THEN sp ELSE x ENDIF)
+                ELSE fail ENDIF           
+           ELSE fail ENDIF 
+        ENDIF
+
+%%%% Lemmas about "link_of_frst_diff" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+dom_link_of_frst_diff_is : LEMMA
+    FORALL (s : term, t : term | s /= t):
+      LET sig = link_of_frst_diff(s, t) IN
+        NOT sig = fail AND p = first_diff(s, t) IMPLIES
+           IF vars?(subtermOF(s, p))
+             THEN Dom(sig) = singleton(subtermOF(s, p))
+             ELSE Dom(sig) = singleton(subtermOF(t, p))
+           ENDIF
+
+dom_ran_link_disjoint : LEMMA
+    FORALL (s : term, t : term | s /= t): 
+       LET sig = link_of_frst_diff(s ,t) IN 
+           NOT sig = fail IMPLIES
+           FORALL ( x | member(x,Dom(sig)), r | member(r,Ran(sig) )) :
+               NOT member(x, Vars(r))
+
+link_remove_x : LEMMA
+    FORALL (s : term, t : term | s /= t):
+       LET sig = link_of_frst_diff(s, t) IN
+         (NOT sig = fail AND  Dom(sig)(x)) IMPLIES  
+            (NOT member(x, Vars(ext(sig)(s)))) AND
+            (NOT member(x, Vars(ext(sig)(t))))
+
+link_of_frst_diff_s_is_subset_union : LEMMA
+    FORALL (s : term, t : term |  s /= t):
+        LET sig = link_of_frst_diff(s, t) IN
+           NOT sig = fail IMPLIES 
+           subset?(Vars(ext(sig)(s)), union( Vars(s), Vars(t)))
+
+comutative_link_fd : LEMMA
+    FORALL (s : term, t : term |  s /= t):
+        LET p = first_diff(s, t) IN
+         NOT vars?(subtermOF(s,p)) IMPLIES
+           link_of_frst_diff(s, t) = link_of_frst_diff(t, s)
+ 
+link_of_frst_diff_t_is_subset_union : LEMMA
+    FORALL (s : term, t : term |  s /= t):
+        LET sig = link_of_frst_diff(s, t) IN
+            NOT sig = fail IMPLIES 
+            subset?(Vars(ext(sig)(t)), union( Vars(s), Vars(t)))
+
+union_vars_ext_link : LEMMA
+    FORALL (s : term, t : term | s /= t) :
+        LET sig = link_of_frst_diff(s, t) IN
+           NOT sig = fail IMPLIES
+             union(Vars(ext(sig)(s)), Vars(ext(sig)(t)))
+              = difference(union( Vars(s), Vars(t)), Dom(sig))
+
+termination_lemma : LEMMA
+  FORALL (s : term, t : term | s /= t):
+         LET sig = link_of_frst_diff(s, t) IN
+           NOT sig = fail IMPLIES
+             Card(union( Vars(ext(sig)(s)), Vars(ext(sig)(t))))
+             < Card(union( Vars(s), Vars(t)))
+
+unifiable_implies_not_fail : LEMMA
+  FORALL (s : term, t : term | s /= t):
+         LET sig = link_of_frst_diff(s, t) IN
+            unifiable(s, t) IMPLIES
+            NOT sig = fail
+
+preserving_generality : LEMMA
+    FORALL (s : term, t : term | s /= t):
+        member(rho, U(s, t)) IMPLIES
+           LET sig = link_of_frst_diff(s, t) IN
+              EXISTS theta : rho = comp(theta, sig)
+
+unifiable_preserves_unifiability : LEMMA
+  FORALL (s : term, t : term | s /= t):
+         LET sig = link_of_frst_diff(s, t) IN
+            unifiable(s, t) IMPLIES
+            unifiable(ext(sig)(s),ext(sig)(t))
+
+
+%%%% Function to compute mgu's of unifiable terms %%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%% or to report failure of non unifiable terms %%%%%%%%%%%%%%%%
+
+ robinson_unification_algorithm(s, t : term) : RECURSIVE Sub =
+    IF s = t THEN identity  
+    ELSE LET sig = link_of_frst_diff(s,t) IN
+       IF sig = fail THEN fail
+       ELSE 
+       LET sigma = robinson_unification_algorithm(ext(sig)(s) , ext(sig)(t)) IN
+              IF sigma = fail THEN fail ELSE comp(sigma, sig) ENDIF
+       ENDIF
+    ENDIF
+ MEASURE Card(union(Vars(s), Vars(t)))
+
+
+%%%% Lemmas about "robinson_unification_algorithm" %%%%%%%%%%%%%%%%%%%%
+
+ var_ext_term_exists_var_term : LEMMA
+   member(x, Vars(ext(sigma)(r)))
+     IMPLIES EXISTS y: member(y, Vars(r)) AND member(x, Vars(sigma(y)))
+
+ rob_uni_alg_dom_subset_union_vars : LEMMA
+    unifiable(s, t) IMPLIES 
+       LET sigma = robinson_unification_algorithm(s, t) IN
+          subset?( Dom(sigma), union(Vars(s), Vars(t)) )
+
+ rob_uni_alg_vran_subset_union : LEMMA
+    FORALL (s : term, t : term | s /= t):
+    LET sig1 = link_of_frst_diff(s, t) IN
+      LET sig2 = robinson_unification_algorithm(ext(sig1)(s), ext(sig1)(t)) IN
+        unifiable(s, t) IMPLIES
+          subset?(VRan(comp(sig2, sig1)), 
+                  union(VRan(sig2), difference(VRan(sig1), Dom(sig2))))
+
+ rob_uni_alg_dom_ran_disjoint : LEMMA
+    unifiable(s,t) IMPLIES
+          LET sigma = robinson_unification_algorithm(s, t) IN
+           subset?( VRan(sigma) , 
+                     difference( union(Vars(s), Vars(t)), Dom(sigma) ))
+
+ robinson_unification_algorithm_fails_iff_non_unifiable : LEMMA
+  NOT unifiable(s,t) IFF robinson_unification_algorithm(s,t) = fail
+
+%%%% Soundness of "robinson_unification_algorithm" %%%%%%%%%%%%%%%%%%%%
+
+ robinson_unification_algorithm_gives_unifier : LEMMA
+    unifiable(s,t) IFF member(robinson_unification_algorithm(s, t), U(s, t))
+ 
+ robinson_unification_algorithm_gives_mg_subs : LEMMA
+    member(rho, U(s, t)) IMPLIES robinson_unification_algorithm(s, t) <= rho
+ 
+%%%% Completeness of  "robinson_unification_algorithm" %%%%%%%%%%%%%%%%
+
+ completeness_robinson_unification_algorithm : THEOREM
+   IF unifiable(s,t) THEN  mgu(robinson_unification_algorithm(s,t))(s,t)
+                     ELSE  robinson_unification_algorithm(s,t) = fail 
+   ENDIF
+ 
+
+END robinsonunification

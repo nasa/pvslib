@@ -1,0 +1,134 @@
+%
+%
+% Purpose : communication model under the single-stage integration fault model
+%
+%
+
+comm_integration_stage
+[
+   S : posnat,        % number of sources
+   D : posnat,        % number of destinations
+   T : TYPE+          % Value type
+]: THEORY
+
+  BEGIN
+  
+  IMPORTING
+    message[T],
+    integration_fault_model[S],
+    exact_comm_stage[S, D, message]
+
+  src_status: VAR node_status[S]       
+
+  s: VAR below(S)
+  d, d1, d2   : VAR below(D)
+
+  msg: VAR message
+  msg_checker: TYPE+ =
+    {exp: [message -> bool] | NOT exp(garbled)}
+    CONTAINING (LAMBDA msg: valid?(msg))
+  valid_check_stage: TYPE = [below(D) -> [below(S) -> msg_checker]]
+
+  msg_check:    VAR valid_check_stage
+  common_check: VAR finite_set[below(S)]
+
+  sent: VAR sent_vec_stage 
+  rcvd: VAR rcvd_matrix_stage 
+
+  tau: VAR tau_type
+
+  m: VAR message
+
+  %--communication
+
+  osym_rcvd(sent, s): { m: message | m = sent(s) OR m = garbled }
+  oasym_rcvd(sent, s, d): { m: message | m = sent(s) OR m = garbled }
+  tsym_rcvd(sent, s): message
+  sv_rcvd(sent, s, d): { m: message | m = tsym_rcvd(sent, s) OR m = garbled }
+  tasym_rcvd(sent, s, d): message
+
+  rcvd(sent, src_status)(d)(s): message =
+    CASES src_status(s) OF
+      good                     : sent(s),
+      omissive_symmetric       : osym_rcvd(sent, s),
+      omissive_asymmetric      : oasym_rcvd(sent, s, d),
+      transmissive_symmetric   : tsym_rcvd(sent, s),
+      single_error_asymmetric  : sv_rcvd(sent, s, d),
+      transmissive_asymmetric  : tasym_rcvd(sent, s, d) 
+    ENDCASES
+
+  correct_denotation_send: LEMMA
+      correct_denotation?(src_status(s)) AND
+      msg_check(d)(s)(rcvd(sent, src_status)(d)(s))
+    IMPLIES
+      rcvd(sent, src_status)(d)(s) = sent(s)
+
+  % A specific "check" function.  This one contains three
+  % different types of checks.
+  conforms(msg_check, common_check)(d)(s)(m): bool = 
+    msg_check(d)(s)(m) AND common_check(s)
+
+  conforms_type: JUDGEMENT 
+    conforms(msg_check,common_check) HAS_TYPE valid_check_stage
+
+  check: VAR check_stage
+
+  only_valid_conform?(check): bool =
+    FORALL d: FORALL s: FORALL m:check(d)(s)(m) => valid?(m)
+
+
+  scheduled_conform: LEMMA
+    enabled_within?(rcvd, conforms(msg_check, common_check))(common_check)
+
+  correct_denotation(src_status)(d): [below(S) -> bool] = 
+    correct_denotation(src_status)
+
+  exact_correct_denotation: LEMMA
+    exact_correct_denotation?(sent, rcvd(sent, src_status), msg_check)(correct_denotation(src_status))
+
+  quorum_correct?(sent, msg_check, src_status, tau): bool = 
+    quorum?(rcvd(sent, src_status), msg_check, tau)(correct_denotation(src_status))
+
+  quorum_correct_integration: LEMMA
+      quorum_correct?(sent, msg_check, src_status, tau)
+    IMPLIES
+      quorum_correct?(sent, rcvd(sent, src_status), msg_check, tau)
+
+  majority_correct?(sent, msg_check, src_status): bool = 
+    majority?(rcvd(sent, src_status), msg_check)(correct_denotation(src_status))
+
+  majority_correct_rw: LEMMA
+      majority_correct?(sent, msg_check, src_status) IFF
+        quorum_correct?(sent, msg_check, src_status, mid)
+
+
+
+  exact_single_denotation: LEMMA
+    exact_single_denotation?(rcvd(sent, src_status), msg_check)(single_denotation(src_status))
+
+  uniformly_enabled: LEMMA
+      uniform?(msg_check)(symmetric_denotation(src_status))
+    IMPLIES
+      uniformly_enabled?(rcvd(sent, src_status), msg_check)(symmetric_denotation(src_status))
+
+  exact_symmetric_single: LEMMA
+    exact_single_denotation?(rcvd(sent, src_status), msg_check)(symmetric_denotation(src_status))
+
+  all_symmetric?(sent, msg_check, src_status): bool =
+    uniform?(msg_check)(symmetric_denotation(src_status)) AND
+    enabled_within?(rcvd(sent, src_status), msg_check)(symmetric_denotation(src_status))
+
+  all_symmetric_integration: LEMMA
+      all_symmetric?(sent, msg_check, src_status)
+    IMPLIES
+      all_symmetric?(rcvd(sent, src_status), msg_check)
+
+  % diagnostics
+
+  good_conforms: LEMMA
+      good(src_status)(s) AND
+      msg_check(d)(s)(sent(s))
+    IMPLIES
+      enabled(rcvd(sent, src_status), msg_check)(d)(s)
+
+END comm_integration_stage

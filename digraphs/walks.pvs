@@ -1,0 +1,215 @@
+walks[T: TYPE]: THEORY
+
+BEGIN
+
+   IMPORTING digraphs[T],
+             structures@seq_extras[T]
+             
+
+
+   G,GG: VAR digraph[T]
+   n: VAR nat
+   x,u,v,u1,u2,v1,v2,v3: VAR T
+   e: VAR edgetype[T]
+   i,j: VAR nat
+
+
+% -------------------------------------------------------------------------------
+%     Definitions
+% -------------------------------------------------------------------------------
+
+   prewalk: TYPE = {w: finseq[T] | length(w) > 0}
+
+   s,ps,ww: VAR prewalk
+
+   verts_in?(G,s): bool = (FORALL (i: below(length(s))): vert(G)(seq(s)(i)))
+   
+   Seq(G): TYPE = {w: prewalk | verts_in?(G,w)}
+
+   walk?(G,ps): bool = verts_in?(G,ps) AND
+                             (FORALL n: n < length(ps) - 1 IMPLIES
+                                         edge?(G)(ps(n),ps(n+1)))
+
+   Walk(G): TYPE = {w: prewalk | walk?(G,w)}
+
+   from?(ps,u,v): bool = seq(ps)(0) = u AND seq(ps)(length(ps) - 1) = v
+
+   walk_from?(G,ps,u,v): bool = from?(ps,u,v) AND walk?(G,ps)
+
+   Walk_from(G,u,v): TYPE = {w: prewalk | walk_from?(G,w,u,v)}
+
+   set_walk_from(G, e): set[prewalk] = 
+         LET (u, v) = e IN {w: prewalk | walk_from?(G,w,u,v)}
+
+   verts_of(ww: prewalk): finite_set[T] = 
+               {t: T | (EXISTS (i: below(length(ww))): ww(i) = t)}
+
+   edges_of(ww): finite_set[edgetype[T]] = {e: edgetype[T] |
+                           EXISTS (i: below(length(ww)-1)): e = (ww(i),ww(i+1))}
+
+%  ----------------------- Properties -----------------------
+
+   walk_from_l     : LEMMA walk_from?(G,ps,u,v) AND u /= v IMPLIES length(ps) >= 2
+
+   verts_in?_concat: LEMMA FORALL (s1,s2: Seq(G)): verts_in?(G,s1 o s2)
+
+   verts_in?_caret : LEMMA FORALL (j: below(length(ps))): i <= j IMPLIES
+                                   verts_in?(G,ps) IMPLIES verts_in?(G,ps^(i,j))
+
+  
+   vert_seq_lem    : LEMMA FORALL (w: Seq(G)): n < length(w) IMPLIES vert(G)(w(n))
+
+   verts_of_subset : LEMMA FORALL (w: Seq(G)):
+                                   subset?(verts_of(w),vert(G))
+
+
+   edges_of_subset : LEMMA walk?(G,ww) IMPLIES subset?(edges_of(ww),edges(G))
+
+   walk_verts_in   : LEMMA walk?(G,ps) IMPLIES verts_in?(G,ps)
+
+
+   walk_from_vert  : LEMMA FORALL (w: prewalk,v1,v2:T):
+                             walk_from?(G,w,v1,v2) IMPLIES
+                                vert(G)(v1) AND vert(G)(v2)
+
+   walk_edge_in    : LEMMA walk?(G,ww) AND 
+                           subset?(edges_of(ww),edges(GG)) AND
+                           subset?(verts_of(ww),vert(GG))
+                         IMPLIES walk?(GG,ww)
+
+   prewalk_across: LEMMA ww(0) /= ww(length(ww)-1) AND length(ww) > 1 IMPLIES
+                        (EXISTS (i: below(length(ww)-1)): ww(i) = ww(0) AND
+                                                  ww(i+1) /= ww(0))
+  
+%  ----------- operations and constructors for walks --------------------
+
+   gen_seq1(G, (u: (vert(G)))): Seq(G) = 
+                        (# length := 1, seq := (LAMBDA (i: below(1)): u) #)
+
+   gen_seq2(G, (u,v: (vert(G)))): Seq(G) = 
+                  (# length := 2,
+                     seq := (LAMBDA (i: below(2)):
+                                      IF i = 0 THEN u ELSE v ENDIF) #)
+   
+   Longprewalk: TYPE = {ps: prewalk | length(ps) >= 2}
+
+   lWalk(G) : TYPE = {w: Longprewalk | walk?(G,w)}
+   
+   trunc1(p: Longprewalk ): prewalk = p^(0,length(p)-2)
+
+   add1(ww,x): prewalk = (# length := length(ww) + 1,
+                           seq := (LAMBDA (ii: below(length(ww) + 1)):
+                                    IF ii < length(ww) THEN seq(ww)(ii) ELSE x ENDIF)
+                         #)
+
+
+   gen_seq1_is_walk: LEMMA vert(G)(x) IMPLIES walk?(G,gen_seq1(G,x))
+
+   edge_to_walk    : LEMMA u /= v AND edges(G)((u, v)) IMPLIES
+                             walk?(G,gen_seq2(G,u,v))
+
+   w1,w2: VAR prewalk
+
+%%%%%%%%%%%%%%%%%%%%% NOT THEOREMS for directed graphs %%%%%%%%%%%%%%
+%
+%   walk?_rev       : LEMMA walk?(G,ps) IMPLIES walk?(G,rev(ps))
+%
+%   
+%
+%   walk?_reverse   : LEMMA walk_from?(G,w1,v1,v2) IMPLIES
+%                             (EXISTS (w: Walk(G)): walk_from?(G,w,v2,v1))
+
+   walk?_caret     : LEMMA i <= j AND j < length(ps) AND walk?(G,ps) 
+                               IMPLIES walk?(G,ps^(i,j))
+
+
+   l_trunc1        : LEMMA length(ww) > 1 IMPLIES length(trunc1(ww)) = length(ww)-1
+
+   
+   walk?_add1      : LEMMA walk?(G,ww) AND vert(G)(x)
+                           AND edge?(G)(seq(ww)(length(ww)-1),x)
+                           IMPLIES walk?(G,add1(ww,x))                      
+
+
+   walk_concat_edge: LEMMA walk_from?(G, w1, u1, v1) AND
+         		           walk_from?(G, w2, u2, v2) AND
+                              edge?(G)(v1,u2)
+         		        IMPLIES
+         		            walk_from?(G, w1 o w2,u1,v2)
+
+   walk_concat: LEMMA length(w1) > 1 AND
+      		      walk_from?(G, w1, u1, v) AND
+      		      walk_from?(G, w2, v, u2)
+      		 IMPLIES
+      		     walk_from?(G, w1 ^ (0, length(w1) - 2) o w2,u1,u2)
+
+   walk?_cut  : LEMMA FORALL (i,j: below(length(ps))): i < j AND
+                                  seq(ps)(i) = seq(ps)(j) AND
+                                  walk_from?(G, ps, u, v)
+                               IMPLIES
+                                  walk_from?(G, ps^(0,i) o ps^(j+1,length(ps)-1),u,v)
+
+   yt: VAR T
+   p1,p2: VAR prewalk
+   walk_merge: LEMMA walk_from?(G, p1, u, yt) AND
+      	             walk_from?(G, p2, yt, v )
+                           IMPLIES
+      	                (EXISTS (p: prewalk): walk_from?(G, p, u, v))
+
+
+
+
+%********************************************************************************%
+%
+%   Contributions from:
+%
+%       Andréia Borges Avelar -- Universidade de Brasília - Brasil  
+%       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil  
+%                 Cesar Muñoz -- NASA Langley Research Center - US
+%
+%********************************************************************************%
+
+% --------------------------------------------------------------------------------
+%     Definitions
+% --------------------------------------------------------------------------------
+
+ sub_walk?(G: digraph, w: Walk(G), ww): bool =  
+    EXISTS (i, j: below(length(w))): w^(i,j) = ww
+
+ reachable?(G)( u, v : (vert(G)) ) : bool = (u = v OR
+    EXISTS (w: prewalk) : walk_from?(G, w, u, v))
+
+ reord_prewalk(w: prewalk, i: posnat): prewalk =
+    w ^ (i, length(w) - 1) o w ^ (0, i - 1)
+
+ eq_prewalk?(w1, w2: prewalk): bool =
+    w1 = w2 OR EXISTS (i: posnat): w2 = reord_prewalk(w1, i)
+
+ % owalk(G: digraph, w1, w2: Walk(G) | last(w1) = first(w2)): Walk(G) =
+ %     w1 o rest(w2)
+
+
+% --------------------------------------------------------------------------------
+%     Properties
+% --------------------------------------------------------------------------------
+
+ eq_relation_eq_prewalk: LEMMA
+    equivalence?(eq_prewalk?)
+
+ eq_prewalk_length: LEMMA
+    FORALL(w1, w2: prewalk): eq_prewalk?(w1, w2) IMPLIES length(w1) = length(w2)
+
+ subwalk_is_walk : LEMMA
+    FORALL (w: Walk(G)): sub_walk?(G, w, ww) IMPLIES walk?(G, ww)
+
+ walk_o: LEMMA
+    walk?(G, w1) AND walk?(G, w2) AND seq(w1)(length(w1) - 1) = seq(w2)(0)
+    IMPLIES walk?(G, w1 o w2^(1, length(w2) - 1))
+
+ edges_o_walk: LEMMA
+    walk?(G, w1) AND walk?(G, w2) AND last(w1) = first(w2)
+    IMPLIES edges_of(w1 o rest(w2)) = union(edges_of(w1), edges_of(w2))
+
+
+END walks
+

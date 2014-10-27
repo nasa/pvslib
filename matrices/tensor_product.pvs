@@ -1,0 +1,183 @@
+
+tensor_product  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+    
+
+
+IMPORTING matrices, matrix_props, matrix_inv, linear_dependence,  reals@base_repr, ints@mod_lems, reals@product
+
+
+m1, m2, n1, n2: VAR nat
+
+a,b: VAR {x:nat | x>1}
+
+Q: VAR Matrix
+
+M, N:  VAR FullMatrix
+ 
+A, B, A2, B2: VAR PosFullMatrix
+
+AA, BB: VAR Square
+
+v1, v2: VAR Vector
+
+f,g, F: VAR [nat->real]
+
+not_null: LEMMA nonempty?(Q) IMPLIES NOT null?(Q)
+mod_int: LEMMA FORALL (k:nat, n:posnat): 
+               integer_pred((k-mod(k,n))/n) AND (k-mod(k,n))/n>=0
+
+tensor_fun(A,B): [[nat,nat]->real] =
+		 LAMBDA(i,j:nat): IF i<rows(A)*rows(B) THEN
+		 		    IF j<columns(A)*columns(B) THEN
+				       entry(A)((i-mod(i, rows(B)))/rows(B), (j-mod(j, columns(B)))/columns(B))*
+				       entry(B)(mod(i, rows(B)), mod(j, columns(B))) 
+				    ELSE 0 ENDIF
+				  ELSE 0 ENDIF
+
+tensor_prod(A,B): PosFullMatrix = form_matrix(tensor_fun(A,B), rows(A)*rows(B), columns(A)*columns(B))
+
+entry_tensor_prod: LEMMA entry(tensor_prod(A,B)) = tensor_fun(A,B)
+
+tensor_rows: LEMMA rows(tensor_prod(A,B)) = rows(A)*rows(B)
+
+tensor_cols: LEMMA columns(tensor_prod(A,B)) = columns(A)*columns(B)
+
+tensor_mult_entry: LEMMA columns(A) = rows(A2) AND columns(B) = rows(B2)
+		   IMPLIES entry(tensor_prod(A,B)*tensor_prod(A2, B2))(m1, n1) = 
+                   entry(A*A2)((m1-mod(m1, rows(B)))/rows(B), (n1-mod(n1, columns(B2)))/columns(B2))*
+		   entry(B*B2)(mod(m1, rows(B)), mod(n1, columns(B2)))
+		    
+
+invertible_tensor: LEMMA invertible?(AA) AND invertible?(BB) IMPLIES
+                   invertible?(tensor_prod(AA,BB)) AND
+                   inverse(tensor_prod(AA,BB)) = tensor_prod(inverse(AA), inverse(BB))
+
+
+TQMat: Square = (:(:1,1,1:), (:0,1,-1:), (:0,1,1:):)
+
+TQMatInv: Square = (:(:1,0,-1:), (:0, 1/2, 1/2:), (:0, -1/2, 1/2:):) 
+
+invTQ: LEMMA invertible?(TQMat) 
+
+is_invTQ: LEMMA inverse(TQMat) = TQMatInv
+
+tensor_power(A:PosFullMatrix,  n:posnat): RECURSIVE PosFullMatrix = IF n=1 THEN A ELSE tensor_prod(A, tensor_power(A, n-1)) ENDIF
+                          MEASURE n  
+
+invertible_tensor_power: LEMMA FORALL(A:Square, n: posnat): invertible?(A) IMPLIES invertible?(tensor_power(A,n)) AND 
+                         inverse(tensor_power(A,n)) = tensor_power(inverse(A), n) 
+
+tensor_power_rows: LEMMA FORALL(A:PosFullMatrix, n:posnat):
+                   rows(A)^n = rows(tensor_power(A,n))
+
+tensor_power_columns: LEMMA FORALL(A:PosFullMatrix, n:posnat):
+		     columns(A)^n = columns(tensor_power(A,n))
+
+
+
+
+mod_eq_lem_alt: LEMMA FORALL (n,m:posnat,i:nat):
+	  (mod(i,n)+n*mod((i-mod(i,n))/n,m)-
+  mod(mod(i,n)+n*mod((i-mod(i,n))/n,m),n))/n
+   =mod((i-mod(i,n))/n,m)
+
+tensor_prod_assoc: LEMMA FORALL (A,B,C:PosFullMatrix):
+  tensor_prod(A,tensor_prod(B,C)) = tensor_prod(tensor_prod(A,B),C)
+
+tensor_power_alt(A:PosFullMatrix, n:posnat):  RECURSIVE PosFullMatrix = IF n=1 THEN A ELSE tensor_prod(tensor_power_alt(A, n-1), A) ENDIF
+                          MEASURE n 
+
+
+%% Prove this one...
+
+power_assoc: LEMMA FORALL (A:PosFullMatrix, n:posnat): 
+	     tensor_power(A, n) = tensor_power_alt(A, n) 
+
+tensor_power_rows_alt: LEMMA FORALL(A:PosFullMatrix, n:posnat):
+                   rows(A)^n = rows(tensor_power_alt(A,n))
+
+tensor_power_columns_alt: LEMMA FORALL(A:PosFullMatrix, n:posnat):
+		     columns(A)^n = columns(tensor_power_alt(A,n))
+
+
+
+TQXL:    Square = (: (: 1,   1,   1, 0, 0, 0 :), 
+      	       	     (: 0,   1,  -1, 0, 0, 0 :), 
+		     (: 0,   1,   1, 0, 0, 0 :), 
+		     (: 0,  -1,  -1, 1, 0, 0 :), 
+		     (:-1,  -1,   0, 0, 1, 0 :), 
+		     (:-1,   0,  -1, 0, 0, 1 :) :)
+
+TQXLinv: Square = (: (: 1,   0,  -1, 0, 0, 0 :), 
+      	       	     (: 0, 1/2, 1/2, 0, 0, 0 :), 
+		     (: 0,-1/2, 1/2, 0, 0, 0 :), 
+		     (: 0,   0,   1, 1, 0, 0 :), 
+		     (: 1, 1/2,-1/2, 0, 1, 0 :), 
+		     (: 1,-1/2,-1/2, 0, 0, 1 :) :)
+
+invTQXL: LEMMA invertible?(TQXL) AND invertible?(TQXLinv) 
+
+is_invTQXL: LEMMA inverse(TQXL) = TQXLinv AND inverse(TQXLinv) = TQXL
+
+RowToMat(M:PosFullMatrix, k:below(rows(M))): PosFullMatrix = (:row(M)(k):)
+
+RtM: LEMMA FORALL (M:PosFullMatrix, k:below(rows(M))):
+     RowToMat(M, k)  = row2mat(M, k)
+
+RowToMat_rows: LEMMA FORALL (M:PosFullMatrix, k:below(rows(M))):
+ 	       rows(RowToMat(M,k))=1
+
+RowToMat_columns: LEMMA FORALL (M:PosFullMatrix, k:below(rows(M))):
+ 	       columns(RowToMat(M,k))=columns(M)
+
+RowToMat_entry: LEMMA FORALL (M:PosFullMatrix, k:below(rows(M)), n:below(columns(M))):
+             entry(RowToMat(M, k))(0,n) = entry(M)(k,n)
+
+RowToMat_tensor_prod: LEMMA FORALL(M, N:PosFullMatrix, k:below(rows(M)*rows(N))):
+         RowToMat(tensor_prod(M, N), k) = 
+	 tensor_prod(RowToMat(M, (k-mod(k,rows(N)))/rows(N)), RowToMat(N, mod(k,rows(N))))
+
+RowTensor(M:PosFullMatrix, n: posnat, L:{ LL: list[below(rows(M))] | length(LL)=n}): RECURSIVE PosFullMatrix = 
+	      IF n=1 THEN RowToMat(M, car(L)) 
+	      ELSE tensor_prod( RowTensor(M, n-1, cdr(L)), RowToMat(M,car(L))) ENDIF
+	      MEASURE n
+
+RowTensorAlt(M:PosFullMatrix, n:posnat, f:[nat->below(rows(M))]): RECURSIVE PosFullMatrix = 
+              IF n=1 THEN row2mat(M, f(0))
+	      ELSE tensor_prod(RowTensorAlt(M, n-1, LAMBDA(j:nat):f(j+1)), row2mat(M, f(0)))
+	      ENDIF 
+	      MEASURE n  
+
+RowTensors_same: LEMMA FORALL (M:{AA:PosFullMatrix|rows(AA)>1}, n:posnat, k:below(rows(M)^n)):	
+		 RowTensor(M, n, base_list(rows(M), k, n)) = RowTensorAlt(M, n, base_n(rows(M), k))
+
+RowTensor_is_TensorRow: LEMMA FORALL (M:PosFullMatrix, n:posnat, k:below(rows(M)^n)):
+             rows(M)>1 IMPLIES 
+	     RowToMat(tensor_power_alt(M, n), k) = RowTensor(M, n, base_list(rows(M), k , n))
+
+RowTensor_is_TensorRow2: LEMMA FORALL (M:{AA:PosFullMatrix|rows(AA)>1}, n:posnat, k:below(rows(M)^n)):
+			 row2mat(tensor_power(M, n), k) = RowTensorAlt(M, n, base_n(rows(M), k))
+
+entry_pick(n, rdim, cdim:posnat, A:{AA:PosFullMatrix |rows(AA)=rdim AND columns(AA)=cdim},  
+	      R, C: [nat->nat])(i:nat):
+          real = entry(A)(R(i), C(i))  
+
+tensor_entry: LEMMA FORALL (A:{M:PosFullMatrix | rows(M)>1 AND columns(M)>1}, n:posnat, k:below(rows(A)^n), m:below(columns(A)^n)):
+	      LET R = base_n(rows(A), k), 
+	          C = base_n(columns(A), m) IN
+           entry(tensor_power_alt(A,n))(k,m) = product[nat](0, n-1, entry_pick(n, rows(A), columns(A), A, R, C))   
+
+tensor_entry_alt: LEMMA FORALL (A:{M:PosFullMatrix | rows(M)>1 AND columns(M)>1}, n:posnat, k:below(rows(A)^n), m:below(columns(A)^n)):
+	      LET R = base_n(rows(A), k), 
+	          C = base_n(columns(A), m) IN
+           entry(tensor_power_alt(A,n))(k,m) = product[nat](0, n-1, entry_pick(n, rows(A), columns(A), A, R, C))  
+  
+	  
+
+  
+
+  END tensor_product

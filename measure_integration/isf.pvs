@@ -1,0 +1,131 @@
+%------------------------------------------------------------------------------
+% Integrable Simple Functions (ISF)
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+% All references are to SK Berberian "Fundamentals of Real Analysis",
+% Springer, 1991
+%
+% Definition and basic properties of ISF. To be integrable, a simple function
+% must be nonzero only on a set of finite measure.
+%
+%     Version 1.0            1/5/07   Initial Version
+%------------------------------------------------------------------------------
+
+isf[T:TYPE,          (IMPORTING subset_algebra_def[T])
+    S:sigma_algebra, (IMPORTING measure_def[T,S])
+    m:measure_type]: THEORY
+
+BEGIN
+
+  IMPORTING measure_space[T,S],
+            measure_theory[T,S,m],
+            measure_props[T,S,m]
+
+  x: VAR T
+  f: VAR [T->real]
+  g: VAR measurable_function
+  X: VAR (S)
+  Y: VAR set[T]
+
+  nonzero_set?(f):set[T] = { x | f(x) /= 0}                             % 4.3.1
+
+  nonzero_measurable: LEMMA measurable_set?(nonzero_set?(g))            % 4.3.2
+
+  nonzero_set_phi: LEMMA nonzero_set?(phi(X)) = X
+
+  isf?(f):bool = simple?(f) AND mu_fin?(nonzero_set?(f))                % 4.3.3
+
+  isf_zero: LEMMA isf?(lambda x:0)
+
+  isf: TYPE+ = (isf?) CONTAINING (lambda x:0)
+
+  isf_is_simple: JUDGEMENT isf SUBTYPE_OF simple
+
+  i,i1,i2: VAR isf
+  w:       VAR sequence[isf]
+  c:       VAR real
+  n:       VAR nat
+  pn: VAR posnat
+  E:       VAR (mu_fin?)
+  h:       VAR simple
+  nnx:     VAR nnreal
+
+  isf_add:     JUDGEMENT +(i1,i2)     HAS_TYPE isf
+  isf_scal:    JUDGEMENT *(c,i)       HAS_TYPE isf
+  isf_opp:     JUDGEMENT -(i)         HAS_TYPE isf
+  isf_diff:    JUDGEMENT -(i1,i2)     HAS_TYPE isf
+  isf_abs:     JUDGEMENT abs(i)       HAS_TYPE isf
+  isf_min:     JUDGEMENT min(i1,i2)   HAS_TYPE isf
+  isf_max:     JUDGEMENT max(i1,i2)   HAS_TYPE isf
+  isf_minimum: JUDGEMENT minimum(w,n) HAS_TYPE isf
+  isf_maximum: JUDGEMENT maximum(w,n) HAS_TYPE isf
+  isf_plus:    JUDGEMENT plus(i)      HAS_TYPE isf
+  isf_minus:   JUDGEMENT minus(i)     HAS_TYPE isf
+  isf_sq:      JUDGEMENT sq(i)        HAS_TYPE isf
+  isf_prod:    JUDGEMENT *(i1,i2)     HAS_TYPE isf
+  isf_phi:     JUDGEMENT phi(E)       HAS_TYPE isf
+  isf_expt:    JUDGEMENT expt(i,pn)   HAS_TYPE isf                      % 4.3.4
+
+  isf_times_simple_is_isf: JUDGEMENT *(i,h) HAS_TYPE isf                % 4.3.5
+
+  P: VAR pred[isf]
+
+  isf_induction: LEMMA (P(lambda x: 0) AND
+                        (FORALL c,E,i: P(i) => P(c*phi(E)+i)))
+                       => P(i)
+
+  p,p1,p2: VAR finite_partition[T]
+
+  finite_partition_of?(f)(p):bool
+    = FORALL (E:(p)): S(E) AND constant_over?(f)(E) AND
+                      (empty?(E) OR f(choose(E)) = 0 OR mu_fin?(E))
+
+  isf_def: LEMMA isf?(f) <=> EXISTS (p:(finite_partition_of?(f))): TRUE % 4.3.6
+
+  IMPORTING sigma_set@sigma_countable
+
+  isf_integral(i):real                                                  % 4.3.9
+    = sigma[real](image[T,real](i,fullset[T]),
+        LAMBDA c: IF c = 0 THEN 0
+                  ELSE c*mu(inverse_image[T,real](i,singleton[real](c))) ENDIF)
+
+  isf_integral_phi:      LEMMA isf_integral(phi(E)) = mu(E)
+  isf_integral_zero:     LEMMA isf_integral(lambda x: 0) = 0
+
+  isf_integral_def: LEMMA finite_partition_of?(i)(p) =>            % 4.3.7
+    isf_integral(i)
+      = LET f = LAMBDA Y: IF (NOT p(Y)) OR empty?(Y) OR i(choose[T](Y)) = 0
+                          THEN 0 ELSE i(choose[T](Y)) * mu(Y) ENDIF
+        IN sigma[set[T]](p,f)
+
+  isf_integral_scal:LEMMA isf_integral(c*i) = c*isf_integral(i)
+  isf_integral_opp: LEMMA isf_integral(-i)   = -isf_integral(i)
+  isf_integral_add: LEMMA isf_integral(i1+i2)=isf_integral(i1)+isf_integral(i2)
+  isf_integral_diff:LEMMA isf_integral(i1-i2)=isf_integral(i1)-isf_integral(i2)
+  isf_integral_pos: LEMMA (FORALL x: i(x) >= 0) => isf_integral(i) >= 0
+                                                                       % 4.3.10
+
+  isf_integral_le: LEMMA (FORALL x: i1(x) <= i2(x)) =>
+                          isf_integral(i1) <= isf_integral(i2)
+  isf_integral_abs: LEMMA abs(isf_integral(i)) <= isf_integral(abs(i)) % 4.3.11
+
+  isf_bounded: LEMMA EXISTS nnx: FORALL x: -nnx <= i(x) AND i(x) <= nnx
+  isf_integral_bound: LEMMA (FORALL x: abs(i(x)) <= nnx) =>       % 4.3.12
+                              isf_integral(abs(i)) <= nnx * mu(nonzero_set?(i))
+
+  isf_ae_0: LEMMA (simple?(f) AND ae_0?(f)) <=>                        % 4.3.13
+                  (isf?(f) AND  isf_integral(abs(f)) = 0)
+
+  isf_ae_eq:   LEMMA ae_eq?(i1,i2) => isf_integral(i1) = isf_integral(i2)
+  isf_ae_0_le: LEMMA ae_nonneg?(i) => 0 <= isf_integral(i)
+  isf_ae_le:   LEMMA ae_le?(i1,i2) => isf_integral(i1) <= isf_integral(i2)
+  isf_ae_ge_0: LEMMA ae_nonneg?(i) AND isf_integral(i) = 0 => ae_0?(i)
+                                                                       % 4.3.14
+
+  u: VAR increasing_nn_simple
+
+  isf_convergence: LEMMA pointwise_converges_upto?(u,i) =>             % 4.3.15
+                         converges_upto?((isf_integral o u),isf_integral(i))
+
+END isf

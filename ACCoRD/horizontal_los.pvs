@@ -1,0 +1,151 @@
+%------------------------------------------------------------------------------
+% horizontal_los.pvs
+% ACCoRD v.1.0
+%
+% Algorithms to horizontally recover from Loss of Separation 
+%------------------------------------------------------------------------------
+
+horizontal_los[D: posreal] : THEORY
+BEGIN
+
+  IMPORTING vectors@perpendicular_2D,
+  	    horizontal[D],            
+	    old_horiz_los_criterion,
+            gs_only[D],
+            trk_only[D],
+            opt_trk_gs[D],
+	    circle_optimum_2D,
+	    wedge_optimum_2D
+  
+  s         : VAR LoS_vect2
+  vo,vi     : VAR Nz_vect2
+  v,nvo,nvi : VAR Vect2
+  t,ti,to   : VAR posreal % Upper bound to time to recover separation
+  irt       : VAR Sign
+  MinRelSpeed,
+  MinGS,MaxGS,
+  MinRelSpeedo,
+  MinGSo,MaxGSo,
+  MinRelSpeedi,
+  MinGSi,MaxGSi: VAR posreal
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  sDs(s): posreal = norm(s)*D-sqv(s)
+
+  gs_los(s,vo,vi,MinGS,MaxGS,MinRelSpeed,irt): {nvo | nz_vect2?(nvo) => 
+                                 gs_only?(vo)(nvo) AND MinGS <= norm(nvo) AND norm(nvo) <= MaxGS} =
+    LET nv = max_segment_point_in_slice(zero,-vi,(1/norm(vo))*vo,MinGS,MaxGS,s,irt*perpR(s))
+    IN
+      IF intersects_segment_fun?(zero,-vi,(1/norm(vo))*vo,MinGS,MaxGS,s,irt*perpR(s)) AND norm(nv)>=MinRelSpeed THEN
+        nv+vi
+      ELSE
+        zero
+      ENDIF
+
+  gs_los_def: LEMMA LET nvo = gs_los(s,vo,vi,MinGS,MaxGS,MinRelSpeed,irt) IN
+    (nvo/=zero IMPLIES
+      gs_only?(vo)(nvo) AND 
+      MinGS <= norm(nvo) AND 
+      norm(nvo) <= MaxGS AND
+      s*(nvo-vi)>=0 AND
+      norm(nvo-vi)>=MinRelSpeed AND
+      ((nvo-vi/=zero OR MinRelSpeed>0) IMPLIES divergent?(s,nvo-vi)) AND
+      irt*det(s,nvo-vi)<=0) AND
+        (FORALL (nvo2:Vect2):
+	  gs_only?(vo)(nvo2) AND 
+      	  MinGS <= norm(nvo2) AND 
+      	  norm(nvo2) <= MaxGS AND
+	  divergent?(s,nvo2-vi) AND
+	  irt*det(s,nvo2-vi)<=0 AND
+	  norm(nvo2-vi)>=MinRelSpeed IMPLIES
+	  norm(nvo2-vi)<=norm(nvo-vi)
+	  AND
+	  nvo/=zero)
+
+  gs_los?(s,vo,vi,MinGS,MaxGS,MinRelSpeed)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    EXISTS (irt): nvo = gs_los(s,vo,vi,MinGS,MaxGS,MinRelSpeed,irt)
+
+  trk_los(s,vo,vi,MinRelSpeed,irt): {nvo | nz_vect2?(nvo) => 
+                                 trk_only?(vo)(nvo)} =
+    LET nv = max_circle_point_in_slice(zero,-vi,norm(vo),s,irt*perpR(s))
+    IN
+      IF intersects_circle_fun?(nv,-vi,norm(vo)) AND norm(nv)>=MinRelSpeed THEN
+        nv+vi
+      ELSE 
+        zero
+      ENDIF
+
+  trk_los_def: LEMMA LET nvo = trk_los(s,vo,vi,MinRelSpeed,irt) IN
+    (nvo/=zero IMPLIES
+      norm(nvo) = norm(vo) AND
+      s*(nvo-vi)>=0 AND
+      norm(nvo-vi)>=MinRelSpeed AND
+      ((nvo-vi/=zero OR MinRelSpeed>0) IMPLIES divergent?(s,nvo-vi)) AND
+      irt*det(s,nvo-vi)<=0) AND
+        (FORALL (nvo2:Vect2):
+	  norm(nvo2) = norm(vo) AND
+	  divergent?(s,nvo2-vi) AND
+	  irt*det(s,nvo2-vi)<=0 AND
+	  norm(nvo2-vi)>=MinRelSpeed IMPLIES
+	  norm(nvo2-vi)<=norm(nvo-vi)
+	  AND
+	  nvo/=zero)
+
+  trk_los?(s,vo,vi,MinRelSpeed)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    EXISTS (irt) : nvo = trk_los(s,vo,vi,MinRelSpeed,irt)
+
+  % opt_los(s,vo,vi,t): {nvo | nz_vect2?(nvo) => 
+  %                            optimal?(vo,Vdir(s,vo-vi))(nvo)} =
+  %   LET v = vo-vi IN
+  %   IF t*(s*v) < sDs(s) THEN
+  %     opt_trk_gs_dot(s,vo,vi,sDs(s)/t)
+  %   ELSE
+  %     vo
+  %   ENDIF
+
+  % opt_los?(s,vo,vi,t)(nvo) : bool =
+  %   nz_vect2?(nvo) AND
+  %   nvo = opt_los(s,vo,vi,t)
+
+  los_recovery?(s,vo,vi,MinRelSpeed,MinGS,MaxGS,MinRelSpeed)(nvo) : bool =
+    gs_los?(s,vo,vi,MinGS,MaxGS,MinRelSpeed)(nvo) OR
+    trk_los?(s,vo,vi,MinRelSpeed)(nvo)
+
+  %----------%
+  % LEMMAS   %
+  %----------%
+
+  los_recovery_meets_criteria : LEMMA
+    los_recovery?(s,vo,vi,MinRelSpeed,MinGS,MaxGS,MinRelSpeed)(nvo)
+    IMPLIES
+      horizontal_los_crit?(s,MinRelSpeed,-sign(det(s,nvo-vi)))(nvo-vi)
+
+  %-------------------------%
+  % THEOREM: Independence   %
+  %-------------------------%
+
+  los_recovery_independence : THEOREM
+    los_recovery?(s,vo,vi,MinRelSpeed,MinGS,MaxGS,MinRelSpeed)(nvo)
+    IMPLIES
+      divergent?(s,nvo-vi) AND
+      norm(nvo-vi)>=MinRelSpeed
+
+  %-------------------------%
+  % THEOREM: Coordination   %
+  %-------------------------%
+
+  los_recovery_coordination : THEOREM
+    los_recovery?(s,vo,vi,MinRelSpeedo,MinGSo,MaxGSo,MinRelSpeedo)(nvo) AND
+    los_recovery?(-s,vi,vo,MinRelSpeedi,MinGSi,MaxGSi,MinRelSpeedi)(nvi)  AND
+    horizontal_entry?(s,vo-vi)
+    IMPLIES
+      (divergent?(s,nvo-nvi) OR nvo-nvi=zero)
+
+  %%%
+
+END horizontal_los

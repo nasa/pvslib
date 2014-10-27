@@ -1,0 +1,188 @@
+numerical_bandb : THEORY
+BEGIN
+
+  IMPORTING safe_arith,
+            interval_expr,
+            structures@array2list[real],
+            structures@Maybe,
+            reals@real_orders
+
+  IntervalMinMax : TYPE = [#
+    mm     : Interval,
+    lb_max : real,
+    lb_box : ProperBox,
+    ub_min : real,
+    ub_box : ProperBox
+  #]
+
+  IMPORTING structures@branch_and_bound[RealExpr,IntervalMinMax,ProperBox,nat]
+
+  v         : VAR nat
+  maxdepth  : VAR nat
+  expr      : VAR RealExpr
+  box       : VAR ProperBox
+  dirvar    : VAR DirVar
+  dirvars   : VAR DirVarStack
+  M,M1,M2   : VAR IntervalMinMax
+  out       : VAR Output
+  precision : VAR posreal
+  prune,ge  : VAR ExitPred
+  le        : VAR LocalExitPred
+  select    : VAR DirVarSelector
+  acc       : VAR IntervalMinMax
+
+  evaluate(box,expr) : IntervalMinMax = 
+    LET X   = Eval(expr,box),
+        Lb  = Lbbox(box),
+        Ub  = Ubbox(box),   
+        P1  = Eval(expr,Lb),
+        P2  = Eval(expr,Ub),
+        (lb_max,lb_box) = IF ub(P1) < ub(P2) THEN (ub(P1),Lb) ELSE (ub(P2),Ub) ENDIF,
+        (ub_min,ub_box) = IF lb(P1) > lb(P2) THEN (lb(P1),Lb) ELSE (lb(P2),Ub) ENDIF IN
+    (# mm     := X,
+       lb_max := lb_max, 
+       lb_box := lb_box,
+       ub_min := ub_min,
+       ub_box := ub_box 
+    #)
+
+  branch(v,expr) : [RealExpr,RealExpr] = (expr,expr)
+  denorm(dirvar,M) : IntervalMinMax = M
+
+  combine(v,M1,M2) : IntervalMinMax = 
+    LET M_lb = IF M1`lb_max < M2`lb_max THEN M1 ELSE M2 ENDIF,
+        M_ub = IF M1`ub_min > M2`ub_min THEN M1 ELSE M2 ENDIF IN
+    (# mm     := Safe2(Union)(mm(M1),mm(M2)),
+       lb_max := M_lb`lb_max,
+       lb_box := M_lb`lb_box,
+       ub_min := M_ub`ub_min,
+       ub_box := M_ub`ub_box #)
+
+  % <= 0 : min
+  % >= 0 : max
+  min_or_max: VAR int
+
+  prune_mm(min_or_max)(dirvars,acc,M) : bool = 
+    (min_or_max <= 0 IMPLIES acc`lb_max <= lb(M`mm)) AND
+    (min_or_max >= 0 IMPLIES ub(M`mm) <= acc`ub_min)
+ 
+  le_mm(min_or_max,precision)(M) : bool =  
+    (min_or_max <= 0 IMPLIES LET lb = M`lb_max - lb(M`mm) IN lb <= precision) AND
+    (min_or_max >= 0 IMPLIES LET ub = ub(M`mm) - M`ub_min IN ub <= precision) 
+
+  ge_mm(dirvars,acc,M) : bool = EmptyInterval?(M`mm)
+
+  accumulate(acc,M) : IntervalMinMax = 
+    combine(0,acc,M)
+
+  subdivide(v,box) : [ProperBox,ProperBox] = split(v,box)
+
+  VarSel : TYPE = [# thisvar: nat, lb: real, ub: real, lbub: Interval #]
+
+  var_varsel(expr:RealExpr,box:ProperBox,both:bool,
+             Mb:listn[Interval](length(box)))
+            (v:below(length(box))) : VarSel =
+    LET X    = nth(box,v),
+    	lb   = IF both THEN lb(Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| lb(X) |]))) ELSE 0 ENDIF,
+    	ub   = IF both THEN ub(Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| ub(X) |]))) ELSE 0 ENDIF,
+	lbub = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval):X)) IN
+    (# thisvar  := v,
+       lb       := lb,
+       ub       := ub,
+       lbub     := lbub
+     #)
+
+  max_varsel(vs1,vs2:VarSel) : VarSel =
+    IF size(vs1`lbub) > size(vs2`lbub) THEN vs1
+    ELSE vs2
+    ENDIF
+
+  IMPORTING structures@for_iterate
+
+  both, dir : VAR bool
+
+  mindir_maxvar_aux(both:bool)(dirvars,acc,box,expr) : DirVar =
+    IF length(box) <= 1 THEN left(0)
+    ELSE 
+      LET Mb = Midbox(box), 
+          vs = iterate_left(0,length(box)-1,var_varsel(expr,box,both,Mb),max_varsel) IN
+      (vs`lb < vs`ub,vs`thisvar)
+    ENDIF
+
+  mindir_maxvar(dirvars,acc,box,expr) : DirVar =
+    mindir_maxvar_aux(TRUE)(dirvars,acc,box,expr)  
+    
+  maxdir_maxvar(dirvars,acc,box,expr) : DirVar =
+    LET (dir,v) = mindir_maxvar(dirvars,acc,box,expr) IN
+    (NOT dir,v)    
+
+  altdir_maxvar(dirvars,acc,box,expr) : DirVar =
+    LET (dir,v) = mindir_maxvar_aux(FALSE)(dirvars,acc,box,expr) IN
+      (even?(length(dirvars)),v)
+
+  dir_maxvar(dir)(dirvars,acc,box,expr) : DirVar =
+    LET v = mindir_maxvar_aux(FALSE)(dirvars,acc,box,expr)`2 IN
+      (dir,v)
+
+  max_rec(n:posnat,m:real,v:below(n),
+                 i:subrange(1,n),b:Box | n = length(b)+i) : RECURSIVE below(n) =
+    IF null?(b) THEN v
+    ELSE LET mm = size(car(b)) IN
+           IF mm > m THEN max_rec(n,mm,i,i+1,cdr(b)) 
+           ELSE max_rec(n,m,v,i+1,cdr(b))
+           ENDIF
+    ENDIF
+  MEASURE b BY <<
+
+  max_aux(box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE max_rec(length(box),size(car(box)),0,1,cdr(box))
+    ENDIF
+
+  dir_max(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,max_aux(box))
+
+  alt_max(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),max_aux(box))
+
+  altvar(dirvars,box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE mod(length(dirvars),length(box))
+    ENDIF
+
+  dir_alt(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,altvar(dirvars,box))
+
+  alt_alt(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),altvar(dirvars,box))
+
+  interval_minmax(maxdepth,select,le,ge,prune)(expr,box) : Output =
+    b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune,le,ge,
+               select,accumulate,maxdepth,expr,box)
+
+  VVars(dirvars,box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE mod(length(dirvars),4)
+    ENDIF
+
+  VMZ(dirvars,acc,box,expr) : DirVar = 
+    (True,VVars(dirvars,box))
+
+  sound?(box,expr,M) : bool = 
+    Proper?(M`mm) IMPLIES
+      (FORALL (vs:(vars_in_box?(box))): eval(expr,vs,length(box)) ## M`mm) AND
+      Inclusion?(M`lb_box,box) AND
+      Inclusion?(M`ub_box,box) AND
+      (FORALL (vs:(vars_in_box?(M`lb_box))): eval(expr,vs,length(box)) <= M`lb_max) AND
+      (FORALL (vs:(vars_in_box?(M`ub_box))): eval(expr,vs,length(box)) >= M`ub_min) 
+
+  interval_minmax_soundness : THEOREM
+    sound?(box,expr,interval_minmax(maxdepth,select,le,ge,prune)(expr,box)`ans)
+
+  numerical(maxdepth,precision,select,min_or_max)(expr,box) : Output =
+    interval_minmax(maxdepth,select,le_mm(min_or_max,precision),ge_mm,prune_mm(min_or_max))(expr,box)
+
+  numerical_soundness : THEOREM
+    sound?(box,expr,numerical(maxdepth,precision,select,min_or_max)(expr,box)`ans)
+
+END numerical_bandb

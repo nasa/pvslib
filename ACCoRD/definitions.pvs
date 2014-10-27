@@ -1,0 +1,265 @@
+%------------------------------------------------------------------------------
+% definitions.pvs
+% ACCoRD v1.0
+%------------------------------------------------------------------------------
+
+definitions : THEORY
+BEGIN
+
+  IMPORTING vectors@vectors_2D, 
+	    vectors@det_2D, 
+            vectors@closest_approach_2D,
+            reals@quad_minmax
+
+  s,v,w,
+  vo,vi,
+  vo1,vo2 : VAR Vect2
+  dir     : VAR Sign
+  nzs,nzv : VAR Nz_vect2
+  t,k,j   : VAR real
+  nzj     : VAR nzreal
+  t1,t2   : VAR nnreal
+  sz,vz   : VAR real
+  nzvz    : VAR nzreal
+
+  Entry  : MACRO Sign = -1
+  Exit   : MACRO Sign =  1
+
+  %------------------------------------------------------------------------------
+  % Horizontal Definitions
+  %------------------------------------------------------------------------------
+
+  %% horizontal_dir?(s,v,Entry) if s,v points towards (0,0)
+  %% horizontal_dir?(s,v,Exit) if s,v, points away from (0,0)
+
+  horizontal_dir?(s,v,dir) : MACRO bool =
+    dir*(s*v) >= 0
+
+  horizontal_dir_at?(s,v,t,dir) : MACRO bool =
+    horizontal_dir?(s+t*v,v,dir)
+
+  horizontal_entry?(s,v) : MACRO bool = 
+    horizontal_dir?(s,v,Entry)
+
+  horizontal_entry_at?(s,v,t) : MACRO bool =
+    horizontal_entry?(s+t*v,v)
+
+  horizontal_exit?(s,v)  : MACRO bool = 
+    horizontal_dir?(s,v,Exit)
+
+  horizontal_exit_at?(s,v,t) : MACRO bool =
+    horizontal_exit?(s+t*v,v)
+
+  horizontal_tangent?(s,v) : MACRO bool = 
+    s*v = 0
+
+  horizontal_diverging?(s,v) : MACRO bool =
+    s*v > 0 
+
+  horizontal_converging?(s,v) : MACRO bool =
+    s*v < 0
+
+  % Returns the eps that determines the closest horizontal tangent to relative 
+  % velocity vector v
+  horizontalCoordination(s,v) : Sign =
+    sign(det(v,s))
+
+  % HorizontalCoordinationConflict is an horizontal strategy
+  horizontalCoordination_symm : LEMMA
+    horizontalCoordination(-s,-v) = horizontalCoordination(s,v)
+
+  Horizontal_Strategy : TYPE+ = {f:[[Vect2,Vect2]->Sign]| FORALL (s,v):f(-s,-v)=f(s,v)} 
+
+  horizontalCoordination_strategy : JUDGEMENT
+    horizontalCoordination HAS_TYPE Horizontal_Strategy
+
+  % Time of closest approach
+  horizontal_tca(s,nzv) : real =
+    -(s*nzv)/sqv(nzv) 
+
+  horizontal_tca_gt_0 : LEMMA
+     horizontal_converging?(s,v) IMPLIES horizontal_tca(s,v) > 0
+
+  horizontal_tca_nzv_gt_0 : LEMMA
+     horizontal_converging?(s,nzv) IFF horizontal_tca(s,nzv) > 0
+
+  horizontal_tca_lt_0 : LEMMA
+     horizontal_diverging?(s,v) IMPLIES horizontal_tca(s,v) < 0
+
+  horizontal_tca_nzv_lt_0 : LEMMA
+     horizontal_diverging?(s,nzv) IFF horizontal_tca(s,nzv) < 0
+
+  horizontal_tca_dot_zero: LEMMA
+    (s+horizontal_tca(s,nzv)*nzv)*nzv = 0
+
+  % Square of distance at time of closest approach
+  horizontal_sq_dtca(s,nzv) : real = 
+    sq(det(s,nzv))/sqv(nzv)
+
+  horizontal_sq_dtca_eq : LEMMA
+    horizontal_sq_dtca(s,nzv) = sqv(s+horizontal_tca(s,nzv)*nzv)
+
+  horizontal_tca_min : LEMMA
+    horizontal_sq_dtca(s,nzv) <= sqv(s+t*nzv)
+
+  sqv_decreasing_before_horizontal_tca: LEMMA
+    LET htca = horizontal_tca(s,nzv) IN
+      FORALL (tr1,tr2:real): (tr1<=htca AND tr2<=htca) IMPLIES
+        (tr1<tr2 IFF sqv(s+tr1*nzv)>sqv(s+tr2*nzv))
+
+  sqv_increasing_after_horizontal_tca: LEMMA
+    LET htca = horizontal_tca(s,nzv) IN
+      FORALL (tr1,tr2:real): (tr1>=htca AND tr2>=htca) IMPLIES
+        (tr1>tr2 IFF sqv(s+tr1*nzv)>sqv(s+tr2*nzv))
+
+  % Velocity vector comparison with respect to a vector
+  le?(v)(vo1,vo2): bool =
+    norm(vo1-v) <= norm(vo2-v)
+
+  le_rel : LEMMA
+    le?(vo-vi)(vo1-vi,vo2-vi) IFF le?(vo)(vo1,vo2)
+
+  % Vdir is a vector perpendicular to nzs that points in the same 
+  % direction as v
+  Vdir(nzs,v) : Nz_vect2 =  
+    LET ps = perpR(nzs) IN
+    sign(ps*v)*ps
+
+  % Vdir(s,v) is perpendicular to s
+  Vdir_perp : LEMMA
+   nzs*Vdir(nzs,v) = 0
+
+  % W0(s,j) is a vector such that s*W0(s,j) = j
+  W0(nzs,j) : Vect2 =
+    (j/sqv(nzs))*nzs
+ 
+  W0_dot : LEMMA
+    nzs*W0(nzs,j) = j
+
+  nz_W0 : JUDGEMENT
+    W0(nzs,nzj) HAS_TYPE Nz_vect2
+
+  % W is a parametric vector that represents the equation: nzs*W=j
+  % if k is positive W points in the same direction as v
+  W(nzs,v,k)(j) : MACRO Vect2 = 
+    W0(nzs,j)+k*Vdir(nzs,v)
+
+  nz_W : JUDGEMENT
+    W(nzs,v,k)(nzj) HAS_TYPE Nz_vect2
+
+  W_dot : LEMMA
+    nzs*W(nzs,v,k)(j) = j
+
+  dot_W : LEMMA
+    nzs*w = j IFF
+    EXISTS (k) : w = W(nzs,v,k)(j) 
+
+  s_dot_Vdir_eq_0: LEMMA
+    nzs*Vdir(nzs,v) = 0
+
+  W0_dot_Vdir_eq_0: LEMMA
+    W0(nzs,j)*Vdir(nzs,v) = 0
+
+  norm_W0_ge: LEMMA
+    t1 >= t2 AND
+    j >= 0 IMPLIES
+    norm(nzs+t1*W0(nzs,j)) >= norm(nzs+t2*W0(nzs,j))
+
+  divergent?(s,v): MACRO bool =
+    divergent?(s,zero,v,zero)
+
+  dot_pos_divergent : LEMMA 
+    s * v > 0 IMPLIES divergent?(s,v)
+
+  dot_nneg_divergent: LEMMA
+    s*nzv >= 0 IFF divergent?(s,nzv)
+
+  gs(v) : nnreal = norm(v)
+
+  gs_nz : JUDGEMENT
+    gs(nzv) HAS_TYPE posreal
+
+  %%
+  %% Ground Speed Only Solutions 
+  %%
+
+  gs_only?(vo1)(vo2) : bool =
+    EXISTS (l:posreal): vo2 = l*vo1
+
+  gs_only_id : LEMMA
+    gs_only?(v)(v)
+
+  gs_only_scal : LEMMA
+    FORALL (l:posreal):
+      gs_only?(v)(l*v)
+
+  gs_only_symm : LEMMA
+    gs_only?(vo1)(vo2) IFF gs_only?(vo2)(vo1)
+
+  gs_only_trans : LEMMA
+    gs_only?(vo)(vo1) AND gs_only?(vo1)(vo2) IMPLIES
+    gs_only?(vo)(vo2)
+
+  gs_only_normalize : LEMMA
+    gs_only?(nzv)(v) IFF
+    EXISTS (k:posreal): v = k*^(nzv)
+
+  gs_only_zero_left : LEMMA
+    gs_only?(zero)(v) IFF v = zero
+
+  gs_only_zero_right : LEMMA
+    gs_only?(v)(zero) IFF v = zero
+
+  %%
+  %% Track Only Solutions 
+  %%
+
+  trk_only?(vo1)(vo2) : bool =
+    norm(vo2) = norm(vo1)
+
+  trk_only_id : LEMMA
+    trk_only?(v)(v)
+
+  trk_only_symm : LEMMA
+    trk_only?(vo1)(vo2) IFF trk_only?(vo2)(vo1)
+
+  trk_only_zero_left : LEMMA
+    trk_only?(zero)(v) IFF v = zero
+
+  trk_only_zero_right : LEMMA
+    trk_only?(v)(zero) IFF v = zero
+
+  %%
+  %% Optimal Solutions 
+  %%
+
+  optimal?(vo,nzv)(vo1) : bool =
+    FORALL (vo2) : parallel?(vo2-vo1,nzv) IMPLIES le?(vo)(vo1,vo2)
+
+  optimal_id : LEMMA
+     optimal?(vo,nzv)(vo)
+
+  %------------------------------------------------------------------------------
+  % Vertical Definitions
+  %------------------------------------------------------------------------------
+
+  %% vertical_dir?(sz,vz,Entry) if sz,vz points towards   0
+  %% vertical_dir?(sz,vz,Exit) if sz,vz points away from 0
+
+  vertical_dir?(sz,vz,dir) : MACRO bool =
+    dir*(sz*vz) >= 0
+
+  vertical_dir_at?(sz,vz,t,dir) : MACRO bool =
+    vertical_dir?(sz+t*vz,vz,dir)   
+
+  vertical_entry?(sz,vz) : MACRO bool = vertical_dir?(sz,vz,Entry)
+
+  vertical_exit?(sz,vz) : MACRO bool = vertical_dir?(sz,vz,Exit)
+
+  vertical_tau(sz,nzvz) : real = 
+    -sz/nzvz 
+
+  z_at_vertical_tau_eq_0 : LEMMA
+    sz + vertical_tau(sz,nzvz)*nzvz = 0
+
+END definitions

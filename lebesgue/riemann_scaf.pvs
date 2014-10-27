@@ -1,0 +1,270 @@
+%------------------------------------------------------------------------------
+% Scaffolding to connect Riemann and Lebesgue Integration
+%
+%     Author: David Lester, Manchester University
+%
+% Using the proof given in AJ Weir, "Lebesgue Integration and Measure"
+% CUP, 1973. Pages 51-53.
+%
+%     Version 1.0            1/5/09   Initial Version
+%------------------------------------------------------------------------------
+
+riemann_scaf[a:real,b:{x:real | a < x}]: THEORY
+
+BEGIN
+
+  IMPORTING
+    measure_integration@sup_norm[real],
+    analysis@integral_def[real],
+    analysis@integral_bounded[real],
+    analysis@integral_step[real],
+    analysis@integral_split_scaf[real],
+    analysis@integral[real],
+    lebesgue_def,
+    measure_integration@indefinite_integral[real,cal_M,lambda_],
+    reals@real_fun_orders[real],
+    ae_continuous_def,
+    sets_aux@countability[real] % Proof Only
+
+  c,l,x,y,z: VAR real
+  n,m: VAR nat
+
+  continuous_at?(f:[real->real],x):
+     MACRO bool= continuity_def.continuous_at?(f,x)
+
+  zeroed?(f:[real->real]):bool = FORALL (x:real): x < a OR b < x => f(x) = 0
+  step?(f:[real->real]):bool = step_function?(a,b,f) AND zeroed?(f)
+  zeroed_bounded?(f:[real->real]):bool = sup_norm.bounded?(f) AND zeroed?(f)
+
+  step:    TYPE+ = (step?)           CONTAINING (lambda x: 0)
+  bounded: TYPE+ = (zeroed_bounded?) CONTAINING (lambda x: 0)
+
+  IMPORTING
+    structures@fun_preds_partial[nat,step,
+                      restrict[[real, real], [nat, nat], boolean](reals.<=),
+                      (real_fun_orders.<=)]
+  P,P1,P2: VAR partition(a,b)
+  PS: VAR sequence[partition(a,b)]
+  epsilon: VAR posreal
+  X:   VAR set[real]
+  g:   VAR [real->real]
+  f,f1,f2: VAR bounded
+  phi,psi: VAR step
+  Phi: VAR (increasing?[nat,step,
+                        restrict[[real, real], [nat, nat], boolean](reals.<=),
+                        (real_fun_orders.<=)])
+  Psi: VAR (decreasing?[nat,step,
+                        restrict[[real, real], [nat, nat], boolean](reals.<=),
+                        (real_fun_orders.<=)])
+
+% The following converts a partion (as defined in analysis@integral_def)
+% into a finite partition (as defined in integration@isf).
+
+  partition_to_finite_partition(P):finite_partition
+    = union(union(singleton({x | x < a}),
+                  singleton({x | b < x})),
+            union({X | EXISTS (i:below(length(P))): X = singleton(seq(P)(i))},
+                  {X | EXISTS (i:below(length(P)-1)):
+                         X = {x | seq(P)(i) < x AND x < seq(P)(i+1)}}))
+
+% Note carefully: the step functions defined in analysis@integral_def
+% are constant over OPEN intervals. They are therefore simple functions
+% (as defined in measure_theory@measure_space).
+%
+% Put simply: step_function? => simple?, but not vice versa.
+%
+%  Consider f = phi(fullset[rational])
+%  Then simple?(phi({x | a <= x AND x <= b})*f), but
+%       NOT step_function?(a,b,f)
+
+  riemann_lebesgue_step_isf: LEMMA
+    Integrable?(a,b,phi) AND isf?(phi) AND
+    Integral(a,b,phi) = isf_integral(phi)
+
+  riemann_lebesgue_step_integrable: LEMMA                          % A(ii) p51
+    Integrable?(a,b,phi) AND integrable?(phi) AND
+    Integral(a,b,phi) = integral(phi)
+
+  step_function_is_simple:  JUDGEMENT step SUBTYPE_OF simple
+  step_function_is_bounded: JUDGEMENT step SUBTYPE_OF bounded
+
+  lower_step_exists: LEMMA EXISTS phi: phi <= f
+  upper_step_exists: LEMMA EXISTS psi: f <= psi
+
+  lower_riemann_integral(f):real
+    = sup({z | EXISTS phi: phi <= f AND z = integral(phi)})
+
+  upper_riemann_integral(f):real
+    = inf({z | EXISTS psi: f <= psi AND z = integral(psi)})
+
+  lower_riemann_prop1: LEMMA EXISTS phi: phi <= f AND
+                              integral(phi) > lower_riemann_integral(f)-epsilon
+
+  upper_riemann_prop1: LEMMA EXISTS psi: f <= psi AND
+                              integral(psi) < upper_riemann_integral(f)+epsilon
+
+  lower_riemann_prop2: LEMMA phi <= f =>
+                             integral(phi) <= lower_riemann_integral(f)
+
+  upper_riemann_prop2: LEMMA f <= psi =>
+                             upper_riemann_integral(f) <= integral(psi)
+
+  lower_upper_riemann_prop: LEMMA                                  % A(i) p51
+       lower_riemann_integral(f) <= upper_riemann_integral(f)
+
+  riemann_integrable_def1: LEMMA
+       Integrable?(a,b,f) IFF
+       lower_riemann_integral(f) = upper_riemann_integral(f)
+
+  riemann_integrable_def2: LEMMA Integrable?(a,b,f) =>
+       Integral(a,b,f) = lower_riemann_integral(f)
+
+  ii_of_x(P)(x:{x | a <= x AND x < b}): below(length(P)-1)
+    = choose[below(length(P)-1)]({ii:below(length(P)-1) |
+                                         seq(P)(ii) <= x AND x < seq(P)(ii+1)})
+
+  ii_of_x_def: LEMMA FORALL (x:{x | a <= x AND x < b},ii:below(length(P)-1)):
+      ii_of_x(P)(x) = ii IFF seq(P)(ii) <= x AND x < seq(P)(ii+1)
+
+  ii_of_x_prop: LEMMA FORALL (x,y:{x | a <= x AND x < b}):
+      ii_of_x(P)(x) = ii_of_x(P)(y) IFF 
+      EXISTS (ii:below(length(P)-1)):
+             seq(P)(ii) <= x AND x < seq(P)(ii+1) AND
+             seq(P)(ii) <= y AND y < seq(P)(ii+1)
+
+  part_set_of(P)(x:{x | a <= x AND x < b}):(nonempty?[real])
+    = {y | seq(P)(ii_of_x(P)(x)) < y AND y < seq(P)(ii_of_x(P)(x)+1)}
+
+  part_set_of_prop: LEMMA a <= x AND x < b AND
+                          (NOT EXISTS (ii:below(length(P)-1)): x = seq(P)(ii))
+                        =>
+                          member[real](x,part_set_of(P)(x))
+
+  lower_step(f,P):step                                              % C p52
+    = lambda x: IF x < a OR b < x THEN 0
+                ELSIF in_part?(a,b,P,x) OR x = b THEN f(x)
+                ELSE inf(image(f,part_set_of(P)(x))) ENDIF
+
+  lower_step(f)(P):step = lower_step(f,P)
+
+  upper_step(f,P):step
+    = lambda x: IF x < a OR b < x THEN 0
+                ELSIF in_part?(a,b,P,x) OR x = b THEN f(x)
+                ELSE sup(image(f,part_set_of(P)(x))) ENDIF
+
+  upper_step(f)(P):step = upper_step(f,P)
+
+  lower_step_prop: LEMMA lower_step(f,P) <= f
+  upper_step_prop: LEMMA f <= upper_step(f,P)
+
+  lower_step_neg: LEMMA lower_step(-f,P) = -upper_step(f,P)
+
+% Probably not needed..
+  lower_step_part: LEMMA step_function_on?(a,b,lower_step(f,P),P)
+
+  riemann_sequence: LEMMA                                           % B p52
+       (FORALL n: Phi(n) <= f AND f <= Psi(n)) AND
+       convergence?(integral o (Psi-Phi),0)     =>
+       EXISTS l: convergence?(integral o Psi, l) AND
+                 convergence?(integral o Phi, l) AND
+                 Integrable?(a,b,f)              AND
+                 Integral(a,b,f) = l
+
+  part_norm(P):posreal = width(a,b,P)
+
+  lower_step_error: LEMMA
+    phi = lower_step(f,P1) AND
+    psi = lower_step(f,P2) =>
+    integral(psi) >= integral(phi) - (length(P1)-2)*2*sup_norm(f)*part_norm(P2)
+
+  darboux: THEOREM                                                  % C p52-3
+    convergence?(part_norm o PS,0) =>
+    (convergence?(integral o lower_step(f) o PS, lower_riemann_integral(f)) AND
+     convergence?(integral o upper_step(f) o PS, upper_riemann_integral(f)))
+
+  part_refines?(P1,P2):bool
+    = FORALL (ii:below(length(P1)-1)):
+         EXISTS (jj:below(length(P2)-1)):
+            seq(P2)(jj) <= seq(P1)(ii) AND seq(P1)(ii+1) <= seq(P2)(jj+1)
+
+  partition_2n(n):partition(a,b) = eq_partition(a,b,2^n+1)
+
+  part_norm_partition_2n: LEMMA part_norm(partition_2n(n)) = (b-a)/2^n
+  partion_2n_refines: LEMMA n <= m =>
+                            part_refines?(partition_2n(m),partition_2n(n))
+
+  lower_refines: LEMMA part_refines?(P2,P1) =>
+                       lower_step(f,P1) <= lower_step(f,P2)
+  upper_refines: LEMMA part_refines?(P2,P1) =>
+                       upper_step(f,P2) <= upper_step(f,P1)
+
+  continuous_step: LEMMA continuous_at?(f,x) =>
+        EXISTS n: LET phi = lower_step(f,partition_2n(n)) IN
+                  f(x) - epsilon <= phi(x)
+
+  partition_2n_interior:set[real]
+    = {x | a < x AND x < b AND NOT EXISTS n,m: x = ((b-a)*n)/2^m+a}
+
+  partition_2n_exterior:set[real]
+    = {x | a <= x AND x <= b AND EXISTS n,m: x = ((b-a)*n)/2^m+a}
+
+  countable_2n_exterior: LEMMA is_countable(partition_2n_exterior)
+
+  partition_2n_ext_int_disjoint: LEMMA
+      disjoint?(partition_2n_interior,partition_2n_exterior)
+
+  partition_2n_ext_int_union: LEMMA
+      union(partition_2n_interior,partition_2n_exterior) = closed(a,b)
+
+  lower_limit_n(f:bounded,x:(partition_2n_interior))(n):real
+    = inf(image(f,part_set_of(partition_2n(n))(x)))
+
+  upper_limit_n(f:bounded,x:(partition_2n_interior))(n):real
+    = sup(image(f,part_set_of(partition_2n(n))(x)))
+
+  lower_limit_n_prop: LEMMA partition_2n_interior(x) =>
+      lower_limit_n(f,x)(n) = lower_step(f,partition_2n(n))(x)
+
+  upper_limit_n_prop: LEMMA partition_2n_interior(x) =>
+      upper_limit_n(f,x)(n) = upper_step(f,partition_2n(n))(x)
+
+  lower_limit(f)(x):real
+    = IF NOT partition_2n_interior(x) THEN f(x)
+      ELSE sup(image(lower_limit_n(f,x),fullset[nat])) ENDIF
+
+  upper_limit(f)(x):real
+    = IF NOT partition_2n_interior(x) THEN f(x)
+      ELSE inf(image(upper_limit_n(f,x),fullset[nat])) ENDIF
+
+  lower_limit_prop: LEMMA
+      lower_step(f,partition_2n(n))(x) <= lower_limit(f)(x) AND
+      lower_limit(f)(x) <= f(x)
+
+  upper_limit_prop: LEMMA
+      f(x) <= upper_limit(f)(x) AND
+      upper_limit(f)(x) <= upper_step(f,partition_2n(n))(x)
+
+  continuous_at_prop: LEMMA partition_2n_interior(x) =>
+      (continuous_at?(f,x) <=> upper_limit(f)(x) = lower_limit(f)(x))
+
+  lower_limit_integrable: LEMMA
+      integrable?(lower_limit(f)) AND
+      integral(lower_limit(f)) = lower_riemann_integral(f)
+
+  upper_limit_integrable: LEMMA
+      integrable?(upper_limit(f)) AND
+      integral(upper_limit(f)) = upper_riemann_integral(f)
+
+  ae_continuity_implies_integrable: LEMMA                          % Thm 1, P47
+      ae_continuous?(a,b,f) => integrable?(f)
+
+  ae_continuity_implies_Integrable: LEMMA
+      ae_continuous?(a,b,f) => Integrable?(a,b,f)
+
+  Integrable_implies_ae_continuity: LEMMA
+      Integrable?(a,b,f) => ae_continuous?(a,b,f)
+
+  ae_continuity_implies_integrals: LEMMA
+      ae_continuous?(a,b,f) => integral(f) = Integral(a,b,f)
+
+END riemann_scaf

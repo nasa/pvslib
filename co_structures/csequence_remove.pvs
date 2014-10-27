@@ -1,0 +1,122 @@
+%-----------------------------------------------------------------------------
+% Remove an element from a sequence of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_remove[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_nth[T]
+
+  t: VAR T
+  p: VAR pred[T]
+  index, n, m: VAR nat
+  cseq, cseq1, cseq2: VAR csequence
+  nseq: VAR nonempty_csequence
+  fseq: VAR finite_csequence
+  iseq: VAR infinite_csequence
+
+  % Remove the element at position index in cseq.  If index >= length(cseq),
+  % then we give back the original sequence.
+  remove(cseq, index): RECURSIVE csequence =
+    IF empty?(cseq) THEN cseq
+    ELSIF index = 0 THEN rest(cseq)
+    ELSE add(first(cseq), remove(rest(cseq), index - 1))
+    ENDIF
+     MEASURE index
+
+  remove_finite: JUDGEMENT remove(fseq, index) HAS_TYPE finite_csequence
+
+  remove_infinite: JUDGEMENT remove(iseq, index) HAS_TYPE infinite_csequence
+
+  remove_0: THEOREM FORALL nseq: remove(nseq, 0) = rest(nseq)
+
+  remove_empty: THEOREM
+    FORALL cseq, index:
+      empty?(remove(cseq, index)) IFF
+       empty?(cseq) OR (index = 0 AND empty?(rest(cseq)))
+
+  remove_nonempty: THEOREM
+    FORALL cseq, index:
+      nonempty?(remove(cseq, index)) IFF
+       nonempty?(cseq) AND (index > 0 OR nonempty?(rest(cseq)))
+
+  remove_first: THEOREM
+    FORALL cseq, index:
+      nonempty?(remove(cseq, index)) IMPLIES
+       first(remove(cseq, index)) =
+        IF index = 0 THEN first(rest(cseq)) ELSE first(cseq) ENDIF
+
+  remove_rest: THEOREM
+    FORALL nseq, index:
+      nonempty?(remove(nseq, index)) IMPLIES
+       rest(remove(nseq, index)) =
+        IF index = 0 THEN rest(rest(nseq))
+        ELSE remove(rest(nseq), index - 1)
+        ENDIF
+
+  remove_upfrom_length: THEOREM
+    FORALL fseq, (index: upfrom[length(fseq)]): remove(fseq, index) = fseq
+
+  remove_length: THEOREM
+    FORALL fseq, index:
+      length(remove(fseq, index)) =
+       length(fseq) - IF index?(fseq)(index) THEN 1 ELSE 0 ENDIF
+
+  remove_index: THEOREM
+    FORALL index, cseq, n:
+      index?(remove(cseq, index))(n) IFF
+       index?(cseq)(n) AND
+        NOT (is_finite(cseq) AND
+              n = length(cseq) - 1 AND index?(cseq)(index))
+
+  remove_nth: THEOREM
+    FORALL cseq, n, (m: indexes(remove(cseq, n))):
+      nth(remove(cseq, n), m) = nth(cseq, m + IF m < n THEN 0 ELSE 1 ENDIF)
+
+  remove_add: THEOREM
+    FORALL cseq, index, t:
+      add(t, remove(cseq, index)) = remove(add(t, cseq), index + 1)
+
+  remove_last: THEOREM
+    FORALL fseq, index:
+      nonempty?(remove(fseq, index)) IMPLIES
+       last(remove(fseq, index)) =
+        IF index = length(fseq) - 1 THEN nth(fseq, index - 1)
+        ELSE last(fseq)
+        ENDIF
+
+  remove_remove: THEOREM
+    FORALL cseq, n, m:
+      remove(remove(cseq, n), m) =
+       IF n <= m THEN remove(remove(cseq, m + 1), n)
+       ELSE remove(remove(cseq, m), n - 1)
+       ENDIF
+
+  remove_extensionality: THEOREM
+    FORALL cseq1, cseq2, n:
+      remove(cseq1, n) = remove(cseq2, n) AND
+       ((NOT index?(cseq1)(n) AND NOT index?(cseq2)(n)) OR
+         (index?(cseq1)(n) AND
+           index?(cseq2)(n) AND nth(cseq1, n) = nth(cseq2, n)))
+       IMPLIES cseq1 = cseq2
+
+  remove_some: THEOREM
+    FORALL cseq, index, p:
+      some(p)(remove(cseq, index)) IFF
+       (EXISTS (n: indexes(cseq)): n /= index AND p(nth(cseq, n)))
+
+  remove_every: THEOREM
+    FORALL cseq, index, p:
+      every(p)(remove(cseq, index)) IFF
+       (FORALL (n: indexes(cseq)): n = index OR p(nth(cseq, n)))
+
+ END csequence_remove

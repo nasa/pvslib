@@ -1,0 +1,131 @@
+%% Examples of use of PVSio 6.0
+%% Cesar Munoz 
+%% http://shemesh.larc.nasa.gov/people/cam/PVSio
+%% NASA LaRC
+
+pvsio_examples : THEORY
+BEGIN
+
+  %% PVSio is useful for ..
+
+  %% printing to stdout 
+  hello_world : void =
+    println("+"+pad(50,"-")+"+") &
+    println("|"+center(50,"Hello World")+"|")&
+    print("+"+pad(50,"-")+"+") 
+
+  %% formatted printing
+  pp : void =
+    LET l = (: 1,2,3,4 :),
+        b = odd?(length(l)),
+        n = (12/7)^5,
+        r = (# x:= 1, y:= 2 #) IN
+    printf("A PVS list: ~a, Boolean: ~a, and number: ~a~%",(l,b,n)) &
+    printf("A formatted list: ~{~a~^,~}~%",{|l|}) &
+    printf("A formatted Boolean: ~:[is false~;is true~]~%",{|b|}) &
+    printf("A formatted number: ~,2f~%",n) &
+    printf("A PVS record: ~a~%",r)  &
+    print("... and most Common Lisp format's directives.");
+
+  %% reading from stdin and assert the input
+  hello_you : void =
+     LET s = query_line("What is your name?") IN
+     println("Hola "+s) &
+     LET r = query_real(s+", give me a non-negative real number:") IN
+     assert(r>=0,"Sorry, "+r+" is < 0") &
+     print("The sqrt of "+r+" is: "+SQRT(r))
+
+  %% catching exceptions
+  hello_catch : void = 
+    catch(NotARealNumber,
+          hello_you,
+          LAMBDA(e:Exception[string]):println(tag(e)+": "+val(e)))
+
+  %% reading files (the imperative way)
+  cat : void =
+    let f=fopenin("pvsio_examples.pvs") in
+    while(not eof?(f),println(fread_line(f))) &
+    fclose(f)
+
+  %% reading files (the functional way)
+  more(n:nat) : void =
+    let f = fopenin("pvsio_examples.pvs") in
+    try(forall(i:below(n)):
+        if not eof?(f) then 
+          println(fread_line(f)) 
+        else 
+          fail
+        endif,
+        fclose(f))
+
+  %% iterating a function on a file 
+  copy : void =
+    let f  = fopenout(create,"pvsio_examples.copy") in
+    let nf = fmap_line(fopenin("pvsio_examples.pvs"),
+                       1,
+                       lambda(s:string,l:nat):
+                         prog(fprintf(f,"[~3,'0d]~a~%",(l,s)),l+1)) in
+    print("*** Check the content of pvsio_examples.copy in the working directory") &
+    fclose(f)
+
+  %% defining mutable variables
+  woow(x:int) : void =
+    let lvar = ref[int](x) in
+    println("The value of lvar is: "+val(lvar)) &
+    set[int](lvar,x+1) &
+    print("The new value of lvar is: "+val(lvar))
+
+  %% declaring global variables
+  gvar : Global[int,0]
+
+  WOOW(x:int) : void =
+    println("The original of gvar is: "+val(gvar)) &
+    set(gvar,x) &
+    print("The value of gvar is: "+val(gvar))
+
+  %% catching exceptions
+  mysqrt(r:real):real = 
+    catch(NotARealNumber,
+          SQRT(r),
+          0)
+
+  %% throwing and catching exceptions 
+  int_aux : int =
+    let i = query_int("Enter a number less than 10") in
+    if i > 10 then throw("GreaterThan10")
+    else i
+    endif
+
+  readupto10 : int =  
+    catch[int]((:NotAnInteger,"GreaterThan10":),
+	       int_aux,0)
+
+  %% PVS parsing and printing
+
+  Point : TYPE = [# x : real, y: real #]
+
+  zero : Point = str2pvs("(# x := 0, y:= 0#)")
+   
+  rec2str(p:Point):string = pvs2str(p)
+
+  %% ... and many other things.
+  % But, semantic attachments may produce surprising results:
+
+  paradox: bool =
+    (RANDOM=RANDOM) % often evaluates to FALSE!
+
+  noparadox: bool =
+    LET r = RANDOM IN
+      r = r         % evaluates to TRUE
+
+  thefact : LEMMA 
+    RANDOM = RANDOM % is trivially TRUE!
+
+  %%% Welcome message printed by make examples
+  welcome : void =
+    println("+"+pad(50,"-")+"+") &
+    println("|"+center(50,pvsio_version)+"|")&
+    println("|"+center(50,date)+"|")&
+    print("+"+pad(50,"-")+"+") 
+    
+END pvsio_examples

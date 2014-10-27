@@ -1,0 +1,139 @@
+uniform_continuity[S:Type+,ds:[S,S->nnreal],
+                   T:Type+,dt:[T,T->nnreal]]: THEORY
+%------------------------------------------------------------------------------
+% Compactness
+%
+%     Authors: Ricky Butler,       NASA Langley
+%              Anthony Narkawicz,  NASA Langley
+%
+%     Version 1.0         8/25/2009  Initial Version
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING IMPORTING metric_spaces_def
+
+       fullset_S_metric_space: ASSUMPTION metric_space?[S,ds](fullset[S])
+       fullset_T_metric_space: ASSUMPTION metric_space?[T,dt](fullset[T])
+
+   ENDASSUMING
+
+
+   ds_eq_0    : LEMMA FORALL (x,y: S)  : x = y IFF ds(x,y) = 0
+   ds_sym     : LEMMA FORALL (x,y: S)  : ds(x,y)  = ds(y,x)
+   ds_triangle: LEMMA FORALL (x,y,z: S): ds(x,z) <= ds(x,y) + ds(y,z)
+   dt_eq_0    : LEMMA FORALL (x,y: T)  : dt(x,y)  = 0 IFF x = y
+   dt_sym     : LEMMA FORALL (x,y: T)  : dt(x,y)  = dt(y,x)
+   dt_triangle: LEMMA FORALL (x,y,z: T): dt(x,z) <= dt(x,y) + dt(y,z)
+
+   epsilon, delta: VAR posreal
+
+   uniformly_continuous?(f: [S -> T], A: set[S]):bool = 
+     FORALL epsilon: EXISTS delta: 
+           (FORALL (x,p: (A)): 
+               ds(x,p) < delta IMPLIES dt(f(x),f(p)) < epsilon)
+
+
+    IMPORTING continuity_ms[S,ds,T,dt],
+               compactness[S,ds],
+	       compactness[T,dt]
+
+
+   f: VAR [S -> T]
+   A: VAR set[S]
+
+
+   % Uniform continuity is a stronger concept than continuity
+
+   unif_cont_implies_cont: LEMMA uniformly_continuous?(f,A) IMPLIES
+   			   	 continuous?(f,A)
+
+
+
+
+
+
+   Hset(A: set[S], epsilon: posreal, f): set[[S,posreal]] = 
+            { p: [a: S, r: posreal] | 
+                        LET (a,r) = p IN A(a) AND 
+                             FORALL (x: S): intersection(ball(a,2*r),A)(x)
+                                            IMPLIES dt(f(x),f(a)) < epsilon}
+
+   Hset_def: LEMMA continuous?(f,A) IMPLIES
+               FORALL (x:(A)): EXISTS (p: [a: (A), r: posreal]): 
+                  LET B = ball[S,ds](p) IN
+           Hset(A,epsilon,f)(p) AND B(x)
+
+   ball_cover(A: set[S], epsilon: posreal,f): set[set[S]] =
+              ball_covering(Hset(A,epsilon,f))
+
+   ball_cover_lem: LEMMA continuous?(f,A) IMPLIES
+                         open_cover?(ball_cover(A,epsilon,f),A)
+
+
+   Y: VAR set[set[S]]
+   K: VAR set[S]
+
+   compact_ball_all: LEMMA continuous?(f,A) AND compact?(A) 
+      IMPLIES 
+          (FORALL (epsilon: posreal): 
+              FORALL (a: (A)):
+                 EXISTS (r: posreal) : 
+                    FORALL (x: S): intersection(ball(a,r),A)(x)
+                                  IMPLIES dt(f(x),f(a)) < epsilon)
+
+   rset_prep: LEMMA  continuous?(f,A) AND compact?(A) IMPLIES
+      open_cover?[S, ds](ball_covering[S, ds](Hset(A, epsilon, f)), A);
+
+
+   continuous_funs(A): TYPE = {f: [S->T] | continuous?(f,A)}
+
+   rset(A: (compact?[S,ds]), epsilon: posreal, f: continuous_funs(A)): set[posreal] =
+              LET (N,seq) = idxCover(A, Hset(A,epsilon,f)) IN
+                 {r: posreal | EXISTS (i: below[N]): 
+                     LET (a,R) = seq(i) IN r = R}
+
+   r: VAR posreal
+   rset_lem: LEMMA continuous?(f,A) AND compact?(A) AND
+                   rset(A,epsilon,f)(r) IMPLIES
+                      LET (N,seq) = idxCover(A,Hset(A,epsilon,f)) IN
+                           EXISTS (i: below[N]): r = seq(i)`2               
+                   
+  
+   IMPORTING finite_sets_aux[posreal]
+
+   rset_finite: LEMMA continuous?(f,A) AND compact?(A) IMPLIES
+                       is_finite[posreal](rset(A, epsilon, f))
+
+
+   rset_not_empty: LEMMA continuous?(f,A) AND compact?(A) AND NOT empty?(A) AND
+                          open_cover?(ball_cover(A, epsilon, f), A)
+              IMPLIES
+                      NOT empty?[posreal](rset(A, epsilon, f))
+
+
+
+   % Apostol 4.47 (pg 91)
+
+   IMPORTING finite_sets@finite_sets_minmax[posreal,<=]
+
+   Heine: THEOREM 
+      continuous?(f,A) AND compact?(A) AND NOT empty?(A)
+      IMPLIES uniformly_continuous?(f,A)
+
+   % An equivalent, sequence definition of uniform
+
+   IMPORTING prelude_sets_aux
+
+   uniform_continuity_sequence: LEMMA NOT uniformly_continuous?[S,ds,T,dt](f,A)
+     		    IFF (EXISTS (epsilon: posreal): EXISTS (seq: [posint -> [S,S]]):
+		        FORALL (n: posint): (A(seq(n)`1) AND A(seq(n)`2) AND
+			       	   	    ds(seq(n)`1,seq(n)`2) < 1/n AND
+			       	   	    dt(f(seq(n)`1),f(seq(n)`2)) > epsilon))
+
+
+  continuous_image_of_compact: THEOREM compact?(A) AND continuous?(f)
+   IMPLIES compact?(image(f,A))
+
+
+END uniform_continuity

@@ -1,0 +1,109 @@
+%------------------------------------------------------------------------------
+%    Loss of Separation Criterion: Vertical
+%
+%    Authors: Anthony Narkawicz
+%    	      Cesar Munoz
+%   
+%------------------------------------------------------------------------------
+vertical_los_criterion[D,H: posreal] : THEORY                        
+BEGIN
+
+  IMPORTING vertical[H],
+  	    space_3D[D,H]
+
+  vo,vi,
+  nvi,nvo,
+  v,nv,
+  s,so,si : VAR Vect3
+  t,t1,t2,
+  tm      : VAR real
+  tr      : VAR posreal %% Parameter that specifies maximum time to recover
+  eps	  : VAR Sign
+  tn	  : VAR nnreal
+  sz,vz,
+  nvz,
+  voz,viz,
+  nvoz,
+  nviz,
+  soz,siz : VAR real
+  MinRelVertSpeed,
+  MinRelVertSpeedo,
+  MinRelVertSpeedi: VAR posreal
+
+  vertical_sep_after(sz,vz)(tm): bool = 
+    FORALL (t): t>=tm IMPLIES
+    vertical_sep_at?(sz,vz,t)
+
+  vs_bound_crit?(s,v,eps)(nv): bool =
+    IF eps*v`z>0
+      THEN (eps*nv`z>=eps*v`z) AND eps*v`z*(vect2(nv)*vect2(s)) - eps*nv`z*(vect2(v)*vect2(s)) >= 0
+    ELSE eps*nv`z>=0
+    ENDIF
+
+
+  %% This criterion is not proven. It's intended to be used in kinematic/iterative code
+  %% as opposed to vertical_los_criterion?, which should only used in state-based/instantaneous
+  %% maneuver algorithms. This criterion is like vs_bound_crit? but removes the else branch
+  %% that restricts some vertical maneuvers [CAM]
+  horizontal_new_repulsive_criterion?(s,v,eps)(nv): bool =
+    (eps*nv`z>=eps*v`z) AND eps*v`z*(vect2(nv)*vect2(s)) - eps*nv`z*(vect2(v)*vect2(s)) >= 0
+
+  %%% vs_bound_crit? can be described as follows. There is a plane that contains v
+  %%% and the vector (perpR(vect2(v)),0) (i.e. (v`y,-v`x,0)). This plane has equation
+  %%% (v`x*v`z, v`y*v`z, -sqv(v))*nv = 0. So nv is in the eps-direction above/below
+  %%% this plane if -eps*v`z*(vect2(nv)*vect2(v)) + eps*nv`z*sqv(vect2(v)) >=0.
+
+  time_vertical_exit_by(sz,vz,eps,MinRelVertSpeed): {x:real | MinRelVertSpeed>0 AND abs(sz)<H IMPLIES x>0} =
+    IF eps*vz <= 0 THEN Theta_H(sz,eps*MinRelVertSpeed,1)
+    ELSE min(Theta_H(sz,eps*MinRelVertSpeed,1),Theta_H(sz,vz,1))
+    ENDIF
+
+  time_vertical_exit_by_symm: LEMMA time_vertical_exit_by(-sz,-vz,-eps,MinRelVertSpeed) =
+  			            time_vertical_exit_by(sz,vz,eps,MinRelVertSpeed)
+
+  %%% minimum speed for exiting, considering current speed.
+
+  min_rel_vert_speed(sz,vz,eps,MinRelVertSpeed): {x:nnreal | abs(sz)<H IMPLIES x>0} =
+    IF eps*vz <=0 THEN MinRelVertSpeed
+    ELSE max(MinRelVertSpeed,abs(vz)) ENDIF
+
+  min_rel_vert_speed_symm: LEMMA min_rel_vert_speed(-sz,-vz,-eps,MinRelVertSpeed) =
+  			   	 min_rel_vert_speed(sz,vz,eps,MinRelVertSpeed)
+
+  vs_bound_crit_indep: LEMMA
+    vs_bound_crit?(s,v,eps)(nv) AND
+    vect2(s)*vect2(v) < 0 AND vect2(s)*vect2(nv) < 0 IMPLIES
+    norm(vect2(s+horizontal_tca(s,nv)*nv)) > norm(vect2(s+horizontal_tca(s,v)*v)) OR
+    eps*(s+horizontal_tca(s,nv)*nv)`z >= eps*(s+horizontal_tca(s,v)*v)`z
+    
+  vs_bound_crit_coord: LEMMA
+    vs_bound_crit?(so-si,vo-vi,eps)(nvo-vi) AND
+    vs_bound_crit?(si-so,vi-vo,-eps)(nvi-vo) IMPLIES
+    vs_bound_crit?(so-si,vo-vi,eps)(nvo-nvi)
+
+  vs_bound_dir: LEMMA
+    vs_bound_crit?(s,v,eps)(nv) IMPLIES
+    eps*nv`z>=0
+
+  vertical_los_criterion?(s,v,eps,MinRelVertSpeed)(nv): bool =
+      abs(s`z)<H AND
+      vs_bound_crit?(s,v,eps)(nv) AND
+      eps*nv`z >= min_rel_vert_speed(s`z,v`z,eps,MinRelVertSpeed)
+
+  vertical_los_criterion_coord: LEMMA
+    vertical_los_criterion?(s,vo-vi,eps,MinRelVertSpeedo)(nvo-vi) AND
+    vertical_los_criterion?(-s,vi-vo,-eps,MinRelVertSpeedi)(nvi-vo) IMPLIES
+    vertical_los_criterion?(s,vo-vi,eps,max(MinRelVertSpeedo,MinRelVertSpeedi))(nvo-nvi)
+
+  vertical_sep_after_def: LEMMA
+    abs(sz)<H AND vertical_sep_at?(sz,vz,tr)
+    IMPLIES
+    vertical_sep_after(sz,vz)(tr)
+
+  z_los_vertical_sep: LEMMA
+    vertical_los_criterion?(s,v,eps,MinRelVertSpeed)(nv)
+    IMPLIES
+    LET teb = time_vertical_exit_by(s`z,v`z,eps,MinRelVertSpeed)
+    IN  vertical_sep_after(s`z,nv`z)(teb)
+
+END vertical_los_criterion

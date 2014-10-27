@@ -1,0 +1,134 @@
+%-----------------------------------------------------------------------------
+% Concatenation (or composition) of sequences of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_concatenate[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_nth[T]
+  IMPORTING csequence_codt_coreduce[T, [csequence, csequence]]
+
+  n: VAR nat
+  t: VAR T
+  p: VAR pred[T]
+  cseq, cseq1, cseq2: VAR csequence
+  fseq, fseq1, fseq2: VAR finite_csequence
+  iseq: VAR infinite_csequence
+  eseq: VAR empty_csequence
+  nseq, nseq1, nseq2: VAR nonempty_csequence
+
+  % Note that this definition makes the concatenation of an infinite
+  % sequence with another sequence be just the first sequence.
+
+  concatenate_struct(cseq1, cseq2): csequence_struct =
+      IF empty?(cseq1)
+        THEN IF empty?(cseq2) THEN inj_empty_cseq
+             ELSE inj_add(first(cseq2), (cseq1, rest(cseq2)))
+             ENDIF
+      ELSE inj_add(first(cseq1), (rest(cseq1), cseq2))
+      ENDIF;
+
+  o(cseq1, cseq2): csequence = coreduce(concatenate_struct)(cseq1, cseq2)
+
+  o_finite: JUDGEMENT o(fseq1, fseq2) HAS_TYPE finite_csequence
+
+  % This lemma lets us avoid nearly identical proofs for the next 2 judgements
+  o_finiteness: LEMMA
+    FORALL cseq1, cseq2:
+      is_finite(cseq1 o cseq2) IMPLIES is_finite(cseq1) AND is_finite(cseq2)
+
+  o_infinite1: JUDGEMENT o(iseq, cseq) HAS_TYPE infinite_csequence
+  o_infinite2: JUDGEMENT o(cseq, iseq) HAS_TYPE infinite_csequence
+
+  o_empty: THEOREM
+    FORALL cseq1, cseq2:
+      empty?(cseq1 o cseq2) IFF empty?(cseq1) AND empty?(cseq2)
+
+  o_nonempty: COROLLARY
+    FORALL cseq1, cseq2:
+      nonempty?(cseq1 o cseq2) IFF nonempty?(cseq1) OR nonempty?(cseq2)
+
+  o_nonempty_left:  JUDGEMENT o(nseq, cseq) HAS_TYPE nonempty_csequence
+  o_nonempty_right: JUDGEMENT o(cseq, nseq) HAS_TYPE nonempty_csequence
+
+  o_empty_left:  THEOREM FORALL eseq, cseq: eseq o cseq = cseq
+  o_empty_right: THEOREM FORALL cseq, eseq: cseq o eseq = cseq
+
+  o_first: THEOREM
+    FORALL cseq1, cseq2:
+      nonempty?(cseq1 o cseq2) IMPLIES
+       first(cseq1 o cseq2) =
+        IF empty?(cseq1) THEN first(cseq2) ELSE first(cseq1) ENDIF
+
+  o_rest: THEOREM
+    FORALL cseq1, cseq2:
+      nonempty?(cseq1 o cseq2) IMPLIES
+       rest(cseq1 o cseq2) =
+        IF empty?(cseq1) THEN rest(cseq2) ELSE rest(cseq1) o cseq2 ENDIF
+
+  o_first_rest: THEOREM
+    FORALL nseq1, nseq2, cseq:
+      first(nseq1) = first(nseq2) AND rest(nseq1) o cseq = rest(nseq2)
+       IMPLIES nseq1 o cseq = nseq2
+
+  o_length: THEOREM
+    FORALL fseq1, fseq2:
+      length(fseq1 o fseq2) = length(fseq1) + length(fseq2)
+
+  o_index: THEOREM
+    FORALL cseq1, cseq2, n:
+      index?(cseq1 o cseq2)(n) IFF
+       (is_finite(cseq1) AND is_finite(cseq2) IMPLIES
+         n < length(cseq1) + length(cseq2))
+
+  o_nth: THEOREM
+    FORALL cseq1, cseq2, (n: indexes(cseq1 o cseq2)):
+      nth(cseq1 o cseq2, n) =
+       IF is_finite(cseq1) AND n >= length(cseq1)
+         THEN nth(cseq2, n - length(cseq1))
+       ELSE nth(cseq1, n)
+       ENDIF
+
+  o_add: THEOREM
+    FORALL cseq1, cseq2, t: add(t, cseq1) o cseq2 = add(t, cseq1 o cseq2)
+
+  o_last: THEOREM
+    FORALL cseq1, cseq2:
+      is_finite(cseq1 o cseq2) AND nonempty?(cseq1 o cseq2) IMPLIES
+       last(cseq1 o cseq2) =
+        IF empty?(cseq2) THEN last(cseq1) ELSE last(cseq2) ENDIF
+
+  o_infinite: THEOREM FORALL iseq, cseq: iseq o cseq = iseq
+
+  o_assoc: THEOREM
+    FORALL cseq, cseq1, cseq2:
+      cseq o (cseq1 o cseq2) = (cseq o cseq1) o cseq2
+
+  o_extensionality_left: THEOREM
+    FORALL fseq, cseq1, cseq2:
+      fseq o cseq1 = fseq o cseq2 IMPLIES cseq1 = cseq2
+
+  o_extensionality_right: THEOREM
+    FORALL fseq, cseq1, cseq2:
+      cseq1 o fseq = cseq2 o fseq IMPLIES cseq1 = cseq2
+
+  o_some: THEOREM
+    FORALL cseq1, cseq2, p:
+      some(p)(cseq1 o cseq2) IFF
+       some(p)(cseq1) OR (is_finite(cseq1) AND some(p)(cseq2))
+
+  o_every: THEOREM
+    FORALL cseq1, cseq2, p:
+      every(p)(cseq1 o cseq2) IFF
+       every(p)(cseq1) AND (is_infinite(cseq1) OR every(p)(cseq2))
+
+ END csequence_concatenate

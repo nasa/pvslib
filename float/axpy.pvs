@@ -1,0 +1,136 @@
+axpy[radix:above(1), (IMPORTING float[radix]) b:Format]: THEORY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  This theory defines a faithful computation of  a*x + y, where
+%  a,x, and y are floating point numbers.
+%  Author: 
+%  Sylvie Boldo (ENS-Lyon)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+BEGIN
+
+
+FcanonicBounded2: JUDGEMENT {x:float | Fcanonic?(b)(x)} SUBTYPE_OF {x:float | Fbounded?(b)(x)}
+
+
+MinOrMax?(r:real,f:(Fbounded?(b))):bool=isMin?(b)(r,f) OR isMax?(b)(r,f)
+Fless(f:float):float= if    0 < FtoR(f) then Fpred(b)(f) 
+		      elsif FtoR(f) < 0 then Fsucc(b)(f)
+                      else  f endif
+
+% Variables and lemmas
+
+f,p,q       : VAR float
+a,x,y,t,u   : VAR {x:float | Fcanonic?(b)(x)}
+a1,x1,y1,z  : VAR real
+n           : VAR nat
+
+% MinOrMax properties
+MinOrMax_Rlt : lemma Fbounded?(b)(f) => MinOrMax?(z,f) => abs(FtoR(f)-z) < Fulp(b)(f)
+
+MinOrMax_Fopp : lemma Fbounded?(b)(f) =>MinOrMax?(z,f) => MinOrMax?(-z,Fopp(f))
+
+MinOrMax1 : lemma Fcanonic?(b)(f) => 0 < FtoR(f) 
+     => abs(FtoR(f)-z) < Fulp(b)(Fpred(b)(f)) => MinOrMax?(z,f)
+
+MinOrMax2 : lemma Fcanonic?(b)(f) => 0 < FtoR(f) 
+     => abs(FtoR(f)-z) < Fulp(b)(f) => FtoR(f) <= z => MinOrMax?(z,f)
+
+MinOrMax3 : lemma Fcanonic?(b)(f) => 0 = FtoR(f) 
+     => abs(FtoR(f)-z) < Fulp(b)(f) => MinOrMax?(z,f)
+
+% Links between a real and its rounding
+RoundLe : lemma Fcanonic?(b)(f) => NOT FtoR(f)=0 => Closest?(b)(z,f)
+     => abs(FtoR(f)) <= abs(z)/(1-1/(2*abs(Fnum(f))))
+
+RoundGe : lemma Fcanonic?(b)(f) => NOT FtoR(f)=0 => Closest?(b)(z,f)
+     =>  abs(z)/(1+1/(2*abs(Fnum(f)))) <= abs(FtoR(f))
+
+% Various lemmas
+ExactSum_Near : lemma
+  Fbounded?(b)(p) => Fbounded?(b)(q) => Fbounded?(b)(f) => Closest?(b)(FtoR(p)+FtoR(q),f)
+    => abs(FtoR(f)-(FtoR(p)+FtoR(q))) < radix^(-dExp(b)) => FtoR(f)=FtoR(p)+FtoR(q)
+
+Normal_iff : lemma
+  Fcanonic?(b)(f) =>
+    (Fnormal?(b)(f) IFF radix^(Prec(b)-1-dExp(b)) <= abs(FtoR(f)))
+
+
+% Let us go !
+Axpy_aux1 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+   => abs(FtoR(t)-FtoR(a)*FtoR(x))          <=  Fulp(b)(Fpred(b)(u))/4 
+   => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) <   Fulp(b)(Fpred(b)(u))/4
+   => MinOrMax?(y1+a1*x1,u)
+
+
+Axpy_aux1_aux1 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => Fnormal?(b)(t) => radix*abs(FtoR(t)) <= FtoR(Fpred(b)(u))
+  => abs(FtoR(t)-FtoR(a)*FtoR(x))  <=  Fulp(b)(Fpred(b)(u))/4 
+
+Axpy_aux1_aux2 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => Fsubnormal?(b)(t) => 1-dExp(b) <= Fexp(Fpred(b)(u))
+  => abs(FtoR(t)-FtoR(a)*FtoR(x)) <=  Fulp(b)(Fpred(b)(u))/4 
+
+Axpy_aux2 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => Fsubnormal?(b)(t) => FtoR(u)=FtoR(t)+FtoR(y)
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < Fulp(b)(Fpred(b)(u))/4
+  => MinOrMax?(y1+a1*x1,u)
+
+
+Axpy_aux3 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => Fsubnormal?(b)(t) 
+  => -dExp(b) = Fexp(Fpred(b)(u)) =>  1-dExp(b) <= Fexp(u)
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < Fulp(b)(Fpred(b)(u))/4
+  => MinOrMax?(y1+a1*x1,u)
+
+
+AxpyPos : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => (Fnormal?(b)(t) => radix*abs(FtoR(t)) <= FtoR(Fpred(b)(u)))
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < Fulp(b)(Fpred(b)(u))/4
+  => MinOrMax?(y1+a1*x1,u)
+
+
+Axpy_opt_aux1_aux1 : lemma Fnormal?(b)(t) => Fnormal?(b)(u) => 0 < FtoR(u) 
+    => Prec(b) >= 3 => 
+   (1+radix*(1+1/(2*abs(Fnum(u))))*(1+1/abs(Fnum(Fpred(b)(u)))))/(1-1/(2*abs(Fnum(t))))
+      <= 1+radix+radix^(4-Prec(b))
+
+Axpy_opt_aux1 : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  =>  Prec(b) >= 3 => Fnormal?(b)(t) 
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  =>  radix*abs(FtoR(t)) <= FtoR(Fpred(b)(u))
+
+Axpy_opt_aux2 : lemma  Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  =>  Prec(b) >= 6 =>  Fnormal?(b)(t) 
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  =>  abs(FtoR(y))*radix^(1-Prec(b))/(radix+1) < Fulp(b)(Fpred(b)(u))
+
+Axpy_opt_aux3 : lemma  Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  =>  Prec(b) >= 3  =>  Fsubnormal?(b)(t) 
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  =>  abs(FtoR(y))*radix^(1-Prec(b))/(radix+radix/2) <= Fulp(b)(Fpred(b)(u))
+
+
+Axpy_optPos : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 < FtoR(u)
+  => Prec(b) >= 6 
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < abs(FtoR(y))*radix^(1-Prec(b))/(6*radix)
+  => MinOrMax?(y1+a1*x1,u)
+
+
+Axpy_optZero : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u) => 0 = FtoR(u)
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < abs(FtoR(y))*radix^(1-Prec(b))/(6*radix)
+  => MinOrMax?(y1+a1*x1,u)
+
+Axpy_opt : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u)
+  => Prec(b) >= 6
+  => (radix+1+radix^(4-Prec(b)))*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < abs(FtoR(y))*radix^(1-Prec(b))/(6*radix)
+  => MinOrMax?(y1+a1*x1,u)
+
+Axpy_simpl : lemma Closest?(b)(FtoR(a)*FtoR(x),t) => Closest?(b)(FtoR(t)+FtoR(y),u)
+  => Prec(b) >= 24 => radix=2 
+  => (3+1/100000)*abs(FtoR(a)*FtoR(x)) <= abs(FtoR(y))
+  => abs(y1-FtoR(y)+a1*x1-FtoR(a)*FtoR(x)) < abs(FtoR(y))*2^(1-Prec(b))/12
+  => MinOrMax?(y1+a1*x1,u)
+
+END axpy

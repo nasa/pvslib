@@ -1,0 +1,134 @@
+%------------------------------------------------------------------------------
+% cd2d.pvs
+% ACCoRD v1.0
+%
+% Correctness and completeness of 2-D conflict detection algorithm. 
+%   D : Horizontal separation
+%   T : Lookahead time
+%------------------------------------------------------------------------------
+
+cd2d[D:posreal,B:nnreal,T: {AB: posreal|AB>B}]  : THEORY 
+BEGIN
+
+  IMPORTING horizontal[D],
+  	    vect_analysis@vect_cont_2D,
+	    vect_analysis@vect2_cont_dot[real],
+            vectors@det_2D,
+ 	    tangent_line[D],
+	    Lookahead[B,T]
+
+  s,v   : VAR Vect2     
+  sp    : VAR Sp_vect2
+  ss    : VAR Ss_vect2
+  nzv   : VAR Nz_vect2  
+
+
+  t	: VAR Lookahead
+
+  % Conflict during interval [B,T]
+  conflict_2D?(s,v) : bool =
+    EXISTS (t: Lookahead): sqv(s+t*v) < sq(D)
+
+  conflict_2D_horizontal : LEMMA
+    conflict_2D?(s,v) IMPLIES
+    horizontal_conflict?(s,v)
+
+  on_D_conflict: LEMMA
+    on_D?(s+B*v) IMPLIES
+      (conflict_2D?(s,v) IFF (s+B*v)*v < 0)
+
+
+  % tau: Minimum distance during interval [B,T]
+  tau_v2(s,nzv) : Lookahead = min(max(B,horizontal_tca(s,nzv)),T)
+
+  % tau_vv = tau*v^2 [defined such that it's continuous everywhere]
+  tau_vv(s)(v) : real = min(max(B*sqv(v),-(s*v)),T*sqv(v))
+
+  tau_vv : LEMMA
+    tau_vv(s)(nzv) = sqv(nzv)*tau_v2(s,nzv)
+
+  tau_vv_continuous : JUDGEMENT
+    tau_vv(s) HAS_TYPE continuous_vr_fun
+
+  % omega: Distance during interval [B,T]
+  horizontal_omega(s,nzv) : nnreal = sqv(s + tau_v2(s,nzv)*nzv)
+
+  horizontal_omega_min : LEMMA
+    FORALL (t: Lookahead):
+    horizontal_omega(s,nzv) <= sqv(s+t*nzv)
+         
+  horizontal_omega_conflict : LEMMA
+    conflict_2D?(s,nzv) IFF horizontal_omega(s,nzv) - sq(D) < 0
+
+  % omega_vv = omega*v^2 - D^2*v^2 [defined such that it's continuous everywhere]
+  omega_vv(s)(v) : real = 
+    IF on_D?(s) AND B=0 THEN s*v
+    ELSE 
+      sqv(v)*sqv(s) + (2*tau_vv(s)(v))*(s*v) + sq(tau_vv(s)(v)) - sq(D)*sqv(v)
+    ENDIF
+
+  omega_vv_continuous : JUDGEMENT
+    omega_vv(s) HAS_TYPE continuous_vr_fun
+
+  omega_vv : LEMMA NOT (on_D?(s) AND B=0) IMPLIES
+    omega_vv(s)(nzv) = sqv(nzv)*(horizontal_omega(s,nzv)-sq(D))
+
+  omega_vv_conflict : LEMMA 
+    ((NOT horizontal_los?(s)) OR v /= zero) IMPLIES
+    (omega_vv(s)(v) < 0 IFF conflict_2D?(s,v))
+
+  omega_vv_zero : THEOREM NOT (on_D?(s) AND B=0) IMPLIES
+    (omega_vv(s)(v) = 0 IFF v=zero OR horizontal_omega(s,v) = sq(D))
+
+  % omega_half = Distance during interval [0,...) 
+  omega_half(s,nzv) : nnreal = sqv(s + max(0,-(s*nzv)/sqv(nzv))*nzv)
+
+  omega_half_line : LEMMA
+    omega_half(ss,nzv) = sq(D) IMPLIES line_solution?(ss,nzv) 
+
+  
+  %-----------------------------------------------%
+  % 2-D Conflict interval detection [tin,tout]    %
+  %     (tin,tout) is the conflict interval       %
+  %-----------------------------------------------%  
+
+  detection_2D(s,v) : [Lookahead,Lookahead] =
+    IF zero_vect2?(v) AND horizontal_los?(s) THEN 
+      (B,T)
+    ELSIF Delta(s,v) > 0 THEN
+      LET tin  = Theta_D(s,v,Entry),
+          tout = Theta_D(s,v,Exit) IN
+        (min(max(tin,B),T),max(min(tout,T),B))
+    ELSE
+      (B,B)
+    ENDIF
+
+  detection_2D_correct : THEOREM
+    LET (tin,tout) = detection_2D(s,v) IN
+     tin < t AND t < tout IMPLIES horizontal_los?(s+t*v)
+
+  detection_2D_complete : THEOREM
+    LET (tin,tout) = detection_2D(s,v) IN
+      horizontal_los?(s+t*v) IMPLIES tin <= t AND t <= tout AND tin < tout
+
+  conflict_detection_2D : THEOREM
+    LET (tin,tout) = detection_2D(s,v) IN
+    conflict_2D?(s,v) IFF tin < tout
+
+  %-----------------------------------------------%
+  % 2-D Conflict Detection (cd2d)                 %
+  %-----------------------------------------------%
+
+  cd2d?(s,v) : bool =
+    horizontal_los?(s+B*v) OR omega_vv(s)(v) < 0
+
+  %-----------------------------------------------%
+  % THEOREM: cd2d is correct and complete         %
+  %-----------------------------------------------%
+
+  cd2d : THEOREM 
+    conflict_2D?(s,v)
+    IFF
+    cd2d?(s,v)
+
+END cd2d

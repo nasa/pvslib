@@ -1,0 +1,127 @@
+%-----------------------------------------------------------------------------
+% Merge two sequences into a single sequence of countable length by taking one
+% element from the first sequence, then one element from the second sequence,
+% then ...
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_merge[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_nth[T], csequence_length_comp[T, T]
+  IMPORTING csequence_codt_coreduce[T, [csequence, csequence]]
+
+  t: VAR T
+  p: VAR pred[T]
+  n: VAR nat
+  cseq, cseq1, cseq2, cseq3, cseq4: VAR csequence
+  fseq1, fseq2: VAR finite_csequence
+  iseq: VAR infinite_csequence
+  eseq: VAR empty_csequence
+  state: VAR [csequence, csequence]
+
+  merge_struct(state): csequence_struct =
+      IF empty?(state`1)
+        THEN IF empty?(state`2) THEN inj_empty_cseq
+             ELSE inj_add(first(state`2), (rest(state`2), state`1))
+             ENDIF
+      ELSE inj_add(first(state`1), (state`2, rest(state`1)))
+      ENDIF
+
+  merge(cseq1, cseq2): csequence = coreduce(merge_struct)(cseq1, cseq2)
+
+  merge_empty: THEOREM
+    FORALL cseq1, cseq2:
+      empty?(merge(cseq1, cseq2)) IFF empty?(cseq1) AND empty?(cseq2)
+
+  merge_nonempty: THEOREM
+    FORALL cseq1, cseq2:
+      nonempty?(merge(cseq1, cseq2)) IFF
+       nonempty?(cseq1) OR nonempty?(cseq2)
+
+  merge_empty_left:  THEOREM FORALL eseq, cseq: merge(eseq, cseq) = cseq
+
+  merge_empty_right: THEOREM FORALL cseq, eseq: merge(cseq, eseq) = cseq
+
+  merge_first: THEOREM
+    FORALL cseq1, cseq2:
+      nonempty?(merge(cseq1, cseq2)) IMPLIES
+       first(merge(cseq1, cseq2)) =
+        IF nonempty?(cseq1) THEN first(cseq1) ELSE first(cseq2) ENDIF
+
+  merge_rest: THEOREM
+    FORALL cseq1, cseq2:
+      nonempty?(merge(cseq1, cseq2)) IMPLIES
+       rest(merge(cseq1, cseq2)) =
+        IF nonempty?(cseq1) THEN merge(cseq2, rest(cseq1))
+        ELSE rest(cseq2)
+        ENDIF
+
+  merge_finite: JUDGEMENT merge(fseq1, fseq2) HAS_TYPE finite_csequence
+
+  % Avoid 2 nearly identical proofs for the next 2 judgements
+  merge_finiteness: THEOREM
+    FORALL cseq1, cseq2:
+      is_finite(merge(cseq1, cseq2)) IMPLIES
+       is_finite(cseq1) AND is_finite(cseq2)
+
+  merge_infinite1: JUDGEMENT merge(iseq, cseq) HAS_TYPE infinite_csequence
+  merge_infinite2: JUDGEMENT merge(cseq, iseq) HAS_TYPE infinite_csequence
+
+  merge_length: THEOREM
+    FORALL fseq1, fseq2:
+      length(merge(fseq1, fseq2)) = length(fseq1) + length(fseq2)
+
+  merge_index: THEOREM
+    FORALL cseq1, cseq2, n:
+      index?(merge(cseq1, cseq2))(n) IFF
+       index?(cseq1)(n) OR
+        (is_finite(cseq1) IMPLIES index?(cseq2)(n - length(cseq1)))
+
+  merge_nth: THEOREM
+    FORALL cseq1, cseq2, (n: indexes(merge(cseq1, cseq2))):
+      nth(merge(cseq1, cseq2), n) =
+       IF length_lt(cseq1, cseq2) AND n >= length(cseq1) * 2
+         THEN nth(cseq2, n - length(cseq1))
+       ELSIF length_lt(cseq2, cseq1) AND n >= length(cseq2) * 2
+         THEN nth(cseq1, n - length(cseq2))
+       ELSIF even?(n) THEN nth(cseq1, n / 2)
+       ELSE nth(cseq2, (n - 1) / 2)
+       ENDIF
+
+  merge_add: THEOREM
+    FORALL t, cseq1, cseq2:
+      add(t, merge(cseq1, cseq2)) = merge(add(t, cseq2), cseq1)
+
+  merge_last: THEOREM
+    FORALL fseq1, fseq2:
+      nonempty?(merge(fseq1, fseq2)) IMPLIES
+       last(merge(fseq1, fseq2)) =
+        IF length(fseq1) <= length(fseq2) THEN last(fseq2)
+        ELSE last(fseq1)
+        ENDIF
+
+  merge_extensionality: THEOREM
+    FORALL cseq1, cseq2, cseq3, cseq4:
+      length_eq(cseq1, cseq2) AND
+       length_eq(cseq3, cseq4) AND
+        merge(cseq1, cseq2) = merge(cseq3, cseq4)
+       IMPLIES cseq1 = cseq3 AND cseq2 = cseq4
+
+  merge_some: THEOREM
+    FORALL p, cseq1, cseq2:
+      some(p)(merge(cseq1, cseq2)) IFF some(p)(cseq1) OR some(p)(cseq2)
+
+  merge_every: THEOREM
+    FORALL p, cseq1, cseq2:
+      every(p)(merge(cseq1, cseq2)) IFF every(p)(cseq1) AND every(p)(cseq2)
+
+ END csequence_merge

@@ -1,0 +1,99 @@
+system_solvers : THEORY
+
+  BEGIN
+
+% different versions of algorithms to compute the number of solutions to a system
+
+
+ IMPORTING poly_systems, matrices@query_coeff
+
+  a,r,g : VAR [nat->int]
+  p : VAR [nat->[nat->int]]
+  relseq: VAR [nat->RealOrder]
+  n : VAR [nat->nat]
+  d,i,j,k : VAR nat
+  m: VAR posnat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+  babove,bbelow,bbelow2,babove2: VAR bool
+  RelF6,TQRow: VAR [nat->subrange(0,5)]
+
+
+%    ORIGINAL ALGORITHM ---- Others should use this signature.  
+%
+%    starm_tarski_solver_slow_basic(k,a,(m|a(m)/=0),p,
+%                (n|FORALL (i:upto(k)):p(i)(n(i))/=0),RelF6):
+%     {r:real | r = NSol_all(k,a,m,p,n,RelF6) AND rational_pred(r) AND integer_pred(r)} =
+%      LET ii = base_n_to_nat(6,RelF6,k) IN
+%        dot(row(tensor_power_alt(A63,k+1))(ii),col(TQ_vect3k(k,a,m,p,n))(0))
+  
+
+% sturm_tarski_tail_generic(k,a,(m|a(m)/=0),p,
+%                 (n|FORALL (i:upto(k)):p(i)(n(i))/=0),RelF6, 
+% 		(F:{ff:[[nat->below(3)]->real]|FORALL (j:below(3^(k+1))): ff(base_n(3,j)) = entry(tensor_power_alt(A63,k+1))(base_n_to_nat(6, RelF6, k),j)}), 
+% 		(G:{ff:[[nat->below(3)]->real]|FORALL (j:below(3^(k+1))): ff(base_n(3,j)) = TQ_fam(k,a,m, p ,n,base_n(3, j))})   ):
+%      {r:real | r = NSol_all(k,a,m,p,n,RelF6) AND rational_pred(r) AND integer_pred(r)} = 
+%        dot_tail_sum2(k+1, F, G, 0, 0, base_n(3, 0))
+
+
+% % testing the generic solver...
+
+% F1(RelF6, k)(f:[nat->below(3)]): real = entry(tensor_power_alt(A63,k+1))(base_n_to_nat(6, RelF6, k),base_n_to_nat(3,f,k)) 
+% G1(k,a,(m|a(m)/=0),p, (n|FORALL (i:upto(k)):p(i)(n(i))/=0))(f:[nat->below(3)]): real = TQ_fam(k,a,m, p ,n,f)
+
+% sturm_tarski_generic_test(k,a,(m|a(m)/=0),p,
+%                 (n|FORALL (i:upto(k)):p(i)(n(i))/=0),RelF6):
+%      {r:real | r = NSol_all(k,a,m,p,n,RelF6) AND rational_pred(r) AND integer_pred(r)} = 
+%          sturm_tarski_tail_generic(k,a,m,p,n,RelF6, F1(RelF6, k), G1(k,a,m,p,n))
+
+rows_fun(RelF6, k)(j:upto(k)):  {V: Vector| V = row(A63)(RelF6(j)) AND length(V)=3} = row(A63)( RelF6(j))
+     
+entry_fun(k, (RowF:[upto(k)->{V:Vector|length(V) = 3}]))((L:listn[below(3)](k+1))): 
+         real = product[nat](0, k, LAMBDA(i:nat): IF i<=k THEN nth(RowF(i), nth(L, i)) ELSE 1 ENDIF)    
+
+entry_is: LEMMA FORALL (RelF6, k, (i:below(3^(k+1))) ):
+       entry_fun(k, rows_fun(RelF6, k))(base_list(3, i, k+1)) = 
+       entry(tensor_power_alt(A63, k+1))(base_n_to_nat(6, RelF6, k), i)
+
+TQlist_fun(k,a,(m|a(m)/=0),p, (n|FORALL (i:upto(k)):p(i)(n(i))/=0))(L:listn[below(3)](k+1)): real = TQ_fam(k,a,m, p ,n,list2array[below(3)](0)(L))
+
+TQlist_lem: LEMMA FORALL (k,a,(m|a(m)/=0),p, (n|FORALL (i:upto(k)):p(i)(n(i))/=0), j:below(3^(k+1))):
+    TQlist_fun(k,a,m,p,n)(base_list(3,j,k+1)) = TQ_fam(k,a,m,p,n,base_n(3, j))
+
+sturm_tarski_faster(k,a,(m|a(m)/=0),p,
+                (n|FORALL (i:upto(k)):p(i)(n(i))/=0),RelF6):
+     {r:real | r = NSol_all(k,a,m,p,n,RelF6) AND rational_pred(r) AND integer_pred(r)} =
+     LET EntFun  = entry_fun(k, rows_fun(RelF6, k)) IN 
+     IF k=0 THEN   sturm_tarski_solver_slow_basic(k,a,m,p,n,RelF6) 
+     ELSE dot_tail_sum2plus(k+1, EntFun, TQlist_fun(k,a,m,p,n), 0, 0, base_list(3, 0, k+1))
+     ENDIF
+      
+
+
+ T1(n:posnat, i, j:nat): real = entry(tensor_power_alt(A63, n))(i,j)
+
+ T2(M:PosFullMatrix, i, j:nat): real = entry(M)(i,j)
+  
+ Test1(n:posnat, j:nat): RECURSIVE real = 
+   if j=0 THEN T1(n, j, j) 
+   ELSE LET ent = T1(n, j, j) in
+   	Test1(n, j-1)
+   ENDIF
+   MEASURE j
+
+ Test2recurse(M:PosFullMatrix, j:nat): RECURSIVE real= 
+  IF j=0 THEN T2(M, j, j)
+  ELSE LET ent  = T2(M, j, j) IN	
+       Test2recurse(M, j-1)
+  ENDIF		       
+  MEASURE j
+
+
+ Test2(n: posnat,  j:nat): real = 
+    LET M = (tensor_power_alt(A63, n)) IN
+    Test2recurse(M, j)
+
+
+
+
+  END system_solvers

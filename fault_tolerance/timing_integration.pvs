@@ -1,0 +1,109 @@
+%
+%
+% Purpose : timing aspects of communication with a multi-stage integration
+%           fault model. 
+%    
+%           Proofs that the explicit broadcast timing model satisfies the 
+%           inexact sampling properties, provided that the source and 
+%           destination clocks are within a known precision "pi"
+%
+%
+
+
+timing_integration
+[
+  rho: nonneg_real,      % Bound on drift for a good oscillator
+  min_latency: [nat -> nonneg_real], 
+                         % Minimum real time latency (in ticks
+                         % of real time) of the communication link
+                         % between stage i and i+1
+                         % determined by things like length of wire, speed
+                         % of light, and clock rate.
+  var_latency: [nat -> nonneg_real], 
+                         % Max variation (in ticks of real 
+                         % time) between stage i and i+1
+                         % caused by both wire length 
+                         % differences and clock jitter.  
+  stage: [nat -> posnat] % Number of nodes in a given stage
+] : THEORY
+
+  BEGIN
+
+
+  IMPORTING
+    timing_integration_stage,
+    inexact_comm[stage]
+
+  i, j, k: VAR nat
+
+  clk, c_src, c_dst: VAR [j:nat -> [below(stage(j)) -> good_clock[rho]]]
+  Schedule: VAR [nat -> integer] % The nominal message send time for the given stage
+  pi: VAR [nat -> nonneg_real]
+  cf: VAR [nat -> consensus_function]
+  tau: VAR [nat -> tau_type]
+
+  status: VAR [j:nat -> node_status[stage(j)]]
+  common_check: VAR [j:nat -> non_empty_finite_set[below(stage(j))]]
+  sent: VAR [j:nat -> [below(stage(j)) -> real]]
+
+  received(c_dst, c_src, Schedule, status, pi)(i): 
+    [below(stage(i+1)) -> [below(stage(i)) -> real]] =
+    received[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+      (c_dst(i+1), c_src(i), Schedule(i), status(i), pi(i))
+
+  check(c_dst, Schedule, common_check, pi)(i):
+    [below(stage(i+1)) -> [below(stage(i)) -> [real -> bool]]] =
+    check[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+      (c_dst(i+1), Schedule(i), common_check(i), pi(i))
+
+  correct_denotation(status)(j): finite_set[below(stage(j))] = correct_denotation(status(j))
+  symmetric_denotation(status)(j): finite_set[below(stage(j))] = symmetric_denotation(status(j))
+  single_denotation(status)(j): finite_set[below(stage(j))] = single_denotation(status(j))
+
+  sent(c_src, Schedule)(i): [below(stage(i)) -> real] = 
+    sent[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)](c_src(i), Schedule(i))
+  nominal(c_src, Schedule)(i): [below(stage(i)) -> real] = 
+    nominal[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)](c_src(i), Schedule(i))
+
+
+  % The clocks of stage i, are within pi of the clocks in stage i+1, for all i
+  clock_relation?(Schedule, c_src, c_dst, pi, j, k): bool = 
+    FORALL i: j <= i AND i < k IMPLIES
+      clock_relation?[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+                (Schedule(i), c_src(i), c_dst(i+1), pi(i))
+
+  epsilon_lower(i):nonneg_real = epsilon_l[rho,min_latency(i),var_latency(i)]
+  epsilon_upper(i):nonneg_real = epsilon_u[rho,min_latency(i),var_latency(i)]
+  epsilon_total(i):nonneg_real = epsilon[rho,min_latency(i),var_latency(i)]
+
+  enabled_within_timing: LEMMA
+    enabled_within?(
+      received(c_dst, c_src, Schedule, status, pi), 
+      check(c_dst, Schedule, common_check, pi), j, k)(common_check)
+
+  % Synchronization fault assumptions
+  majority_synch?(status, c_src, c_dst, Schedule, common_check, pi, j, k): bool =
+    FORALL i: j <= i AND i < k IMPLIES
+      majority_synch?[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+        (status(i), c_src(i), c_dst(i + 1), Schedule(i), common_check(i), pi(i))
+
+  quorum_synch?(status, c_src, c_dst, Schedule, common_check, tau, pi, j, k): bool =
+    FORALL i: j <= i AND i < k IMPLIES
+      quorum_synch?[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+        (status(i), c_src(i), c_dst(i + 1), Schedule(i), common_check(i), tau(i), pi(i))
+
+  exists_symmetric_synch_stage?(status, c_src, c_dst, Schedule, common_check, pi, cf, j, k): bool =
+    EXISTS i: j <= i AND i < k AND
+      all_symmetric_synch?[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+        (status(i), c_src(i), c_dst(i + 1), Schedule(i), common_check(i), pi(i)) AND
+      inexact_consensus?(cf(i)) AND
+      majority_synch?(status, c_src, c_dst, Schedule, common_check, pi, i + 1, k)
+
+  exists_symmetric_synch_stage?(status, c_src, c_dst, Schedule, common_check, tau, pi, cf, j, k): bool =
+    EXISTS i: j <= i AND i < k AND
+      all_symmetric_synch?[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+        (status(i), c_src(i), c_dst(i + 1), Schedule(i), common_check(i), pi(i)) AND
+      inexact_consensus?(cf(i)) AND
+      quorum_synch?(status, c_src, c_dst, Schedule, common_check, tau, pi, i + 1, k)
+
+END timing_integration

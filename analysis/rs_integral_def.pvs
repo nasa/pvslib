@@ -1,0 +1,179 @@
+rs_integral_def[T:TYPE+ from real]: THEORY
+%----------------------------------------------------------------------------
+%    Definition of Riemann-Stieltjes Integral
+%----------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+
+   IMPORTING rs_partition[T],
+	     reals@real_fun_preds
+
+%    AUTO_REWRITE+ finseq_appl
+
+   a,b,c,x: VAR T
+   S: VAR real
+   f,g,h: VAR [T -> real]
+
+
+   IMPORTING reals@intervals_real[T]
+
+   xis_pred?(a:T,(b|a<b),P:partition(a,b))(fs:fseq): MACRO bool = (fs`length = P`length-1 AND (FORALL (ii: below(P`length-1)):
+                     P`seq(ii) <= fs`seq(ii) AND fs`seq(ii) <= P`seq(ii+1)))
+
+   xis?(a:T,(b|a<b),P:partition(a,b)): TYPE = (xis_pred?(a,b,P))
+
+   xis_join(a:T,(b | a<b), (c| b<c))(Pab: partition(a,b),Pbc: partition(b,c))(xab: xis?(a,b,Pab),xbc:xis?(b,c,Pbc)):
+     xis?(a,c,partjoin(a,b,c)(Pab,Pbc)) =
+     xab o xbc
+
+   xis_lem: LEMMA FORALL (P: partition(a,b), (xis: xis?(a,b,P)),
+                         (ii: below(P`length-1))):
+                         P(ii) <= xis(ii) AND xis(ii) <= P(ii+1)
+
+   xis_bounded: LEMMA FORALL (P: partition(a,b), (xis: xis?(a,b,P)),
+                         (ii: below(P`length-1))):
+                         a <= xis(ii) AND xis(ii) <= b
+
+%   AUTO_REWRITE+ xis_lem
+
+   Rie_sum(a:T,b:{x:T|a<x},g:[T->real],P:partition(a,b),
+                  xis: xis?(a,b,P),f:[T->real]): real =
+                  LET N = P`length-1 IN
+          sigma[below(N)](0,N-1,(LAMBDA (n: below(N)):
+                                       (g(P`seq(n+1)) - g(P`seq(n))) * f(xis(n))))
+
+   Rie_sec(a:T,b:{x:T|a<x},g:[T->real],P:partition(a,b), xis: xis?(a,b,P), f:[T->real], 
+           n: upto(P`length-1)): real = 
+                           IF n = 0 THEN 0
+                           ELSE (g(P`seq(n)) - g(P`seq(n - 1))) * f(xis(n-1)) 
+                           ENDIF
+
+   Rie_sum_alt(a:T,b:{x:T|a<x},g:[T->real],P:partition(a,b),
+                  xis: xis?(a,b,P),f:[T->real]): real =
+                  LET N = P`length-1 IN
+                     sigma[upto(N)](1,N,(LAMBDA (n: upto(N)): 
+                            Rie_sec(a,b,g,P,xis,f,n)))
+
+   Rie_sum_alt_lem: LEMMA a < b IMPLIES
+                            FORALL (P: partition(a,b), (xis: xis?(a,b,P))):
+                               Rie_sum(a,b,g,P,xis,f) = Rie_sum_alt(a,b,g,P,xis,f) 
+
+   Riemann_sum?(a:T,b:{x:T|a<x},P:partition(a,b),g,f:[T->real])(S:real): bool =
+     (EXISTS (xis: xis?(a,b,P)): LET N = P`length-1 IN
+           S = Rie_sum(a,b,g,P,xis,f))
+
+
+   Riemann_sum_strictly_sort: LEMMA a<b IMPLIES FORALL (P:partition(a,b),RS:real):
+   			       (EXISTS (xis:xis?(a,b,P)): RS = Rie_sum(a,b,g,P,xis,f))
+			       IFF
+			       (EXISTS (xis:xis?(a,b,strictly_sort(P))): RS = Rie_sum(a,b,g,strictly_sort(P),xis,f))
+
+
+   integral?(a:T,b:{x:T|a<x},g,f:[T->real],S:real): bool  = 
+                (FORALL (epsi: posreal): (EXISTS (delta: posreal):
+                    (FORALL (P: partition(a,b)):
+                        width(a,b,P) < delta IMPLIES
+                           (FORALL (R: (Riemann_sum?(a,b,P,g,f))):
+                                abs(S - R) < epsi))))
+
+   x_in(aa:T,bb:{x:T|aa<=x}): {t:T | aa <= t AND t <= bb}
+
+   pick_one(a:T,b:{x:T|a<x},P: partition(a,b))(ii: nat): T =
+   			IF ii>= P`length-1 THEN default
+                        ELSE x_in(P(ii), P(ii+1)) ENDIF
+
+   gen_xis(a:T,b:{x:T|a<x},P: partition(a,b)): xis?(a,b,P) = 
+                                     (# length := P`length - 1,
+                                        seq :=  pick_one(a,b,P)
+                                      #)
+
+   Riemann?_Rie: LEMMA a < b IMPLIES FORALL (P: partition(a,b),
+                                             xis: xis?(a,b,P)): 
+                               Riemann_sum?(a,b,P,g,f)(Rie_sum(a,b,g,P,xis,f)) 
+
+%   AUTO_REWRITE+ Riemann?_Rie
+
+   A1, A2: VAR real
+   integral_unique: LEMMA a < b AND integral?(a,b,g,f,A1) AND
+                             integral?(a,b,g,f,A2) IMPLIES A1 = A2
+
+
+   integrable?(a:T,b:{x:T|a<x},g,f:[T->real]): bool = 
+                     (EXISTS (S:real): integral?(a,b,g,f,S))
+
+   integral(a:T,b:{x:T|a<x}, gg:[T->real],ff: { f | integrable?(a,b,gg,f)} ):
+                    {S:real | integral?(a,b,gg,ff,S)}
+
+
+   s: VAR real
+   integral_def: LEMMA a < b IMPLIES
+                   ( (integrable?(a,b,g,f) AND integral(a,b,g,f) = s)
+                          IFF integral?(a,b,g,f,s) )
+
+   integral_restrict_eq: LEMMA a < b AND
+                                (FORALL x: a <= x AND x <= b IMPLIES
+                                          f(x) = h(x)) AND
+                               integrable?(a,b,g,f)
+                          IMPLIES integrable?(a,b,g,h) AND
+                                   integral(a,b,g,h) = integral(a,b,g,f)
+
+   Integrable?(a:T,b:T,g,f:[T->real]): bool = (a = b) OR
+                                 (a < b AND integrable?(a,b,g,f)) OR
+                                 (b < a  AND integrable?(b,a,g,f))
+
+   Integrable_funs(a,b,g): TYPE = {f | Integrable?(a,b,g,f)}
+
+   Integral?(a:T,b:T,g,f:[T->real],S:real): bool = (a = b AND S = 0) OR
+                               (a < b AND integral?(a,b,g,f,S))
+
+
+   Integral(a:T,b:T,g:[T->real],f:Integrable_funs(a,b,g)): real =
+                     			  IF a = b THEN 0
+                     			  ELSIF a < b THEN integral(a,b,g,f)
+                     			  ELSE -integral(b,a,g,f)
+                     			  ENDIF
+   % -----------------------------%
+
+   %  Extending a riemann sum from a partition to a refinement and vice-versa
+
+  Rie_sum_extend_union : LEMMA a<b IMPLIES
+                               FORALL (P,Q: partition(a,b)): LET PQ = partition_union(a,b)(P,Q) IN
+			       strictly_increasing?(P) IMPLIES FORALL (xis:xis?(a,b,P)): Rie_sum(a,b,g,P,xis,f) = 
+			       sigma[below(PQ`length-1)](0,PQ`length-2,LAMBDA (n:below(PQ`length-1)):
+			       				f(xis`seq(partition_union_map_inv(a,b,P,Q)(n)))*(g(PQ`seq(1+n))-g(PQ`seq(n))))
+
+  Rie_sum_restrict_union: LEMMA a<b IMPLIES FORALL (P,Q: partition(a,b)): 
+  			  LET
+				PQ = partition_union(a,b)(P,Q),
+				pum = partition_union_map(a,b,P,Q)
+			  IN    FORALL (xispq:xis?(a,b,PQ)):
+				strictly_increasing?(P) AND
+				(FORALL (ii:below(P`length),jj,kk:below(PQ`length)):
+				pum(ii)<=jj AND pum(ii)<=kk AND (ii<P`length-1 IMPLIES jj<pum(ii+1) AND kk<pum(ii+1))
+				IMPLIES xispq`seq(jj) = xispq`seq(kk))
+				IMPLIES
+				EXISTS (xis:xis?(a,b,P)):
+				Rie_sum(a,b,g,PQ,xispq,f) = Rie_sum(a,b,g,P,xis,f)
+
+  Rie_sum_diff_extend_union : LEMMA a<b IMPLIES LET CI = closed_intv(a,b) IN
+   				 (increasing?[(CI)](g) IMPLIES
+                               FORALL (P,Q: partition(a,b)): LET PQ = partition_union(a,b)(P,Q) IN
+			       FORALL (xispq:xis?(a,b,PQ),xis:xis?(a,b,P)): EXISTS (xis2:xis?(a,b,P)):
+			       abs(Rie_sum(a,b,g,P,xis,f) - Rie_sum(a,b,g,PQ,xispq,f)) <=
+			       abs(Rie_sum(a,b,g,P,xis,f)-Rie_sum(a,b,g,P,xis2,f)))
+
+			       
+
+
+END rs_integral_def
+

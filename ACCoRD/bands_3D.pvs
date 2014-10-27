@@ -1,0 +1,228 @@
+bands_3D[D,H:posreal,B:nnreal,T:{x:posreal | x > B},
+         gsmin:posreal,gsmax:{x:posreal | x > gsmin},
+         vsmin:real,vsmax:{x:real | x > vsmin}] : THEORY
+BEGIN
+  
+  IMPORTING bands_2D,
+  	    bands_1D,
+	    cd3d[D,H,B,T],
+            bands_util
+
+  s	  : VAR Vect3
+  vo,vi   : VAR Nzv2_vect3
+  trkb    : VAR (trk_fseq?[gsmin,gsmax])
+  gsb     : VAR (gs_fseq?[gsmin,gsmax])
+  vsb	  : VAR (vs_fseq?[vsmin,vsmax])
+  x,k,y   : VAR real
+  trk	  : VAR nnreal_lt_2pi
+  trk2	  : VAR {r: real | 0<=r AND r<=2*pi}
+  gsp	  : VAR {r: real | gsmin<=r AND r<=gsmax}
+  vsp	  : VAR {r: real | vsmin<=r AND r<=vsmax}
+
+  %-------------%
+  % Definitions %
+  %-------------%
+
+  % Track %
+
+%  trk2v3(vo)(trkz:real) : (trk_only_3D?(vo)) =
+%    trkgs2vect(trkz,norm(vect2(vo))) WITH [z |-> vo`z] 
+
+%  vect2_trk2v3 : LEMMA
+%    vect2(trk2v3(vo)(trk)) = trk2v2[D,B,T](vo)(trk)
+
+%  trk2v3_Nzv : JUDGEMENT
+%    trk2v3(vo)(trk) HAS_TYPE Nzv2_vect3
+
+%  Vtrk_3D(vo,vi)(trkz:real):(horizontal_only?(vo-vi)) =
+%    trk2v3(vo)(trkz) - vi
+
+%  trk2v3_trk2v3 : LEMMA
+%    trk2v3(trk2v3(vo)(trk))(trk)=trk2v3(vo)(trk)
+
+%  trk2v3_0 : LEMMA
+%    vect2(vo) /= zero AND x >= 0 AND x < 2 * pi IMPLIES vect2(trk2v3(vo)(x)) /= zero
+
+  % Ground Speed %
+
+%  gs2v3(vo)(k) : Vect3 = gs2v2[D,B,T](vo)(k) WITH [z |-> vo`z]
+
+%  gs2v3_gs_only : JUDGEMENT
+%    gs2v3(vo)(gsp) HAS_TYPE (gs_only_3D?(vo))
+
+%  vect2_gs2v3 : LEMMA
+%    vect2(gs2v3(vo)(gsp)) = gs2v2[D,B,T](vo)(gsp)
+
+%  Vgs_3D(vo,vi)(k) : (horizontal_only?(vo-vi)) = 
+%    gs2v3(vo)(k)-vi
+
+  % Vertical Speed %
+
+%  vs2v3(vo)(vsp) : (vs_only?(vo)) = vo WITH [z := vsp]
+
+%  vect2_vs2v3 : LEMMA
+%    vect2(vs2v3(vo)(vsp)) = vect2(vo)
+
+%  Vs(vo,vi)(vsp) : (vs_only?(vo-vi)) = 
+%    vs2v3(vo)(vsp)-vi
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  trk_bands_3D(s,vo,vi) : {fs : (trk_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    IF vo`z = vi`z AND abs(s`z) < H
+       THEN trk_bands[D,B,T,gsmin,gsmax](s,vo,vi)
+    ELSIF vo`z /= vi`z THEN
+      LET BB = max(Theta_H(s`z,vo`z-vi`z,Entry),B),
+          TT = min(Theta_H(s`z,vo`z-vi`z,Exit),T) IN
+ 	  IF BB < TT THEN trk_bands[D,BB,TT,gsmin,gsmax](s,vo,vi)
+          ELSE add(0,add(2*pi,emptyseq))
+          ENDIF
+    ELSE
+     add(0,add(2*pi,emptyseq))
+    ENDIF
+
+  gs_bands_3D(s,vo,vi) : {fs : (gs_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    IF vo`z = vi`z AND abs(s`z) < H
+       THEN gs_bands[D,B,T,gsmin,gsmax](s,vo,vi)
+    ELSIF vo`z /= vi`z THEN
+      LET BB = max(Theta_H(s`z,vo`z-vi`z,Entry),B),
+          TT = min(Theta_H(s`z,vo`z-vi`z,Exit),T) IN
+ 	  IF BB < TT THEN gs_bands[D,BB,TT,gsmin,gsmax](s,vo,vi)
+          ELSE add(gsmin,add(gsmax,emptyseq))
+          ENDIF
+    ELSE
+     add(gsmin,add(gsmax,emptyseq))
+    ENDIF
+
+  vs_bands_3D(s,vo,vi) : {fs : (vs_fseq?[vsmin,vsmax]) | increasing?(fs)} =
+    IF vect2(vo-vi) = zero AND sqv(vect2(s)) < sq(D)
+       THEN vs_bands[H,B,T,vsmin,vsmax](s`z,vi`z)
+    ELSIF Delta(s,vo-vi) > 0 THEN
+      LET BB = max(Theta_D(s,vo-vi,Entry),B),
+          TT = min(Theta_D(s,vo-vi,Exit),T) IN
+	  IF BB < TT THEN vs_bands[H,BB,TT,vsmin,vsmax](s`z,vi`z)
+	  ELSE add(vsmin,add(vsmax,emptyseq))
+	  ENDIF
+   ELSE
+     add(vsmin,add(vsmax,emptyseq))
+   ENDIF
+
+  trk_bands_3D_not_empty : LEMMA
+    trk_bands_3D(s,vo,vi)`length > 1
+
+  trk_bands_last: LEMMA LET trkb = trk_bands_3D(s,vo,vi) IN
+    trkb`seq(trkb`length-1) = 2*pi
+
+  trk_bands_first: LEMMA LET trkb = trk_bands_3D(s,vo,vi) IN
+    trkb`seq(0) = 0
+
+  gs_bands_3D_not_empty : LEMMA
+    gs_bands_3D(s,vo,vi)`length > 1
+
+  gs_bands_last: LEMMA LET gsb = gs_bands_3D(s,vo,vi) IN
+    gsb`seq(gsb`length-1) = gsmax
+
+  gs_bands_first: LEMMA LET gsb = gs_bands_3D(s,vo,vi) IN
+    gsb`seq(0) = gsmin
+
+  vs_bands_3D_not_empty : LEMMA
+    vs_bands_3D(s,vo,vi)`length > 1
+
+  vs_bands_last: LEMMA LET vsb = vs_bands_3D(s,vo,vi) IN
+    vsb`seq(vsb`length-1) = vsmax
+
+  vs_bands_first: LEMMA LET vsb = vs_bands_3D(s,vo,vi) IN
+    vsb`seq(0) = vsmin
+
+  %-------------%
+  % Definitions %
+  %-------------%
+
+  red_trk_band_3D?(s,vo,vi,trkb)(i:subrange(0,trkb`length-2)) : bool =
+    LET mp = (trkb`seq(i)+trkb`seq(i+1))/2 in
+    cd3d?(s,Vtrk_3D(vo,vi)(mp))
+
+  red_gs_band_3D?(s,vo,vi,gsb)(i:subrange(0,gsb`length-2)) : bool =
+    LET mp = (gsb`seq(i)+gsb`seq(i+1))/2 in
+    cd3d?(s,Vgs_3D(vo,vi)(mp))  
+
+  red_vs_band_3D?(s,vo,vi,vsb)(i:subrange(0,vsb`length-2)) : bool =
+    LET mp = (vsb`seq(i)+vsb`seq(i+1))/2 in
+    cd3d?(s,Vs(vo,vi)(mp))  
+
+  %-------------%
+  % THEOREMS    %
+  %-------------%
+
+  % Track %
+
+  trk_red_bands_3D : THEOREM
+    LET trkb = trk_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,trkb`length-2) | trkb`seq(i) /= trkb`seq(i+1)) : 
+       red_trk_band_3D?(s,vo,vi,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         conflict_3D?(s,Vtrk_3D(vo,vi)(x)))
+
+  trk_green_bands_3D : THEOREM
+    LET trkb = trk_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,trkb`length-2) | trkb`seq(i) /= trkb`seq(i+1)) : 
+       NOT red_trk_band_3D?(s,vo,vi,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         NOT conflict_3D?(s,Vtrk_3D(vo,vi)(x)))
+
+  trk_bands_equivalence: LEMMA
+     LET trkb = trk_bands_3D(s,vo,vi) IN
+       FORALL (x,y): (0<=x AND x<=y AND y<=2*pi AND
+         (FORALL (i:subrange(0,trkb`length-1)): trkb`seq(i)<x OR y<trkb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(s,Vtrk_3D(vo,vi)(x)) IFF conflict_3D?(s,Vtrk_3D(vo,vi)(y)))
+
+  % Ground Speed %
+
+  gs_red_bands_3D : THEOREM
+    LET gsb = gs_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,gsb`length-2) | gsb`seq(i) /= gsb`seq(i+1)) :  
+       red_gs_band_3D?(s,vo,vi,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         conflict_3D?(s,Vgs_3D(vo,vi)(x)))
+
+  gs_green_bands_3D : THEOREM
+    LET gsb = gs_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,gsb`length-2) | gsb`seq(i) /= gsb`seq(i+1)) :  
+       NOT red_gs_band_3D?(s,vo,vi,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         NOT conflict_3D?(s,Vgs_3D(vo,vi)(x)))
+
+  gs_bands_equivalence: LEMMA
+     LET gsb = gs_bands_3D(s,vo,vi) IN
+       FORALL (x,y): (gsmin<=x AND x<=y AND y<=gsmax AND
+         (FORALL (i:subrange(0,gsb`length-1)): gsb`seq(i)<x OR y<gsb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(s,Vgs_3D(vo,vi)(x)) IFF conflict_3D?(s,Vgs_3D(vo,vi)(y)))
+
+  % Vertical Seed %
+
+  vs_red_bands_3D : THEOREM
+    LET vsb = vs_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,vsb`length-2) | vsb`seq(i) /= vsb`seq(i+1)) : 
+       red_vs_band_3D?(s,vo,vi,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         conflict_3D?(s,Vs(vo,vi)(x)))
+
+  vs_green_bands_3D : THEOREM
+    LET vsb = vs_bands_3D(s,vo,vi) IN
+     FORALL (i:subrange(0,vsb`length-2) | vsb`seq(i) /= vsb`seq(i+1)) : 
+       NOT red_vs_band_3D?(s,vo,vi,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         NOT conflict_3D?(s,Vs(vo,vi)(x)))
+
+  vs_bands_equivalence: LEMMA
+     LET vsb = vs_bands_3D(s,vo,vi) IN
+       FORALL (x,y): (vsmin<=x AND x<=y AND y<=vsmax AND
+         (FORALL (i:subrange(0,vsb`length-1)): vsb`seq(i)<x OR y<vsb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(s,Vs(vo,vi)(x)) IFF conflict_3D?(s,Vs(vo,vi)(y)))
+
+END bands_3D

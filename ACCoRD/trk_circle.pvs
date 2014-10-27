@@ -1,0 +1,130 @@
+%------------------------------------------------------------------------------
+% trk_circle.pvs
+% ACCoRD v.1.0
+%
+% Track circle solutions satisfy the following equations:
+%   sq(s+v*t) = sq(D)       [2D]
+%   || v + vi || = || vo || [2D]   
+%   abs(s+v*t)`z) = H
+%
+% It is shown that track circle solutions are track only solutions
+% for the ownship. 
+%
+% The sign value dir determines horizontal direction (Entry/Exit).
+% The sign value irt determines two possible track circle solutions. 
+%------------------------------------------------------------------------------
+
+trk_circle[D,H: posreal] : THEORY
+BEGIN
+  
+  IMPORTING trk_only[D],
+	    circle_solutions[D,H],
+            vertical_criterion[D,H]
+
+  s,nvo     : VAR Vect3
+  sp        : VAR Sp2_vect3
+  vo,vi     : VAR Nzv2_vect3 
+  dir,irt,
+  epsh,epsv : VAR Sign
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  % vectors_2D.zero indicates no track solution
+
+  trk_circle(s,vo,vi,dir,irt): {nvo | nz_vect2?(nvo) => 
+                                      trk_only_3D?(vo)(nvo)} =
+    IF vo`z = vi`z THEN zero
+    ELSE
+      LET t = Theta_H(s`z,vo`z-vi`z,-dir) IN
+      IF t > 0 THEN
+        LET nvo2 = trk_only_circle(s,vo,vi,t,dir,irt) IN
+          nvo2 WITH [ z |-> vo`z ] 
+      ELSE
+         zero
+      ENDIF
+    ENDIF
+
+  trk_circle?(s,vo,vi,dir)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    EXISTS (irt): nvo = trk_circle(s,vo,vi,dir,irt)
+
+  trk_circle?(s,vo,vi)(nvo) : MACRO bool =
+    EXISTS (dir): trk_circle?(s,vo,vi,dir)(nvo)
+
+  trk_vertical_irt(s,vo,vi,epsh,epsv,irt): {nvo | nz_vect2?(nvo) => 
+                                                  trk_only_3D?(vo)(nvo)} =
+    IF vo`z = vi`z THEN zero
+    ELSE
+      LET v        = vo-vi,
+          dir:Sign = IF abs(s`z) >= H THEN epsv*sign(s`z) ELSE Entry ENDIF,
+          t        = Theta_H(s`z,v`z,-dir) IN
+      IF t > 0 AND epsv = sign(s`z + t*v`z) THEN
+        LET nvo2 = trk_only_vertical(s,vo,vi,t,dir,irt) IN
+          IF horizontal_los?(s) OR horizontal_criterion?(s,epsh)(nvo2-vo) THEN
+            nvo2 WITH [z |-> vo`z] 
+          ELSE
+            zero
+          ENDIF
+      ELSE
+         zero
+      ENDIF
+    ENDIF
+
+  trk_vertical(s,vo,vi,epsh,epsv): {nvo | nz_vect2?(nvo) => 
+                                          trk_only_3D?(vo)(nvo)} =
+    LET vo1 = trk_vertical_irt(s,vo,vi,epsh,epsv,1),
+        vo2 = trk_vertical_irt(s,vo,vi,epsh,epsv,-1) IN
+    IF vo2 = zero THEN vo1
+    ELSIF vo1 = zero OR
+          le?(vo)(vo2,vo1) THEN vo2
+    ELSE vo1
+    ENDIF
+
+  trk_vertical?(s,vo,vi,epsh,epsv)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    EXISTS (irt): nvo = trk_vertical_irt(s,vo,vi,epsh,epsv,irt)
+
+  %------------%
+  % LEMMAS     %
+  %------------%
+
+  trk_circle_nzvz : LEMMA
+    trk_circle?(s,vo,vi,dir)(nvo) IMPLIES
+    vo`z /= vi`z 
+
+  trk_circle_solution_2D : LEMMA
+    trk_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      circle_solution_2D?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir)
+
+  trk_circle_solution : LEMMA
+    trk_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      circle_solution?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir)
+
+  trk_circle_independence: THEOREM
+    trk_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      NOT conflict_ever?(s,nvo-vi)
+
+  trk_circle_complete: THEOREM
+    vo`z /= vi`z AND 
+    trk_only_3D?(vo)(nvo) AND
+    circle_solution?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir) AND
+    NOT trk_special_case?(s,vo,vi,Theta_H(s`z,vo`z-vi`z,-dir))
+    IMPLIES
+      trk_circle?(s,vo,vi,dir)(nvo)
+
+  trk_vertical_eps : LEMMA
+    LET nvo = trk_vertical(s,vo,vi,epsh,epsv) IN
+    nz_vect2?(nvo) IMPLIES
+    trk_vertical?(s,vo,vi,epsh,epsv)(nvo)
+
+  trk_vertical_meets_horizontal_criterion : THEOREM
+    trk_vertical?(sp,vo,vi,epsh,epsv)(nvo) IMPLIES
+    horizontal_criterion?(sp,epsh)(nvo-vo)
+
+  trk_vertical_meets_vertical_criterion : THEOREM
+    trk_vertical?(s,vo,vi,epsh,epsv)(nvo) IMPLIES
+    vertical_criterion?(epsv)(s,vo-vi)(nvo-vi)
+
+END trk_circle

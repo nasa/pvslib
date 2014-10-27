@@ -1,0 +1,140 @@
+%
+%
+% Purpose : This theory introduces error terms for various
+%           sources of temporal imprecision in a communication
+%           network.  It assumes that a pair of communicating
+%           nodes have a common clock frequency, but are driven
+%           by independent oscillators.  One contributor to the
+%           imprecision is due to the discretization of a
+%           realtime event that can only be observed at discrete
+%           intervals (i.e. on an edge of the destination
+%           clock). The bound on this error is at least one tick
+%           (as measured by the destination's clock).  An event that
+%           happens immediately after a destination clock edge will
+%           not be recorded until the following edge. Another
+%           (small) contributor to imprecision is the relative
+%           drift rate of the two clocks.  At this level of
+%           granularity, the relative drift may safely be
+%           neglected (it will be overwhelmed by clock
+%           jitter). However, we include it for completeness.
+%           Finally, this theory addresses imprecision due to
+%           differences in wire lengths.  If a single source
+%           sends to two different destinations, the difference in
+%           time of observation may be affected by the different
+%           communication delays.  
+%
+%
+
+timing_imprecision
+[
+   rho     : nonneg_real, % Bound on drift for a good oscillator
+   min_latency   : nonneg_real, % minimum real time latency (in ticks
+                          % of real time) of the communication link
+                          % determined by things like length of wire, speed
+                          % of light, and clock rate.
+   var_latency: nonneg_real
+                          % Max variation (in ticks of real 
+                          % time) caused by both wire length 
+                          % differences and clock jitter.  
+]: THEORY
+
+  BEGIN
+
+  IMPORTING inverse_clocks[rho]
+
+  y: VAR nonneg_real
+  skew: VAR nonneg_real
+
+  ev, ev1, ev2, ev1r, ev2r: VAR real  % the real time this event occurs
+  c, c1, c2: VAR good_clock 
+
+  T : VAR integer
+
+  epsilon: posreal = 1 + rho + var_latency 
+  max_latency: posreal   = min_latency + epsilon
+  mid_latency: posreal   = min_latency + epsilon / 2 % = (min_latency + max_latency) / 2
+
+  mid_latency_ge_one_half :LEMMA mid_latency >= 1 / 2 % for W tccs
+
+  % W is the expected Clocktime latency for a point to point communication.
+  W: posint =
+    IF fractional(mid_latency) < 1 / 2 THEN floor(mid_latency) ELSE ceiling(mid_latency) ENDIF
+
+  % Results for tcc proofs
+  drift_relation_alt: LEMMA y / rate <= y AND y <= y * rate
+  W_bound:         LEMMA min_latency < W        AND W <= max_latency 
+  W_bound_alt:     LEMMA min_latency < W * rate AND W / rate <= max_latency
+
+  % 
+  % Terms denoting imprecision in the communication link
+  %
+  epsilon_l: posreal = W * rate - min_latency
+  epsilon_u: nnreal  = max_latency - W / rate
+  max_error: posreal = max(epsilon_l, epsilon_u)
+
+  epsilon_relation: LEMMA epsilon_l + epsilon_u = epsilon + drift * W
+
+
+  %
+  % The timestamp of event ev as observed by a process governed by
+  % good_clock c is the earliest marked Clocktime after the event.
+  % A timestamp can be thought of as the earliest clock time that 
+  % the event can be recognized.
+  %
+
+  Timestamp(c,ev): integer = C(c)(ev) + 1
+
+  event_observation_error: LEMMA
+     ev < c(Timestamp(c, ev)) AND c(Timestamp(c, ev)) <= ev + 1 + rho
+
+  % the possible range of reception times of a message 'ev' from a good source.
+  good_range(ev): set[real] =
+    {t: real | ev + min_latency <= t & t <= ev + min_latency + var_latency}
+
+
+  % Temporal validity for a message from a good source
+  link_lower_range: LEMMA
+      good_range(c1(T - W))(ev2)
+    IMPLIES
+      c1(T) - epsilon_l <= c2(Timestamp(c2, ev2))
+
+  link_upper_range: LEMMA
+      good_range(c1(T - W))(ev2)
+    IMPLIES
+      c2(Timestamp(c2, ev2)) <= c1(T) + epsilon_u
+
+  link_abs_bound: LEMMA
+      good_range(c1(T - W))(ev2)
+    IMPLIES
+      abs(c2(Timestamp(c2, ev2)) - c1(T)) <= max_error
+
+
+  % the transmission delay difference caused by differences in wire lengths
+  % is bounded by epsilon. This is the basis of agreement propagation.
+  link_relative_range: LEMMA
+      good_range(ev1)(ev1r) AND
+      good_range(ev2)(ev2r)
+    IMPLIES  
+      abs(c1(Timestamp(c1, ev1r)) - c2(Timestamp(c2, ev2r)) - ev1 + ev2) <= epsilon
+
+  link_relative_symmetry: COROLLARY
+      good_range(ev)(ev1) AND
+      good_range(ev)(ev2) 
+    IMPLIES
+      abs(c1(Timestamp(c1, ev1)) - c2(Timestamp(c2, ev2))) <= epsilon
+    
+
+  % Two events that are in the good range of the same event differ by
+  % at most "var_latency".
+  good_range_bounded: LEMMA
+      good_range(ev)(ev1) AND
+      good_range(ev)(ev2) 
+    IMPLIES
+      abs(ev1 - ev2) <= var_latency
+
+  link_symmetry: LEMMA
+      abs(ev1 - ev2) <= var_latency 
+    IMPLIES
+      abs(c1(Timestamp(c1, ev1)) - c2(Timestamp(c2, ev2))) <= epsilon
+
+END timing_imprecision

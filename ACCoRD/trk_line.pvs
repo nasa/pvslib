@@ -1,0 +1,96 @@
+%------------------------------------------------------------------------------
+% trk_line.pvs
+% ACCoRD v1.0
+%
+% Track line solutions are track only solutions that are tangent to the 
+% protected zone.
+%------------------------------------------------------------------------------
+
+trk_line[D: posreal] : THEORY
+BEGIN
+  
+  IMPORTING trk_only[D],
+            tangent_line[D]
+
+  ss         : VAR Ss_vect2
+  sp         : VAR Sp_vect2
+  eps,irt,
+  irt1,irt2  : VAR Sign
+  vo,vi,    
+  vo2,
+  nvo,
+  nvo1,nvo2  : VAR Vect2
+  vnzo       : VAR Nz_vect2
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  % zero indicates no track solution
+
+  trk_line_eps_irt(sp,vo,vi,eps,irt): {nvo:Vect2 | nz_vect2?(nvo) => 
+                                                   trk_only?(vo)(nvo)} =
+    LET (k,nvo)  = trk_only_line(tangent_line(sp,eps),vo,vi,irt) IN
+    IF k >= 0 THEN
+      nvo
+    ELSE
+      zero 
+    ENDIF
+
+  trk_line_eps_irt?(sp,vo,vi,eps,irt)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    nvo = trk_line_eps_irt(sp,vo,vi,eps,irt)
+
+  trk_line_eps(sp,vo,vi,eps): {nvo | nz_vect2?(nvo) => 
+                                     trk_only?(vo)(nvo)} =
+    LET vo1 = trk_line_eps_irt(sp,vo,vi,eps,1),
+        vo2 = trk_line_eps_irt(sp,vo,vi,eps,-1) IN
+    IF vo2 = zero THEN vo1
+    ELSIF vo1 = zero OR
+          le?(vo)(vo2,vo1) THEN vo2
+    ELSE vo1
+    ENDIF
+
+  trk_line_eps?(sp,vo,vi,eps)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    nvo = trk_line_eps(sp,vo,vi,eps)
+
+  trk_line?(sp,vo,vi)(nvo:Vect2):bool =
+    nz_vect2?(nvo) AND 
+    EXISTS (eps,irt): nvo = trk_line_eps_irt(sp,vo,vi,eps,irt)
+
+  %----------%
+  % LEMMAS   %
+  %----------%
+
+  trk_line_eps_irt_tangent_line: LEMMA 
+    trk_line_eps_irt?(sp,vo,vi,eps,irt)(nvo) 
+    IMPLIES
+      tangent_line?(sp,nvo-vi,eps)              
+       
+  trk_line_eps_irt_dot : LEMMA
+    trk_line_eps_irt?(ss,vo,vi,eps,-1)(nvo1) AND
+    trk_line_eps_irt?(ss,vo,vi,eps,1)(nvo2) IMPLIES
+    nvo2*ss <= nvo1*ss
+
+  irt_trk_line_eps: LEMMA 
+    trk_line_eps?(sp,vo,vi,eps)(nvo) 
+    IMPLIES
+      EXISTS (irt): trk_line_eps_irt?(sp,vo,vi,eps,irt)(nvo)
+
+  trk_line_eps_tangent_line: LEMMA 
+    trk_line_eps?(sp,vo,vi,eps)(nvo) 
+    IMPLIES
+      tangent_line?(sp,nvo-vi,eps)              
+
+  trk_line_is_line_solution: LEMMA 
+    trk_line_eps?(sp,vo,vi,eps)(nvo) 
+    IMPLIES
+      line_solution?(sp,nvo-vi,eps)              
+
+  trk_line_complete : THEOREM
+    trk_only?(vnzo)(nvo) AND
+    line_solution?(sp,nvo-vi) IMPLIES
+      trk_line?(sp,vnzo,vi)(nvo)
+
+END trk_line

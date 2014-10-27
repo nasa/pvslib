@@ -1,0 +1,138 @@
+%-----------------------------------------------------------------------------
+% Zip two sequences of countable length together to form a single sequence of
+% pairs.  The length of the new sequence is the minimum length of the original
+% two sequences.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_zip[T1, T2: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_nth[T1], csequence_nth[T2], csequence_nth[[T1, T2]]
+  IMPORTING csequence_length_comp[T1, T2]
+  IMPORTING csequence_codt_coreduce[[T1, T2], [csequence[T1], csequence[T2]]]
+
+  n: VAR nat
+  t: VAR [[T1, T2]]
+  p1: VAR pred[T1]
+  p2: VAR pred[T2]
+  cseq1: VAR csequence[T1]
+  fseq1: VAR finite_csequence[T1]
+  iseq1: VAR infinite_csequence[T1]
+  nseq1: VAR nonempty_csequence[T1]
+  nfseq1: VAR nonempty_finite_csequence[T1]
+  cseq2: VAR csequence[T2]
+  fseq2: VAR finite_csequence[T2]
+  iseq2: VAR infinite_csequence[T2]
+  nseq2: VAR nonempty_csequence[T2]
+  nfseq2: VAR nonempty_finite_csequence[T2]
+  state: VAR [csequence[T1], csequence[T2]]
+
+  zip_struct(state):
+        csequence_struct[[T1, T2], [csequence[T1], csequence[T2]]] =
+      IF empty?(state`1) OR empty?(state`2) THEN inj_empty_cseq
+      ELSE inj_add((first(state`1), first(state`2)),
+                   (rest(state`1), rest(state`2)))
+      ENDIF
+
+  zip(cseq1, cseq2): csequence[[T1, T2]] =
+      coreduce(zip_struct)(cseq1, cseq2)
+
+  zip_finite1: JUDGEMENT zip(fseq1, cseq2) HAS_TYPE finite_csequence[[T1, T2]]
+  zip_finite2: JUDGEMENT zip(cseq1, fseq2) HAS_TYPE finite_csequence[[T1, T2]]
+
+  zip_infinite: JUDGEMENT
+    zip(iseq1, iseq2) HAS_TYPE infinite_csequence[[T1, T2]]
+
+  zip_nonempty: JUDGEMENT
+     zip(nseq1, nseq2) HAS_TYPE nonempty_csequence[[T1, T2]]
+
+  zip_empty: THEOREM
+    FORALL cseq1, cseq2:
+      empty?(zip(cseq1, cseq2)) IFF empty?(cseq1) OR empty?(cseq2)
+
+  zip_first: THEOREM
+    FORALL nseq1, nseq2:
+      first(zip(nseq1, nseq2)) = (first(nseq1), first(nseq2))
+
+  zip_rest: THEOREM
+    FORALL nseq1, nseq2:
+      rest(zip(nseq1, nseq2)) = zip(rest(nseq1), rest(nseq2))
+
+  zip_add: THEOREM
+    FORALL cseq1, cseq2, (a: T1), (b: T2):
+      zip(add(a, cseq1), add(b, cseq2)) = add((a, b), zip(cseq1, cseq2))
+
+  zip_length: THEOREM
+    FORALL cseq1, cseq2:
+      is_finite(zip(cseq1, cseq2)) IMPLIES
+       length(zip(cseq1, cseq2)) =
+        IF is_finite(cseq1)
+          THEN IF is_finite(cseq2) THEN min(length(cseq1), length(cseq2))
+               ELSE length(cseq1)
+               ENDIF
+        ELSE length(cseq2)
+        ENDIF
+
+  zip_index: THEOREM
+    FORALL cseq1, cseq2, n:
+      index?(zip(cseq1, cseq2))(n) IFF index?(cseq1)(n) AND index?(cseq2)(n)
+
+  zip_nth: THEOREM
+    FORALL cseq1, cseq2, (n: indexes(zip(cseq1, cseq2))):
+      nth(zip(cseq1, cseq2), n) = (nth(cseq1, n), nth(cseq2, n))
+
+  zip_last: THEOREM
+    FORALL nseq1, nseq2:
+      is_finite(zip(nseq1, nseq2)) IMPLIES
+       last(zip(nseq1, nseq2)) =
+        COND length_lt(nseq1, nseq2) ->
+               (last(nseq1), nth(nseq2, length(nseq1) - 1)),
+             length_gt(nseq1, nseq2) ->
+               (nth(nseq1, length(nseq2) - 1), last(nseq2)),
+             ELSE -> (last(nseq1), last(nseq2))
+        ENDCOND
+
+  zip_extensionality: THEOREM
+    FORALL (cseq1, cseq3: csequence[T1]), (cseq2, cseq4: csequence[T2]):
+      length_eq(cseq1, cseq2) AND
+       length_eq(cseq3, cseq4) AND zip(cseq1, cseq2) = zip(cseq3, cseq4)
+       IMPLIES cseq1 = cseq3 AND cseq2 = cseq4
+
+  zip_some: THEOREM
+    FORALL cseq1, cseq2, p1, p2:
+      some(LAMBDA t: p1(t`1) OR p2(t`2))(zip(cseq1, cseq2)) IFF
+       COND length_lt(cseq1, cseq2) ->
+              some(p1)(cseq1) OR
+               (EXISTS (i: indexes(cseq2)):
+                  i < length(cseq1) AND p2(nth(cseq2, i))),
+            length_gt(cseq1, cseq2) ->
+              (EXISTS (i: indexes(cseq1)):
+                 i < length(cseq2) AND p1(nth(cseq1, i)))
+               OR some(p2)(cseq2),
+            ELSE -> some(p1)(cseq1) OR some(p2)(cseq2)
+       ENDCOND
+
+  zip_every: THEOREM
+    FORALL cseq1, cseq2, p1, p2:
+      every(LAMBDA t: p1(t`1) AND p2(t`2))(zip(cseq1, cseq2)) IFF
+       COND length_lt(cseq1, cseq2) ->
+              every(p1)(cseq1) AND
+               (FORALL (i: indexes(cseq2)):
+                  i < length(cseq1) IMPLIES p2(nth(cseq2, i))),
+            length_gt(cseq1, cseq2) ->
+              (FORALL (i: indexes(cseq1)):
+                 i < length(cseq2) IMPLIES p1(nth(cseq1, i)))
+               AND every(p2)(cseq2),
+            ELSE -> every(p1)(cseq1) AND every(p2)(cseq2)
+       ENDCOND
+
+ END csequence_zip

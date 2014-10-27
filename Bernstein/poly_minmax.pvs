@@ -1,0 +1,164 @@
+poly_minmax : THEORY
+BEGIN 
+
+  IMPORTING poly2bernstein,
+            bernstein_minmax
+ 
+  mpoly	      : VAR MultiPolynomial
+  polydegmono : VAR DegreeMono
+  nvars,terms : VAR posnat
+  cf          : VAR Coeff
+  boundedpts,
+  intendpts   : VAR IntervalEndpoints
+  depth,v     : VAR nat
+  Avars,Bvars : VAR Vars
+  varselect   : VAR VarSelector
+  rel         : VAR [[real,real]->bool]
+  localexit   : VAR [Outminmax -> bool]
+  globalexit  : VAR [Outminmax->bool]
+  omm         : VAR Outminmax
+
+  % Points in a finite interval [A,B]
+
+  box_poly_lb?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm): bool =
+    cons?(omm`lb_var) IMPLIES
+      (length(omm`lb_var) = nvars AND
+       LET lb_varlam  = list2array(0)(omm`lb_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(Avars(iup),Bvars(iup),intendpts(iup),boundedpts(iup))(lb_varlam(iup))) AND
+           multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(lb_varlam) = omm`lb_max)
+
+  box_poly_ub?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm): bool =
+    cons?(omm`ub_var) IMPLIES
+      (length(omm`ub_var) = nvars AND
+      LET ub_varlam  = list2array(0)(omm`ub_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(Avars(iup),Bvars(iup),intendpts(iup),boundedpts(iup))(ub_varlam(iup))) AND
+           multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(ub_varlam) = omm`ub_min)
+
+  % Points in an infinite interval
+
+  inf_box_poly_lb?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(rel,omm): bool =
+    cons?(omm`lb_var) IMPLIES
+      (length(omm`lb_var) = nvars AND
+       LET lb_varlam  = list2array(0)(omm`lb_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(Avars(iup),Bvars(iup),intendpts(iup),boundedpts(iup))(lb_varlam(iup))) AND
+           (rel(omm`lb_max,0) IFF
+            rel(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(lb_varlam),0)))
+
+  inf_box_poly_ub?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(rel,omm): bool =
+    cons?(omm`ub_var) IMPLIES
+      (length(omm`ub_var) = nvars AND
+      LET ub_varlam  = list2array(0)(omm`ub_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(Avars(iup),Bvars(iup),intendpts(iup),boundedpts(iup))(ub_varlam(iup))) AND
+           (rel(omm`ub_min,0) IFF
+            rel(multipoly_eval(mpoly,polydegmono,cf,nvars,terms)(ub_varlam),0)))
+
+  % Soundness on a finite interval [A,B]
+
+  sound_poly_fin?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) : bool =
+    forall_X_poly_between(omm`lb_min,omm`ub_max)(mpoly,polydegmono,cf,nvars,terms,Avars,Bvars,
+	intendpts,boundedpts) AND
+    box_poly_lb?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) AND
+    box_poly_ub?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) AND
+    length_eq?(nvars)(omm)
+
+  % Soundness on an infinite interval
+
+  sound_poly_inf?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) : bool =
+    FORALL (relreal:RealOrder):
+      (relreal(omm`lb_min,0) AND relreal(omm`ub_max,0) IMPLIES
+      forall_X_poly_rel(relreal,0)(mpoly,polydegmono,cf,nvars,terms,Avars,Bvars,
+	intendpts,boundedpts)) AND
+      inf_box_poly_lb?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)
+                      (relreal,omm) AND
+      inf_box_poly_ub?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)
+                      (relreal,omm) AND
+      length_eq?(nvars)(omm) AND
+      omm`lb_min <= omm`ub_max
+
+  sound_poly?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) : bool =
+    lt_below?(nvars)(Avars,Bvars)
+    AND
+    bounded_points_exclusive?(nvars)(boundedpts) IMPLIES
+    ((bounded_points_true?(nvars)(boundedpts) AND 
+        sound_poly_fin?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm))
+    OR
+    ((NOT bounded_points_true?(nvars)(boundedpts)) AND 
+        sound_poly_inf?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm)))
+
+  sound_poly_lb_le_ub: LEMMA
+    sound_poly?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)(omm) AND
+    lt_below?(nvars)(Avars,Bvars) AND
+    bounded_points_exclusive?(nvars)(boundedpts) 
+    IMPLIES
+    lb_le_ub?(omm)
+
+  % mpoly: A multi-variate polynomial, e.g., LAMBDA(terms:nat)(variable:nat)(deg:nat):coefficient
+  % polydegmono: The degree of each variable, e.g., LAMBDA(variable:nat):degree
+  % nvars: Number of variables
+  % terms: Number of terms
+  % cf : Coeffients per term, e.g., LAMBDA(terms:nat):coefficient
+  % Avars: Lower bounds of variables, e.g., LAMBDA(variable:nat):lower_bound
+  % Bvars: Upper bounds of variables, e.g., LAMBDA(variable:nat):upper_bound
+  % depth: Search depth
+  % localexit: A function that determines when a branch can be pruned. Unless you know what you
+  %   are doing consider using eps_localexit(precision), where precision is a positive real number.
+  % globalexit: A function that determines when the algorithm must terminate (for any other reason
+  %   than normal termination or maximum depth). Unless you know what you are doing consider
+  %   using false_globalexit.
+  % intendpts: Encoding of open/close lower and upper variable bounds, e.g., 
+  %   LAMBDA(variables:nat):(lb_bool,ub_bool), where true = closed and false=open.
+  % boundedpts: Encoding of finite/infinite lower and upper variable bounds, e.g.,
+  %   LAMBDA(variables:nat):(lb_bool,ub_bool), where true = finite and false=infinite.
+  %   [IMPORTANT REMARK: Independently of the value of boundpts, Avars < Bvars]
+  % varselect: A function that selects the next varible to sub-divide and which sub-interval
+  %   should be considered first, e.g., left=true, right=false. Unless you know what you are
+  %   doing consider using maxvarselect.
+
+  multipolynomial_minmax(mpoly,polydegmono,nvars,terms,
+                         cf,Avars,Bvars,depth,localexit,globalexit,
+                         intendpts,boundedpts,varselect) : 
+    (sound_poly?(mpoly,polydegmono,nvars,terms,cf,Avars,Bvars,boundedpts,intendpts)) =
+    LET mpolytr = multipoly_translate(mpoly,polydegmono,nvars,boundedpts)(Avars,Bvars),
+        bspoly = bs_convert_poly(mpolytr,polydegmono,polydegmono,nvars,terms),
+	infintendpts = interval_endpoints_inf_trans(Avars,Bvars,intendpts,boundedpts),
+        bs_minmax = Bernstein_minmax(bspoly,polydegmono,nvars,terms,cf,depth,
+                                     localexit,globalexit,infintendpts,varselect) IN
+      bs_minmax WITH [ 
+        lb_var := denormalize_listreal(bs_minmax`lb_var)(Avars,Bvars,boundedpts),
+        ub_var := denormalize_listreal(bs_minmax`ub_var)(Avars,Bvars,boundedpts) 
+      ]
+
+  poly       : VAR Polynomial
+  deg        : VAR nat
+  intendpt,
+  boundedpt  : VAR [bool,bool]
+  var_lb,
+  var_ub     : VAR real
+
+  % poly: A one-variable polynomial, e.g., LAMBDA(deg:nat):coefficient
+  % deg: The degree of the polynomial
+  % var_lb: Lower bound of the variable
+  % var_ub: Upper bound of the variable
+  %   [IMPORTANT REMARK: Independently of the value of boundpts, var_lb < var_ub]
+  % depth: Search depth, e.g., 40
+  % localexit,globalexit: see multipolynomial_minmax.
+  % intendpoints: Encoding of open/close lower and upper variable bound, e.g., 
+  %   (lb_bool,ub_bool), where true = closed and false=open. 
+  % boundedpt: Encoding of finite/infinite lower and upper variable bound, e.g.,
+  %   (lb_bool,ub_bool), where true = finite and false=infinite.
+  % varselect: see multipolynomial_minmax.
+
+  polynomial_minmax(poly,deg,var_lb,var_ub,depth,localexit,globalexit,
+                    intendpt,boundedpt,varselect) : Outminmax = 
+    multipolynomial_minmax(LAMBDA(terms:nat):LAMBDA(variable:nat):poly,
+                           LAMBDA(variable:nat):deg,1,1,LAMBDA(terms:nat):1,
+                           LAMBDA(variable:nat):var_lb,LAMBDA(variable:nat):var_ub,
+                           depth,localexit,globalexit,
+                           LAMBDA(variable:nat):intendpt,LAMBDA(variable:nat):boundedpt,
+                           varselect)
+
+END poly_minmax

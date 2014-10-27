@@ -1,0 +1,202 @@
+%
+%
+% Purpose : a specific instantiation of an inexact middle-value 
+%          multi-stage exchange adapted for synchronization properties
+%
+%
+
+
+reduce_synch
+[
+  rho: nonneg_real,      % Bound on drift for a good oscillator
+  min_latency: [nat -> nonneg_real], 
+                         % Minimum real time latency (in ticks
+                         % of real time) of the communication link
+                         % between stage i and i+1
+                         % determined by things like length of wire, speed
+                         % of light, and clock rate.
+  var_latency: [nat -> nonneg_real], 
+                         % Max variation (in ticks of real 
+                         % time) between stage i and i+1
+                         % caused by both wire length 
+                         % differences and clock jitter.  
+  stage: [nat -> posnat] % Number of nodes in a given stage
+] : THEORY
+
+  BEGIN
+
+  i, j, k: VAR nat
+
+  source_error(i): MACRO real = 0
+
+  IMPORTING
+    reals@sigma_nat,
+    reals@real_fun_ops,
+    timing_integration[rho, min_latency, var_latency, stage],
+    k_ordered[stage, real, <=, source_error],
+    protocol[stage, real],
+    reduce_synch_stage
+
+  c_src: VAR [i: nat -> [below(stage(i)) -> good_clock[rho]]]
+  c_dst: VAR [i: nat -> [below(stage(i)) -> good_clock[rho]]]
+  clk: VAR [i: nat -> [below(stage(i)) -> good_clock[rho]]]
+  tau: VAR [nat -> tau_type]
+  Lag, Schedule: VAR [nat -> integer]
+  pi: VAR [nat -> nonneg_real]
+  delta: VAR nonneg_real
+
+  cf: VAR k_consensus_function
+  icf: VAR [nat -> in_consensus_function]
+
+  status: VAR [i: nat -> node_status[stage(i)]]
+  src_set: VAR [i: nat -> non_empty_finite_set[below(stage(i))]] 
+  local_check:  VAR [i: nat -> [below(stage(i+1)) -> finite_set[below(stage(i))]]] 
+
+  same_clock?(c_src, c_dst, j, k): bool = 
+    FORALL i: j <= i AND i < k IMPLIES
+      same_edges?[rho, stage(i+1)](c_src(i+1), c_dst(i+1))
+
+  W(i): nat = W[rho, min_latency(i), var_latency(i)]
+
+  feasible?(Schedule): bool = FORALL i:  Schedule(i) <= Schedule(i+1) - W(i+1) 
+
+  Sched :VAR (feasible?)
+
+  Delay(Sched)(i): nat = Sched(i + 1) - Sched(i)
+
+  Del(Sched)(i): nat = Sched(i) - Sched(pred(i))
+
+  Del_Delay: LEMMA Del(Sched)(i + 1) = Delay(Sched)(i)
+
+  Lag(Sched)(i): nat = Delay(Sched)(i) - W(i+1)
+
+  Delay_Lag: LEMMA
+    Delay(Sched)(i) = W(i+1) + Lag(Sched)(i)
+
+  offset_sent_nominal: LEMMA
+    nominal(clk, Schedule)(i) = offset[rho, stage(i)](clk(i), W(i))(sent(clk, Schedule)(i)) 
+
+
+  %used only for correspondence to protocol
+  offset(clk, Schedule)(i): compute_stage[stage(i), real] 
+    = offset[rho, stage(i)](clk(i), Schedule(i))
+
+  synch_protocol(status, c_src, c_dst, Sched, src_set, tau, cf, pi, j, k): bool = 
+      FORALL i: j <= i AND i < k IMPLIES
+        nominal(c_src, Sched)(i+1) = 
+          synch_stage[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+            (status(i), c_src(i), c_dst(i+1), Sched(i), Delay(Sched)(i), src_set(i), tau(i), cf(i), pi(i))
+
+  synch_protocol_sent: LEMMA
+      feasible?(Schedule)AND
+      same_clock?(c_src, c_dst, j, k) AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, k)
+    IMPLIES
+      FORALL i: j <= i AND i < k IMPLIES
+        sent(c_src, Schedule)(i+1) = 
+          synch_stage[rho, min_latency(i), var_latency(i), stage(i), stage(i+1)]
+            (status(i), c_src(i), c_dst(i+1), Schedule(i), Lag(Schedule)(i), src_set(i), tau(i), cf(i), pi(i))
+
+  protocol_synch(status, c_src, c_dst, Sched, src_set, tau, cf, pi, j, k): bool = 
+    protocol(offset(c_dst, Del(Sched)), reduce_choice(tau, cf), 
+      nominal(c_src, Sched), 
+      received(c_dst, c_src, Sched, status, pi),
+      check(c_dst, Sched, src_set, pi), j, k)
+
+%  offset_transform(clk, Schedule, cf)(i): consensus_function
+%    = LAMBDA (s:ne_seqs):offset[rho, stage(i)](clk(i), Schedule(i)) o cf(i)
+
+%  protocol_synch2(status, c_src, c_dst, Sched, src_set, tau, cf, pi, j, k): bool = 
+%    protocol(reduce_choice(tau, offset_transform(c_dst, Del(Sched), cf)), 
+%      nominal(c_src, Sched), 
+%      received(c_dst, c_src, Sched, status, pi),
+%      check(c_dst, Sched, src_set, pi), j, k)
+
+  % correspondence result
+  k_stage_synch: LEMMA 
+    protocol_synch(status, c_src, c_dst, Sched, src_set, tau, cf, pi, j, k) IFF 
+      synch_protocol(status, c_src, c_dst, Sched, src_set, tau, cf, pi, j, k)
+
+
+  % Synchronization protocol guarantees
+  lower_validity: THEOREM
+      feasible?(Schedule) AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, j + k) AND
+      quorum_synch?(status, c_src, c_dst, Schedule, src_set, tau, pi, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k)
+    IMPLIES
+      v_min(nominal(c_src, Schedule), src_set)(j) 
+        - sigma(j, j + k - 1, epsilon_lower - ((1/rate[rho]) * Delay(Schedule)))
+        <= v_min(nominal(c_src, Schedule), src_set)(j + k)
+
+  upper_validity: THEOREM
+      feasible?(Schedule) AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, j + k) AND
+      quorum_synch?(status, c_src, c_dst, Schedule, src_set, tau, pi, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k)
+    IMPLIES
+        v_max(nominal(c_src, Schedule), src_set)(j + k) 
+          <= v_max(nominal(c_src, Schedule), src_set)(j) 
+               + sigma(j, j + k - 1, epsilon_upper + rate[rho] * Delay(Schedule)) 
+
+  agreement_propagation: LEMMA
+      feasible?(Schedule) AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, j + k) AND
+      quorum_synch?(status, c_src, c_dst, Schedule, src_set, tau, pi, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k) AND
+      v_max(sent(c_src, Schedule), src_set)(j) 
+        - v_min(sent(c_src, Schedule), src_set)(j) <= delta AND
+      same_clock?(c_src, c_dst, j, j + k)
+    IMPLIES
+      v_max(sent(c_src, Schedule), src_set)(j + k) 
+        - v_min(sent(c_src, Schedule), src_set)(j + k) 
+          <= delta + sigma(j, j + k - 1, epsilon_total + drift[rho] * Lag(Schedule))
+
+  X: VAR posnat
+
+  convergent_stage?(status, c_src, c_dst, Schedule, src_set, tau, cf, X, pi, j, k): bool =
+    EXISTS i: j <= i AND i < k AND
+      overlap_synch?[rho, min_latency(i), var_latency(i), stage(i), stage(i + 1)]
+         (status(i), c_src(i), c_dst(i + 1), Schedule(i), src_set(i), tau(i), pi(i)) AND
+      convergent?(cf(i), 
+        max_length[rho, min_latency(i), var_latency(i), stage(i), stage(i + 1)]
+          (status(i), c_src(i), c_dst(i + 1), Schedule(i), src_set(i), tau(i), pi(i)), X)
+
+
+  convergence: LEMMA
+      feasible?(Schedule)AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, j + k) AND
+      quorum_synch?(status, c_src, c_dst, Schedule, src_set, tau, pi, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k) AND
+      convergent_stage?(status, c_src, c_dst, Schedule, src_set, tau, cf, X, pi, j, j + k) AND
+      v_max(sent(c_src, Schedule), src_set)(j) 
+        - v_min(sent(c_src, Schedule), src_set)(j) <= delta AND
+      same_clock?(c_src, c_dst, j, j + k)
+    IMPLIES
+      v_max(sent(c_src, Schedule), src_set)(j + k) 
+        - v_min(sent(c_src, Schedule), src_set)(j + k) 
+          <= delta * ((X - 1) / X) + sigma(j, j + k - 1, epsilon_total + drift[rho] * Lag(Schedule)) + rate[rho]
+
+  agreement_generation: THEOREM
+      feasible?(Schedule)AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, cf, pi, j, j + k) AND
+      exists_symmetric_synch_stage?(status, c_src, c_dst, Schedule, src_set, tau, pi, cf, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k) AND
+      same_clock?(c_src, c_dst, j, j + k)
+    IMPLIES
+      v_max(sent(c_src, Schedule), src_set)(j + k) 
+        - v_min(sent(c_src, Schedule), src_set)(j + k) 
+          <= sigma(j, j + k - 1, epsilon_total + drift[rho] * Lag(Schedule)) + rate[rho]
+
+  agreement_generation_edge: THEOREM
+      feasible?(Schedule)AND
+      synch_protocol(status, c_src, c_dst, Schedule, src_set, tau, icf, pi, j, j + k) AND
+      exists_symmetric_synch_stage?(status, c_src, c_dst, Schedule, src_set, tau, pi, icf, j, j + k) AND
+      clock_relation?(Schedule, c_src, c_dst, pi, j, j + k) AND
+      same_clock?(c_src, c_dst, j, j + k)
+    IMPLIES
+      v_max(sent(c_src, Schedule), src_set)(j + k) 
+        - v_min(sent(c_src, Schedule), src_set)(j + k) 
+          <= sigma(j, j + k - 1, epsilon_total + drift[rho] * Lag(Schedule))
+
+END reduce_synch

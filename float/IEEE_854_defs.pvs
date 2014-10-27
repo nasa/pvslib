@@ -1,0 +1,125 @@
+IEEE_854_defs 
+  [b,p:above(1),
+   alpha,E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min],
+            IEEE_854_remainder[b,p,alpha,E_max,E_min],
+            IEEE_854_fp_int[b,p,alpha,E_max,E_min],
+            arithmetic_ops[b,p,alpha,E_max,E_min],
+            comparison1[b,p,E_max,E_min],
+            infinity_arithmetic[b,p,E_max,E_min],
+            NaN_ops[b,p,E_max,E_min],
+            enumerated_type_defs
+
+  IMPORTING reals@sqrt
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% basic instruction schemata, ignoring exceptions for now
+%  These functions are listed in section 5.1 of IEEE-854
+
+  fp,fp1,fp2: var fp_num
+  mode: var rounding_mode
+
+% Addition operator
+  fp_add(fp1, fp2, mode): fp_num =
+    IF finite?(fp1) & finite?(fp2)
+      THEN fp_op(add, fp1, fp2, mode)
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan(add, fp1, fp2)
+    ELSE fp_add_inf(fp1, fp2)
+    ENDIF
+
+% Addition operator with exceptions
+  fp_add_x(fp1, fp2, mode): [fp_num, exception] =
+    IF finite?(fp1) & finite?(fp2)
+      THEN fp_op_x(add, fp1, fp2, mode)
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan_x(add, fp1, fp2)
+    ELSE fp_add_inf_x(fp1, fp2)
+    ENDIF
+
+  fp_add_x_correct: lemma fp_add(fp1,fp2,mode) = proj_1(fp_add_x(fp1,fp2,mode))
+
+% Subtraction Operator
+  fp_sub(fp1, fp2, mode): fp_num =
+    IF finite?(fp1) & finite?(fp2)
+      THEN fp_op(sub, fp1, fp2, mode)
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan(sub, fp1, fp2)
+    ELSE fp_sub_inf(fp1, fp2)
+    ENDIF
+
+% Subtraction Operator with exceptions
+  fp_sub_x(fp1, fp2, mode): [fp_num, exception] =
+    IF finite?(fp1) & finite?(fp2)
+      THEN fp_op_x(sub, fp1, fp2, mode)
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan_x(sub, fp1, fp2)
+    ELSE fp_sub_inf_x(fp1, fp2)
+    ENDIF
+
+% Excluding NaN operands, we should be able to prove a - b = a + (-b)
+%  independent of the rounding mode  
+  fsub_alt_def: LEMMA
+        NOT (NaN?(fp1) OR NaN?(fp2))
+          => fp_sub(fp1, fp2, mode) = fp_add(fp1, toggle_sign(fp2), mode)
+
+% Multiplication
+  fp_mul(fp1, fp2, mode): fp_num =
+    IF finite?(fp1) & finite?(fp2)
+      THEN fp_op(mult, fp1, fp2, mode)
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan(mult, fp1, fp2)
+    ELSE fp_mul_inf(fp1, fp2)
+    ENDIF
+  
+% Division
+  fp_div(fp1, fp2, mode): fp_num =
+    IF finite?(fp1) & finite?(fp2)
+      THEN IF zero?(fp2)
+        THEN IF zero?(fp1)
+          THEN invalid
+        ELSE infinite(mult_sign(fp1, fp2))
+        ENDIF
+      ELSE fp_op(div, fp1, fp2, mode)
+      ENDIF
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan(div, fp1, fp2)
+    ELSE fp_div_inf(fp1, fp2)
+    ENDIF
+
+% Remainder (independent of rounding mode)
+  fp_rem(fp1, fp2): fp_num =
+    IF finite?(fp1) & finite?(fp2)
+      THEN IF zero?(fp2)
+        THEN invalid
+      ELSE REM(fp1, fp2)
+      ENDIF
+    ELSIF NaN?(fp1) OR NaN?(fp2) THEN fp_nan(div, fp1, fp2)
+    ELSIF infinite?(fp1) THEN invalid
+    ELSE fp1
+    ENDIF
+
+% Square root
+
+  fp_sqrt(fp, mode): fp_num =
+    IF NaN?(fp) THEN NaN_sqrt(fp)
+    ELSIF zero?(fp) THEN fp
+    ELSIF finite?(fp)
+      THEN IF sign(fp) = pos
+        THEN real_to_fp(fp_round(sqrt(value(fp)), mode))
+      ELSE invalid
+      ENDIF
+    ELSIF i_sign(fp) = pos THEN fp
+    ELSE invalid
+    ENDIF
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% bug test spec, won't typecheck, 
+%% cannot determine full theory instance
+%  fp_id(fp):fp_num =
+%    cases fp of
+%      finite(s,e,d): fp,
+%      infinite(s): fp,
+%      NaN(sig,data):fp
+%    endcases
+  
+  END IEEE_854_defs

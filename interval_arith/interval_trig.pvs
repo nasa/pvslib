@@ -1,0 +1,293 @@
+%% interval_trig.pvs
+
+interval_trig : THEORY
+BEGIN
+  IMPORTING trig_fnd@trig_basic,
+            trig_fnd@trig_approx,
+            trig_fnd@trig_ineq,
+            trig_fnd@tan_approx,
+            trig_fnd@atan_approx,
+            trig_fnd@trig_values,
+            interval
+
+  X,Y : VAR Interval
+  x   : VAR real
+  n   : VAR nat
+
+  cos_error_pi_lbn_bound: LEMMA
+    abs(cos_term(pi_lbn(n))(2*n+2)) < 
+    3.2^(4+4*n)/factorial(4+4*n)
+
+  % Pi
+  Pi(n) : (Pos?) = [|pi_lbn(n),pi_ubn(n)|]
+
+  % Sin
+  sin_npi2_pi2(n)(X) : Interval =
+    [|sin_lb(lb(X),n),sin_ub(ub(X),n)|]
+
+  sin_pi2_pi(n)(X) : Interval =
+    [|sin_lb(ub(X),n),sin_ub(lb(X),n)|]
+
+  sin_0_pi(n)(X) : Interval =
+    [|min(sin_lb(lb(X),n),sin_lb(ub(X),n)),1|]
+
+  % Cos
+  cos_0_pi(n)(X) : Interval =
+    [|cos_lb(ub(X),n),cos_ub(lb(X),n)|]
+
+  cos_npi2_pi2(n)(X) : Interval =
+    [|min(cos_lb(lb(X),n),cos_lb(ub(X),n)),1|]
+
+  Cos(n)(X) : Interval =
+      if    X << [|0,pi_lb_est(n)|]             then cos_0_pi(n)(X)
+      elsif X << [|-pi_lb_est(n),0|]            then cos_0_pi(n)(Neg(X))
+      elsif X << [|-pi_lb_est(n)/2,pi_lb_est(n)/2|] then cos_npi2_pi2(n)(X)
+      else  [|-1-(3.2^(4+4*n)/factorial(4+4*n)),1|]
+      endif
+
+  Cos_fundamental: LEMMA
+    Proper?(X) AND
+    X << Y IMPLIES
+    Cos(n)(X) << Cos(n)(Y)
+
+  %%% The next function translates
+
+  Sin(n)(X) : Interval =
+    LET Xpos    = Intersection(X,[|0,ub(X)|]),
+    	Xneg    = Intersection(X,[|lb(X),0|]),
+	CosXpos = Cos(n)(Add(Xpos,[|-pi_ubn(n)/2,-pi_lbn(n)/2|])),
+	CosXneg = Neg(Cos(n)(Add(Neg(Xneg),[|-pi_ubn(n)/2,-pi_lbn(n)/2|])))
+    IN  IF Proper?(Xpos) AND Proper?(Xneg) THEN
+           		 Union(CosXpos,CosXneg)
+	ELSIF Proper?(Xpos) THEN CosXpos
+	ELSIF Proper?(Xneg) THEN CosXneg
+	ELSE [| 1, 0 |] ENDIF
+
+  Sin_fundamental: LEMMA
+    Proper?(X) AND
+    X << Y IMPLIES
+    Sin(n)(X) << Sin(n)(Y)
+  
+  tan_0_pi2(n)(X) : Interval = 
+    let cos_ub_lb = cos_ub(lb(X),n) in
+    let cos_lb_ub = cos_lb(ub(X),n) in
+    if cos_ub_lb > 0 AND cos_lb_ub > 0 then
+      [|sin_lb(lb(X),n)/cos_ub_lb,sin_ub(ub(X),n)/cos_lb_ub|]
+    else
+      EmptyInterval
+    endif
+
+  tan_npi2_pi2(n)(X) : Interval = 
+    let cos_lb_lb = cos_lb(lb(X),n) in
+    let cos_lb_ub = cos_lb(ub(X),n) in
+    if cos_lb_lb > 0 AND cos_lb_ub > 0 then
+      [|sin_lb(lb(X),n)/cos_lb_lb,sin_ub(ub(X),n)/cos_lb_ub|]
+    else 
+      EmptyInterval
+    endif
+
+  tan_npi2_pi2_union: LEMMA
+    n>=5 AND
+    0 ## X AND X << [|-pi_lb_est(n)/2,pi_lb_est(n)/2|]
+    IMPLIES
+    tan_npi2_pi2(n)(X) =
+    Union(Neg(tan_0_pi2(n)(Neg(Intersection(X,[|-pi_lb_est(n)/2,0|])))),
+	  tan_0_pi2(n)(Intersection(X,[|0,pi_lb_est(n)/2|])))
+
+  % Approximation to guarantee cos_lb > 0
+  Cos_pos_n : MACRO posnat = 5 
+
+  Tan(n)(X) : Interval = 
+    let n = n+Cos_pos_n in
+    if    X << [|0,pi_lb_est(n)/2|]        then  tan_0_pi2(n)(X) 
+    elsif X << [|-pi_lb_est(n)/2,0|]       then  Neg(tan_0_pi2(n)(Neg(X)))
+    elsif X << [|-pi_lb_est(n)/2,pi_lb_est(n)/2|] then  tan_npi2_pi2(n)(X)
+    else  EmptyInterval
+    endif
+
+  Tan_proper: LEMMA
+    Proper?(X) AND X << [|-pi_lb_est(n+Cos_pos_n)/2,pi_lb_est(n+Cos_pos_n)/2|]
+    IMPLIES
+    Proper?(Tan(n)(X))
+
+  Atan(n)(X) : Interval =
+    [|atan_lb(lb(X),n),atan_ub(ub(X),n)|]
+
+  Atan_fundamental: LEMMA
+    X << Y IMPLIES
+    Atan(n)(X) << Atan(n)(Y)
+
+  % lemmas
+
+  Pi_inclusion : LEMMA
+    pi ## Pi(n)
+
+  Pi_proper : JUDGEMENT Pi(n) HAS_TYPE ProperInterval
+
+  sin_npi2_pi2 : LEMMA
+    X << [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    x ## X          
+    IMPLIES 
+    sin(x) ## sin_npi2_pi2(n)(X)
+
+  sin_pi2_pi : LEMMA
+    X << [|pi_ubn(n)/2,pi_lbn(n)|] AND
+    x ## X     
+    IMPLIES 
+    sin(x) ## sin_pi2_pi(n)(X)
+
+  sin_0_pi : LEMMA
+    X << [|0,pi_lbn(n)|] AND
+    x ## X        
+    IMPLIES 
+    sin(x) ## sin_0_pi(n)(X)
+
+  sin_npi_0 : LEMMA
+    X << [|-pi_lbn(n),0|] AND
+    x ## X IMPLIES 
+    sin(x) ## Neg(sin_0_pi(n)(Neg(X)))
+
+  sin_npi_npi2 : LEMMA
+    X << [|-pi_lbn(n),-pi_ubn(n)/2|] AND
+    x ## X     
+    IMPLIES 
+    sin(x) ## Neg(sin_pi2_pi(n)(Neg(X)))
+
+  cos_0_pi : LEMMA
+    X << [|0,pi_lbn(n)|] AND
+    x ## X IMPLIES 
+    cos(x) ## cos_0_pi(n)(X)
+
+  cos_npi_0 : LEMMA
+    X << [|-pi_lbn(n),0|] AND
+    x ## X IMPLIES 
+    cos(x) ## cos_0_pi(n)(Neg(X))
+
+  cos_npi2_pi2 : LEMMA
+    X << [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    x ## X IMPLIES	 
+    cos(x) ## cos_npi2_pi2(n)(X)
+
+  Cos_inclusion : LEMMA
+     x ## X IMPLIES
+     cos(x) ## Cos(n)(X)
+
+  Sin_inclusion : LEMMA
+     x  ## X 
+     IMPLIES
+     sin(x) ## Sin(n)(X)
+
+  Tan_pi2_def : LEMMA
+    x ## X AND 
+    X << [| -pi_lbn(n)/2, pi_lbn(n)/2 |]
+    IMPLIES
+      Tan?(x)
+
+  cos_lb_gt_0_pos : LEMMA
+    x ## [|0,pi_lbn(n)/2|] AND
+    n >= Cos_pos_n IMPLIES
+    cos_lb(x,n) > 0
+
+  cos_lb_gt_0 : LEMMA
+    x ## [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    n >= Cos_pos_n IMPLIES
+    cos_lb(x,n) > 0
+
+  cos_ub_gt_0 : LEMMA
+    x ## [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    cos_lb(x,n) > 0 IMPLIES
+    cos_ub(x,n) > 0 
+
+  cos_lb_ub_gt_0 : LEMMA
+    X << [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    Proper?(X) AND
+    n >= Cos_pos_n  IMPLIES
+    cos_lb(lb(X),n) > 0 AND
+    cos_lb(ub(X),n) > 0 AND
+    cos_ub(lb(X),n) > 0 AND
+    cos_ub(ub(X),n) > 0 
+
+  tan_0_pi2 : LEMMA
+    X << [|0,pi_lbn(n)/2|] AND
+    n >= Cos_pos_n AND
+    x ## X IMPLIES
+    tan(x) ## tan_0_pi2(n)(X)
+
+  tan_npi2_0 : LEMMA
+    X << [|-pi_lbn(n)/2,0|] AND
+    n >= Cos_pos_n AND
+    x ## X IMPLIES
+    tan(x) ## Neg(tan_0_pi2(n)(Neg(X)))
+
+  tan_npi2_pi2 : LEMMA
+    X << [|-pi_lbn(n)/2,pi_lbn(n)/2|] AND
+    Zeroin?(X) AND
+    n >= Cos_pos_n AND
+    x ## X IMPLIES
+    tan(x) ## tan_npi2_pi2(n)(X)
+
+  TAN?(n)(X) : bool =
+    X << [| -pi_lb_est(n+Cos_pos_n)/2, pi_lb_est(n+Cos_pos_n)/2 |] 
+
+  TAN_Tan : LEMMA
+    TAN?(n)(X) AND
+    x ## X IMPLIES
+      Tan?(x)
+
+  Tan_inclusion : LEMMA
+    TAN?(n)(X) AND
+    x ## X IMPLIES
+    tan(x) ## Tan(n)(X)
+
+  Tan_fundamental: LEMMA
+    Proper?(X) AND TAN?(n)(Y) AND
+    X << Y IMPLIES
+    Tan(n)(X) << Tan(n)(Y)
+
+  Atan_inclusion : LEMMA
+    x ## X IMPLIES
+    atan(x) ## Atan(n)(X)
+
+  Strict_Tan : LEMMA
+    TAN?(n)(X) AND
+    StrictInterval?(X) IMPLIES
+    StrictInterval?(Tan(n)(X))
+
+  %% Safe version of trigonometric functions
+  IMPORTING safe_arith
+
+  safe_Sin(n) : [Interval->Interval] = Safe1(Sin(n))
+  safe_Cos(n) : [Interval->Interval] = Safe1(Cos(n))
+  safe_Tan(n) : [Interval->Interval] = Safe1(TAN?(n),Tan(n))
+  safe_Atan(n) : [Interval->Interval] = Safe1(Atan(n))
+	    
+  %% Proper version of trigonometric functions
+  IMPORTING proper_arith
+
+  Xp   : VAR ProperInterval
+
+  Proper_Sin : JUDGEMENT
+    Sin(n)(Xp) HAS_TYPE ProperInterval
+
+  Proper_Cos : JUDGEMENT
+    Cos(n)(Xp) HAS_TYPE ProperInterval
+
+  Proper_Tan : JUDGEMENT
+    Tan(n)(Xp|TAN?(n)(Xp)) HAS_TYPE ProperInterval
+
+  Proper_Atan : JUDGEMENT
+    Atan(n)(Xp) HAS_TYPE ProperInterval
+
+  proper_Sin(n)(Xp): ProperInterval =
+    Sin(n)(Xp)
+
+  proper_Cos(n)(Xp): ProperInterval =
+    Cos(n)(Xp)
+
+  proper_Tan(n)(Xp|TAN?(n)(Xp)): ProperInterval =
+    Tan(n)(Xp)
+
+  proper_Atan(n)(Xp): ProperInterval =
+    Atan(n)(Xp)
+
+END interval_trig

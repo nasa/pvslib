@@ -1,0 +1,153 @@
+digraphs[T: TYPE]: THEORY
+%-------------------------------------------------------------------------------
+%
+% Defines:
+%
+%      digraph[T] -- digraph over domain T
+%      vert(G)  -- vertices of digraph G
+%      edges(G) -- set of edges in a digraph G
+%
+%  Authors:
+%
+%      Ricky W. Butler, Kristin Y. Rozier   NASA Langley
+%      Jon Sjogren                          AFOSR
+%
+%  Version 1.0           Last modified 07/15/04
+%
+%  Maintained by:
+%
+%     Rick Butler        NASA Langley Research Center   
+%                        R.W.Butler@larc.nasa.gov
+%
+%  NOTE:
+%
+%-------------------------------------------------------------------------------
+BEGIN
+
+  IMPORTING %finite_sets@finite_sets[T], 
+             pairs[T] 
+            %finite_sets@finite_sets[pair[T]]
+
+  x,y,v: VAR T
+
+  edgetype: TYPE = pair[T]     % ---------- ALLOW SELF LOOPS ----------
+
+  predigraph: TYPE = [# vert : finite_set[T],
+                        edges: finite_set[edgetype] #]
+
+  e: VAR edgetype
+
+  directed_graph: TYPE = {g: predigraph | FORALL e: edges(g)(e) IMPLIES 
+                                      LET (x,y) = e IN vert(g)(x) AND vert(g)(y)}
+
+  digraph       : TYPE = directed_graph
+
+  % A simple digraph is a graph without loops
+  simple_digraph: TYPE = {g: digraph | FORALL e: edges(g)(e) IMPLIES 
+                                                 LET (x,y) = e IN x /= y}
+
+  sd_graph      : TYPE = simple_digraph
+
+  % An empty digraph: empty set of vertices and empty set of edges
+  empty_digraph: digraph =
+          (# vert := emptyset[T],
+            edges := emptyset[edgetype] #)
+
+
+  G: var digraph
+
+  vert?(G)(x)  : bool = vert(G)(x)
+  edge?(G)(x,y): bool = edges(G)((x,y))
+ 
+  edge(G) : TYPE = (edge?(G))
+  vert(G) : TYPE = (vert?(G))
+
+
+
+  edges_vert      : LEMMA in?(x,e) AND edges(G)(e) IMPLIES
+                             (EXISTS y: vert(G)(y) AND in?(y,e))
+
+
+  other_vert      : LEMMA in?(v,e) AND edges(G)(e)
+                          IMPLIES (EXISTS (u: T): vert(G)(u) AND 
+                                       e = (u, v) OR e = (v,u))
+
+  edges_to_pair   : LEMMA edges(G)(e) IMPLIES
+                            (EXISTS x,y: edges(G)(x,y) 
+                                     AND vert(G)(x) AND vert(G)(y)
+                                     AND x = proj_1(e) AND y = proj_2(e)) 
+
+
+
+% -------------- size of digraphs --------------------
+
+
+  size(G): nat = card[T](vert(G))
+
+  empty?(G): bool = empty?(vert(G))
+
+  singleton?(G): bool = (size(G) = 1)
+
+  isolated?(G): bool = empty?(edges(G))
+
+  bidirected?(G)(x,y): bool = edges(G)(x,y) AND edges(G)(y,x)
+
+  %A complete digraph differs from a complete graph in that each edge must be
+  %bidirected.
+  complete?(G): bool = 
+                      FORALL (x:T | (vert(G)(x)), y:T | (vert(G)(y) AND x /= y)):
+                         edges(G)(x,y) OR edges(G)(y,x)
+
+  digraph_complete?(G): bool = 
+                      FORALL (x:T | (vert(G)(x)), y:T | (vert(G)(y) AND x /= y)):
+                         bidirected?(G)(x,y)
+
+  complete_digraph: TYPE = {g: digraph | complete?(g)}
+
+  %An oriented graph has no bidirected edges:
+  oriented?(G): bool = FORALL (x:T | (vert(G)(x)), y:T | (vert(G)(y) AND x/=y)):
+                            NOT bidirected?(G)(x,y)
+
+  oriented_digraph: TYPE = {g: digraph | oriented?(g)}
+
+  tournament?(G): bool = complete?(G) AND oriented?(G)
+
+  tournament: TYPE = {g: digraph | tournament?(g)}
+
+  empty?_rew          : LEMMA empty?(G) = (card(vert(G)) = 0)
+
+  empty_size          : LEMMA empty?(G) IFF size(G) = 0
+
+  edges_of_empty      : LEMMA empty?(G) 
+                                 IMPLIES edges(G) = emptyset[edgetype]
+
+  singleton_edges     : LEMMA FORALL (SG: simple_digraph): 
+                                   singleton?(SG) IMPLIES empty?(edges(SG))
+
+  edge_in_card_gt_1   : LEMMA FORALL (SG: simple_digraph): 
+                                   edges(SG)(e) IMPLIES card(vert(SG)) > 1
+
+  not_singleton_2_vert: LEMMA NOT empty?(G) AND NOT singleton?(G) 
+                                IMPLIES (EXISTS (x,y: T): x /= y AND
+                                     vert(G)(x) AND vert(G)(y))
+
+  proj_rew: LEMMA (proj_1(e), proj_2(e)) = e
+
+  infdigraph: TYPE = [# vert : set[T],
+                      edges: set[edgetype] #]
+
+
+  is_digraph(g: infdigraph): bool = is_finite[T](vert(g))
+                                AND is_finite[edgetype](edges(g))
+                                AND (FORALL (e: edgetype): edges(g)(e) 
+                             IMPLIES (FORALL x: in?(x,e) IMPLIES vert(g)(x)))
+
+  singleton_digraph(v): digraph = (# vert := singleton[T](v), 
+                                       edges := emptyset[edgetype] #)
+  
+  is_sing:  LEMMA singleton?(singleton_digraph(x))
+
+  Digraph: TYPE = {g: digraph | nonempty?(vert(g))}
+
+END digraphs
+

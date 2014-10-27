@@ -1,0 +1,141 @@
+sturmsquarefree: THEORY
+BEGIN
+
+IMPORTING reals@polynomials,reals@more_polynomial_props,reals@sign,
+	  polynomial_division,
+          structures@more_list_props,ints@gcd,number_sign_changes,
+	  gcd_list,structures@sort_array
+
+  a,r : VAR [nat->real]
+  p : VAR [nat->[nat->real]]
+  n : VAR [nat->nat]
+  d,m,i,j,k : VAR nat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+
+  sturm_sequence?(p,n,m): bool =
+    LET P = (LAMBDA (k): polynomial(p(k),n(k))) IN
+      (FORALL (i): i<m IMPLIES (n(i)>n(i+1) OR n(i+1)=0))  % Decreasing Degree
+      % AND square_free?(p(0),n(0))  % p is square free
+      AND (FORALL (i): i<=m IMPLIES p(i)(n(i))/=0)
+      AND (FORALL (x): P(0)(x)=0 
+             IMPLIES sign_ext(P(1)(x)) = 
+	       sign_ext(polynomial(poly_deriv(p(0)),max(n(0)-1,0))(x)))
+      AND (FORALL (x,i): 0<i AND i<m AND P(i)(x)=0 IMPLIES
+    	    sign_ext(P(i-1)(x)) = -sign_ext(P(i+1)(x)))
+      AND (FORALL (x,y): sign_ext(P(m)(x)) = sign_ext(P(m)(y)))
+
+  sturm_sequence_degree_1: LEMMA
+    n(0)=1 AND n(1)=0 AND p(0)(1)/=0 AND p(1) = poly_deriv(p(0))
+    IMPLIES
+    sturm_sequence?(p,n,1)
+
+  sturm_seq_repeated_root: LEMMA sturm_sequence?(p,n,m) IMPLIES
+    FORALL (i:nat): i+1<=m AND
+    polynomial(p(i),n(i))(x)=0 AND polynomial(p(i+1),n(i+1))(x)=0
+    IMPLIES
+    (FORALL (j:upto(m)): polynomial(p(j),n(j))(x) = 0)
+
+  sturm_seq_last_nonzero: LEMMA
+    m>0 AND
+    sturm_sequence?(p,n,m) AND
+    (FORALL (c:real): polynomial(p(0),n(0))(c)=0 IMPLIES
+      polynomial(p(1),n(1))(c)/=0)
+    IMPLIES
+    FORALL (xyz:real): polynomial(p(m),n(m))(xyz)/=0
+
+  sturm_sig(p,n,m)(x): nat = number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(x),m)`num
+
+  % Part 1: Proving Sturm's Theorem when f has no multiple roots
+
+  sturm_seq_first_signs_eq: LEMMA
+    x<b AND b<y AND
+    polynomial(p(0),n(0))(b)=0 AND
+    (FORALL (c:real): x<=c AND c<=y AND polynomial(p(0),n(0))(c)=0 IMPLIES
+      (polynomial(p(1),n(1))(c)/=0 AND c = b)) AND
+    sturm_sequence?(p,n,m)
+    IMPLIES
+    (polynomial(p(0),n(0))(x)/=0 AND
+     polynomial(p(0),n(0))(y)/=0 AND
+     sign_ext(polynomial(p(0),n(0))(x)) = -sign_ext(polynomial(p(1),n(1))(b)) AND
+     sign_ext(polynomial(p(0),n(0))(y)) = sign_ext(polynomial(p(1),n(1))(b)))
+
+  sturm_lem_no_roots: LEMMA
+    x<y AND
+    (FORALL (c:real,i:nat): i<=m AND x<=c AND c<=y IMPLIES polynomial(p(i),n(i))(c)/=0) AND
+    sturm_sequence?(p,n,m)
+    IMPLIES
+    sturm_sig(p,n,m)(x) = sturm_sig(p,n,m)(y)
+
+  sturm_lem_one_root: LEMMA
+    x<y AND x<b AND b<y AND
+    (FORALL (c:real,i:nat): i<=m AND x<=c AND c<=y AND polynomial(p(i),n(i))(c)=0
+     IMPLIES c = b) AND
+    (FORALL (c:real): x<=c AND c<=y AND polynomial(p(0),n(0))(c)=0 IMPLIES
+      (polynomial(p(1),n(1))(c)/=0))
+    AND j<=m AND polynomial(p(j),n(j))(b)/=0 AND
+    sturm_sequence?(p,n,m)
+    IMPLIES
+    LET nsc = LAMBDA (xyz:real,pj:nat): number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(xyz),pj) IN
+      sign_ext(nsc(x,j)`lastnz) = sign_ext(nsc(y,j)`lastnz) AND
+      nsc(x,j)`num = nsc(y,j)`num+(IF polynomial(p(0),n(0))(b)=0 THEN 1 ELSE 0 ENDIF)
+
+  sturm_lem_edge_root: LEMMA
+    x<y AND
+    (FORALL (c:real,i:nat): i<=m AND x<=c AND c<=y AND polynomial(p(i),n(i))(c)=0
+     IMPLIES c = y) AND
+    (FORALL (c:real): x<=c AND c<=y AND polynomial(p(0),n(0))(c)=0 IMPLIES
+      (polynomial(p(1),n(1))(c)/=0))
+    AND j<=m AND polynomial(p(j),n(j))(y)/=0 AND
+    sturm_sequence?(p,n,m) AND
+    p(1) = poly_deriv(p(0)) AND n(1) = n(0)-1
+    IMPLIES
+    LET nsc = LAMBDA (xyz:real,pj:nat): number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(xyz),pj) IN
+      sign_ext(nsc(x,j)`lastnz) = sign_ext(nsc(y,j)`lastnz) AND
+      nsc(x,j)`num = nsc(y,j)`num+(IF polynomial(p(0),n(0))(y)=0 THEN 1 ELSE 0 ENDIF)
+
+  roots_between_enum: LEMMA % THIS NEEDS TO BE FOR ALL P(i) NOT JUST P(0)
+    x<y AND sturm_sequence?(p,n,m) IMPLIES
+      EXISTS ((K:nat|K>=2),enum:[below(K)->real]):
+        (FORALL (i,j:below(K)): i<j IMPLIES enum(i)<enum(j)) AND
+  	enum(0)=x AND enum(K-1)=y AND
+  	(FORALL (b:real,j:nat): j<=m AND x<b AND b<=y AND polynomial(p(j),n(j))(b)=0 IMPLIES
+  	  EXISTS (i:below(K)): b = enum(i))
+
+  sturm_lem_no_roots_full: LEMMA
+    m>0 AND x<y AND
+    (FORALL (c:real,i:nat): i<=m AND x<c AND c<=y IMPLIES polynomial(p(i),n(i))(c)/=0) AND
+    sturm_sequence?(p,n,m) AND
+    (FORALL (c:real): polynomial(p(0),n(0))(c)=0 IMPLIES
+      polynomial(p(1),n(1))(c)/=0) AND
+    p(1) = poly_deriv(p(0)) AND n(1) = n(0)-1
+    IMPLIES
+    sturm_sig(p,n,m)(x) = sturm_sig(p,n,m)(y)
+
+  sturm_square_free: LEMMA
+    m>0 AND x<y AND (EXISTS (i:upto(n(0))): p(0)(i)/=0) AND
+    (FORALL (c:real): polynomial(p(0),n(0))(c)=0 IMPLIES
+      (polynomial(p(1),n(1))(c)/=0)) AND
+    sturm_sequence?(p,n,m) AND
+    p(1) = poly_deriv(p(0)) AND n(1) = n(0)-1
+    IMPLIES
+      LET nsc = LAMBDA (xyz:real): number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(xyz),m),
+      	  Nroots = nsc(x)`num-nsc(y)`num
+      IN Nroots>=0 AND EXISTS (bij: [below(Nroots)->{xr:real|x<xr AND xr<=y AND polynomial(p(0),n(0))(xr)=0}]):
+           bijective?(bij)
+
+  sturm_seq_square_free: LEMMA
+    (m>0 AND n(m)=0 AND (FORALL (i:below(m)): p(i)(n(i))/=0) AND
+    (FORALL (i,j:upto(m)): i<j IMPLIES n(i)>n(j)) AND
+    (FORALL (c:real): polynomial(p(0),n(0))(c)=0 IMPLIES
+      (polynomial(p(1),n(1))(c)/=0)) AND
+    p(1) = poly_deriv(p(0)) AND n(1) = n(0)-1 AND
+    (FORALL (j:nat): j>1 AND j<=m IMPLIES LET pd = poly_divide(p(j-2),n(j-2))(p(j-1),n(j-1))(0) IN
+    	   	    	    	 	   EXISTS (c:posreal): 
+    	   	    	    	 	   polynomial(p(j),n(j)) = 
+					   polynomial(-c*pd`rem,pd`rdeg)))
+    IMPLIES
+      (p(m)(0)/=0 AND sturm_sequence?(p,n,m)) OR
+      (p(m)(0) =0 AND sturm_sequence?(p,n,m-1))
+
+END sturmsquarefree

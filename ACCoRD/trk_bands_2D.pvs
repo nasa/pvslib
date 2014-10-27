@@ -1,0 +1,188 @@
+%-----------------------------------------------------------------------------
+% trk_bands_2D.pvs
+% ACCoRD v.1.0
+%-----------------------------------------------------------------------------
+
+trk_bands_2D[D:posreal,B:nnreal,T: {AB: posreal|AB>B}] : THEORY
+BEGIN
+
+  IMPORTING analysis@interm_value_thm,
+  	    vect_analysis@vect2_cont_dot[real],
+            trig_fnd@sincos,
+            omega_v2[D,B,T],
+            trk_line[D],
+	    line_solutions[D],
+            bands_util
+ 	    
+  nvo,
+  vo,vi : VAR Nz_vect2
+  sp    : VAR Sp_vect2
+  ss    : VAR Ss_vect2
+  t     : VAR posreal
+  band  : VAR ConnectedGeLt(0,2*pi)
+  trk   : VAR real % Track with respect to true north. 
+  k     : VAR real
+
+  pm,eps,
+  irt,
+  irt1,
+  irt2   : VAR Sign
+  s,
+  nvo1,
+  nvo2   : VAR Vect2
+
+  trk_band : LEMMA
+     nvo = trk_line_eps_irt(ss, vo, vi, eps, irt) IMPLIES
+     eps*det(nvo,ss) >= eps*det(vi,ss)
+
+  trk2v2_continuous : JUDGEMENT
+    trk2v2(vo) HAS_TYPE continuous_rv_fun
+
+  Vtrk_continuous : JUDGEMENT
+    Vtrk(vo,vi) HAS_TYPE continuous_rv_fun
+
+  %-----------------------------------------------%
+  % 2-D Track Critical Points                     %
+  %-----------------------------------------------%
+
+  trk_critical?(s,vo,vi)(trk) : bool =
+    LET trko = trk2v2(vo)(trk) IN
+    (sqv(s)>=sq(D) AND trk_line?(s,vo,vi)(trko)) OR
+    trk_only_circle?(s,vo,vi,T,Entry)(trko) OR
+    (B>0 AND trk_only_circle?(s,vo,vi,B,Exit)(trko))
+
+  Omega_trk_spc(vo,vi,t)(trk) : real =
+    vi * trk2v2(vo)(trk) - sq(D/t)
+
+  Omega_trk_spc : JUDGEMENT
+    Omega_trk_spc(vo,vi,t) HAS_TYPE (continuous_rr?)
+
+  trk_special_case_invariant: LEMMA
+    trk_special_case?(s,vo,vi,t) IFF
+    trk_special_case?(s,trk2v2(vo)(trk),vi,t)
+
+  Omega_trk_spc_separated : LEMMA
+    Omega_trk_spc(vo,vi,t)(trk) = 0 AND
+    trk_special_case?(s,vo,vi,t) IMPLIES
+    sqv(s)>=sq(D)
+
+  Omega_trk_spc_critical : LEMMA
+    Omega_trk_spc(vo,vi,t)(trk) = 0 AND
+    trk_special_case?(s,vo,vi,t) IMPLIES
+    line_solution?(s,Vtrk(vo,vi)(trk))
+
+  trk_special_case_conflict_T : LEMMA
+    trk_special_case?(s,vo,vi,T) IMPLIES
+    (horizontal_entry_at?(s,Vtrk(vo,vi)(trk),T) 
+     IFF NOT conflict_2D?(s,Vtrk(vo,vi)(trk)))
+
+  trk_special_case_conflict_B : LEMMA
+    B>0 AND trk_special_case?(s,vo,vi,B) IMPLIES
+    (horizontal_exit_at?(s,Vtrk(vo,vi)(trk),B)
+     IFF NOT conflict_2D?(s,Vtrk(vo,vi)(trk)))
+
+  Omega_trk_spc_conflict_T: LEMMA
+    trk_special_case?(s,vo,vi,T) IMPLIES
+    (Omega_trk_spc(vo,vi,T)(trk) < 0 IFF
+    conflict_2D?(s,Vtrk(vo,vi)(trk)))
+
+  Omega_trk_spc_conflict_B: LEMMA
+    B>0 AND trk_special_case?(s,vo,vi,B) IMPLIES
+    (-Omega_trk_spc(vo,vi,B)(trk) < 0 IFF
+    conflict_2D?(s,Vtrk(vo,vi)(trk)))
+
+  Omega_trk(s,vo,vi) : (continuous_rr?) = 
+    omega_v2(s) o Vtrk(vo,vi)
+
+  Omega_trk_critical : LEMMA
+    Omega_trk(s,vo,vi)(trk) = 0 AND
+    NOT trk_special_case?(s,vo,vi,T) AND
+    NOT (B>0 AND trk_special_case?(s,vo,vi,B)) IMPLIES
+      trk_critical?(s,vo,vi)(trk) 
+
+  % Bands do not contain critical points
+  trk_band?(s,vo,vi)(band) : bool =
+    FORALL (trko:(band)) :
+      NOT trk_critical?(s,vo,vi)(trko)
+
+  trk_green?(s,vo,vi)(band) : bool =
+    FORALL (trko:(band)) :
+      NOT conflict_2D?(s,Vtrk(vo,vi)(trko))
+
+  trk_red?(s,vo,vi)(band) : bool =
+    FORALL (trko:(band)) :
+      conflict_2D?(s,Vtrk(vo,vi)(trko))
+ 
+  trk_line_sort_eps : LEMMA
+    nvo /= vi AND 
+    trk_line_eps_irt?(ss,vo,vi,eps,irt)(nvo) IMPLIES
+    eps*det(nvo,ss) > eps*det(vi,ss)
+
+  trk_line_sort_eps_angle : LEMMA
+    abs(det(vi,ss)/(norm(vo)*norm(ss))) <= 1 IMPLIES
+    LET phi   = track(ss),
+        psi   = asin(det(vi,ss)/(norm(vo)*norm(ss))),
+        alpha = phi+psi,
+        beta  = pi-2*psi IN
+    nvo1 /= vi AND
+    nvo2 /= vi AND
+    trk_line_eps_irt?(ss,vo,vi,1,irt1)(nvo1) AND
+    trk_line_eps_irt?(ss,vo,vi,-1,irt2)(nvo2) 
+    IMPLIES
+      to2pi(track(nvo1)-alpha) < to2pi(track(nvo2)-alpha)
+
+  trk_line_sort_eps_1_angle_case1 : LEMMA
+    abs(det(vi,ss)/(norm(vo)*norm(ss))) <= 1 IMPLIES
+    LET phi   = track(ss),
+        psi   = asin(det(vi,ss)/(norm(vo)*norm(ss))),
+        alpha = phi+psi,
+        beta  = pi-2*psi IN
+    (nvo1*ss) * (nvo2*ss) < 0 AND 
+    nvo1 /= vi AND
+    nvo2 /= vi AND
+    trk_line_eps_irt?(ss,vo,vi,1,-1)(nvo1) AND
+    trk_line_eps_irt?(ss,vo,vi,1,1)(nvo2) 
+    IMPLIES
+      to2pi(track(nvo1)-alpha) < to2pi(track(nvo2)-alpha)
+
+  trk_line_sort_eps_1_angle_case2 : LEMMA
+    abs(det(vi,ss)/(norm(vo)*norm(ss))) <= 1 IMPLIES
+    LET phi   = track(ss),
+        psi   = asin(det(vi,ss)/(norm(vo)*norm(ss))),
+        alpha = phi+psi,
+        beta  = pi-2*psi IN
+    (nvo1*ss) * (nvo2*ss) >= 0 AND 
+    nvo1 /= vi AND
+    nvo2 /= vi AND
+    trk_line_eps_irt?(ss,vo,vi,1,-1)(nvo1) AND
+    trk_line_eps_irt?(ss,vo,vi,1,1)(nvo2) 
+    IMPLIES
+      (det(nvo1,nvo2) < 0 IFF to2pi(track(nvo1)-alpha) < to2pi(track(nvo2)-alpha))
+
+  trk_line_color : LEMMA
+    trk_line_eps_irt?(ss,vo,vi,eps,irt)(nvo) AND
+    sq(Qs(ss,eps)*vi) > (sqv(ss)-sq(D))*(sqv(vi)-sqv(vo))
+    IMPLIES
+    (pm*(Q(ss,eps) * perpR(nvo)) > 0 IFF pm*(eps*irt) < 0)
+
+  %-------------------------------------------%
+  % THEOREM: Track Green Bands Correctness    %
+  %-------------------------------------------%
+
+  trk_green_band : THEOREM
+    FORALL (trko:(band)) :
+       trk_band?(s,vo,vi)(band) IMPLIES
+        (NOT cd2d?(s,Vtrk(vo,vi)(trko)) IFF
+         trk_green?(s,vo,vi)(band))
+
+  %-------------------------------------------%
+  % THEOREM: Track Red Bands Correctness      %
+  %-------------------------------------------%
+
+  trk_red_band : THEOREM
+    FORALL (trko:(band)) :
+      trk_band?(s,vo,vi)(band) IMPLIES
+      (cd2d?(s,Vtrk(vo,vi)(trko)) IFF
+        trk_red?(s,vo,vi)(band))
+ 
+END trk_bands_2D

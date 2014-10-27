@@ -1,0 +1,187 @@
+sturmtarski: THEORY
+BEGIN
+
+% The proof of the theorem for the tarski query should be easier than
+% for sturm's theorem, because one doesn't have to consider roots at the
+% endpoints. Eventually, the endpoints will be pm infinity. 
+
+IMPORTING reals@polynomials,more_polynomial_props,reals@sign,
+	  Sturm@polynomial_division, 
+          structures@more_list_props,ints@gcd,Sturm@number_sign_changes,
+  	  structures@sort_array,Sturm@gcd_list
+
+  a,r,g : VAR [nat->real]
+  p : VAR [nat->[nat->real]]
+  n : VAR [nat->nat]
+  d,i,j,k : VAR nat
+  m: VAR posnat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+  rel: VAR [[real,real]->bool]
+  babove,bbelow,bbelow2,babove2: VAR bool
+
+  % k is the degree of g
+
+  constructed_sturm_sequence?(p,n,g,k,m): bool =
+    (FORALL (i:below(m)): p(i)(n(i))/=0) AND
+    (FORALL (i,j:subrange(1,m-1)): i<j IMPLIES n(i)>n(j)) AND
+    n(0)>0 AND
+    p(1) = polynomial_prod(g,k,poly_deriv(p(0)),n(0)-1) AND n(1) = k+n(0)-1 AND
+    n(m) = 0 AND p(m)(0) = 0 AND
+    (FORALL (j:nat): j>1 AND j<=m IMPLIES LET pd = poly_divide(p(j-2),n(j-2))(p(j-1),n(j-1))(0) IN
+    	   	    	    	 	   EXISTS (c:posreal): 
+    	   	    	    	 	   polynomial(p(j),n(j)) = 
+					   polynomial(-c*pd`rem,pd`rdeg))
+    AND m>=2 AND g(k)/=0
+
+
+  constructed_sturm_seq_repeated_root: LEMMA 
+    constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+    FORALL (i:nat): i+1<=m AND
+    polynomial(p(i),n(i))(x)=0 AND polynomial(p(i+1),n(i+1))(x)=0
+    IMPLIES
+    (FORALL (j:upto(m)): polynomial(p(j),n(j))(x) = 0)
+
+  default_root_degree?(p,n,g,k,m,y)(d): bool =
+    ((d=0 AND root_degree(p(0),n(0))(y)=0 AND polynomial(p(0),n(0))(y)/=0 AND
+           polynomial(g,k)(y)/=0) OR
+     (root_degree(p(0),n(0))(y)=d+1 AND root_degree(p(1),n(1))(y)=d AND
+           polynomial(g,k)(y)/=0) OR
+     (root_degree(p(0),n(0))(y)=d AND root_degree(p(1),n(1))(y)=d AND
+      root_degree(g,k)(y)=1 AND polynomial(g,k)(y)=0) OR
+     (root_degree(p(0),n(0))(y)=d AND root_degree(p(1),n(1))(y)>d AND
+      root_degree(g,k)(y)>0 AND polynomial(g,k)(y)=0)) AND
+    (FORALL (i:nat): i<m AND root_degree(p(i),n(i))(y)/=d IMPLIES
+      ((i>0 IMPLIES root_degree(p(i-1),n(i-1))(y)=d) AND
+       (i<m-1 IMPLIES root_degree(p(i+1),n(i+1))(y)=d))) AND
+     root_degree(p(m-1),n(m-1))(y)=d
+
+
+  constructed_sturm_seq_root_degrees: LEMMA
+    constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+    ((polynomial(g,k)(y)=0 AND 
+      default_root_degree?(p,n,g,k,m,y)(root_degree(p(0),n(0))(y))) OR
+    (polynomial(g,k)(y)/=0 AND
+      default_root_degree?(p,n,g,k,m,y)(max(root_degree(p(0),n(0))(y)-1,0))))
+
+  default_root_deg(p,n,g,k,m)(y): nat =
+    IF polynomial(g,k)(y)=0 THEN root_degree(p(0),n(0))(y)
+    ELSE max(root_degree(p(0),n(0))(y)-1,0) ENDIF
+
+  default_root_deg_def: LEMMA
+    constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+    default_root_degree?(p,n,g,k,m,y)(default_root_deg(p,n,g,k,m)(y))
+
+  constructed_sturm_seq_root_degree_lower_bound: LEMMA
+    constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+    FORALL (i): i<m IMPLIES root_degree(p(i),n(i))(y)>=default_root_deg(p,n,g,k,m)(y)
+
+  sturm_sig(p,n,m)(x): nat = number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(x),m)`num
+
+  sturm_tarski_basic_1: LEMMA FORALL (z:real):
+    constructed_sturm_sequence?(p,n,g,k,m) AND
+    (FORALL (j:below(m)): only_root_between?(p(j),n(j),x,y)(z)) AND
+    polynomial(p(0),n(0))(z)=0 AND polynomial(g,k)(z)/=0 IMPLIES
+    number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(x),1)`num -
+    number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(y),1)`num =
+    sign_ext(polynomial(g,k)(z))
+
+  sturm_tarski_basic_2: LEMMA FORALL (z:real):
+    LET nsc = (LAMBDA (xyz:real,k:nat):
+      	       	   number_sign_changes(LAMBDA (i): 
+      	       	   polynomial(p(i),n(i))(xyz),k)`num)
+      IN root_degree(p(1),n(1))(z) = root_degree(p(0),n(0))(z) AND constructed_sturm_sequence?(p,n,g,k,m) AND
+    (FORALL (j:below(m)): only_root_between?(p(j),n(j),x,y)(z))
+         IMPLIES nsc(x,1)=nsc(y,1)
+
+  sturm_tarski_basic_3: LEMMA FORALL (z:real):
+    m>2 AND
+    constructed_sturm_sequence?(p,n,g,k,m) AND
+    (FORALL (j:below(m)): only_root_between?(p(j),n(j),x,y)(z)) AND
+    (polynomial(g,k)(z)=0 OR polynomial(p(0),n(0))(z)/=0) IMPLIES
+      LET nsc = (LAMBDA (xyz:real,k:nat):
+      	       	   number_sign_changes(LAMBDA (i): 
+      	       	   polynomial(p(i),n(i))(xyz),k)`num)
+      IN (root_degree(p(2),n(2))(z) = root_degree(p(0),n(0))(z)
+	 			           IMPLIES nsc(x,2)=nsc(y,2))
+
+  sturm_tarski_basic: LEMMA FORALL (z:real):
+    constructed_sturm_sequence?(p,n,g,k,m) AND
+    (FORALL (j:below(m)): only_root_between?(p(j),n(j),x,y)(z))
+    IMPLIES
+    number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(x),m-1)`num -
+    number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(y),m-1)`num =
+    (IF polynomial(p(0),n(0))(z)/=0 OR polynomial(g,k)(z)=0 THEN 0
+    ELSIF polynomial(g,k)(z)>0 THEN 1 ELSE -1 ENDIF)
+
+  constructed_sturm_roots_between_enum: LEMMA % THIS NEEDS TO BE FOR ALL P(i) NOT JUST P(0)
+    x<y AND constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+      EXISTS ((K:nat|K>=2),enum:[below(K)->real]):
+        (FORALL (i,j:below(K)): i<j IMPLIES enum(i)<enum(j)) AND
+  	enum(0)=x AND enum(K-1)=y AND
+  	(FORALL (b:real,j:nat): j<=m-1 AND x<b AND b<=y AND polynomial(p(j),n(j))(b)=0 IMPLIES
+  	  EXISTS (i:below(K)): b = enum(i))
+
+  Sol(a:[nat->real],(m:nat|a(m)/=0),g:[nat->real],k:nat,
+      rel:[[real,real]->bool],x,y:real,bbelow,babove:bool):
+    finite_set[real] = {r:real | polynomial(a,m)(r)=0 AND rel(polynomial(g,k)(r),0) AND
+    		       	       	 (bbelow IMPLIES x<=r) AND (babove IMPLIES r<=y)}
+
+  Sol_union_top: LEMMA FORALL (z:real): x<=y AND y<=z AND a(m)/=0 IMPLIES
+    union(Sol(a,m,g,k,rel,x,y,bbelow,babove),Sol(a,m,g,k,rel,y,z,bbelow2,babove2)) =
+    Sol(a,m,g,k,rel,x,z,bbelow AND bbelow2,babove AND babove2)
+
+  NSol(a:[nat->real],(m:nat|a(m)/=0),g:[nat->real],k:nat,
+      rel:[[real,real]->bool],x,y:real,bbelow,babove:bool): {d:nat |
+        EXISTS (enumsol:[below(d)->(Sol(a,m,g,k,rel,x,y,bbelow,babove))]):
+	  bijective?(enumsol)} = card(Sol(a,m,g,k,rel,x,y,bbelow,babove))
+
+  NSol_union_top: LEMMA FORALL (z:real): x<=y AND y<=z AND a(m)/=0 AND
+    polynomial(a,m)(y)/=0 IMPLIES
+    NSol(a,m,g,k,rel,x,y,bbelow,True)+NSol(a,m,g,k,rel,y,z,True,babove) =
+    NSol(a,m,g,k,rel,x,z,bbelow,babove)
+
+  sturm_tarski: LEMMA
+    x<y AND
+    constructed_sturm_sequence?(p,n,g,k,m) AND
+    (FORALL (j:nat): j<m IMPLIES (polynomial(p(j),n(j))(x)/=0 AND polynomial(p(j),n(j))(y)/=0))
+    IMPLIES
+      LET nsc = LAMBDA (xyz:real): number_sign_changes(LAMBDA (i): polynomial(p(i),n(i))(xyz),m-1),
+      	  Nroots = nsc(x)`num-nsc(y)`num
+      IN Nroots = NSol(p(0),n(0),g,k,>,x,y,true,true)-NSol(p(0),n(0),g,k,<,x,y,true,true)
+
+  % Unbounded sets
+
+  Sol(a:[nat->real],(m:nat|a(m)/=0),g:[nat->real],k:nat,
+      rel:[[real,real]->bool]):
+    finite_set[real] = {r:real | polynomial(a,m)(r)=0 AND rel(polynomial(g,k)(r),0)}
+
+  NSol(a:[nat->real],(m:nat|a(m)/=0),g:[nat->real],k:nat,
+      rel:[[real,real]->bool]): {d:nat |
+        EXISTS (enumsol:[below(d)->(Sol(a,m,g,k,rel))]):
+	  bijective?(enumsol)} = card(Sol(a,m,g,k,rel))
+
+  sturm_tarski_unbounded: LEMMA
+    constructed_sturm_sequence?(p,n,g,k,m) IMPLIES
+      LET nschigh = number_sign_changes(LAMBDA (i): p(i)(n(i)),m-1),
+      	  nsclow  = number_sign_changes(LAMBDA (i): (IF even?(n(i)) THEN 1 ELSE -1 ENDIF)*p(i)(n(i)),m-1),
+      	  Nroots  = nsclow`num-nschigh`num
+      IN Nroots = NSol(p(0),n(0),g,k,>)-NSol(p(0),n(0),g,k,<)
+
+  NSol_sq_gt: LEMMA a(m)/=0 IMPLIES
+    NSol(a,m,polynomial_prod(g,k,g,k),2*k,>) =
+    NSol(a,m,g,k,>) + NSol(a,m,g,k,<)
+
+  NSol_sq_lt: LEMMA a(m)/=0 IMPLIES
+    NSol(a,m,polynomial_prod(g,k,g,k),2*k,<) = 0
+
+  % constructed_sturm_sequence_p2: LEMMA
+  %   constructed_sturm_sequence?(p,n,g,k,m) AND
+  %   k>0 AND (m>2 OR k/=1 OR 
+  %     (NOT (k=1 AND EXISTS (r:real): root_degree(p(0),n(0))(r) = n(0) AND
+  %     	          polynomial(g,1)(r)=0)))
+  %   IMPLIES
+  %   EXISTS (c:posreal):
+  %   polynomial(p(2),n(2)) = polynomial(-c*p(0),n(0))
+
+END sturmtarski

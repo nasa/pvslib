@@ -1,0 +1,235 @@
+matrix_det: THEORY
+
+
+BEGIN
+
+  IMPORTING matrix_props,orders@lex3
+
+
+  SM,SM1,SM2: VAR FullMatrix
+
+  r: VAR real
+
+  nzr: VAR nzreal
+
+  M,N,A,B: VAR Matrix
+
+  v,v1,v2: VAR Vector
+
+  i,j,k,p : VAR nat
+
+  m,n : VAR nat
+
+  pn,pm : VAR posnat
+
+  F,G: VAR [[nat,nat]->real]
+
+  Mp,Np: VAR (nonempty?)
+
+  PFM,D1,D2,D: VAR PosFullMatrix
+
+  SQ,IQ,GQ,
+  SQ2,IQ2,GQ2,DQ,DQ2,
+  Q,R,S,T,
+  Q2,R2,S2,T2: VAR Square
+
+  % Elementary Matrices
+
+  Esr(pn)(i,r): SquareMatrix(pn) =
+    form_matrix(LAMBDA (k,j:nat): IF k/=j THEN 0 ELSIF k/=i THEN 1 ELSE r ENDIF,pn,pn)
+
+  entry_Esr: LEMMA entry(Esr(pn)(i,r))(k,j) =
+    IF k/=j OR k>=pn OR j>=pn THEN 0 ELSIF k/=i THEN 1 ELSE r ENDIF
+
+  rows_Esr: LEMMA rows(Esr(pn)(i,r)) = pn
+
+  columns_Esr: LEMMA columns(Esr(pn)(i,r)) = pn
+
+  det_Esr: LEMMA i<pn IMPLIES det(Esr(pn)(i,r)) = r
+
+  transpose_Esr: LEMMA transpose(Esr(pn)(i,r)) = Esr(pn)(i,r)
+
+  mult_Esr_left: LEMMA rows(D)=pn AND i<pn IMPLIES Esr(pn)(i,r)*D = replace_row(i,r*row(D)(i))(D)
+
+  mult_Esr_Esr_inv: LEMMA r/=0 AND i<pn IMPLIES Esr(pn)(i,r)*Esr(pn)(i,1/r)=Id(pn)
+
+
+  Ers(pn)(i,j): {M:SquareMatrix(pn)|M=swap(i,j)(Id(pn))} =
+    form_matrix(LAMBDA (k,p:nat): IF k=i AND p=j THEN 1
+    		       		  ELSIF k=j AND p=i THEN 1
+				  ELSIF k/=i AND k/=j AND k=p THEN 1
+				  ELSE 0 ENDIF,pn,pn)
+
+  entry_Ers: LEMMA entry(Ers(pn)(i,j))(k,p) =
+    IF k>=pn OR p>=pn THEN 0 ELSIF k=i AND p=j THEN 1 ELSIF k=j AND p=i THEN 1
+    ELSIF k/=i AND k/=j AND k=p THEN 1 ELSE 0 ENDIF
+
+  rows_Ers: LEMMA rows(Ers(pn)(i,j)) = pn
+
+  columns_Ers: LEMMA columns(Ers(pn)(i,j)) = pn
+
+  mult_Ers_left: LEMMA rows(D)=pn AND i<pn AND j<pn IMPLIES
+    Ers(pn)(i,j)*D = swap(i,j)(D)
+
+  transpose_Ers: LEMMA transpose(Ers(pn)(i,j)) = Ers(pn)(j,i)
+
+  det_Ers: LEMMA i<pn AND j<pn IMPLIES
+    det(Ers(pn)(i,j)) = IF i = j THEN 1 ELSE -1 ENDIF
+
+  mult_Ers_Ers_inv: LEMMA i<pn AND j<pn IMPLIES
+    Ers(pn)(i,j)*Ers(pn)(i,j) = Id(pn)
+
+  Easr(pn)(i,j,r): SquareMatrix(pn) =
+    form_matrix(LAMBDA (k,p:nat): IF k=i THEN (IF j=i AND p=i THEN 1+r
+    		       		     	       ELSIF p=i THEN 1 ELSIF p=j THEN r
+					       ELSE 0 ENDIF)
+				  ELSIF k=p THEN 1 ELSE 0 ENDIF,pn,pn)
+
+  entry_Easr: LEMMA entry(Easr(pn)(i,j,r))(k,p) =
+    IF k>=pn OR p>=pn THEN 0 ELSIF k=i THEN (IF j=i AND p=i THEN 1+r
+    	ELSIF p=i THEN 1 ELSIF p=j THEN r ELSE 0 ENDIF)
+	ELSIF k=p THEN 1 ELSE 0 ENDIF
+
+  rows_Easr: LEMMA rows(Easr(pn)(i,j,r)) = pn
+
+  columns_Easr: LEMMA columns(Easr(pn)(i,j,r)) = pn
+
+  mult_Easr_left: LEMMA rows(D)=pn AND i<pn AND j<pn IMPLIES
+    Easr(pn)(i,j,r)*D = replace_row(i,row(D)(i)+r*row(D)(j))(D)
+
+  transpose_Easr: LEMMA transpose(Easr(pn)(i,j,r)) = Easr(pn)(j,i,r)
+
+  det_Easr: LEMMA i<pn AND j<pn IMPLIES
+    det(Easr(pn)(i,j,r)) = IF i = j THEN 1+r ELSE 1 ENDIF
+
+  mult_Easr_Easr_inv: LEMMA i<pn AND j<pn AND i/=j IMPLIES
+    Easr(pn)(i,j,r)*Easr(pn)(i,j,-r) = Id(pn)
+
+  % Zero
+
+  ZERO(pn): SquareMatrix(pn) = form_matrix(LAMBDA (i,j): 0,pn,pn)
+
+  % Upper triangulation
+
+  upper_triangular?(M): bool =
+    FORALL (i,j): i>j AND i<rows(M) IMPLIES entry(M)(i,j)=0
+
+  prod_diag((M|rows(M)>0),i): RECURSIVE real =
+    IF i >=rows(M)-1 THEN entry(M)(rows(M)-1,rows(M)-1) 
+    ELSE entry(M)(i,i)*prod_diag(M,i+1) ENDIF MEASURE max(rows(M)-i,0)
+
+  prod_diag_remove_0_0: LEMMA k+1<rows(S) IMPLIES
+    prod_diag(remove(S, 0, 0), k) = prod_diag(S,k+1)
+
+  diagonal?(M): bool = FORALL (i,j): i/=j IMPLIES entry(M)(i,j)=0
+
+  diagonal_upper_triangular: LEMMA
+    diagonal?(M) IMPLIES upper_triangular?(M)
+
+  det_upper_triangular: LEMMA
+    upper_triangular?(S) IMPLIES
+    det(S) = prod_diag(S,0)
+  
+  det_upper_triangular_zero: LEMMA
+    upper_triangular?(S) IMPLIES
+    (det(S)=0 IFF (EXISTS (i): i<rows(S) AND entry(S)(i,i)=0))
+
+  upper_triangular_mult: LEMMA
+    upper_triangular?(S) AND upper_triangular?(R) IMPLIES
+    upper_triangular?(S*R)
+
+  lower_triangular?(M): bool =
+    FORALL (i,j): i<j AND i<rows(M) IMPLIES entry(M)(i,j)=0
+
+  lower_triangular_mult: LEMMA
+    lower_triangular?(S) AND lower_triangular?(R) IMPLIES
+    lower_triangular?(S*R)
+
+  upper_triangular_Id: LEMMA upper_triangular?(Id(pn))
+
+  lower_triangular_Id: LEMMA lower_triangular?(Id(pn))
+
+  upper_triangular_Easr: LEMMA i<j IMPLIES
+    upper_triangular?(Easr(pn)(i,j,r))
+
+  lower_triangular_Easr: LEMMA i>j IMPLIES
+    lower_triangular?(Easr(pn)(i,j,r))
+
+  % Products elementary matrices
+
+  include_scals,
+  include_swaps: VAR bool % allow scalar multiple row elementary matrices in
+  		      % the products or not
+
+  prod_mat(pn)(FM:[nat->SquareMatrix(pn)],k): RECURSIVE SquareMatrix(pn) =
+    IF k=0 THEN FM(0) ELSE prod_mat(pn)(FM,k-1)*FM(k) ENDIF MEASURE k
+
+  prod_mat_eq: LEMMA FORALL (FM,GM:[nat->SquareMatrix(pn)]):
+    (FORALL (i):i<=k IMPLIES FM(i)=GM(i)) IMPLIES prod_mat(pn)(FM,k)=prod_mat(pn)(GM,k)
+
+  mult_prod_mat: LEMMA FORALL (FM,GM:[nat->SquareMatrix(pn)]):
+    prod_mat(pn)(FM,k)*prod_mat(pn)(GM,p) =
+    prod_mat(pn)(LAMBDA (i:nat): IF i<=k THEN FM(i) ELSE GM(i-k-1) ENDIF,k+p+1)
+
+  prod_mat_expand_left: LEMMA FORALL (FM:[nat->SquareMatrix(pn)]): k>0 IMPLIES
+    prod_mat(pn)(FM,k) = FM(0)*prod_mat(pn)(LAMBDA (i): FM(i+1),k-1)
+
+  transpose_prod_mat: LEMMA FORALL (FM:[nat->SquareMatrix(pn)]):
+    transpose(prod_mat(pn)(FM,k)) = prod_mat(pn)(LAMBDA (i): IF i<=k THEN 
+    				  transpose(FM(k-i)) ELSE FM(i) ENDIF,k)
+
+  is_simple_seq?(pn)(FM:[nat->SquareMatrix(pn)],k,include_scals,include_swaps):bool =
+    FORALL (p): FM(p)=Id(pn) OR 
+      (include_swaps AND EXISTS (i,j): i<pn AND j<pn AND FM(p)=Ers(pn)(i,j)) OR
+      (EXISTS (i,j,r): i<pn AND j<pn AND i/=j AND FM(p) = Easr(pn)(i,j,r)) OR
+      (include_scals AND EXISTS (i,r): i<pn AND FM(p) = Esr(pn)(i,r))
+
+  is_simple_prod?(pn,include_scals,include_swaps)(SQ:SquareMatrix(pn)): bool = 
+    EXISTS (FM:[nat->SquareMatrix(pn)],k): is_simple_seq?(pn)(FM,k,include_scals,include_swaps)
+      AND SQ = prod_mat(pn)(FM,k)
+
+  mult_simple_prod: LEMMA FORALL (R,S:SquareMatrix(pn)):
+    is_simple_prod?(pn,include_scals,include_swaps)(R) AND
+    is_simple_prod?(pn,include_scals,include_swaps)(S) IMPLIES
+    is_simple_prod?(pn,include_scals,include_swaps)(R*S)
+
+  Id_simple_prod: LEMMA is_simple_prod?(pn,include_scals,include_swaps)(Id(pn))
+
+  Esr_simple_prod: LEMMA i<pn AND include_scals  IMPLIES
+    is_simple_prod?(pn,include_scals,include_swaps)(Esr(pn)(i,r))
+
+  Ers_simple_prod: LEMMA i<pn AND j<pn AND include_swaps IMPLIES
+    is_simple_prod?(pn,include_scals,include_swaps)(Ers(pn)(i,j))
+
+  Easr_simple_prod: LEMMA i<pn AND j<pn AND i/=j IMPLIES
+    is_simple_prod?(pn,include_scals,include_swaps)(Easr(pn)(i,j,r))
+
+  det_simple_prod_1: LEMMA FORALL (S:SquareMatrix(pn)):
+    is_simple_prod?(pn,false,false)(S) IMPLIES
+    det(S)=1
+
+  det_mult_simple_prod_left: LEMMA FORALL (S,R:SquareMatrix(pn)):
+    is_simple_prod?(pn,false,false)(S) IMPLIES
+    det(S*R)=det(R)
+
+  Easr_null: LEMMA NOT null?(Easr(pn)(i,j,r))
+
+  transpose_simple_prod: LEMMA FORALL (S:SquareMatrix(pn)):
+    is_simple_prod?(pn,include_scals,include_swaps)(S) IFF 
+    is_simple_prod?(pn,include_scals,include_swaps)(transpose(S))
+
+  diagonal_simple_prod: LEMMA FORALL (S:SquareMatrix(pn)):
+  			diagonal?(S) IMPLIES is_simple_prod?(pn,true,include_swaps)(S)
+
+  is_simple_prod_implic: LEMMA
+    FORALL (S:SquareMatrix(pn),include_scals2,include_swaps2:bool):
+    (include_scals IMPLIES include_scals2) AND
+    (include_swaps IMPLIES include_swaps2) AND
+    is_simple_prod?(pn,include_scals,include_swaps)(S) IMPLIES
+    is_simple_prod?(pn,include_scals2,include_swaps2)(S)
+
+
+
+
+
+END matrix_det

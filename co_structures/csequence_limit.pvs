@@ -1,0 +1,108 @@
+%-----------------------------------------------------------------------------
+% The limit of a function that produces prefixes of a sequence of countable
+% length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_limit[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_prefix_suffix[T]
+  IMPORTING ascending_chains[csequence, prefix?]
+  IMPORTING csequence_codt_coreduce[T, ascending_chain]
+
+  t: VAR T
+  n, m, k: VAR nat
+  chain: VAR ascending_chain
+  cseq: VAR csequence
+  fseq: VAR finite_csequence
+  p: VAR pred[csequence]
+
+  % FIXME: prefix_chain and suffix_chain sound like converses, but they are not
+
+  prefix_chain(cseq): ascending_chain = LAMBDA n: prefix(cseq, n)
+
+  suffix_chain(chain, n): ascending_chain = LAMBDA m: suffix(chain(m), n)
+
+  rest_chain(chain): ascending_chain =
+      LAMBDA n:
+        IF empty?(chain(n)) THEN empty_cseq ELSE rest(chain(n)) ENDIF
+
+  ascending_chain?_nth: THEOREM
+    FORALL chain, n, m, k:
+      n <= m AND index?(chain(n))(k) IMPLIES
+       index?(chain(m))(k) AND nth(chain(n), k) = nth(chain(m), k)
+
+  limit_struct(chain): csequence_struct[T, ascending_chain] =
+      IF (FORALL n: empty?(chain(n))) THEN inj_empty_cseq
+      ELSE inj_add(first(chain(min({n | nonempty?(chain(n))}))),
+                   rest_chain(chain))
+      ENDIF
+
+  limit(chain): csequence = coreduce(limit_struct)(chain)
+
+  limit_empty: THEOREM
+    FORALL chain: empty?(limit(chain)) IFF (FORALL n: empty?(chain(n)))
+
+  limit_nonempty: THEOREM
+    FORALL chain:
+      nonempty?(limit(chain)) IFF (EXISTS n: nonempty?(chain(n)))
+
+  limit_first: THEOREM
+    FORALL chain, n:
+      nonempty?(chain(n)) IMPLIES first(chain(n)) = first(limit(chain))
+
+  limit_rest_chain: THEOREM
+    FORALL chain:
+      nonempty?(limit(chain)) IMPLIES
+       rest(limit(chain)) = limit(rest_chain(chain))
+
+  limit_suffix_chain: THEOREM
+    FORALL chain, n: suffix(limit(chain), n) = limit(suffix_chain(chain, n))
+
+  limit_lub: THEOREM FORALL chain: least_upperbound?(chain)(limit(chain))
+
+  limit_nth: THEOREM
+    FORALL chain, cseq, n, m:
+      index?(chain(n))(m) IMPLIES
+       index?(limit(chain))(m) AND nth(chain(n), m) = nth(limit(chain), m)
+
+  limit_def: THEOREM
+    FORALL chain, cseq:
+      limit(chain) = cseq IFF
+       (FORALL t, n:
+          index?(cseq)(n) AND nth(cseq, n) = t IFF
+           (EXISTS m: index?(chain(m))(n) AND nth(chain(m), n) = t))
+
+  limit_prefix_chain: THEOREM FORALL cseq: limit(prefix_chain(cseq)) = cseq
+
+  limit_prefix_compact: THEOREM
+    FORALL cseq, n, chain:
+      (n = 0 OR index?(cseq)(n - 1)) IMPLIES
+       (prefix?(prefix(cseq, n), limit(chain)) IMPLIES
+         (EXISTS m: prefix?(prefix(cseq, n), chain(m))))
+
+  limit_finite_compact: THEOREM
+    FORALL cseq:
+      is_finite(cseq) IFF
+       (FORALL chain:
+          prefix?(cseq, limit(chain)) IMPLIES
+           (EXISTS m: prefix?(cseq, chain(m))))
+
+  continuous?(p): bool =
+      FORALL chain: (FORALL n: p(chain(n))) IMPLIES p(limit(chain))
+
+  continuous?_infinite: THEOREM
+    FORALL p:
+      continuous?(p) AND (FORALL fseq: p(fseq)) IMPLIES
+       (FORALL cseq: p(cseq))
+
+ END csequence_limit

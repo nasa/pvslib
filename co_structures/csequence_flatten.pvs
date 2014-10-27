@@ -1,0 +1,166 @@
+%-----------------------------------------------------------------------------
+% Flatten, an operator that takes a sequence of sequences, and concatenates
+% the elements to form a single sequence of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_flatten[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_prefix_suffix[T], csequence_filter[csequence[T]]
+
+  nonempty_seq_seq: TYPE = {x: csequence[csequence[T]] | every(nonempty?)(x)}
+
+  p: VAR pred[T]
+  n: VAR nat
+  tseq: VAR csequence[T]
+  cseq: VAR csequence[csequence[T]]
+  eseq: VAR empty_csequence[csequence[T]]
+  nseq: VAR nonempty_seq_seq
+
+  % A result we need several times in the ensuing proofs
+  some_every_empty: LEMMA
+    FORALL cseq: every(empty?)(cseq) IFF NOT some(nonempty?)(cseq)
+
+  flatten_struct(nseq): csequence_struct[T, nonempty_seq_seq] =
+      IF empty?(nseq) THEN inj_empty_cseq[T, nonempty_seq_seq]
+      ELSE inj_add[T, nonempty_seq_seq]
+               (first(first(nseq)),
+                IF empty?(rest(first(nseq))) THEN rest(nseq)
+                ELSE add(rest(first(nseq)), rest(nseq))
+                ENDIF)
+      ENDIF
+
+  flatten(cseq): csequence[T] =
+      coreduce(flatten_struct)(filter(cseq, nonempty?))
+
+  flatten_empty: THEOREM
+    FORALL cseq: empty?(flatten(cseq)) IFF every(empty?)(cseq)
+
+  flatten_empty_cseq: COROLLARY FORALL eseq: empty?(flatten(eseq))
+
+  flatten_nonempty: THEOREM
+    FORALL cseq: nonempty?(flatten(cseq)) IFF some(nonempty?)(cseq)
+
+  flatten_filter: THEOREM
+    FORALL cseq: flatten(filter(cseq, nonempty?)) = flatten(cseq)
+
+  flatten_reduce: THEOREM
+    FORALL cseq:
+      empty?(cseq) OR
+       nonempty?(first(cseq)) OR flatten(cseq) = flatten(rest(cseq))
+
+  flatten_rest: THEOREM
+    FORALL cseq:
+      nonempty?(flatten(cseq)) IMPLIES
+       rest(flatten(cseq)) =
+        flatten(add(rest(first(filter(cseq, nonempty?))),
+                    rest(filter(cseq, nonempty?))))
+
+  flatten_rest2: THEOREM
+    FORALL cseq:
+      empty?(cseq) OR
+       empty?(first(cseq)) OR
+        rest(flatten(cseq)) = flatten(add(rest(first(cseq)), rest(cseq)))
+
+  flatten_first: THEOREM
+    FORALL cseq:
+      nonempty?(flatten(cseq)) IMPLIES
+       first(flatten(cseq)) = first(first(filter(cseq, nonempty?)))
+
+  flatten_suffix: THEOREM
+    FORALL cseq:
+      some(nonempty?)(cseq) IMPLIES
+       flatten(cseq) = flatten(suffix(cseq, first_p(nonempty?, cseq)))
+
+  % I would really like to define flatten like this:
+  %   flatten(cseq) = reduce(o)(cseq)
+  % but this theorem is as close as I can come
+  flatten_concatenate: THEOREM
+    FORALL cseq:
+      nonempty?(cseq) IMPLIES
+       flatten(cseq) = first(cseq) o flatten(rest(cseq))
+
+  flatten_rest_suffix: THEOREM
+    FORALL cseq:
+      nonempty?(flatten(cseq)) IMPLIES
+       LET first = first_p(nonempty?, cseq) IN
+         rest(flatten(cseq)) =
+          flatten(add(rest(nth(cseq, first)), suffix(cseq, first + 1)))
+
+  flatten_finite: THEOREM
+    FORALL cseq:
+      is_finite(flatten(cseq)) IFF
+       is_finite(filter(cseq, nonempty?)) AND every(is_finite)(cseq)
+
+  flatten_infinite: THEOREM
+    FORALL cseq:
+      is_infinite(flatten(cseq)) IFF
+       is_infinite(filter(cseq, nonempty?)) OR some(is_infinite)(cseq)
+
+  finite_flatten_csequence: TYPE = {cseq | is_finite(flatten(cseq))}
+  fseq: VAR finite_flatten_csequence
+
+  length_of_flatten(fseq): RECURSIVE nat =
+    IF empty?(flatten(fseq)) THEN 0
+    ELSE length(nth(fseq, first_p(nonempty?, fseq))) +
+          length_of_flatten(suffix(fseq, first_p(nonempty?, fseq) + 1))
+    ENDIF
+     MEASURE length(filter(fseq, nonempty?))
+
+  length_of_flatten_add: THEOREM
+    FORALL fseq, tseq:
+      is_finite(tseq) IMPLIES
+       length_of_flatten(add(tseq, fseq)) =
+        length(tseq) + length_of_flatten(fseq)
+
+  flatten_length: THEOREM
+    FORALL cseq:
+      is_finite(flatten(cseq)) IMPLIES
+       length(flatten(cseq)) = length_of_flatten(cseq)
+
+  flatten_some: THEOREM
+    FORALL cseq, p: some(p)(flatten(cseq)) IMPLIES some(some(p))(cseq)
+
+  flatten_some_finite: THEOREM
+    FORALL cseq, p:
+      every(is_finite)(cseq) IMPLIES
+       (some(p)(flatten(cseq)) IFF some(some(p))(cseq))
+
+  flatten_every: THEOREM
+    FORALL cseq, p: every(every(p))(cseq) IMPLIES every(p)(flatten(cseq))
+
+  flatten_every_finite: THEOREM
+    FORALL cseq, p:
+      every(is_finite)(cseq) IMPLIES
+       (every(p)(flatten(cseq)) IFF every(every(p))(cseq))
+
+  % I believe the following two theorems are true.  Proving them, however,
+  % is a different matter.  If you have a proof strategy to suggest, or a
+  % nicer way of stating these theorems, please contact me.
+  %
+  %   flatten_some_converse: THEOREM
+  %     FORALL cseq, p:
+  %       (EXISTS (i: indexes(cseq)):
+  %          some(p)(nth(cseq, i)) AND
+  %           (FORALL (j: indexes(cseq)):
+  %              j < i IMPLIES is_finite(nth(cseq, j))))
+  %        IMPLIES some(p)(flatten(cseq))
+  %
+  %   flatten_every_converse: THEOREM
+  %     FORALL cseq, p:
+  %       every(p)(flatten(cseq)) IMPLIES
+  %        (FORALL (i: indexes(cseq)):
+  %           (FORALL (j: indexes(cseq)):
+  %              j < i IMPLIES is_finite(nth(cseq, j)))
+  %            IMPLIES every(p)(nth(cseq, i)))
+
+ END csequence_flatten

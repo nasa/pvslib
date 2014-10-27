@@ -1,0 +1,64 @@
+remainder_sequence: THEORY
+BEGIN
+
+IMPORTING polynomial_pseudo_divide
+
+  a,r,g,h : VAR [nat->int]
+  p : VAR [nat->[nat->int]]
+  d,n,m,i,j,k : VAR nat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+  curr: VAR list[list[int]]
+
+  is_neg_remainder_list?(g,(n|g(n)/=0),h,(m|h(m)/=0))(curr): bool =
+    (FORALL (icurr,jcurr:nat):icurr<jcurr AND jcurr<length(curr)-1 
+                   IMPLIES
+			length(nth(curr,icurr)) < length(nth(curr,jcurr))) AND
+    (FORALL (icurr:nat): icurr<length(curr) IMPLIES LET thiscurr = nth(curr,icurr) IN
+			length(thiscurr)>0 IMPLIES nth(thiscurr,length(thiscurr)-1)/=0) AND
+    (length(curr)>0 IMPLIES nth(curr,length(curr)-1) = array2list[int](n+1)(g)) AND
+    (length(curr)>1 IMPLIES nth(curr,length(curr)-2) = array2list[int](m+1)(h)) AND
+    (FORALL (j:nat): j<length(curr)-2 IMPLIES 
+      LET pbig = list2array[int](0)(nth(curr,j+2)),
+      	  nbig = length(nth(curr,j+2))-1,
+	  plittle = list2array[int](0)(nth(curr,j+1)),
+	  nlittle:nat = length(nth(curr,j+1))-1
+      IN  nth(curr,j) = polynomial_rem(pbig,nbig)(plittle,nlittle))
+
+
+  compute_remainder_seq(g,(n|g(n)/=0),h,(m|h(m)/=0))
+    (curr:(is_neg_remainder_list?(g,n,h,m))):
+    RECURSIVE {crem:(is_neg_remainder_list?(g,n,h,m))|length(crem)>1 AND length(nth(crem,0))=0} =
+    LET currlength = length(curr) IN
+      IF currlength = 0 THEN 
+          compute_remainder_seq(g,n,h,m)(cons[list[int]](array2list[int](m+1)(h),
+	              cons[list[int]](array2list[int](n+1)(g),curr)))
+      ELSIF currlength = 1 THEN 
+          compute_remainder_seq(g,n,h,m)(cons[list[int]](array2list[int](m+1)(h),
+	              curr))
+      ELSIF length(nth(curr,0))=0 THEN curr
+      ELSE
+        LET csplittle  = nth(curr,0),
+	    cspbig     = nth(curr,1),
+	    newg       = list2array[int](0)(cspbig),
+	    newn       = length(cspbig)-1,
+	    newh       = list2array[int](0)(csplittle),
+	    newm       = length(csplittle)-1,
+	    newlist    = polynomial_rem(newg,newn)(newh,newm)
+        IN  compute_remainder_seq(g,n,h,m)(cons(newlist,curr))
+      ENDIF MEASURE IF null?(curr) THEN m+n+4 ELSIF length(curr)=1 THEN m+n+3
+      	    ELSIF length(curr)=2 THEN m+n+2 ELSE length(nth(curr,0)) ENDIF
+
+  compute_remainder_sequence(g,(n|g(n)/=0),h,(m|h(m)/=0)):
+    {crem:(is_neg_remainder_list?(g,n,h,m))|length(crem)>1 AND length(nth(crem,0))=0} =
+    compute_remainder_seq(g,n,h,m)(null[list[int]])
+
+  compute_remainder_sequence_test: LEMMA
+    LET g=(LAMBDA (i:nat): IF i<=3 THEN 2 ELSIF i<=6 
+    		  	   THEN -3 ELSE 0 ENDIF)
+    IN compute_remainder_sequence(g,6,poly_deriv(g),5)=
+      (:(::),(:-1:),(:-579,-608:),(:2,4,55:),
+        (:126,140,105,120:),(:-70,-56,-42,-48,21:),
+         (:2,4,6,-12,-15,-18:),(:2,2,2,2,-3,-3,-3:):)
+
+END remainder_sequence

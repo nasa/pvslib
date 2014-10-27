@@ -1,0 +1,152 @@
+
+%%-------------------** Group Action and Class Equation **-------------------
+%%                                                                          
+%% Author          : André Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%                    
+%% Last Modified On: November 28, 2011
+%%                                                                          
+%%---------------------------------------------------------------------------
+
+
+group_action[T: TYPE, *: [T,T -> T], one: T, T1: TYPE]: THEORY
+
+BEGIN
+  
+     ASSUMING IMPORTING algebra@group_def[T,*,one]
+
+       fullset_is_group: ASSUMPTION group?(fullset[T])
+
+   ENDASSUMING
+
+
+   IMPORTING algebra@group[T,*,one],
+             algebra@factor_groups[T,*,one],
+             lagrange_index[T,*,one],
+             class_equation_scaf[set[T1],T1],
+             groups_scaf
+
+
+    G, H, K: VAR group[T,*,one]
+       X, Y: VAR set[T1]
+          p: VAR posnat
+          n: VAR nat
+     F(G,X): TYPE = [(G), (X) -> (X)]
+
+
+%%%%% Definitions %%%%
+
+   group_action?(G, X)(f:F(G,X)): bool = FORALL (g1, g2:(G), x: (X)):   
+                             f(one, x) = x AND f(g1 * g2, x) = f(g1, f(g2, x))
+
+   stabilizer(G,X)(f: F(G,X), x: (X)): {S: set[T] | subset?(S,G)} = {g:(G) | f(g,x) = x}
+
+
+   orbit(G,X)(f: F(G,X), x: (X)): {Y: set[T1] | subset?(Y,X)} = {y:(X) | EXISTS (g:(G)): y = f(g, x)}
+
+
+   orbits(G,X)(f: F(G,X)): setofsets[T1] = {Y: set[T1] | EXISTS (x:(X)): Y = orbit(G,X)(f,x)}
+
+   
+   Fix(G,X)(f: F(G,X)): {Y: set[T1] | subset?(Y,X)} = {x:(X) | FORALL (g:(G)): f(g, x) = x}
+
+
+   orbits_nFix(G,X)(f: F(G,X)): setofsets[T1] = {Y: (orbits(G,X)(f)) | 
+                                     EXISTS (x: {x:(X) | NOT member(x, Fix(G,X)(f))}): Y = orbit(G,X)(f,x)}
+
+%%%%% Properties and results %%%%
+
+   stabilizer_is_subgroup: LEMMA FORALL (x:(X), f:F(G,X)): 
+                              group_action?(G, X)(f) IMPLIES subgroup?(stabilizer(G,X)(f, x), G)
+
+
+   singleton_iff_Fix: LEMMA FORALL (x:(X), f:F(G,X)): 
+                         group_action?(G, X)(f)
+                            IMPLIES
+                              (orbit(G,X)(f,x) = singleton(x) IFF member(x, Fix(G,X)(f)))
+
+   empty_iff_eq_Fix: LEMMA FORALL (f:F(G,X)): 
+                              group_action?(G, X)(f)
+                                 IMPLIES
+                                    (empty?(orbits_nFix(G,X)(f)) IFF X = Fix(G,X)(f))
+
+   orbits_nFix_disj_Fix: LEMMA FORALL (f:F(G,X)): 
+                            group_action?(G, X)(f) 
+                               IMPLIES disjoint?(Fix(G,X)(f),Union(orbits_nFix(G,X)(f)))
+
+
+   orbits_is_union: LEMMA FORALL (f:F(G,X)): 
+                       group_action?(G, X)(f) 
+                          IMPLIES Union(orbits(G,X)(f)) = union(Fix(G,X)(f), Union(orbits_nFix(G,X)(f)))
+
+   orbit_nonempty: LEMMA FORALL (x:(X), f:F(G,X)): 
+                      group_action?(G, X)(f) IMPLIES nonempty?(orbit(G,X)(f,x))
+
+   orbits_nonempty: LEMMA FORALL (f:F(G,X)): nonempty?(X) AND group_action?(G, X)(f) 
+                             IMPLIES nonempty?(orbits(G,X)(f))
+
+   set_orbits_is: LEMMA FORALL (f:F(G,X)): group_action?(G, X)(f) 
+                          IMPLIES Union(orbits(G,X)(f)) = X
+
+   orbit_is_finite: LEMMA FORALL (x:(X), f:F(G,X)):
+                            is_finite(X) AND group_action?(G, X)(f)
+                               IMPLIES
+                                  is_finite(orbit(G,X)(f,x))
+
+   orbits_disjoint: LEMMA FORALL (f:F(G,X), A,B: (orbits(G,X)(f))):
+                             group_action?(G, X)(f)
+                                IMPLIES 
+                                   A = B OR disjoint?(A,B)
+
+   orbits_partition: LEMMA  FORALL (f:F(G,X)): 
+                              is_finite(X) AND group_action?(G, X)(f) 
+                                IMPLIES
+                                   finite_partition?(orbits(G,X)(f))
+
+   orbits_nFix_partition: LEMMA FORALL (f:F(G,X)): 
+                                   is_finite(X) AND group_action?(G, X)(f) 
+                                      IMPLIES
+                                         finite_partition?(orbits_nFix(G,X)(f))
+
+   orbits_eq_index_aux: LEMMA 
+      FORALL (x:(X), f:F(G,X)): group_action?(G, X)(f) 
+        IMPLIES
+          EXISTS (f:[(left_cosets(G,stabilizer(G,X)(f, x))) -> (orbit(G,X)(f,x))]): bijective?(f)
+
+   orbits_eq_index: LEMMA FORALL (G:finite_group, x:(X), f:F(G,X)):
+                         is_finite(X) AND group_action?(G, X)(f)
+                            IMPLIES
+                              index(G, stabilizer(G,X)(f, x)) = card(orbit(G,X)(f,x))
+
+
+%%%%% Class Equation %%%%%%%%%%%%%%%%%%%%%%%%
+
+%                 ----
+%  sigma(X, f) =  \     f(x)
+%                 /
+%                 ----
+%              member(x,X)
+
+
+   counting_formula: LEMMA FORALL (f:F(G,X)):
+                             finite_group?(G) AND is_finite(X) AND 
+                             nonempty?(X)     AND group_action?(G, X)(f)
+                                IMPLIES
+                                  card(X) = sigma_set.sigma(orbits(G,X)(f), card)
+
+   class_equation: LEMMA FORALL (f:F(G,X)):
+                            finite_group?(G) AND is_finite(X) AND 
+                            nonempty?(X)     AND group_action?(G, X)(f)
+                               IMPLIES 
+                                  card(X) = card(Fix(G,X)(f)) + sigma_set.sigma(orbits_nFix(G,X)(f), card)
+
+   Fix_congruence: LEMMA FORALL (f:F(G,X)):
+                            finite_group?(G) AND order(G) = p^n AND 
+                            is_finite(X)     AND nonempty?(X)   AND 
+                            prime?(p)        AND group_action?(G, X)(f)
+                              IMPLIES 
+                                 divides(p, card(X) - card(Fix(G,X)(f)))
+
+
+ 
+END group_action

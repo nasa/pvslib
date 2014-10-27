@@ -1,0 +1,75 @@
+%
+%
+% Purpose : A choice function that selects a specified element of
+%           a reduced vector when the enabled set is nonempty,
+%           and a default value otherwise.  
+%
+%
+
+reduce_choice[
+  S: posnat,
+  D: posnat,
+  T: TYPE+,
+  <=: (total_order?[T]),
+  default: T
+]: THEORY
+
+  BEGIN
+
+  IMPORTING
+    fault_assumptions_stage[S, D, T],
+    reduce_properties[S, T, <=]
+
+  tau: VAR tau_type
+
+  d, d1, d2: VAR below(D)
+  s: VAR below(S)
+  src_set: VAR finite_set[below(S)]
+
+  check: VAR check_stage
+  rcvd: VAR rcvd_matrix_stage
+
+  cf: VAR consensus_function
+  icf: VAR in_consensus_function
+
+  reduce_choice(tau, cf)(rcvd, check)(d): T = 
+    reduce_choice(cf, enabled(rcvd, check)(d), rcvd(d), tau, default)
+
+%  reduce_choice_stage: JUDGEMENT
+%     reduce_choice(tau, cf) HAS_TYPE choice_stage
+
+  in_rcvd: LEMMA
+      NOT empty?(enabled(rcvd, check)(d))
+    IMPLIES
+      EXISTS (s: below(S)):
+        reduce_choice(tau, icf)(rcvd, check)(d) = rcvd(d)(s)
+
+  min_reduce_choice: LEMMA
+    reduce_choice(tau, min)(rcvd, check)(d) <= reduce_choice(tau, cf)(rcvd, check)(d)
+
+  max_reduce_choice: LEMMA
+    reduce_choice(tau, cf)(rcvd, check)(d) <= reduce_choice(tau, max)(rcvd, check)(d)
+
+  reduce_overlap?(rcvd, check, tau)(src_set): bool = 
+    FORALL d1, d2: 
+      EXISTS s:
+        src_set(s) AND
+        enabled(rcvd, check)(d1)(s) AND
+        enabled(rcvd, check)(d2)(s) AND
+        min(reduce(tau)(rcvd(d1), enabled(rcvd, check)(d1))) <= rcvd(d1)(s) AND
+        rcvd(d2)(s) <= max(reduce(tau)(rcvd(d2), enabled(rcvd, check)(d2)))
+
+  M(rcvd, check, tau)(d): nat =
+    IF empty?(enabled(rcvd, check)(d)) THEN 0
+    ELSE M(enabled(rcvd, check)(d), tau)
+    ENDIF
+
+  IMPORTING finite_sets@finite_sets_minmax[nat, <=]
+
+  max_length(rcvd, check, tau): nat =
+    max(image(M(rcvd, check, tau), fullset[below(D)]))
+
+  max_length_bound: LEMMA
+    M(rcvd, check, tau)(d) <= max_length(rcvd, check, tau)
+
+  END reduce_choice

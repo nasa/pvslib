@@ -1,0 +1,157 @@
+derivatives [T: TYPE FROM real ] : THEORY
+%-----------------------------------------------------------------------------------------
+%
+%    The derivatives library has been generalized to handle a larger class of domains.
+%    The following more general domain definition is now used
+%
+%        deriv_domain    : ASSUMPTION FORALL (e: posreal, x:T):
+%                                        EXISTS (y: {u: nzreal | T_pred(u + x)}): abs(y) < e
+%
+%    This definition allows unions of closed and open intervals.
+%    See deriv_domain and deriv_domains for more information and useful lemmas.
+%    
+%    See "derivatives_lam" for lambda-expression versions of the lemmas that are especially
+%    suited to rewriting.  Note that when you expand a function, the PVS system does not
+%    expand the definition using the real_fun_ops.  Instead it exapnds them using
+%    lambda expressions.
+%
+%-----------------------------------------------------------------------------------------
+BEGIN
+
+  ASSUMING
+    IMPORTING deriv_domain_def
+
+    deriv_domain     : ASSUMPTION deriv_domain?[T]
+
+    not_one_element  : ASSUMPTION not_one_element?[T]
+
+  ENDASSUMING
+
+  IMPORTING derivatives_def[T]
+
+  f, f1, f2, fp : VAR [T -> real]
+  g : VAR [T -> nzreal]
+  x : VAR T
+  u : VAR nzreal
+  b : VAR real
+  l, l1, l2 : VAR real
+
+
+  derivable?(f) : bool = FORALL x : derivable?(f, x)
+  
+  differentiable?(f): MACRO bool = derivable?(f)
+
+  deriv_fun    : TYPE = { f:[T -> real] | derivable?(f) }
+
+  nz_deriv_fun : TYPE = { g:[T -> nzreal] | derivable?(g) }
+
+  deriv(ff: deriv_fun)    : [T -> real] = LAMBDA x : deriv(ff, x)
+
+
+  derivable_cont_fun     : LEMMA derivable?(f) IMPLIES continuous?(f)
+
+
+  sum_derivable_fun      : LEMMA derivable?(f1) AND derivable?(f2)
+                               IMPLIES derivable?(f1 + f2)
+
+  neg_derivable_fun      : LEMMA derivable?(f) IMPLIES derivable?(- f)
+
+  diff_derivable_fun     : LEMMA derivable?(f1) AND derivable?(f2)
+                               IMPLIES derivable?(f1 - f2)
+
+  prod_derivable_fun     : LEMMA derivable?(f1) AND derivable?(f2)
+                               IMPLIES derivable?(f1 * f2)
+
+  scal_derivable_fun     : LEMMA derivable?(f) IMPLIES derivable?(b * f)
+
+  const_derivable_fun    : LEMMA derivable?(LAMBDA x: b)
+
+  inv_derivable_fun      : LEMMA derivable?(g) IMPLIES derivable?(1/g)
+
+  div_derivable_fun      : LEMMA derivable?(f) AND derivable?(g)
+                             IMPLIES derivable?(f / g)
+
+  identity_derivable_fun : LEMMA derivable?(I)
+
+  id_derivable_fun       : LEMMA derivable?(LAMBDA x: x)
+        
+
+  ff, ff1, ff2 : VAR deriv_fun
+  gg : VAR nz_deriv_fun
+
+  derivable_cont   : JUDGEMENT deriv_fun SUBTYPE_OF continuous_fun[T]
+
+  nz_derivable_cont: JUDGEMENT nz_deriv_fun SUBTYPE_OF nz_continuous_fun[T]
+
+  derivable_sum    : JUDGEMENT +(ff1, ff2) HAS_TYPE deriv_fun
+
+  derivable_diff   : JUDGEMENT -(ff1, ff2) HAS_TYPE deriv_fun
+
+  derivable_prod   : JUDGEMENT *(ff1, ff2) HAS_TYPE deriv_fun
+
+  derivable_scal   : JUDGEMENT *(b, ff) HAS_TYPE deriv_fun
+
+  derivable_neg    : JUDGEMENT -(ff) HAS_TYPE deriv_fun
+
+  derivable_div    : JUDGEMENT /(ff, gg) HAS_TYPE deriv_fun
+
+  derivable_inv    : JUDGEMENT /(b, gg) HAS_TYPE deriv_fun
+
+  derivable_const  : JUDGEMENT const_fun(b) HAS_TYPE deriv_fun
+
+  derivable_id     : JUDGEMENT I[T] HAS_TYPE deriv_fun
+
+
+  %------------------------
+  %  Derivative function
+  %------------------------
+
+  % deriv_fun_def: LEMMA (FORALL x: convergence(NQ(f, x), 0, fp(x))) IMPLIES
+  %                       derivable?(f) AND deriv(f) = fp
+
+  deriv_sum_fun  : LEMMA deriv(ff1 + ff2) = deriv(ff1) + deriv(ff2)
+
+  deriv_neg_fun  : LEMMA deriv(- ff) = - deriv(ff)
+
+  deriv_diff_fun : LEMMA deriv(ff1 - ff2) = deriv(ff1) - deriv(ff2)
+
+  deriv_prod_fun : LEMMA deriv(ff1 * ff2) = deriv(ff1) * ff2 + deriv(ff2) * ff1
+
+  deriv_scal_fun : LEMMA deriv(b * ff) = b * deriv(ff)
+
+  deriv_inv_fun  : LEMMA deriv(1 / gg) = - deriv(gg) / (gg * gg)
+
+  deriv_scaldiv_fun : LEMMA deriv(b / gg) = - (b * deriv(gg)) / (gg * gg)
+
+  deriv_div_fun  : LEMMA deriv(ff / gg) = (deriv(ff)*gg - deriv(gg)*ff)/(gg*gg)
+
+  deriv_const_fun: LEMMA deriv(LAMBDA x: b) = (LAMBDA x: 0)
+
+  deriv_const_func: LEMMA deriv(const_fun(b)) = const_fun(0)
+
+  deriv_id_fun    : LEMMA deriv(LAMBDA x: x) = (LAMBDA x: 1)
+
+  deriv_I_fun     : LEMMA deriv(I) = (LAMBDA x: 1)
+
+% ------------------ following added by Rick Butler ---------------------
+
+  n: VAR nat
+%  ^(f,n): [T -> real] =  (LAMBDA (t:T): f(t)^n)
+
+  deriv_linear_fun: LEMMA FORALL (m,b: real):
+                            LET f = (LAMBDA x: m*x + b) IN
+                               derivable?(f) AND deriv(f) = (LAMBDA x: m)
+
+  deriv_exp_fun: AXIOM derivable?(f) AND n > 0 IMPLIES
+                       derivable?(f^n) AND
+                       deriv(f^n) = n*f^(n-1)*deriv(f)
+
+  
+  deriv_x_n    : LEMMA n > 0 AND f = (LAMBDA x: x^n) IMPLIES
+                          derivable?(f) AND deriv(f) = (LAMBDA x: n*x^(n-1))
+
+  deriv_x_to_n : LEMMA FORALL (n: posnat, a: real):
+                         LET f = (LAMBDA x: a*x^n) IN
+                            derivable?(f) AND deriv(f) = (LAMBDA x: a*n*x^(n-1))
+
+END derivatives

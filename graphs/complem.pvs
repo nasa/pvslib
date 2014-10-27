@@ -1,0 +1,202 @@
+complem[T: TYPE]: THEORY
+
+BEGIN
+
+  IMPORTING graphs, subgraphs, graph_ops, abstract_min
+
+  G,H,K: VAR graph[T]  
+  V: VAR finite_set[T]
+
+  powerset_finite : LEMMA  
+
+  FORALL (A: finite_set[T]): is_finite[set[T]](powerset[T](A))
+
+  doubleton_is_set: JUDGEMENT  doubleton[T] SUBTYPE_OF  set[T]
+
+
+  all_edges(V):set[doubleton[T]] =
+           {d: doubleton[T] | EXISTS (x,y: T): x /=y AND d = dbl[T](x,y) 
+                                               AND V(x) AND V(y)}
+
+  all_edges_power  : LEMMA subset?(all_edges(V),powerset(V))
+
+  all_edges_finite : LEMMA is_finite(all_edges(V))
+
+
+  completion(G: graph[T]): graph[T] = 
+                  (# vert  := vert(G),
+                     edges := all_edges(vert(G)) #)
+
+
+  completion_is_subgraph: LEMMA subgraph?[T](G, completion(G))
+
+
+  complement(G: graph[T]): graph[T] = 
+                  (# vert := vert(G),
+                     edges := difference(all_edges(vert(G)),edges(G)) #)
+
+
+  comp_comp_lem: LEMMA complement(complement(G)) = G
+
+
+  isol(G: graph[T]): graph[T] = 
+                  (# vert := vert(G),
+                     edges := emptyset[doubleton[T]] #)
+
+
+  IMPORTING graph_conn_defs
+
+  x,y,z: VAR T
+  P,Q: VAR[T,T->bool]
+  w,w1,p,p1,r: VAR walks[T].prewalk
+
+  % BEGINNING OF SECTION -------------------------------------------------
+  % We show directly that either graph or its complement is path-connected.
+  % Subsequently this is proved again using the Los graph theorem.
+  % Results in this section depend only on above definitions and lemmas,
+  % and are not referenced subsequently.
+
+  path_or_not_path: THEOREM empty?(G) OR path_connected?(G) 
+                            OR path_connected?(complement(G))
+
+  % A stronger theorem.
+
+  five_degrees_separation: PROPOSITION 
+                           FORALL (x,y: (vert(G))): x = y 
+                           OR (EXISTS w: walk_from?(G,w,x,y) and length(w)<5) 
+                           OR FORALL (x,y: (vert(G))): x = y
+                           OR (EXISTS w: walk_from?(complement(G),w,x,y) and length(w)<4 )
+
+  % Using this stronger theORem we re-prove path_or_not
+
+  paths_or_not: THEOREM empty?(G) OR path_connected?(G) OR path_connected?(complement(G))
+
+  % Possibly a more compact formulation.
+
+
+  five_degrees_separated: PROPOSITION 
+                          (FORALL (x,y: (vert(G))): 
+                              EXISTS w: walk_from?(G,w,x,y) AND length(w) < 5) 
+                       OR
+                          (FORALL (x,y: (vert(G))): 
+                              EXISTS w: walk_from?(complement(G),w,x,y) AND length(w) < 4)
+
+
+  % END OF PATH-CONNECTED SECTION -------------------------------------------
+
+ 
+  strong_transitive?(G): bool = FORALL (x,y,z:(vert(G))): 
+                                   edge?(G)(x,y) AND edge?(G)(y,z) AND x /= z 
+                                IMPLIES edge?(G)(x,z)
+
+  transitive?(G): bool = FORALL (x,y,z: T):
+                            edge?(G)(x,y) AND edge?(G)(y,z) AND x /= z 
+                         IMPLIES edge?(G)(x,z)
+
+  strong_implies: LEMMA strong_transitive?(G) IMPLIES transitive?(G)
+
+  imply_strong  : LEMMA  transitive?(G) implies strong_transitive?(G) 
+
+
+  completion_is_transitive: LEMMA strong_transitive?[T](completion(G))
+
+ 
+  super(G1: graph[T])(G2: graph[T]): bool = subgraph?[T](G1,G2)
+
+
+% los_graphic: LEMMA (FORALL x,y,z: P(x,y)&P(y,z)=>P(x,z)) &
+%       (FORALL x,y: P(x,y) => P(y,x)) &
+%       (FORALL x,y,z: Q(x,y)&Q(y,z)=>Q(x,z)) &
+%       (FORALL x,y: Q(x,y) => Q(y,x)) &
+%       (FORALL x,y: P(x,y) OR Q(x,y)) =>
+%       (FORALL x,y:P(x,y)) OR (FORALL x,y: Q(x,y))
+
+  IMPORTING los_graph
+
+  trans_complem: LEMMA vert(G)=vert(H) AND strong_transitive?(G) 
+                       AND strong_transitive?(H) AND union(G,H)=completion(G) 
+                   IMPLIES G=completion(G) or H=completion(G)
+
+        
+  t_close(G): graph[T] = min[graph[T], num_edges[T],
+                               (LAMBDA (H: graph[T]): vert(H)=vert(G) AND super(G)(H) 
+                                                      AND strong_transitive?(H))
+                            ]
+
+  t_close_1: LEMMA H=t_close(G) 
+                   IMPLIES vert(H)=vert(G) AND super(G)(H) AND strong_transitive?(H)
+
+  t_close_2: LEMMA H=t_close(G) AND super(G)(K) AND strong_transitive?(K) 
+                   AND vert(K)=vert(G) 
+                IMPLIES num_edges[T](H) <= num_edges[T](K)
+
+  t_close_3: LEMMA subgraph?[T](t_close(G),completion(G))
+
+  trans_fill: LEMMA vert(G)=vert(H) AND union(G,H)=completion(G) 
+                    IMPLIES union(t_close(G),t_close(H))=completion(G)
+
+  complem_fill: THEOREM vert(G)=vert(H) AND  union(G,H)=completion(G) 
+                        IMPLIES t_close(G)=completion(G) or t_close(H)=completion(G)
+
+
+  IMPORTING graph_connected
+
+  subgraph_conn: LEMMA subgraph?[T](H,G) AND connected?(H) AND vert(H)=vert(G) 
+                       IMPLIES connected?(G)
+
+  complete_conn: LEMMA empty?(G) OR connected?(completion(G))
+
+  short_path     : LEMMA path_from?(G,p,x,y) AND length(p)>2 
+                       AND edge?(G)(seq(p)(length(p)-3),seq(p)(length(p)-1)) 
+                     IMPLIES (EXISTS p1: path_from?(G,p1,x,y) AND length(p1)=length(p)-1)
+
+  trans_walk     : LEMMA strong_transitive?(G) AND walk_from?(G,w,x,y) 
+                    IMPLIES x=y or edge?(G)(x,y)
+
+  trans_connected: THEOREM strong_transitive?(G) AND connected?(G) 
+                           IMPLIES G=completion(G)
+
+  disjoint_trans : LEMMA empty?(intersection(vert(H),vert(K))) AND transitive?(H) 
+                        AND transitive?(K) IMPLIES transitive?(union(H,K))
+
+  disjoint_trans_strong: LEMMA empty?(intersection(vert(H),vert(K))) 
+                               AND strong_transitive?(H) AND strong_transitive?(K) 
+                           IMPLIES strong_transitive?(union(H,K))
+
+  subgraph_trans  : LEMMA subset?(V,vert(G)) AND transitive?(G) 
+                          IMPLIES transitive?(subgraph(G,V))
+
+  subgraph_trans_strong: LEMMA subset?(V,vert(G)) AND strong_transitive?(G) 
+                               IMPLIES strong_transitive?(subgraph(G,V))
+
+  t_close_4       : LEMMA subgraph?[T](G,K) AND subgraph?[T](K,t_close(G))
+                          AND strong_transitive?(K) 
+                       IMPLIES K=t_close(G)
+
+  closure_connect : LEMMA connected?(G) IFF connected?(t_close(G))
+
+  connected_complem: THEOREM empty?(G) OR connected?(G) OR connected?(complement(G))
+
+% Up to this point we defined the transitive closure of a graph abstractly
+% as defining a type.  Now we show that the transitive closure "function" is
+% uniquely constructible.
+
+  p_close(G): graph[T] = 
+              (# vert:= vert(G), 
+                 edges := {e:doubleton[T] | (FORALL (x,y:T): x /=y AND e(x) 
+                           AND e(y) IMPLIES EXISTS (p:prewalk[T]): walk_from?(G,p,x,y))} 
+              #)
+
+  p_subgraph_t  : LEMMA subgraph?[T](p_close(G),t_close(G))
+
+  p_transitive  : LEMMA strong_transitive?(p_close(G))
+
+  p_close_1     : LEMMA H=p_close(G) IMPLIES vert(H)=vert(G) AND super(G)(H)
+
+  p_close_trans : LEMMA t_close(G)=p_close(G)
+
+  t_subgraph    : THEOREM subgraph?[T](H,G) IMPLIES subgraph?[T](t_close(H),t_close(G))
+
+END complem
+
+

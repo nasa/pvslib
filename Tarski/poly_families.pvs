@@ -1,0 +1,277 @@
+poly_families: THEORY
+BEGIN
+
+
+IMPORTING sturmtarski,compute_sturm_tarski,reals@base_repr
+
+  a,r,g : VAR [nat->int]
+  n : VAR posnat
+  d,i,j,k : VAR nat
+  m: VAR posnat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+  rel: VAR [[real,real]->bool]
+  babove,bbelow,bbelow2,babove2: VAR bool
+
+  poly1(i): nat = IF i=0 THEN 1 ELSE 0 ENDIF
+
+
+  GF: VAR [nat->[nat->int]]
+  KF: VAR [nat->nat] % degrees
+  GP: VAR [nat->subrange(0,2)]
+  RelF,RelF1,RelF2: VAR [nat->subrange(-1,1)]
+  ll: VAR list[int]
+  RelF6,TQRow: VAR [nat->subrange(0,5)]
+
+  % Forgot powers of the GF's
+
+  polynomial_prod_int: LEMMA
+    rational_pred(polynomial_prod(a,d,g,k)(i)) AND integer_pred(polynomial_prod(a,d,g,k)(i)) 
+
+  prod_polynomials(GF,KF,GP,k): RECURSIVE {a | 
+    (FORALL (x): polynomial(a,sigma(0,k,KF*GP))(x) =
+      product(0,k,LAMBDA (j): polynomial(GF(j),KF(j))(x)^GP(j))) AND
+    ((FORALL (i): i<=k AND GP(i)/=0 IMPLIES GF(i)(KF(i))/=0) IMPLIES a(sigma(0,k,KF*GP))/=0) AND
+    (FORALL (i): i>sigma(0,k,KF*GP) IMPLIES a(i)=0)}
+    = LET  tpoly = (IF GP(k)=0 THEN poly1 ELSIF GP(k)=1 THEN 
+      	   	       (LAMBDA (i:nat): IF i<=KF(k) THEN GF(k)(i) ELSE 0 ENDIF)
+      	     	       ELSE polynomial_prod(GF(k),KF(k),GF(k),KF(k)) ENDIF),
+	   tdeg = IF GP(k)=0 THEN 0 ELSIF GP(k)=1 THEN KF(k) ELSE 2*KF(k) ENDIF,
+	   bpoly = (IF k = 0 THEN poly1 ELSE prod_polynomials(GF,KF,GP,k-1) ENDIF),
+	   bdeg = IF k = 0 THEN 0 ELSE sigma(0,k-1,KF*GP) ENDIF,
+	   anspoly = (IF k = 0 THEN tpoly 
+	   	      ELSIF GP(k)=0 THEN prod_polynomials(GF,KF,GP,k-1)
+		      ELSE polynomial_prod(bpoly,bdeg,tpoly,tdeg) ENDIF)
+      IN anspoly
+      MEASURE k
+
+  prod_polynomials_list(GF,KF,GP,k): RECURSIVE {ll | 
+    length(ll)-1=sigma(0,k,KF*GP) AND prod_polynomials(GF,KF,GP,k) = 
+      (LAMBDA (i): IF i<length(ll) THEN nth(ll,i) ELSE 0 ENDIF)}
+    = LET  tpolyinit = (IF GP(k)=0 THEN poly1 ELSIF GP(k)=1 THEN GF(k)
+      	     	       ELSE polynomial_prod(GF(k),KF(k),GF(k),KF(k)) ENDIF),
+	   tdeg = IF GP(k)=0 THEN 0 ELSIF GP(k)=1 THEN KF(k) ELSE 2*KF(k) ENDIF,
+	   tpoly = array2list[int](tdeg+1)(tpolyinit),
+	   bpolyinit = (IF k = 0 THEN poly1 ELSE prod_polynomials(GF,KF,GP,k-1) ENDIF),
+	   bdeg = IF k = 0 THEN 0 ELSE sigma(0,k-1,KF*GP) ENDIF,
+	   bpoly = array2list[int](bdeg+1)(bpolyinit),
+	   anspoly = (IF k = 0 THEN tpoly 
+	   	      ELSIF GP(k)=0 THEN prod_polynomials_list(GF,KF,GP,k-1)
+		      ELSE array2list[int](tdeg+bdeg+1)(
+		        polynomial_prod(bpolyinit,bdeg,tpolyinit,tdeg)) ENDIF)
+      IN anspoly
+      MEASURE k
+
+  TQ_fam(k,a,(n|a(n)/=0),GF,(KF|FORALL (i:upto(k)):GF(i)(KF(i))/=0),GP): int =
+    LET ll = prod_polynomials_list(GF,KF,GP,k),
+    	d  = length[int](ll)-1,
+	g  = (LAMBDA (i): IF i<=d THEN nth(ll,i) ELSE 0 ENDIF)
+    IN  TQ(a,n,g,d)
+
+  TQ_fam_def: LEMMA a(n)/=0 AND (FORALL (i:upto(k)):GF(i)(KF(i))/=0)
+    IMPLIES TQ_fam(k,a,n,GF,KF,GP) = TQ(a,n,prod_polynomials(GF,KF,GP,k),sigma(0,k,KF*GP))
+
+  Sol(k,a,(n|a(n)/=0),GF,KF,RelF):
+    finite_set[real] = {r:real | polynomial(a,n)(r)=0 AND (FORALL (i): i<=k IMPLIES
+    		       	       	 (IF RelF(i)=-1 THEN polynomial(GF(i),KF(i))(r)<0
+				  ELSIF RelF(i)=1 THEN polynomial(GF(i),KF(i))(r)>0
+				  ELSIF RelF(i)=0 THEN polynomial(GF(i),KF(i))(r)=0 ELSE TRUE ENDIF))}
+
+  Sol_all(k,a,(n|a(n)/=0),GF,KF,RelF6):
+    finite_set[real] = {r:real | polynomial(a,n)(r)=0 AND (FORALL (i): i<=k IMPLIES
+    		       	       	 (IF RelF6(i)=0 THEN polynomial(GF(i),KF(i))(r)=0
+				  ELSIF RelF6(i)=1 THEN polynomial(GF(i),KF(i))(r)>0
+				  ELSIF RelF6(i)=2 THEN polynomial(GF(i),KF(i))(r)<0 
+				  ELSIF RelF6(i)=3 THEN polynomial(GF(i),KF(i))(r)/=0 
+				  ELSIF RelF6(i)=4 THEN polynomial(GF(i),KF(i))(r)>=0 
+				  ELSIF RelF6(i)=5 THEN polynomial(GF(i),KF(i))(r)<=0 ELSE TRUE ENDIF))}
+
+  NSol(k,a,(n|a(n)/=0),GF,KF,RelF): nat =
+    card(Sol(k,a,n,GF,KF,RelF))
+
+  NSol_all(k,a,(n|a(n)/=0),GF,KF,RelF6): nat =
+    card(Sol_all(k,a,n,GF,KF,RelF6))
+
+  sign_prod(k,GP,RelF): subrange(-1,1) =
+    product[nat](0,k,LAMBDA (i:nat): RelF(i)^GP(i))
+
+  sign_prod_eq: LEMMA (FORALL (i:nat): i<=k IMPLIES RelF1(i)=RelF2(i))
+    IMPLIES sign_prod(k,GP,RelF1)=sign_prod(k,GP,RelF2)
+
+  sign_ext_pow: LEMMA sign_ext(x^k)=sign_ext(x)^k
+
+  sign_ext_prod_polynomials: LEMMA
+    LET RelFF = (LAMBDA (i:nat): sign_ext(polynomial(GF(i),KF(i))(x)))
+    IN sign_ext(polynomial(prod_polynomials(GF,KF,GP,k),sigma(0,k,KF*GP))(x)) = sign_prod(k,GP,RelFF)
+  
+  % TQ_fam_rec: LEMMA k>0 AND a(n)/=0 AND 
+  %   (FORALL (i):i<=k IMPLIES GF(i)(KF(i))/=0)
+  %   IMPLIES
+  %   TQ_fam(k,a,n,GF,KF,GP) =
+  %     IF GP(k)=0 THEN TQ_fam(k-1,a,n,GF,KF,GP)
+  %     ELSIF GP(k)=1 THEN NSol(a,n,prod_polynomials(GF,KF,GP,k),sigma(0,k-1,KF*GP),>) 
+
+  atest(i): int = IF i<6 THEN i ELSIF i<=9 THEN i+4 ELSE 0 ENDIF
+  ntest: posnat = 9
+  GFtest(i)(j): int = IF i<j THEN 1+j ELSIF i+j<=6 THEN i*j ELSIF j<=7 THEN 2 ELSE 0 ENDIF
+  KFtest(i): nat = 7
+  GPtest(i): nat = IF i <=3 THEN 2 ELSIF i<=5 THEN 1 ELSE 0 ENDIF
+
+  sig(ii:subrange(0,2)): subrange(-1,1) = IF ii=0 THEN 0 
+      ELSIF ii=1 THEN 1
+      ELSE -1
+      ENDIF
+
+  unsig(ii:subrange(-1,1)): subrange(0,2) = mod(ii,3)
+
+  sig_unsig: LEMMA FORALL (ii:subrange(-1,1)): sig(unsig(ii)) = ii
+
+  sig_seq(GP)(i:nat): subrange(-1,1) = sig(GP(i))
+
+  unsig_seq(RelF)(i:nat): subrange(0,2) = unsig(RelF(i))
+
+  sig_seq_unsig_seq: LEMMA
+    sig_seq(unsig_seq(RelF)) = RelF
+
+  base_3_seq(k,i)(p:nat): subrange(0,2) = (IF p<=k THEN base_n(3,i)(k-p) ELSE 0 ENDIF)
+
+  base_6_seq(k,i)(p:nat): subrange(0,5) = (IF p<=k THEN base_n(6,i)(k-p) ELSE 0 ENDIF)
+
+  sig_seq_base_3_onto: LEMMA FORALL (RelF,k): EXISTS (i:below(3^(k+1))):
+    sig_seq(base_3_seq(k,i)) = (LAMBDA (i:nat): IF i<=k THEN RelF(i) ELSE 0 ENDIF)
+
+  sig_seq_base_3_onto_2: LEMMA FORALL (RelF,k): EXISTS (i:below(3^(k+1))):
+    sig_seq(base_n(3,i)) = (LAMBDA (i:nat): IF i<=k THEN RelF(i) ELSE 0 ENDIF)
+
+  sig_seq_base_6_onto: LEMMA FORALL (RelF,k): EXISTS (i:below(6^(k+1))): (FORALL (j:nat): base_6_seq(k,i)(j)<=2) AND
+    sig_seq(base_6_seq(k,i)) = (LAMBDA (i:nat): IF i<=k THEN RelF(i) ELSE 0 ENDIF)
+
+  sig_seq_base_6_onto_2: LEMMA FORALL (RelF,k): EXISTS (i:below(6^(k+1))): (FORALL (j:nat): base_n(6,i)(j)<=2) AND
+    sig_seq(base_n(6,i)) = (LAMBDA (i:nat): IF i<=k THEN RelF(i) ELSE 0 ENDIF)
+
+  % Fix the 3^k issue!!!
+
+  base_3_seq_unique: LEMMA FORALL (i,j): i<3^(k+1) AND j<3^(k+1) AND i/=j IMPLIES
+    base_3_seq(k,i)/=base_3_seq(k,j)
+
+  base_n_3_seq_unique: LEMMA FORALL (i,j): i<3^(k+1) AND j<3^(k+1) AND i/=j IMPLIES
+    base_n(3,i)/=base_n(3,j)
+
+  union_upto(k:nat,setseq:[nat->set[real]]): RECURSIVE {Aset:set[real]|
+    FORALL (x): Aset(x) IFF EXISTS (i:upto(k)): setseq(i)(x)} =
+    (IF k = 0 THEN setseq(0) ELSE union[real](union_upto(k-1,setseq),setseq(k)) ENDIF)
+    MEASURE k
+
+  union_upto_finite: LEMMA (FORALL (setseq:[nat->set[real]]):
+    (FORALL (i:upto(k)): is_finite[real](setseq(i))) IMPLIES
+    is_finite[real](union_upto(k,setseq)))
+
+  real_set_disj_union_cards: LEMMA FORALL (setseq:[nat->set[real]]):
+    (FORALL (i:nat): is_finite[real](setseq(i))) AND 
+    is_finite[real](union_upto(k,setseq)) AND
+    (FORALL (i,j:nat): i/=j IMPLIES disjoint?[real](setseq(i),setseq(j)))
+    IMPLIES
+    card[real](union_upto(k,setseq)) = sigma(0,k,LAMBDA (i): card[real](setseq(i)))
+
+  mult_tarski_query_simple: LEMMA
+    a(n)/=0 AND (FORALL (i:upto(k)):GF(i)(KF(i))/=0)
+    IMPLIES
+    TQ_fam(k,a,n,GF,KF,GP) =
+    sigma(0,3^(k+1)-1,LAMBDA (i:nat):
+      sign_prod(k,GP,sig_seq(base_n(3,i)))*
+      NSol(k,a,n,GF,KF,sig_seq(base_n(3,i))))
+    	  
+
+ % splitting base 6 function
+
+ split_index_fun_entry( F:[nat->[nat, nat]], i:nat): [nat->[nat, nat]] = 
+       IF F(i)`1<3 THEN F
+       ELSIF F(i)`1 = 3 THEN F WITH [i:=(1,2)] 
+       ELSIF F(i)`1 = 4 THEN F WITH [i:=(0,1)]
+       ELSE                  F WITH [i:=(0,2)]
+       ENDIF
+
+ split_index_fun(F:[nat->[nat, nat]], n:nat): RECURSIVE {G:[nat->[nat, nat]]|
+   (FORALL (i:upto(n)): G(i) = split_index_fun_entry(F,i)(i)) AND
+   (FORALL (i:above(n)): G(i) = F(i))} = 
+      IF n = 0 THEN split_index_fun_entry(F, n) 
+      ELSE split_index_fun(split_index_fun_entry(F,n), n-1)
+      ENDIF
+      MEASURE n
+
+  % 99 here is arbitrary, only used as an indicator.
+ fun_to_pairsfun(F:[nat->nat])(i:nat): [nat, nat] = (F(i), 99)
+
+ base6_pairs(k:nat)(i:nat): [nat,nat] = fun_to_pairsfun(base_n(6,k))(i)
+
+ split_base6(n:posnat, k:nat): [nat->[nat, nat]] = 
+      split_index_fun(base6_pairs(k), n-1)
+
+  % unproven, but should be very easy.
+ splits_to_base3: LEMMA FORALL (n:posnat, k:nat, i:below(n)): 
+     split_base6(n, k)(i) =   
+         IF base_n(6,k)(i)<3 THEN (base_n(6,k)(i), 99)
+	 ELSIF base_n(6,k)(i) = 3  THEN (1,2)
+ 	 ELSIF base_n(6,k)(i) = 4  THEN (0,1)
+	 ELSE (0,2)
+	 ENDIF
+
+  sign_prod_coeff6(k,GP,i): subrange(-1,1) =
+    IF i>=6^(k+1) OR (EXISTS (p:upto(k)): base_n(6,i)(p)>=3) THEN 0
+    ELSE sign_prod(k,GP,sig_seq(base_n(6,i))) ENDIF
+
+  NSol_seq6(k,a,(n|a(n)/=0),GF,KF)(i): nat =
+    IF i>=6^(k+1) OR (EXISTS (p:upto(k)): base_n(6,i)(p)>=3) THEN 0
+    ELSE NSol(k,a,n,GF,KF,sig_seq(base_n(6,i))) ENDIF
+
+  mult_tarski_query_simple_6_0_to_3: LEMMA
+    a(n)/=0 AND (FORALL (i:upto(k)):GF(i)(KF(i))/=0)
+    IMPLIES
+    TQ_fam(k,a,n,GF,KF,GP) =
+    sigma(0,6^(k+1)-1,LAMBDA (i:nat):
+      sign_prod_coeff6(k,GP,i)*NSol_seq6(k,a,n,GF,KF)(i))
+
+  sign_coeff6_zero_entry(k,TQRow,i,j): subrange(-1,1) =
+    LET bij = base_n(6,i)(j) IN
+      IF TQRow(j)=0 THEN (IF bij>=3 THEN 0 ELSE 1 ENDIF)
+      ELSIF TQRow(j)=1 THEN (IF bij=1 THEN 1 ELSIF bij=2 THEN -1 ELSE 0 ENDIF)
+      ELSIF TQRow(j)=2 THEN (IF 1<=bij AND bij<=2 THEN 1 ELSE 0 ENDIF)
+      ELSIF TQRow(j)=3 THEN (IF 1<=bij AND bij<=2 THEN -1 ELSIF bij=3 THEN 1 ELSE 0 ENDIF)
+      ELSIF TQRow(j)=4 THEN (IF bij<=1 THEN -1 ELSIF bij=4 THEN 1 ELSE 0 ENDIF)
+      ELSIF TQRow(j)=5 THEN (IF bij=0 OR bij=2 THEN -1 ELSIF bij=5 THEN 1 ELSE 0 ENDIF)
+      ELSE 0 ENDIF
+
+  sign_coeff6_zero_entry_eq: LEMMA
+    base_n(6,i)(j) = base_n(6,d)(j) IMPLIES
+    sign_coeff6_zero_entry(k,TQRow,i,j) =
+    sign_coeff6_zero_entry(k,TQRow,d,j)
+
+  sign_coeff6_zero(k,TQRow,i): subrange(-1,1) =
+    IF i>=6^(k+1) THEN 0
+    ELSE product[nat](0,k,LAMBDA (j):sign_coeff6_zero_entry(k,TQRow,i,j)) ENDIF
+
+  in6?(vk:[nat,nat,nat,nat,nat,nat],j): bool =
+    (j=vk`1 OR j=vk`2 OR j=vk`3 OR j=vk`4 OR j=vk`5 OR j=vk`6)
+
+  sigma_disjoinction_6: LEMMA
+    FORALL (v:[nat->[nat,nat,nat,nat,nat,nat]]):
+      (FORALL (j): j<=6^(k+1)-1 IMPLIES EXISTS (i): i<=6^k-1 AND in6?(v(i),j)) AND
+      (FORALL (i): i<=6^k-1 IMPLIES
+        (v(i)`1 < v(i)`2 AND v(i)`2 < v(i)`3 AND v(i)`3 < v(i)`4 
+	  AND v(i)`4 < v(i)`5 AND v(i)`5 < v(i)`6 AND v(i)`6<=6^(k+1)-1)) AND
+      (FORALL (i,d,j): i<=6^k-1 AND d<=6^k-1 AND j<=6^(k+1)-1 AND in6?(v(i),j) AND in6?(v(d),j)
+      	      IMPLIES i = d) AND
+      (FORALL (i): i<=6^k-1 IMPLIES
+        (g(v(i)`1)+g(v(i)`2)+g(v(i)`3)+g(v(i)`4)+g(v(i)`5)+g(v(i)`6)) = 0)
+      IMPLIES sigma(0,6^(k+1)-1,g)=0
+
+  mult_tarski_query_simple_6_above_2: LEMMA
+    a(n)/=0 AND (FORALL (i:upto(k)):GF(i)(KF(i))/=0) AND
+    (EXISTS (i:upto(k)): TQRow(i)>2)
+    IMPLIES
+    sigma(0,6^(k+1)-1,LAMBDA (i:nat):
+      sign_coeff6_zero(k,TQRow,i)*NSol_all(k,a,n,GF,KF,base_n(6,i)))=0
+
+  
+
+END poly_families

@@ -1,0 +1,132 @@
+power_series_deriv_scaf[T: TYPE from real]: THEORY
+%----------------------------------------------------------------------------
+%
+% Term by term differentiation of power series
+%
+% The intention here is that one passes in the domain of convergence [T]
+% of the power series.  This will either be all of the reals or {x| -R < x < R}
+% where R is the range of convergence
+%
+% Author: Ricky W. Butler        7/23/04
+%
+%
+%----------------------------------------------------------------------------
+BEGIN
+ 
+   ASSUMING  %% T is either "real" or a open ball of radius R about 0
+
+     IMPORTING analysis@deriv_domain_def
+
+     connected_domain : ASSUMPTION connected?[T]
+
+     not_one_element : ASSUMPTION not_one_element?[T]
+
+     open            : ASSUMPTION 
+         FORALL (x : T) : EXISTS (delta : posreal): FORALL (y: real):
+                            abs(x-y) < delta IMPLIES T_pred(y) 
+
+
+    ball: ASSUMPTION FORALL (x: T): T_pred(x) IMPLIES T_pred(-x)
+
+   ENDASSUMING
+
+   deriv_domain: LEMMA deriv_domain?[T]
+
+   x,x0,xp: VAR T
+   k,n: VAR nat
+   a,b: VAR sequence[real]
+   t: VAR real
+   epsilon: VAR posreal
+   m: VAR nat
+
+   IMPORTING power_series_derivseq[T], analysis@taylors
+
+   AUTO_REWRITE- abs_0
+   AUTO_REWRITE- abs_nat
+
+   GET_tk_prep: LEMMA FORALL (x: T,h:(A(x)),k: posnat): 
+                      nonempty?[between[T](x, x + h)]
+                           ({tk: between[T](x, x + h) |
+                              ((x + h) ^ k - x ^ k) / h = k * tk ^ (k - 1)})
+
+
+   GET_tk(x: T,h:(A(x)),k: posnat): {tk: between[T](x,x+h) | 
+                         ((x+h)^k - x^k)/h = k*tk^(k-1)}
+
+
+   Gseq(a,x,(h:(A(x))))(k): real = IF k < 2 THEN k*a(k) ELSE
+                                     k*a(k)*(GET_tk(x,h,k)^(k-1) - x^(k-1))
+                                   ENDIF
+
+
+   conv_scaf0: LEMMA conv_powerseries?(a) IMPLIES 
+                    convergent?(series(LAMBDA k: IF k < 2 THEN 0
+                                    ELSE abs(k) * abs(k - 1) * abs(a(k)) *
+                                     abs(x^(k - 2))
+                                     ENDIF))
+
+
+
+   A2seq(a,x,(xp:{xx:T | xx /= 0} ))(k): real = 
+                                  LET ALPH = max(abs(x), abs(xp)) IN
+                                  IF k < 2 THEN k ELSE
+                                     abs(k)*abs(k-1)*abs(a(k)*ALPH^(k - 2))
+                                  ENDIF
+
+   fseq(a)(n): real = (1+n)*(2+n)*a(2+n)
+
+   A2_conv_scaf: LEMMA abs(powerseq(a, x)) = powerseq(abs(a),abs(x))
+
+   A2_conv: LEMMA  xp /= 0 AND 
+                   conv_powerseries?(a)
+                   IMPLIES 
+            convergent?(series(A2seq(a,x,xp),2))
+
+
+   delta: VAR posreal
+
+
+   Gseq_conv: LEMMA conv_powerseries?(a) IMPLIES FORALL (h:(A(x))): 
+                                       conv_series?(Gseq(a, x, h), 2)
+
+   abs_Gseq_conv: LEMMA conv_powerseries?(a) IMPLIES FORALL (h:(A(x))): 
+                                       conv_series?(abs(Gseq(a, x, h)), 2)
+
+   inf_sum_Gseq_abs: LEMMA conv_powerseries?(a) IMPLIES FORALL (h:(A(x))): 
+                           abs(inf_sum(2, Gseq(a, x, h))) <=
+                                inf_sum(2, abs(Gseq(a, x, h)))
+
+   conv_scaf2: LEMMA conv_powerseries?(a) IMPLIES
+                     FORALL (h:(A(x))): convergent?(series((LAMBDA k:
+                           IF k < 2 THEN k * a(k)
+                           ELSE k * a(k) * GET_tk(x, h, k) ^ (k - 1)
+                           ENDIF),
+                        1))
+
+
+%    conv_scaf1: LEMMA conv_powerseries?(a) IMPLIES
+%                      FORALL (h:(A(x))): convergent?(series((LAMBDA (k: nat):
+%                            IF k = 0 THEN 0
+%                            ELSE a(k) * ((x + h) ^ k - x ^ k)
+%                            ENDIF)))
+
+   conv_scaf1: LEMMA conv_powerseries?(a) IMPLIES
+                     FORALL (h:(A(x))): convergent?(series((LAMBDA (k: nat):
+                             a(k) * ((x + h) ^ k - x ^ k)
+                           )))
+
+
+
+   conv_scaf3: LEMMA conv_powerseries?(a) IMPLIES
+                     FORALL (h:(A(x))):  conv_series?((LAMBDA k:
+                      a(k) * (((x + h) ^ k - x ^ k) / h)),
+                   1)
+
+
+   limit_eq_rew: LEMMA convergent?(a) AND convergent?(b) AND a = b 
+                     IMPLIES limit(a)  = limit(b) 
+
+END power_series_deriv_scaf
+
+
+

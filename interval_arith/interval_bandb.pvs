@@ -1,0 +1,121 @@
+interval_bandb : THEORY
+BEGIN
+
+  IMPORTING interval_bexpr,
+            structures@array2list[real],
+            structures@Maybe,
+            reals@real_orders
+
+  IntervalOutput : TYPE = [#
+    answer    : Maybe[bool],
+    counterex : {l:list[real] | cons?(l) IMPLIES some?(answer) AND NOT(val(answer)) }
+  #]
+
+  IMPORTING structures@branch_and_bound[BoolExpr,IntervalOutput,ProperBox,nat]
+
+  v         : VAR nat
+  maxdepth  : VAR nat
+  dir,
+  eamd      : VAR bool
+  expr      : VAR BoolExpr
+  box       : VAR ProperBox
+  dirvar    : VAR DirVar
+  dirvars   : VAR DirVarStack
+  M,M1,M2   : VAR IntervalOutput
+  out       : VAR Output
+  select    : VAR DirVarSelector
+  acc       : VAR IntervalOutput
+
+  evaluate(box,expr) : IntervalOutput = 
+    LET bet  = BEval(expr,box),
+        bef  = IF none?(bet) THEN
+                 LET bm = BEval(expr,Midbox(box)) IN
+                 IF some?(bm) AND NOT val(bm) THEN bm
+                 ELSE bet
+                 ENDIF
+               ELSE bet
+               ENDIF IN
+    (#
+      answer    := bef,
+      counterex := IF some?(bef) AND NOT val(bef) THEN 
+                     map(LAMBDA(i:Interval):midpoint(i))(box) 
+                   ELSE null ENDIF
+     #)
+
+  branch(v,expr) : [BoolExpr,BoolExpr] = (expr,expr)
+
+  denorm(dirvar,M) : IntervalOutput = M
+
+  combine(v,M1,M2) : IntervalOutput = (#
+    answer    := IF (some?(M1`answer) AND NOT val(M1`answer)) OR
+                    (some?(M2`answer) AND NOT val(M2`answer)) THEN
+		   Some(FALSE)
+                 ELSIF some?(M1`answer) AND some?(M2`answer) THEN
+                   Some(TRUE)
+                 ELSE None
+                 ENDIF,
+    counterex := IF cons?(M1`counterex) THEN M1`counterex ELSE M2`counterex ENDIF
+  #)
+
+  prune_chk(dirvars,acc,M) : bool = FALSE
+
+  % Exit when true or false
+  le_chk(M) : bool = some?(M`answer) 
+
+  %% eamd (exit at maxdepth) must be set to false when looking for a countexample
+  ge_chk(eamd,maxdepth)(dirvars,acc,M) : bool = 
+    (eamd AND length(dirvars) >= maxdepth) OR
+    some?(M`answer) AND NOT val(M`answer)
+
+  accumulate(acc,M) : IntervalOutput = 
+    combine(0,acc,M)
+
+  subdivide(v,box) : [ProperBox,ProperBox] = split(v,box)
+
+  max_rec(n:posnat,m:real,v:below(n),
+                 i:subrange(1,n),b:Box | n = length(b)+i) : RECURSIVE below(n) =
+    IF null?(b) THEN v
+    ELSE LET mm = size(car(b)) IN
+           IF mm > m THEN max_rec(n,mm,i,i+1,cdr(b)) 
+           ELSE max_rec(n,m,v,i+1,cdr(b))
+           ENDIF
+    ENDIF
+  MEASURE b BY <<
+
+  max_aux(box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE max_rec(length(box),size(car(box)),0,1,cdr(box))
+    ENDIF
+
+  dir_max(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,max_aux(box))
+
+  alt_max(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),max_aux(box))
+
+  altvar(dirvars,box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE mod(length(dirvars),length(box))
+    ENDIF
+
+  dir_alt(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,altvar(dirvars,box))
+
+  alt_alt(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),altvar(dirvars,box))
+
+  interval(maxdepth,select,eamd)(expr,box) : Output =
+    b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune_chk,le_chk,ge_chk(eamd,maxdepth),
+               select,accumulate,maxdepth,expr,box)
+
+  sound?(box,expr,M) : bool = 
+    some?(M`answer)  IMPLIES
+      ((val(M`answer) = FORALL (vs:(vars_in_box?(box))): beval(expr,vs,length(box))) AND
+       (cons?(counterex(M)) IMPLIES 
+          LET vs = list2array(0)(counterex(M)) IN
+           vars_in_box?(box)(vs) AND NOT beval(expr,vs,length(box))))
+
+  interval_soundness : THEOREM
+    sound?(box,expr,interval(maxdepth,select,eamd)(expr,box)`ans)
+
+END interval_bandb

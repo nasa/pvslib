@@ -1,0 +1,268 @@
+IEEE_854_values 
+  [b,p:above(1),
+   E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% This file defines the set of values that must be represented in each
+% supported precision of an instance of IEEE-854
+% 
+% Author:
+%  Paul S. Miner                | email: p.s.miner@larc.nasa.gov
+%  1 South Wright St. / MS 130  |   fax: (757) 864-4234
+%  NASA Langley Research Center | phone: (757) 864-6201
+%  Hampton, Virginia 23681      |
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  BEGIN
+
+  IMPORTING sum_hack, %for use until we have good summation library
+            sum_lemmas[b], % these are more specialized
+%            ints@mod_, %% note _ to avoid prelude version
+            enumerated_type_defs
+
+
+
+  Exponent: type = {i:int| E_min <= i & i <= E_max}
+
+  digits: type = [below(p)->below(b)]
+
+ 
+  fp_num: datatype
+   begin
+    finite(sign:sign_rep,Exp:Exponent,d:digits):finite?
+    infinite(i_sign:sign_rep): infinite?
+    NaN(status:NaN_type, data:NaN_data): NaN?
+   end fp_num
+
+% A mapping from finite floating point numbers to real numbers
+%  This corresponds to the interpretation given in the standard
+%  section 3.1
+  fin : var (finite?)
+
+
+  value_digit(d:digits)(n:nat):nonneg_real = 
+     if n<p then d(n)*b^(-n) else 0 endif
+
+  value(fin): real =
+    (-1) ^ sign(fin) * b ^ Exp(fin) * Sum(p, value_digit(d(fin)))
+
+
+% Predicate testing whether an fp_num is 0
+  zero?(fp:fp_num):bool = if finite?(fp) then value(fp)=0 else false endif
+
+  shift_left((d: digits)): digits =
+    LAMBDA (i: below(p)): IF (i + 1 = p) THEN 0 ELSE d(i + 1) ENDIF
+
+% Function normalize takes a finite and returns the finite of 
+% equivalent value with the smallest possible exponent.
+  normalize(fin:(finite?)): recursive (finite?) = 
+     IF Exp(fin) = E_min or d(fin)(0) /= 0 then
+        fin
+     ELSE
+        normalize(finite(sign(fin),Exp(fin)-1,shift_left(d(fin))))
+     ENDIF
+  measure lambda (fin:(finite?)): Exp(fin) - E_min
+
+  normalize_idempotent: FACT
+        FORALL (fin: (finite?)): normalize(normalize(fin)) = normalize(fin)
+
+% Predicate testing whether an fp_num is subnormal:
+% Section 2 of the standard defines a subnormal (denormal in IEEE-754)
+% number as a nonzero finite number whose exponent is the precision's 
+% minimum and whose leading significant digit is zero.
+  subnormal?(fp: fp_num): bool =
+    IF finite?(fp)  THEN 
+        not zero?(fp)
+        & Exp(normalize(fp)) = E_min
+        & d(normalize(fp))(0) = 0
+    ELSE FALSE
+    ENDIF
+
+% Predicate testing whether an fp_num is normal:
+% Section 2 of the standard defines a normal number as 
+% a nonzero finite number that is not subnormal
+  normal?((fp: fp_num)): bool =
+    IF finite?(fp) THEN d(normalize(fp))(0) > 0 ELSE FALSE ENDIF
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Some definitions and theorems to help illustrate the correctness
+%  of the definition of value.
+
+% Maximum and Minimum representable values
+  max_significand:digits = 
+    (lambda (i:below(p)): b-1)
+  min_significand: digits =
+    (LAMBDA (i: below(p)): IF i < p - 1 THEN 0 ELSE 1 ENDIF)
+  d_zero: digits = LAMBDA (i: below(p)): 0
+
+  m,n: var nat
+
+  Sum_value0: lemma Sum(n,value_digit(d_zero)) = 0
+
+  s: var sign_rep
+  E: var Exponent
+
+  zero_finite_d_zero: lemma zero?(finite(s,E,d_zero))
+
+  max_fp_pos : fp_num = finite(pos,E_max,max_significand)
+  min_fp_pos : fp_num = finite(pos,E_min,min_significand)
+  pos_zero   : {fin|zero?(fin)}= finite(pos,E_min,d_zero)
+
+  max_fp_neg : fp_num = finite(neg,E_max,max_significand)
+  min_fp_neg : fp_num = finite(neg,E_min,min_significand)
+  neg_zero   : {fin|zero?(fin)} = finite(neg,E_min,d_zero)
+
+  max_pos: posreal = value(max_fp_pos)
+  min_pos: posreal = value(min_fp_pos)
+
+  max_neg: negreal = value(max_fp_neg)
+  min_neg: negreal = value(min_fp_neg)
+
+  max_fp_correct: THEOREM 
+     max_pos = b ^ (E_max +1) - b ^ (E_max + 1 - p)
+
+  min_fp_correct: THEOREM 
+     value(min_fp_pos) = b ^ (E_min + 1 - p)
+
+
+% Value of zero
+
+  value0: lemma value(fin)=0 iff d(fin)=d_zero
+
+  value_of_zero: THEOREM 
+     value(pos_zero) = 0
+
+% Normalization preserves the value
+
+  normal_value: lemma 
+     value(fin) = value(normalize(fin))
+
+% sign determines algebraic sign of value
+  value_positive: lemma
+
+    (sign(fin)=pos & not zero?(fin)) <=> value(fin)>0
+
+  value_negative: lemma
+    (sign(fin)=neg & not zero?(fin)) <=> value(fin)<0
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  finite_cover: lemma zero?(fin) or normal?(fin) or subnormal?(fin)
+
+  finite_disjoint1: lemma not (zero?(fin) & normal?(fin))
+
+  finite_disjoint2: lemma not (zero?(fin) & subnormal?(fin))
+
+  finite_disjoint3: lemma not (normal?(fin) & subnormal?(fin))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 
+  fp,fp1,fp2: var fp_num
+
+% reverse the sign of a floating point number
+  toggle_sign(fp): fp_num
+    =
+    cases fp of
+      finite(s,e,d): finite(1-s,e,d),
+      infinite(s): infinite(1-s),
+      NaN(sig,data): fp
+    endcases
+
+  toggle_finite: lemma finite?(toggle_sign(fp)) iff finite?(fp)
+  toggle_infinite: lemma infinite?(toggle_sign(fp)) iff infinite?(fp)
+  toggle_NaN: lemma NaN?(toggle_sign(fp)) iff NaN?(fp)
+
+  value_toggle: lemma value(toggle_sign(fin)) = -value(fin) 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  toggle_d_normalize: lemma 
+     d(normalize(toggle_sign(fin))) = d(normalize(fin))
+
+  toggle_Exp_normalize: lemma 
+     Exp(normalize(toggle_sign(fin))) = Exp(normalize(fin))
+
+  toggle_zero?: lemma zero?(toggle_sign(fin)) iff zero?(fin)
+
+  toggle_normal?: lemma normal?(toggle_sign(fin)) iff normal?(fin)
+
+  toggle_subnormal?: lemma subnormal?(toggle_sign(fin)) iff subnormal?(fin)
+
+% Sum lemmas
+
+  d: var digits
+
+  j : var nat
+
+  value_digit_le: lemma value_digit(d)(j) <= (b-1) * b^(-j)
+
+  Sum_d_lt_b: lemma Sum(j+1,value_digit(d)) <= b - b^(-j)
+
+  Sum_d_lt1: lemma d(0)=0 => Sum(j+1,value_digit(d)) <= 1-b^(-j)
+
+  Sum_d_ge1: lemma d(0)>0 => Sum(j+1,value_digit(d)) >= 1
+
+  value_sig_lt_b: lemma Sum(p,value_digit(d)) < b
+
+  value_sig_lt1: lemma d(0)=0 => Sum(p,value_digit(d)) < 1
+
+  value_sig_ge1: lemma d(0)>0 => Sum(p,value_digit(d)) >= 1
+
+  abs_value_fin: lemma 
+      abs(value(fin)) = b^(Exp(fin)) * Sum(p,value_digit(d(fin)))
+
+  min_significand_min: lemma d/=d_zero => 
+            Sum(p,value_digit(min_significand))<= Sum(p,value_digit(d))
+
+  sign_normal: lemma sign(fin) = sign(normalize(fin))
+
+  value_normal: lemma normal?(fin) => 
+            b^E_min <= abs(value(fin)) & abs(value(fin)) <= max_pos
+
+  value_subnormal: lemma subnormal?(fin) => 
+            min_pos <= abs(value(fin)) & abs(value(fin)) < b^E_min 
+
+  value_nonzero: lemma not zero?(fin) =>
+            min_pos <= abs(value(fin)) & abs(value(fin)) <= max_pos
+
+
+%mod(floor(Sum(p, value_digit(d(normalize(fin!1)))) * b ^ x!1), b)
+%        = d(normalize(fin!1))(x!1)
+
+    scale_value(d,m)(n): nonneg_real = value_digit(d)(n) * b^m
+
+    scaled_Sum_int: lemma forall d,n:
+       forall (m:upto(n+1)): integer?(Sum(m,scale_value(d,n)))
+
+    scale_value_p(d)(n): nat = scale_value(d,p-1)(n)
+
+    i: var below(p)
+
+    scaled_Sum_i: lemma 
+        Sum(n,value_digit(d))*b^(i) = Sum(n,scale_value(d,i))
+
+    scaled_Sum: lemma 
+        Sum(n,value_digit(d))*b^(p-1) = Sum(n,scale_value_p(d))
+
+    floor_Sum: lemma 
+        floor(Sum(p,value_digit(d)) * b^i) = 
+             Sum(i+1,scale_value(d,i))
+
+    mod_Sum: lemma mod(Sum(i+1,scale_value(d,i)),b)=d(i)
+
+%%%%%%%%%
+%
+%  The next two declarations are here for importing purposes.
+
+% A dummy fp_num to be used as a place holder.  Any definition that 
+% returns holder is not yet finished.
+  holder:fp_num
+
+% An undefined NaN for functions to return when the invalid exception
+% should be raised.  This serves as a placeholder until this specification 
+% accounts for exceptions.
+%
+  invalid: (NaN?) = NaN(quiet,invalid_data)
+
+  END IEEE_854_values

@@ -1,0 +1,191 @@
+for_iterate[T:TYPE] : THEORY
+BEGIN
+
+  %% Defines f(j,f(...f(i+1,f(i,a))...))
+  for_def(i,j:int,a:T,f:[[int,T]->T]) : RECURSIVE T =
+    IF i > j THEN a
+    ELSE f(j,for_def(i,j-1,a,f))
+    ENDIF
+  MEASURE max(j-i+1,0)
+
+  for_def_inv : LEMMA
+    FORALL(i:int,n:nat,a:T,f:[[int,T]->T]):
+      for_def(i,n+i,a,f) = for_def(1+i,n+i,f(i,a),f)
+
+  for_shift : LEMMA
+    FORALL(i,j:int,shift:int,a:T,f:[[int,T]->T]):
+      for_def(i,j,a,f) = for_def(i+shift,j+shift,a,LAMBDA (k:int,t:T): f(k-shift,t))
+
+  for_def_ext : LEMMA
+    FORALL(i,j:int,a:T,f,g:[[int,T]->T]) :
+      (FORALL (x:subrange(i,j),t:T) : f(x,t) = g(x,t)) 
+      IMPLIES
+      for_def(i,j,a,f) = for_def(i,j,a,g)
+
+  %% The pair (n,t) satisifies an invariant propertiy P if P is true on t at iteration n
+
+  for_def_induction : LEMMA
+    FORALL(i,j:int,a:T,f:[[int,T]->T],inv:PRED[[nat,T]]):
+      (inv(0,a) AND
+       FORALL (k:subrange(0,j-i),ak:T) : inv(k,ak) IMPLIES inv(k+1,f(i+k,ak)))
+      IMPLIES
+      inv(max(0,j-i+1),for_def(i,j,a,f))
+
+  ForBody(upfrom,upto:int) : TYPE = [[subrange(upfrom,upto),T]->T]
+
+  ext2int(upfrom,upto:int,f:ForBody(upfrom,upto))(i:int,a:T) : T =
+    IF upfrom <= i AND i <= upto THEN f(i,a)
+    ELSE a
+    ENDIF
+
+  for_it(upfrom:int,i:upfrom(upfrom),upto:int,a:T,f:ForBody(upfrom,upto)) : RECURSIVE 
+    {t : T | t = for_def(i,upto,a,ext2int(upfrom,upto,f))} =
+    IF i > upto THEN a
+    ELSE for_it(upfrom,i+1,upto,f(i,a),f)
+    ENDIF
+  MEASURE max(upto-i+1,0)
+
+  %% local a : T := init;
+  %% local i : int;
+  %% for (i := m; i <= n; i++) {
+  %%   a := f(i,a);
+  %% }
+  %% return a; 
+  for(m,n:int,init:T,f:ForBody(m,n)) : T =
+    for_it(m,m,n,init,f)
+
+  for_eq : LEMMA
+    FORALL(i,j:int,a:T,f:ForBody(i,j)) :
+      for(i,j,a,f) = for_def(i,j,a,ext2int(i,j,f))
+
+  for_induction : THEOREM
+    FORALL(m:int,(n:int| n >= m-1),init:T,f:ForBody(m,n),inv:PRED[[upto(n-m+1),T]]):
+      (inv(0,init) AND
+       FORALL (k:subrange(0,n-m),ak:T) : inv(k,ak) IMPLIES inv(k+1,f(m+k,ak)))
+      IMPLIES
+      inv(n-m+1,for(m,n,init,f))
+
+  %% Defines f(j,f(...f(i-1,f(i,a))...))
+  for_down_def(i,j:int,a:T,f:[[int,T]->T]) : RECURSIVE T =
+    IF i < j THEN a
+    ELSE f(j,for_down_def(i,j+1,a,f))
+    ENDIF
+  MEASURE max(i-j+1,0)
+
+  for_down_def_ext : LEMMA
+    FORALL(i,j:int,a:T,f,g:[[int,T]->T]) :
+      (FORALL (x:subrange(j,i),t:T) : f(x,t) = g(x,t)) 
+      IMPLIES
+      for_down_def(i,j,a,f) = for_down_def(i,j,a,g)
+
+  for_down_up : LEMMA
+    FORALL(i,j:int,a:T,f:[[int,T]->T]):
+      for_down_def(i,j,a,f) = for_def(j,i,a,LAMBDA(k:int,t:T):f(i-k+j,t))
+
+  for_down_def_induction : LEMMA
+    FORALL(i,j:int,a:T,f:[[int,T]->T],inv:PRED[[nat,T]]):
+      (inv(0,a) AND
+       FORALL (k:subrange(0,i-j),ak:T) : inv(k,ak) IMPLIES inv(k+1,f(i-k,ak)))
+      IMPLIES
+      inv(max(0,i-j+1),for_down_def(i,j,a,f))
+
+  %% local a : T := init;
+  %% local i : int;
+  %% for (i := n; i >= m; i--) {
+  %%   a := f(i,a);
+  %% } 
+  for_down(n,m:int,init:T,f:ForBody(m,n)) : T =
+    for(m,n,init,LAMBDA(k:subrange(m,n),a:T): f(n+m-k,a))
+
+  for_down_induction : THEOREM
+    FORALL(n:int,(m:int| m <= n+1),init:T,f:ForBody(m,n),inv:PRED[[upto(n-m+1),T]]):
+      (inv(0,init) AND
+       FORALL (k:subrange(0,n-m),ak:T) : inv(k,ak) IMPLIES inv(k+1,f(n-k,ak)))
+      IMPLIES
+      inv(n-m+1,for_down(n,m,init,f))
+
+  for_down_eq : LEMMA
+    FORALL(i,j:int,a:T,f:ForBody(j,i)):
+      for_down(i,j,a,f) = for_down_def(i,j,a,ext2int(j,i,f)) 
+   
+  %% Defines (... ((f(i) o f(i+1)) o f(i+2)) o .... f(j))
+  iterate_left_def(i:int,j:upfrom(i),f:[int->T],o:[[T,T]->T]) : RECURSIVE T =
+    IF i = j THEN f(i) 
+    ELSE iterate_left_def(i,j-1,f,o) o f(j)
+    ENDIF
+  MEASURE j-i
+
+  iterate_left_def_ext : LEMMA
+    FORALL(i:int,j:upfrom(i),f,g:[int->T],o:[[T,T]->T]) :
+      (FORALL (x:subrange(i,j)) : f(x) = g(x)) 
+      IMPLIES
+      iterate_left_def(i,j,f,o) = iterate_left_def(i,j,g,o)
+
+  IterateBody(upfrom,upto:int) : TYPE = [subrange(upfrom,upto)->T]
+
+  ext2int(upfrom,upto:int,a:T,f:IterateBody(upfrom,upto))(i:int) : T =
+    IF upfrom <= i AND i <= upto THEN f(i)
+    ELSE a
+    ENDIF
+
+  iterate_left_id(i:int,j:int,f:IterateBody(i,j),o:[[T,T]->T],id:T) : MACRO T =
+    for(i,j,id,LAMBDA(k:subrange(i,j),t:T):t o f(k))
+
+  %% local a : T = f(m);
+  %% local i : int;
+  %% for (i := m+1; i <= n; i++) {
+  %%   a := a o f(i)
+  %% }
+  %% return a;
+  iterate_left(m:int,n:upfrom(m),f:IterateBody(m,n),o:[[T,T]->T]) : T =
+    iterate_left_id(m+1,n,LAMBDA(k:subrange(m+1,n)):f(k),o,f(m))
+
+  iterate_left_eq : LEMMA
+    FORALL(i:int,j:upfrom(i),f:IterateBody(i,j),o:[[T,T]->T]) :
+      iterate_left(i,j,f,o) = iterate_left_def(i,j,ext2int(i,j,f(i),f),o)
+
+  iterate_left_induction : THEOREM
+    FORALL(m:int,n:upfrom(m),f:IterateBody(m,n),o:[[T,T]->T],inv:PRED[[upto(n-m),T]]):
+      (inv(0,f(m)) AND
+       FORALL (k:below(n-m),ak:T) : inv(k,ak) IMPLIES inv(k+1,ak o f(m+k+1)))
+      IMPLIES
+      inv(n-m,iterate_left(m,n,f,o))
+
+  %% Defines f(i) o (... (f(j-2) o (f(j-1) o f(j))) ...)
+  iterate_right_def(i:int,j:upfrom(i),f:[int->T],o:[[T,T]->T]) : RECURSIVE T =
+    IF i = j THEN f(j) 
+    ELSE f(i) o iterate_right_def(i+1,j,f,o) 
+    ENDIF
+  MEASURE j-i
+
+  iterate_right_def_ext : LEMMA
+    FORALL(i:int,j:upfrom(i),f,g:[int->T],o:[[T,T]->T]) :
+      (FORALL (x:subrange(i,j)) : f(x) = g(x)) 
+      IMPLIES
+      iterate_right_def(i,j,f,o) = iterate_right_def(i,j,g,o)
+
+  iterate_right_id(i,j:int,f:IterateBody(i,j),o:[[T,T]->T],id:T) : MACRO T =
+    for_down(j,i,id,LAMBDA(k:subrange(i,j),t:T):f(k) o t)    
+
+  %% local a : T = f(n);
+  %% local i : int;
+  %% for (i := n-1; i >= m; i--) {
+  %%   a := f(i) o a
+  %% }
+  %% return a;
+  iterate_right(m:int,n:upfrom(m),f:IterateBody(m,n),o:[[T,T]->T]) : T =
+    iterate_right_id(m,n-1,LAMBDA(k:subrange(m,n-1)):f(k),o,f(n))
+
+  iterate_right_eq : LEMMA
+    FORALL(i:int,j:upfrom(i),f:IterateBody(i,j),o:[[T,T]->T]) :
+      iterate_right(i,j,f,o) = iterate_right_def(i,j,ext2int(i,j,f(j),f),o)
+
+  iterate_right_induction : THEOREM
+    FORALL(m:int,n:upfrom(m),f:IterateBody(m,n),o:[[T,T]->T],inv:PRED[[upto(n-m),T]]):
+      (inv(0,f(n)) AND
+       FORALL (k:below(n-m),ak:T) : inv(k,ak) IMPLIES inv(k+1,f(n-k-1) o ak))
+      IMPLIES
+      inv(n-m,iterate_right(m,n,f,o))
+
+END for_iterate
+

@@ -1,0 +1,143 @@
+%
+% Purpose      : Verify that any synchronization protocol with the
+%                properties that all good clocks starts each interval
+%                within a bounded skew of each other, and there is a
+%                bound on the magnitude of any adjustment in a round
+%                will satisfy the synchronization requirements of
+%                precision.   
+%
+
+interval_clocks
+[
+    P: posnat,      % Nominal duration of a synchronization interval
+    T0: int,        % Clocktime at start of protocol
+    rho: nnreal     % Bound on drift for a good oscillator
+] : THEORY
+
+   BEGIN
+
+  IMPORTING
+     physical_clocks[rho]
+
+  interval_clock: TYPE = [nat -> good_clock]
+
+  i, j, k: VAR nat
+  t: VAR real
+  p, pl, pu, adj, alpha: VAR real
+  pi: VAR nnreal
+  T, T1, T2: VAR int
+  X: VAR nat
+  c: VAR good_clock
+  ic, ic1, ic2: VAR interval_clock
+
+  % Nominal start of round k
+
+  T(k): int = P*k + T0
+
+  T_def: LEMMA T(k + 1) = T(k) + P 
+
+  T_rounds: LEMMA T(j + k) = T(k) + j * P
+
+  t(ic)(j): real = ic(j)(T(j)) 
+
+  % Definition of a collection of relations between
+  % interval clocks sufficient for establishing precision
+  % results. 
+
+  peer_precision?(ic1, ic2, p): bool =
+    FORALL j: t(ic2)(j) - t(ic1)(j) <= p
+
+  adjustment_lower_bound?(ic1, ic2, p): bool =
+    FORALL j: p <= t(ic2)(j + 1) - t(ic1)(j)
+
+  adjustment_upper_bound?(ic1, ic2, p): bool =
+    FORALL j: t(ic2)(j + 1) - t(ic1)(j) <= p
+
+  compatible?(ic1, ic2, adj): bool =
+    peer_precision?(ic1, ic2, adj) AND
+    adjustment_lower_bound?(ic1, ic2, P / rate - adj) AND
+    adjustment_upper_bound?(ic1, ic2, P * rate + adj)
+
+  % Precision properties of update_lower? and update_upper?
+
+  handover_precision_lower: LEMMA
+      adjustment_lower_bound?(ic1, ic2, P / rate - adj) 
+    IMPLIES
+      ic1(j)(T(j + 1)) - ic2(j + 1)(T(j + 1)) <= drift * P + adj
+
+  handover_precision_upper: LEMMA
+      adjustment_upper_bound?(ic1, ic2, P * rate + adj) 
+    IMPLIES
+      ic2(j + 1)(T(j + 1)) - ic1(j)(T(j + 1)) <= drift * P + adj
+
+  handover_precision: LEMMA
+      adjustment_lower_bound?(ic1, ic2, P / rate - adj) AND
+      adjustment_upper_bound?(ic1, ic2, P * rate + adj) 
+    IMPLIES
+      abs(ic1(j)(T(j + 1)) - ic2(j + 1)(T(j + 1))) <= drift * P + adj
+
+  % Temporal separation properties guaranteed by these relations. 
+
+  nonoverlap_peers: LEMMA
+      peer_precision?(ic2, ic1, pi) AND
+      T1 <= T(j) + P AND
+      T(j) - P <= T1 + X AND
+      X > (drift * P + pi) * rate
+    IMPLIES
+      ic1(j)(T1) <= ic2(j)(T1 + X)
+
+  nonoverlap_lower: LEMMA
+      adjustment_lower_bound?(ic1, ic2, P / rate - pi) AND
+      T1 <= T(j + 1) AND
+      T(j + 1) <= T1 + X AND
+      X > (drift * P + pi) * rate
+    IMPLIES
+      ic1(j)(T1) <= ic2(j + 1)(T1 + X)
+
+  nonoverlap_upper: LEMMA
+      adjustment_upper_bound?(ic1, ic2, P * rate + pi) AND
+      T1 <= T(j + 1) AND
+      T(j + 1) <= T1 + X AND
+      X > (drift * P + pi) * rate
+    IMPLIES
+      ic2(j + 1)(T1) <= ic1(j)(T1 + X)
+
+  nonoverlap_round: LEMMA
+      adjustment_lower_bound?(ic1, ic2, P / rate - pi) AND
+      0 <= T AND
+      T <= P AND
+      P > (drift * P + pi) * rate
+    IMPLIES
+      ic1(j)(T(j) + T) < ic2(j + 1)(T(j + 1) + T)
+
+  % accuracy properties of an interval clock
+
+  weakly_accurate?(ic, pl, pu): bool = 
+    adjustment_lower_bound?(ic, ic, pl) AND
+    adjustment_upper_bound?(ic, ic, pu)
+
+  lower_accuracy_bound?(ic, alpha, p): bool =
+    EXISTS ic1:     
+      adjustment_lower_bound?(ic1, ic1, P / rate - alpha) AND
+      (FORALL i: t(ic1)(i) <= t(ic)(i)) AND
+      t(ic)(0) - t(ic1)(0) <= p
+
+  upper_accuracy_bound?(ic, alpha, p): bool =
+    EXISTS ic1:     
+      adjustment_upper_bound?(ic1, ic1, P * rate + alpha) AND
+      (FORALL i: t(ic)(i) <= t(ic1)(i)) AND
+      t(ic1)(0) - t(ic)(0) <= p
+
+  lower_interval_accuracy: LEMMA
+      lower_accuracy_bound?(ic, alpha, pi) AND
+      p = P / rate - alpha
+    IMPLIES
+      j * p <= t(ic)(j) - t(ic)(0) + pi
+
+  upper_interval_accuracy: LEMMA
+      upper_accuracy_bound?(ic, alpha, pi) AND
+      p = P * rate + alpha
+    IMPLIES
+      t(ic)(j) - t(ic)(0) - pi <= j * p
+
+  END interval_clocks

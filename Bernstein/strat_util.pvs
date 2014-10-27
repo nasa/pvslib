@@ -1,0 +1,75 @@
+strat_util : THEORY
+BEGIN
+
+  IMPORTING MPoly,
+            poly_minmax,
+	    Outcome
+
+  rel          : VAR RealOrder
+  nvars        : VAR posnat
+  depth        : VAR nat
+  varselect    : VAR VarSelector
+  precision    : VAR posreal
+  omm          : VAR Outminmax
+  exitatdepth  : VAR bool
+
+  multipoly_minmax(mp:MPoly,mv:MVars,depth,varselect,precision) : Outminmax = 
+    multipolynomial_minmax(mp`mpoly,mp`mdeg,mv`numvars,mp`terms,mp`mcoeff,
+                           mv`vars_lb,mv`vars_ub,depth,eps_localexit(precision),false_globalexit,
+                           mv`iepts,boundedpts_true,varselect)
+
+  multipoly_minmax_sound : LEMMA 
+    FORALL(mp:MPoly,mv:MVars,depth,varselect,precision):
+      lt_below?(mv`numvars)(mv`vars_lb,mv`vars_ub) IMPLIES
+      sound_poly_fin?(mp`mpoly,mp`mdeg,mv`numvars,mp`terms,mp`mcoeff,
+                      mv`vars_lb,mv`vars_ub,boundedpts_true,mv`iepts)
+                     (multipoly_minmax(mp,mv,depth,varselect,precision))
+
+  multipoly_strategy(mpr:MPolyRel,mv:MVars,depth,varselect,exitatdepth) : Outcome = 
+    LET omm = multipolynomial_minmax(mpr`mpoly,mpr`mdeg,mv`numvars,mpr`terms,
+                                     mpr`mcoeff,mv`vars_lb,mv`vars_ub,
+                                     depth,
+                                     rel_localexit(mpr`rel),rel_globalexit(mpr`rel,depth,exitatdepth),
+				     mv`iepts,mv`bdpts,varselect)
+    IN 
+      IF rel_localexit(mpr`rel)(omm) THEN 
+        IsTrue
+      ELSIF rel_counterex(mpr`rel)(omm) THEN 
+        IF mpr`rel(0,1) THEN 
+          Counterexample(omm`ub_var) 
+        ELSE 
+          Counterexample(omm`lb_var)
+        ENDIF
+      ELSE
+        Unknown
+      ENDIF
+
+  multipoly_strategy_true : LEMMA 
+    FORALL(mpr:MPolyRel,mv:MVars,depth,varselect):
+      lt_below?(mv`numvars)(mv`vars_lb,mv`vars_ub) AND 
+      bounded_points_exclusive?(mv`numvars)(mv`bdpts) AND
+      istrue?(multipoly_strategy(mpr,mv,depth,varselect,true)) IMPLIES
+        forall_X_poly_interval(mpr`mpoly,mpr`mdeg,mpr`mcoeff,mv`numvars,mpr`terms,
+                               mv`vars_lb,mv`vars_ub,mv`iepts,mv`bdpts,mpr`rel,0)
+
+  multipoly_strategy_false : LEMMA 
+    FORALL(mpr:MPolyRel,mv:MVars,depth,varselect):
+      lt_below?(mv`numvars)(mv`vars_lb,mv`vars_ub) AND 
+      bounded_points_exclusive?(mv`numvars)(mv`bdpts) AND
+      isfalse?(multipoly_strategy(mpr,mv,depth,varselect,false)) IMPLIES
+      NOT forall_X_poly_interval(mpr`mpoly,mpr`mdeg,mpr`mcoeff,mv`numvars,mpr`terms,
+                                 mv`vars_lb,mv`vars_ub,mv`iepts,mv`bdpts,mpr`rel,0)
+
+  multipoly_strategy_counterexample : LEMMA 
+    FORALL(mpr:MPolyRel,mv:MVars,depth,varselect):
+      LET mpstrat = multipoly_strategy(mpr,mv,depth,varselect,false) IN
+        lt_below?(mv`numvars)(mv`vars_lb,mv`vars_ub) AND 
+        bounded_points_exclusive?(mv`numvars)(mv`bdpts) AND
+        isfalse?(mpstrat) IMPLIES
+          (NOT mpr`rel(multipoly_eval(mpr`mpoly,mpr`mdeg,mpr`mcoeff,mv`numvars,mpr`terms)
+                                 (list2array(0)(counterexample(mpstrat))),0)) AND 
+          boxbetween?(mv`numvars)(mv`vars_lb,mv`vars_ub,mv`iepts,mv`bdpts)
+                            (list2array(0)(counterexample(mpstrat)))
+
+END strat_util
+

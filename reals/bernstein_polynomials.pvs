@@ -1,0 +1,398 @@
+bernstein_polynomials: THEORY
+
+%--------------------------------------------------------------------------
+% Bernstein Polynomials
+% 
+% Version 1      April 2010
+%
+% Anthony Narkawicz       NASA
+%--------------------------------------------------------------------------
+
+BEGIN
+
+  IMPORTING polynomials,
+            sigma_swap[nat],
+            binomial_identities
+
+  x,y,t,Ma   : VAR real
+  i,j,m,p,bi,n : VAR nat
+  k,r	     : VAR posnat
+
+  Bernstein_Polynomial: TYPE = [# index: nat, bern_seq: [upto(index) -> real] #]
+
+  b,b1,b2 : VAR Bernstein_Polynomial
+  a,a1,a2 : VAR sequence[real] %---- An ordinary polynomial ----%
+
+
+  Bern(i:nat,n:above(i-1))(x) : real = C(n,i)*x^i*(1-x)^(n-i)
+
+  Bern_top: LEMMA Bern(p,p)(x) = x^p
+
+  Bern_bottom: LEMMA Bern(0,k)(x) = (1-x)^k
+
+  Bern_middle_zero: LEMMA FORALL (i:nat,nn:above(i-1)): i/=0 IMPLIES Bern(i,nn)(0) = 0
+
+  Bern_middle_one: LEMMA FORALL (i:nat,nn:above(i-1)): i/=nn IMPLIES Bern(i,nn)(1) = 0
+
+  Bern_Polynomial: LEMMA 
+  	     FORALL (i:nat, nn:above(i-1)):
+  	     Bern(i,nn) = 
+	       polynomial((LAMBDA (j:nat): IF j<i OR j>nn THEN 0 ELSE (-1)^(j-i)*C(nn,j)*C(j,i) ENDIF),nn)
+
+  Bernstein_Recursion: LEMMA k>r IMPLIES Bern(r,k)(x) = (1-x)*Bern(r,k-1)(x) + x*Bern(r-1,k-1)(x)
+
+  Bern_nonnegative: LEMMA 
+  		    0<=x AND x<=1 IMPLIES FORALL (i:nat, nn:above(i-1)): Bern(i,nn)(x) >= 0
+
+  Bern_positive: LEMMA
+    		 0<x AND x<1 IMPLIES FORALL (i:nat, nn:above(i-1)): Bern(i,nn)(x) > 0
+
+  % Degree raising for Bernstein polynomials
+
+  Bernstein_degree_raise: LEMMA
+    k>p IMPLIES Bern(p,k-1)(x) = ((k-p)/k)*Bern(p,k)(x) + ((p+1)/k)*Bern(p+1,k)(x)
+
+  degree_raise(b): Bernstein_Polynomial =
+    LET
+      m = b`index,
+      bseq = b`bern_seq
+    IN
+      (# index := m+1,
+      bern_seq := (LAMBDA (i:upto(m+1)):
+        IF i = 0 THEN bseq(0)
+	ELSIF i = m+1 THEN bseq(m)
+	ELSE
+	  (bseq(i)*(m+1-i) + bseq(i-1)*i)/(m+1)
+	ENDIF) #)
+
+  degree_raise_power(b,j): RECURSIVE Bernstein_Polynomial =
+    IF j=0 THEN b
+    ELSE degree_raise(degree_raise_power(b,j-1))
+    ENDIF 
+    MEASURE j
+
+  Bernstein_index_degree_raise: LEMMA k>=p IMPLIES x*Bern(p,k)(x) = ((p+1)/(k+1))*Bern(p+1,k+1)(x)
+
+  % The Bernstein polynomials form a partition of unity
+
+  Bernstein_partition_of_unity: LEMMA
+    sigma(0,p,(LAMBDA (i:nat): IF i>p THEN 0 ELSE Bern(i,p)(x) ENDIF)) = 1
+
+  Bern_le_1: LEMMA 0<=x AND x<=1 IMPLIES FORALL (i:nat, nn:above(i-1)): Bern(i,nn)(x) <= 1
+
+  Bernstein_conversion: LEMMA 
+    k>=p IMPLIES
+    x^p = sigma(p,k,(LAMBDA (i:nat): IF i<p OR i>k THEN 0 ELSE (C(i,p)/C(k,p))*Bern(i,k)(x) ENDIF))
+
+  Bernstein_conversion_2: LEMMA
+    k>=p IMPLIES
+    x^p = sigma(0,k,(LAMBDA (i:nat): IF i<p OR i>k THEN 0 ELSE (C(i,p)/C(k,p))*Bern(i,k)(x) ENDIF))
+
+  % Bernstein polynomials - linear combinations of the basic Bernstein polynomials B_ik
+
+  Bern_poly(b): [real -> real] = LAMBDA (x:real):
+    sigma(0,b`index,(LAMBDA (i:nat): IF i > b`index THEN 0 ELSE b`bern_seq(i)*Bern(i,b`index)(x) ENDIF))
+
+  degree_raise_id: LEMMA Bern_poly(b) = Bern_poly(degree_raise(b))
+
+  degree_raise_power_id: LEMMA Bern_poly(b) = Bern_poly(degree_raise_power(b,j))
+
+  Bern_poly_reverse(b): Bernstein_Polynomial = 
+    (# index:=b`index, bern_seq := (LAMBDA (i:upto(b`index)): b`bern_seq(b`index-i)) #)
+
+  Bern_poly_reverse_sym_half: LEMMA Bern_poly(b)(1/2 + x) = Bern_poly(Bern_poly_reverse(b))(1/2-x)
+
+  Bern_poly_reverse_sym: LEMMA Bern_poly(b)(x) = Bern_poly(Bern_poly_reverse(b))(1-x)
+
+  Bern_poly_inverse(b): sequence[real] = LAMBDA (j:nat): 
+        IF j>b`index THEN 
+	  0
+	ELSE
+	  sigma(0,j,(LAMBDA (i:nat): IF i > j THEN 0 ELSE b`bern_seq(i)*(-1)^(j-i)*(C(b`index,j)*C(j,i)) ENDIF))
+	ENDIF
+
+  % Structural Property Decomposition For Bernstein Polynomials
+
+  P: VAR [Bernstein_Polynomial -> bool]
+  
+  Bern_structural_decomp: LEMMA
+    ((FORALL (b1,b2: Bernstein_Polynomial): b1`index = b2`index AND P(b1) AND P(b2) 
+      IMPLIES P((# index:= b1`index,bern_seq := (LAMBDA (i:upto(b1`index)): b1`bern_seq(i) + b2`bern_seq(i)) #)))
+    AND
+    (FORALL (i,m:nat,x:real): i<=m IMPLIES 
+     P((# index := m, bern_seq := (LAMBDA (j:upto(m)): IF j = i THEN x ELSE 0 ENDIF) #))))
+    IMPLIES
+    (FORALL (b:Bernstein_Polynomial): P(b))
+
+  % The function that takes a sequence corresponing to a polynomial in the monomial
+  % basis and returns the sequence corresponing to the polynomial in the Bernstein basis. The number p
+  % is the "degree" of the polynomial in the monomial basis, and m is the Bernstein degree.
+
+  Bernstein_polynomial(a,p,m): Bernstein_Polynomial =
+   (# index := m,
+   bern_seq := LAMBDA (s: upto(m)): sigma(0,s,LAMBDA(i:nat):IF i>s OR i>p THEN 0 ELSE a(i)*(C(s,i)/C(m,i)) ENDIF) #)
+
+  Bernstein_equivalence: LEMMA
+    m>=p IMPLIES polynomial(a,p) = Bern_poly(Bernstein_polynomial(a,p,m))
+
+  Bern_poly_inverse_def: LEMMA
+    polynomial(Bern_poly_inverse(b),b`index) = Bern_poly(b)
+
+  % Splitting the Interval
+
+  Bern_subdiv_left(b): Bernstein_Polynomial =
+    (# index := b`index,
+       bern_seq := LAMBDA (i:upto(b`index)): (1/2^i)*sigma(0,i,
+                   LAMBDA (j:nat): IF j > i THEN 0 ELSE C(i,j)*b`bern_seq(j) ENDIF) #)
+
+  Bern_subdiv_right(b): Bernstein_Polynomial =
+    (# index := b`index,
+    bern_seq := LAMBDA (i:upto(b`index)): (1/2^(b`index-i))*sigma(0,b`index-i,
+                LAMBDA (j:nat): IF j > b`index-i THEN 0 ELSE C(b`index-i,j)*b`bern_seq(b`index-j) ENDIF) #)
+
+  Bern_subdiv_left_id: LEMMA Bern_poly(Bern_subdiv_left(b)) = Bern_poly(b) o (LAMBDA (x:real): (1/2)*x)
+
+  Bern_subdiv_left_reverse: LEMMA Bern_poly(Bern_poly_reverse(Bern_subdiv_left(Bern_poly_reverse(b)))) = 
+    Bern_poly(b) o (LAMBDA (x:real): (1/2)*(x+1)) 
+
+  Bern_subdiv_right_id: LEMMA Bern_poly(Bern_subdiv_right(b)) = Bern_poly(b) o (LAMBDA (x:real): (1/2)*(x+1))
+
+  Bern_subdiv_ge: LEMMA 
+  		  (FORALL (y:real): 0<=y AND y<=1 IMPLIES Bern_poly(Bern_subdiv_right(b))(y) >= Ma) 
+		  AND 
+		  (FORALL (y:real): 0<=y AND y<=1 IMPLIES Bern_poly(Bern_subdiv_left(b))(y) >= Ma)
+		  IMPLIES 
+		  (0<=x AND x<=1 IMPLIES Bern_poly(b)(x) >= Ma)
+
+  %-------------------------------------------------------%
+  %-------------------------------------------------------%
+  % Splitting the interval another way
+  %-------------------------------------------------------%
+  %-------------------------------------------------------%
+
+  Bern_sweep(b)(p:upto(b`index)): RECURSIVE {bp: Bernstein_Polynomial | bp`index = b`index}
+    = (# index := b`index,
+      bern_seq :=
+      IF p = 0 THEN b`bern_seq
+      ELSE
+        (LAMBDA (i:upto(b`index)):
+	IF i<p THEN Bern_sweep(b)(p-1)`bern_seq(i)
+	ELSE (1/2)*(Bern_sweep(b)(p-1)`bern_seq(i-1) + Bern_sweep(b)(p-1)`bern_seq(i))
+	ENDIF)
+      ENDIF #) MEASURE p
+
+  Bern_sweep_expand: LEMMA
+    p<=b`index IMPLIES
+    Bern_sweep(b)(p) =
+      (# index := b`index,
+      bern_seq :=
+      (LAMBDA (i:upto(b`index)):
+	IF i<=p THEN
+	  (1/(2^i))*sigma(0,i,(LAMBDA (j:nat): IF j > i THEN 0 ELSE b`bern_seq(j)*C(i,j) ENDIF))
+	ELSE
+	  (1/(2^p))*sigma(0,p,(LAMBDA (j:nat): IF j > p THEN 0 ELSE b`bern_seq(j+(i-p))*C(p,j) ENDIF))
+	ENDIF) #)
+
+  Bern_subdiv_l(b): Bernstein_Polynomial = Bern_sweep(b)(b`index)
+
+  Bern_subdiv_r(b): Bernstein_Polynomial = 
+  		    (# index := b`index,
+		    bern_seq := (LAMBDA (i:upto(b`index)): Bern_sweep(b)(b`index - i)`bern_seq(b`index)) #)
+
+  Bern_subdiv_l_id: LEMMA Bern_poly(Bern_subdiv_l(b)) = Bern_poly(b) o (LAMBDA (x:real): (1/2)*x)
+
+  Bern_subdiv_r_id: LEMMA Bern_poly(Bern_subdiv_r(b)) = Bern_poly(b) o (LAMBDA (x:real): (1/2)*(x+1))
+
+  %-------------------------------------------------------%
+  %-------------------------------------------------------%
+  % End of splitting the interval another way
+  %-------------------------------------------------------%
+  %-------------------------------------------------------%
+
+  % Bernstein Coefficients
+
+  Bern_coeff(a,p,m)(s: upto(m)): real = 
+    LET msp = min(s,p) IN sigma(0,msp,LAMBDA(i:nat):IF i>msp THEN 0 ELSE a(i)*(C(s,i)/C(m,i)) ENDIF)
+
+  Bernstein_le: LEMMA 
+    (FORALL (s:upto(m)): Bern_coeff(a,p,m)(s) <= Ma) AND 0<=x AND x<=1 AND m>=p IMPLIES polynomial(a,p)(x) <= Ma
+
+  Bernstein_lt: LEMMA 
+    (FORALL (s:upto(m)): Bern_coeff(a,p,m)(s) < Ma) AND 0<=x AND x<=1 AND m>=p IMPLIES polynomial(a,p)(x) < Ma
+
+  Bernstein_ge: LEMMA 
+    (FORALL (s:upto(m)): Bern_coeff(a,p,m)(s) >= Ma) AND 0<=x AND x<=1 AND m>=p IMPLIES polynomial(a,p)(x) >= Ma
+
+  Bernstein_gt: LEMMA 
+    (FORALL (s:upto(m)): Bern_coeff(a,p,m)(s) > Ma) AND 0<=x AND x<=1 AND m>=p IMPLIES polynomial(a,p)(x) > Ma
+
+  % For Bernstein Polynomials
+
+  Bern_poly_le: LEMMA 
+    (FORALL (s:upto(b`index)): b`bern_seq(s) <= Ma) AND 0<=x AND x<=1 IMPLIES Bern_poly(b)(x) <= Ma
+
+  Bern_poly_lt: LEMMA 
+    (FORALL (s:upto(b`index)): b`bern_seq(s) < Ma) AND 0<=x AND x<=1 IMPLIES Bern_poly(b)(x) < Ma
+
+  Bern_poly_ge: LEMMA 
+    (FORALL (s:upto(b`index)): b`bern_seq(s) >= Ma) AND 0<=x AND x<=1 IMPLIES Bern_poly(b)(x) >= Ma
+
+  Bern_poly_gt: LEMMA 
+    (FORALL (s:upto(b`index)): b`bern_seq(s) > Ma) AND 0<=x AND x<=1 IMPLIES Bern_poly(b)(x) > Ma
+
+  % Quotients
+
+  Bern_poly_quotient_le: LEMMA
+    b1`index = b2`index AND
+    (FORALL (s:upto(b2`index)): b2`bern_seq(s) > 0) AND
+    (FORALL (s:upto(b1`index)): b1`bern_seq(s)/b2`bern_seq(s) <= Ma)
+    AND 0<=x AND x<=1 IMPLIES
+    (Bern_poly(b2)(x) > 0 AND
+    Bern_poly(b1)(x)/Bern_poly(b2)(x) <= Ma)
+
+  % Splitting
+
+  Bern_poly_split_le: LEMMA
+     LET bsl = Bern_subdiv_l(b),bsr = Bern_subdiv_r(b) IN
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsr)(x)<=Ma) AND 
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsl)(x)<=Ma)
+        IMPLIES (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)<=Ma)
+
+  Bern_poly_split_lt: LEMMA
+     LET bsl = Bern_subdiv_l(b),bsr = Bern_subdiv_r(b) IN
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsr)(x)<Ma) AND 
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsl)(x)<Ma)
+        IMPLIES (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)<Ma)
+
+  Bern_poly_split_ge: LEMMA
+     LET bsl = Bern_subdiv_l(b),bsr = Bern_subdiv_r(b) IN
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsr)(x)>=Ma) AND 
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsl)(x)>=Ma)
+        IMPLIES (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)>=Ma)
+
+  Bern_poly_split_gt: LEMMA
+     LET bsl = Bern_subdiv_l(b),bsr = Bern_subdiv_r(b) IN
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsr)(x)>Ma) AND 
+        (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(bsl)(x)>Ma)
+        IMPLIES (FORALL (x:real): 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)>Ma)
+
+  % COLLECTIONS OF BERNSTEIN POLYNOMIALS
+
+  % Next are recursive definitions of min and max for bernstein polynomials
+
+  Bern_min_rec(b)(q:upto(b`index)): RECURSIVE 
+    {r:real | (EXISTS (iq:upto(q)): r = b`bern_seq(iq)) AND (FORALL (iq:upto(q)): r <= b`bern_seq(iq))} =
+    LET y = b`bern_seq(q),
+        x = IF q = 0 THEN y ELSE Bern_min_rec(b)(q-1) ENDIF
+    IN	min(y,x)
+    MEASURE q
+
+  Bern_max_rec(b)(q:upto(b`index)): RECURSIVE 
+   {r:real | (EXISTS (iq:upto(q)): r = b`bern_seq(iq)) AND (FORALL (iq:upto(q)): r >= b`bern_seq(iq))} =
+   LET y = b`bern_seq(q),
+       x = IF q = 0 THEN y ELSE Bern_max_rec(b)(q-1) ENDIF
+   IN	max(y,x)
+   MEASURE q
+
+  Bern_min(b) : 
+   {r : real | (EXISTS (ib:upto(b`index)): r = b`bern_seq(ib)) AND 
+               (FORALL (ib:upto(b`index)): r<=b`bern_seq(ib))} = 
+   Bern_min_rec(b)(b`index)
+
+  Bern_max(b) : 
+   {r : real | (EXISTS (ib:upto(b`index)): r = b`bern_seq(ib)) AND 
+               (FORALL (ib:upto(b`index)): r>=b`bern_seq(ib))} = 
+    Bern_max_rec(b)(b`index)
+
+  Bern_min_bound : LEMMA 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)>=Bern_min(b)
+
+  Bern_max_bound : LEMMA 0<=x AND x<=1 IMPLIES Bern_poly(b)(x)<=Bern_max(b)
+
+  % A function to compute the current min and max estimates follows. One should note that if b_0,...,b_n are 
+  % Bernstein coefficients for a polynomial, then the polynomial attains the values of b_0 and b_n at t = 0 
+  % and t = 1.
+
+  Bern_min_est(b): real = min(b`bern_seq(0),b`bern_seq(b`index))
+
+  Bern_max_est(b): real = max(b`bern_seq(0),b`bern_seq(b`index))
+
+  % The next construction, Bernstein_Collection is a type. An element of this type is a collection of 
+  % Bernstein Polynomials, and associated to each one is a pair consisting of its minimum and maximum entries
+
+  Bernstein_MinMax: TYPE = [# bernpoly: Bernstein_Polynomial, bernmin:real, bernmax:real #]
+
+  Bern_minmax(b) : Bernstein_MinMax = (# bernpoly := b, bernmin := Bern_min(b), bernmax := Bern_max(b) #)
+
+  Bernstein_MinMax_Collection: TYPE = [# number_polys : posnat, 
+                                       bern_poly_number : [below(number_polys) -> Bernstein_MinMax] #]
+
+  BC, BC1, BC2: VAR Bernstein_MinMax_Collection
+ 
+  Bern_concat(BC1,BC2): Bernstein_MinMax_Collection = 
+    LET NN = BC1`number_polys + BC2`number_polys IN
+    (# number_polys := NN, 
+       bern_poly_number := LAMBDA (i:below(NN)): IF i<=BC1`number_polys-1 THEN BC1`bern_poly_number(i) 
+                                                 ELSE BC2`bern_poly_number(i-BC1`number_polys) ENDIF #)
+
+  Bern_collection_min_est_rec(BC)(np:below(BC`number_polys)) : RECURSIVE real = 
+    IF np = 0 THEN Bern_min_est(BC`bern_poly_number(0)`bernpoly)
+    ELSE min(Bern_min_est(BC`bern_poly_number(0)`bernpoly),Bern_collection_min_est_rec(BC)(np-1)) ENDIF
+  MEASURE np
+
+  Bern_collection_min_est(BC): real = 
+    IF BC`number_polys /= 0 THEN Bern_collection_min_est_rec(BC)(BC`number_polys-1) ELSE 0 ENDIF
+
+  Bern_collection_reduce_min_rec(BC)(np:below(BC`number_polys)): RECURSIVE Bernstein_MinMax_Collection = 
+    LET minest = Bern_collection_min_est(BC),
+        thispoly:Bernstein_MinMax_Collection = (# number_polys := 1, 
+                                                  bern_poly_number := LAMBDA (i:below(1)): BC`bern_poly_number(np) #)
+    IN
+    IF np = 0 THEN thispoly
+    ELSIF BC`bern_poly_number(np)`bernmin > minest THEN Bern_collection_reduce_min_rec(BC)(np-1)
+    ELSE  Bern_concat(Bern_collection_reduce_min_rec(BC)(np-1),thispoly) ENDIF
+  MEASURE np
+
+  Bern_collection_reduce_min(BC) : Bernstein_MinMax_Collection = 
+    Bern_collection_reduce_min_rec(BC)(BC`number_polys-1)
+
+  % The minimum coefficient
+
+  Bern_min_coeff_rec(BC)(np:below(BC`number_polys)) : RECURSIVE real =
+    LET current_poly_min = BC`bern_poly_number(np)`bernmin
+    IN
+    IF np = 0 THEN current_poly_min
+    ELSE min(current_poly_min,Bern_min_coeff_rec(BC)(np-1)) ENDIF 
+  MEASURE np
+
+  Bern_min_coeff(BC): real = Bern_min_coeff_rec(BC)(BC`number_polys-1)
+  			       
+  % Next, we subdivide each bernstein polynomial in the collection.
+
+  Bern_coll_subdiv_total_left(BC) : Bernstein_MinMax_Collection =
+    (# number_polys := BC`number_polys, 
+       bern_poly_number := LAMBDA (np: below(BC`number_polys)): 
+                           Bern_minmax(Bern_subdiv_left(BC`bern_poly_number(np)`bernpoly)) #)
+
+  Bern_coll_subdiv_total_right(BC) : Bernstein_MinMax_Collection =
+    (# number_polys := BC`number_polys, 
+       bern_poly_number := LAMBDA (np: below(BC`number_polys)): 
+                           Bern_minmax(Bern_subdiv_right(BC`bern_poly_number(np)`bernpoly)) #)
+
+  Bern_coll_subdiv_total(BC) : Bernstein_MinMax_Collection = 
+   Bern_concat(Bern_coll_subdiv_total_left(BC),Bern_coll_subdiv_total_right(BC))
+
+  Bern_coll_subdiv_reduced(BC) : Bernstein_MinMax_Collection = 
+    Bern_collection_reduce_min(Bern_coll_subdiv_total(BC))
+
+  Bern_split(b)(n :nat) : recursive Bernstein_MinMax_Collection =
+    IF n=0 THEN (# number_polys := 1, bern_poly_number := (LAMBDA (i:below(1)): Bern_minmax(b)) #)
+    ELSE
+    Bern_coll_subdiv_reduced(Bern_split(b)(n-1))
+    ENDIF
+    MEASURE n
+
+  Bern_split_min_coeff(a,p,m)(n:nat) : real =
+    LET b = Bernstein_polynomial(a,p,m)
+    IN Bern_min_coeff(Bern_split(b)(n))
+
+END bernstein_polynomials

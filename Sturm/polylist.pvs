@@ -1,0 +1,186 @@
+polylist : THEORY 
+BEGIN
+
+  IMPORTING structures@array2list[rat],reals@polynomials,reals@sq
+
+  Polylist : TYPE = (cons?[rat])
+
+  pl,ql : VAR Polylist
+  x,acc : VAR real
+  c	: VAR rat
+  n     : VAR nat  
+  rnz	: VAR nzrat
+
+  zero_pol(x:nat) : rat = 0
+
+  eval_polylist(pl:Polylist,deg:upfrom(length(pl)-1),acc:real)(x:real) : RECURSIVE real =
+    LET newl = cdr(pl),
+        thisco = car(pl),
+	thisdeg = deg-length(pl)+1
+    IN IF null?(newl) THEN acc+thisco*x^thisdeg
+       ELSE eval_polylist(newl,deg,acc+thisco*x^thisdeg)(x)
+       ENDIF
+    MEASURE length(pl)
+
+  eval_polylist_times_x: LEMMA
+    FORALL (deg:upfrom(length(pl))):
+    eval_polylist(pl,deg-1,acc)(x)*x =
+    eval_polylist(pl,deg,acc*x)(x)
+
+  eval_polylist_remove_acc: LEMMA
+    FORALL (deg:upfrom(length(pl)-1)):
+    eval_polylist(pl,deg,acc)(x) =
+    eval_polylist(pl,deg,0)(x) + acc
+
+  eval_polylist_test: LEMMA
+    eval_polylist((: 1,2,3,4 :),3,0)(x) = 1+2*x+3*x^2+4*x^3
+
+  polylist(pl)(x) : real =
+    eval_polylist(pl,length(pl)-1,0)(x)
+
+  pconst(c): Polylist = (: c :)
+
+  pmonom(c:rat,deg:nat): RECURSIVE {pl:Polylist|
+  			 length(pl)=deg+1 AND
+  			 FORALL (x:real): polylist(pl)(x) = c*x^deg} =
+    IF deg=0 THEN pconst(c)
+    ELSE cons(0,pmonom(c,deg-1)) ENDIF
+    MEASURE deg
+
+  psum(pl,ql) : RECURSIVE {pql:Polylist|
+    FORALL (x): polylist(pql)(x) = polylist(pl)(x)+polylist(ql)(x)} =
+    LET plcoeff = car(pl),
+    	qlcoeff = car(ql),
+	newpl   = cdr(pl),
+	newql   = cdr(ql)
+    IN IF null?(newpl) THEN cons(plcoeff+qlcoeff,newql)
+       ELSIF null?(newql) THEN cons(plcoeff+qlcoeff,newpl)
+       ELSE cons(car(pl)+car(ql),psum(cdr(pl),cdr(ql)))
+    ENDIF
+  MEASURE length(pl)+length(ql)
+
+  ;+(pl,ql) : MACRO Polylist = psum(pl,ql)
+
+  pscal(c,pl): RECURSIVE {pql:Polylist|
+    length[rat](pql)=length[rat](pl) AND 
+    FORALL (x): polylist(pql)(x) = c*polylist(pl)(x)} =
+    IF null?(cdr(pl)) THEN (: c*car(pl) :)
+    ELSE cons(c*car(pl),pscal(c,cdr(pl))) ENDIF
+    MEASURE length(pl)
+
+  ;*(c,pl) : MACRO Polylist = pscal(c,pl)
+
+  pminus(pl,ql) : Polylist =
+    psum(pl,(-1)*ql)
+
+  ;-(pl,ql) : MACRO Polylist = pminus(pl,ql)
+
+  pneg(pl) : Polylist =
+    (-1)*pl
+
+  ;-(pl): MACRO Polylist = pneg(pl)
+
+  pprod(pl,ql) : Polylist =
+    array2list[rat](length(pl)+length(ql)-1)(polynomial_prod(list2array[rat](0)(pl),length(pl)-1,
+                                                      list2array[rat](0)(ql),length(ql)-1))
+  ;*(pl,ql) : MACRO Polylist = pprod(pl,ql)
+
+  ppow(pl,n): RECURSIVE Polylist =
+    IF n = 0 THEN pconst(1)
+    ELSIF n = 1 THEN pl
+    ELSE pprod(pl,ppow(pl,n-1))
+    ENDIF
+  MEASURE n
+
+  ;^(pl,n) : MACRO Polylist = ppow(pl,n)
+
+  pdiv(pl,rnz): Polylist = (1/rnz)*pl
+
+  ;/(pl,rnz): MACRO Polylist = pdiv(pl,rnz)
+
+  psq(pl): Polylist = pprod(pl,pl)
+
+  deg_rec(pl): RECURSIVE 
+    {degans:[# allzero: bool,maxnon:below(length(pl)) #] |
+      LET (dz,dmax)=(degans`allzero,degans`maxnon),
+      	  len	   =length(pl) 
+      IN
+        (dz IFF (FORALL (j:below(len)): nth(pl,j)=0)) AND
+	(dz OR FORALL (j:below(len)): j>dmax IMPLIES nth(pl,j)=0) AND
+	(dz OR nth(pl,dmax)/=0)} =
+    IF null?(cdr(pl)) AND car(pl)=0 THEN (# allzero:=TRUE,maxnon:=0 #)
+    ELSIF null?(cdr(pl)) THEN (# allzero:=FALSE,maxnon:=0 #)
+    ELSE
+      LET upans = deg_rec(cdr(pl)),
+      	  upvalid=(NOT upans`allzero)
+      IN  IF upvalid THEN (# allzero:=FALSE,maxnon:=1+upans`maxnon #)
+      	  ELSIF car(pl)=0 THEN (# allzero:=TRUE,maxnon:=0 #)
+	  ELSE (# allzero:=FALSE,maxnon:=0 #) ENDIF
+    ENDIF MEASURE length(pl)
+  
+
+  deg(pl): {d:below(length(pl)) |
+    (d>0 IFF EXISTS (j:below(length(pl))): j>0 AND nth(pl,j)/=0) AND
+    (d>0 IMPLIES (FORALL (j:below(length(pl))): j>d IMPLIES nth(pl,j)=0)) AND
+    (d>0 IMPLIES nth(pl,d)/=0)} =
+    LET drec = deg_rec(pl) IN
+      IF drec`allzero THEN 0 ELSE drec`maxnon ENDIF
+
+  %%% Lemmas for Strategy %%%
+
+  polylist_eval : LEMMA
+    polylist(pl)(x) = polynomial(list2array[rat](0)(pl),length(pl)-1)(x)
+
+  polylist_eval_deg: LEMMA deg(pl)>0 IMPLIES
+    polynomial(list2array[rat](0)(pl),length(pl)-1)(x) =
+    polynomial(list2array[rat](0)(pl),deg(pl))(x)
+
+  polylist_const: LEMMA
+    polylist(pconst(c))(x) = c
+
+  polylist_monom: LEMMA
+    polylist(pmonom(c,n))(x) = c*x^n
+
+  polylist_prod: LEMMA
+   polylist(pl*ql)(x) = polylist(pl)(x)*polylist(ql)(x)
+
+  polylist_scal: LEMMA
+    polylist(c*pl)(x) = c*polylist(pl)(x)
+
+  polylist_sum: LEMMA
+   polylist(pl+ql)(x) =  polylist(pl)(x)+polylist(ql)(x)
+
+  polylist_minus: LEMMA
+   polylist(pl-ql)(x) = polylist(pl)(x)-polylist(ql)(x)
+
+  polylist_pow: LEMMA
+    polylist(pl^n)(x) = polylist(pl)(x)^n
+
+  polylist_neg: LEMMA
+    polylist(-pl)(x) = -polylist(pl)(x)
+
+  polylist_div: LEMMA
+    polylist(pl/rnz)(x) = polylist(pl)(x)/rnz
+
+  polylist_sq: LEMMA
+    polylist(psq(pl))(x) = sq(polylist(pl)(x))
+
+  %%% Computable decision procedure %%%
+
+  IMPORTING compute_sturm
+
+  I : VAR RealInt
+
+  realord: VAR (SturmRel?)
+
+  polylist_sat_rational((pl|deg(pl)>0),(I|I`lb<I`ub),realord): bool =
+    compute_poly_sat_rational(list2array[rat](0)(pl),deg(pl),I,realord)
+
+  polylist_sat_rational_def: LEMMA 
+    I`lb<I`ub AND 
+    (deg(pl)>0 OR (EXISTS (j:below(length(pl))):j>0 AND nth(pl,j)/=0))
+    IMPLIES
+    (polylist_sat_rational(pl,I,realord) IFF
+     (FORALL (x:real): contains?(I)(x) IMPLIES realord(polylist(pl)(x),0)))
+
+END polylist

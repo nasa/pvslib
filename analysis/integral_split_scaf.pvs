@@ -1,0 +1,179 @@
+integral_split_scaf[T: TYPE FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%  Scaffolding :  Rick Butler
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+
+   IMPORTING reals@sigma_below, 
+             step_fun_def[T], 
+             integral_step[T],
+             %% step_fun_props[T],
+             integral_bounded[T]
+
+   a,b,c,d,x,y,z: VAR T
+
+   f,f1,f2,g: VAR [T -> real]
+
+   eps, delta: VAR posreal
+
+   xv,yv: VAR real
+
+
+   diff_step_is_step_on: LEMMA a < b IMPLIES FORALL (P: partition[T](a,b)): 
+                            step_function_on?(a, b, f, P) AND    
+                            step_function_on?(a, b, g, P)
+                         IMPLIES
+                           step_function_on?(a, b, f - g, P)
+
+   se_not_on: LEMMA FORALL (P: partition[T](a,b)):  
+                    FORALL (ii,jj: below(length(P) - 1)):
+                    FORALL (x: open_interval[T](seq(P)(ii), seq(P)(1 + ii))):
+                          x /= seq(P)(jj)
+
+
+   find_P_sec(a:T, b:{x:T|a<x}, P: partition[T](a,b), xx: closed_interval(a,b)):
+              {ii: below(length(P)-1) |
+                                       seq(P)(ii) <= xx AND xx <= seq(P)(ii+1)}
+
+   find_P_sec_lem: LEMMA a < b IMPLIES (FORALL (xx: closed_interval(a,b)):
+                               FORALL (P: partition[T](a,b)):  
+                               LET JJ = find_P_sec(a,b,P,xx) IN
+                                   seq(P)(JJ) <= xx AND xx <= seq(P)(JJ+1) )
+
+   find_P_sec_in: LEMMA a < b IMPLIES
+                      FORALL (P: partition[T](a,b)):  
+                      FORALL (ii: below(length(P) - 1)):
+                      FORALL (x: open_interval[T](seq(P)(ii),seq(P)(1 + ii))):
+                          find_P_sec(a, b, P, x) = ii
+
+
+
+    gen3P(a,b,c): finite_sequence[T] = 
+                  (# length := 3,
+                     seq := (LAMBDA (ii: below(3)):
+                                IF ii = 0 THEN a
+                                ELSIF ii = 1 then b
+                                ELSE c ENDIF)   #) 
+
+
+
+    F1(a:T,b:{x:T|a<x}, P: partition[T](a,b), 
+        f: (bnded_on?(a,b)))(x:T): real = 
+                     IF x < a OR x > b THEN 0 
+                     ELSE 
+                      LET JJ = find_P_sec(a,b,P,x) IN
+                         IF x = P(JJ) OR x = P(JJ+1) THEN MIN_ALL(a,b,P,f)
+                         ELSE MINj(a,b,P,JJ,f)
+                         ENDIF
+                      ENDIF
+
+    F2(a:T,b:{x:T|a<x}, P: partition[T](a,b), 
+        f: (bnded_on?(a,b)))(x:T): real =                       
+                     IF x < a OR x > b THEN 0
+ 		      ELSE
+ 		         LET JJ = find_P_sec(a,b,P,x)IN
+ 		           IF x = P(JJ) OR x = P(JJ+1) THEN MAX_ALL(a,b,P,f)
+ 		           ELSE MAXj(a,b,P,JJ,f)
+ 		           ENDIF              
+                      ENDIF
+
+
+   F1_F2_lem: LEMMA a < b AND integrable?(a,b,f) IMPLIES
+                    FORALL (P: partition[T](a, b)):
+                      step_function_on?(a,b,F1(a,b,P,f),P) AND 
+                      step_function_on?(a,b,F2(a,b,P,f),P) AND
+                      (FORALL (x: closed_interval(a,b)):
+                        F1(a,b,P,f)(x) <= f(x) AND f(x) <= F2(a,b,P,f)(x))
+
+
+   epsilon_is_0: LEMMA (FORALL eps: abs(xv) < eps) IMPLIES xv = 0
+
+
+   F2_F1_step_function_on: LEMMA a < b AND integrable?(a,b,f) IMPLIES
+                    FORALL (P: partition[T](a, b)):
+                      LET N = length(P) - 1 IN
+         step_function_on?[T](a, b, F2(a, b, P, f) - F1(a, b, P, f),P)
+
+  integrable_F2_F1: LEMMA a < b AND integrable?(a,b,f) IMPLIES
+                    FORALL (P: partition[T](a, b)):
+                      LET N = length(P) - 1 IN
+         integrable?[T](a, b, F2(a, b, P, f) - F1(a, b, P, f))
+
+
+
+  integral_F2_F1: LEMMA a < b AND integrable?(a,b,f) IMPLIES
+                    FORALL (P: partition[T](a, b)):
+                      LET N = length(P) - 1 IN
+                      integral(a,b,F2(a,b,P,f)-F1(a,b,P,f)) =
+                        sigma(0,N-1, (LAMBDA (j: below(N)):
+                          Let DP = P(j+1)-P(j), 
+                              DELj = MAXj(a,b,P,j,f) - MINj(a,b,P,j,f) IN
+                          DELj* DP))
+                                   
+   se_prep: LEMMA a < b IMPLIES
+                     FORALL (P: partition[T](a, b),
+                             f: (bounded_on_all?(a, b, P)),
+                             j: below(length(P) - 1),
+                             nu: posreal):
+      (EXISTS  (xp: closed_interval[T](P`seq(j),P`seq(j+1))):
+                 f(xp) < MINj(a,b,P,j,f) + nu) AND
+      (EXISTS  (xpp: closed_interval[T](P`seq(j),P`seq(j+1))):
+                 f(xpp) > MAXj(a,b,P,j,f) - nu)
+
+   get_xp(a:T,b:{x:T|a<x}, P: partition[T](a,b), f: (bounded_on_all?(a,b,P)),
+          j: below(length(P) - 1), nu: posreal):
+          {xp: closed_interval[T](P`seq(j),P`seq(j+1)) |   
+                      f(xp) < MINj(a,b,P,j,f) + nu}
+
+   get_xpp(a:T,b:{x:T|a<x}, P: partition[T](a,b), f: (bounded_on_all?(a,b,P)),
+          j: below(length(P) - 1), nu: posreal):
+          {xpp: closed_interval[T](P`seq(j),P`seq(j+1)) |   
+                      f(xpp) > MAXj(a,b,P,j,f) - nu}
+
+   
+   lt_via_epsi: LEMMA FORALL (x,a: real):
+                        (FORALL (epsi: posreal): x < a + epsi)
+                            IMPLIES x <= a
+
+   sigma_all_parts: LEMMA  a < b IMPLIES
+                      FORALL (P: partition[T](a, b)):
+        sigma(0,length(P)-2,(LAMBDA (j: below(length(P) - 1)): P(j+1) - P(j)))
+                       =   b - a
+
+
+   steps_exist: LEMMA  % Proposition of Rosenlicht on pg 120 (reverse dir.)
+                       % See step_to_integrable in integral_prep for other
+                    a < b IMPLIES
+               (integrable?(a,b,f) IMPLIES
+                   (FORALL eps: EXISTS (f1,f2):
+                        step_function?(a,b,f1) AND 
+                        step_function?(a,b,f2) AND
+                      (FORALL (x: closed_interval(a,b)):
+                           f1(x) <= f(x) AND f(x) <= f2(x)) AND
+                      integrable?(a,b,f2-f1) AND
+                      integral(a,b,f2-f1) < eps))
+
+
+   partition_exists: LEMMA a < b IMPLIES     
+                        (EXISTS (P: partition[T](a,b)): width(a,b,P) < delta)
+
+
+   
+END integral_split_scaf
+
+
+
+

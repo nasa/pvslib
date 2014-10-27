@@ -1,0 +1,119 @@
+exp_approx: THEORY
+%-----------------------------------------------------------------------------
+%   Approximation of Exponential Function
+%   -------------------------------------
+%
+%      Defines upper and lower bounds on exp:
+%           - exp_lb(a,n) <= exp(a) <= exp_ub(a,n)
+%           - e_lb(n)     <= e      <= e_ub(n)
+%
+%  Author: David Lester             Manchester University
+%-----------------------------------------------------------------------------
+
+  BEGIN
+
+  IMPORTING exp_series
+  IMPORTING reals@quad_minmax % For proof only
+
+  n:   VAR nat
+  pn:  VAR posnat
+  x:   VAR real
+  nx:  VAR negreal
+  nnx: VAR nnreal
+
+  exp_neg_le1_ub(n,x): real = exp_estimate(x,2*n)
+
+  % old exp_neg_le1_lb1(n,x): real = exp_estimate(x,2*n+1)
+
+  exp_neg_le1_lb(n,x): real = exp_estimate(x,2*n) - 1.000001/factorial(2*n+1)
+
+  exp_neg_le1_bounds: LEMMA -1 <= x AND x < 0 IMPLIES
+    (exp_neg_le1_lb(n,x) < exp(x) AND exp(x) < exp_neg_le1_ub(n,x))
+
+  exp_neg_le1_ub_strict_decreasing_n: LEMMA -1 <= x AND x < 0 IMPLIES
+      strict_decreasing?(LAMBDA (n:nat): exp_neg_le1_ub(n,x))
+
+  % exp_neg_le1_lb_strict_increasing_n: LEMMA -1 <= x AND x < 0 IMPLIES
+  %     strict_increasing?(LAMBDA (n:nat): exp_neg_le1_lb(n,x))
+
+  exp_neg_le1_lb_pos: LEMMA -1 <= x AND x < 0 IMPLIES exp_neg_le1_lb(pn,x) > 0
+
+  exp_neg_ub(n,nx):posreal = LET pn= -floor(nx) IN exp_neg_le1_ub(n+1,nx/pn)^pn
+
+  exp_neg_lb(n,nx):posreal = LET pn= -floor(nx) IN exp_neg_le1_lb(n+1,nx/pn)^pn
+
+  exp_neg_bounds: LEMMA exp_neg_lb(n,nx) < exp(nx) & exp(nx) < exp_neg_ub(n,nx)
+
+  exp_approx_int_cutoff: MACRO posnat = 60
+  exp_approx_term_cutoff: MACRO posnat = 30
+
+  exp_ub_n(x,n): posreal = IF    x < 0 AND x>=-exp_approx_int_cutoff
+  	       	       	       	       THEN exp_neg_ub(n,x)
+		         ELSIF x<0     THEN exp_neg_ub(n,-exp_approx_int_cutoff)
+                         ELSIF x = 0   THEN 1 
+			 ELSIF x<=exp_approx_int_cutoff
+				       THEN 1/exp_neg_lb(n,-x)
+				       ELSE max(1/exp_neg_lb(n,-exp_approx_int_cutoff),4^(floor(x)+1)) ENDIF
+
+  exp_lb_n(x,n): posreal = IF    x < 0 AND x>=-exp_approx_int_cutoff
+  	       	       	       	       THEN exp_neg_lb(n,x)
+			 ELSIF x < 0   THEN min(exp_neg_lb(n,-exp_approx_int_cutoff),4^floor(x))
+                         ELSIF x = 0   THEN 1
+			 ELSIF x<=exp_approx_int_cutoff
+				       THEN 1/exp_neg_ub(n,-x)
+			 	       ELSE max(1/exp_neg_ub(n,-exp_approx_int_cutoff),2^floor(x)) ENDIF
+
+  exp_ub(x,n): posreal = IF n <= exp_approx_term_cutoff THEN exp_ub_n(x,n)
+  	       	         ELSE exp_ub_n(x,exp_approx_term_cutoff) ENDIF
+
+  exp_lb(x,n): posreal = IF n <= exp_approx_term_cutoff THEN exp_lb_n(x,n)
+  	       	         ELSE exp_lb_n(x,exp_approx_term_cutoff) ENDIF
+
+  exp_bounds: LEMMA exp_lb(x,n) <= exp(x) AND exp(x) <= exp_ub(x,n)
+
+  exp_range_test: LEMMA FORALL (kk:subrange(1,exp_approx_int_cutoff)):
+    FORALL (nn:subrange(1,exp_approx_term_cutoff+1)):
+    exp_estimate(-kk/(kk+1),2*nn)^(kk+1) <= exp_estimate(-1,2*nn)^kk
+
+  exp_range_test_lb: LEMMA FORALL (kk:subrange(1,exp_approx_int_cutoff)):
+    FORALL (nn:subrange(1,exp_approx_term_cutoff+1)):
+    (exp_estimate(-kk/(kk+1),2*nn)- 1.000001/factorial(2*nn+1))^(kk+1) <= (exp_estimate(-1,2*nn)- 1.000001/factorial(2*nn+1))^kk
+
+  exp_neg_ub_increasing: LEMMA
+    LET TT = (LAMBDA (xr:negreal): xr >= - exp_approx_int_cutoff)
+    IN n<=exp_approx_term_cutoff IMPLIES increasing?(LAMBDA (xr:(TT)): exp_neg_ub(n, xr))
+
+  exp_neg_lb_increasing: LEMMA
+    LET TT = (LAMBDA (xr:negreal): xr >= - exp_approx_int_cutoff)
+    IN n<=exp_approx_term_cutoff IMPLIES increasing?(LAMBDA (xr:(TT)): exp_neg_lb(n, xr))
+
+  test: LEMMA
+    FORALL (ii:below(1000)):
+      LET xx = -30*((ii+1)/(1000)), yy = xx + 1/1000000 IN
+        exp_neg_lb(1,xx) <= exp_neg_lb(1,yy)
+
+  exp_ub_increasing: LEMMA
+    increasing?(LAMBDA (x:real): exp_ub(x,n))
+
+  exp_lb_increasing: LEMMA
+    increasing?(LAMBDA (x:real): exp_lb(x,n))
+
+  e_lb(n) : posreal = exp_lb(1,n)
+
+  e_ub(n) : posreal = exp_ub(1,n)
+
+  e_bounds: LEMMA e_lb(n) <= e & e <= e_ub(n)
+
+  e_LB : MACRO posreal = 2718281828/1000000000
+
+  e_UB : MACRO posreal = 2718281829/1000000000
+
+  e_bounds2: LEMMA e_LB < e & e < e_UB
+
+  e_lb    : posreal = 271/100
+
+  e_ub    : posreal = 272/100
+
+  e_bound : JUDGEMENT e HAS_TYPE {x:posreal| e_lb < e AND e < e_ub}
+
+  END exp_approx

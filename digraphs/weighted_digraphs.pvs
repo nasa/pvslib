@@ -1,0 +1,112 @@
+%********************************************************************************%
+%
+%   Contributions from:
+%
+%       Andréia Borges Avelar -- Universidade de Brasília - Brasil  
+%       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil  
+%                 Cesar Muñoz -- NASA Langley Research Center - US
+%
+%********************************************************************************%
+
+weighted_digraphs[T : TYPE, Weight : TYPE, 
+                  + : {f : [[Weight, Weight] -> Weight] | associative?(f) },
+                  0 : {zero: Weight | identity?(+)(zero)}] : THEORY
+
+BEGIN
+
+	IMPORTING circuits[T],
+                  di_subgraphs[T]
+
+
+                            u, v : VAR T
+                               g : VAR digraph
+         i, i1, i2, j, j1, j2, n : VAR nat
+                       w, w1, w2 : VAR prewalk
+
+
+
+% ----------------------------------------------------------------------------- %
+%            Defining a weighted digraph and sub- weighted digraph
+% ----------------------------------------------------------------------------- %
+
+
+ wdg : TYPE = [#  dg : digraph,
+                 wgt : [edge(dg) -> Weight] #]
+
+ G : VAR wdg
+
+ wgt(G) : TYPE = [edge(dg(G)) ->  Weight]
+
+ Sub_wdg(G) : TYPE = {S: wdg | di_subgraph?(dg(S), dg(G))}
+
+
+% ----------------------------------------------------------------------------- %
+%            DEFINITIONS: about weights
+% ----------------------------------------------------------------------------- % 
+
+ wgt_aux(G: wdg, w: Walk(dg(G)))(i, (j: below(length(w)))) : RECURSIVE Weight =
+   IF j <= i THEN 0
+   ELSE wgt_aux(G, w)(i, j - 1) + wgt(G)(w(j - 1), w(j))
+   ENDIF
+ MEASURE j
+
+ wgt_walk(G: wdg, w: Walk(dg(G))) : Weight =
+   wgt_aux(G, w)(0, length(w) - 1)
+
+
+% ----------------------------------------------------------------------------- %
+%            PROPERTIES
+% ----------------------------------------------------------------------------- %
+
+ wgt_aux_shift_walk: LEMMA
+   FORALL (w1, w2: Walk(dg(G)), j1: below(length(w1)), j2: below(length(w2))):
+       w1^(i1, j1) = w2^(i2, j2)
+     IMPLIES
+       wgt_aux(G, w1)(i1, j1) = wgt_aux(G, w2)(i2, j2)
+
+ wgt_aux_first : LEMMA
+   FORALL (w : Walk(dg(G)), i, j):
+       j < length(w) AND i < j
+     IMPLIES
+       wgt_aux(G, w)(i, j) = wgt(G)(w(i), w(i + 1)) + wgt_aux(G, w)(i + 1, j)
+
+ wgt_aux_split : LEMMA
+   FORALL (w : Walk(dg(G)), i, j, n):
+       j < length(w) AND i <= n AND n <= j
+     IMPLIES
+       wgt_aux(G, w)(i, j) = wgt_aux(G, w)(i, n) + wgt_aux(G, w)(n, j)
+ 
+ wgt_aux_sub_walk: LEMMA
+   FORALL (w : Walk(dg(G)), i, j):
+       j < length(w) AND i < j
+     IMPLIES
+       wgt_aux(G, w)(i, j) = wgt_aux(G, w^(i,j))(0, j - i)
+
+ wgt_walk_to_aux: LEMMA
+   FORALL(w: Walk(dg(G)), i, j):
+      j < length(w) AND i < j IMPLIES
+      wgt_walk(G, w^(i, j)) = wgt_aux(G, w)(i, j)
+
+ wgt_walk_decomposed: LEMMA
+   j < length(w) AND walk?(dg(G), w) IMPLIES
+   wgt_walk(G, w) =  wgt_walk(G, w^(0, j)) + 
+                     wgt_walk(G, w^(j, length(w)-1))
+
+% ----------------------------------------------------------------------------- %
+
+ wgt_walk_edge: LEMMA
+   FORALL(w: Walk(dg(G))):
+    length(w) = 2 IMPLIES wgt_walk(G, w) = wgt(G)(w(0), w(1))
+
+ wgt_comp_rest: LEMMA
+   FORALL (w1, w2: Walk(dg(G))):
+     last(w1) = first(w2) IMPLIES
+     wgt_walk(G, w1 o rest(w2)) = wgt_walk(G, w1) + wgt_walk(G, w2)
+
+ % commutative_sum_eq_circuit: CONJECTURE
+ %   FORALL (w1, w2: Walk(dg(G))):
+ %     (FORALL(a, b : Weight): a + b = b + a) AND eq_circuit?(dg(G), w1, w2)
+ %     IMPLIES wgt_walk(G, w1) = wgt_walk(G, w2)
+
+
+END weighted_digraphs

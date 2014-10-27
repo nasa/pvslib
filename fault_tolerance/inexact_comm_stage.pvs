@@ -1,0 +1,191 @@
+%
+%
+% Purpose : Describe properties about inexact communication in 
+%           relation to the results-based fault model.
+%
+%
+
+inexact_comm_stage
+[
+    S   : posnat,     % Number of sources 
+    D   : posnat      % Number of destinations
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+    fault_assumptions_stage[S, D, real],
+    real_finite_sequences
+
+  epsilon, eps_u, eps_l, delta: VAR nonneg_real
+
+  v1, v2: VAR real
+
+  s, s1, s2: VAR below(S)
+  d, d1, d2: VAR below(D)
+
+  src_set, correct_set: VAR finite_set[below(S)]
+
+  sent: VAR sent_vec_stage
+  rcvd: VAR rcvd_matrix_stage
+  check: VAR check_stage
+ 
+  tau: VAR tau_type
+
+  %
+
+  correct_lower_inaccuracy?(sent, rcvd, check, epsilon)(src_set): bool =
+    FORALL d, s: 
+        src_set(s) AND 
+        enabled(rcvd, check)(d)(s) 
+      IMPLIES
+        sent(s) - epsilon <= rcvd(d)(s)
+
+  quorum_lower?(sent, rcvd, check, tau, epsilon): bool =
+    EXISTS src_set:
+      correct_lower_inaccuracy?(sent, rcvd, check, epsilon)(src_set) AND
+      quorum?(rcvd, check, tau)(src_set)
+
+  majority_lower?(sent, rcvd, check, epsilon): bool = 
+    EXISTS src_set:
+      correct_lower_inaccuracy?(sent, rcvd, check, epsilon)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  majority_lower_rw: LEMMA
+     majority_lower?(sent, rcvd, check, epsilon) = 
+     quorum_lower?(sent, rcvd, check, mid, epsilon)
+
+  %
+
+  correct_upper_inaccuracy?(sent, rcvd, check, epsilon)(src_set): bool =
+    FORALL d, s: 
+        src_set(s) AND 
+        enabled(rcvd, check)(d)(s) 
+      IMPLIES
+        rcvd(d)(s) <= sent(s) + epsilon
+
+  quorum_upper?(sent, rcvd, check, tau, epsilon): bool =
+    EXISTS src_set:
+      correct_upper_inaccuracy?(sent, rcvd, check, epsilon)(src_set) AND
+      quorum?(rcvd, check, tau)(src_set)
+
+  majority_upper?(sent, rcvd, check, epsilon): bool = 
+    EXISTS src_set:
+      correct_upper_inaccuracy?(sent, rcvd, check, epsilon)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  majority_upper_rw: LEMMA
+     majority_upper?(sent, rcvd, check, epsilon) = 
+     quorum_upper?(sent, rcvd, check, mid, epsilon)
+
+  %
+
+  quorum_accuracy?(sent, rcvd, check, tau, eps_l, eps_u):bool = 
+    EXISTS src_set:
+      correct_lower_inaccuracy?(sent, rcvd, check, eps_l)(src_set) AND
+      correct_upper_inaccuracy?(sent, rcvd, check, eps_u)(src_set) AND
+      quorum?(rcvd, check, tau)(src_set)
+
+  majority_accuracy?(sent, rcvd, check, eps_l, eps_u):bool = 
+    EXISTS src_set:
+      correct_lower_inaccuracy?(sent, rcvd, check, eps_l)(src_set) AND
+      correct_upper_inaccuracy?(sent, rcvd, check, eps_u)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  quorum_accuracy: LEMMA
+       quorum_accuracy?(sent, rcvd, check, tau, eps_l, eps_u) 
+    IMPLIES
+       quorum_lower?(sent, rcvd, check, tau, eps_l) AND
+       quorum_upper?(sent, rcvd, check, tau, eps_u)
+
+  majority_accuracy: LEMMA
+       majority_accuracy?(sent, rcvd, check, eps_l, eps_u) 
+    IMPLIES
+       majority_lower?(sent, rcvd, check, eps_l) AND
+       majority_upper?(sent, rcvd, check, eps_u)
+
+  majority_accuracy_rw: LEMMA
+     majority_accuracy?(sent, rcvd, check, eps_l, eps_u) = 
+     quorum_accuracy?(sent, rcvd, check, mid, eps_l, eps_u)
+
+  %
+
+  correct_imprecision?(sent, rcvd, check, epsilon)(src_set): bool =
+    FORALL d1, d2, s1, s2:
+        src_set(s1) AND enabled(rcvd, check)(d1)(s1) AND
+        src_set(s2) AND enabled(rcvd, check)(d2)(s2) 
+      IMPLIES
+        abs((rcvd(d1)(s1) - rcvd(d2)(s2)) - (sent(s1) - sent(s2))) <= epsilon
+
+  quorum_imprecision?(sent, rcvd, check, tau, epsilon): bool =
+    EXISTS src_set:
+      correct_imprecision?(sent, rcvd, check, epsilon)(src_set) AND
+      quorum?(rcvd, check, tau)(src_set)
+
+  quorum_imprecision_nonempty: LEMMA
+      quorum_imprecision?(sent, rcvd, check, tau, epsilon)
+    IMPLIES
+      enabled_nonempty?(rcvd, check)
+
+  majority_imprecision?(sent, rcvd, check, epsilon): bool = 
+    EXISTS src_set:
+      correct_imprecision?(sent, rcvd, check, epsilon)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  majority_imprecision_rw: LEMMA
+     majority_imprecision?(sent, rcvd, check, epsilon) = 
+     quorum_imprecision?(sent, rcvd, check, mid, epsilon)
+
+  correct_imprecision: LEMMA
+      correct_lower_inaccuracy?(sent, rcvd, check, eps_l)(src_set) AND
+      correct_upper_inaccuracy?(sent, rcvd, check, eps_u)(src_set)
+    IMPLIES
+      correct_imprecision?(sent, rcvd, check, eps_l + eps_u)(src_set)
+   
+  %
+    
+  single_imprecision?(rcvd, check, epsilon)(src_set):bool =
+    FORALL d1, d2, s:
+      src_set(s) AND
+      enabled(rcvd, check)(d1)(s) AND
+      enabled(rcvd, check)(d2)(s) 
+    IMPLIES
+      abs(rcvd(d1)(s) - rcvd(d2)(s)) <= epsilon
+
+  all_symmetric?(rcvd, check, epsilon): bool = 
+    EXISTS src_set:
+      single_imprecision?(rcvd, check, epsilon)(src_set) AND
+      uniformly_enabled?(rcvd, check)(src_set) AND
+      enabled_within?(rcvd, check)(src_set) 
+
+  all_single_imprecision?(rcvd, check, epsilon): bool = 
+    single_imprecision?(rcvd, check, epsilon)(enabled?(rcvd, check))
+
+
+  % Useful intermediate result for proofs of agreement propagation and 
+  % agreement convergence
+
+  % The separation of values from good sources may be bounded.  
+
+  diameter?(sent, delta)(src_set): bool =
+    FORALL s1, s2: 
+        src_set(s1) AND 
+        src_set(s2) 
+      IMPLIES
+        abs(sent(s1) - sent(s2)) <= delta
+
+  rcvd_diameter?(rcvd, check, delta)(src_set): bool =
+    FORALL d1, d2, s1, s2:
+        src_set(s1) AND enabled(rcvd, check)(d1)(s1) AND
+        src_set(s2) AND enabled(rcvd, check)(d2)(s2) 
+      IMPLIES
+        abs((rcvd(d1)(s1) - rcvd(d2)(s2))) <= delta
+
+  rcvd_diameter: LEMMA 
+      correct_imprecision?(sent, rcvd, check, epsilon)(correct_set) AND
+      diameter?(sent, delta)(src_set) AND
+      enabled_within?(rcvd, check)(src_set)
+    IMPLIES
+      rcvd_diameter?(rcvd, check, delta + epsilon)(correct_set)
+
+END inexact_comm_stage

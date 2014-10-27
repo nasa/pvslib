@@ -1,0 +1,429 @@
+matrices: THEORY
+
+
+BEGIN
+
+  IMPORTING structures@listn,reals@sigma_nat,
+	    structures@array2list,
+	    reals@sigma_swap[nat]
+	    
+
+
+  % This does now force a matrix to have the same
+  % number of entries in each row. It just assumes that
+  % the longest row is the total number of columns
+  % and that any rows of less length have all
+  % entries zero after their lengths.
+
+  Matrix: TYPE = list[list[real]]
+
+  MatrixMN(m,n:nat): TYPE = {M:Matrix |
+    length(M)=m AND FORALL (i:below(length(M))):
+      length(nth(M,i)) = n}
+
+  FullMatrix: TYPE = {M:Matrix |
+    null?(M) OR
+    FORALL (i,j:below(length(M))):
+      length(nth(M,i)) = length(nth(M,j))}
+
+  SM,SM1,SM2: VAR FullMatrix
+
+  Vector: TYPE = list[real]
+
+  r: VAR real
+
+  VectorN(n:nat): TYPE = listn[real](n)
+
+  zero(n:nat): VectorN(n) =
+    array2list[real](n)(LAMBDA (p:nat): 0)
+
+  M,N,A,B: VAR Matrix
+
+  v,v1,v2: VAR Vector
+
+  i,j : VAR nat
+
+  m,n : VAR nat
+
+  pn,pm : VAR posnat
+
+  F,G: VAR [[nat,nat]->real]
+
+  MEx: Matrix = (: (:1,2:),(:3,4,5:),(:6:) :)
+
+  % equivalence of nth and lenth functions
+
+  length_matrix_eq: LEMMA 
+    FORALL (nn: nat, LL: list[listn[real](nn)]):
+      length[list[real]](LL) = length[listn[real](nn)](LL)
+
+  nth_matrix_eq : LEMMA
+   FORALL (nn: nat, LL: list[listn[real](nn)],i:below[length[list[real]](LL)]):
+     nth[listn[real](nn)](LL, i) = nth[list[real]](LL, i)
+
+  length_matrix_equiv: LEMMA 
+    FORALL (nn: nat, LL: list[listn[real](nn)]):
+      length[list[real]](LL) = length[listn[real](nn)](LL)
+
+  length_matrix_nth: LEMMA 
+    FORALL (nn: nat, LL: list[listn[real](nn)],i:below[length[list[real]](LL)]):
+      length[real](nth[list[real]](LL,i)) = nn
+
+  matrix_listn_nth: LEMMA
+    FORALL (nn: nat, LL: list[listn[real](nn)],i:below[length[list[real]](LL)],
+    	   j:below[length[real](nth[listn[real](nn)](LL,i))]):
+      nth[real](nth[listn[real](nn)](LL,i),j)=
+      nth[real](nth[list[real]](LL,i),j)
+
+  access(v1)(i): real =
+    IF i<length(v1) THEN nth(v1,i)
+    ELSE 0 ENDIF
+
+  rows(M): nat = length(M)
+
+  length_rows: LEMMA length(M) = rows(M)
+
+  columns(M): RECURSIVE {c:nat|
+    (FORALL (i:below(length(M))):
+      length(nth(M,i))<=c) AND 
+    (null?(M) AND c=0 OR EXISTS (i:below(length(M))):
+      length(nth(M,i))=c)} =
+    IF null?(M) THEN 0
+    ELSE max(length(car(M)),columns(cdr(M))) ENDIF
+    MEASURE length(M)
+
+  row(M)(i): Vector =
+    IF i>=length(M) THEN null[real]
+    ELSE nth(M,i) ENDIF
+
+  col(M)(i): RECURSIVE VectorN(rows(M)) =
+    IF null?(M) THEN null[real]
+    ELSE cons(access(car(M))(i),col(cdr(M))(i)) ENDIF
+    MEASURE length(M)
+
+  col_def: LEMMA
+    length(col(M)(i)) = rows(M) AND
+    FORALL (j:below(rows(M))):
+      nth(col(M)(i),j) = 
+        IF i < length(nth(M,j)) THEN nth(nth(M,j),i)
+	ELSE 0 ENDIF
+
+  col_zero: LEMMA i>=columns(M) IMPLIES
+    col(M)(i) = zero(rows(M))
+
+  access_zero: LEMMA access(zero(n))(i)=0
+
+  nonempty?(M): bool =
+    rows(M)>0 AND columns(M)>0
+
+  Mp,Np: VAR (nonempty?)
+
+  entry(M)(i,j):real =
+    access(row(M)(i))(j)
+
+  entry_test: LEMMA
+    entry((: (: 1, 2, 0 :), (: 3, 4, 5 :), (: 6, 0, 0 :) :))(1,1)=4
+
+  access_row: LEMMA access(row(M)(i))(j) = entry(M)(i,j)
+
+  access_col: LEMMA access(col(M)(j))(i) = entry(M)(i,j)
+
+  coltest: LEMMA col(MEx)(1) = (: 2,4,0 :)
+
+  full_matrix_columns: LEMMA (null?(SM) AND columns(SM)=0) OR
+    columns(SM) = length(car(SM))
+
+  rows_mn: LEMMA FORALL (M:MatrixMN(m,n)): rows(M)=m
+
+  columns_mn: LEMMA FORALL (pm:posnat,n:nat,M:MatrixMN(pm,n)): columns(M)=n
+
+  length_row: LEMMA i<length(SM) IMPLIES length(row(SM)(i))=columns(SM)
+
+  length_col: LEMMA length(col(SM)(i))=rows(SM)
+
+  PosFullMatrix: TYPE = {SM|rows(SM)>0 AND columns(SM)>0}
+
+  Square: TYPE = {D:PosFullMatrix | rows(D) = columns(D)}
+
+  SQ,IQ,GQ: VAR Square
+
+  SquareMatrix(pn): TYPE = {SQ | rows(SQ)=pn}
+
+  PFM,D1,D2: VAR PosFullMatrix
+
+  columns_0_entry: LEMMA columns(M)=0 IMPLIES entry(M)(i,j)=0
+
+  rows_0_entry: LEMMA rows(M)=0 IMPLIES entry(M)(i,j)=0
+
+  entry_eq_0: LEMMA i>=rows(M) OR j>=columns(M) IMPLIES entry(M)(i,j)=0
+
+  % full_matrix_size: JUDGEMENT
+  %   SM HAS_TYPE MatrixMN(rows(SM),columns(SM))
+  
+  % Similarly for matrices, by assuming anything
+  % greater than the length is zero, we can do
+  % operations on vectors of different lengths
+
+  add(v1,v2): RECURSIVE VectorN(max(length(v1),length(v2))) =
+    IF null?(v1) THEN v2
+    ELSIF null?(v2) THEN v1
+    ELSE cons(car(v1)+car(v2),add(cdr(v1),cdr(v2))) ENDIF
+    MEASURE length(v1)+length(v2)
+
+  scal(r,v2): RECURSIVE VectorN(length(v2)) =
+    IF null?(v2) THEN v2
+    ELSE cons(r*car(v2),scal(r,cdr(v2))) ENDIF
+    MEASURE length(v2)
+
+  sub(v1,v2): VectorN(max(length(v1),length(v2))) =
+    add(v1,scal(-1,v2))
+
+  dot(v1,v2): RECURSIVE real =
+    IF null?(v1) OR null?(v2) THEN 0
+    ELSE car(v1)*car(v2)+dot(cdr(v1),cdr(v2)) ENDIF
+    MEASURE length(v1)+length(v2);
+
+  super_dot(v1,v2): RECURSIVE {rr:real|rr=dot(v1,v2)} =
+    IF null?(v1) OR null?(v2) THEN 0
+    ELSIF car(v1)=0 THEN dot(cdr(v1),cdr(v2))
+    ELSE car(v1)*car(v2)+dot(cdr(v1),cdr(v2)) ENDIF
+    MEASURE length(v1)+length(v2);
+
+  super_duper_dot(FF,GG:[nat->real],kz:nat): RECURSIVE real =
+    IF kz = 0 THEN (IF FF(0)=0 THEN 0 ELSE FF(0)*GG(0) ENDIF) 
+    ELSE super_duper_dot(FF,GG,kz-1)+(IF FF(kz)=0 THEN 0 ELSE FF(kz)*GG(kz) ENDIF)
+    ENDIF MEASURE kz;
+
+  +(v1,v2): VectorN(max(length(v1),length(v2))) = add(v1,v2);
+
+  *(r,v2): VectorN(length(v2)) = scal(r,v2);
+
+  -(v1,v2): VectorN(max(length(v1),length(v2))) = sub(v1,v2);
+
+  *(v1,v2): real = dot(v1,v2);
+
+  access_sum: LEMMA access(v1+v2)(i)=access(v1)(i)+access(v2)(i)
+
+  access_scal: LEMMA access(r*v)(i)=r*access(v)(i)
+
+  vect_scal_1: LEMMA 1*v = v
+
+  dot_eq_sigma: LEMMA
+    dot(v1,v2) = sigma(0,min(length(v1)-1,length(v2)-1),LAMBDA (k:nat):
+      access(v1)(k)*access(v2)(k))
+
+  dot_zero_right: LEMMA
+    v*zero(n)=0
+
+  dot_commutes: LEMMA v1*v2 = v2*v1
+
+  dot_zero_left: LEMMA
+    zero(n)*v=0
+
+  length_add_vect: LEMMA length(v1+v2)=max(length(v1),length(v2))
+
+  length_add_vect_same: LEMMA length(v1)=length(v2) IMPLIES
+    length(v1+v2) = length(v1)
+
+  length_scal_vect: LEMMA length(r*v1)=length(v1)
+
+
+  % Form a matrix from an array F:[[nat,nat]->real]
+
+  form_matrix(F:[[nat,nat]->real],m,n:nat):
+    {M:MatrixMN(m,n)| FORALL (i:below(m),j:below(n)):
+      nth(row(M)(i),j) = F(i,j)} =
+    array2list[listn[real](n)](m)(LAMBDA (k:nat): 
+      array2list[real](n)(LAMBDA (p:nat): F(k,p)))
+
+  columns_form_matrix: LEMMA FORALL (F:[[nat,nat]->real]):
+    m=0 OR columns(form_matrix(F,m,n)) = n
+
+  rows_form_matrix: LEMMA FORALL (F:[[nat,nat]->real]):
+    rows(form_matrix(F,m,n)) = m
+
+  form_matrix_empty: LEMMA FORALL (m, n: nat, F:[[nat, nat]->real]):
+        m=0  IMPLIES null?(form_matrix(F, m, n)) 
+
+  FEx(i,j:nat): real =
+  		IF i=0 THEN (IF j=0 THEN 1 ELSIF j=1 THEN 2 ELSE 0 ENDIF)
+  		ELSIF i=1 THEN IF j=0 THEN 3 ELSIF j=1 THEN 4 ELSE 5 ENDIF
+  		ELSIF i=2 AND j=0 THEN 6 ELSE 0 ENDIF
+
+  form_matrix_test1: LEMMA form_matrix(FEx,3,3) =  
+    (: (: 1, 2, 0 :), (: 3, 4, 5 :), (: 6, 0, 0 :) :)
+
+  full_matrix_eq: LEMMA
+    SM1=SM2 IFF (rows(SM1)=rows(SM2) AND columns(SM1)=columns(SM2)
+      AND FORALL (i:below(rows(SM1)),j:below(columns(SM1))):
+      	    entry(SM1)(i,j)=entry(SM2)(i,j))
+
+  matrix2array: LEMMA
+    SM = form_matrix(entry(SM),rows(SM),columns(SM))
+
+  entry_form_matrix: LEMMA
+    entry(form_matrix(F,m,n))(i,j) = 
+      IF i<m AND j<n THEN F(i,j) ELSE 0 ENDIF
+
+  entry_form_matrix2: LEMMA
+    i<m AND j<n IMPLIES
+    entry(form_matrix(F,m,n))(i,j) = F(i,j)
+
+  form_matrix_eq: LEMMA
+    form_matrix(F,m,n)=form_matrix(G,m,n) IFF
+    FORALL (i,j): i<m AND j<n IMPLIES F(i,j)=G(i,j)
+
+  matrix_reduce_prop: LEMMA FORALL (P:[Matrix->bool]):
+    (FORALL (F): P(form_matrix(F,m,n))) IMPLIES
+    (FORALL (M:MatrixMN(m,n)): P(M))
+
+  % matrix_reduce_prop2: LEMMA FORALL (P:[[Matrix,Matrix]->bool]):
+  %   (FORALL (F,G): P(form_matrix(F,m,n),form_matrix(G,k,n))) IMPLIES
+  %   (FORALL (M:MatrixMN(m,n)): P(M))
+
+  % Matrix Multiplication
+
+  mult(M,N): {A: MatrixMN(rows(M),columns(N))|
+    FORALL (i,j): entry(A)(i,j) = row(M)(i)*col(N)(j)}  =
+    form_matrix(LAMBDA (i,j:nat): dot(row(M)(i),col(N)(j)),rows(M),columns(N));
+
+  *(M,N): {A: MatrixMN(rows(M),columns(N))|
+    FORALL (i,j): entry(A)(i,j) = row(M)(i)*col(N)(j)} = mult(M,N);
+
+  mult_full: JUDGEMENT
+    *(M,N) HAS_TYPE FullMatrix
+
+  mult_null_left: LEMMA
+    null[list[real]]*M = null[list[real]]
+
+  mult_null_right: LEMMA
+    LET N = M*null[list[real]] IN
+      length(N) = length(M) AND
+       FORALL (i:below(length(N))): nth(N,i)=null[real]
+
+  columns_mult: LEMMA (NOT null?(M)) IMPLIES
+    columns(M*N) = columns(N)
+
+  rows_mult: LEMMA
+    rows(M*N) = rows(M)
+
+  columns_append: LEMMA
+    columns(append(M,N)) = max(columns(M),columns(N))
+
+  append_mult: LEMMA (NOT null?(M)) IMPLIES
+    append(M,N)*A=append(M*A,N*A)
+
+  matrix_mult_assoc: LEMMA (NOT null?(N)) IMPLIES
+    (M*N)*A = M*(N*A)
+
+  entry_mult: LEMMA
+    entry(M*N)(i,j) = IF i<rows(M) AND j<columns(N) THEN
+      row(M)(i)*col(N)(j) ELSE 0 ENDIF
+
+  form_matrix_mult: LEMMA 
+    FORALL (F,G:[[nat,nat]->real],k,m,n:nat):
+      m>0 AND k>0 IMPLIES
+      form_matrix(F,k,m)*form_matrix(G,m,n) =
+      form_matrix(LAMBDA (i,j:nat): IF i>k OR j>n THEN 0
+      			 ELSE sigma(0,m-1,LAMBDA (d:nat): F(i,d)*G(d,j)) ENDIF,k,n)
+
+  % Matrix Addition
+
+  add(M,N): {A: MatrixMN(max(rows(M),rows(N)),max(columns(M),columns(N)))|
+    FORALL (i,j): entry(A)(i,j) = entry(M)(i,j)+entry(N)(i,j)}  =
+    form_matrix(LAMBDA (i,j:nat): entry(M)(i,j)+entry(N)(i,j),
+      max(rows(M),rows(N)),max(columns(M),columns(N)));
+
+  +(M,N): {A: MatrixMN(max(rows(M),rows(N)),max(columns(M),columns(N)))|
+    FORALL (i,j): entry(A)(i,j) = entry(M)(i,j)+entry(N)(i,j)} =
+      add(M,N);
+
+  columns_add: LEMMA
+    columns(M+N) = max(columns(M),columns(N))
+
+  rows_add: LEMMA
+    rows(M+N) = max(rows(M),rows(N))
+
+  matrix_add_assoc: LEMMA
+    (M+N)+A = M+(N+A)
+
+  matrix_add_comm: LEMMA 
+     M+N = N+M
+
+  scal(r,M): {A: MatrixMN(rows(M),columns(M))|
+    FORALL (i,j): entry(A)(i,j) = r*entry(M)(i,j)}  =
+    form_matrix(LAMBDA (i,j:nat): r*entry(M)(i,j),
+      rows(M),columns(M));
+
+  *(r,M): {A: MatrixMN(rows(M),columns(M))|
+    FORALL (i,j): entry(A)(i,j) = r*entry(M)(i,j)}  =
+    scal(r,M);
+
+  columns_scal: LEMMA columns(r*M)=columns(M)
+
+  rows_scal: LEMMA rows(r*M)=rows(M)
+
+  sub(M,N): {A: MatrixMN(max(rows(M),rows(N)),max(columns(M),columns(N)))|
+    FORALL (i,j): entry(A)(i,j) = entry(M)(i,j)-entry(N)(i,j)}  =
+    M+(-1)*N;
+
+  -(M,N): {A: MatrixMN(max(rows(M),rows(N)),max(columns(M),columns(N)))|
+    FORALL (i,j): entry(A)(i,j) = entry(M)(i,j)-entry(N)(i,j)}  =
+    sub(M,N);
+      
+  rows_sub: LEMMA rows(M-N)=max(rows(M),rows(N))
+
+  columns_sub: LEMMA columns(M-N)=max(columns(M),columns(N))
+
+  matrix_sub_test: LEMMA
+    (: (: 1,2,3 :), (: 4,5,6 :), (: 7,8,9 :) :)-
+    (: (: 9,8,7 :), (: 6,5,4 :), (: 3,2,1 :) :) =
+    (: (: -8,-6,-4 :), (: -2,0,2 :), (: 4,6,8 :) :)
+
+  % Identity Matrix
+
+  Id(pm): {M: SquareMatrix(pm) |
+    (FORALL (i,j): entry(M)(i,j) =
+      IF i<pm AND i=j THEN 1 ELSE 0 ENDIF) AND
+    (FORALL (pn:posnat,N:MatrixMN(pm,pn)): M*N = N) AND
+    (FORALL (pn:posnat,N:MatrixMN(pn,pm)): N*M = N)} =
+    form_matrix(LAMBDA (i,j:nat): IF i=j THEN 1 ELSE 0 ENDIF,pm,pm)
+
+  mult_Id_left: LEMMA rows(D1) = pm IMPLIES Id(pm)*D1 = D1
+
+  mult_Id_right: LEMMA columns(D1) = pm IMPLIES D1*Id(pm) = D1
+
+  rows_Id: LEMMA rows(Id(pm)) = pm
+
+  columns_Id: LEMMA columns(Id(pm)) = pm
+
+  entry_Id: LEMMA entry(Id(pm))(i,j) =
+    IF i>=pm OR j>=pm OR i/=j THEN 0 ELSE 1 ENDIF
+
+  transpose(PFM): PosFullMatrix =
+    form_matrix(LAMBDA (i,j:nat): entry(PFM)(j,i),columns(PFM),rows(PFM))
+
+  rows_transpose: LEMMA rows(transpose(PFM))=columns(PFM)
+
+  columns_transpose: LEMMA columns(transpose(PFM))=rows(PFM)
+
+  entry_transpose: LEMMA entry(transpose(PFM))(i,j)=entry(PFM)(j,i)
+
+  transpose_transpose: LEMMA transpose(transpose(PFM))=PFM
+
+  transpose_mult: LEMMA columns(D1)=rows(D2) IMPLIES
+    transpose(D1*D2)=transpose(D2)*transpose(D1)
+
+  form_matrix_square: JUDGEMENT
+    form_matrix(F,i,j) HAS_TYPE FullMatrix
+
+  transpose_Id: LEMMA transpose(Id(pm))=Id(pm)
+
+  vect2matrix(v|length(v)>0): {PFM | rows(PFM)=1 AND columns(PFM)=length(v)} =
+    form_matrix(LAMBDA (i,j): IF i=0 THEN access(v)(j) ELSE 0 ENDIF,1,length(v))
+
+  vect2matrix_eq: LEMMA length(v1)>0 AND length(v2)>0 AND
+    vect2matrix(v1)=vect2matrix(v2) IMPLIES
+    v1=v2
+
+END matrices

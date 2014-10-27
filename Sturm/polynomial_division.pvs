@@ -1,0 +1,48 @@
+polynomial_division: THEORY
+BEGIN
+
+  IMPORTING reals@polynomials,structures@array2list[real]
+
+  g,h,qu,rm: VAR [nat->real]
+  n,m,lastnonzero,i: VAR nat
+
+  DivType : TYPE = [# quot: [nat->real],qdeg:nat,
+  		      rem : [nat->real],rdeg :nat #]
+
+  make_divtype(qu,n,rm,m): DivType = (# quot:=qu,qdeg:=n,rem:=rm,rdeg:=m #)
+
+  poly_divide(g,n)(h,(m|h(m)/=0))(i): RECURSIVE DivType =
+    IF m>n OR i>n-m THEN make_divtype(LAMBDA (j:nat): 0,0,g,n)
+    ELSIF m = 0 THEN make_divtype((1/h(m))*g,n-m,LAMBDA (j:nat): 0,0)
+    ELSE
+      LET ldt = IF i=n-m THEN make_divtype(LAMBDA (j:nat): 0,n-m,g,n)
+    	          ELSE poly_divide(g,n)(h,m)(i+1) ENDIF,
+    	  thisterm = ldt`rem(ldt`rdeg)/h(m)
+      IN  make_divtype(ldt`quot WITH [(i):=thisterm],
+	               n-m,LAMBDA (j:nat):
+		       	     IF j>m+i THEN 0
+			     ELSIF j<i THEN ldt`rem(j)
+			     ELSE ldt`rem(j)-thisterm*h(j-i) ENDIF,m+i-1)
+    ENDIF
+    MEASURE max(n-m-i+1,0)
+
+  poly_divide_def: LEMMA
+    h(m)/=0 IMPLIES
+    LET pd = poly_divide(g,n)(h,m)(i) IN
+        FORALL (x:real):
+    	polynomial(g,n)(x) = 
+	  polynomial(pd`quot,pd`qdeg)(x)*polynomial(h,m)(x)
+	    + polynomial(pd`rem,pd`rdeg)(x)
+
+  poly_divide_struct: LEMMA h(m)/=0 IMPLIES
+    LET pd = poly_divide(g,n)(h,m)(0) IN
+        (m=0 AND pd`rdeg = 0 AND pd`rem = (LAMBDA (i:nat): 0))
+	OR
+	(m>0 AND pd`rdeg < m)
+
+  poly_divide_lengths: LEMMA h(m)/=0 IMPLIES
+    LET pd = poly_divide(g,n)(h,m)(i) IN
+    pd`qdeg = (IF i<=n-m THEN n-m ELSE 0 ENDIF) AND
+    pd`rdeg = (IF i>n-m THEN n ELSIF m=0 THEN 0 ELSE m+i-1 ENDIF)
+
+END polynomial_division

@@ -1,0 +1,226 @@
+branch_and_bound[ObjType, AnsType, DomainType, VarType: TYPE]: THEORY
+BEGIN
+
+  IMPORTING stack
+
+  %%%%%%% General Variables %%%%%%%
+
+  maxdepth : VAR nat
+  v        : VAR VarType
+  dir      : VAR bool
+
+  %%%%%%% Types %%%%%%%
+
+  % ObjType - Type of objects, e.g., Bernstein Polynomials, Interval expressions, Etc.
+  % AnsType - Output type, e.g. Minmax, Boxes, Minmaxes and Boxes, Etc.
+  % DomainType - Domain type, e.g., List of variable domains
+  % VarType - Type of variable representation, e.g., nat
+
+  % Output information: answer, maximum depth, and number of subidivisions
+  Output : TYPE = [#
+    ans    : AnsType,
+    exit   : bool,
+    depth  : nat,
+    splits : nat
+  #]
+
+  mk_out(ans:AnsType,exit:bool,depth,splits:nat): MACRO Output = (#
+    ans     := ans,
+    exit    := exit,
+    depth   := depth,
+    splits  := splits
+  #)
+
+  %%%%%%% Parameters to the Algorithm %%%%%%%
+  %------------------------%
+  AccType        : TYPE = Maybe[AnsType]
+  Simplifier     : TYPE = [ObjType -> ObjType] % translist(polylist(x))
+  DirVar         : TYPE = [bool,VarType]
+  DirVarStack    : TYPE = [# length : nat,
+                             stack  : {s:stack[DirVar] | length(s) = length}
+                          #]
+  LocalExitPred  : TYPE = [AnsType -> bool]  % localexit
+  ExitPred       : TYPE = [DirVarStack,AnsType,AnsType -> bool] % globalexit, prune 
+  Combiner       : TYPE = [VarType,AnsType,AnsType -> AnsType]  % combine
+  		     	   			   	        % The combine function needs to depend on the variable
+							        % since splitting in one of the box variables
+							        % needs to be handled differently than splitting
+							        % in one of the other variables
+  DirVarSelector : TYPE = [DirVarStack,AnsType,DomainType,ObjType -> DirVar] % R/L and Variable
+  SoundPred	 : TYPE = [DomainType,ObjType,AnsType -> bool]
+  Evaluator	 : TYPE = [DomainType,ObjType -> AnsType]       % E.g. computation of a minmax that is sound
+  Brancher	 : TYPE = [VarType,ObjType -> [ObjType,ObjType]]
+  SubdivDomain   : TYPE = [VarType,DomainType -> [DomainType,DomainType]]
+  DenormAns	 : TYPE = [DirVar,AnsType -> AnsType]  % E.g. translating an element of
+   		  	   	       		       % Minmax back to [0,1] from either
+						       % [0,1/2] or [1/2,1].
+  Accumulator    : TYPE = [AnsType,AnsType -> AnsType] % Accumulate information from one branch into the other.
+
+  %------------------------%
+  obj        : VAR ObjType
+  ans,
+  ans1,ans2  : VAR AnsType
+  acc        : VAR AccType
+  dom        : VAR DomainType
+  %------------------------%
+  simplify   : VAR Simplifier
+  le         : VAR LocalExitPred
+  ge         : VAR ExitPred
+  prune      : VAR ExitPred
+  select     : VAR DirVarSelector
+  sound      : VAR SoundPred
+  %------------------------%
+  evaluate   : VAR Evaluator
+  branch     : VAR Brancher
+  subdivide  : VAR SubdivDomain
+  denorm     : VAR DenormAns
+  combine    : VAR Combiner
+  dirvar     : VAR DirVar
+  dirvars    : VAR DirVarStack
+  accumulate : VAR Accumulator
+  %------------------------%
+
+  left(v)  : MACRO DirVar = (TRUE,v)
+  right(v) : MACRO DirVar = (FALSE,v)
+
+  %------------------------%
+
+  emptyDirVars : DirVarStack = (#
+    length := 0,
+    stack := null
+  #)
+
+  length_empty : LEMMA
+    length(emptyDirVars) = 0
+
+  AUTO_REWRITE+ length_empty
+
+  empty?(dirvars) : bool = length(dirvars) = 0
+  nonempty?(dirvars) : bool = length(dirvars) > 0
+
+  topDirVar(dirvars:(nonempty?)) : DirVar = val(top(stack(dirvars)))
+
+  pushDirVar(dirvar,dirvars) : (nonempty?) = (#
+    length := dirvars`length+1,
+    stack  := push(dirvar,stack(dirvars))
+  #)
+
+  popDirVar(dirvars) : DirVarStack = 
+    IF length(dirvars) = 0 THEN dirvars
+    ELSE 
+      (# length := dirvars`length - 1,
+         stack  := pop(stack(dirvars))
+      #)
+   ENDIF
+
+  %%%%%%% Predicates %%%%%%%
+
+  branch_simplify?(branch,simplify): bool =
+    FORALL (v,obj): branch(v,simplify(obj)) = (simplify(branch(v,obj)`1),simplify(branch(v,obj)`2))
+
+  simplify_invariant?(sound,simplify): bool =
+    FORALL (dom,obj,ans): sound(dom,obj,ans) IFF sound(dom,simplify(obj),ans)
+
+  evaluate_simplify?(evaluate,simplify): bool =
+    FORALL (dom,obj): evaluate(dom,obj) = evaluate(dom,simplify(obj))
+
+  accomodates?(sound,evaluate): bool =
+    FORALL (dom,obj): sound(dom,obj,evaluate(dom,obj))
+
+  sound_dir(sddom:[DomainType,DomainType],sdobj:[ObjType,ObjType],dir,sound,ans) : bool =
+    IF dir THEN sound(sddom`1,sdobj`1,ans) ELSE sound(sddom`2,sdobj`2,ans) ENDIF 
+
+  subdiv_presound?(sound,subdivide,branch,denorm,combine): bool = 
+    FORALL (v,dom,obj,dir,ans,ans1):
+      LET sddom = subdivide(v,dom), sdobj = branch(v,obj) IN
+      sound(dom,obj,ans) AND sound_dir(sddom,sdobj,dir,sound,ans1) IMPLIES
+      sound(dom,obj,combine(v,denorm((dir,v),ans1),ans))
+
+  subdiv_sound?(sound,subdivide,branch,denorm,combine): bool = 
+    FORALL (v,dom,obj,ans1,ans2):
+    LET sddom = subdivide(v,dom), sdobj = branch(v,obj) IN
+        sound(sddom`1,sdobj`1,ans1) AND sound(sddom`2,sdobj`2,ans2) 
+	IMPLIES sound(dom,obj,combine(v,denorm(left(v),ans1),denorm(right(v),ans2)))
+
+  %%%%%%% The Algorithm %%%%%%%
+
+  branch_and_bound(simplify,evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth)
+                  (obj,dom,acc,(dirvars|length(dirvars) <= maxdepth)) : 
+    RECURSIVE Output = 
+    LET  nobj    = simplify(obj),
+	 thisans = evaluate(dom,nobj),
+	 newacc1 = IF none?(acc) THEN thisans ELSE accumulate(val(acc),thisans) ENDIF,
+         thisout = mk_out(thisans,ge(dirvars,newacc1,thisans),length(dirvars),0)
+     IN
+      IF length(dirvars)=maxdepth OR le(thisans) OR thisout`exit OR prune(dirvars,newacc1,thisans) THEN
+         thisout
+      ELSE
+         LET
+	   (dir,v)     = select(dirvars,newacc1,dom,nobj),
+	   funsplit    = branch(v,nobj),
+	   domsplit    = subdivide(v,dom),
+	   (sp1,sp2)   = IF dir THEN (funsplit`1,funsplit`2) ELSE (funsplit`2,funsplit`1) ENDIF,
+	   (dom1,dom2) = IF dir THEN (domsplit`1,domsplit`2) ELSE (domsplit`2,domsplit`1) ENDIF,
+	   firstout    = branch_and_bound(simplify,evaluate,branch,subdivide,denorm,combine,
+                                          prune,le,ge,select,accumulate,maxdepth)
+				         (sp1,dom1,newacc1,pushDirVar((dir,v),dirvars))
+	 IN
+	   IF firstout`exit THEN
+	     mk_out(combine(v,denorm((dir,v),firstout`ans),thisans),
+                    TRUE,firstout`depth,firstout`splits+1)
+	   ELSE
+	     LET
+	       newacc2    = accumulate(newacc1,firstout`ans),
+	       secondout  = branch_and_bound(simplify,evaluate,branch,subdivide,denorm,combine,
+                                             prune,le,ge,select,accumulate,maxdepth)
+			                    (sp2,dom2,newacc2,pushDirVar((NOT dir,v),dirvars)),
+	       (real1,real2) = IF dir THEN (firstout,secondout) ELSE (secondout,firstout) ENDIF
+	     IN
+	       mk_out(combine(v,denorm(left(v),real1`ans),denorm(right(v),real2`ans)),
+                      secondout`exit,
+                      max(firstout`depth,secondout`depth),
+                      firstout`splits+secondout`splits+1)
+	   ENDIF
+      ENDIF
+    MEASURE maxdepth-length(dirvars)
+
+  branch_and_bound_sound : THEOREM 
+    FORALL(sound,simplify,evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth):
+        accomodates?(sound,evaluate) AND
+        simplify_invariant?(sound,simplify) AND
+        evaluate_simplify?(evaluate,simplify) AND
+        subdiv_presound?(sound,subdivide,branch,denorm,combine) AND
+        subdiv_sound?(sound,subdivide,branch,denorm,combine) AND
+        branch_simplify?(branch,simplify) IMPLIES
+      FORALL (obj,dom,acc,dirvars):
+        length(dirvars) <= maxdepth IMPLIES
+        LET bandb = branch_and_bound(simplify,evaluate,branch,subdivide,denorm,combine,
+                                     prune,le,ge,select,accumulate,maxdepth)
+                                    (obj,dom,acc,dirvars)
+        IN sound(dom,obj,bandb`ans)
+
+  b_and_b(simplify,evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth,obj,dom) : Output =
+    branch_and_bound(simplify,evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth)
+                    (obj,dom,None,emptyDirVars)
+
+  b_and_b_sound : THEOREM 
+    accomodates?(sound,evaluate) AND
+    simplify_invariant?(sound,simplify) AND
+    evaluate_simplify?(evaluate,simplify) AND
+    subdiv_presound?(sound,subdivide,branch,denorm,combine) AND
+    subdiv_sound?(sound,subdivide,branch,denorm,combine) AND
+    branch_simplify?(branch,simplify) IMPLIES
+      sound(dom,obj,b_and_b(simplify,evaluate,branch,subdivide,denorm,combine,
+                            prune,le,ge,select,accumulate,maxdepth,obj,dom)`ans)
+
+  b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth,obj,dom) : Output =
+    b_and_b(LAMBDA (obj):obj,evaluate,branch,subdivide,denorm,combine,prune,le,ge,select,accumulate,maxdepth,obj,dom)
+
+  b_and_b_id_sound : THEOREM 
+    accomodates?(sound,evaluate) AND
+    subdiv_presound?(sound,subdivide,branch,denorm,combine) AND
+    subdiv_sound?(sound,subdivide,branch,denorm,combine) IMPLIES
+      sound(dom,obj,b_and_b_id(evaluate,branch,subdivide,denorm,combine,
+                               prune,le,ge,select,accumulate,maxdepth,obj,dom)`ans)
+
+END branch_and_bound

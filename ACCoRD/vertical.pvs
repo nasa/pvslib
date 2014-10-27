@@ -1,0 +1,249 @@
+%------------------------------------------------------------------------------
+% vertical.pvs
+% ACCoRD v1.0
+%
+% This theory provides definitions for vertical separation and conflict.
+%
+% It also provides solutions to the times when a velocity vector
+% intersects the rectangular protected zone. Given a current position s,
+% a vector v intersects the rectangle of base 2D and height 2H at times
+% Theta_H's that solutions to the equation:
+%  sz + t*vz = +/ H
+%------------------------------------------------------------------------------
+
+vertical[H: posreal] : THEORY
+BEGIN
+
+  IMPORTING reals@sq,
+            reals@sign,
+  	    reals@abs_lems,
+            definitions,
+	    vertical_dist_convexity[H]
+
+  sz,vz,t,
+  voz,viz : VAR real
+  nzvz    : VAR nzreal
+  eps,dir : VAR Sign
+  nzt     : VAR nzreal
+  pt      : VAR posreal
+  b	  : VAR nnreal
+
+  %% Vertical separation at current time
+
+  vertical_sep?(sz): MACRO bool = 
+    abs(sz) >= H
+
+  vertical_sep_at?(sz,vz,t): MACRO bool =
+    vertical_sep?(sz+t*vz)
+
+  % Strict vertical separation
+
+  strict_vertical_sep?(sz): MACRO bool = 
+    abs(sz) > H
+
+  Spz : TYPE = (vertical_sep?)
+
+  spz : VAR Spz
+
+  nz_spz : JUDGEMENT
+    Spz SUBTYPE_OF nzreal
+
+  neg_spz : JUDGEMENT
+    -(spz) HAS_TYPE Spz
+
+  on_H?(sz): MACRO bool = 
+    abs(sz) = H
+
+  on_signed_H?(sz,eps) : MACRO bool =
+    sz = eps*H
+
+  on_signed_H : LEMMA
+    on_signed_H?(sz,eps) IMPLIES
+    on_H?(sz)
+
+  %% Vertical separation in the direction given by eps (-1=before,1=after)
+  vertical_sep_dir?(sz,vz,eps): MACRO bool =
+    FORALL(t:real): eps*t >= 0 IMPLIES vertical_sep_at?(sz,vz,t)
+
+  %% Vertical loss of separation
+  vertical_los?(sz): MACRO bool = 
+    abs(sz) < H
+
+  vertical_los_at?(sz,vz,t): MACRO bool =
+    vertical_los?(sz+t*vz)
+
+  %% Vertical conflict for infinite look-ahead time
+  vertical_conflict?(sz,vz):bool =
+    EXISTS (nnt:nnreal) : vertical_los_at?(sz,vz,nnt)
+
+  vertical_conflict_neg : LEMMA
+    vertical_conflict?(-sz,-vz) IMPLIES vertical_conflict?(sz,vz)
+
+  vertical_conflict_symm : LEMMA
+    vertical_conflict?(-sz,-vz) IFF vertical_conflict?(sz,vz)
+
+  Theta_H(sz,nzvz,eps) : real =
+   (eps*sign(nzvz)*H-sz)/nzvz
+
+  Theta_H_symm : LEMMA
+    Theta_H(-sz,-nzvz,eps) = Theta_H(sz,nzvz,eps) 
+
+  Theta_H_lt : LEMMA
+    Theta_H(sz,nzvz,Entry) < Theta_H(sz,nzvz,Exit)
+  
+  Theta_H_on_H : LEMMA
+     LET t = Theta_H(sz,nzvz,eps) IN
+      on_H?(sz+t*nzvz)
+
+  Theta_H_eq_0 : LEMMA
+    on_H?(sz) AND
+    vertical_entry?(sz,nzvz)
+    IMPLIES
+    Theta_H(sz,nzvz,Entry) = 0
+
+  Theta_H_ge_0 : LEMMA 
+    vertical_entry?(spz,nzvz)
+    IMPLIES 
+      Theta_H(spz,nzvz,Entry) >= 0
+
+  Theta_H_exit_gt_0 : LEMMA
+    H > sign(nzvz)*sz IFF
+    Theta_H(sz,nzvz,Exit) > 0
+
+  Theta_H_unique_eps: LEMMA 
+   on_H?(sz+t*nzvz) 
+   IFF EXISTS (eps): t = Theta_H(sz,nzvz,eps)
+
+  Theta_H_unique: LEMMA 
+   on_H?(sz+t*nzvz) 
+   IFF t = Theta_H(sz,nzvz,Entry) OR t = Theta_H(sz,nzvz,Exit) 
+
+  vertical_los_entry : LEMMA
+    vertical_los?(sz) OR vertical_entry?(sz,nzvz)
+    IFF
+    H > sign(nzvz)*sz 
+
+  Theta_H_entry_lt_t : LEMMA
+    -H < sign(nzvz)*(sz+t*nzvz) IFF
+    Theta_H(sz,nzvz,Entry) < t
+
+  vertical_conflict : LEMMA
+    vertical_conflict?(sz,nzvz) IFF
+    vertical_los?(sz) OR vertical_entry?(sz,nzvz)
+
+  vertical_los_inside_Theta : LEMMA
+    t > Theta_H(sz,nzvz,Entry) AND  
+    t < Theta_H(sz,nzvz,Exit) IFF
+    vertical_los?(sz+t*nzvz)       
+
+ vertical_sep_outside_Theta: LEMMA
+    t < Theta_H(sz,nzvz,Entry) OR
+    t > Theta_H(sz,nzvz,Exit) IFF
+    abs(sz + t*nzvz) > H
+
+  Theta_H_vertical_dir: LEMMA
+    vertical_dir_at?(sz,nzvz,Theta_H(sz,nzvz,eps),eps)
+
+  vertical_tau_entry_exit : LEMMA
+    vertical_tau(sz,nzvz) > Theta_H(sz,nzvz,Entry) AND 
+    vertical_tau(sz,nzvz) < Theta_H(sz,nzvz,Exit) 
+
+  vertical_tau_midpoint : LEMMA
+    vertical_tau(sz,nzvz) = (Theta_H(sz,nzvz,Entry)+Theta_H(sz,nzvz,Exit))/2
+
+  vertical_tau_pos : LEMMA
+    vertical_entry?(spz,nzvz)
+    IMPLIES 
+      vertical_tau(spz,nzvz) > 0
+
+  % eps = +1   -- Top circle of protected zone
+  % eps = -1   -- Bottom circle protected zone
+
+  vs_at(sz,nzt,eps) : real =
+     (eps*H - sz)/nzt
+
+  vs_at_neg : LEMMA 
+    vs_at(-sz,nzt,-eps) = -vs_at(sz,nzt,eps)
+
+  vs_at_H: LEMMA
+    sz + nzt*vs_at(sz,nzt,eps) = eps*H
+
+  vs_at_complete : LEMMA
+    sz + nzt*vz = eps*H IMPLIES
+    vz = vs_at(sz,nzt,eps)
+
+  vertical_sep_dir: LEMMA
+    vertical_dir?(spz,vz,dir) IFF vertical_sep_dir?(spz,vz,dir)
+
+  vertical_sep_at_sign: LEMMA
+    vertical_dir?(spz,vz,dir) AND
+    dir*t >= 0
+    IMPLIES
+      vertical_sep?(spz+t*vz) AND 
+      sign(spz)=sign(spz+t*vz)
+
+  vertical_solution?(sz,vz,t,dir): bool = 
+    on_H?(sz+t*vz) AND vertical_dir_at?(sz,vz,t,dir) 
+
+  vertical_solution_vertical_sep : LEMMA
+    vertical_solution?(sz,vz,t,Entry) IMPLIES
+    FORALL (tt:real) : tt <= t IMPLIES vertical_sep_at?(sz,vz,tt) 
+
+  vertical_solution_strict_vertical_sep : LEMMA
+    vertical_solution?(sz,nzvz,t,Entry) IMPLIES
+    FORALL (tt:real) : tt < t IMPLIES strict_vertical_sep?(sz+tt*nzvz)
+
+  Theta_H_vertical_solution: LEMMA
+    vertical_solution?(sz,nzvz,Theta_H(sz,nzvz,eps),eps)
+
+  vertical_solution_Theta_H : LEMMA
+    vertical_solution?(sz,nzvz,t,dir) IMPLIES
+    t = Theta_H(sz,nzvz,dir) 
+  
+  vs_at_complete_vertical_solution : LEMMA
+    vertical_solution?(sz,vz,pt,Entry) IMPLIES
+    vz = vs_at(sz,pt,sign(sz))
+
+  vs_at_complete_dir: LEMMA
+    vertical_solution?(sz,vz,pt,dir) IMPLIES
+    EXISTS (eps: Sign): vz = vs_at(sz,pt,eps)
+
+  vertical_solution_exit : LEMMA
+    vertical_solution?(sz,nzvz,pt,Exit) IMPLIES
+    sign(sz+pt*nzvz)*sz < H
+
+  % vs_circle_at - An algorithm that computes critical points for 1 dimensional
+  % vertical speed bands
+
+  vs_circle_at(sz,viz,pt,eps,dir): [bool,real] =
+    (pt > 0 AND dir*eps*sz <= dir*H,vs_at(sz,pt,eps) + viz)
+
+  vs_circle_at_direction: LEMMA
+    LET cpv = vs_circle_at(sz,viz,pt,eps,dir) IN
+    cpv`1 IMPLIES vertical_dir_at?(sz,cpv`2-viz,pt,dir)
+
+  vs_circle_at?(sz,viz,b,t)(voz): bool =
+    b < t AND
+    ((abs(sz) < H AND b > 0 AND 
+    		(vs_circle_at(sz,viz,b,-1,1)`1 AND 
+                 voz = vs_circle_at(sz,viz,b,-1,1)`2 OR
+		 vs_circle_at(sz,viz,b,1,1)`1 AND 
+                 voz = vs_circle_at(sz,viz,b,1,1)`2)) OR
+    (abs(sz) >= H AND b > 0 AND 
+      vs_circle_at(sz,viz,b,-sign(sz),1)`1 AND 
+      voz = vs_circle_at(sz,viz,b,-sign(sz),1)`2) OR
+    (abs(sz) >= H AND t > 0 AND 
+      vs_circle_at(sz,viz,t,sign(sz),-1)`1 AND  
+      voz = vs_circle_at(sz,viz,t,sign(sz),-1)`2))
+
+  vs_circle_at_complete: LEMMA
+    b < t AND
+    ((EXISTS (eps: Sign): vz = vs_at(sz,t,eps) + viz AND 
+     vertical_dir_at?(sz,vz-viz,t,-1)) OR
+     (b > 0 AND 
+      EXISTS (eps: Sign): vz = vs_at(sz,b,eps) + viz AND 
+      vertical_dir_at?(sz,vz-viz,b,1)))
+    IMPLIES
+    vs_circle_at?(sz,viz,b,t)(vz)
+
+END vertical

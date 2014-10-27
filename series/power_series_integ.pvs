@@ -1,0 +1,115 @@
+power_series_integ[T: TYPE+ from real]: THEORY
+%----------------------------------------------------------------------------
+%
+% Term by term integration of power series:
+%
+%  		                      n
+%		                    ----
+%  series(integ_powerseq(a, x)) =   \     a(k)*x^(k+1)/k+1
+%		                    /
+%		                    ----
+%		                    k = 0
+%
+%
+% The intention here is that one passes in the domain of convergence [T]
+% of the power series.  This will either be all of the reals or {x| -R < x < R}
+% where R is the range of convergence.  Most of the lemmas assume
+% convergence of the power series a: conv_powerseries?(a) =
+%     (FORALL (x: T): convergent?(powerseries(a)(x))) 
+%
+%
+% Author: Ricky W. Butler        10/2/04
+%
+% NOTES
+%  * Prelude restrictions on ^ [i.e. ^(r: real, i:{i:int | r /= 0 OR i >= 0}]
+%    lead to IF-THEN-ELSE on definition of "integ_powerseq"
+%  * The alternate form: integseq(a): (LAMBDA (k: nat): (k+1)*a(k+1))avoids
+%    the difficulty by shifting (i.e. starting with 2nd term)
+%  * These are shown to be equivalent in lemma "eriv_series_shift"
+%
+%  Author: Ricky W. Butler                NASA Langley Research Center
+%----------------------------------------------------------------------------
+BEGIN
+ 
+   ASSUMING  %% T is either "real" or a open ball of radius R about 0
+     IMPORTING analysis@deriv_domain_def
+
+    connected_domain : ASSUMPTION connected?[T]
+
+    not_one_element  : ASSUMPTION not_one_element?[T]
+
+    open            : ASSUMPTION 
+         FORALL (x : T) : EXISTS (delta : posreal): FORALL (y: real):
+                            abs(x-y) < delta IMPLIES T_pred(y) 
+
+
+    ball: ASSUMPTION FORALL (x: T): T_pred(x) IMPLIES T_pred(-x)
+
+   ENDASSUMING
+
+  
+   x,xp, x0: VAR T
+   k,n: VAR nat
+   a: VAR sequence[real]
+   t: VAR real
+
+   epsilon: VAR posreal
+
+
+%  Integative of a infinite power series is the term-by-term integative
+
+   IMPORTING analysis@deriv_domain_def
+
+   deriv_domain: LEMMA deriv_domain?[T]
+
+   IMPORTING power_series_conv[T], analysis@derivatives, analysis@taylors
+
+   integseq(a): sequence[real] = (LAMBDA (k: nat): IF k = 0 THEN 0
+                                                   ELSE a(k-1)/k ENDIF)
+
+
+   integ_powerseq(a,x): sequence[real] = (LAMBDA k:  a(k)*x^(k+1)/(k+1))
+                                             
+
+
+%  -------- term by term integration is  convergent ------------------------
+
+
+
+   conv_integseq: LEMMA conv_powerseries?(a) IMPLIES % Salas Hille page 454
+                           conv_powerseries?[T](integseq(a))
+
+
+   integ_powerseries_conv: THEOREM    
+                          conv_powerseries?(a) IMPLIES
+              (FORALL (x: T): convergent?(series(integ_powerseq(a, x))))
+
+
+   integseq_lim_shift: LEMMA conv_powerseries?(a) IMPLIES
+                         (LAMBDA x: limit(series(powerseq(integseq(a), x)))) = 
+                         (LAMBDA x: limit(series(integ_powerseq(a, x))))
+
+
+   IMPORTING  power_series_deriv[T],
+              analysis@integral[T],
+              analysis@fundamental_theorem[T],
+              analysis@indefinite_integral[T]
+
+
+   powerseries_integrable?: LEMMA conv_powerseries?(a) IMPLIES
+                             integrable?[T](LAMBDA x: limit(powerseries(a)(x)))
+
+
+
+   powerseries_integral: THEOREM   conv_powerseries?(a) IMPLIES     
+       (
+          LET f = (LAMBDA x: limit(powerseries(a)(x))) IN         
+          LET g = (LAMBDA x: limit(series(integ_powerseq(a,x)))) IN 
+                   EXISTS (C: real): integral[T](f) = g + const_fun(C) )
+
+   integral_powerseries: THEOREM   T_pred(0) AND conv_powerseries?(a) IMPLIES 
+          LET f = (LAMBDA x: limit(powerseries(a)(x))) IN 
+              Integrable?(0,x,f) AND        
+              Integral(0,x,f) = limit(series(integ_powerseq(a,x)))
+
+END power_series_integ

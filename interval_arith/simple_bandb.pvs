@@ -1,0 +1,65 @@
+simple_bandb : THEORY
+BEGIN
+
+  IMPORTING safe_arith,
+            interval_expr,
+            structures@array2list[real],
+            structures@Maybe
+
+  IMPORTING structures@branch_and_bound[RealExpr,Interval,ProperBox,nat]
+
+  v         : VAR nat
+  maxdepth  : VAR nat
+  expr      : VAR RealExpr
+  box       : VAR ProperBox
+  dirvar    : VAR DirVar
+  dirvars   : VAR DirVarStack
+  ans,
+  ans1,ans2 : VAR Interval
+  acc       : VAR Interval
+
+  evaluate(box,expr) : Interval = Eval(expr,box)
+  branch(v,expr) : [RealExpr,RealExpr] = (expr,expr)
+  subdivide(v,box) : [ProperBox,ProperBox] = split(v,box)
+  denorm(dirvar,ans) : Interval = ans
+  combine(v,ans1,ans2) : Interval = Safe2(Union)(ans1,ans2)
+  accumulate(acc,ans) : Interval = combine(0,acc,ans)
+
+  prune(dirvars,acc,ans) : bool = false
+  le(ans) : bool = false
+  ge(dirvars,acc,ans) : bool = EmptyInterval?(ans)
+
+  altvar(dirvars,acc,box,expr) : DirVar =
+    IF null?(box) THEN 
+      (FALSE,0)
+    ELSE
+      (FALSE,mod(length(dirvars),length(box)))
+    ENDIF
+
+  simple_interval(maxdepth,expr,box) : Output =
+    b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune,
+               le,ge,altvar,accumulate,maxdepth,expr,box)
+
+  sound?(box,expr,ans) : bool = 
+    Proper?(ans) IMPLIES
+      FORALL (vs:(vars_in_box?(box))): eval(expr,vs,length(box)) ## ans
+
+  simple_interval_soundness : THEOREM
+    sound?(box,expr,simple_interval(maxdepth,expr,box)`ans)
+
+  %% As its name implies, the strategy simple-numerical used in the example 
+  %% below is a highly simplified version of the strategy called numerical.
+  %% This simpler version is included in this development for pedagogical reasons.
+
+  x : VAR real
+
+  simple_test : LEMMA
+    x ## [|0,1|] IMPLIES
+    x*(1-x) ## [| 0,0.251 |]
+
+%|- simple_test : PROOF
+%|- (then (skeep) (simple-numerical (! 1 1) :maxdepth 9))
+%|- QED
+
+
+END simple_bandb

@@ -1,0 +1,180 @@
+elementary_matrices: THEORY
+BEGIN
+ IMPORTING matrices, more_list_props %, dets
+ IMPORTING reals@product
+ M, N, P: VAR Matrix
+
+ zero_row?(M: Matrix, i: below(M`rows)): bool =
+   forall (j: below(M`cols)): M`matrix(i, j) = 0
+
+ zero_row?(M: Matrix)(i: below(M`rows)): bool =
+   forall (j: below(M`cols)): M`matrix(i, j) = 0
+
+ nonzero_row?(M: Matrix, i: below(M`rows)): bool =
+   exists (j: below(M`cols)): M`matrix(i, j) /= 0
+
+ nonzero_row?(M: Matrix)(i: below(M`rows)): bool =
+   exists (j: below(M`cols)): M`matrix(i, j) /= 0
+
+ zero_or_nonzero: lemma
+   forall (M: Matrix, i: below(M`rows)): zero_row?(M, i) or nonzero_row?(M, i)
+
+ zero_isnt_nonzero: lemma
+   forall (M: Matrix, i: below(M`rows)): zero_row?(M, i) => not nonzero_row?(M, i)
+
+ nonzero_isnt_zero: lemma
+   forall (M: Matrix, i: below(M`rows)): nonzero_row?(M, i) => not zero_row?(M, i)
+
+ %% Elementary matrices - three types
+
+ % Given E1: (elemM1?(M)(i, j)), E1 * M replaces the ith row X_i by X_i + a*X_j
+ elemM1?(M: Square)(i: below(M`rows), j: below(M`rows) | i /= j): bool =
+   FORALL (k, l: below(M`rows)):
+     if k = l then M`matrix(k, l) = 1
+     elsif (k, l) = (i, j) then true % arbitrary real
+     else M`matrix(k, l) = 0
+     endif
+
+ % Given E2: (elemM2?(M)(i, j)), E2 * M interchanges row i and row j
+ elemM2?(M: Square)(i: below(M`rows), j: below(M`rows) | i /= j): bool =
+   FORALL (k, l: below(M`rows)):
+     if k = l and k /= i and k /= j then M`matrix(k, l) = 1
+     elsif (k, l) = (i, j) or (k, l) = (j, i) then M`matrix(k, l) = 1
+     else M`matrix(k, l) = 0
+     endif
+
+ % Given E3: (elemM3?(M)(i)), E3 * M multiplies row i by nonzero scalar c
+ elemM3?(M: Square)(i: below(M`rows)): bool =
+   FORALL (k, l: below(M`rows)):
+     if k = l and k /= i then M`matrix(k, l) = 1
+     elsif (k, l) = (i, i) then M`matrix(k, l) /= 0
+     else M`matrix(k, l) = 0
+     endif
+
+ elemM1?(M: Square): bool =
+   EXISTS (i: below(M`rows), j: below(M`rows) | i /= j): elemM1?(M)(i, j)
+
+ elemM2?(M: Square): bool =
+   EXISTS (i: below(M`rows), j: below(M`rows) | i /= j): elemM2?(M)(i, j)
+
+ elemM3?(M: Square): bool =
+   EXISTS (i: below(M`rows)): elemM3?(M)(i)
+
+ elemM?(M: Square): bool = elemM1?(M) or elemM2?(M) or elemM3?(M)
+
+ ElemM1: TYPE = (elemM1?)
+ ElemM2: TYPE = (elemM2?)
+ ElemM3: TYPE = (elemM3?)
+ ElemM: TYPE = (elemM?)
+
+ elemMat1?(n: posnat)(M: SquareMat(n)): bool =
+   EXISTS (i: below(M`rows), j: below(M`rows) | i /= j): elemM1?(M)(i, j)
+
+ elemMat2?(n: posnat)(M: SquareMat(n)): bool =
+   EXISTS (i: below(M`rows), j: below(M`rows) | i /= j): elemM2?(M)(i, j)
+
+ elemMat3?(n: posnat)(M: SquareMat(n)): bool =
+   EXISTS (i: below(M`rows)): elemM3?(M)(i)
+
+ elemMat?(n: posnat)(M: SquareMat(n)): bool =
+   elemMat1?(n)(M) or elemMat2?(n)(M) or elemMat3?(n)(M)
+
+ ElemMat1(n: posnat): TYPE = (elemMat1?(n))
+ ElemMat2(n: posnat): TYPE = (elemMat2?(n))
+ ElemMat3(n: posnat): TYPE = (elemMat3?(n))
+ ElemMat(n: posnat): TYPE = (elemMat?(n))
+
+ elm1_judgement: judgement ElemMat1(n: posnat) subtype_of ElemM1
+ elm2_judgement: judgement ElemMat2(n: posnat) subtype_of ElemM2
+ elm3_judgement: judgement ElemMat3(n: posnat) subtype_of ElemM3
+ elm_judgement: judgement ElemMat(n: posnat) subtype_of ElemM
+
+ elemM1(n: posnat)(i: below(n), j: below(n) | i /= j)(a: real): ElemMat1(n) =
+   (# rows := n, cols := n,
+      matrix := lambda (k, l: below(n)):
+                  if k = l then 1
+                  elsif (k, l) = (i, j) then a
+                  else 0
+                  endif #)
+
+ elemM2(n: posnat)(i: below(n), j: below(n) | i /= j): ElemMat2(n) =
+   (# rows := n, cols := n,
+      matrix := lambda (k, l: below(n)):
+                  if k = l and k /= i and k /= j then 1
+                  elsif (k, l) = (i, j) or (k, l) = (j, i) then 1
+                  else 0
+                  endif #)
+
+ elemM3(n: posnat)(i: below(n))(c: nzreal): ElemMat3(n) =
+   (# rows := n, cols := n,
+      matrix := lambda (k, l: below(n)):
+                  if k = l
+                  then if k = i then c else 1 endif
+                  else 0
+                  endif #)
+
+ elemM1_invertible: lemma forall (M: ElemM1): invertible?(M)
+ elemM2_invertible: lemma forall (M: ElemM2): invertible?(M)
+ elemM3_invertible: lemma forall (M: ElemM3): invertible?(M)
+
+ % Given M, and rows i, j st i /= j, and real a
+ % ememM1 adds a * row(M, j) + row(M, i) to row(M, i)
+ elemM1_prop: lemma
+   forall (M: Matrix, i: below(M`rows), j: below(M`rows) | i /= j, a: real):
+   forall (k: below(M`rows)):
+     rowV(elemM1(M`rows)(i, j)(a) * M)(k) =
+        if k = i
+        then rowV(M)(i) + a * rowV(M)(j)
+        else rowV(M)(k)
+        endif
+
+ elemM2_prop: lemma forall (M: Matrix, i: below(M`rows), j: below(M`rows) | i /= j):
+   forall (k: below(M`rows)):
+     rowV(elemM2(M`rows)(i, j) * M)(k) =
+        if k = i then rowV(M)(j)
+        elsif k = j then rowV(M)(i)
+        else rowV(M)(k)
+        endif
+
+ elemM3_prop: lemma
+   forall (M: Matrix, i: below(M`rows), c: nzreal):
+   forall (k: below(M`rows)):
+     rowV(elemM3(M`rows)(i)(c) * M)(k) =
+        if k = i then c * rowV(M)(i)
+        else rowV(M)(k)
+        endif
+
+ % Elementary matrix products
+
+ elem_prod: lemma forall (M: Matrix, e: ElemMat(M`rows)):
+   same_dim?(e * M, M)
+
+ elem_product_left(M: Matrix, el: list[ElemMat(M`rows)]):
+        recursive Mat(M`rows, M`cols) =
+   if null?(el)
+   then M
+   else elem_product_left(car(el) * M, cdr(el))
+   endif
+  measure length(el)
+
+ % This is used to do induction - need to leave M free for inductive step,
+ % but this makes induction impossible, so we introduce n
+ elem_prod_append_aux: lemma
+   forall (n: posnat, M: Matrix | M`rows = n, el1, el2: list[ElemMat(n)]):
+     elem_product_left(elem_product_left(M, el1), el2)
+      = elem_product_left(M, append[Matrix](el1, el2))
+
+ % This is the useful lemma, can be proved from elem_prod_append_aux
+ elem_prod_append: lemma
+   forall (M: Matrix, el1, el2: list[ElemMat(M`rows)]):
+     elem_product_left(elem_product_left(M, el1), el2)
+      = elem_product_left(M, append[Matrix](el1, el2))
+
+ elem_prod_append1: lemma
+   forall (M: Matrix, M1: Matrix | same_dim?(M1, M),
+           e: ElemMat(M`rows), el: list[ElemMat(M`rows)]):
+     elem_product_left(M, el) = M1
+       => elem_product_left(M, append1[Matrix](el, e)) = e * M1
+
+
+END elementary_matrices

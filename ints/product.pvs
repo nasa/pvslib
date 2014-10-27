@@ -1,0 +1,190 @@
+product[T: TYPE FROM int]: THEORY
+%------------------------------------------------------------------------------
+% The products theory introduces and defines properties of the product
+% function that multiples an arbitrary function F: [T -> int] over a range
+% from low to high
+%
+%  		           high
+%		           ----
+%  product(low, high, F) = |  |  F(j)
+%		           |  |
+%		         j = low
+%
+%  AUTHORS:
+%
+%    Rick Butler     NASA Langley Research Center           
+%    Paul Miner      NASA Langley Research Center           
+%
+%------------------------------------------------------------------------------
+
+BEGIN
+
+  ASSUMING
+
+    connected_domain: ASSUMPTION (FORALL (x, y: T), (z: integer):
+                                       x <= z AND z <= y IMPLIES T_pred(z))
+
+  ENDASSUMING
+
+  T_low?: MACRO set[int] = {i:int | EXISTS (j:T): j <= i}
+  T_low  : TYPE = {i:int | T_pred(i) OR T_low?(i)}
+
+  T_high?: MACRO set[int] = {i:int | EXISTS (j:T): i <= j}
+  T_high : TYPE = {i:int | T_pred(i) OR T_high?(i)}
+
+  low       : VAR T_low
+  high      : VAR T_high 
+  l,h,n,m,i : VAR T
+  rng, nn   : VAR nat
+  pn        : VAR posnat
+  z         : VAR int
+  a,x       : VAR int
+  nzr       : VAR nzint
+
+  T_pred_lem : LEMMA low <= z AND z <= high IMPLIES T_pred(z)
+
+  high_low_rewrite: LEMMA
+   (FORALL (p: pred[[T_high, T_low]]):
+     (FORALL (high: T_high), (low: T_low):
+      IF high < low THEN p(high, low) 
+      ELSE (FORALL (n: subrange(low, high)): p(n, low))
+      ENDIF)
+    IMPLIES
+      (FORALL high, low:  p(high, low)))
+
+
+  F, G: VAR function[T -> int]
+
+   product(low, high, F): RECURSIVE int
+      = IF low > high THEN 1
+        ELSE  F(high)*product(low, high-1, F)
+        ENDIF                            
+   MEASURE (LAMBDA low, high, F: abs(high+1-low))
+
+
+  product_spl     : THEOREM T_pred(low + nn + rng) IMPLIES 
+                           product(low, low+nn+rng, F) = 
+                              product(low,low+nn,F) * product(low+nn+1,low+nn+rng,F)
+
+  product_split   : THEOREM low - 1 <= z AND z <= high IMPLIES 
+                            product(low, high, F) = 
+                                     product(low, z, F) * product(z+1, high, F)
+
+
+  product_div     : THEOREM low - 1 <= z AND z <= high AND product(low, z, F) /= 0 IMPLIES
+                    product(low, high, F) / product(low, z, F) = product(z+1, high, F)
+
+  product_div_neg : THEOREM low - 1 <= z AND z <= high AND 
+                            product(low, high, F) /= 0 AND product(z+1, high, F) /= 0 
+                       IMPLIES
+                           product(low, z, F) / product(low, high, F) = 1/product(z+1, high, F)
+ 		 
+  product_eq_arg  : THEOREM product(m, m, F) = F(m)
+
+
+  product_first   : THEOREM high >= low IMPLIES 
+                           product(low, high, F) = F(low) * product(low+1, high, F)
+
+  product_last    : THEOREM high >= low IMPLIES 
+                          product(low, high, F) = product(low, high-1, F) * F(high)
+
+  product_middle : THEOREM high >= i AND i >= low IMPLIES
+                          product(low, high, F) = product(low, i-1, F) * F(i) *
+                                                product(i+1, high, F) 
+
+  product_const   : THEOREM product(low, high, (LAMBDA i: nzr)) = 
+                           IF high >= low THEN nzr^(high-low+1) ELSE 1 ENDIF
+
+
+  product_zero    : THEOREM low <= high IMPLIES product(low, high, (LAMBDA i: 0)) = 0
+
+  product_scal    : THEOREM low <= high AND a /= 0 IMPLIES product(low, high, (LAMBDA i: a * F(i)))
+                             = a^(high-low+1) * product(low, high, F)
+                        
+%   B: VAR posint		 
+%   product_bound   : THEOREM low - 1 <= high AND
+%                          (FORALL i: i >= low AND i <= high IMPLIES 0 <= F(i) AND F(i) <= B)
+%                             IMPLIES product(low, high, F) <= B^(high-low+1) 
+
+
+  product_ge_0    : THEOREM (FORALL (n: subrange(low,high)): F(n) >= 0)
+                                IMPLIES product(low,high,F) >= 0
+
+  product_gt_0    : THEOREM (FORALL (n: subrange(low,high)): F(n) > 0)
+                                IMPLIES product(low,high,F) > 0
+
+
+  product_shift_T : THEOREM (FORALL (i:T): T_pred(i+z)) IMPLIES 
+			         product(low+z,high+z,F) = 
+                                    product(low,high, (LAMBDA (i:T): F(i+z)))
+
+  product_shift_T2 : THEOREM T_pred(low+z) AND T_pred(high+z) IMPLIES 
+ 			         product(low+z,high+z,F) = 
+                  product(low,high, (LAMBDA (i:T): IF T_pred(i+z) THEN F(i+z)
+                                                 ELSE 1 ENDIF))
+
+ 
+% ------------------ Summation Involving Two Functions ------------------
+
+  product_prod     : THEOREM product(low, high, F) * product(low, high, G)
+                             = product(low, high, (LAMBDA i: F(i) * G(i)))
+
+%   product_minus   : THEOREM (FORALL (i: int): T_pred(i) IMPLIES G(i) /= 0) IMPLIES
+%                              product(low, high, F) / product(low, high, G)
+%                              = product(low, high, (LAMBDA i: F(i) / G(i)))
+
+%   product_abs_bnd  : THEOREM (FORALL (i: subrange(low,high)): abs(F(i)) <= G(i))
+%                        IMPLIES product(low, high, LAMBDA (n: T): abs(F(n))) <=
+%                                         product(low, high, G)
+
+  restrict(F, low, high): function[T -> int] = 
+     (LAMBDA i: IF i < low OR i > high THEN 0 ELSE F(i) ENDIF )
+
+  product_restrict   : THEOREM l <= low AND h >= high IMPLIES	
+                            product(low,high,F) = product(low,high,restrict(F,l,h))
+
+
+  product_restrict_to: THEOREM product(low,high,F) = 
+                                product(low,high,restrict(F,low,high))
+
+  product_restrict_eq: THEOREM restrict(F,low,high) = restrict(G,low,high) 
+                                IMPLIES product(low,high,F) = product(low,high,G) 
+
+
+  product_eq         : THEOREM (FORALL (n: subrange(low,high)): F(n) = G(n))
+                                IMPLIES product(low,high,F) = product(low,high,G) 
+
+
+%   product_le         : THEOREM (FORALL (n: subrange(low,high)): 0 <= F(n) AND F(n) <= G(n))
+%                                 IMPLIES product(low,high,F) <= product(low,high,G) 
+
+%   product_lt         : THEOREM low <= high AND
+%                              (FORALL (n: subrange(low,high)): 0 <= F(n) AND F(n) < G(n))
+%                                 IMPLIES product(low,high,F) < product(low,high,G) 
+
+
+  product_with         : THEOREM low <= i AND i <= high AND G(i) /= 0 AND
+                             F = G WITH [i := a] IMPLIES
+                          product(low, high,F) = a*product(low,high,G) / G(i)
+
+% ------------------------ Special Arguments --------------------------------
+
+  product_nonneg     : THEOREM (FORALL i: F(i) >= 0) 
+                                 IMPLIES product(low, high, F) >= 0
+ 
+  Fnat: VAR function[T -> nat]
+  Fposnat: VAR function[T -> posnat]
+
+  prod_nat: JUDGEMENT product(low,high,Fnat) HAS_TYPE nat
+
+  prod_posnat: JUDGEMENT product(low,high,Fposnat) HAS_TYPE posnat
+
+
+  AUTO_REWRITE+ product_eq_arg
+
+%   product_nonneg_eq_0  : THEOREM product(low,high,Fnni) = 0 
+%                              IMPLIES  EXISTS (i: subrange(low,high)): Fnni(i) = 0
+
+
+END product
+

@@ -1,0 +1,59 @@
+NaN_ops
+  [b,p:above(1),
+   E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min],
+            enumerated_type_defs
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Placeholders for defining results of operations on NaNs
+
+  fp,fp1,fp2: var fp_num
+  nan,nan1,nan2: var (NaN?)
+
+  op: var fp_ops
+
+  signal?(fp):bool = if NaN?(fp) then signal?(status(fp)) else false endif
+
+% mk_quiet takes an fp_num and coerces all NaNs into quiet NaNs.
+%  all numeric floating-point arguments are left unchanged
+  mk_quiet(fp): fp_num = if NaN?(fp) then NaN(quiet,data(fp)) else fp endif
+
+  mk_quiet_correct: lemma not signal?(fp) => mk_quiet(fp) = fp
+
+  fp_quiet(op,fp1,(fp2| NaN?(fp1) OR NaN?(fp2))):{nan| nan=fp1 or nan=fp2}
+
+  fp_signal(op, fp1,(fp2| NaN?(fp1) OR NaN?(fp2))): fp_num =
+    IF trap_enabled?(invalid_operation) THEN invalid
+    ELSE fp_quiet(op, mk_quiet(fp1), mk_quiet(fp2))
+    ENDIF
+
+  fp_nan(op, fp1, (fp2| NaN?(fp1) OR NaN?(fp2))): fp_num =
+    IF signal?(fp1) OR signal?(fp2) THEN fp_signal(op, fp1, fp2)
+    ELSE fp_quiet(op, fp1, fp2)
+    ENDIF
+
+  NaN_ops_correct: LEMMA
+        NOT trap_enabled?(invalid_operation) & (NaN?(fp1) OR NaN?(fp2))
+          => quiet?(status(fp_nan(op, fp1, fp2)))
+
+  fp_nan_x(op, fp1, (fp2| NaN?(fp1) OR NaN?(fp2))): [fp_num,exception] =
+    IF signal?(fp1) OR signal?(fp2) THEN 
+       (fp_signal(op, fp1, fp2),invalid_operation)
+    ELSE 
+       (fp_quiet(op, fp1, fp2), no_exceptions)
+    ENDIF  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  NaN_sqrt(nan): fp_num =
+    if signal?(status(nan)) 
+        & trap_enabled?(invalid_operation) then
+       invalid
+    else NaN(quiet,data(nan))
+    endif
+  
+
+  END NaN_ops
+

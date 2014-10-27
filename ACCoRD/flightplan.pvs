@@ -1,0 +1,81 @@
+flightplan[N:above[1]]  : THEORY 
+BEGIN
+
+   IMPORTING definitions_3D,
+             finite_sets@finite_sets_minmax
+
+  k,i,ki	  : VAR below[N]
+  j		  : VAR below[N-1]
+
+  % The following type is a flight plan. It consists of pairs (t (time),p (position)), where t is a time and 
+  % p is a vector. At the corresponding segement of the flight plan, the aircraft will have 
+  % position p at time t.
+  % Times are strictly increasing, but may be negative.
+  FlightPlan: TYPE+ = {fp: [below[N] -> [# time: real,position: Vect3 #]] | 
+  	      	      FORALL (i: below[N]): i-1 >= 0 IMPLIES fp(i)`time > fp(i-1)`time}
+
+  flp: VAR FlightPlan
+
+  start_time(flp): real = flp(0)`time
+
+  end_time(flp): real = flp(N-1)`time
+
+  %%%%%%%%% < over flightplan times is transitive  
+  flight_plan_ascending_time: LEMMA
+    k < i IMPLIES flp(k)`time < flp(i)`time
+
+  flight_plan_unique_times: LEMMA
+    flp(k)`time = flp(i)`time IFF k=i
+
+  % the times that the flightplan covers (range)
+  FlightTimes(flp): TYPE+ ={a: real | start_time(flp) <= a AND a <= end_time(flp)}
+
+  % the velocity after leaving the k-th waypoint and on the way to the k+1-st waypoint
+  velocity(flp: FlightPlan)(j: below[N-1]): Vect3 = 
+    		(1/(flp(j+1)`time-flp(j)`time))*(flp(j+1)`position - flp(j)`position)
+
+
+  velocity_def: LEMMA 
+  		flp(j)`position + (flp(j+1)`time-flp(j)`time)*velocity(flp)(j) = flp(j+1)`position
+
+
+  % bands require that flightplans have nonzero horizontal velocities
+  FlightPlan_nz: TYPE+ = {flp: FlightPlan | FORALL(i:below[N-1]): nz_vect2?(velocity(flp)(i))}
+
+
+  segment_max: [SS: non_empty_finite_set[nat] -> {a: nat | SS(a) AND (FORALL (x: nat): SS(x) IMPLIES x <= a)}] =
+  	       finite_sets@finite_sets_minmax[naturalnumbers.nat,restrict[[real, real], [nat, nat], boolean].restrict(reals.<=)].max
+
+  % Lookup of the flightplan segment index, given a time
+  segment(flp: FlightPlan)(tt: FlightTimes(flp)): below[N] = segment_max({j: below[N] | tt >= flp(j)`time})
+
+  % time tt is either between two indices or after the last one
+  segment_def: LEMMA 
+  	       FORALL (tt: FlightTimes(flp)):
+  	       flp(segment(flp)(tt))`time <= tt AND 
+	       (segment(flp)(tt) < N-1 IMPLIES tt < flp(segment(flp)(tt) + 1)`time)
+
+  % if we have index bounds on the time, we have the segment
+  segment_index: LEMMA
+    FORALL (tt:FlightTimes(flp)):
+    flp(j)`time <= tt AND tt < flp(j+1)`time IFF segment(flp)(tt) = j
+
+  segment_max : LEMMA
+    FORALL (tt:FlightTimes(flp)): segment(flp)(tt) = N-1 IFF tt = flp(N-1)`time
+
+  segment_ident : LEMMA
+    FORALL (tt:FlightTimes(flp)):segment(flp)(flp(segment(flp)(tt))`time) = segment(flp)(tt)
+
+  % the position at a given time tt in the flightplan
+  location_at(flp)(tt: FlightTimes(flp)): Vect3 = 
+    Let seg = segment(flp)(tt) IN
+      IF seg = N-1 THEN flp(N-1)`position
+      ELSE
+        flp(seg)`position + (tt - flp(seg)`time)*velocity(flp)(seg)
+      ENDIF
+
+
+  location_at_check: LEMMA
+    location_at(flp)(flp(k)`time) = flp(k)`position
+
+END flightplan

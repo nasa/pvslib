@@ -1,0 +1,116 @@
+number_sign_changes: THEORY
+BEGIN
+
+  IMPORTING reals@sign
+
+  a,b,r : VAR [nat->real]
+  i,j,k,d : VAR nat
+  x : VAR real
+  sig: VAR real
+
+  number_sign_changes(a,i): RECURSIVE [# num: nat, lastnz: real #] =
+    IF i = 0 THEN (# num:= 0, lastnz:= a(0) #)
+    ELSE LET prev = number_sign_changes(a,i-1)
+    	 IN  IF a(i)/=0 AND prev`lastnz/=0 AND sign_ext(a(i))/=sign_ext(prev`lastnz)
+	       THEN (# num:=prev`num+1,lastnz:=a(i) #)
+	     ELSIF a(i)/=0
+	       THEN prev WITH [lastnz:=a(i)]
+	     ELSE prev
+	     ENDIF
+    ENDIF MEASURE i
+
+  number_sign_changes_lastnz_nonzero: LEMMA
+    number_sign_changes(a,i)`lastnz = 0 IFF
+    (FORALL (j:nat): j<=i IMPLIES a(j)=0)
+
+  number_sign_changes_lastnz: LEMMA
+    a(i)/=0 IMPLIES number_sign_changes(a,i)`lastnz=a(i)
+
+  number_sign_changes_eq: LEMMA
+    (FORALL (j:upto(i)): sign_ext(a(j))=sign_ext(b(j))) IMPLIES
+    LET nsca = number_sign_changes(a,i),
+        nscb = number_sign_changes(b,i)
+    IN (nsca`num = nscb`num AND sign_ext(nsca`lastnz)=sign_ext(nscb`lastnz))
+
+  testseqaa1(i):real = (-1)^i % (1,-1,1,-1,1,-1,1,-1,1,-1,...)
+  testseqaa2:sequence[real] = testseqaa1 WITH [6:=-1] % (1,-1,1,-1,1,-1,-1,-1,1,-1,1,...)
+  testseqaa3:sequence[real] = testseqaa2 WITH [7:=0] % (1,-1,1,-1,1,-1,-1,0,1,-1,1,...)
+  testseqaa4:sequence[real] = testseqaa1 WITH [4:=0] % (1,-1,1,-1,0,-1,1,-1,1,-1,...)
+  testseqaa5(i): real = IF i = 5 THEN 3 ELSIF i=6 
+  		 THEN 4 ELSIF i=7 THEN 0 ELSIF i=8 THEN -4 ELSE (-1)^i ENDIF
+		 % (1,-1,1,-1,1,3,4,0,-4,-1,1,-1,1,...)
+  testseqaa6(i):real = IF i = 0 OR i = 1 THEN 0 ELSE testseqaa1(i) ENDIF
+
+  number_sign_changes_easy: LEMMA number_sign_changes(testseqaa2,7 ) = (# num:=5,lastnz:=-1 #)
+
+  number_sign_changes_test1: LEMMA number_sign_changes(testseqaa1,i ) = (# num:=i,lastnz:=(-1)^i #)
+  number_sign_changes_test2: LEMMA number_sign_changes(testseqaa2,7 ) = (# num:=5,lastnz:=-1 #)
+  number_sign_changes_test3: LEMMA number_sign_changes(testseqaa2,8 ) = (# num:=6,lastnz:= 1 #)
+  number_sign_changes_test4: LEMMA number_sign_changes(testseqaa3,7 ) = (# num:=5,lastnz:=-1 #)
+  number_sign_changes_test5: LEMMA number_sign_changes(testseqaa3,9 ) = (# num:=7,lastnz:=-1 #)
+  number_sign_changes_test6: LEMMA number_sign_changes(testseqaa4,8 ) = (# num:=6,lastnz:= 1 #)
+  number_sign_changes_test7: LEMMA number_sign_changes(testseqaa5,10) = (# num:=6,lastnz:= 1 #)
+
+  nsc_regular_swap: LEMMA
+    k<=d AND
+    (FORALL (j): j<=k IMPLIES (sign_ext(a(j))=sign_ext(b(j)) OR
+      (sign_ext(a(j))/=sign_ext(b(j)) AND
+        a(j+1)/=0 AND
+        (j>0 IMPLIES sign_ext(a(j-1))=-sign_ext(a(j+1))) AND
+	(j>0 IMPLIES sign_ext(b(j-1))=-sign_ext(b(j+1))) AND
+	(j=0 IMPLIES sign_ext(a(0))  =-sign_ext(a(1))))))
+    AND sign_ext(a(k)) = sign_ext(b(k))
+    AND (FORALL (j:nat): j<k IMPLIES 
+    		a(j)/=0 AND b(j)/=0)
+    IMPLIES
+      LET nsca = number_sign_changes(a,k),
+      	  nscb = number_sign_changes(b,k)
+      IN  ((k>=1 IMPLIES sign_ext(nsca`lastnz)=sign_ext(nscb`lastnz)) AND
+      	  nsca`num = nscb`num + 
+	    (IF k>=1 AND sign_ext(a(0))=-sign_ext(b(0)) THEN 1 ELSE 0 ENDIF))
+
+  nsc_edge_diff: LEMMA (sig=-1 OR sig=1) AND
+    k<=d AND
+    (FORALL (j): j<=k IMPLIES (sign_ext(a(j))=sign_ext(b(j)) OR b(j)=0))
+    AND (FORALL (j): 0<j AND j<=k AND b(j)=0 IMPLIES b(j-1)/=0)
+    AND sign_ext(a(k)) = sign_ext(b(k))
+    AND (FORALL (j:nat): j<k IMPLIES a(j)/=0)
+    AND (b(0)=0 IMPLIES sign_ext(a(0))=sig*sign_ext(a(1)))
+    AND (FORALL (j:nat): 0<j AND j<k AND b(j)=0 IMPLIES sign_ext(b(j-1))=-sign_ext(b(j+1)))
+    IMPLIES
+      LET nsca = number_sign_changes(a,k),
+      	  nscb = number_sign_changes(b,k)
+      IN  ((k>=1 IMPLIES sign_ext(nsca`lastnz)=sign_ext(nscb`lastnz)) AND
+      	  nsca`num = nscb`num + 
+	    (IF k>=1 AND b(0)=0 AND sig=-1 THEN 1 ELSE 0 ENDIF))
+
+  nsc_multiroot: LEMMA (sig=-1 OR sig=1) AND
+    k<=d AND
+    (FORALL (j): 0<j AND j<=k IMPLIES sign_ext(a(j))=sig*sign_ext(b(j))) AND
+    sign_ext(a(0))=-sig*sign_ext(b(0)) AND
+    sign_ext(a(0))=-sign_ext(a(1)) AND
+    sign_ext(b(0))= sign_ext(b(1)) AND
+    (FORALL (j): j<k IMPLIES (a(j)/=0 AND b(j)/=0))
+    IMPLIES
+      LET nsca = number_sign_changes(a,k),
+      	  nscb = number_sign_changes(b,k)
+      IN  nsca`num = nscb`num + (IF k>=1 THEN 1 ELSE 0 ENDIF)
+
+  nsc_multiroot_full: LEMMA FORALL (sigfun:[nat->real]):
+    (sig=-1 OR sig=1) AND % The nominal sign
+    (FORALL (j): sigfun(j)=-1 OR sigfun(j)=1) AND
+    k<=d AND
+    (FORALL (j): 0<j AND j<=k IMPLIES sign_ext(a(j))=sigfun(j)*sign_ext(b(j))) AND
+    (FORALL (j): 0<j AND j<=k AND sigfun(j)/=sig 
+      IMPLIES (1<j AND j<k AND sigfun(j-1)=sig AND sigfun(j+1)=sig
+      	      AND sign_ext(a(j-1))=-sign_ext(a(j+1)) AND sign_ext(b(j-1))=-sign_ext(b(j+1)))) AND 
+    sign_ext(a(0))=-sig*sign_ext(b(0)) AND
+    sign_ext(a(0))=-sign_ext(a(1)) AND
+    sign_ext(b(0))= sign_ext(b(1)) AND
+    (FORALL (j): j<=k IMPLIES (a(j)/=0 AND b(j)/=0))
+    IMPLIES
+      LET nsca = number_sign_changes(a,k),
+      	  nscb = number_sign_changes(b,k)
+      IN  nsca`num = nscb`num + (IF k>=1 THEN 1 ELSE 0 ENDIF)
+  
+END number_sign_changes

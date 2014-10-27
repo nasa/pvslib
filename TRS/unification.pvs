@@ -1,0 +1,274 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andréia Borges Avelar and
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil 
+%%
+%%                         and 
+%%
+%%                   Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil 
+%%    
+%% Last Modified On: September 29, 2009
+%%
+%%----------------------------------------------------------------------------
+
+unification[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+BEGIN
+
+   ASSUMING
+
+     IMPORTING variables_term[variable,symbol,arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+
+     var_countable: ASSUMPTION is_countably_infinite(V)
+
+   ENDASSUMING
+
+   IMPORTING substitution[variable,symbol, arity]
+
+
+                 Vs: VAR set[(V)]
+             V1, V2: VAR finite_set[(V)]
+                 V3: VAR finite_set[term]
+            x, y, z: VAR (V)
+    tau, sig, sigma, 
+  delta, rho, theta: VAR Sub 
+            st, stp: VAR finseq[term]
+    r, s, t, t1, t2: VAR term
+                  n: VAR nat
+       p, q, p1, p2: VAR position
+                  R: VAR pred[[term, term]]
+
+            
+%%%% Defining an instance of a term %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ instance(t, s): bool = EXISTS sigma: ext(sigma)(s) = t;
+
+
+%%%% Defining substitution more general "<=" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ <=(theta, sigma): bool = EXISTS tau: sigma = comp(tau, theta)
+
+ mg_po: LEMMA preorder?(<=)
+
+
+%%%% Defining unification between two terms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ unifier(sigma)(s,t): bool = ext(sigma)(s) = ext(sigma)(t)
+
+ unifiable(s,t): bool = EXISTS sigma: unifier(sigma)(s,t)
+
+ U(s,t): set[Sub] = {sigma: Sub | unifier(sigma)(s,t)}
+
+
+%%%% Defining a most general unifier "mgu" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ mgu(theta)(s,t): bool = member(theta, U(s,t)) & 
+                    FORALL sigma: member(sigma, U(s,t)) IMPLIES theta <= sigma
+
+
+%%%% Initial auxiliary lemma %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ uni_diff_equal_length_arg : LEMMA
+      FORALL (s: term, (t: term | unifiable(s, t) & s /= t), f: symbol,
+      	      st: {args: finite_sequence[term] | args`length = arity(f)}):
+	      NOT st`length = 0 AND s = app(f, st) IMPLIES
+	      (FORALL (fp: symbol, stp: {args: finite_sequence[term] |
+               args`length = arity(fp)}): t = app(fp, stp) IMPLIES
+	       (f = fp & st`length = stp`length))
+
+
+%%%% Position of the first difference between %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%% two unifiable and different terms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ resolving_diff(s : term, (t : term | unifiable(s,t) & s /= t ) ):
+   RECURSIVE position =
+    (CASES s OF
+       vars(s) : empty_seq,
+       app(f, st) :
+       IF length(st) = 0 THEN empty_seq
+       ELSE 
+        (CASES t OF
+           vars(t) : empty_seq,
+           app(fp, stp) :
+           LET k : below[length(stp)] = 
+             min({kk : below[length(stp)] |
+                         subtermOF(s,#(kk+1)) /= subtermOF(t,#(kk+1))}) IN
+             add_first(k+1,
+                      resolving_diff(subtermOF(s,#(k+1)),subtermOF(t,#(k+1))))
+         ENDCASES)
+       ENDIF
+     ENDCASES)
+ MEASURE s BY << 
+
+
+%%%% Lemmas about resolving_diff %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ resol_diff_nonempty_implies_funct_terms : LEMMA
+    FORALL (s: term, (t: term | unifiable(s, t) & s /= t)):
+           resolving_diff(s,t) /= empty_seq IMPLIES
+           (app?(s) AND app?(t))
+
+ resol_diff_to_rest_resol_diff : LEMMA
+    FORALL (s: term, (t: term | unifiable(s, t) & s /= t)):
+        LET rd =  resolving_diff(s,t) IN
+            rd /= empty_seq IMPLIES
+            resolving_diff(subtermOF(s,#(first(rd))),
+                           subtermOF(t,#(first(rd)))) = rest(rd)
+
+ position_s_resolving_diff : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t, p : position):
+        p = resolving_diff(s, t) IMPLIES positionsOF(s)(p);
+
+ position_t_resolving_diff : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t, p : position):
+        p = resolving_diff(s, t) IMPLIES positionsOF(t)(p);
+
+ resolving_diff_has_diff_argument : LEMMA 
+    FORALL (s : term, t : term | unifiable(s,t) & s /= t,
+            p : position | positionsOF(s)(p) & positionsOF(t)(p)):
+        p = resolving_diff(s, t) IMPLIES
+          subtermOF(s, p) /= subtermOF(t, p)
+
+ resolving_diff_has_unifiable_argument : LEMMA 
+    FORALL (s : term, t : term | unifiable(s,t) & s /= t,
+            p : position | positionsOF(s)(p) & positionsOF(t)(p)):
+        p = resolving_diff(s, t) IMPLIES
+          unifiable(subtermOF(s, p), subtermOF(t, p))
+
+ resolving_diff_vars : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t,
+	    p : position | positionsOF(s)(p) & positionsOF(t)(p)):
+        p = resolving_diff(s, t) IMPLIES
+ 	  vars?(subtermOF(s, p)) OR vars?(subtermOF(t, p))
+
+
+%%%% Auxiliary lemmas about substitutions and unifiers %%%%%%%%%%%%%%%%%%%%%%%%
+
+ unifier_o : LEMMA
+        member(sig, U(ext(theta)(s), ext(theta)(t))) IMPLIES
+        member(comp(sig, theta), U(s, t))
+
+ mgu_o : LEMMA
+        sig <= rho IMPLIES comp(sig, theta) <= comp(rho, theta)
+
+ unifier_and_subs : LEMMA
+        member(theta, U(s, t)) IMPLIES 
+        (FORALL (sig: Sub): member(comp(sig, theta), U(s, t)))
+
+ idemp_mgu_iff_all_unifier : LEMMA
+    FORALL (theta: Sub | member(theta, U(s, t))):
+        mgu(theta)(s, t) & idempotent_sub?(theta) IFF
+        (FORALL (sig: Sub | member(sig, U(s, t))): sig = comp(sig, theta))
+
+ unifiable_terms_unifiable_args : LEMMA
+    FORALL (s : term, t : term,
+            p : position | positionsOF(s)(p) & positionsOF(t)(p)):
+        member(sig, U(s, t)) IMPLIES
+           member(sig, U(subtermOF(s, p), subtermOF(t, p)))
+
+ var_term_unifiable_not_var_in_term : LEMMA 
+    FORALL (s : term, t : term ):
+        vars?(s) & unifiable(s, t) & s /= t IMPLIES
+           NOT member(s, Vars(t))
+
+
+%%%% Substitution to fix the %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%% first difference %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ sub_of_frst_diff(s : term , (t : term | unifiable(s,t) & s /= t )) : Sub =
+  LET k : position = resolving_diff(s,t) IN
+     LET sp = subtermOF(s,k) , tp = subtermOF(t,k) IN 
+        IF vars?(sp)
+        THEN (LAMBDA (x : (V)) : IF x = sp THEN tp ELSE x ENDIF) 
+        ELSE (LAMBDA (x : (V)) : IF x = tp THEN sp ELSE x ENDIF)
+        ENDIF 
+
+
+%%%% Lemmas about "sub_of_frst_diff" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ dom_sub_of_frst_diff_is : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t, sig : Sub):
+        sig = sub_of_frst_diff(s, t) AND p = resolving_diff(s, t)
+        IMPLIES
+           IF vars?(subtermOF(s, p))
+             THEN Dom(sig) = singleton(subtermOF(s, p))
+             ELSE Dom(sig) = singleton(subtermOF(t, p))
+           ENDIF
+
+ var_sub_1stdiff_not_member_term : LEMMA 
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t): 
+        LET sig = sub_of_frst_diff(s ,t) IN
+           FORALL ( x | member(x,Dom(sig)), r | member(r,Ran(sig) )) :
+               NOT member(x, Vars(r))
+
+ sub_of_frst_diff_unifier_o : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        member(rho, U(s, t)) IMPLIES
+           LET sig = sub_of_frst_diff(s, t) IN
+              EXISTS theta : rho = comp(theta, sig)
+
+ ext_sub_of_frst_diff_unifiable : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        LET sig = sub_of_frst_diff(s, t) IN
+           unifiable(ext(sig)(s), (ext(sig)(t)))
+
+ sub_of_frst_diff_remove_x : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        LET sig = sub_of_frst_diff(s, t) IN
+           Dom(sig)(x) IMPLIES  
+               (NOT member(x, Vars(ext(sig)(s)))) AND
+               (NOT member(x, Vars(ext(sig)(t))))
+
+ vars_sub_of_frst_diff_s_is_subset_union : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        LET sig = sub_of_frst_diff(s, t) IN
+           subset?(Vars(ext(sig)(s)), union( Vars(s), Vars(t)))
+
+ vars_sub_of_frst_diff_t_is_subset_union : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        LET sig = sub_of_frst_diff(s, t) IN
+           subset?(Vars(ext(sig)(t)), union( Vars(s), Vars(t)))
+
+ union_vars_ext_sub_of_frst_diff : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t) :
+        LET sig = sub_of_frst_diff(s, t) IN
+           union(Vars(ext(sig)(s)), Vars(ext(sig)(t)))
+           = difference(union( Vars(s), Vars(t)), Dom(sig))
+
+ vars_ext_sub_of_frst_diff_decrease : LEMMA
+    FORALL (s : term, t : term | unifiable(s, t) & s /= t):
+        LET sig = sub_of_frst_diff(s, t) IN
+           Card(union( Vars(ext(sig)(s)), Vars(ext(sig)(t))))
+           < Card(union( Vars(s), Vars(t)))
+
+
+%%%% Function to compute a unifier of %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%% two unifiable terms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ unification_algorithm(s : term, (t : term | unifiable(s,t))) : RECURSIVE Sub =
+    IF s = t THEN identity  
+    ELSE LET sig = sub_of_frst_diff(s, t) IN
+            comp( unification_algorithm(ext(sig)(s) , ext(sig)(t)) , sig)
+    ENDIF
+ MEASURE Card(union(Vars(s), Vars(t)))
+
+
+%%%% Lemmas about "unification_algorithm" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ unification_algorithm_gives_unifier : LEMMA 
+    unifiable(s,t) IMPLIES member(unification_algorithm(s, t), U(s, t))
+ 
+ unification_algorithm_gives_mg_subs : LEMMA 
+    member(rho, U(s, t)) IMPLIES unification_algorithm(s, t) <= rho
+
+
+%%%% Existence of a most general unifier %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ unification : LEMMA
+    unifiable(s,t) => EXISTS theta : mgu(theta)(s,t)
+
+
+END unification

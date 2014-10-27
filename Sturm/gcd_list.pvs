@@ -1,0 +1,101 @@
+gcd_list: THEORY
+BEGIN
+
+IMPORTING reals@polynomials,reals@more_polynomial_props,reals@sign,
+	  polynomial_division,structures@more_list_props,ints@gcd,number_sign_changes,structures@listn[int],
+	  structures@array2list[int]
+
+  a,r : VAR [nat->real]
+  p : VAR [nat->[nat->real]]
+  n : VAR [nat->nat]
+  d,m,i,j,k : VAR nat
+  %m : VAR posnat
+  x,y,c,b : VAR real
+  l 	  : VAR list[int]
+
+  gcd_list(ll:list[int]): RECURSIVE {m:nat| FORALL (ii:nat): 
+  			  	    ii<length[int](ll) IMPLIES divides(m,nth[int](ll,ii))} =
+    IF length[int](ll)=0 THEN 0
+    ELSIF length[int](ll)=1 THEN abs(nth[int](ll,0))
+    ELSE LET oldgcd = gcd_list(cdr[int](ll)) IN
+      IF car[int](ll)=0 THEN oldgcd
+      ELSIF oldgcd=1 THEN 1
+      ELSE compute_gcd(car[int](ll),oldgcd) ENDIF
+    ENDIF MEASURE length[int](ll)
+
+  gcd_list_nonzero: LEMMA
+    (EXISTS (i:below(length[int](l))): nth[int](l,i)/=0) IMPLIES gcd_list(l)/=0
+
+  gcd_list_zero: LEMMA
+    (FORALL (i:nat): i<length[int](l) IMPLIES nth[int](l,i)=0) IMPLIES gcd_list(l)=0
+
+  descalarize_list(ll:list[int],(k:nzint|
+      FORALL (ii:nat): ii<length[int](ll) IMPLIES 
+        divides(k,nth[int](ll,ii)))): RECURSIVE {nl:list[int]|length[int](nl)=length[int](ll) AND
+	FORALL (i:below(length[int](ll))): nth[int](ll,i)=k*nth[int](nl,i)} =
+	IF null?(ll) THEN ll
+	ELSE cons[int](car[int](ll)/k,descalarize_list(cdr[int](ll),k)) ENDIF
+	MEASURE length[int](ll)
+
+  primitize_list(ll:list[int]): list[int] =
+    LET thisgcd = gcd_list(ll) IN
+      IF thisgcd = 0 OR thisgcd = 1 THEN ll
+      ELSE descalarize_list(ll,thisgcd) ENDIF
+
+  primitize_list_def: LEMMA
+    (EXISTS (i:below(length[int](l))): nth[int](l,i)/=0)
+    IMPLIES
+    length[int](l) = length[int](primitize_list(l)) AND
+    LET thisgcd=gcd_list(l) IN
+      thisgcd>0 AND FORALL (k:below(length[int](l))):
+      nth[int](l,k) = thisgcd*nth[int](primitize_list(l),k)
+
+  primitize_zero_list: LEMMA
+    (FORALL (i:nat): i<length[int](l) IMPLIES nth[int](l,i)=0)
+    IMPLIES
+    primitize_list(l) = array2list[int](length[int](l))(LAMBDA (i:nat): 0)
+
+  primitize_list_length: LEMMA
+    length[int](primitize_list(l)) = length[int](l)
+
+  nonzero_version_rec(ll:list[int]): RECURSIVE 
+    {nl:list[int] | length[int](nl)<=length[int](ll) AND
+      (FORALL (i:nat): i<length[int](ll) 
+        IMPLIES nth[int](ll,i) = (IF i<length[int](ll)-length[int](nl) THEN 0 ELSE nth[int](nl,i-length[int](ll)+length[int](nl)) ENDIF))
+       AND ((length[int](nl)>0 OR EXISTS (i:below(length[int](ll))):nth(ll,i)/=0) IMPLIES (length[int](nl)>0 AND car[int](nl)/=0))} =
+    IF length[int](ll)=0 OR car[int](ll) /= 0 THEN ll
+    ELSE nonzero_version_rec(cdr[int](ll)) ENDIF measure length[int](ll)
+
+  nonzero_version_rec_length_nonzero: LEMMA
+    FORALL (ll:list[int]):
+      length[int](nonzero_version_rec(ll)) > 0
+      IFF
+      (length[int](ll)>0 AND EXISTS (i:below(length[int](ll))): nth(ll,i)/=0)
+
+  nonzero_version_rec_def: LEMMA FORALL (ll:list[int]):
+    LET L = nonzero_version_rec(ll) IN
+      length[int](L) > 0 IMPLIES (car(L)/=0 AND FORALL (i:nat):
+        i<length[int](ll)-length[int](L) IMPLIES nth[int](ll,i)=0)
+
+  nonzero_version(ll:list[int]): list[int] =
+    reverse[int](nonzero_version_rec(reverse(ll)))
+
+  nonzero_version_def: LEMMA FORALL (ll:list[int]):
+    LET L = nonzero_version(ll) IN
+       length[int](L)<=length[int](ll) AND
+       (FORALL (i:nat): i<length[int](ll) 
+         IMPLIES nth[int](ll,i) = 
+	   (IF i<length[int](L) THEN 
+	   nth[int](L,i) ELSE 0 ENDIF)) AND 
+       ((EXISTS (i:below(length[int](ll))):nth(ll,i)/=0) 
+         IMPLIES (length[int](L)>0 AND nth(L,length[int](L)-1)/=0)) AND
+       (length[int](L) > 0 IFF (length[int](ll)>0 AND 
+         EXISTS (i:below(length[int](ll))): nth(ll,i)/=0)) AND
+       (length[int](L) > 0 IMPLIES (nth[int](L,length[int](L)-1)/=0 AND FORALL (i:nat):
+         i>length[int](L)-1 AND i<length[int](ll) IMPLIES nth[int](ll,i)=0))
+
+  nonzero_version_length_nz: LEMMA FORALL (ll:list[int]):
+    length(ll)>0 AND nth(ll,length(ll)-1)/=0 IMPLIES
+    nonzero_version(ll) = ll
+
+END gcd_list

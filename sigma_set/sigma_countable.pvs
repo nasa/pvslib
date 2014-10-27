@@ -1,0 +1,149 @@
+sigma_countable[T:TYPE]: THEORY
+%------------------------------------------------------------------------------
+% The sigma_set theory introduces and defines properties of the sigma 
+% function that sums an arbitrary function F: [T -> real] over a countable
+% set of values X. To make this sensible for infinite sets, we will also
+% require that f is absolutely convergent in the infinite case.
+%
+% This notation is a vital simplification for discrete probability theory.
+%
+%                         ----
+%  sigma(X, f)         =  \     f(x)
+%                         /
+%                         ----
+%                      member(x,X)
+%
+%
+%  MODIFICATIONS:
+%
+%     Author: David Lester, Manchester University 20/4/05
+%
+%     Additions 20/1/10 DR Lester
+%
+%------------------------------------------------------------------------------
+
+
+BEGIN
+
+  IMPORTING sets_aux@countable_props[T],
+            countable_convergence[T]
+
+  a:   VAR real
+  X,Y: VAR countable_set
+  t:   VAR T
+  f,g: VAR [T -> real]
+  F:   VAR non_empty_finite_set[T]
+  n:   VAR nat
+  phi: VAR (bijective?[nat,nat])
+  npx: VAR npreal
+  nnx: VAR nnreal
+
+  sigma(X:countable_set[T],f:(convergent?(X))):real
+    = IF empty?(X)
+      THEN 0
+      ELSIF is_finite(X)
+      THEN sigma[below[card(X)]](0,card(X)-1,f o finite_enumeration(X))
+      ELSE limit(series(f o denumerable_enumeration(X)))      ENDIF
+
+  sigma_empty: LEMMA sigma(emptyset[T],g) = 0
+
+  sigma_finite: LEMMA LET n = card(F)-1 IN
+                sigma(F,g) = sigma[below[n+1]](0,n,g o finite_enumeration(F))
+
+  sigma_singleton: LEMMA sigma(singleton(t),g) = g(t)
+
+  sigma_infinite: LEMMA FORALL (X:countably_infinite_set,f:(convergent?(X))):
+                  sigma(X,f) = limit(series(f o denumerable_enumeration(X)))
+
+  nonempty_countable?(X:set[T]):bool = nonempty?(X) AND is_countable(X)
+
+  nonempty_countable: TYPE = (nonempty_countable?) 
+
+  nonempty_countable_is_countable:
+      JUDGEMENT nonempty_countable SUBTYPE_OF countable_set[T]
+
+  nonempty_countable_is_nonempty:
+      JUDGEMENT nonempty_countable SUBTYPE_OF (nonempty?[T])
+
+  sigma_disjoint_union: LEMMA FORALL (f:(convergent?(union(X,Y)))):
+    disjoint?(X,Y) => sigma(union(X,Y),f) = sigma(X,f) + sigma(Y,f)
+
+  sigma_union: LEMMA FORALL (f:(convergent?(union(X,Y)))):
+    sigma(union(X,Y),f) = sigma(X,f) + sigma(Y,f) - sigma(intersection(X,Y),f)
+
+  sigma_intersection: LEMMA FORALL (f:(convergent?(union(X,Y)))):
+    sigma(intersection(X,Y),f) = sigma(X,f) + sigma(Y,f) - sigma(union(X,Y),f)
+
+  sigma_difference: LEMMA FORALL (f:(convergent?(union(X,Y)))):
+    sigma(difference(X,Y),f) 
+         = sigma(X,f) - sigma(Y,f) + sigma(difference(Y,X),f)
+
+  sigma_subset: LEMMA FORALL (f:(convergent?(Y))):
+    subset?(X,Y) => sigma(Y,f) = sigma(X,f) + sigma(difference(Y,X),f)
+
+  sigma_add: LEMMA FORALL (f:(convergent?(X))):
+      sigma(add(t,X),f) = IF member(t,X) THEN sigma(X,f)
+                                         ELSE f(t) + sigma(X,f) ENDIF
+
+  sigma_remove: LEMMA FORALL (f:(convergent?(X))):
+      sigma(remove(t,X),f) = IF member(t,X) THEN sigma(X,f) - f(t)
+                                            ELSE sigma(X,f) ENDIF
+
+  sigma_choose_rest: LEMMA FORALL (X:nonempty_countable,f:(convergent?(X))):
+                           sigma(X,f) = f(choose(X)) + sigma(rest(X),f)
+
+  sigma_zero: LEMMA sigma(X,LAMBDA t: 0) = 0
+
+  sigma_scal: LEMMA FORALL (f:(convergent?(X))): sigma(X,a*f) = a*sigma(X,f)
+
+  sigma_opp:  LEMMA FORALL (f:(convergent?(X))): sigma(X,-f)  = -sigma(X,f)
+
+  sigma_plus: LEMMA FORALL (f,g:(convergent?(X))):
+                                      sigma(X,f+g) = sigma(X,f) + sigma(X,g)
+
+  sigma_diff: LEMMA FORALL (f,g:(convergent?(X))):
+                                      sigma(X,f-g) = sigma(X,f) - sigma(X,g)
+
+  sigma_ge_0: LEMMA FORALL (f:(convergent?(X))):
+                           (FORALL (t:(X)): f(t) >= 0) => sigma(X,f) >= 0
+
+  sigma_gt_0: LEMMA FORALL (X:nonempty_countable,f:(convergent?(X))):
+                           (FORALL (t:(X)): f(t) >  0) => sigma(X,f) > 0
+
+  sigma_abs:  LEMMA FORALL (f:(convergent?(X))):
+                                      abs(sigma(X,f)) <= sigma(X,abs(f))
+
+  sigma_eq:   LEMMA FORALL (f,g:(convergent?(X))):
+                    (FORALL (t:(X)): f(t) =  g(t)) => sigma(X,f) =  sigma(X,g)
+ 
+  sigma_le:   LEMMA FORALL (f,g:(convergent?(X))):
+                    (FORALL (t:(X)): f(t) <= g(t)) => sigma(X,f) <= sigma(X,g)
+
+  sigma_lt:   LEMMA FORALL (X:nonempty_countable,f,g:(convergent?(X))):
+                    (FORALL (t:(X)): f(t) <  g(t)) => sigma(X,f) <  sigma(X,g)
+
+
+  IMPORTING reals@bounded_reals,
+            sigma_bijection_nat
+
+  sigma_bij: LEMMA FORALL (f:(convergent?(X)),phi:(bijective?[(X),(X)])):
+                   sigma(X,extend[T,(X),real,0](f o phi)) = sigma(X,f)
+
+  sigma_nn_def: LEMMA 
+    FORALL (f:(convergent?(X))):
+           (FORALL t: X(t) => f(t) >= 0) =>
+           sigma(X,f)
+                 = sup({nnx | EXISTS (F:finite_set[T]):
+                              subset?(F,X) AND nnx = sigma(F,f)})
+
+  sigma_def: LEMMA
+    FORALL (f:(convergent?(X))):
+           sigma(X,f)
+                 = sup({nnx | EXISTS (F:finite_set[T]): subset?(F,X) AND
+                                        (FORALL t: F(t) => f(t) >= 0) AND
+                                        nnx = sigma(F,f)}) +
+                   inf({npx | EXISTS (F:finite_set[T]): subset?(F,X) AND
+                                        (FORALL t: F(t) => f(t) <= 0) AND
+                                         npx = sigma(F,f)})
+
+END sigma_countable

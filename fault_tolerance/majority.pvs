@@ -1,0 +1,82 @@
+%
+%
+% Purpose : validity and agreement properties for a multi-stage majority 
+%           exchange using the results-based fault model.
+%
+%
+
+majority
+[
+    N   : [nat -> posnat],  
+    T   : TYPE+
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    majority_stage,
+    exact_comm[N, T],
+    protocol[N, T]
+
+  i, j, k: VAR nat
+  v: VAR T
+
+  common_check: VAR [j : nat -> non_empty_finite_set[below(N(j))]] 
+
+  check: VAR check_function
+  sent:  VAR sent_vec
+  rcvd:  VAR rcvd_matrix
+
+  mf: VAR [nat -> majority_function[T]]
+
+  majority_vote(mf): choice_function =
+    LAMBDA i: majority_vote[N(i), N(i + 1), T](mf(i))
+                                                                            
+  % Main results
+  consensus_validity: THEOREM
+      protocol(majority_vote(mf), sent, rcvd, check, j, j + k) AND
+      majority_correct?(sent, rcvd, check, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(common_check) AND
+      uniform?(sent(j), v)(common_check(j)) 
+    IMPLIES
+      uniform?(sent(j + k), v)(common_check(j + k))
+
+  agreement_generation: THEOREM
+      protocol(majority_vote(mf), sent, rcvd, check, j, j + k) AND
+      exists_all_symmetric?(sent, rcvd, check, j, j + k) AND
+      enabled_within?(rcvd, check, j, j + k)(common_check)
+    IMPLIES
+      EXISTS v: uniform?(sent(j + k), v)(common_check(j + k))
+
+  % diagnostic results
+
+  faulty_source: THEOREM % cross-channel compare at any stage
+    FORALL (s: below(N(j)), d: below(N(j + 1))):
+      protocol(majority_vote(mf), sent, rcvd, check, j, j + 1) AND
+      enabled_within?(rcvd, check, j, j + 1)(common_check) AND
+      uniform?(sent(j), v)(common_check(j)) AND
+      enabled(rcvd(j), check(j))(d)(s) AND
+      rcvd(j)(d)(s) /= sent(j + 1)(d)
+    IMPLIES
+      NOT majority_correct_element?(sent(j), rcvd(j), check(j))(s)
+
+  faulty_stage: COROLLARY  % to consensus_validity
+      protocol(majority_vote(mf), sent, rcvd, check, j, j + k) AND
+      majority_correct?(sent, rcvd, check, j, j + k) AND
+      enabled_within?(rcvd, check, j, j+ k)(common_check) AND
+      (EXISTS (d: (common_check(j + k))): sent(j + k)(d) /= v)
+    IMPLIES
+      NOT uniform?(sent(j), v)(common_check(j))
+
+
+  asymmetric_source: THEOREM % 
+      protocol(majority_vote(mf), sent, rcvd, check, j, j + 2) AND
+      majority_correct?(sent, rcvd, check, j + 1, j + 2) AND
+      enabled_within?(rcvd, check, j, j + 2)(common_check) AND
+      (EXISTS (d: below(N(j + 2))):
+        NOT majority_exists?(rcvd(j + 1)(d), 
+                             enabled(rcvd(j + 1), check(j + 1))(d)))
+    IMPLIES
+      EXISTS (s: below(N(j))): NOT symmetric_source?(rcvd(j), check(j))(s)
+
+END majority

@@ -1,0 +1,85 @@
+compute_sturm_tarski: THEORY
+BEGIN
+
+  IMPORTING sturmtarski,
+	    Sturm@remainder_sequence,
+	    Sturm@clear_denominators,
+	    reals@more_polynomial_props
+
+  a,g,g1,g2 : VAR [nat->int]
+  n : VAR posnat
+  k,k1,k2 : VAR nat
+  x,y,z: VAR real
+  aq: VAR [nat->rat]
+  gq: VAR [nat->rat]
+
+  %%% Support Lemmas %%%
+
+  der_prod(a,n,g,k)(i:nat): int =
+    polynomial_prod(g,k,poly_deriv(a),n-1)(i)
+
+  finite_bij_real_remove_one: LEMMA
+    FORALL (m:nat,A:set[real],bij:[below(m)->(A)]):
+      bijective?(bij) AND A(x) IMPLIES
+       m-1>=0 AND EXISTS (bijec:[below(m-1)->{r:(A)|r/=x}]):
+         bijective?(bijec)
+
+  finite_bij_real_remove_two: LEMMA
+    FORALL (m:nat,A:set[real],bij:[below(m)->(A)]):
+      bijective?(bij) AND A(x) AND A(y) AND x/=y IMPLIES
+       m-2>=0 AND EXISTS (bijec:[below(m-2)->{r:(A)|r/=x AND r/=y}]):
+         bijective?(bijec)
+
+  computed_sturm_spec: LEMMA a(n)/=0 AND g(k)/=0 AND
+    (FORALL (i:nat): i>n IMPLIES a(i)=0) IMPLIES
+    LET sl = compute_remainder_sequence(a,n,der_prod(a,n,g,k),n-1+k),
+    	P: [nat->[nat->int]] = (LAMBDA (j:nat): IF j<length(sl) 
+	   		          THEN list2array[int](0)(nth(sl,length(sl)-1-j))
+	   		         ELSE (LAMBDA (i:nat): 0) ENDIF),
+        N: [nat->nat] = (LAMBDA (j:nat): IF j<length(sl) 
+	                   THEN max(length(nth(sl,length(sl)-1-j))-1,0) ELSE 0 ENDIF),
+	M: nat = length(sl)-1
+    IN  constructed_sturm_sequence?(P,N,g,k,M) AND P(0)=a AND N(0)=n
+
+  Eq_computed_remainder?(a,(n|a(n)/=0),g,(k|g(k)/=0))(sl:list[list[int]]): bool =
+    sl = compute_remainder_sequence((LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
+           n,der_prod((LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),n,g,k),n-1+k)
+
+  % Standard but possibly unbounded interval %
+
+  lower_bound,upper_bound: VAR bool
+
+  % Formalizatin brings in complications with evaluating at infinity
+
+  compute_TQ_param(a,(n|a(n)/=0),g,(k|g(k)/=0),
+		   sl:(Eq_computed_remainder?(a,n,g,k))): 
+    int =
+    LET P: [nat->[nat->int]] = (LAMBDA (j:nat): IF j<length(sl) 
+	                          THEN list2array[int](0)(nth(sl,length(sl)-1-j))
+	   		         ELSE (LAMBDA (i:nat): 0) ENDIF),
+        N: [nat->nat] = (LAMBDA (j:nat): IF j<length(sl) 
+	                   THEN max(length(nth(sl,length(sl)-1-j))-1,0) ELSE 0 ENDIF),
+	M: nat     = length(sl)-1,
+        nschighlow = LAMBDA (b:bool): IF b THEN 
+	  number_sign_changes(LAMBDA (i:nat): P(i)(N(i)),M-1)
+	  ELSE number_sign_changes(LAMBDA (i:nat): 
+	    (IF even?(N(i)) THEN 1 ELSE -1 ENDIF)*P(i)(N(i)),M-1) ENDIF,
+      	Nroots     = nschighlow(FALSE)`num-nschighlow(TRUE)`num
+    IN Nroots
+
+  TQ(a,(n|a(n)/=0),g,(k|g(k)/=0)): int =
+    LET newa = (LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
+    	sl = compute_remainder_sequence(newa,n,
+	  der_prod(newa,n,g,k),n-1+k)
+    IN compute_TQ_param(newa,n,g,k,sl)
+
+  TQ_def: LEMMA
+    a(n)/=0 AND g(k)/=0 IMPLIES
+    TQ(a,n,g,k) = NSol(a,n,g,k,>)-NSol(a,n,g,k,<)
+
+  TQ_eq_g: LEMMA a(n)/=0 AND g1(k)/=0 AND g2(k)/=0 AND
+    (FORALL (i:upto(k)): g1(i)=g2(i))
+    IMPLIES
+    TQ(a,n,g1,k)=TQ(a,n,g2,k)
+
+END compute_sturm_tarski

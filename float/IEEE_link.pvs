@@ -1,0 +1,105 @@
+IEEE_link[radix, p: above(1), alpha, E_max, E_min: integer]: THEORY
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  This theory defines the equivalence between IEEE floats and
+%  bounded floats and of their respective rounding functions. 
+%  Author: 
+%  Sylvie Boldo (ENS-Lyon)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ BEGIN
+  ASSUMING
+   Base_values: ASSUMPTION radix = 2 OR radix = 10
+   Exponent_range: ASSUMPTION (E_max - E_min) / p > 5
+   Significand_size: ASSUMPTION radix ^ (p - 1) >= 10 ^ 5
+   E_balance: ASSUMPTION
+     IF radix < 4 THEN E_max + E_min = 1 ELSE E_max + E_min = 0 ENDIF
+   Exponent_Adjustment: ASSUMPTION
+     abs(alpha - (3 * (E_max - E_min) / 4)) <= 6 & integer?(alpha / 12)
+  ENDASSUMING
+
+  IMPORTING ints@mod_lems
+  IMPORTING IEEE_854[radix, p, alpha, E_max, E_min], float[radix]
+
+  ieee,ieee2 : VAR (finite?)
+  f          : VAR float
+  r,z1,z2    : VAR real
+  mode       : VAR rounding_mode
+
+  b: Format = (# Prec := p, dExp := -E_min + p - 1 #)
+
+  IEEE_to_float(ieee): {x: (Fbounded?(b)) | 
+    value(ieee) = FtoR(x):: real AND abs(FtoR(x)) < radix^(E_max+1)} =
+      (# Fnum
+           := (-1) ^ sign(ieee) * radix ^ (p - 1) *
+               Sum(p, value_digit(d(ieee))),
+         Fexp := Exp(ieee) + 1 - p #)
+
+  float_to_IEEE(f: (Fcanonic?(b)) | abs(FtoR(f)) < radix^(E_max+1)):
+        {x: (finite?) | FtoR(f) = value(x)} =
+      finite(sign_of(Fnum(f)), Fexp(f) + p - 1,
+             (LAMBDA (i: below(p)):
+                mod(floor(radix ^ (i+1-p) * abs(Fnum(f))), radix)))
+
+
+value_nonzero_bis: lemma Fbounded?(b)(f) => abs(FtoR(f)) < radix^(E_max+1)
+   => not FtoR(f)=0 => min_pos <= abs(FtoR(f)) & abs(FtoR(f)) <= max_pos
+
+Sterbenz_bis : lemma
+   value(ieee)/2 <= value(ieee2) =>  value(ieee2) <= 2*value(ieee) 
+     =>  (exists (s:(finite?)): value(s)=value(ieee2)-value(ieee))
+
+
+Roundings_eq_pos: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+   0 <= r =>
+    abs(r) < radix ^ (E_max + 1) =>
+     fp_round(r, to_neg) = FtoR[radix](RND_Min(b)(r))
+
+Roundings_eq_neg: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+    0 < r =>
+    abs(r) <= max_pos =>
+     fp_round(r, to_pos) = FtoR[radix](RND_Max(b)(r))
+
+fp_round_opp_aux: lemma NOT r=0 => round_scaled(r, to_neg)=-round_scaled(-r, to_pos)
+
+fp_round_opp: lemma NOT r=0 => fp_round(r, to_neg)=-fp_round(-r, to_pos);
+
+
+RND_EClosest2: lemma FtoR(RND_EClosest(b)(r))= 
+  FtoR(if    r-FtoR(RND_Min(b)(r)) < FtoR(RND_Max(b)(r))-r then RND_Min(b)(r)
+  elsif FtoR(RND_Max(b)(r))-r < r-FtoR(RND_Min(b)(r)) then RND_Max(b)(r)
+  elsif FtoR(RND_Min(b)(r))=FtoR(RND_Max(b)(r))::real then RND_Min(b)(r)
+  else  (# Fnum:= 2 * floor(ceiling(r*radix^(-Fexp(RND_aux(b)(abs(r))))) / 2), 
+           Fexp:= Fexp(RND_aux(b)(abs(r))) #)
+ endif)::real
+
+Roundings_eq_1: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+     max_neg <= r => r < radix ^ (E_max + 1) =>
+     fp_round(r, to_neg) = FtoR[radix](RND_Min(b)(r))
+
+Roundings_eq_2: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+    - radix ^ (E_max + 1) < r => r <= max_pos =>
+     fp_round(r, to_pos) = FtoR[radix](RND_Max(b)(r))
+
+Roundings_eq_3: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+    abs(r) < radix ^ (E_max + 1) - (1 / 2) * radix ^ (E_max + 1 - p) => 
+      fp_round(r, to_nearest) = FtoR[radix](RND_EClosest(b)(r))
+
+Roundings_eq_4: lemma
+  NOT trap_enabled?(underflow(FALSE)) =>
+    abs(r) < radix ^ (E_max + 1) =>
+      fp_round(r, to_zero) = if 0 <= r then FtoR[radix](RND_Min(b)(r))
+                                       else FtoR[radix](RND_Max(b)(r))
+                                       endif
+
+RoundedModeNonDecreasing_bis : lemma
+   NOT trap_enabled?(underflow(FALSE)) =>
+   z1 <= z2 => abs(z1) <= max_pos => abs(z2) <= max_pos =>
+       fp_round(z1, mode) <= fp_round(z2, mode)
+
+
+
+ END IEEE_link

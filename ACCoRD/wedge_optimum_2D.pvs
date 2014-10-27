@@ -1,0 +1,111 @@
+wedge_optimum_2D: THEORY
+%------------------------------------------------------------------------------
+%  This file defines an algorithm that finds the point on a line
+%  with the largest norm such that it lies between two half planes 
+%  that are inputs
+%
+%             /-half plane 1
+%           /
+%         / |  
+%       /   | 
+%     0     |   
+%       \   | 
+%	  \ X-point    
+%	    \   
+%	      \
+%	        \
+%
+%------------------------------------------------------------------------------
+
+BEGIN
+
+   IMPORTING vectors@vectors_2D,
+   	     horizontal,
+	     vectors@law_cos_pos_2D,
+	     vectors@basis_2D,
+	     analysis@interm_value_thm,
+	     analysis@continuous_lambda,
+	     reals@quad_minmax
+
+   v,u,w,c,p,s	: VAR Vect2
+   e1,e2 	: VAR Nz_vect2
+   R,k	  	: VAR posreal
+   t	  	: VAR nnreal
+   a,b		: VAR real
+
+  intersects_segment?(p,w,v,a,b,e1,e2): bool =
+    EXISTS (t:real): a<=t AND t<=b AND
+    	   	     (w+t*v-p)*e1>=0 AND
+		     (w+t*v-p)*e2>=0
+
+  intersects_segment_fun?(p,w,v,a,b,e1,e2): bool =
+    LET
+      tlow1  = IF v*e1>0 THEN ((p-w)*e1)/(v*e1) ELSIF v*e1 = 0 AND (w-p)*e1<0 THEN b+1 ELSE a ENDIF,
+      thigh1 = IF v*e1<0 THEN ((p-w)*e1)/(v*e1) ELSIF v*e1 = 0 AND (w-p)*e1<0 THEN a-1 ELSE b ENDIF,
+      tlow2  = IF v*e2>0 THEN ((p-w)*e2)/(v*e2) ELSIF v*e2 = 0 AND (w-p)*e2<0 THEN b+2 ELSE a ENDIF,
+      thigh2 = IF v*e2<0 THEN ((p-w)*e2)/(v*e2) ELSIF v*e2 = 0 AND (w-p)*e2<0 THEN a-2 ELSE b ENDIF,
+      tlow   = max(max(tlow1,tlow2),a),
+      thigh  = min(min(thigh1,thigh2),b)
+    IN (tlow <= thigh)
+
+  intersects_segment_fun_def: LEMMA
+    intersects_segment_fun? = intersects_segment?
+
+  on_segment?(w,v,a,b)(s): bool = 
+    EXISTS (t:real): a<=t AND t<=b AND
+    	   	     s = w+t*v
+
+  on_segment_in_wedge?(p,w,v,a,b,e1,e2)(s): bool = 
+    EXISTS (t:real): a<=t AND t<=b AND
+    	   	     s = w+t*v AND
+		     (s-p)*e1>=0 AND
+		     (s-p)*e2>=0
+
+  intersects_segment_sym: LEMMA
+    intersects_segment?(p,w,v,a,b,e2,e1) IFF
+    intersects_segment?(p,w,v,a,b,e1,e2)
+
+  on_segment_in_wedge_sym: LEMMA
+    on_segment_in_wedge?(p,w,v,a,b,e2,e1) =
+    on_segment_in_wedge?(p,w,v,a,b,e1,e2)
+
+
+  %%% The line segment is w+tv, where t is in [a,b]
+
+  max_segment_point_in_slice(p,w,v,a,b,e1,e2): Vect2 =
+    LET
+      tlow1  = IF v*e1>0 THEN ((p-w)*e1)/(v*e1) ELSIF v*e1 = 0 AND (w-p)*e1<0 THEN b+1 ELSE a ENDIF,
+      thigh1 = IF v*e1<0 THEN ((p-w)*e1)/(v*e1) ELSIF v*e1 = 0 AND (w-p)*e1<0 THEN a-1 ELSE b ENDIF,
+      tlow2  = IF v*e2>0 THEN ((p-w)*e2)/(v*e2) ELSIF v*e2 = 0 AND (w-p)*e2<0 THEN b+2 ELSE a ENDIF,
+      thigh2 = IF v*e2<0 THEN ((p-w)*e2)/(v*e2) ELSIF v*e2 = 0 AND (w-p)*e2<0 THEN a-2 ELSE b ENDIF,
+      tlow   = max(max(tlow1,tlow2),a),
+      thigh  = min(min(thigh1,thigh2),b),
+      aa     = sqv(v),
+      bb     = 2*(v*(w-p)),
+      cc     = sqv(w-p),
+      qmint  = IF v = zero THEN 0 ELSE -bb/(2*aa) ENDIF,
+      maxt   = IF aa*tlow^2 + bb*tlow <= aa*thigh^2+bb*thigh THEN thigh
+      	       ELSE tlow ENDIF
+    IN w + maxt*v
+
+  % max_segment_point_in_slice_symm: LEMMA
+  %   max_segment_point_in_slice(p,w,v,a,b,e1,e2) =
+  %   max_segment_point_in_slice(p,w,v,a,b,e2,e1)
+
+  max_segment_point_in_slice_def: LEMMA
+    Let s = max_segment_point_in_slice(p,w,v,a,b,e1,e2) IN
+    (intersects_segment?(p,w,v,a,b,e1,e2)
+    IMPLIES on_segment_in_wedge?(p,w,v,a,b,e1,e2)(s)) AND
+    (FORALL (u): on_segment_in_wedge?(p,w,v,a,b,e1,e2)(u)
+    	    	 IMPLIES norm(u-p) <= norm(s-p))
+
+  max_segment_point_in_slice_complete: LEMMA 
+    LET s = max_segment_point_in_slice(p,w,v,a,b,e1,e2) IN
+    FORALL (u): on_segment_in_wedge?(p,w,v,a,b,e1,e2)(u)
+    	   	IMPLIES
+		on_segment_in_wedge?(p,w,v,a,b,e1,e2)(s)
+
+
+
+END wedge_optimum_2D
+

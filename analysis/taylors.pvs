@@ -1,0 +1,140 @@
+taylors[T: TYPE FROM real]: THEORY
+%------------------------------------------------------------------------------
+% The Taylors theory establishes Taylor's Theorem (Rosenlicht Page 107)
+%
+%
+% Developed  by Ricky W. Butler      NASA Langley Research Center
+%               David Lester         Manchester University
+% 
+%      Version 1.0    last modified 10/30/00
+%      version 1.1    Generalised for arbitrary interval T (DRL) 27/10/03
+%   
+%------------------------------------------------------------------------------
+
+BEGIN
+
+   ASSUMING
+     IMPORTING deriv_domain_def
+
+     connected_domain : ASSUMPTION connected?[T]
+ 
+     not_one_element : ASSUMPTION not_one_element?[T]
+ 
+   ENDASSUMING
+
+   deriv_domain: LEMMA deriv_domain?[T]
+   IMPORTING reals@sigma_nat, ints@factorial
+   IMPORTING derivatives, nth_derivatives 
+   IMPORTING derivative_props % need mean value theorem
+
+
+
+
+   f:            VAR [T -> real]
+   m, n, nn, ii: VAR nat
+   x,xx,aa,bb:   VAR T
+   Rn: VAR [T -> real]
+
+
+%   fn: VAR [nat -> real]
+%   nn: VAR negint
+%   sigma_0_neg: LEMMA sigma(0,nn,fn) = 0
+   AUTO_REWRITE+ sigma_0_neg
+
+
+   sigma_derivable: LEMMA  FORALL (g: [T,nat -> real]):
+                   (FORALL (ii: subrange(0,n)):
+                          derivable?(LAMBDA aa: g(aa,ii))) IMPLIES
+          derivable?[T](LAMBDA aa: sigma(0, n, (LAMBDA m: g(aa,m))))
+
+
+   tay1: LEMMA derivable?((LAMBDA x: (bb - x) ^ n / factorial(n)))
+
+   tay2: LEMMA derivable?(LAMBDA x: (bb - x)) AND 
+               deriv(LAMBDA x: (bb - x)) = const_fun(-1)
+
+   tay3: LEMMA derivable?(LAMBDA x: (bb - x) ^ (n+1)/factorial(n+1)) AND
+               deriv(LAMBDA x: (bb - x) ^ (n+1)/factorial(n+1)) =
+                      - (LAMBDA x: (bb - x) ^ n/factorial(n))
+
+   deriv_sigma: LEMMA FORALL (FF: [T,nat -> real]): 
+              (FORALL (ii: subrange(0,n)): derivable?(LAMBDA xx: FF(xx,ii)))
+                IMPLIES
+                      deriv(LAMBDA x: sigma(0,n,(LAMBDA n: FF(x,n)))) =
+         (LAMBDA x: sigma(0,n,(LAMBDA ii: IF ii > n THEN 0 
+                                          ELSE deriv(LAMBDA xx: FF(xx,ii))(x)
+                                          ENDIF)))
+   
+   nderiv_term_derivable: LEMMA derivable_n_times?(f,n+1) IMPLIES
+                   derivable?(LAMBDA (aa: T): 
+                    IF n = 0 THEN f(aa) ELSE
+                       nderiv(n, f)(aa) * (bb-aa)^n / factorial(n)
+                    ENDIF)
+
+   taylor_derivable: LEMMA derivable_n_times?(f,n+1) IMPLIES
+          derivable?(LAMBDA aa: f(bb) -
+              sigma(0, n,  LAMBDA nn:
+                      IF nn > n  THEN 0
+                      ELSIF nn = 0 THEN f(aa)
+                      ELSE nderiv(nn,f)(aa) * (bb - aa)^nn / factorial(nn)
+                      ENDIF))
+
+   deriv_nderiv: LEMMA  derivable_n_times?(f, n+1) IMPLIES
+                      deriv((LAMBDA xx: (nderiv(n, f)(xx)))) = nderiv(n+1, f)
+
+   term_by_term_deriv: LEMMA derivable_n_times?(f, 1 + n) IMPLIES
+        sigma(0, n,
+               LAMBDA ii: IF ii > n THEN 0
+                        ELSE deriv(LAMBDA xx: IF ii = 0 THEN f(xx) ELSE
+                                         nderiv(ii, f)(xx) * (bb - xx) ^ ii /
+                                                   factorial(ii) ENDIF) (x)
+                        ENDIF)
+                          = nderiv(1 + n, f)(x) * (bb - x) ^ n / factorial(n)
+
+
+
+   taylor_lemma: LEMMA derivable_n_times?(f,n+1) AND 
+                       Rn = (LAMBDA aa: f(bb) - 
+                          sigma(0,n,(LAMBDA nn: IF nn > n THEN 0 
+                            ELSIF nn = 0 THEN f(aa)
+                            ELSE
+                             nderiv(nn,f)(aa)*(bb-aa)^nn/factorial(nn) ENDIF)))
+             IMPLIES
+                deriv(Rn) = (LAMBDA x: -nderiv(n+1,f)(x)*(bb-x)^n/factorial(n))
+
+   between(aa,bb): TYPE = {x: T | (aa < bb IMPLIES aa < x AND x < bb) AND
+                                  (bb < aa  IMPLIES bb < x AND x < aa) AND
+                                  (aa = bb IMPLIES x = aa)}
+
+%  Note: if aa /= bb then between(aa,bb) is Open_interval(aa,bb) 
+
+   Taylors: THEOREM derivable_n_times?(f,n+1) IMPLIES
+               (EXISTS (c: between(aa,bb)): 
+               f(bb) = sigma(0,n,(LAMBDA nn: IF nn > n THEN 0 
+                                             ELSIF nn = 0 THEN f(aa) ELSE
+                            nderiv(nn,f)(aa)*(bb-aa)^nn/factorial(nn) ENDIF))
+                         + nderiv(n+1,f)(c)*(bb-aa)^(n+1)/factorial(n+1))
+
+
+   Taylor_rem(n:nat,f:nderiv_fun[T](n+1),aa,bb,(c:between(aa,bb))): real = 
+              nderiv(n+1,f)(c)*(bb-aa)^(n+1)/factorial(n+1)
+
+
+%  --------- Infinitely Derivable Functions ---------
+
+   inf_deriv_fun?(f): bool = (FORALL n: derivable_n_times?(f,n))
+
+   Taylor_term(f:(inf_deriv_fun?),aa,bb)(n): real = 
+                                   IF n = 0 THEN f(aa) ELSE
+                                     nderiv(n,f)(aa)*(bb-aa)^n/factorial(n) 
+                                   ENDIF
+
+   Taylors_inf: THEOREM inf_deriv_fun?(f) IMPLIES
+                        (EXISTS (c: between(aa,bb)): 
+                           f(bb) = sigma(0,n,Taylor_term(f,aa,bb))
+                                         + Taylor_rem(n,f,aa,bb,c))
+
+END taylors
+
+
+

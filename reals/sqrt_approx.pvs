@@ -1,0 +1,91 @@
+sqrt_approx : theory
+begin
+%-----------------------------------------------------------------------------
+%
+%  Includes sqrt_newton, sqrt_approx
+%
+%  This theory was originally developed by Michel Levy (LSR IMAG, France) after
+%  Exercise Page 66 N°8 of Reasoned Programming by Krysia Broda, 
+%  Susan Eisenbach, Hessam Koshnevisan, and Steve Vickers, 1994. Prentice Hall.
+%
+%  It was modified and integrated to sqrt_approx in the NASA PVS Library 
+%  by C. Munoz (NIA) on March 28 2005. The definition of sqrt_bisect was 
+%  moved to the Interval package.
+% 
+%-----------------------------------------------------------------------------
+
+  IMPORTING sq,sqrt,log_nat
+
+  x,y           : VAR nnreal  
+  n             : VAR nat
+  z             : VAR posreal
+  eps,eps1,eps2 : VAR posreal 
+
+  sq_sq_aux : lemma 
+    sq((z+x/z)/2)-x = sq((sq(z)-x)/(2*z))
+
+  sqrt_newton_aux(x,(y | x < sq(y)),eps) :  
+    recursive {z | x < sq(z) AND sq(z)-x < eps} =
+    if sq(y)-x < eps then y  
+    else sqrt_newton_aux(x,((y+x/y)/2),eps) 
+    endif
+    measure if sq(y)-x < eps then 0 else 1+log_nat((sq(y)-x)/eps,4)`1 endif
+
+  sqrt_newton_aux_NOT_increasing: LEMMA 
+    EXISTS (x1,x2:nnreal,(y1:nnreal|x1<sq(y1)),(y2:nnreal|x2<sq(y2)),eps): 
+      x1<x2 AND y1<y2 IMPLIES
+        sqrt_newton_aux(x1,y1,eps) >= sqrt_newton_aux(x2,y2,eps)
+
+  sqrt_newton(x,eps) : {z | x < sq(z) AND sq(z)-x < eps} = 
+    sqrt_newton_aux(x,x+1,eps)
+
+  sqrt_newton_is_NOT_increasing: LEMMA
+    sqrt_newton(1.61,0.99) < sqrt_newton(1.6,0.99)
+
+  sq_sqrt_newton         : LEMMA sq(sqrt_newton(x,eps)) > x
+
+  sqrt_newton_gt         : LEMMA sqrt_newton(x,eps) > sqrt(x)
+ 
+  sqrt_newton_lt         : LEMMA x /= 0 IMPLIES x/sqrt_newton(x,eps) < sqrt(x)
+ 
+  sqrt_newton_le         : LEMMA x/sqrt_newton(x,eps) <= sqrt(x)
+
+  sqrt_approx(x,n) : {z | abs(sq(z)-x) < 10^(-n)/2} =
+    LET eps = 10^(-n),
+        N = 2*10^n,
+	k = floor(x*N),
+	xx = k/N
+    IN sqrt_newton(xx,10^(-n)/2)
+
+  sqrt_approx_increasing: LEMMA x<=y IMPLIES sqrt_approx(x,n)<=sqrt_approx(y,n)
+
+  sqrt_ub_old(x,n)    : posreal = sqrt_approx(x,2*n)+10^(-n)
+
+  sqrt_lb_old(x,n)    : nnreal = max(sqrt_approx(x,2*n)-10^(-n),0)
+
+  sqrt_old_bounds      : LEMMA
+	sqrt_lb_old(x,n) <= sqrt(x) AND
+        sqrt(x) < sqrt_ub_old(x,n)
+
+  sqrt_approx_fast(x,n) : {z | abs(sq(z)-x) < 10^(-n)/2} =
+    IF x<=64 THEN LET sa = sqrt_approx(x,n) IN min(sa,8) ELSE
+      LET twoexp = log_nat(x,4)`1,
+          newx = x/(4^twoexp),
+	  exp2err = floor(twoexp/3)+1,
+	  newn = n + 2*exp2err
+      IN LET sa = (2^twoexp)*min(sqrt_approx(newx,newn),2) IN max(sa,8)
+    ENDIF
+
+  sqrt_approx_fast_increasing: LEMMA 
+      x<=y IMPLIES sqrt_approx_fast(x,n)<=sqrt_approx_fast(y,n)
+
+  sqrt_ub(x,n)    : posreal = sqrt_approx_fast(x,2*n)+10^(-n)
+
+  sqrt_lb(x,n)    : nnreal = max(sqrt_approx_fast(x,2*n)-10^(-n),0)
+
+  sqrt_bounds      : LEMMA
+	sqrt_lb(x,n) <= sqrt(x) AND
+        sqrt(x) < sqrt_ub(x,n)
+
+
+end sqrt_approx

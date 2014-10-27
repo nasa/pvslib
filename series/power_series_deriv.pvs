@@ -1,0 +1,117 @@
+power_series_deriv[T: TYPE from real]: THEORY
+%----------------------------------------------------------------------------
+%
+% Term by term differentiation of power series:
+%
+%  		                      n
+%		                    ----
+%  series(deriv_powerseq(a, x)) =   \     k*a(k)*x^(k-1)
+%		                    /
+%		                    ----
+%		                    k = 0
+%
+%  		                     n-1
+%		                    ----
+%                               =   \     (k+1)*a(k+1)*x^k
+%		                    /
+%		                    ----
+%		                    k = 0
+%
+% The intention here is that one passes in the domain of convergence [T]
+% of the power series.  This will either be all of the reals or {x| -R < x < R}
+% where R is the range of convergence.  Most of the lemmas assume
+% convergence of the power series a: conv_powerseries?(a) =
+%     (FORALL (x: T): convergent?(powerseries(a)(x))) 
+%
+%
+% Author: Ricky W. Butler        10/2/00
+%
+% NOTES
+%  * Prelude restrictions on ^ [i.e. ^(r: real, i:{i:int | r /= 0 OR i >= 0}]
+%    lead to IF-THEN-ELSE on definition of "deriv_powerseq"
+%  * The alternate form: derivseq(a): (LAMBDA (k: nat): (k+1)*a(k+1))avoids
+%    the difficulty by shifting (i.e. starting with 2nd term)
+%  * These are shown to be equivalent in lemma "deriv_series_shift"
+%
+%----------------------------------------------------------------------------
+BEGIN
+ 
+   ASSUMING  %% T is either "real" or a open ball of radius R about 0
+     IMPORTING analysis@deriv_domain_def
+
+     connected_domain : ASSUMPTION connected?[T]
+
+     not_one_element : ASSUMPTION not_one_element?[T]
+
+     open            : ASSUMPTION 
+         FORALL (x : T) : EXISTS (delta : posreal): FORALL (y: real):
+                            abs(x-y) < delta IMPLIES T_pred(y) 
+
+
+    ball: ASSUMPTION FORALL (x: T): T_pred(x) IMPLIES T_pred(-x)
+
+   ENDASSUMING
+
+  
+   deriv_domain: LEMMA  deriv_domain?[T]
+
+   x,xp, x0: VAR T
+   k,n: VAR nat
+   a: VAR sequence[real]
+   t: VAR real
+   epsilon: VAR posreal
+
+%  Derivative of a infinite power series is the term-by-term derivative
+
+   IMPORTING power_series_deriv_scaf[T], power_series_derivseq[T],  analysis@taylors
+
+   AUTO_REWRITE- abs_0
+   AUTO_REWRITE- abs_nat
+
+
+%   deriv_powerseq(a,x): sequence[real] = (LAMBDA k: IF k = 0 THEN 0
+%                                                    ELSIF k = 1 THEN a(1)
+%                                                    ELSE  k*a(k)*x^(k-1)
+%                                                    ENDIF)
+%
+%   derivseq(a): sequence[real] = (LAMBDA (k: nat): (k+1)*a(k+1))
+
+
+
+   powerseries_deriv: THEOREM   conv_powerseries?(a) IMPLIES     
+       derivable?[T](LAMBDA (xx: T): limit(powerseries(a)(xx))) AND
+       (
+          LET f = (LAMBDA x: limit(powerseries(a)(x))) IN         
+          LET g = (LAMBDA x: limit(series(deriv_powerseq(a,x)))) IN 
+                   g = deriv[T](f)  )
+
+
+
+
+   powerseries_derivable: THEOREM conv_powerseries?(a) IMPLIES   
+                      derivable?[T](LAMBDA (xx: T): limit(powerseries(a)(xx))) 
+
+   powerseries_cont: COROLLARY conv_powerseries?(a) IMPLIES   
+                         continuous?(LAMBDA (xx: T): limit(powerseries(a)(xx))) 
+
+
+   Inf_sum_derivable: THEOREM conv_powerseries?(a) IMPLIES   
+                                 derivable?[T](Inf_sum(a)) 
+
+   deriv_Inf_sum: THEOREM conv_powerseries?(a) IMPLIES 
+             deriv[T](Inf_sum(a)) = Inf_sum(derivseq(a))
+
+
+%  ----- infinite power series is infinitely derivable ------
+
+
+   deriv_Inf_sum_derivable: THEOREM conv_powerseries?(a) IMPLIES     
+                                      derivable?[T](deriv[T](Inf_sum(a)))
+
+   IMPORTING analysis@nth_derivatives
+
+   Inf_sum_derivable_n_times: LEMMA conv_powerseries?(a) IMPLIES     
+                                       derivable_n_times?(Inf_sum(a),n)
+
+
+END power_series_deriv

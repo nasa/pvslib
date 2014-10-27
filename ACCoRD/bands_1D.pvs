@@ -1,0 +1,102 @@
+bands_1D[H:posreal,B:nnreal,T: {AB: posreal|AB>B},vsmin:real,vsmax:{x: real | x > vsmin}] : THEORY
+BEGIN
+
+  ASSUMING
+    vs_min_lt_max: ASSUMPTION vsmin < vsmax
+  ENDASSUMING	
+  
+  IMPORTING vs_bands[H,B,T],
+            fseqs_aux_vertical[vsmin,vsmax]
+
+
+  sz,vz,t,
+  voz,viz : VAR real
+  nzvz    : VAR nzreal
+  eps,dir : VAR Sign
+  nzt     : VAR nzreal
+  pt      : VAR posreal
+  band	  : VAR Connected
+  BT	  : VAR nnreal
+  drc	  : VAR Sign
+  x	  : VAR real
+  TF	  : VAR bool
+  vsb     : VAR (vs_fseq?)
+  vsp	  : VAR {r: real | vsmin<=r AND r<=vsmax}
+
+  AUTO_REWRITE- member
+    
+  vs_critical(TF,voz) : (vs_fseq?) =
+    IF TF AND vsmin<=voz AND voz<=vsmax THEN addend(voz,emptyseq)
+    ELSE emptyseq
+    ENDIF
+
+  vs_critical_rew: LEMMA
+    vs_critical(TF,voz) = IF TF AND vsmin<=voz AND voz<=vsmax THEN singleton(voz)
+    		      	ELSE emptyseq
+			ENDIF
+
+  member_vs_critical: LEMMA
+  		       member(x,vs_critical(TF,voz))
+		       IFF
+		       (TF AND x = voz AND vsmin<=voz AND voz<=vsmax)
+
+  vs_critical_composition: LEMMA
+    FORALL (vsfs: (vs_fseq?), TF: bool, voz: real, x:real):
+    	   member(x,vsfs o vs_critical(TF,voz))
+	   IFF
+	   ((TF AND x = voz AND vsmin<=voz AND voz<=vsmax)
+	   OR
+	   member(x,vsfs))
+
+  vs_bands(sz,viz) : {fs: (vs_fseq?) | increasing?(fs)} =
+    sort(
+    LET 
+      fsB : (vs_fseq?) = 
+      	IF abs(sz) < H AND B > 0 THEN
+           vs_critical(vs_circle_at(sz,viz,B,-1,1)) o 
+           vs_critical(vs_circle_at(sz,viz,B,1,1))
+      	ELSIF abs(sz) >= H AND B > 0 THEN
+	   vs_critical(vs_circle_at(sz,viz,B,-sign(sz),1))
+        ELSE
+           emptyseq
+        ENDIF,
+      fsT : (vs_fseq?) =
+        IF abs(sz) >= H THEN
+	   vs_critical(vs_circle_at(sz,viz,T,sign(sz),-1))
+	ELSE
+	   emptyseq
+	ENDIF
+    IN
+	(fsB o fsT) o
+    	(addend(vsmin,emptyseq) o addend(vsmax,emptyseq)))
+
+  vs_bands_not_empty : LEMMA
+    vs_bands(sz,viz)`length > 1
+
+  vs_bands_critical: LEMMA
+     (vs_critical?(sz,viz)(vsp) OR vsp = vsmin OR vsp = vsmax) IFF
+     member(vsp,vs_bands(sz,viz))
+
+  %------------%
+  % THEOREMS   %
+  %------------%
+
+  red_vs_band?(sz,viz,vsb)(i:subrange(0,vsb`length-2)) : bool =
+    LET mp = (vsb`seq(i)+vsb`seq(i+1))/2 in
+    cd_vertical?(sz,mp-viz)  
+
+  vs_red_bands : THEOREM
+    LET vsb = vs_bands(sz,viz) IN
+     FORALL (i:{ii: subrange(0,vsb`length-2)| vsb`seq(ii) /= vsb`seq(ii+1)}) :  
+       red_vs_band?(sz,viz,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         conflict_vertical?(sz,x-viz))
+
+  vs_green_bands : THEOREM
+    LET vsb = vs_bands(sz,viz) IN
+     FORALL (i:{ii: subrange(0,vsb`length-2)| vsb`seq(ii) /= vsb`seq(ii+1)}) :  
+       NOT red_vs_band?(sz,viz,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         NOT conflict_vertical?(sz,x-viz))
+
+END bands_1D

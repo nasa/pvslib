@@ -1,0 +1,138 @@
+cd3d_si[D,H:posreal,B:nnreal,T: {AB: posreal|AB>B},N:above[1]]  : THEORY 
+BEGIN
+
+  IMPORTING cd3d,
+            flightplan[N]
+
+  s,v,vo,vi,so,si : VAR Vect3       
+  k,i,ki	  : VAR below[N]
+  j		  : VAR below[N-1]
+  to		  : VAR real
+
+  % The following type is a flight plan. It consists of pairs (t (time),p (position)), where t is a time and 
+  % p is a vector. At the corresponding segement of the flight plan, the aircraft will have 
+  % position p at time t.
+  % Times are strictly increasing, but may be negative.
+
+  % A flightplan where there is some actual overlap with the lookahead range [B+to,T+to]
+  FlightPlanRelevant(to): TYPE+ = {flp: FlightPlan | flp(0)`time < to+T AND to+B < flp(N-1)`time}
+
+
+  flp: VAR FlightPlan
+
+  % sequence of all times listed in a flightplan that overlap wth the lookahead range
+  FlightTimesRelevant(to,flp): TYPE = {aa: FlightTimes(flp) | to+B <= aa AND aa <= to+T}
+
+  % Conflict
+  
+  % There exists a conflict (at time tt)
+  % so, vo are position & velocity at time to
+  conflict_3D?(so,to,vo,flp): bool =
+    EXISTS (tt: FlightTimesRelevant(to,flp)): 
+			   horizontal_los?[D]((so + (tt-to)*vo) - location_at(flp)(tt)) AND
+			   vertical_los?[H](so`z + (tt-to)*vo`z - location_at(flp)(tt)`z)
+
+  % returns the time from beginning of segment to the end of the time range of interest
+  % the (relative) segment lookahead end time
+  % a negative result indicates the segment starts after the lookahead time
+  seg_lh_top(flp,to)(j: below[N-1]): real = min(flp(j+1)`time,to+T)-flp(j)`time
+
+  % returns the time from beginning of segment to the start of the time range of interest
+  % the (relative) segment lookahead start time
+  % a time > flp(j+1)`time indicates the segment ends before the lookahead range starts
+  seg_lh_bottom(flp,to)(j: below[N-1]): nnreal = max(flp(j)`time,to+B)-flp(j)`time
+
+  % if the segment lookahead start time < the segment lookahead end time, the seg lookahead end time will be positive
+  seg_lh_top_positive: LEMMA FORALL (j:below[N-1],to:real,flpl:FlightPlanRelevant(to)): 
+  		       seg_lh_bottom(flpl,to)(j) < seg_lh_top(flpl,to)(j) IMPLIES seg_lh_top(flpl,to)(j)>0
+
+
+  % returns the flightplan position at which the lookahead range starts
+  lh_start_position(flp,to)(j: below[N-1]): Vect3 = 
+    flp(j)`position + (seg_lh_bottom(flp,to)(j)-flp(j)`time)*velocity(flp)(j)
+
+
+  % for a relevant flightplan, if a segment k's start time is within the lookahead range, then either
+  % seg_lh_top > seg_lh_bottom for k (if T+to > k`time) or k-1 (if T+to = k`time)
+  nontrivial_lookahead: 
+    LEMMA FORALL (k: below[N],to:real,flpl:FlightPlanRelevant(to)): 
+                        to+B<=flpl(k)`time AND flpl(k)`time<=to+T
+     	     	 	  IMPLIES
+			    (k<N-1 AND seg_lh_top(flpl,to)(k) - seg_lh_bottom(flpl,to)(k) > 0) OR  % k < N-1
+      	     	 	    (k > 0 AND seg_lh_top(flpl,to)(k-1) - seg_lh_bottom(flpl,to)(k-1) > 0) % k can equal N-1
+
+  % There is a conflict IFF there exists some segment j where you have a conflict.
+  conflict_3D_rew: LEMMA
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    conflict_3D?(so,to,vo,flpl) IFF
+    EXISTS (j: below[N-1]): 
+    (seg_lh_bottom(flpl,to)(j) < seg_lh_top(flpl,to)(j)
+    AND
+    conflict_3D?[D,H,seg_lh_bottom(flpl,to)(j),seg_lh_top(flpl,to)(j)]((so + (flpl(j)`time-to)*vo)-flpl(j)`position,vo-velocity(flpl)(j)))
+
+  conflict_3D_flightplan_open_interval: LEMMA
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    conflict_3D?(so,to,vo,flpl) IFF
+    (EXISTS (tt: FlightTimesRelevant(to,flpl)):
+        to+B < tt AND tt<to+T AND tt < flpl(N-1)`time AND
+	horizontal_los?[D]((so + (tt-to)*vo) - location_at(flpl)(tt)) AND
+	vertical_los?[H](so`z + (tt-to)*vo`z - location_at(flpl)(tt)`z))
+
+  % There is a conflict IFF there exists some segment j where you have a conflict (uses absolute time)
+  conflict_3D_rew_absolute_time: LEMMA
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    conflict_3D?(so,to,vo,flpl) IFF
+    EXISTS (j: below[N-1]): 
+    LET
+      lb = seg_lh_bottom(flpl,to)(j)+flpl(j)`time-to,
+      ub = seg_lh_top(flpl,to)(j)+flpl(j)`time-to
+    IN
+    (lb < ub
+    AND
+    conflict_3D?[D,H,lb,ub](so - (flpl(j)`position - (flpl(j)`time-to)*velocity(flpl)(j)),vo-velocity(flpl)(j)))
+
+  % conflict_3D inductive definition version
+  cd3d_ind?(so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to))(j: below[N-1]): INDUCTIVE bool =
+    (seg_lh_bottom(flpl,to)(j) < seg_lh_top(flpl,to)(j)
+    AND
+    cd3d?[D,H,seg_lh_bottom(flpl,to)(j),seg_lh_top(flpl,to)(j)]((so + (flpl(j)`time-to)*vo)-flpl(j)`position,vo-velocity(flpl)(j))) OR
+    (j>0 AND cd3d_ind?(so,vo,to,flpl)(j-1))
+
+
+  % conflict_3D based on inductive definition
+  % algorithm that is equivalent to conflict_3D?
+  cd3d_si?(so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)): bool = cd3d_ind?(so,vo,to,flpl)(N-2)
+
+  % if cd3d_ind says it is in conflict at or below some segement i, then there is a segment j<=i where 
+  % conflict_3d? says it is in conflict
+  cd3d_ind_correct: LEMMA 
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    	   (FORALL (i: below[N-1]): cd3d_ind?(so,vo,to,flpl)(i) IMPLIES
+    	   EXISTS (j: below[N-1]): 
+	   (j<=i AND seg_lh_bottom(flpl,to)(j) < seg_lh_top(flpl,to)(j) AND
+	   conflict_3D?[D,H,seg_lh_bottom(flpl,to)(j),seg_lh_top(flpl,to)(j)]
+             ((so + (flpl(j)`time-to)*vo)-flpl(j)`position,vo-velocity(flpl)(j))))
+
+  % if there is a segment j where conflict_3d? says it is in conflict, then cd3d_ind says it is in conflict at
+  % segment i >= j 
+  cd3d_ind_complete: LEMMA
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    	   (FORALL (i: below[N-1]):
+	       	   (EXISTS (j: below[N-1]): 
+	   	   (j<=i AND seg_lh_bottom(flpl,to)(j) < seg_lh_top(flpl,to)(j) AND
+	   	   conflict_3D?[D,H,seg_lh_bottom(flpl,to)(j),seg_lh_top(flpl,to)(j)]
+                     ((so + (flpl(j)`time-to)*vo)-flpl(j)`position,vo-velocity(flpl)(j))))
+	   IMPLIES  
+	   	   cd3d_ind?(so,vo,to,flpl)(i))
+
+  cd3d_si_correct: THEOREM
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    	   cd3d_si?(so,vo,to,flpl) IMPLIES
+	   conflict_3D?(so,to,vo,flpl)
+
+  cd3d_si_complete: Theorem
+    FORALL (so,vo:Vect3,to:real,flpl:FlightPlanRelevant(to)):
+    	   conflict_3D?(so,to,vo,flpl) IMPLIES
+	   cd3d_si?(so,vo,to,flpl)
+
+END cd3d_si

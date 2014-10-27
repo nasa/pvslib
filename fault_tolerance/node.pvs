@@ -1,0 +1,89 @@
+%
+%
+% Purpose : Functions and properties that apply to
+%           a parallel group of nodes
+%                
+%
+%
+
+node[
+  N: posnat,
+  T: TYPE+
+]: THEORY
+
+BEGIN
+
+  IMPORTING
+    finite_sets_below_extra[N],
+    structures@seqs[T],
+    local[T]
+
+
+  vec:           TYPE = [below(N) -> T]
+  compute_stage: TYPE = [vec -> vec]
+
+  nodeid_set:    TYPE = finite_set[below(N)]
+  nodeid_nonempty: TYPE = non_empty_finite_set[below(N)]
+  check_local:   TYPE = [vec -> nodeid_set]
+  choice_local:  TYPE = [vec, nodeid_set -> T]
+
+  n, n1, n2: VAR below(N)
+  t, default: VAR T
+  v, v1, v2: VAR vec
+  nodes: VAR nodeid_set
+  enabled: VAR nodeid_nonempty
+
+  uniform?(v, t)(nodes) : bool =
+     FORALL n: nodes(n) IMPLIES v(n) = t
+
+  enabled_symmetric?(nodes, v1, v2): bool =
+    FORALL n: nodes(n) IMPLIES v1(n) = v2(n)
+
+  % all enabled nodes who have the given value
+  uniform_nodes(nodes, v, t): nodeid_set =
+    {n | nodes(n) AND v(n) = t}
+
+  uniform_char: LEMMA
+    uniform?(v, t)(uniform_nodes(nodes, v, t))
+
+  enabled_symmetric_uniform: LEMMA
+      enabled_symmetric?(nodes, v1, v2) 
+    IMPLIES
+      uniform_nodes(nodes, v1, t) = uniform_nodes(nodes, v2, t)
+
+
+
+  filter_local: TYPE = [vec, nodeid_nonempty -> ne_seqs[T]]
+
+  filter: VAR filter_local
+  transform: VAR transform_local
+  selection: VAR select_local
+
+  % Build a choice function as a simple composition of 
+  % individual filter, transform, and selection functions
+%  choice_builder(filter, transform, selection): choice_local =
+%    selection o transform o filter
+
+
+
+  % Conversion from vec, enabled to finite sequence
+ %  THIS probably should be elevated to a Theory parameter ...
+  m(enabled): (bijective?[below(card(enabled)), (enabled)])
+
+  % filter the the unenabled elements out of the vector and put the remaining elements
+  % in a sequence.
+
+  vec2seq(v, nodes): finite_sequence[T] =
+    (# length := card(nodes),
+       seq := LAMBDA (i: below(card(nodes))): 
+         IF empty?(nodes) THEN choose({t:T|TRUE}) ELSE v(m(nodes)(i)) ENDIF 
+    #)
+
+  vec2seq_agreement: LEMMA
+      enabled_symmetric?(nodes, v1, v2)
+    IMPLIES
+      vec2seq(v1, nodes) = vec2seq(v2, nodes)
+
+  vec2seq_type: JUDGEMENT vec2seq(v, enabled) HAS_TYPE ne_seqs[T]
+
+END node

@@ -1,0 +1,152 @@
+%-------------------------------------------------------------------------
+%
+%  Sets of bit numbers.  This is different from the bit_vector library in
+%  only one way: the representation is a set of nats, instead of a set of
+%  below[N]s for some N.  This representation is adapted to the proofs
+%  of countability in countable_set.pvs, and so all of the adding,
+%  subtracting, bit shifting, etc. operations of bit_vector are missing
+%  (not to mention that some are not well-defined with this
+%  representation).
+%
+%  I have made several attempts at using the bit_vector library to replace
+%  this theory.  All have failed, due to the fact that there is no bit
+%  vector type; there are a countably infinite number of bit vector types.
+%  All of my attempts ultimately required me to somehow compare the
+%  value of 2 bv2nat invocations with different parameter expressions.
+%  I even tried to prove theorems relating such invocations, but those
+%  attempts were also unfruitful.
+%
+%  For PVS version 3.2.  May 11, 2005
+%  ---------------------------------------------------------------------
+%      Author: Jerry James (jamesj@acm.org), University of Kansas
+%
+%  EXPORTS
+%  -------
+%  prelude: finite_sets[nat], orders[nat], relations[nat], sets[nat]
+%  orders: bounded_integers[nat], bounded_nats[nat], bounded_orders[nat],
+%    bounded_sets[nat,<=], lattices[nat,<=], lower_semilattices[nat,<=],
+%    minmax_orders[nat], non_empty_bounded_sets[nat], relations_extra[nat],
+%    total_lattices[nat,<=], upper_semilattices[nat,<=]
+%  sets_aux: bits
+%
+%-------------------------------------------------------------------------
+
+bits: THEORY
+
+% Hide the theories used for proofs only
+% RWB: commented this out so that it would typecheck in PVS4.0
+%  EXPORTING ALL WITH finite_sets[nat], orders[nat], relations[nat], sets[nat],
+% 		    orders@relations_extra[nat], orders@bounded_integers[nat],
+% 		    orders@bounded_nats[nat], orders@bounded_orders[nat],
+% 		    orders@bounded_sets[nat, <=], 
+%                     orders@non_empty_bounded_sets[nat],
+% 		    orders@minmax_orders[nat], 
+%                     orders@lower_semilattices[nat, <=],
+% 		    orders@upper_semilattices[nat, <=], 
+%                     orders@lattices[nat, <=],
+% 		    orders@total_lattices[nat, <=],
+%                     orders@bounded_orders[nat]
+
+ BEGIN
+
+  IMPORTING orders@bounded_nats[nat]
+
+  % Proofs only
+  IMPORTING functions[finite_set, nat], functions[nat, finite_set]
+  IMPORTING function_inverse[finite_set, nat]
+  IMPORTING function_inverse[nat, finite_set]
+
+  n, m: VAR nat
+  S, R: VAR finite_set
+
+  % A convenient shorthand
+  lesseq: MACRO pred[[nat, nat]] =
+      restrict[[real, real], [nat, nat], boolean](<=)
+
+
+  % ==========================================================================
+  % Convert a natural number into a set of bits (natural numbers)
+  % ==========================================================================
+
+  bounding_bits(n): set[nat] = {m: nat | n < exp2(m)}
+
+  bounding_bits_has_least: LEMMA
+    FORALL n: n > 0 IMPLIES has_least?(bounding_bits(n), lesseq)
+
+  bit_decoding(n): RECURSIVE finite_set =
+    IF n = 0 THEN emptyset[nat]
+    ELSE LET bit: nat = least(lesseq)(bounding_bits(n)) - 1 IN
+           add(bit, bit_decoding(n - exp2(bit)))
+    ENDIF
+     MEASURE n
+
+  bit_decoding_has_greatest: LEMMA
+    FORALL n: n > 0 IMPLIES has_greatest?(bit_decoding(n), lesseq)
+
+  bit_decoding_max1: LEMMA
+    FORALL n: n > 0 IMPLIES n >= exp2(greatest(lesseq)(bit_decoding(n)))
+
+  bit_decoding_max2: LEMMA
+    FORALL n:
+      n > 0 IMPLIES
+       greatest(lesseq)(bit_decoding(n)) =
+        least(lesseq)(bounding_bits(n)) - 1
+
+  bit_decoding_max3: LEMMA
+    FORALL n, m: member(m, bit_decoding(n)) IMPLIES exp2(m) <= n
+
+
+  % ==========================================================================
+  % Convert a set of bits (natural numbers) into a natural number
+  % ==========================================================================
+
+  bit_encoding(S): RECURSIVE nat =
+    IF empty?(S) THEN 0
+    ELSE exp2(greatest(lesseq)(S)) +
+          bit_encoding(remove(greatest(lesseq)(S), S))
+    ENDIF
+     MEASURE card(S)
+
+  bit_encoding_member1: LEMMA FORALL S, (x: (S)): exp2(x) <= bit_encoding(S)
+
+  bit_encoding_member2: LEMMA
+    FORALL (S: non_empty_finite_set[nat]):
+      bit_encoding(S) < exp2((greatest(lesseq)(S) + 1))
+
+  bit_encoding_member3: LEMMA
+    FORALL (S: non_empty_finite_set[nat]):
+      least(lesseq)(bounding_bits(bit_encoding(S))) - 1 =
+       greatest(lesseq)(S)
+
+
+  % ==========================================================================
+  % The relationship between bit_decoding and bit_encoding
+  % ==========================================================================
+
+  decoding_encoding_max: LEMMA
+    FORALL (S: non_empty_finite_set[nat]):
+      greatest(lesseq)(S) = greatest(lesseq)(bit_decoding(bit_encoding(S)))
+
+  decoding_encoding_empty: LEMMA
+    FORALL S: empty?(S) IFF empty?(bit_decoding(bit_encoding(S)))
+
+  decoding_encoding_remove: LEMMA
+    FORALL (S: non_empty_finite_set[nat]):
+      remove(greatest(lesseq)(S), bit_decoding(bit_encoding(S))) =
+       bit_decoding(bit_encoding(remove(greatest(lesseq)(S), S)))
+
+  encoding_decoding: LEMMA FORALL n: bit_encoding(bit_decoding(n)) = n
+
+  decoding_encoding: LEMMA FORALL S: bit_decoding(bit_encoding(S)) = S
+
+  encoding_bijection: JUDGEMENT
+    bit_encoding HAS_TYPE (bijective?[finite_set[nat], nat])
+
+  decoding_bijection: JUDGEMENT
+    bit_decoding HAS_TYPE (bijective?[nat, finite_set[nat]])
+
+  encoding_decoding_inverse: COROLLARY bit_encoding = inverse(bit_decoding)
+
+  decoding_encoding_inverse: COROLLARY bit_decoding = inverse(bit_encoding)
+
+ END bits

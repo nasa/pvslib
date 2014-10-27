@@ -1,0 +1,64 @@
+%------------------------------------------------------------------------------
+% opt_trk_gs.pvs
+% ACCoRD v.1.0
+%
+% Solve the following equation on k:
+%   nv * (k*nv-v) = 0.
+%------------------------------------------------------------------------------
+
+opt_trk_gs[D:posreal] : THEORY
+BEGIN
+  
+  IMPORTING definitions,
+            horizontal[D]
+
+  u,nzv      : VAR Nz_vect2
+  j          : VAR real
+  vo,vi,nvo,
+  s,v        : VAR Vect2
+  t          : VAR posreal
+  dir        : VAR Sign
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  k_opt(nzv,v) : real =
+    nzv*v/sqv(nzv)
+
+  k_opt_tangent : LEMMA
+    LET k = k_opt(nzv,v) IN
+      nzv*(k*nzv-v) = 0
+
+  % Vector nzv is a directional vector
+  opt_trk_gs_line(nzv,vo,vi): {k:real,nvo:(optimal?(vo,nzv)) | 
+                               k*nzv = nvo-vi} = 
+    LET  k  = k_opt(nzv,vo-vi) IN
+      (k,k*nzv+vi)
+
+  % Solve equation on nvo: u*(nvo-vi) = j, such that v+vi is optimal wrt trk/gs
+  opt_trk_gs_dot(u,vo,vi,j) : {nvo:(optimal?(vo,Vdir(u,vo-vi))) |
+                                   u*(nvo-vi) = j} =
+    opt_trk_gs_line(Vdir(u,vo-vi),vo,vi+W0(u,j))`2 
+
+  opt_trk_gs_vertical(s,vo,vi,t,dir) : Vect2 =
+    LET v = vo-vi IN
+    IF Delta(s,v) > 0 AND Theta_D(s,v,dir) > 0 THEN
+      LET p = s + Theta_D(s,v,dir)*v IN
+        opt_trk_gs_dot(t*p,vo,vi,sq(D)-s*p) 
+    ELSE
+      zero
+    ENDIF
+
+  opt_trk_gs_vertical?(s,vo,vi,t,dir)(nvo) : bool = 
+    nz_vect2?(nvo) AND
+    nvo =  opt_trk_gs_vertical(s,vo,vi,t,dir)
+
+  opt_trk_gs_vertical_on_D: LEMMA
+    LET v = vo-vi IN
+    opt_trk_gs_vertical?(s,vo,vi,t,dir)(nvo) IMPLIES
+      Delta(s,v) > 0 AND
+      Theta_D(s,v,dir) > 0 AND
+      (s+t*(nvo-vi))*(s+Theta_D(s,v,dir)*v) = sq(D) 
+
+ END opt_trk_gs

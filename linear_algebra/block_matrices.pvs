@@ -1,0 +1,187 @@
+
+% Linear Algebra library
+% Heber Herencia-Zapana NIA
+% Gilberto Pérez        University of Coruña Spain
+% Pablo Ascariz         University of Coruña Spain
+% Felicidad Aguado      University of Coruña Spain
+% Date: December, 2013
+
+% This file gives the construction and properties of block vectors and block matrices
+
+block_matrices: THEORY
+
+ BEGIN
+
+ IMPORTING matrices,sigma_lemmas
+
+
+ m,n,p,q: VAR posnat
+
+
+
+%------------------------------------------------------------
+% Definition of Block Matrices
+%------------------------------------------------------------
+% We define matrices of 2x2 blocks.
+
+ Block_Matrix: TYPE = [# rows1: posnat,rows2: posnat,cols1: posnat,cols2: posnat,matrix: [below(rows1 + rows2), below(cols1 + cols2) -> real] #]
+
+ 
+ M,N: VAR Block_Matrix
+
+
+
+%------------------------------------------------------------
+% Matrix Conversions
+%------------------------------------------------------------
+
+%Given a Block Matrix, we obtain the Matrix given by it
+ Block2M(M): Matrix = (# rows := M`rows1 + M`rows2, cols := M`cols1 + M`cols2,matrix := LAMBDA (i: below(M`rows1 + M`rows2), j: below(M`cols1 + M`cols2)): M`matrix(i,j) #)
+
+
+ conversion Block2M
+
+
+%Given a Block Matrix, we obtain the four Matrices given by its blocks
+ Block2M1(M): Matrix = (# rows := M`rows1, cols := M`cols1,matrix := LAMBDA (i: below(M`rows1), j: below(M`cols1)): M`matrix(i,j) #) %upper left block
+
+ Block2M2(M): Matrix = (# rows := M`rows2, cols := M`cols1,matrix := LAMBDA (i: below(M`rows2), j: below(M`cols1)): M`matrix(i + M`rows1,j) #) %lower left block
+
+ Block2M3(M): Matrix = (# rows := M`rows1, cols := M`cols2,matrix := LAMBDA (i: below(M`rows1), j: below(M`cols2)): M`matrix(i,j + M`cols1) #) %upper right block
+
+ Block2M4(M): Matrix = (# rows := M`rows2, cols := M`cols2,matrix := LAMBDA (i: below(M`rows2), j: below(M`cols2)): M`matrix(i + M`rows1,j + M`cols1) #) %lower right block
+
+
+% Given four Matrices and its Dimensions we obtain the Block Matrix composed by them, which has the following form:
+% (A C)
+% (B D)
+ M2Block(m,n,p,q)(A: Mat(m,p),B: Mat(n,p),C: Mat(m,q),D: Mat(n,q)): Block_Matrix =  (# rows1 := A`rows,rows2 := B`rows,cols1 := A`cols,cols2 := C`cols,matrix := 
+ 	    LAMBDA (i: below(A`rows + B`rows), j: below(A`cols + C`cols)): 
+	    IF i < A`rows THEN 
+	       	 IF j < A`cols THEN A`matrix(i,j)
+	       	    ELSE C`matrix(i,j - A`cols) 
+		 ENDIF
+
+	       	 ELSE IF j < A`cols THEN B`matrix (i - A`rows,j)
+		    ELSE D`matrix(i - A`rows,j - A`cols)
+		 ENDIF
+	    ENDIF  
+	    #)
+
+
+
+%------------------------------------------------------------
+% Definition of Block Vectors
+%------------------------------------------------------------
+
+ Block_Vector: TYPE = [# comp1: posnat,comp2: posnat,vector: [below(comp1 + comp2) -> real] #]
+
+ Block_Vector2: TYPE = [# comp1: posnat,comp2: posnat,vector1: [below(comp1) -> real],vector2: [below(comp2) -> real] #]
+
+ Block_Vect(m,n): TYPE = {V: Block_Vector | V`comp1 = m AND V`comp2 = n}
+
+
+ V: Var Block_Vector
+
+
+
+%------------------------------------------------------------
+% Vector Conversions
+%------------------------------------------------------------
+
+ BV1toBV2(V): Block_Vector2 = (# comp1 := V`comp1, comp2 := V`comp2, vector1 := LAMBDA (i: below(V`comp1)): V`vector(i),vector2 := LAMBDA (i: below(V`comp2)): V`vector(i + V`comp1)#)
+
+ BV2toBV1(V: Block_Vector2): Block_Vector = (# comp1 := V`comp1, comp2 := V`comp2, vector := LAMBDA (i: below(V`comp1 + V`comp2)): IF i < V`comp1 THEN V`vector1(i) ELSE V`vector2(i - V`comp1) ENDIF #)
+
+
+ Block2V(V): Vector[V`comp1 + V`comp2] = LAMBDA (i: below[V`comp1 + V`comp2]): V`vector(i)
+
+ Block2V1(V): Vector[V`comp1] = LAMBDA (i: below[V`comp1]): V`vector(i)
+
+ Block2V2(V): Vector[V`comp2] = LAMBDA (i: below[V`comp2]): V`vector(i + V`comp1)
+
+ 
+ V2Block(m,n: posnat)(x: Vector[m],y: Vector[n]): Block_Vector = (# comp1 := m,comp2 := n,vector := 
+ 	    LAMBDA (i: below(m + n)): 
+	    IF i < m THEN x(i)
+	    ELSE y(i - m) ENDIF  
+	    #);
+
+
+ Vec2Block(m,n: posnat)(x: Vector[m + n]): Block_Vector = (# comp1 := m,comp2 := n,vector := LAMBDA (i: below(m + n)): x(i) #);
+
+
+ conversion BV1toBV2,BV2toBV1
+
+
+
+%------------------------------------------------------------
+% Definitions involving Block Matrices
+%------------------------------------------------------------
+
+ Btranspose(M): Block_Matrix =  (# rows1 := M`cols1,rows2 := M`cols2,cols1 := M`rows1,cols2 := M`rows2,matrix := LAMBDA (i: below(M`cols1 + M`cols2), j: below(M`rows1 + M`rows2)): M`matrix(j,i) #)
+
+ Bsquare?(M): bool = square?(M)
+
+ Bdiag_square?(M): bool = square?(Block2M1(M)) AND square?(Block2M4(M))
+
+ Bsymmetric?(M): bool = symmetric?(M)
+
+ same_Bdim?(M)(N): bool = M`rows1 = N`rows1 AND M`rows2 = N`rows2 AND M`cols1 = N`cols1 AND M`cols2 = N`cols2;
+
+
+
+%------------------------------------------------------------
+% Block Operations
+%------------------------------------------------------------
+
+ *(V, (W: Block_Vect(V`comp1,V`comp2))): real = Block2V1(V)*Block2V1(W) + Block2V2(V)*Block2V2(W);
+
+ *(M: (Bdiag_square?),V: Block_Vect(M`cols1,M`cols2)): Block_Vector2 = (# comp1 := M`rows1, comp2 := M`rows2,vector1 := Block2M1(M)*Block2V1(V) + Block2M3(M)*Block2V2(V), vector2 := Block2M2(M)*Block2V1(V) + Block2M4(M)*Block2V2(V)#);
+
+ +(M: Block_Matrix,N: (same_Bdim?(M))): Block_Matrix = (# rows1 := M`rows1,rows2 := M`rows2,cols1 := M`cols1 ,cols2 := M`cols2,matrix := LAMBDA (i: below(M`rows1 + M`rows2),j: below(M`cols1 + M`cols2)): M`matrix(i,j) + N`matrix(i,j) #);
+
+ *(r: real, M: Block_Matrix): Block_Matrix = M WITH [`matrix := LAMBDA (i: below(M`rows1 + M`rows2), j: below(M`cols1 + M`cols2)): r * M`matrix(i, j)];
+ 
+
+
+%------------------------------------------------------------
+% Generic Lemmas about Blocks
+%------------------------------------------------------------
+
+ conv_transp: LEMMA FORALL (M: Block_Matrix): Btranspose(M) = M2Block(M`cols1,M`cols2,M`rows1,M`rows2)(transpose(Block2M1(M)),transpose(Block2M3(M)),transpose(Block2M2(M)),transpose(Block2M4(M)))
+
+ block_square: LEMMA FORALL (M: Block_Matrix): Bdiag_square?(M) IMPLIES Bsquare?(M)
+ 
+ block_symmetric: LEMMA FORALL (M: Block_Matrix): symmetric?(Block2M1(M)) AND symmetric?(Block2M4(M)) AND transpose(Block2M2(M)) = Block2M3(M) IMPLIES Bsymmetric?(M);
+
+ block_symmetric2: LEMMA FORALL (M: Block_Matrix): Bsymmetric?(M) AND square?(Block2M1(M)) AND square?(Block2M4(M)) IMPLIES symmetric?(Block2M1(M)) AND symmetric?(Block2M4(M)) AND transpose(Block2M2(M)) = Block2M3(M)
+
+
+
+%------------------------------------------------------------
+% Lemmas about Equalities and Operations withs Blocks
+%------------------------------------------------------------
+
+ blockV_equal: LEMMA FORALL (W: Block_Vect(V`comp1,V`comp2)): V = W IFF Block2V(V) = Block2V(W) 
+
+
+
+ VtoBlocktoV1: LEMMA FORALL (x: Vector[m],y: Vector[n]): Block2V1(V2Block(m,n)(x,y)) = x
+
+ VtoBlocktoV2: LEMMA FORALL (x: Vector[m],y: Vector[n]): Block2V2(V2Block(m,n)(x,y)) = y
+
+ VtoBlocktoV: LEMMA FORALL (x: Vector[m],y: Vector[n],i: below[m + n]): Block2V(V2Block(m,n)(x,y))(i) = IF i < m THEN x(i) ELSE y(i - m) ENDIF
+
+ Vec_block_Vec: LEMMA FORALL (m,n: posnat, V: Vector[m + n]): Block2V(Vec2Block(m, n)(V)) = V
+
+ block_Vec_block: LEMMA FORALL (V: Block_Vector): Vec2Block(V`comp1, V`comp2)(Block2V(V)) = V
+
+
+
+ block_product: LEMMA FORALL (M: (Bdiag_square?),V: Block_Vect(M`cols1,M`cols2)): Block2V(M*V) = Block2M(M)*Block2V(V)
+
+ Block2V_product: LEMMA FORALL (W: Block_Vect(V`comp1,V`comp2)): V*W = Block2V(V)*Block2V(W) 
+
+
+END block_matrices

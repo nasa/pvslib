@@ -1,0 +1,178 @@
+derivatives_def  [ T : TYPE FROM real ] : THEORY
+%-----------------------------------------------------------------------------------------
+%
+%    The derivatives library has been generalized to handle a larger class of domains.
+%    Previously the domain had to be a connected domain defined by the following
+%    predicate:
+%
+%       connected_domain : ASSUMPTION
+%           FORALL (x, y : T), (z : real) :
+%               x <= z AND z <= y IMPLIES T_pred(z)
+%
+%    The following more general domain definition is now used
+%
+%        deriv_domain    : ASSUMPTION FORALL (e: posreal, x:T):
+%                                        EXISTS (y: {u: nzreal | T_pred(u + x)}): abs(y) < e
+%
+%    This definition allows unions of closed and open intervals.
+%    See deriv_domains for more information.
+%
+%-----------------------------------------------------------------------------------------
+BEGIN
+
+  ASSUMING
+    IMPORTING deriv_domain_def
+
+    deriv_domain     : ASSUMPTION deriv_domain?[T]
+
+    not_one_element  : ASSUMPTION not_one_element?[T]
+
+  ENDASSUMING
+
+  IMPORTING lim_of_functions, continuous_functions
+
+  f, f1, f2, fp : VAR [T -> real]
+  g : VAR [T -> nzreal]
+  x : VAR T
+  u : VAR nzreal
+  b : VAR real
+  l, l1, l2 : VAR real
+
+
+  %-------------------
+  %  Newton Quotient 
+  %-------------------
+
+  A(x) : setof[nzreal] = { u: nzreal | T_pred(x + u) }
+
+  NQ(f, x)(h : (A(x))) : real = (f(x + h) - f(x)) / h
+
+  deriv_TCC : LEMMA FORALL x : adh[(A(x))](fullset[real])(0)
+  adh_A_lem : LEMMA adh[(A(x))](fullset[real])(0)   %% Butler
+
+%   play: LEMMA (FORALL (x:T): EXISTS (e: posreal):  
+%      FORALL (y: real): abs(x-y) < e IMPLIES T_pred(y))
+%               IMPLIES
+%                  adh[(A(x))](fullset[real])(0)
+
+  %----------------------------
+  %  Differentiable functions
+  %----------------------------
+
+  derivable?(f, x) : bool = convergent?(NQ(f, x), 0)
+
+%% +++  derivable?(f) : bool = FORALL x : derivable?(f, x)
+
+
+  %--------------------------------------
+  %  Derivable functions are continuous
+  %--------------------------------------
+
+  continuous_lim  : LEMMA convergence(LAMBDA (h : (A(x))) : f(x + h), 0, f(x))
+                            IFF continuous?(f, x)
+
+  deriv_continuous      : LEMMA convergence(NQ(f, x), 0, l) 
+                                  IMPLIES continuous?(f, x)   
+
+  derivable_continuous  : LEMMA derivable?(f, x) IMPLIES continuous?(f, x)
+
+
+%% +++  derivable_cont_fun : LEMMA derivable?(f) IMPLIES continuous?(f)
+
+
+  %---------------------
+  %  Properties of NQ
+  %---------------------
+
+  sum_NQ      : LEMMA NQ(f1 + f2, x) = NQ(f1, x) + NQ(f2, x)
+
+  neg_NQ      : LEMMA NQ(- f, x) = - NQ(f, x)
+
+  diff_NQ     : LEMMA NQ(f1 - f2, x) = NQ(f1, x) - NQ(f2, x)
+
+  scal_NQ     : LEMMA NQ(b * f, x) = b * NQ(f, x)
+
+  const_NQ    : LEMMA NQ(const_fun(b), x) = const_fun(0)
+
+  identity_NQ : LEMMA NQ(I[T], x) = const_fun(1)
+
+
+  prod_NQ     : LEMMA FORALL (h : (A(x))): NQ(f1 * f2, x)(h) 
+                            = NQ(f1, x)(h) * f2(x) + NQ(f2, x)(h) * f1(x + h)
+
+  cnv_seq_prod_NQ: LEMMA convergence(NQ(f1, x), 0, l1)
+                          AND convergence(NQ(f2, x), 0, l2)
+              IMPLIES convergence(NQ(f1 * f2, x), 0, f2(x) * l1 + f1(x) * l2)
+
+
+  inv_NQ         : LEMMA FORALL (h : (A(x))) : NQ(1/g, x)(h) 
+                                   = - NQ(g, x)(h) / (g(x) * g(x + h))
+  
+  cnv_seq_inv_NQ : LEMMA convergence(NQ(g, x), 0, l1)
+                       IMPLIES convergence(NQ(1/g, x), 0, - l1 / (g(x) * g(x)))
+
+
+  %---------------------------------------
+  %  Operations preserving derivability
+  %---------------------------------------
+ 
+  sum_derivable     : LEMMA derivable?(f1, x) AND derivable?(f2, x)
+                               IMPLIES derivable?(f1 + f2, x)
+
+  neg_derivable     : LEMMA derivable?(f, x) IMPLIES derivable?(- f, x)
+
+  diff_derivable    : LEMMA derivable?(f1, x) AND derivable?(f2, x)
+                               IMPLIES derivable?(f1 - f2, x)
+
+  prod_derivable    : LEMMA derivable?(f1, x) AND derivable?(f2, x)
+                               IMPLIES derivable?(f1 * f2, x)
+
+  scal_derivable    : LEMMA derivable?(f, x) IMPLIES derivable?(b * f, x)
+
+  const_derivable   : LEMMA derivable?(const_fun(b), x)
+
+  inv_derivable     : LEMMA derivable?(g, x) IMPLIES derivable?(1/g, x)
+
+  div_derivable     : LEMMA derivable?(f, x) AND derivable?(g, x)
+                               IMPLIES derivable?(f / g, x)
+
+  identity_derivable: LEMMA derivable?(I, x)
+
+
+  %--------------
+  %  Derivative
+  %--------------
+
+  deriv(f, (x0 : { x | derivable?(f, x) })) : real = lim(NQ(f, x0), 0)
+
+  deriv_def   : LEMMA convergence(NQ(f, x), 0, l) IMPLIES
+                   derivable?(f,x) AND deriv(f,x) = l
+
+  deriv_sum   : LEMMA derivable?(f1, x) AND derivable?(f2, x) IMPLIES
+                      deriv(f1 + f2, x) = deriv(f1, x) + deriv(f2, x)
+
+  deriv_neg   : LEMMA derivable?(f, x) IMPLIES 
+                      deriv(- f, x) = - deriv(f, x)
+
+  deriv_diff  : LEMMA derivable?(f1, x) AND derivable?(f2, x) IMPLIES
+                         deriv(f1 - f2, x) = deriv(f1, x) - deriv(f2, x)
+
+  deriv_prod  : LEMMA derivable?(f1, x) AND derivable?(f2, x) IMPLIES
+                         deriv(f1 * f2, x) = deriv(f1, x) * f2(x) 
+                                             + deriv(f2, x) * f1(x)
+
+  deriv_const : LEMMA deriv(const_fun(b), x) = 0
+
+  deriv_scal  : LEMMA derivable?(f, x) IMPLIES deriv(b * f, x) = b * deriv(f, x)
+
+  deriv_inv   : LEMMA derivable?(g, x) IMPLIES
+                         deriv(1/g, x) = - deriv(g, x) / (g(x) * g(x))
+
+  deriv_div   : LEMMA derivable?(f, x) AND derivable?(g, x) IMPLIES 
+                         deriv(f / g, x) = 
+                               (deriv(f,x)*g(x) - deriv(g,x)*f(x))/(g(x)*g(x))
+
+  deriv_identity : LEMMA deriv(I[T], x) = 1
+
+
+END derivatives_def

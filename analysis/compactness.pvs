@@ -1,0 +1,144 @@
+compactness[T:TYPE+,d:[T,T->nnreal]]: THEORY
+%------------------------------------------------------------------------------
+% Compactness
+%
+%     Authors: Anthony Narkawicz,  NASA Langley
+%              Ricky Butler,       NASA Langley
+%
+%     Version 1.0         8/25/2009  Initial Version
+%
+%  Compactness proofs can be detailed and tricky.  It is highly recommended that
+%  users of this library exploit the IdxCover mechanism developed here
+%
+%       Given a set H = { (a,r) } where a = center of a ball and
+%                                       r = radius of a ball
+%       for which
+%             
+%            ball_covering(H) = { balls(a,r) | H(a,r) }
+%
+%       idxCover returns
+%             N:  size of a finite covering
+%             seq: below[N] -> (H)
+%
+%       which provides a finite sub-cover, i.e.
+%
+%           open_cover?(ball_covering({h: [T,posreal] | H(h) 
+%                       AND (EXISTS (n: below[N]): h = seq(n))}),S)
+%            
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING IMPORTING metric_spaces_def[T,d]
+       fullset_metric_space: ASSUMPTION metric_space?[T,d](fullset[T])
+   ENDASSUMING
+
+  CONVERSION+ singleton
+
+  S,W:     VAR set[T]
+  r:     VAR posreal
+  x,y,z: VAR T
+
+
+  IMPORTING metric_spaces[T,d]
+
+  XS,YS: VAR set[set[T]]
+
+  open_cover?(XS,S): bool = subset?(S,Union(XS)) AND
+                            (FORALL (C: set[T]): XS(C) IMPLIES open?(C))
+     
+
+  finite_cover?(XS,S): bool  = is_finite(XS) AND open_cover?(XS,S)
+
+  compact?(S): bool          = FORALL XS: open_cover?(XS,S) IMPLIES
+                               EXISTS YS: subset?(YS,XS) & finite_cover?(YS,S)
+
+  bounded?(S): bool          = EXISTS r: FORALL x,y: S(x) AND S(y) IMPLIES ball(x,r)(y)
+
+  precompact?(S): bool       = FORALL r: EXISTS (X:set[T]):
+                               finite_cover?({z:set[T] | EXISTS (x:(X)): ball(x,r) = z},S)
+
+  nBalls(p:T): set[(open?)] = {s: set[T] | EXISTS (n: posnat): s = ball(p,n)}
+
+  p: VAR T
+  nBalls_open_cover: LEMMA open_cover?(nBalls(p),S)
+
+ 
+
+  % Helpful Property Of Compact Sets
+
+  H: VAR set[[T,posreal]]
+
+  ball_covering(H): set[set[T]] = {s: set[T] | EXISTS (h: (H)): s = ball(h`1,h`2)}
+
+  %exists_sequence: LEMMA
+
+  reverse_ball(H: set[[T,posreal]],A: {s: (nonempty?[T]) | ball_covering(H)(s)}): 
+      {h: (H) | ball(h`1,h`2)  = A}
+
+  set_compact: LEMMA 
+     (compact?(S) AND open_cover?(ball_covering(H),S)) 
+     IMPLIES (EXISTS (N: nat, seq: [below[N] -> (H)]): 
+  	 open_cover?(ball_covering({h: [T,posreal] | H(h) AND 
+                                            (EXISTS (n: below[N]): h = seq(n))}),S))
+
+
+
+% ----- Here is a mechanism to explicitly contruct a indexed finite subcover of any ---------------------
+% ----- ball covering of a compact set
+
+  Htype(S): TYPE = {H: set[[T,posreal]] | compact?(S) AND open_cover?(ball_covering(H),S)}
+
+  idxCover(S: (compact?), H: Htype(S)): 
+      {pair: [N: nat,seq: [below[N]->(H)]] | 
+  	 open_cover?(ball_covering({h: [T,posreal] | H(h)
+                 AND (EXISTS (n: below[pair`1]): h = pair`2(n))}),S)} 
+       = choose({ pair: [N: nat,seq: [below[N]->(H)]] | 
+              open_cover?(ball_covering({h: [T,posreal] | H(h) 
+                 AND (EXISTS (n: below[pair`1]): h = pair`2(n))}),S)})
+
+  idxCover_def: LEMMA
+      compact?(S) AND open_cover?(ball_covering(H),S) AND
+      S(x) IMPLIES
+            LET (N,seq) = idxCover(S,H) IN
+              (EXISTS (n: below[N]): LET (a,r) = seq(n) IN
+                   ball(a,r)(x) AND ball_covering(H)(ball(a,r)))
+
+
+  set_compact_alt: LEMMA 
+      compact?(S) AND open_cover?(ball_covering(H),S)
+      IMPLIES LET (N,seq) = idxCover(S,H) IN
+         open_cover?(ball_covering({h: [T,posreal] | H(h) AND (EXISTS (n: below[N]): h = seq(n))}),S)
+
+  N: var posint
+  M:   var nat
+
+  IMPORTING finite_sets@finite_sets_minmax[nat,<=]
+
+  max_min_finite_scaf: LEMMA
+      FORALL (P: [nat,below(N) -> bool]): (FORALL (n: below(N)): 
+         EXISTS (M: nat): FORALL (m: above(M)): 
+             P(m,n)) IMPLIES (EXISTS (TOTAL_M: nat): FORALL (m:above(TOTAL_M),n: below(N)): P(m,n))
+
+  compact_sequence_limit: LEMMA 
+     (nonempty?(S) AND compact?(S)) 
+      IMPLIES (FORALL (seq: [nat -> (S)]): EXISTS (p: (S)): 
+          FORALL (epsilon: posreal, N: posint): EXISTS (n: above(N)): d(seq(n),p) < epsilon)
+
+  % Apostle Theorem 3.38 
+%%  compact_closed : LEMMA compact?(S) IMPLIES closed?(S) 
+%%  compact_bounded: LEMMA compact?(S) IMPLIES bounded?(S) 
+
+  compact_open_increasing_seq: LEMMA compact?(S) IMPLIES (FORALL (seq: [nat -> (open?)]): (FORALL (j: nat):
+    subset?(seq(j),seq(j+1))) AND open_cover?({AZ: set[T] | EXISTS (k: nat): AZ = seq(k)},S) IMPLIES
+    EXISTS (i: nat): subset?(S,seq(i)))
+
+  closed_subset_of_compact: LEMMA compact?(S) AND subset?(W,S) AND closed?(W) IMPLIES compact?(W)
+
+  compact_closed: LEMMA compact?(S) IMPLIES closed?(S)
+
+  compact_bounded: LEMMA compact?(S) IMPLIES bounded?(S) % Added 09/2010
+
+
+
+END compactness
+

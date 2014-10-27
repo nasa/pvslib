@@ -1,0 +1,161 @@
+%------------------------------------------------------------------------------
+% predicate_coordination.pvs - General Theory of Coordination for 3D Maneuvers
+%------------------------------------------------------------------------------
+
+predicate_coordination: THEORY
+BEGIN
+
+  IMPORTING definitions_3D
+
+
+  s,v,nv,
+  nw,vo,nvo,
+  vi,nvi  : VAR Vect3
+  eps     : VAR Sign
+  pr	  : VAR posreal
+  l,l1,l2 : VAR real
+
+  Criter: TYPE = [[Vect3,Vect3]->set[Vect3]]
+  SignedCrit: TYPE = [Sign -> Criter]
+
+  Vector_Predicate: TYPE+ = [[Vect3,Vect3]->set[Vect3]]
+
+  Crit,Crit1,Crit2,Crit3: VAR Criter
+  Scrit,Scrit1,Scrit2,Scrit3: VAR SignedCrit
+
+
+  C : VAR Vector_Predicate
+
+
+
+    % BASIC DEFINITIONS
+
+    sum_closed?(C): bool =
+        FORALL (s,v,nv,nw:Vect3):
+	C(s,v)(nv) AND C(s,v)(nw) IMPLIES C(s,v)(nv+nw)
+
+    symmetric?(C) : bool = 
+       FORALL (s,v,nv:Vect3):
+	C(s,v)(nv) IFF C(-s,-v)(-nv)
+
+
+    crit_sum_closed?(Crit): bool =
+        FORALL (s,v,nv,nw:Vect3):
+	Crit(s,v)(nv) AND Crit(s,v)(nw) IMPLIES Crit(s,v)(nv+nw)
+
+
+    sum_independent?(Crit,C): bool = 
+        FORALL (v,s,nv,nw: Vect3):
+        (Crit(s,v)(nv) AND Crit(s,v)(nw) AND C(s,v)(v)
+        IMPLIES
+        NOT C(s,v)(nv+nw))
+
+    open?(C): bool = 
+        FORALL (s,v,nv: Vect3): C(s,v)(nv) IMPLIES
+	(EXISTS (epsilon:posreal):
+	FORALL (nw: Vect3):
+	norm(nw)<epsilon
+	IMPLIES
+	C(s,v)(nv+nw))
+
+
+    crit_independent_of_length?(Crit): bool =
+        FORALL (v,s,nv: Vect3,pr: posreal):
+	(Crit(s,v)(nv) IFF Crit(s,pr*v)(nv))
+
+    independent_of_length?(C): bool = 
+        FORALL (s,v,nv:Vect3,pr,pz:posreal):
+	(C(s,v)(nv) IFF C(s,pz*v)(pr*nv))
+
+    coordinated?(Crit1,Crit2,C): bool =
+        FORALL (vo,vi,nvo,nvi,s: Vect3):
+        (C(s,vo-vi)(vo-vi) AND
+        Crit1(s,vo-vi)(nvo-vi) AND
+        Crit2(-s,vi-vo)(nvi-vo)
+        IMPLIES
+        NOT C(s,vo-vi)(nvo-nvi))
+
+    coordinated_symmetric: LEMMA symmetric?(C) IMPLIES
+    			   (coordinated?(Crit1,Crit2,C) IFF coordinated?(Crit2,Crit1,C))
+
+
+    crit_symmetric?(Crit): bool =
+        FORALL (v,s,nv: Vect3):
+        (Crit(s,v)(nv) IFF Crit(-s,-v)(-nv))
+
+    sum_indep_coordinated: LEMMA
+        crit_symmetric?(Crit) AND
+        sum_independent?(Crit,C) AND
+	sum_closed?(C)
+        IMPLIES
+        coordinated?(Crit,Crit,C)
+
+    coordinated_sum_indep: LEMMA
+    	crit_symmetric?(Crit) AND
+        crit_independent_of_length?(Crit) AND
+	coordinated?(Crit,Crit,C) AND
+	open?(C) AND
+	independent_of_length?(C)
+	IMPLIES
+	sum_independent?(Crit,C)
+
+    crit_antisymmetric?(Scrit): bool =
+        FORALL (v,s,nv: Vect3, eps:Sign):
+        (Scrit(eps)(s,v)(nv) IFF Scrit(-eps)(-s,-v)(-nv))
+
+    sum_indep_coordinated_antisym: LEMMA
+        crit_antisymmetric?(Scrit) AND
+        sum_independent?(Scrit(eps),C) AND
+	sum_closed?(C)
+        IMPLIES
+        coordinated?(Scrit(eps),Scrit(-eps),C)
+
+    coordinated_antisym_sum_indep: LEMMA
+    	crit_antisymmetric?(Scrit) AND
+        crit_independent_of_length?(Scrit(eps)) AND
+	coordinated?(Scrit(eps),Scrit(-eps),C) AND
+	open?(C) AND
+	independent_of_length?(C)
+	IMPLIES
+	sum_independent?(Scrit(eps),C)
+
+
+  % The DERIVED Criterion
+
+  deriv(Crit,l): Criter = (LAMBDA (s,v): (LAMBDA (nv): Crit(s,v)(nv-l*v)))
+
+  deriv_0: LEMMA deriv(Crit,0) = Crit
+
+  deriv_subset: LEMMA
+    Crit(s,v)(-l*v) AND
+    crit_sum_closed?(Crit)
+     IMPLIES
+    subset?(Crit(s,v),deriv(Crit,l)(s,v))
+
+  deriv_coordinated: LEMMA
+  			      l1+l2 = 1 IMPLIES
+  			      crit_symmetric?(Crit) AND
+  			      sum_independent?(Crit,C) IMPLIES
+			      coordinated?(deriv(Crit,l1),deriv(Crit,l2),C)
+
+  deriv_coordinated_1: LEMMA
+  			      crit_symmetric?(Crit) AND
+  			      sum_independent?(Crit,C) IMPLIES
+			      coordinated?(deriv(Crit,1),Crit,C)
+
+  Comb(Crit1,Crit2): Criter = (LAMBDA (s,v): (LAMBDA (nv): Crit1(s,v)(nv) OR (Crit2(s,v)(nv) AND deriv(Crit1,1)(s,v)(nv))))
+
+  Comb_coordinated: LEMMA
+    sum_independent?(Crit1,C) AND
+    crit_symmetric?(Crit1) AND
+    coordinated?(Crit2,Crit3,C) AND
+    sum_closed?(C) AND
+    symmetric?(C)
+    IMPLIES
+    coordinated?(Comb(Crit1,Crit2),Comb(Crit1,Crit3),C)
+
+
+
+
+
+END predicate_coordination

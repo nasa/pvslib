@@ -1,0 +1,160 @@
+%------------------------------------------------------------------------------
+%    Loss of Separation Criterion: Vertical
+%    
+%    This criterion allows for a backup system that performs
+%    Collision Avoidance in the Event of A Near Collision (E.g. TCAS).
+%    The collision avoidance system is assumed to activate when a cylinder
+%    around the intruder of radius caD and height caH is expected to be 
+%    entered by the ownship within time caTime.
+%------------------------------------------------------------------------------
+vertical_los_crit_CA[D,H,caD,caH,caTime: posreal,
+         ( IMPORTING definitions_3D )
+         break_vz_symm:[Vect3 ->  Sign] %% Break symmetry when v`z = 0
+      ] : THEORY                        
+BEGIN
+
+  ASSUMING
+
+    break_vz_symm_comm : ASSUMPTION
+      FORALL (s:Vect3):
+        s /= zero IMPLIES
+        break_vz_symm(-s) = -break_vz_symm(s)
+
+    break_vz_symm_sz : ASSUMPTION
+      FORALL (s:Vect3):
+        s`z /= 0 IMPLIES 
+        break_vz_symm(s) = sign(s`z)
+
+    % Future work: continuity of break symmetry
+
+  ENDASSUMING
+
+  IMPORTING vertical_los_criterion[D,H],
+	    cd3d[caD,caH,0,caTime],
+	    cd3d_ever[caD,caH]
+
+  vo,vi,
+  nvi,nvo,
+  v,nv    : VAR Vect3
+  s	: VAR Vect3
+  t,t1,t2,
+  tm      : VAR real
+  tr      : VAR posreal %% Parameter that specifies maximum time to recover
+  eps	  : VAR Sign
+  tn	  : VAR nnreal
+  sz,vz,
+  nvz,
+  voz,viz,
+  nvoz,
+  nviz,
+  soz,siz    : VAR real
+  MinRelVertSpeed,
+  MinRelVertSpeedo,
+  MinRelVertSpeedi: VAR posreal
+
+  %%% This file implements a specific element of the type EpsChooser,
+  %%% which is defined in vertical_los_generic. It then constructs the
+  %%% associated criterion with the function vertical_los_crit_epschooser?
+  %%% that is defined in that file.
+
+  %%% Recall from vertical_los_generic that EpsChooser picks an epsilon
+  %%% (-1 or 1) (up or down). A decision vector is a function that takes
+  %%% s, vo, and vi and returns another vector on which the decision
+  %%% of epsilon will be made.
+
+  Decision_Vector : TYPE+ = {f:[[Vect3,Vect3]->Vect3]| FORALL (s,v): 
+    (s /= zero OR v/=zero) => (f(s,v)/=zero AND f(-s,-v)=-f(s,v))}
+
+  dv: VAR Decision_Vector
+
+  dv_to_ec(dv)(s,v): Sign =
+    break_vz_symm(dv(s,v))
+
+  dv_to_ec_antisymmetric: JUDGEMENT
+    dv_to_ec(dv) HAS_TYPE Vertical_Strategy[D,H]
+
+  %%% The interior cylinder where CA applies:
+
+  CA_applies?(s,v): bool = cd3d?[caD,caH,0,caTime](s,v)
+
+  CA_cyl_conflict_ever?(s,v): bool =
+    cd3d_ever?[caD,caH](s,v)
+
+  %%% A specific decision vector for the new criterion:
+
+  vertical_decision_vect(s,v): {vq: Vect3 | (s /= zero OR v/=zero) IMPLIES vq/=zero} =
+    IF (s/=zero AND CA_cyl_conflict_ever?(s,v)) OR (s/=zero AND v`z=0) THEN
+       (IF s`z /= 0 OR sqv(v)=0 THEN s ELSE v ENDIF)
+    ELSIF vect2(v) = zero OR s = zero THEN
+       v
+    ELSIF vect2(s)*vect2(v) <= 0 THEN
+       s + horizontal_tca(s,v)*v
+    ELSE
+       s
+    ENDIF
+
+  vertical_decision_vect_antisymmetric: JUDGEMENT
+    vertical_decision_vect HAS_TYPE Decision_Vector
+
+  %%% The new criterion:
+
+  vertical_los_crit_CA?(s,v,MinRelVertSpeed)(nv) : bool =
+    vertical_los_criterion?(s,v,dv_to_ec(vertical_decision_vect)(s,v),MinRelVertSpeed)(nv)
+
+  % It is coordinated:
+
+  vertical_los_crit_CA_independent: LEMMA
+    LET eps: Sign = dv_to_ec(vertical_decision_vect)(s, v)
+    IN 
+        s/=zero AND
+	vertical_los_crit_CA?(s,v,MinRelVertSpeed)(nv) AND
+	vect2(s)*vect2(v) < 0 AND vect2(s)*vect2(nv) < 0 AND
+	norm(vect2(s+horizontal_tca(s,nv)*nv)) <= norm(vect2(s+horizontal_tca(s,v)*(v)))
+	IMPLIES
+	eps*(s+horizontal_tca((s),nv)*nv)`z >= eps*(s+horizontal_tca((s),v)*(v))`z
+
+  vertical_los_crit_CA_independent_strong: LEMMA
+    	s/=zero AND
+	vertical_los_crit_CA?(s,v,MinRelVertSpeed)(nv) AND
+	vect2(s)*vect2(v) < 0 AND vect2(s)*vect2(nv) < 0 AND
+	norm(vect2(s+horizontal_tca(s,nv)*nv)) <= norm(vect2(s+horizontal_tca(s,v)*(v)))
+	IMPLIES
+	((v`z=0 OR CA_cyl_conflict_ever?(s,v)) AND 
+	  sign(s`z)/=sign(v`z) AND abs((s+horizontal_tca((s),nv)*nv)`z) >= abs(s`z))
+	OR
+	abs((s+horizontal_tca((s),nv)*nv)`z) >= abs((s+horizontal_tca((s),v)*(v))`z)
+
+  vertical_los_crit_CA_independent_vspeed: LEMMA
+    s/=zero AND
+      vertical_los_crit_CA?(s,v,MinRelVertSpeed)(nv)
+      IMPLIES
+      break_vz_symm(vertical_decision_vect(s,v))*(nv`z)>=MinRelVertSpeed
+
+  vertical_los_crit_CA_coordinated_vspeed: LEMMA
+      s/=zero AND
+      vertical_los_crit_CA?(s,vo-vi,MinRelVertSpeedo)(nvo-vi) AND
+      vertical_los_crit_CA?(-s,vi-vo,MinRelVertSpeedi)(nvi-vo)
+      IMPLIES
+      break_vz_symm(vertical_decision_vect(s,vo-vi))*(nvo`z-nvi`z)>=max(MinRelVertSpeedo,MinRelVertSpeedi)
+
+  vertical_los_crit_CA_coordinated: LEMMA
+      s/=zero AND
+      vertical_los_crit_CA?(s,vo-vi,MinRelVertSpeedo)(nvo-vi) AND
+      vertical_los_crit_CA?(-s,vi-vo,MinRelVertSpeedi)(nvi-vo)
+      IMPLIES
+      vertical_los_crit_CA?(s,vo-vi,max(MinRelVertSpeedo,MinRelVertSpeedi))(nvo-nvi)
+
+  vertical_los_crit_CA_coordinated_strong: LEMMA
+      LET v = vo-vi, nv = nvo-nvi IN
+      s/=zero AND
+      vertical_los_crit_CA?(s,vo-vi,MinRelVertSpeedo)(nvo-vi) AND
+      vertical_los_crit_CA?(-s,vi-vo,MinRelVertSpeedi)(nvi-vo) AND
+      vect2(s)*vect2(v) < 0
+      IMPLIES
+      vect2(s)*vect2(nv) >= 0 OR
+      norm(vect2(s+horizontal_tca(s,nv)*nv)) > norm(vect2(s+horizontal_tca(s,v)*(v))) OR
+      ((v`z=0 OR CA_cyl_conflict_ever?(s,v)) AND 
+         sign(s`z)/=sign(v`z) AND abs((s+horizontal_tca((s),nv)*nv)`z) >= abs(s`z)) OR
+      abs((s+horizontal_tca((s),nv)*nv)`z) >= abs((s+horizontal_tca((s),v)*(v))`z)
+
+END vertical_los_crit_CA

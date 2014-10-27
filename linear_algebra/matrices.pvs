@@ -1,0 +1,362 @@
+matrices: THEORY
+
+BEGIN
+
+ IMPORTING vect_of_vect
+
+ conversion- b2n
+
+ n, m,e: VAR nat
+ pn, pm: VAR posnat
+ c, r, s: VAR real
+
+
+%------------------------------------------------------------------
+% Matrix definition
+% We define matrices as records, giving the number or rows,
+% of columns, and the elements
+%------------------------------------------------------------------
+
+ Matrix: TYPE = [# rows: posnat, cols: posnat,
+                   matrix: [below(rows), below(cols) -> real] #]
+
+ Mat(m, n): TYPE = {M: Matrix | M`rows = m and M`cols = n}
+
+ M, N, P: VAR Matrix
+
+
+
+% We can consider the rows or the columns of a matrix as vectors
+
+ rowV(M)(i: below(M`rows)): Vector[M`cols] =
+   lambda (j: below(M`cols)): M`matrix(i, j)
+
+ colV(M)(j: below(M`cols)): Vector[M`rows] =
+   lambda (i: below(M`rows)): M`matrix(i, j)
+
+
+
+% We can also consider the rows or the columns of a matrix as
+% matrices with just one column or just one row
+
+ rowM(M)(i: below(M`rows)): Matrix =
+   (# rows := 1, cols := M`cols,
+      matrix := lambda (k: below(1), j: below(M`cols)): M`matrix(i, j) #)
+
+ colM(M)(j: below(M`cols)): Matrix =
+   (# rows := M`rows, cols := 1,
+      matrix := lambda (i: below(M`rows), k: below(1)): M`matrix(i, j) #)
+
+
+
+% A matrix 1xn or nx1 can be seen as a vector
+
+ Mr2V(M: Matrix | M`rows = 1): Vector[M`cols] =
+   lambda (j: below(M`cols)): M`matrix(0, j)
+
+ Mc2V(M: Matrix | M`cols = 1): Vector[M`rows] =
+   lambda (j: below(M`rows)): M`matrix(j, 0)
+
+
+
+% There are direct transformations between matrices and vectors of vectors
+
+ cols(M): Vector_of_Vectors[M`rows, M`cols] =
+   lambda (i: below(M`cols)):
+     lambda (j: below(M`rows)): M`matrix(j, i)
+
+ rows(M): Vector_of_Vectors[M`cols, M`rows] =
+   lambda (i: below(M`rows)):
+     lambda (j: below(M`cols)): M`matrix(i, j)
+
+ vectors2matrix(pn, pm)(V2: Vector_of_Vectors[pn, pm]): Matrix = 
+   (# cols := pm, rows := pn,
+      matrix := lambda (i: below(pn), j: below(pm)): V2(j)(i) #)
+
+ conversion+ vectors2matrix, cols
+
+
+
+% Transpose matrix
+	
+ transpose(M): Matrix =
+   (# rows := M`cols, cols := M`rows,
+      matrix := lambda (i: below(M`cols), j: below(M`rows)): M`matrix(j, i) #)
+
+
+ transpose2: LEMMA transpose(transpose(M)) = M
+
+
+
+% Definition of square matrices
+
+ square?(M): bool = M`rows = M`cols
+
+ Square: TYPE = (square?)
+
+ squareMat?(n: posnat)(M: Square): bool = M`rows = n
+
+ SquareMat(n: posnat): TYPE = (squareMat?(n))
+
+
+
+% Definition of zero and nonzero matrix
+
+ zero?(M): bool =
+   FORALL (i: below(M`rows), j: below(M`cols)): M`matrix(i, j) = 0
+
+ nonzero?(M): bool = not zero?(M)
+
+ Zero: TYPE = (zero?)
+
+
+
+% Definition of identity matrix
+
+ delta(i, j: nat): MACRO nat = if i = j then 1 else 0 endif
+
+ identity?(M: Matrix): bool =
+   square?(M) and
+   FORALL (i, j: below(M`rows)):
+     M`matrix(i, j) = delta(i, j)
+
+ I(n: posnat): (identity?)
+    = (# rows := n, cols := n,
+         matrix := lambda (i, j: below(n)): delta(i, j) #)
+
+
+ ident_trans:LEMMA transpose(I(pn))=I(pn)
+
+
+
+% Definition of triangular and diagonal matrices
+
+ upper_triangular?(M): bool = square?(M)
+   AND FORALL (i, j: below(M`rows)): i > j => M`matrix(i,j) = 0
+
+ lower_triangular?(M): bool = square?(M)
+   AND FORALL (i, j: below(M`rows)): i < j => M`matrix(i,j) = 0
+
+ diagonal?(M): bool = square?(M)
+   AND FORALL (i, j: below(M`rows)): i /= j => M`matrix(i,j) = 0;
+
+
+
+% Definition of opposite matrix
+
+ -(M): Matrix =
+    M WITH [`matrix := LAMBDA (i: below(M`rows), j: below(M`cols)): -M`matrix(i, j)]
+
+
+
+
+
+
+%---------------------------------------------------------------------
+% Sum and substraction of matrices
+% To be able to operate with two matrices they must have same_dim?
+%---------------------------------------------------------------------
+ 
+ same_dim?(M, N): macro bool = M`rows = N`rows AND M`cols = N`cols
+
+ same_dim?(M)(N): macro bool = M`rows = N`rows AND M`cols = N`cols;
+
+
+ +(M, (N: (same_dim?(M)))): Matrix =
+   M WITH [ `matrix := LAMBDA (i: below(M`rows), j: below(M`cols)):
+                       M`matrix(i, j) + N`matrix(i, j) ];
+
+ -(M, (N: (same_dim?(M)))): Matrix =
+   M WITH [ `matrix := LAMBDA (i: below(M`rows), j: below(M`cols)):
+                       M`matrix(i, j) - N`matrix(i, j) ];
+
+
+% associative properties
+ plus_assoc: LEMMA
+   FORALL (M, (N, P: (same_dim?(M)))): M + (N + P) = (M + N) + P;
+
+ plus_comm: LEMMA
+   FORALL (M, (N: (same_dim?(M)))): M + N = N + M;
+
+
+% adding zero matrix
+ zero_left_ident: LEMMA
+   FORALL (Z: Zero, M: (same_dim?(Z))): Z + M = M;
+
+ zero_right_ident: LEMMA
+   FORALL (Z: Zero, M: (same_dim?(Z))): M + Z = M;
+
+
+
+% Multiplying a matrix by an scalar
+
+ *(r, M): Matrix =
+    M WITH [`matrix := LAMBDA (i: below(M`rows), j: below(M`cols)):
+                        r * M`matrix(i, j)];
+
+ *(M, r): Matrix = r * M;
+
+
+
+%-----------------------------------------------------------------------
+% Product of matrices and product of a matrix and a vector
+%-----------------------------------------------------------------------
+
+ *(M, (N: Matrix | M`cols = N`rows)): Matrix =
+   (# rows := M`rows, cols := N`cols,
+      matrix := lambda (i: below(M`rows), j: below(N`cols)):
+                  sigma[below(M`cols)](0, M`cols-1, lambda (k: below(M`cols)):
+                                     M`matrix(i, k) * N`matrix(k, j)) #);
+
+ *(M, (v:Vector[M`cols])): Vector[M`rows] = lambda (i: below(M`rows)):
+                  sigma[below(M`cols)](0, M`cols-1, lambda (k: below(M`cols)):
+                                     M`matrix(i, k) * v(k)); 
+
+
+
+% Multiplying by the zero matrix  
+ zero_times_left: LEMMA
+   FORALL (M, (Z: Zero | Z`cols = M`rows)): zero?(Z * M)
+
+ zero_times_right: LEMMA
+   FORALL (Z: Zero, (M | M`cols = Z`rows)): zero?(M * Z)
+
+
+
+ sigma_lem: LEMMA % This lemma is just to make other proofs easier
+   FORALL (n: posnat, j: below(n), r: real):
+    sigma[below(n)](0, n - 1, (lambda (k: below(n)): 0) WITH [(j) := r]) = r
+
+
+% Multiplying by the identity matrix
+ right_mult_ident: LEMMA
+   FORALL (M, (I: Matrix | identity?(I) AND M`cols = I`rows)):
+               M * I = M
+
+ left_mult_ident: LEMMA
+   FORALL (M, (I: Matrix | identity?(I) AND M`rows = I`cols)):
+               I * M = M
+
+ ident_vect:LEMMA FORALL (I:Matrix|identity?(I)): FORALL (x:Vector[I`cols]): I*x=x 
+
+
+
+% Technical sigma lemmas  
+ sigma_prop: LEMMA
+   FORALL (m, n: posint, f: [below(m) -> real], g: [below(m), below(n) -> real]):
+    sigma[below(m)](0, m-1, lambda (i: below(m)):
+                    f(i) * sigma[below(n)](0, n-1, lambda (j: below(n)): g(i,j)))
+     = sigma[below(m)](0, m-1, lambda (i: below(m)):
+                       sigma[below(n)](0, n-1, lambda(j: below(n)): f(i) * g(i,j)))
+
+ sigma_comm: LEMMA
+   FORALL (m, n: posnat, f: [below(m), below(n) -> real]):
+     sigma[below(m)](0, m-1, lambda (i: below(m)):
+                     sigma[below(n)](0, n-1, lambda (j: below(n)): f(i, j)))
+      = sigma[below(n)](0, n-1, lambda (j: below(n)):
+                     sigma[below(m)](0, m-1, lambda (i: below(m)): f(i, j)))
+
+
+
+% Associative properties
+ mult_assoc: LEMMA
+   FORALL (M, (N | M`cols = N`rows), (P | N`cols = P`rows)):
+    M * (N * P) = (M * N) * P
+
+ mult_assoc_vect: LEMMA FORALL (M, (N | M`cols = N`rows), V:Vector[N`cols]): (M * N) * V = M * (N * V)
+
+
+
+% Distributive properties
+ left_distributive: LEMMA
+   FORALL (M, (N | M`cols = N`rows), (P: (same_dim?(N)))):
+    M * (N + P) = (M * N) + (M * P)
+
+ right_distributive: LEMMA
+   FORALL (M, (N: (same_dim?(M))), (P | M`cols = P`rows)):
+    (M + N) * P = (M * P) + (N * P)
+
+ left_distributive_vect:  LEMMA FORALL (M, (v1, v2:Vector[M`cols])):  M * v1 - M * v2 = M * (v1 - v2)
+
+
+
+% Relationship  between product and transposes
+ transpose_product: LEMMA
+   FORALL (M, (N | M`cols = N`rows)):
+    transpose(M * N) = transpose(N) * transpose(M)
+
+ trans_mat_scal: LEMMA FORALL (A:Matrix, x:Vector[A`rows], y:Vector[A`cols]): x * (A * y) = (transpose(A) * x) * y   
+
+
+
+%---------------------------------------------------------------------
+% Definition of inverse and invertible matrix
+%--------------------------------------------------------------------
+
+ inverse?(M: Square)(N: Square | N`rows = M`rows): bool =
+   M * N = I(M`rows) and N * M = I(M`rows)
+
+ invertible?(M: Square): bool = EXISTS (N: (inverse?(M))): inverse?(M)(N)
+
+ inverse_unique: lemma
+   FORALL (M: (invertible?), N, P: (inverse?(M))): N = P
+
+ inverse(M: (invertible?)): {N: Square | N`rows = M`rows}
+   = the! (N: Square | N`rows = M`rows): inverse?(M)(N)
+
+
+
+% The product of invertible matrices is also invertible
+ invertible_product: lemma
+   FORALL (M: (invertible?), N: (invertible?) | N`rows = M`rows):
+     invertible?(M * N)
+
+
+% Relationship between product and inverse
+ product_inverse: lemma
+   FORALL (M: (invertible?), N: (invertible?) | N`rows = M`rows):
+     inverse(M * N) = inverse(N) * inverse(M)
+
+
+
+% Trace of a matrix
+
+ trace(M: Square): real = sigma[below(M`rows)](0, M`rows-1, lambda (k: below(M`rows)): M`matrix(k, k))
+
+
+
+% About symmetric and skew-symmetric matrices
+
+ symmetric?(M): bool = square?(M) AND transpose(M) = M
+
+ skew_symmetric?(M): bool = square?(M) AND transpose(M) = -M 
+
+ symmetric_part(M: Square): (symmetric?) =
+   1/2 * (M + transpose(M))
+
+ skew_symmetric_part(M: Square): (skew_symmetric?) =
+   1/2 * (M - transpose(M))
+
+ square_decomp: LEMMA
+   FORALL (M: Square): M = symmetric_part(M) + skew_symmetric_part(M)
+
+
+
+% Matrix induction
+
+ square_matrix_induct: LEMMA
+   forall (p: pred[Square]):
+    (forall (M: Square):
+      (forall (N: Square): N`rows < M`rows implies p(N)) implies p(M))
+    implies (forall (M: Square): p(M))
+
+
+
+% Positive semidefinite and definite matrices
+
+ semidef_pos?(A: (square?)): bool = FORALL (x: Vector[A`rows]): x*(A*x) >= 0
+ 
+ def_pos?(A: (square?)): bool = FORALL (x: Vector[A`rows]): x /= zero[A`rows] IMPLIES x*(A*x) > 0
+
+
+END matrices

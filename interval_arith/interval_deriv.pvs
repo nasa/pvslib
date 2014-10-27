@@ -1,0 +1,167 @@
+%% interval_deriv.pvs
+
+interval_deriv[(IMPORTING interval) X:StrictInterval]: THEORY
+BEGIN
+
+  IMPORTING interval_sqrt,
+            interval_trig,
+	    interval_lnexp
+
+  Xt : TYPE = IntervalType(X)
+
+  IMPORTING analysis@deriv_domain
+
+  deriv_domain_Xt: LEMMA deriv_domain?[Xt[X]]
+
+  IMPORTING interval,analysis@derivatives[Xt],analysis@nth_derivatives[Xt], 
+            analysis@sqrt_derivative,trig_fnd@sincos,trig_fnd@atan
+
+  Diff?(f:[Xt->real]) : bool = 
+    derivable?(f)
+
+  D(f:(Diff?)) : [Xt->real] =
+    deriv(f)
+
+  Diffn?(n:nat)(f:[Xt->real]) : RECURSIVE bool =
+    n=0 OR (Diff?(f) AND Diffn?(n-1)(D(f)))
+  MEASURE n
+
+  Diffn_derivn : LEMMA
+    FORALL (n:nat,f:[Xt->real]):
+      Diffn?(n)(f) = derivable_n_times?(f,n)
+
+  Dn(n:nat,f:(Diffn?(n))) : RECURSIVE [Xt->real] =
+    if   n=0 then f
+    else Dn(n-1,D(f))
+    endif
+  MEASURE n
+
+  Dn_nderiv : LEMMA
+    FORALL (n:nat,f:(Diffn?(n))):
+      Dn(n,f) = nderiv(n,f)
+
+  t   : VAR Xt
+  a   : VAR real
+  b   : VAR nzreal
+  n   : VAR nat
+  m   : VAR posnat
+  f,g : VAR (Diff?)
+
+  Diff_id     : LEMMA Diff?(LAMBDA(t):t)
+
+  D_id        : LEMMA D(LAMBDA(t):t) = LAMBDA(t):1
+      
+  Diff_const  : LEMMA Diff?(LAMBDA(t):a)
+      
+  D_const     : LEMMA D(LAMBDA(t):a) = LAMBDA(t):0
+      
+  Diff_add    : LEMMA Diff?(LAMBDA(t):f(t)+g(t))
+       
+  D_add       : LEMMA D(LAMBDA(t):f(t)+g(t)) = 
+                      LAMBDA(t): D(f)(t) + D(g)(t)
+      
+  Diff_mult   : LEMMA Diff?(LAMBDA(t):f(t)*g(t))
+      
+  D_mult      : LEMMA D(LAMBDA(t):f(t)*g(t)) = 
+                      LAMBDA(t):D(f)(t)*g(t) + D(g)(t)*f(t)
+
+  Diff_pow    : LEMMA Diff?(LAMBDA(t):t^n)
+      
+  D_pow       : LEMMA D(LAMBDA(t):t^m) = LAMBDA(t):(m*t^(m-1))
+
+  Diff_scal1  : LEMMA Diff?(LAMBDA(t): a*f(t))
+
+  D_scal1     : LEMMA D(LAMBDA(t): a*f(t)) = LAMBDA(t):a*D(f)(t)
+
+  Diff_scal2  : LEMMA Diff?(LAMBDA(t): f(t)*a)
+
+  D_scal2     : LEMMA D(LAMBDA(t): f(t)*a) = LAMBDA(t):a*D(f)(t)
+
+  Diff_neg    : LEMMA Diff?(LAMBDA(t):-g(t))
+
+  D_neg       : LEMMA D(LAMBDA(t):-g(t)) = LAMBDA(t):-D(g)(t)
+
+  Diff_sub    : LEMMA Diff?(LAMBDA(t):f(t)-g(t))
+ 
+  D_sub       : LEMMA D(LAMBDA(t):f(t)-g(t)) = LAMBDA(t):D(f)(t)-D(g)(t)
+
+  Diff_sq     : LEMMA Diff?(LAMBDA(t):sq(t))
+
+  D_sq        : LEMMA D(LAMBDA(t):sq(t)) = LAMBDA(t):2*t
+
+  Nonzero?(f) : MACRO bool =
+    FORALL (t:Xt):f(t) /= 0
+
+  k : VAR (Nonzero?)
+  
+  Diff_div    : LEMMA Diff?(LAMBDA(t):f(t)/k(t))
+
+  D_div       : LEMMA D(LAMBDA(t):f(t)/k(t)) = 
+                      LAMBDA(t):(D(f)(t)*k(t) - D(k)(t)*f(t)) / sq(k(t))
+
+  Diff_scald1 : LEMMA Diff?(LAMBDA(t): a/k(t))
+
+  D_scald1    : LEMMA D(LAMBDA(t): a/k(t)) = 
+                      LAMBDA(t):-a*D(k)(t)/sq(k(t))
+
+  Diff_scald2 : LEMMA Diff?(LAMBDA(t): f(t)/b)
+
+  D_scald2    : LEMMA D(LAMBDA(t): f(t)/b) = 
+                      LAMBDA(t):(D(f)(t))/b
+
+  Diff_sin    : LEMMA Diff?(LAMBDA(t):sin(t))
+
+  D_sin       : LEMMA D(LAMBDA(t):sin(t)) = LAMBDA(t):cos(t)
+
+  Diff_cos    : LEMMA Diff?(LAMBDA(t):cos(t))
+
+  D_cos       : LEMMA D(LAMBDA(t):cos(t)) = LAMBDA(t):-sin(t)
+
+  Diff_tan : LEMMA 
+    X << [| -pi_lbn(n+Cos_pos_n)/2, pi_lbn(n+Cos_pos_n)/2 |]
+    IMPLIES 
+      Diff?(LAMBDA(t):tan(t))
+
+  D_tan : LEMMA     
+    X << [| -pi_lbn(n+Cos_pos_n)/2, pi_lbn(n+Cos_pos_n)/2 |]
+    IMPLIES 
+      D(LAMBDA(t):tan(t)) = LAMBDA(t):1/sq(cos(t))
+
+  Diff_atan : LEMMA 
+    Diff?(LAMBDA(t):atan(t))
+
+  D_atan : LEMMA     
+    D(LAMBDA(t):atan(t)) = LAMBDA(t):1/(1+sq(t))
+
+  Diff_sqrt : LEMMA  
+    Gt(X,0)
+    IMPLIES 
+      Diff?(LAMBDA(t):sqrt(t))
+
+  D_sqrt : LEMMA  
+    Gt(X,0)
+    IMPLIES 
+      D(LAMBDA(t):sqrt(t)) = LAMBDA(t):1/(2*sqrt(t))
+
+  Diff_exp : LEMMA
+   Diff?(LAMBDA(t):exp(t))
+
+  D_exp : LEMMA
+   D(LAMBDA(t):exp(t)) = LAMBDA(t):exp(t)
+
+  Diff_ln : LEMMA
+    Gt(X,0) IMPLIES
+      Diff?(LAMBDA(t):ln(t))
+
+  D_ln : LEMMA
+    Gt(X,0) IMPLIES
+      D(LAMBDA(t):ln(t)) = LAMBDA(t):1/t
+
+  Diff_I      : LEMMA Diff?(LAMBDA(t):id[numfield](f(t))) = 
+                      Diff?(LAMBDA(t):f(t))
+
+  D_I         : LEMMA D(LAMBDA(t):id[numfield](f(t))) = D(LAMBDA(t):f(t))
+
+END interval_deriv
+
+

@@ -1,0 +1,114 @@
+intersections_2D: THEORY
+%--------------------------------------------------------------------------
+%
+%  Derived from paper "Intersection of Linear and Circular Components in 2D"
+%  by David Eberly. Available at:
+%
+%    www.magic-software.com
+%
+%  Author: Ricky Butler              NASA Langley Research Center
+%
+%--------------------------------------------------------------------------
+BEGIN
+
+   IMPORTING distance_2D,
+             det_2D,
+             lines_2D, parallel_2D
+
+   p,p0,p1,p2,pnot,u,v,v0,v1,v2: VAR Vect2
+
+   s,t,t1,t2: VAR real
+
+   nza: VAR nzreal
+
+   cross(p0,p1): MACRO real = det(p0,p1)
+ 
+%                                     |     Basic        |   Parametric
+%                                     |------------------|-----------------
+%   Line : TYPE = [# p: Vect2,        | point on the line| position at time 0
+%                    v: Nz_vect2 #]   | direction vector | velocity vector
+
+
+%  Let L0 = p0 + s*v  == L0`p + s*L0`v
+%  Let L1 = p0 + s*v1 == L1`p + s*L1`v
+
+
+   L0,L1: VAR Line2D
+
+   det_line: LEMMA LET DELTA = L1`p - L0`p IN
+                     L0`p + s*L0`v =  L1`p + t*L1`v IMPLIES
+                        det(L0`v,L1`v)*s = det(DELTA,L1`v) AND
+                        det(L0`v,L1`v)*t = det(DELTA,L0`v)
+
+%  Three cases
+%      intersecting :   det(L0`v,L1`v) /= 0 
+%      parallel     :   det(L0`v,L1`v) =  0 AND det(DELTA,L0`v) /= 0
+%      same_line    :   det(L0`v,L1`v) =  0 AND det(DELTA,L0`v) = 0
+
+
+   intersect?(L0,L1): bool = det(L0`v,L1`v) /= 0 
+
+   same_line?(L0,L1): bool = LET DELTA = L1`p - L0`p IN  
+                               det(L0`v,L1`v) = 0 AND det(DELTA,L0`v) = 0
+%  ----------- function to return intersection point --------------
+
+    intersect_pt(L0:Line2D,L1: Line2D | det(L0`v,L1`v) /= 0): Vect2 =
+                               LET DELTA = L1`p - L0`p,
+                                   ss = det(DELTA,L1`v)/det(L0`v,L1`v) IN 
+                                   L0`p + ss*L0`v
+
+%  ----------- basic properties ---------------
+
+   IMPORTING parallel_2D
+
+   same_line_sym: LEMMA same_line?(L0,L1) IMPLIES same_line?(L1,L0)  
+
+   intersect_not_parallel: LEMMA intersect?(L0,L1) IMPLIES
+                                   NOT parallel?(L0`v,L1`v)
+
+   intersection_lem      : LEMMA det(L0`v,L1`v) /= 0 IMPLIES
+                                    LET DELTA = L1`p - L0`p,
+                                       ss = det(DELTA,L1`v)/det(L0`v,L1`v),
+                                       tt = det(DELTA,L0`v)/det(L0`v,L1`v)
+                                    IN
+                              L0`p + ss*L0`v =  L1`p + tt*L1`v
+
+   lines_intersection(so:Vect2,vo:Nz_vect2,si:Vect2,vi:Nz_vect2|det(vo,vi) /= 0) : [real,real] =
+     LET ns = si-so,
+         d = det(vo,vi) IN
+     (det(ns,vi)/d, det(ns,vo)/d)
+
+   lines_intersection_sound : LEMMA
+     FORALL(so:Vect2,vo:Nz_vect2,si:Vect2,vi:Nz_vect2|det(vo,vi) /= 0):
+       LET (ko,ki) = lines_intersection(so,vo,si,vi) IN
+       so+ko*vo = si+ki*vi
+
+    pt_intersect          : LEMMA on_line?(p,L0) AND on_line?(p,L1) AND
+                                 NOT same_line?(L0,L1) IMPLIES
+                                     intersect?(L0,L1) 
+
+
+   intersect_pt_unique   : LEMMA intersect?(L0,L1) IMPLIES
+                                 pnot /= intersect_pt(L0,L1) AND
+                                 on_line?(pnot,L0)  
+                              IMPLIES
+                                 NOT on_line?(pnot,L1)
+
+   same_line_lem         : LEMMA p0 /= p1 AND
+                                ( on_line?(p0,L0) AND on_line?(p0,L1) AND
+                                  on_line?(p1,L0) AND on_line?(p1,L1) )
+                                     IMPLIES same_line?(L0,L1)
+        
+   not_same_line         : LEMMA on_line?(p,L0) AND NOT on_line?(p,L1) IMPLIES
+                                 NOT same_line?(L0,L1)
+                         
+ 
+   intersect_pt_lem      : LEMMA NOT same_line?(L0,L1) AND
+                                 on_line?(pnot,L0)  AND
+                                 on_line?(pnot,L1)  
+                              IMPLIES
+                                  intersect_pt(L0,L1) = pnot 
+                       
+END intersections_2D
+
+

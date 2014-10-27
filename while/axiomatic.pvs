@@ -1,0 +1,107 @@
+%------------------------------------------------------------------------------
+% An Axiomatic (Hoare) Semantics and its Soundness and Completeness
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+axiomatic[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING State[V], AExp[V], BExp[V], Stm[V]
+
+  Predicate: TYPE+ = pred[State]
+  Hoare:     TYPE+ = [Predicate,Stm,Predicate]
+
+  s,s1: VAR State
+  x: VAR V
+  a: VAR AExp
+  b: VAR BExp
+
+  assign(x,a)(P:Predicate)(s):bool = P(assign(x,A(a))(s))
+
+;
+  &(P,Q:Predicate)(s):bool  = P(s) AND Q(s);
+  |>(P,Q:Predicate):bool    = FORALL s: P(s) => Q(s);
+  ~(P:Predicate)(s):bool    = NOT P(s);
+
+  tree: DATATYPE
+  BEGIN
+    ass(h:Hoare)             : ass?
+    skip(h:Hoare)            : skip?
+    comp(h:Hoare,t1,t2:tree) : comp?
+    iif(h:Hoare,t1,t2:tree)  : iif? 
+    while(h:Hoare,t:tree)    : while?
+    cons(h:Hoare,t:tree)     : cons?
+  END tree
+
+  H(t:tree): RECURSIVE Hoare = 
+    CASES t OF
+      ass(h)        : h,
+      skip(h)       : h,
+      comp(h,t1,t2) : h,
+      iif(h,t1,t2)  : h,
+      while(h,t)    : h,
+      cons(h,t)     : h
+    ENDCASES MEASURE (lambda (t:tree): 1)
+
+  P(h:Hoare): Predicate = h`1
+  S(h:Hoare): Stm       = h`2
+  Q(h:Hoare): Predicate = h`3
+
+  inference_tree?(t:tree): RECURSIVE bool =
+    CASES t OF
+      ass(h)        : Assign?(S(h)) AND assign(x(S(h)),a(S(h)))(Q(h)) = P(h),
+      skip(h)       : Skip?(S(h)) AND P(h) = Q(h),
+      comp(h,t1,t2) : Sequence?(S(h)) AND
+                      S1(S(h)) = S(H(t1)) AND S2(S(h)) = S(H(t2)) AND
+                      inference_tree?(t1) AND inference_tree?(t2) AND
+                      P(H(t1)) = P(h)     AND
+                      Q(H(t1)) = P(H(t2)) AND
+                      Q(H(t2)) = Q(h),
+      iif(h,t1,t2)  : Conditional?(S(h))  AND
+                      S1(S(h)) = S(H(t1)) AND S2(S(h)) = S(H(t2)) AND
+                      inference_tree?(t1) AND inference_tree?(t2) AND
+                      P(H(t1)) = (B(b(S(h))) & P(h))     AND
+                      P(H(t2)) = (~B(b(S(h))) & P(h))     AND
+                      Q(H(t1)) = Q(h) AND
+                      Q(H(t2)) = Q(h),
+      while(h,t)    : While?(S(h)) AND inference_tree?(t) AND
+                      P(H(t)) = (B(b(S(h))) & P(h)) AND
+                      Q(H(t)) = P(h)                  AND
+                      Q(h)    = (~B(b(S(h))) & P(h))AND
+                      S1(S(h)) = S(H(t)),
+      cons(h,t)     : inference_tree?(t) AND S(h) = S(H(t)) AND
+                      P(h) |> P(H(t)) AND Q(H(t)) |> Q(h)
+    ENDCASES MEASURE t by <<
+
+  inference_tree:TYPE+ = (inference_tree?)
+                         CONTAINING skip((lambda s: TRUE,Skip,lambda s: TRUE))
+
+  IMPORTING sos[V]
+
+  t:   VAR inference_tree
+  P,Q: VAR Predicate
+  S:   VAR Stm
+
+;
+  |-(P,S,Q):bool = EXISTS t: H(t) = (P,S,Q);
+  |=(P,S,Q):bool = FORALL s,s1: P(s) AND SS(S)(s) = up(s1) => Q(s1)
+
+  wlp(S,Q)(s):bool = FORALL s1: SS(S)(s) = up(s1) => Q(s1)
+
+  wlp_is_precondition: LEMMA |=(wlp(S,Q),S,Q)                        % N&N 6.20
+  wlp_is_weakest:      LEMMA |=(P,S,Q) => P |> wlp(S,Q)              % N&N 6.20
+
+  soundness:    LEMMA |-(P,S,Q) => |=(P,S,Q)                         % N&N 6.17
+  completeness: LEMMA |=(P,S,Q) => |-(P,S,Q)                         % N&N 6.23
+
+  sound_and_complete: THEOREM |=(P,S,Q) IFF |-(P,S,Q)                % N&N 6.16
+
+END axiomatic

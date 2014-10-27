@@ -1,0 +1,119 @@
+%-----------------------------------------------------------------------------
+% Extraction of contiguous subsequences of a sequence of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_extract[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_nth[T]
+  IMPORTING csequence_add[T]  % Proofs only
+
+  t: VAR T
+  p: VAR pred[T]
+  index, n, m: VAR nat
+  range, range2: VAR [nat, nat]
+  cseq, cseq1, cseq2: VAR csequence
+  fseq: VAR finite_csequence
+  nfseq: VAR nonempty_finite_csequence
+
+  ^(cseq, range): RECURSIVE finite_csequence =
+    LET (m, n) = range IN
+      IF empty?(cseq) OR m > n THEN empty_cseq
+      ELSIF m > 0 THEN rest(cseq) ^ (m - 1, n - 1)
+      ELSE add(first(cseq),
+               IF n = 0 THEN empty_cseq ELSE rest(cseq) ^ (m, n - 1) ENDIF)
+      ENDIF
+     MEASURE range`2
+
+  extract_empty: THEOREM
+    FORALL cseq, range:
+      empty?(cseq ^ range) IFF
+       range`1 > range`2 OR (is_finite(cseq) AND NOT index?(cseq)(range`1))
+
+  extract_nonempty: COROLLARY
+    FORALL cseq, range:
+      nonempty?(cseq ^ range) IFF
+       range`1 <= range`2 AND (is_infinite(cseq) OR index?(cseq)(range`1))
+
+  extract_length: THEOREM
+    FORALL cseq, range:
+      length(cseq ^ range) =
+       IF (range`1 > range`2 OR (is_finite(cseq) AND range`1 >= length(cseq)))
+         THEN 0
+       ELSIF is_finite(cseq) AND range`2 >= length(cseq)
+         THEN length(cseq) - range`1
+       ELSE range`2 - range`1 + 1
+       ENDIF
+
+  extract_def: THEOREM
+    FORALL nfseq, n: n >= length(nfseq) - 1 IMPLIES nfseq ^ (0, n) = nfseq
+
+  extract_rest: THEOREM
+    FORALL nfseq: nfseq ^ (1, length(nfseq) - 1) = rest(nfseq)
+
+  extract_rest2: THEOREM
+    FORALL cseq, m, n:
+      nonempty?(cseq ^ (m, n)) IMPLIES
+       rest(cseq ^ (m, n)) = cseq ^ (m + 1, n)
+
+  extract_extract: THEOREM
+    FORALL cseq, range, range2:
+      (cseq ^ range) ^ range2 =
+       cseq ^ (range`1 + range2`1, min(range`2, range`1 + range2`2))
+
+  extract_index: THEOREM
+    FORALL cseq, m, n, index:
+      index?(cseq ^ (m, n))(index) IFF
+       m + index <= n AND index?(cseq)(m + index)
+
+  extract_first: THEOREM
+    FORALL cseq, m, n:
+      nonempty?(cseq ^ (m, n)) IMPLIES first(cseq ^ (m, n)) = nth(cseq, m)
+
+  extract_nth: THEOREM
+    FORALL cseq, (m: indexes(cseq)), (n: nat), (i: indexes(cseq ^ (m, n))):
+      nth(cseq ^ (m, n), i) = nth(cseq, m + i)
+
+  extract_add: THEOREM
+    FORALL cseq, t, m, n:
+      add(t, cseq) ^ (m, n) =
+       IF m > n THEN empty_cseq
+       ELSIF m > 0 THEN cseq ^ (m - 1, max(0, n - 1))
+       ELSIF n > 0 THEN add(t, cseq ^ (m, n - 1))
+       ELSE add(t, empty_cseq)
+       ENDIF
+
+  extract_last: THEOREM
+    FORALL cseq, m, n:
+      nonempty?(cseq ^ (m, n)) IMPLIES
+       last(cseq ^ (m, n)) =
+        IF index?(cseq)(n) THEN nth(cseq, n) ELSE last(cseq) ENDIF
+
+  extract_extensionality: THEOREM
+    FORALL cseq1, cseq2:
+      (FORALL range: cseq1 ^ range = cseq2 ^ range) IMPLIES cseq1 = cseq2
+
+  extract_some: THEOREM
+    FORALL cseq, m, n, p:
+      some(p)(cseq ^ (m, n)) IFF
+       (EXISTS index:
+          m <= index AND
+           index <= n AND index?(cseq)(index) AND p(nth(cseq, index)))
+
+  extract_every: THEOREM
+    FORALL cseq, m, n, p:
+      every(p)(cseq ^ (m, n)) IFF
+       (FORALL index:
+          m <= index AND index <= n AND index?(cseq)(index) IMPLIES
+           p(nth(cseq, index)))
+
+ END csequence_extract

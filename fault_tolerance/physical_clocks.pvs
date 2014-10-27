@@ -1,0 +1,145 @@
+%
+% Purpose      : This theory provides the basic definitions and
+%                properties concerning  the relative drift of good
+%                oscillators.  The drift bounds for a good oscillator
+%                are captured in the declared type `good_clock'.
+%                A good_clock is a function from Clocktime (integer) to
+%                realtime (real) with a bounded rate of drift.
+%
+% Assumptions  : Oscillators have a bounded rate of drift with respect
+%                to (Newtonian) real time.  This bound is captured by
+%                formal parameter rho.
+%
+
+physical_clocks
+[
+   rho : nonneg_real 
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+     abs_props, floor_ceiling_ineq
+
+% First define drift in terms of rho so that that we can use simpler
+% terms for bounding relative drift.
+
+  rate: posreal = 1 + rho
+  drift: nonneg_real = rate - 1 / rate 
+  drift_def: LEMMA drift = (rate * rate - 1) / rate
+  drift_bound: LEMMA drift <= 2 * rho
+
+% Various variable declarations
+
+  X: VAR nat
+  T, T1, T2: VAR int
+  t: VAR real
+  clock: VAR [int -> real]
+  skew : VAR nnreal
+  adj: VAR real
+
+% TYPE good_clock formalizes the notion of oscillator drift within
+% some bound, rho.  In essence, a good oscillator is characterized by
+% the behavior of an (imaginary) unbounded counter.
+
+  good_clock: NONEMPTY_TYPE =
+    { clock | 
+         FORALL T: 
+           1 / rate <= clock(T + 1) - clock(T) AND
+                       clock(T + 1) - clock(T) <= rate
+    } CONTAINING LAMBDA T: T
+
+  c, c1, c2: VAR good_clock
+
+  clock_edge?(c, t): bool = EXISTS T: t = c(T)
+
+  drift_left_nat: LEMMA
+    X / rate <= c(T + X) - c(T)
+
+  drift_right_nat: LEMMA
+    c(T + X) - c(T) <= X * rate
+
+  drift_left: LEMMA
+      T1 <= T2 IMPLIES
+        (T2 - T1) / rate <= c(T2) - c(T1)
+
+  drift_right: LEMMA
+      T1 <= T2 IMPLIES
+        c(T2) - c(T1) <= (T2 - T1) * rate
+
+  abs_drift_lb: LEMMA
+      abs(T1 - T2) / rate <= abs(c(T1) - c(T2)) 
+
+  clock_nondecreasing: LEMMA
+       T1 <= T2 IMPLIES c(T1) <= c(T2)
+
+  clock_increasing: LEMMA
+       T1 < T2 IMPLIES c(T1) < c(T2)
+
+  clock_nondecreasing_alt: LEMMA
+       c(T1) <= c(T2) IMPLIES T1 <= T2
+
+  clock_eq_arg: LEMMA
+       c(T1) = c(T2) IMPLIES T1 = T2
+
+  offset_clocks?(c1, c2): bool =
+    EXISTS T2: FORALL T1: c1(T1) = c2(T1 + T2)
+
+  relative_drift: LEMMA
+    c1(T1 + X) - c2(T2 + X) <= c1(T1) - c2(T2) + drift * X
+
+  nonoverlap_basis: LEMMA
+    c1(T) - c2(T) <= adj AND
+    T2 - T1 > rate * adj AND
+    T1 <= T AND 
+    T <= T2
+  IMPLIES
+    c1(T1) < c2(T2)
+
+  skew_basis_0: LEMMA
+    c1(T) - c2(T) <= adj AND
+    c2(T2) < c1(T1) AND
+    T1 <= T AND 
+    T <= T2
+  IMPLIES
+    T2 - T1 < rate * adj
+
+  skew_bound_1: LEMMA
+    c1(T) - c2(T) <= skew AND
+    c2(T2) <= c1(T1)  AND
+    T1 <= T + X AND 
+    T - X <= T2
+  IMPLIES
+    T2 - T1 <= rate * (skew + drift * X)
+
+  skew_bound_2: LEMMA
+    c1(T) - c2(T) <= skew AND
+    c2(T2) < c1(T1)  AND
+    T1 <= T + X AND 
+    T - X <= T2
+  IMPLIES
+    T2 - T1 < rate * (skew + drift * X)
+
+% basis of skew_conversion_sym in inverse_clocks:
+
+  skew_bound: LEMMA
+      abs(c1(T) - c2(T)) <= skew AND
+      abs(T2 - T) <= X AND
+      c1(T1) <= c2(T2) AND
+      c2(T2) < c1(T1 + 1)
+    IMPLIES
+      abs(T1 - T2) <= ceiling(rate * (skew + drift * X))
+
+% offset properties for accuracy
+
+  lower_offset: LEMMA
+      T1 - X <= T2
+    IMPLIES
+      T2 - T1 <= rate * (c(T2) - c(T1) + drift * X)
+
+  upper_offset: LEMMA
+      T1 - X <= T2
+    IMPLIES
+      (c(T2) - c(T1) - drift * X) / rate <= T2 - T1 
+
+  END physical_clocks

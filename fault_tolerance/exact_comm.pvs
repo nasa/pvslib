@@ -1,0 +1,78 @@
+%
+%
+% Purpose : properties of the communication system passing exact information
+%           and operating in a fault-full environment.
+%
+%
+%
+
+exact_comm
+[
+    N   : [nat -> posnat],  
+    T   : TYPE+
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    node_functions[N, T],
+    exact_comm_stage
+
+  i, j, k: VAR nat
+
+  sources: VAR [j : nat -> finite_set[below(N(j))]] 
+
+  sent:  VAR sent_vec
+  rcvd:  VAR rcvd_matrix
+  check: VAR check_function
+
+  tau: VAR [i: nat -> tau_type]
+
+  %
+  % Abstracted fault assumptions
+  %
+
+  % same predicate is in inexact_comm
+  enabled_within?(rcvd, check, j, k)(sources): bool = 
+    FORALL i : j <= i AND i < k IMPLIES
+      enabled_within?[N(i), N(i + 1), T](rcvd(i), check(i))(sources(i))
+
+  % For every stage between j..k, and at every receiver, there is a
+  % quorum (simple majority or more) of source nodes that exhibit correct communication
+  quorum_correct?(sent, rcvd, check, tau, j, k): bool =
+    FORALL i : j <= i AND i < k IMPLIES
+      quorum_correct?[N(i), N(i+1), T](sent(i), rcvd(i), check(i), tau(i))
+
+  % For every stage between j..k, and at every receiver, there is a
+  % majority of source nodes that exhibit correct communication
+  majority_correct?(sent, rcvd, check, j, k): bool =
+    FORALL i : j <= i AND i < k IMPLIES
+      majority_correct?[N(i), N(i+1), T](sent(i), rcvd(i), check(i))
+
+  mid(i): tau_type = mid
+
+  majority_correct_rw: LEMMA
+    majority_correct?(sent, rcvd, check, j, k) IFF
+      quorum_correct?(sent, rcvd, check, mid, j, k)
+
+
+  % For some stage i (j<=i<k), there is a set of nodes
+  % that exhibits only symmetric communication.  Furthermore,
+  % a quorum (simply majority or more) are correct for 
+  % all subsequent stages
+
+  exists_all_symmetric?(sent, rcvd, check, tau, j, k): bool = 
+    EXISTS i: j <= i AND i < k AND
+      all_symmetric?(rcvd(i), check(i)) AND
+      quorum_correct?(sent, rcvd, check, tau, i+1, k)
+
+%  exists_all_symmetric?(sent, rcvd, check, j, k): bool = 
+%    EXISTS i: j <= i AND i < k AND
+%      all_symmetric?(rcvd(i), check(i)) AND
+%      majority_correct?(sent, rcvd, check, i+1, k)
+
+  % Specialization for the simple majority case.
+  exists_all_symmetric?(sent, rcvd, check, j, k): bool = 
+    exists_all_symmetric?(sent, rcvd, check, mid, j, k)
+
+END exact_comm

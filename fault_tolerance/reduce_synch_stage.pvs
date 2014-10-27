@@ -1,0 +1,146 @@
+%
+%
+% Purpose : a choice function for a single stage inexact communication
+%           specifically adapted for synchronization properties
+%
+%
+
+reduce_synch_stage 
+[
+   rho     : nonneg_real, % Bound on drift for a good oscillator
+   min_latency   : nonneg_real, % Minimum real time latency (in ticks
+                          % of real time) of the communication link
+                          % determined by things like length of wire, speed
+                          % of light, and clock rate.
+   var_latency: nonneg_real, % Max variation (in ticks of real 
+                          % time) caused by both wire length 
+                          % differences and clock jitter.  
+   S   : posnat,          % Number of sending nodes
+   D   : posnat           % Number of destination nodes
+]: THEORY
+
+
+  BEGIN
+    IMPORTING
+      clock_shift[rho, D],
+      timing_integration_stage[rho, min_latency, var_latency, S, D], 
+      inexact_reduce_stage[S, D, 0]
+
+  s, s1, s2: VAR below(S)
+  d, d1, d2: VAR below(D)
+  c_src: VAR [below(S) -> good_clock]
+  c_dst: VAR [below(D) -> good_clock]
+  status:    VAR node_status[S]
+
+  src_set: VAR non_empty_finite_set[below[S]] % who is supposed to send
+  dst_set: VAR non_empty_finite_set[below(D)]
+
+  T : VAR integer
+  N, N1, N2 : VAR nat
+  delta, pi: VAR nonneg_real
+
+  t_at : VAR [below(D) -> real]
+ 
+  tau: VAR tau_type
+  cf: VAR consensus_function
+  icf: VAR in_consensus_function
+
+
+
+  synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi)(d): real =
+    offset(c_dst, N)(reduce_choice(tau, cf)(
+                      received(c_dst, c_src, T, status, pi),
+                      check(c_dst, T, src_set, pi)))(d)
+
+  synch_stage_offset: LEMMA
+    synch_stage(status, c_src, c_dst, T, N1 + N2, src_set, tau, cf, pi)
+      = offset(c_dst, N1)(synch_stage(status, c_src, c_dst, T, N2, src_set, tau, cf, pi))
+
+
+  lower_synch_validity: LEMMA
+      quorum_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      v_min(nominal(c_src, T), src_set) + N/rate - epsilon_l
+      <= v_min(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+  
+  upper_synch_validity: LEMMA
+      quorum_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      v_max(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+        <= v_max(nominal(c_src, T), src_set) + epsilon_u + N * rate
+
+  synch_master_slave: COROLLARY
+      quorum_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      clock_relation?(T, c_src, c_dst, pi) AND
+      v_max(nominal(c_src, T), src_set) -
+        v_min(nominal(c_src, T), src_set) <= delta AND
+      src_set(s) AND
+      dst_set(d)
+    IMPLIES
+      abs(nominal(c_src, T)(s) - synch_stage(status, c_src, c_dst, T, 0, src_set, tau, cf, pi)(d)) 
+               <= delta + max(epsilon_l, epsilon_u)
+
+  synch_agreement_propagation: LEMMA
+      quorum_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      clock_relation?(T, c_src, c_dst, pi) AND
+      v_max(sent(c_src, T), src_set) -
+        v_min(sent(c_src, T), src_set) <= delta
+    IMPLIES
+      v_max(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+        - v_min(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+       <= delta + epsilon + drift * N
+
+  overlap_synch?(status, c_src, c_dst, T, src_set, tau, pi): bool = 
+    reduce_overlap?(
+      received(c_dst, c_src, T, status, pi),
+      check(c_dst, T, src_set, pi), tau)
+     (single_denotation(status))
+
+  overlap_imprecision: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) AND
+      overlap_synch?(status, c_src, c_dst, T, src_set, tau, pi)
+    IMPLIES
+      overlap_imprecision?(      
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, src_set, pi), 
+        tau, epsilon)
+
+  max_length(status, c_src, c_dst, T, src_set, tau, pi): nat =
+    max_length(received(c_dst, c_src, T, status, pi), check(c_dst, T, src_set, pi), tau)
+
+  k: VAR posnat
+
+  synch_convergence: LEMMA
+      quorum_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      clock_relation?(T, c_src, c_dst, pi) AND
+      overlap_synch?(status, c_src, c_dst, T, src_set, tau, pi) AND
+      convergent?(cf, max_length(status, c_src, c_dst, T, src_set, tau, pi), k) AND
+      v_max(sent(c_src, T), src_set) -
+        v_min(sent(c_src, T), src_set) <= delta
+    IMPLIES
+      v_max(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+        - v_min(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+      <= delta * ((k - 1) / k) + epsilon + drift * N + rate
+
+  synch_agreement_generation: LEMMA
+      all_symmetric_synch?(status, c_src, c_dst, T, src_set, pi) AND
+      clock_relation?(T, c_src, c_dst, pi) AND
+      inexact_consensus?(cf)
+    IMPLIES
+      v_max(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+        - v_min(synch_stage(status, c_src, c_dst, T, N, src_set, tau, cf, pi), dst_set)
+       <= epsilon + drift * N + rate
+
+  synch_agreement_generation_edge: LEMMA
+      all_symmetric_synch?(status, c_src, c_dst, T, src_set, pi) AND
+      clock_relation?(T, c_src, c_dst, pi) AND
+      inexact_consensus?(icf)
+    IMPLIES
+      v_max(synch_stage(status, c_src, c_dst, T, N, src_set, tau, icf, pi), dst_set)
+        - v_min(synch_stage(status, c_src, c_dst, T, N, src_set, tau, icf, pi), dst_set)
+       <= epsilon + drift * N
+
+ 
+  END reduce_synch_stage

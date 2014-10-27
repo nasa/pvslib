@@ -1,0 +1,123 @@
+%-----------------------------------------------------------------------------
+% Filters on countable sequences.  A filter is a predicate that decides
+% whether a given sequence element should be retained or discarded.  Applying
+% a filter to a sequence produces a new sequence containing only those
+% elements satisfying the predicate, in the same order as in the original
+% sequence.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Versoin history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_filter[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_filter_of[T], csequence_subsequence[T]
+  IMPORTING csequence_codt_coreduce[T, [csequence, pred[T]]]
+
+  t: VAR T
+  p, q: VAR pred[T]
+  cseq, cseq1, cseq2, filt_seq: VAR csequence
+  eseq: VAR empty_csequence
+  nseq: VAR nonempty_csequence
+  fseq: VAR finite_csequence
+  state: VAR [csequence, pred[T]]
+
+  % The sequence consisting of elements satisfying p
+  filter_struct(state): csequence_struct[T, [csequence, pred[T]]] =
+      IF some(state`2)(state`1)
+        THEN LET n = first_p(state`2, state`1) IN
+               inj_add[T, [csequence, pred[T]]]
+                   (nth(state`1, n), (suffix(state`1, n + 1), state`2))
+      ELSE inj_empty_cseq[T, [csequence, pred[T]]]
+      ENDIF
+
+  filter(cseq, p): (subsequence?(cseq)) = coreduce(filter_struct)((cseq, p))
+
+  filter_empty: THEOREM FORALL eseq, p: empty?(filter(eseq, p))
+
+  filter_nonempty: THEOREM
+    FORALL cseq, p: some(p)(cseq) IFF nonempty?(filter(cseq, p))
+
+  filter_def: THEOREM FORALL cseq, p: every(p)(filter(cseq, p))
+
+  filter_finite: JUDGEMENT filter(fseq, p) HAS_TYPE finite_csequence
+
+  filter_length: THEOREM
+    FORALL fseq, p: length(filter(fseq, p)) <= length(fseq)
+
+  filter_length_eq: THEOREM
+    FORALL fseq, p:
+      length(filter(fseq, p)) = length(fseq) IMPLIES filter(fseq, p) = fseq
+
+  filter_reduce: THEOREM
+    FORALL cseq, p:
+      empty?(cseq) OR
+       p(first(cseq)) OR filter(cseq, p) = filter(rest(cseq), p)
+
+  filter_add: THEOREM
+    FORALL cseq, p, t:
+      filter(add(t, cseq), p) =
+       IF p(t) THEN add(t, filter(cseq, p)) ELSE filter(cseq, p) ENDIF
+
+  filter_rest: THEOREM
+    FORALL nseq, p:
+      filter(rest(nseq), p) =
+       IF p(first(nseq)) THEN rest(filter(nseq, p))
+       ELSE filter(nseq, p)
+       ENDIF
+
+  filter_suffix: THEOREM
+    FORALL cseq, p:
+      empty?(filter(cseq, p)) OR
+       rest(filter(cseq, p)) = filter(suffix(cseq, first_p(p, cseq) + 1), p)
+
+  filter_first: THEOREM
+    FORALL cseq, p:
+      some(p)(cseq) IMPLIES
+       first(filter(cseq, p)) = nth(cseq, first_p(p, cseq))
+
+  filter_first_first: COROLLARY
+    FORALL cseq, p:
+      some(p)(cseq) AND p(first(cseq)) IMPLIES
+       first(filter(cseq, p)) = first(cseq)
+
+  filter_full: THEOREM
+    FORALL cseq, p: every(p)(cseq) IFF filter(cseq, p) = cseq
+
+  filter_idem: THEOREM
+    FORALL cseq, p: filter(filter(cseq, p), p) = filter(cseq, p)
+
+  filter_some: THEOREM
+    FORALL cseq, p, q:
+      some(q)(filter(cseq, p)) IFF some(pred_AND(p, q))(cseq)
+
+  filter_every: THEOREM
+    FORALL cseq, p, q:
+      every(q)(filter(cseq, p)) IFF every(pred_IMPLIES(p, q))(cseq)
+
+  % The induction rules support reasoning based on first() and rest(), but
+  % filter expands to a form containing suffix() and min().  This theorem
+  % bridges the gap.
+  filter_filter_of: THEOREM
+    FORALL cseq, filt_seq, p:
+      filter(cseq, p) = filt_seq IFF filter_of?(filt_seq, cseq, p)
+
+  filter_concatenate: THEOREM
+    FORALL cseq1, cseq2, p:
+      filter(cseq1 o cseq2, p) =
+       IF is_finite(cseq1) THEN filter(cseq1, p) o filter(cseq2, p)
+       ELSE filter(cseq1, p)
+       ENDIF
+
+  filter_filter: THEOREM
+    FORALL cseq, p, q:
+      filter(filter(cseq, p), q) = filter(cseq, pred_AND(p, q))
+
+ END csequence_filter

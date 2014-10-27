@@ -1,0 +1,154 @@
+%-------------------------------------------------------------------------
+%
+%  Ranges of numbers.
+%
+%  For PVS version 3.2.  February 8, 2005
+%  ---------------------------------------------------------------------
+%      Author: Jerry James (jamesj@acm.org), University of Kansas
+%
+%  EXPORTS
+%  -------
+%  prelude: finite_sets[T], orders[T], relations[T], sets[T]
+%  finite_sets: finite_sets_inductions, finite_sets_minmax
+%  orders: bounded_orders[T], minmax_orders[T], range[T],
+%    relations_extra[T]
+%
+%-------------------------------------------------------------------------
+range[T: TYPE+ FROM real]: THEORY
+ BEGIN
+
+  IMPORTING minmax_orders[T]
+
+  t, r, r1, r2: VAR T
+  S: VAR set[T]
+
+  % A convenient shorthand
+  lesseq: MACRO pred[[T, T]] = restrict[[real, real], [T, T], boolean](<=)
+
+  % Minima- and maxima-related definitions for open/closed ranges
+  has_non_least?(S): bool =
+      EXISTS r:
+        (FORALL (t: (S)): r < t) AND
+         (FORALL r1: (FORALL (t: (S)): r1 < t) IMPLIES r1 <= r)
+
+  has_non_greatest?(S): bool =
+      EXISTS r:
+        (FORALL (t: (S)): t < r) AND
+         (FORALL r1: (FORALL (t: (S)): t < r1) IMPLIES r <= r1)
+
+  not_has_least?(S): MACRO bool =
+      (NOT has_least?(S, lesseq)) OR has_non_least?(S)
+
+  not_has_greatest?(S): MACRO bool =
+      (NOT has_greatest?(S, lesseq)) OR has_non_greatest?(S)
+
+
+  % ==========================================================================
+  % The base range type
+  % ==========================================================================
+
+  range: TYPE+ =
+    {S | FORALL (lo, hi: (S)), r: lo <= r AND r <= hi IMPLIES member(r, S)}
+
+  R: VAR range
+
+
+  % ==========================================================================
+  % Ranges with maxima and minima
+  % ==========================================================================
+
+  min_range: TYPE+ = {R | has_least?(R, lesseq)}
+  max_range: TYPE+ = {R | has_greatest?(R, lesseq)}
+
+
+  % ==========================================================================
+  % Ranges with no greatest lower or least upper element
+  % ==========================================================================
+
+  no_least(t): bool = NOT has_least?({r | r <= t}, lesseq)
+  no_greatest(t): bool = NOT has_greatest?({r | t <= r}, lesseq)
+
+
+  % ==========================================================================
+  % Closed, open, closed/open, and open/closed ranges
+  % ==========================================================================
+
+  c_range:  TYPE+ = {R | has_least?(R, lesseq) AND has_greatest?(R, lesseq)}
+  oc_range: TYPE  = {R | not_has_least?(R) AND has_greatest?(R, lesseq)}
+  co_range: TYPE  = {R | has_least?(R, lesseq) AND not_has_greatest?(R)}
+  o_range:  TYPE+ = {R | not_has_least?(R) AND not_has_greatest?(R)}
+
+  % The nontrivial range types
+  ntc_range: TYPE = {R: c_range | least(lesseq)(R) < greatest(lesseq)(R)}
+  nto_range: TYPE = {R: o_range | nonempty?(R)}
+
+  % Non-open ranges are nonempty
+  c_range_is_nonempty:   JUDGEMENT c_range   SUBTYPE_OF (nonempty?[T])
+  ntc_range_is_nonempty: JUDGEMENT ntc_range SUBTYPE_OF (nonempty?[T])
+  oc_range_is_nonempty:  JUDGEMENT oc_range  SUBTYPE_OF (nonempty?[T])
+  co_range_is_nonempty:  JUDGEMENT co_range  SUBTYPE_OF (nonempty?[T])
+
+
+  % ==========================================================================
+  % Constructing ranges
+  % ==========================================================================
+
+  % Constructing bounded ranges
+  closed_range(r1, (r2: {r | r1 <= r})): c_range = {r | r1 <= r AND r <= r2}
+  nontrivial_closed_range(r1, (r2: {r | r1 < r})): ntc_range =
+      {r | r1 <= r AND r <= r2}
+  open_closed_range(r1, (r2: {r | r1 < r})): oc_range =
+      {r | r1 < r AND r <= r2}
+  closed_open_range(r1, (r2: {r | r1 < r})): co_range =
+      {r | r1 <= r AND r < r2}
+  open_range(r1, r2): o_range = {r | r1 < r AND r < r2}
+  nontrivial_open_range(r1, (r2: {r | EXISTS t: r1 < t AND t < r})):
+    nto_range = {r | r1 < r AND r < r2}
+
+  % Constructing unbounded ranges
+  open_closed_range(r: (no_least)): oc_range = {r1 | r1 <= r}
+  closed_open_range(r: (no_greatest)): co_range = {r1 | r <= r1}
+  left_open_range(r: (no_least)):  nto_range = {r1 | r1 < r}
+  right_open_range(r: (no_greatest)): nto_range = {r1 | r < r1}
+
+  % The closed constructors are complete
+  c_range_construction: THEOREM
+    FORALL (R: c_range):
+      EXISTS r1, (r2: {r | r1 <= r}): R = closed_range(r1, r2)
+  ntc_range_construction: THEOREM
+    FORALL (R: ntc_range):
+      EXISTS r1, (r2: {r | r1 < r}): R = nontrivial_closed_range(r1, r2)
+
+  % least and greatest for constructed ranges
+  c_range_endpoints: THEOREM
+    FORALL (R: c_range): least(lesseq)(R) <= greatest(lesseq)(R)
+  ntc_range_endpoints: THEOREM
+    FORALL (R: ntc_range): least(lesseq)(R) < greatest(lesseq)(R)
+
+  c_range_min: THEOREM
+    FORALL r1, (r2: {r | r1 <= r}): least(lesseq)(closed_range(r1, r2)) = r1
+  c_range_max: THEOREM
+    FORALL r1, (r2: {r | r1 <= r}):
+      greatest(lesseq)(closed_range(r1, r2)) = r2
+
+  ntc_range_min: THEOREM
+    FORALL r1, (r2: {r | r1 < r}):
+      least(lesseq)(nontrivial_closed_range(r1, r2)) = r1
+  ntc_range_max: THEOREM
+    FORALL r1, (r2: {r | r1 < r}):
+      greatest(lesseq)(nontrivial_closed_range(r1, r2)) = r2
+
+  oc_range_max1: THEOREM
+    FORALL r1, (r2: {r | r1 < r}):
+      greatest(lesseq)(open_closed_range(r1, r2)) = r2
+  oc_range_max2: THEOREM
+    FORALL (r: (no_least)): greatest(lesseq)(open_closed_range(r)) = r
+
+  co_range_min1: THEOREM
+    FORALL r1, (r2: {r | r1 < r}):
+      least(lesseq)(closed_open_range(r1, r2)) = r1
+  co_range_min2: THEOREM
+    FORALL (r: (no_greatest)): least(lesseq)(closed_open_range(r)) = r
+
+ END range
+

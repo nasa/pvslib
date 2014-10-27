@@ -1,0 +1,58 @@
+%------------------------------------------------------------------------------
+% A Compiler for while
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+compiler[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING AExp[V], BExp[V], Stm[V], Instruction[V], list_props_aux
+
+  a: VAR AExp
+  b: VAR BExp
+  S: VAR Stm
+
+  CA(a): RECURSIVE Code =
+     cases a of
+       N(n)       : cons(PUSH(n),null),
+       V(x)       : cons(FETCH(x),null),
+       Add(a1,a2) : append(CA(a2),append(CA(a1),cons(ADD,null))),
+       Sub(a1,a2) : append(CA(a2),append(CA(a1),cons(SUB,null))),
+       Mul(a1,a2) : append(CA(a2),append(CA(a1),cons(MUL,null)))
+     endcases
+     MEASURE a by <<
+
+  CB(b) : RECURSIVE Code =
+     cases b of
+       TT         : cons(PUSH_TRUE,null),
+       FF         : cons(PUSH_FALSE,null),
+       Eq(a1,a2)  : append(CA(a2),append(CA(a1),cons(EQ,null))),
+       Le(a1,a2)  : append(CA(a2),append(CA(a1),cons(LE,null))),
+       Neg(b)     : append(CB(b),cons(NEG,null)),
+       Band(b1,b2): append(CB(b2),append(CB(b1),cons(B_AND,null)))
+     endcases
+     MEASURE b by <<
+
+  CS(S) : RECURSIVE Code =
+     cases S of
+       Assign(x,a)          : append(CA(a),cons(STORE(x),null)),
+       Skip                 : cons(NOOP,null),
+       Sequence(S1,S2)      : append(CS(S1),CS(S2)),
+       Conditional(b,S1,S2) : append(CB(b),cons(BRANCH(CS(S1),CS(S2)),null)),
+       While(b,S1)          : cons(LOOP(CB(b),CS(S1)),null)
+     endcases
+     MEASURE S by <<
+
+  nonnull_CA: LEMMA NOT null?(CA(a))
+  nonnull_CB: LEMMA NOT null?(CB(b))
+  nonnull_CS: LEMMA NOT null?(CS(S))
+
+END compiler

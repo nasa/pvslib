@@ -1,0 +1,85 @@
+clear_denominators: THEORY
+BEGIN
+
+  IMPORTING ints@gcd
+
+x,y : VAR posrat
+i   : VAR int
+n   : VAR nat
+pn  : VAR posnat
+
+PosRatPair: TYPE = [# num:posnat,den:posnat #]
+
+prp,prp1,prp2: VAR PosRatPair
+
+posratpair_convert(prp): posrat = prp`num/prp`den;
+
++(prp1,prp2):PosRatPair = (# num:=prp1`num*prp2`den+prp2`num*prp1`den,
+			     den:=prp1`den*prp2`den #);
+
+posratpair_plus: LEMMA posratpair_convert(prp1)+posratpair_convert(prp2)=
+		       posratpair_convert(prp1+prp2);
+
+/(prp1,prp2):PosRatPair = (# num:=prp1`num*prp2`den,
+			     den:=prp1`den*prp2`num #);
+
+posratpair_div: LEMMA posratpair_convert(prp1)/posratpair_convert(prp2)=
+		       posratpair_convert(prp1/prp2);
+
+PosRatSet(x): set[posnat]= {N:posnat | EXISTS (pn1,pn2:posnat):
+		      		   x=pn1/pn2 AND N=pn1+pn2}
+
+PosRatSet_nonempty: LEMMA nonempty?(PosRatSet(x))
+
+PosRatSet_glb_posnat: LEMMA EXISTS (pn:posnat):
+  PosRatSet(x)(pn) AND
+  pn = glb(PosRatSet(x))
+
+PosRatMeas(x): nat =
+  LET mp:posnat = glb(PosRatSet(x)) IN
+    IF x<1 THEN 10^mp ELSE 10^mp - 1 ENDIF
+
+PosRatMeas_increasing: LEMMA
+  (EXISTS (pn:(PosRatSet(x))): FORALL (pm:(PosRatSet(y))): pn<pm)
+  IMPLIES PosRatMeas(x)<PosRatMeas(y)
+
+PosRatMeas_glb_minus_posnat: LEMMA x>pn IMPLIES
+  glb(PosRatSet(x-pn)) <= glb(PosRatSet(x))-pn
+
+compute_posratpair(x:posrat): RECURSIVE {prp | posratpair_convert(prp)=x} =
+  IF floor(x)=x THEN (# num:=floor(x),den:=1 #)
+  ELSIF x>1 THEN (# num:=floor(x),den:=1 #) + compute_posratpair(x-floor(x))
+  ELSE (# num:=1,den:=1 #)/compute_posratpair(1/x)
+  ENDIF MEASURE PosRatMeas(x)
+
+
+aq: VAR [nat->rat]
+
+
+rat_poly_to_int_rec(aq,n): RECURSIVE {ans:[# newpoly:[nat->rat],currgcd:posnat #] |
+  (EXISTS (cp:posrat): FORALL (j:nat): ans`newpoly(j) = cp*aq(j)) AND
+  (FORALL (j:upto(n)): rational_pred(ans`newpoly(j)) AND
+  	  	       integer_pred(ans`newpoly(j)) AND
+		       divides(ans`currgcd,ans`newpoly(j)))} =
+  IF n = 0 AND aq(0)=0 THEN (# newpoly:=aq,currgcd:=1 #)
+  ELSIF n = 0 THEN 
+    LET thisden = compute_posratpair(abs(aq(0)))`den IN
+      (# newpoly:= (LAMBDA (i:nat): thisden*aq(i)),
+         currgcd:= abs(thisden*aq(0)) #)
+  ELSIF aq(n) = 0 THEN rat_poly_to_int_rec(aq,n-1)
+  ELSE
+    LET currpoly = rat_poly_to_int_rec(aq,n-1),
+	thisden = compute_posratpair(abs(currpoly`newpoly(n)))`den
+    IN  (# newpoly:=(LAMBDA (i:nat): thisden*(currpoly`newpoly(i))),
+    	   currgcd:=compute_gcd(thisden*currpoly`newpoly(n),
+	                                  currpoly`currgcd) #)
+  ENDIF MEASURE n
+
+rat_poly_to_int(aq,n): {ai:[nat->int] | EXISTS (cp:posrat):
+		       FORALL (j:upto(n)): ai(j) = cp*aq(j) } =
+  LET rptir = rat_poly_to_int_rec(aq,n),
+      ppoly = rptir`newpoly,
+      mgcd  = rptir`currgcd
+  IN (LAMBDA (i:nat): IF i<=n THEN ppoly(i)/mgcd ELSE 0 ENDIF)
+
+END clear_denominators

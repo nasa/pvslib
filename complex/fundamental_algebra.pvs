@@ -1,0 +1,171 @@
+fundamental_algebra: THEORY
+
+%%% The Fundamental Theorem of Algebra %%%
+%%% Narkawicz 12/2013 %%%
+
+BEGIN
+
+  IMPORTING exp
+
+
+  n : VAR nat
+  pn: VAR posnat
+  a,b : VAR [nat->complex]
+  c,x,y : VAR complex
+  r,s : VAR real
+  ff,gg:VAR [complex->complex]
+  K : VAR posreal
+
+
+
+
+
+  %Powers
+
+  *(a,b)(n): complex = a(n)*b(n);
+
+  +(a,b)(n): complex = a(n)+b(n);
+
+  *(c,a)(n): complex = c*a(n);
+
+  cfunmult(ff,gg)(c): complex = ff(c)*gg(c);
+
+  cfunplus(ff,gg)(c): complex = ff(c) + gg(c);
+
+  mult_0_l: LEMMA 0*c = 0
+
+  mult_commutes: LEMMA x*y = y*x
+
+  cpow(c)(n): RECURSIVE complex =
+    IF n = 0 THEN 1 ELSE c*cpow(c)(n-1) ENDIF
+    MEASURE n
+
+  cpow_0: LEMMA cpow(c)(pn)=0 IFF c=0
+
+  cpow_real: LEMMA cpow(r)(n) = r^n
+
+  abs_rewrite: LEMMA
+    abs(s*i + r) = sqrt(s^2 + r^2)
+
+  arg_cpow: LEMMA
+    -pi < pn*arg(c) AND pn*arg(c)<=pi
+    IMPLIES
+    arg(cpow(c)(pn)) = pn*arg(c)
+
+  abs_cpow: LEMMA
+    abs(cpow(c)(n)) = abs(c)^n
+
+  abs_cpow_increasing: LEMMA
+    abs(x)<=abs(y) IMPLIES abs(cpow(x)(n))<=abs(cpow(y)(n))
+
+  cpow_exp: LEMMA
+    cpow(exp(c))(n) = exp(n*c)
+
+  cpow_mult: LEMMA cpow(x*y)(n) = cpow(x)(n)*cpow(y)(n)
+
+  %%% Continuity %%%
+
+  complex_continuous?(ff): bool =
+    FORALL (x:complex,epsil:posreal): EXISTS (delta:posreal):
+    FORALL (y:complex): abs(x-y)<=delta IMPLIES
+      abs(ff(x)-ff(y))<epsil
+
+  complex_continuous_sum: LEMMA
+    complex_continuous?(ff) AND complex_continuous?(gg)
+    IMPLIES complex_continuous?(cfunplus(ff,gg))
+
+  complex_continuous_mult: LEMMA
+    complex_continuous?(ff) AND complex_continuous?(gg)
+    IMPLIES complex_continuous?(cfunmult(ff,gg))
+
+  complex_continuous_cpow: LEMMA
+    complex_continuous?(LAMBDA (x): c*cpow(x)(n))
+
+  %%% Roots of Unity %%%
+    
+  root_neg_1(pn): complex =
+    IF pn = 1 THEN -1
+    ELSE exp((i*pi)/pn) ENDIF
+
+  root_neg_1_def: LEMMA
+    cpow(root_neg_1(pn))(pn) = -1
+
+  root_complex(c)(pn): complex =
+    from_polar(root_real(abs(c))(pn),arg(c)/pn)
+
+  arg_root_complex: LEMMA
+    arg(root_complex(c)(pn)) = arg(c)/pn
+
+  abs_root_complex : LEMMA
+    abs(root_complex(c)(pn)) = root_real(abs(c))(pn)
+
+  root_complex_def: LEMMA
+    cpow(root_complex(c)(pn))(pn) = c
+
+  %%% Sums %%%
+
+  csigma(a,n): RECURSIVE complex =
+    IF n = 0 THEN a(0) ELSE a(n)+csigma(a,n-1) ENDIF
+    MEASURE n
+
+  csigma_plus: LEMMA csigma(a+b,n) = csigma(a,n)+csigma(b,n)
+
+  csigma_scal_right: LEMMA
+    csigma(a,n)*c = csigma(c*a,n)
+
+  csigma_eq: LEMMA (FORALL (i:nat): i<=n IMPLIES a(i)=b(i))
+    IMPLIES csigma(a,n) = csigma(b,n)
+
+  csigma_real_triangle: LEMMA
+    abs(csigma(a,n))<=sigma(0,n,LAMBDA (i:nat): abs(a(i)))
+
+  %%% Polynomials %%%
+
+  cpolynomial(a,n)(c): complex =
+    csigma(a*cpow(c),n)
+
+  cpolynomial_rec: LEMMA
+    cpolynomial(a,1+n)(c) = cpolynomial(a,n)(c) + a(1+n)*cpow(c)(1+n)
+
+  cpolynomial_struct_rec: LEMMA
+    cpolynomial(a,1+n)(c) =
+    cpolynomial(LAMBDA (i:nat): a(i+1),n)(c)*c + a(0)
+
+  cpolynomial_add: LEMMA
+    cpolynomial(a+b,n) = cfunplus(cpolynomial(a,n),cpolynomial(b,n))
+
+  cpolynomial_eq_le_degree: LEMMA
+    (FORALL (i:nat): i<=n IMPLIES a(i) = b(i)) IMPLIES
+    cpolynomial(a,n) = cpolynomial(b,n)
+
+  complex_continuous_cpolynomial: LEMMA
+    complex_continuous?(cpolynomial(a,n))
+
+  complex_binomial_theorem: LEMMA
+    cpow(x+y)(n) =
+    csigma(LAMBDA (i:nat): IF i<=n THEN C(n,i)*cpow(x)(i)*cpow(y)(n-i) ELSE 0 ENDIF,n)
+
+  complex_poly_shift: LEMMA
+    EXISTS (b): b(0) = cpolynomial(a,n)(c) AND
+    FORALL (x): cpolynomial(a,n)(x) = cpolynomial(b,n)(x-c)
+
+  cpolynomial_limit_infinity: LEMMA n > 0 AND a(n)/=0
+    IMPLIES
+    EXISTS (M:posnat): FORALL (x): abs(x)>=M IMPLIES
+    abs(cpolynomial(a,n)(x)) > K
+    
+  complex_disk_complete: LEMMA
+    (FORALL (j:nat): abs(a(j))<=K) IMPLIES
+    EXISTS (c): abs(c)<=K AND FORALL (epsil:posreal,N:nat):
+      EXISTS (j:nat): j>N AND abs(c-a(j))<epsil
+
+  cpolynomial_attains_minimum: LEMMA
+    EXISTS (c): FORALL (x):
+      abs(cpolynomial(a,n)(c))<=abs(cpolynomial(a,n)(x))
+
+  fundamental_algebra: LEMMA n>0 AND a(n)/=0
+    IMPLIES
+    EXISTS (c): cpolynomial(a,n)(c) = 0
+
+
+END fundamental_algebra

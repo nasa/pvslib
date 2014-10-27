@@ -1,0 +1,141 @@
+%
+%
+% Purpose : Formulations of fault assumptions for the results-based 
+%           fault model relative to a check function
+%
+%
+
+fault_assumptions_stage
+[
+   S: posnat,  % Number of source nodes
+   D: posnat,  % Number of destination nodes
+   T: TYPE+    % Message type
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+    pigeonhole[below(S)],
+    node_functions_stage[S, D, T]
+
+
+  s: VAR below(S)
+  d, d1, d2: VAR below(D)
+
+  src_set: VAR finite_set[below(S)]
+  check: VAR check_stage
+  rcvd:  VAR rcvd_matrix_stage 
+
+  tau: VAR tau_type
+
+  %
+
+  enabled(rcvd, check)(d): finite_set[below(S)] = 
+    { s | check(d)(s)(rcvd(d)(s))}
+
+  enabled_nonempty?(rcvd, check): bool = 
+    FORALL d: NOT empty?(enabled(rcvd, check)(d))
+
+  enabled_within?(rcvd, check)(src_set): bool = 
+    FORALL d: subset?(enabled(rcvd, check)(d), src_set)
+
+  enabled?(rcvd, check): finite_set[below(S)] = 
+    { s | EXISTS d : enabled(rcvd, check)(d)(s)}
+
+  enabled_within: LEMMA
+    enabled_within?(rcvd, check)(enabled?(rcvd, check))
+
+  %
+  % Abstracted single stage fault assumptions
+  %
+
+  majority?(rcvd, check)(src_set): bool = 
+    FORALL d: 
+      simple_majority?(src_set, enabled(rcvd, check)(d))
+
+  quorum?(rcvd, check, tau)(src_set): bool = 
+    FORALL d: quorum?(enabled(rcvd, check)(d), tau)(src_set)
+
+  quorum_implies_majority: LEMMA
+    quorum?(rcvd, check, tau)(src_set) IMPLIES
+      majority?(rcvd, check)(src_set)
+
+  majority: LEMMA
+    majority?(rcvd, check) = quorum?(rcvd, check, mid)
+
+  enabled_within_quorum: LEMMA
+    enabled_within?(rcvd, check)(src_set) AND
+    enabled_nonempty?(rcvd, check)
+   IMPLIES
+    quorum?(rcvd, check, tau)(src_set)
+
+  enabled_within_quorum_nada: LEMMA
+    enabled_nonempty?(rcvd, check) IMPLIES
+      enabled_within?(rcvd, check) = quorum?(rcvd, check, nada)
+
+  quorum_nonempty: LEMMA
+      quorum?(rcvd, check, tau)(src_set)
+    IMPLIES
+      enabled_nonempty?(rcvd, check)
+
+  max(rcvd, check, tau)(d): nat = 
+    IF empty?(enabled(rcvd, check)(d))
+      THEN 0 
+      ELSE M(enabled(rcvd, check)(d), tau) - 1
+    ENDIF
+
+  %  overlap preconditions for convergence proofs
+  intersection_majority?(rcvd, check)(src_set): bool =
+    FORALL d1, d2:
+      intersection_majority?(enabled(rcvd, check)(d1), enabled(rcvd, check)(d2), src_set)
+
+  intersection_majority?(rcvd, check): bool =
+    FORALL d1, d2:
+      intersection_majority?(enabled(rcvd, check)(d1), enabled(rcvd, check)(d2))
+
+  byzantine_intersection_majority?(rcvd, check)(src_set): bool =
+    FORALL d1, d2:
+      byzantine_intersection_majority?(enabled(rcvd, check)(d1), enabled(rcvd, check)(d2), src_set)
+
+  intersection_majority_nonempty: LEMMA
+      intersection_majority?(rcvd, check)
+    IMPLIES 
+      enabled_nonempty?(rcvd, check)
+
+  byzantine_intersection_nonempty: LEMMA
+      byzantine_intersection_majority?(rcvd, check)(src_set)
+    IMPLIES 
+      enabled_nonempty?(rcvd, check)
+
+  % "src_set" may be a node that passes the common check, symmetric_denotation, 
+  % or correct_denotation depending on the particular fault assumptions required. 
+
+  intersection_majority: LEMMA
+      enabled_within?(rcvd, check)(src_set) AND
+      intersection_majority?(rcvd, check)(src_set)
+    IMPLIES
+      intersection_majority?(rcvd, check)
+
+  uniformly_enabled?(rcvd, check)(src_set): bool = 
+    FORALL s, d1, d2: 
+      src_set(s) AND
+      enabled(rcvd, check)(d1)(s)
+    IMPLIES
+      enabled(rcvd, check)(d2)(s)
+
+  enabled_same?(rcvd, check)(src_set): bool =
+    FORALL d1, d2: enabled(rcvd, check)(d1) = enabled(rcvd, check)(d2)
+
+  uniform?(check)(src_set): bool =
+    FORALL s, d1, d2:
+      src_set(s)
+    IMPLIES
+      check(d1)(s) = check(d2)(s)
+
+  enabled_agree: LEMMA
+      enabled_within?(rcvd, check)(src_set) AND
+      uniformly_enabled?(rcvd, check)(src_set)
+    IMPLIES
+      enabled(rcvd, check)(d1) = enabled(rcvd, check)(d2)
+
+END fault_assumptions_stage

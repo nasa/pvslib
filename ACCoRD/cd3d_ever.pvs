@@ -1,0 +1,71 @@
+%------------------------------------------------------------------------------
+% cd3d_ever.pvs
+%
+% Authors: Anthony Narkawicz
+% 	   Cesar Munoz
+%	   NASA Langley
+%------------------------------------------------------------------------------
+
+cd3d_ever[D,H:posreal]  : THEORY 
+BEGIN
+
+  IMPORTING cd2d_ever,
+            omega_2D,
+	    space_3D[D,H],
+	    util
+
+  s,v : VAR Vect3       
+  t   : VAR nnreal
+
+
+  conflict_2D_stable: LEMMA v`z/=0 AND max(-H-sign(v`z)*s`z,0) < H-sign(v`z)*s`z
+    IMPLIES
+    (conflict?(s,v) IFF 
+    conflict_2D?[D*abs(v`z),max(-H-sign(v`z)*s`z,0),H-sign(v`z)*s`z](abs(v`z)*s,v))
+
+  conflict_vz_swap: LEMMA conflict?(s,v) IFF conflict?(s WITH [z:=-(s`z)],v WITH [z:=-(v`z)])
+
+  conflict_on_open_interval: LEMMA conflict?(s,v) IFF
+    EXISTS (topen: posreal): sqv(vect2(s)+topen*vect2(v))<sq(D) AND abs(s`z + topen*v`z) < H
+
+  %-----------------------------------------------%
+  % 3-D Conflict Detection (cd3d_ever)                 %
+  %-----------------------------------------------%
+
+  cd3d_ever?(s,v) : bool =
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d_ever(D,s,v)
+    ELSIF v`z /= 0 AND max(-H-sign(v`z)*s`z,0) < H-sign(v`z)*s`z
+       THEN cd2d?[D*abs(v`z),max(-H-sign(v`z)*s`z,0),H-sign(v`z)*s`z](abs(v`z)*s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_ever_rewrite: LEMMA cd3d_ever?(s,v) IFF 
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d_ever(D,s,v)
+    ELSIF v`z /= 0 AND max(Theta_H(s`z,v`z,Entry),0) < Theta_H(s`z,v`z,Exit)
+       THEN cd2d?[D,max(Theta_H(s`z,v`z,Entry),0),Theta_H(s`z,v`z,Exit)](s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_ever_correct : THEOREM
+    cd3d_ever?(s,v) IMPLIES
+    conflict?(s,v)
+
+   cd3d_ever_complete : THEOREM 
+    conflict?(s,v)
+    IMPLIES
+    cd3d_ever?(s,v)
+
+  %-----------------------------------------------%
+  % THEOREM: cd3d_ever is correct and complete    %
+  %-----------------------------------------------%
+
+  cd3d_ever : THEOREM
+    conflict?(s,v) IFF
+    cd3d_ever?(s,v) 
+
+
+END cd3d_ever

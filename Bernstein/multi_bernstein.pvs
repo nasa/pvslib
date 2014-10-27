@@ -1,0 +1,319 @@
+multi_bernstein : THEORY
+BEGIN
+
+  IMPORTING reals@product_nat, 
+            reals@polynomials,
+	    sigma_set@sigma_bijection[nat],
+	    reals@bernstein_polynomials,
+            util
+
+  %%%%%%%%%%%%%%%%%%%%%% Variables %%%%%%%%%%%%%%%%%%%%%%
+
+  bsdegmono       : VAR DegreeMono
+  pprod   	  : VAR Polyproduct
+  a,a1            : VAR real
+  X,Y             : VAR Vars
+  v               : VAR nat
+  nvars,terms     : VAR posnat
+  cf              : VAR Coeff
+  bspoly,bspolz   : VAR MultiBernstein
+  coeffmono1,
+  coeffmono2,
+  coeffmono	  : VAR CoeffMono
+  rel    	  : VAR [[real,real]->bool]
+  intendpts	  : VAR IntervalEndpoints
+  relreal         : VAR RealOrder
+
+  %%%%%%%%%%%%%%%%%%%%%% Evaluating Bernstein Polynomials %%%%%%%%%%%%%%%%%%%%%%
+
+  bsproduct_eval(pprod,bsdegmono,nvars)(X) : real = 
+    product(0,nvars-1,LAMBDA (i:nat):sigma(0,bsdegmono(i),
+                      LAMBDA (j:nat): IF j > bsdegmono(i) THEN 0 
+                                      ELSE pprod(i)(j)*Bern(j,bsdegmono(i))(X(i)) 
+                                      ENDIF))
+
+  multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) : real =
+    sigma(0,terms-1,LAMBDA (i:nat): cf(i)*bsproduct_eval(bspoly(i),bsdegmono,nvars)(X))
+
+  %%% Another version of evaluation for Bernstein Polynomials is needed to prove the main theorems %%%
+
+  multibs_eval_mono(bspoly,bsdegmono,cf,nvars,terms)(coeffmono) : real = 
+    sigma(0,terms-1,LAMBDA (i:nat): cf(i)*product(0,nvars-1,LAMBDA (j:nat): bspoly(i)(j)(coeffmono(j))))
+
+  multibs_eval_rec(bspoly,bsdegmono,cf,nvars,terms,v)
+                  (f:CoeffMono)(X) : RECURSIVE real =
+    IF v = 0 THEN multibs_eval_mono(bspoly,bsdegmono,cf,nvars,terms)(f)*
+                  product(0,nvars-1,LAMBDA (k:nat): IF f(k)<=bsdegmono(k) THEN 
+                                                      Bern(f(k),bsdegmono(k))(X(k)) 
+                                                    ELSE 1 ENDIF)
+    ELSE sigma(0,bsdegmono(v-1),LAMBDA (d:nat): LET nf = f WITH [(v-1) := d] IN 
+      multibs_eval_rec(bspoly,bsdegmono,cf,nvars,terms,v-1)(nf)(X))
+    ENDIF MEASURE v
+
+  multibs_eval_1_term: LEMMA 
+    multibs_eval(bspoly,bsdegmono,cf,nvars,1)(X) = 
+    multibs_eval_rec(bspoly,bsdegmono,cf,nvars,1,nvars)(zeroes)(X)
+
+  multibs_eval_equiv: LEMMA 
+    multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) = 
+    multibs_eval_rec(bspoly,bsdegmono,cf,nvars,terms,nvars)(zeroes)(X)
+
+  multibs_eval_below_mono: LEMMA 
+    (FORALL (i:below(nvars)): X(i) = Y(i)) IMPLIES
+    multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) =
+    multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(Y)
+
+  multibs_eval_id : LEMMA
+    FORALL (bspoly,bspolz,bsdegmono,cf,nvars,terms): 
+      (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+      multibs_eval(bspoly,bsdegmono,cf,nvars,terms) =
+      multibs_eval(bspolz,bsdegmono,cf,nvars,terms)
+
+  %%%%%%%%%%%%%%%% Computing Bernstein Coefficients %%%%%%%%%%%%%%%%%
+  
+  multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono) : real = 
+    sigma(0,terms-1,
+          LAMBDA (i:nat): cf(i)*product(0,nvars-1,LAMBDA (j:nat): bspoly(i)(j)(coeffmono(j))))
+
+  multibscoeff_id: LEMMA
+    eq_below_mono?(nvars)(coeffmono1,coeffmono2)
+    IMPLIES
+    multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono1) =
+    multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono2)
+
+  Bern_coeffs_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v)
+                     (f:CoeffMono,rel:[[real,real]->bool],a:real) : RECURSIVE bool =
+    IF v = 0 THEN rel(multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(f),a)
+    ELSE FORALL (d:upto(bsdegmono(v-1))): LET nf = f WITH [(v-1) := d] IN 
+      Bern_coeffs_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v-1)(nf,rel,a)
+    ENDIF MEASURE v
+
+  Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(rel,a) : bool = 
+    Bern_coeffs_rel_rec(bspoly,bsdegmono,cf,nvars,terms,nvars)(zeroes,rel,a)
+
+  Bern_coeffs_rel_implic: LEMMA 
+    (FORALL (x:real): rel(x,a) IMPLIES rel(x,a1)) AND
+    Bern_coeffs_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v)(coeffmono,rel,a) IMPLIES
+      Bern_coeffs_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v)(coeffmono,rel,a1)	  
+
+  Bern_coeffs_rel_def: LEMMA 
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(rel,a) IFF 
+      (FORALL (coeffmono): le_below_mono?(nvars)(coeffmono,bsdegmono) IMPLIES 
+         rel(multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono),a))
+
+  multibs_cornerpoint_coeff: LEMMA
+    LET X = LAMBDA (i:nat): IF coeffmono(i)=0 THEN 0 ELSE 1 ENDIF
+    IN
+      corner_point?(nvars,bsdegmono)(coeffmono) IMPLIES
+      multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) =
+      multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono)
+
+  %%%%%%%%%%% Forall X %%%%%%%%%%%%
+
+  forall_X(bspoly,bsdegmono,cf,nvars,terms,rel,a) : bool =
+    FORALL (X): unitbox?(nvars)(X) IMPLIES 
+      rel(multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X),a)
+
+  forall_X_id : LEMMA
+    FORALL (bspoly,bspolz,bsdegmono,nvars,terms,rel,a): 
+      (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+      forall_X(bspoly,bsdegmono,cf,nvars,terms,rel,a) =
+      forall_X(bspolz,bsdegmono,cf,nvars,terms,rel,a)
+
+  eval_X_between(amin,amax:real)(bspoly,bsdegmono,cf,nvars,terms)(X) : MACRO bool =
+      amin <= multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) AND
+      multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) <= amax
+
+  forall_X_between(amin,amax:real)(bspoly,bsdegmono,cf,nvars,terms) : bool =
+    FORALL (X): unitbox?(nvars)(X) IMPLIES 
+      eval_X_between(amin,amax)(bspoly,bsdegmono,cf,nvars,terms)(X)
+
+  forall_X_between_id : LEMMA
+    FORALL (amin,amax:real)(bspoly,bspolz,bsdegmono,nvars,terms): 
+      (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+      forall_X_between(amin,amax)(bspoly,bsdegmono,cf,nvars,terms) =
+      forall_X_between(amin,amax)(bspolz,bsdegmono,cf,nvars,terms)
+
+  %%%%%%%%%%%%%%%% Computing Endpoint Bernstein Coefficients %%%%%%%%%%%%%%%%%
+
+  Bern_coeffs_endpoints_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v)
+                               (f:CoeffMono,rel:[[real,real]->bool],a:real) : 
+  RECURSIVE {l : list[real] | cons?(l) IMPLIES unitbox?(nvars)(list2array(0)(l)) AND
+                                               length(l)=nvars} =
+    IF v = 0 THEN
+      IF rel(multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(f),a) THEN null
+      ELSE corner_to_point(f,nvars) 
+      ENDIF
+    ELSE 
+      LET nf0   = f WITH [(v-1):=0],
+          list0 = Bern_coeffs_endpoints_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v-1)
+                                               (nf0,rel,a) IN
+      IF cons?(list0) THEN list0
+      ELSE 
+        LET nfd = f WITH [(v-1):=bsdegmono(v-1)] IN 
+        Bern_coeffs_endpoints_rel_rec(bspoly,bsdegmono,cf,nvars,terms,v-1)(nfd,rel,a)
+      ENDIF
+    ENDIF 
+   MEASURE v
+
+  Bern_coeffs_endpoints_rel(bspoly,bsdegmono,cf,nvars,terms,intendpts)(rel,a) : 
+  {l : list[real] | cons?(l) IMPLIES unitbox?(nvars)(list2array(0)(l)) AND length(l)=nvars} = 
+    IF (FORALL (j:below(nvars)): intendpts(j)`1 AND intendpts(j)`2) THEN
+      Bern_coeffs_endpoints_rel_rec(bspoly,bsdegmono,cf,nvars,terms,nvars)(zeroes,rel,a)
+    ELSE null
+    ENDIF
+
+  Bern_coeffs_endpoints_rel_def: LEMMA 
+   forall_X(bspoly,bsdegmono,cf,nvars,terms,rel,a) IMPLIES
+   null?(Bern_coeffs_endpoints_rel(bspoly,bsdegmono,cf,nvars,terms,intendpts)(rel,a))
+
+  Bern_coeffs_counterexample: LEMMA 
+    LET listex = Bern_coeffs_endpoints_rel(bspoly,bsdegmono,cf,nvars,terms,intendpts)(rel,a) IN
+    cons?(listex) IMPLIES 
+      length(listex) = nvars AND
+      NOT rel(multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(list2array(0)(listex)),a)
+
+  %%%%%%%%%% Bernstein Lemmas %%%%%%%%%
+
+  Bern_le: LEMMA 
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(<=,a) IMPLIES
+      forall_X(bspoly,bsdegmono,cf,nvars,terms,<=,a)
+
+  Bern_lt: LEMMA 
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(<,a) IMPLIES
+     forall_X(bspoly,bsdegmono,cf,nvars,terms,<,a)
+
+  Bern_ge: LEMMA 
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(>=,a) IMPLIES
+      forall_X(bspoly,bsdegmono,cf,nvars,terms,>=,a)
+
+  Bern_gt: LEMMA 
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(>,a) IMPLIES
+      forall_X(bspoly,bsdegmono,cf,nvars,terms,>,a)
+
+  Bern_rel : LEMMA
+    Bern_coeffs_rel(bspoly,bsdegmono,cf,nvars,terms)(relreal,a) IMPLIES
+      forall_X(bspoly,bsdegmono,cf,nvars,terms,relreal,a)
+
+  forall_X_between_minmax : LEMMA
+    FORALL (amin,amax:real) :
+      (FORALL(coeffmono):
+       le_below_mono?(nvars)(coeffmono,bsdegmono) IMPLIES
+       amin <= multibscoeff(bspoly, bsdegmono, cf, nvars, terms)(coeffmono) AND
+       multibscoeff(bspoly, bsdegmono, cf, nvars, terms)(coeffmono) <= amax)
+     IMPLIES
+       forall_X_between(amin,amax)(bspoly,bsdegmono,cf,nvars,terms)
+
+  %%%%%%%%%%% Splitting %%%%%%%%%%%%
+
+  % i is degree for splitting, r is variable of the product, 
+  % and j is the coeff index  
+  Bern_split_left_mono(pprod,bsdegmono)(i:nat)(r:nat)(j:nat): real = 
+    IF i/=r THEN pprod(r)(j) 
+    ELSIF j>bsdegmono(i) THEN 0 
+    ELSE (1/2^j)*sigma(0,j,
+         LAMBDA (k:nat): IF k>j THEN 0 ELSE C(j,k)*pprod(i)(k) ENDIF) 
+    ENDIF 
+
+  Bern_split_right_mono(pprod,bsdegmono)(i:nat)(r:nat)(j:nat): real =
+    IF i/=r THEN pprod(r)(j) 
+    ELSIF j>bsdegmono(i) THEN 0 
+    ELSE 
+      (1/2^(bsdegmono(i)-j))*sigma(0,bsdegmono(i)-j,
+      LAMBDA (k:nat): IF k>bsdegmono(i)-j THEN 0 
+                      ELSE C(bsdegmono(i)-j,k)*pprod(i)(bsdegmono(i)-k) 
+                      ENDIF) 
+    ENDIF
+  
+  % Bern_split_left_mpoly(bspoly,bsdegmono)(i) is a MultiBernstein
+
+  Bern_split_left_mpoly(bspoly,bsdegmono)(i:nat)(k:nat): MACRO Polyproduct = 
+    Bern_split_left_mono(bspoly(k),bsdegmono)(i)
+
+  Bern_split_right_mpoly(bspoly,bsdegmono)(i:nat)(k:nat): MACRO Polyproduct = 
+    Bern_split_right_mono(bspoly(k),bsdegmono)(i)
+
+  Bern_split_bspoly : LEMMA FORALL (i:nat,rel): i<nvars IMPLIES
+      ((forall_X(Bern_split_left_mpoly(bspoly,bsdegmono)(i),bsdegmono,cf,nvars,terms,rel,a) AND
+        forall_X(Bern_split_right_mpoly(bspoly,bsdegmono)(i),bsdegmono,cf,nvars,terms,rel,a))
+	IFF
+	forall_X(bspoly,bsdegmono,cf,nvars,terms,rel,a))
+
+  Bern_eval_left: LEMMA
+    rel(multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X),a) IMPLIES
+    LET Xmid = X WITH [(v) := 2*X(v)] IN
+    rel(multibs_eval(LAMBDA (k: nat):Bern_split_left_mono(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid),a)
+
+  Bern_eval_left_def: LEMMA
+    LET Xmid = X WITH [(v) := 2*X(v)] IN
+    multibs_eval(LAMBDA (k: nat):Bern_split_left_mono(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid) =
+    multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X)
+    
+
+  Bern_eval_right: LEMMA
+    rel(multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X),a) IMPLIES
+    LET Xmid = X WITH [(v) := 2*X(v)-1] IN
+    rel(multibs_eval(LAMBDA (k: nat):Bern_split_right_mono(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid),a)
+
+  Bern_eval_right_def: LEMMA
+    LET Xmid = X WITH [(v) := 2*X(v)-1] IN
+    multibs_eval(LAMBDA (k: nat):Bern_split_right_mono(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid)=
+    multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X)
+    
+
+  %%%%%%%%%%% Sweeping on Polyproduct's (NOT MultiBernstein's) %%%%%%%%%%%
+
+  % p is the recursive counter, v is the variable to split, 
+  % and j is the index for the coefficient of that power (x_r^j)
+
+  Bernstein_sweep(pprod,v)(p:nat)(j:nat): RECURSIVE real =
+    IF p = 0 THEN pprod(v)(j)
+    ELSE
+      LET bpm = Bernstein_sweep(pprod,v)(p-1) IN
+        IF j < p THEN bpm(j)
+	ELSE (1/2)*(bpm(j-1) + bpm(j))
+	ENDIF
+    ENDIF
+    MEASURE p
+
+  % Bernstein_sweep(pprod,i)(p) is a Polynomial
+
+  Bern_sweep_left(pprod,bsdegmono)(i:nat)(r:nat) : Polynomial = 
+    IF i /= r THEN pprod(r)
+    ELSE 
+      Bernstein_sweep(pprod,i)(bsdegmono(i))
+    ENDIF
+
+  Bern_sweep_right(pprod,bsdegmono)(i:nat)(r:nat)(j:nat) : real = 
+    IF i /= r THEN pprod(r)(j)
+    ELSIF j <= bsdegmono(r) THEN 
+      Bernstein_sweep(pprod,i)(bsdegmono(i)-j)(bsdegmono(i)) 
+    ELSE 0 
+    ENDIF
+
+  Bern_sweep_left_mpoly(bspoly,bsdegmono)(i:nat)(k:nat): MACRO Polyproduct = 
+    Bern_sweep_left(bspoly(k),bsdegmono)(i)
+
+  Bern_sweep_right_mpoly(bspoly,bsdegmono)(i:nat)(k:nat): MACRO Polyproduct = 
+    Bern_sweep_right(bspoly(k),bsdegmono)(i)
+
+  Bern_sweep_eval_left: LEMMA
+    rel(multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X),a) IMPLIES
+    LET Xmid = X WITH [(v) := 2*X(v)] IN
+    rel(multibs_eval(LAMBDA (k: nat):Bern_sweep_left(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid),a)
+
+  Bern_sweep_eval_right: LEMMA
+    rel(multibs_eval(bspoly, bsdegmono, cf, nvars, terms)(X),a) IMPLIES
+    LET Xmid = X WITH [(v) := 2*X(v)-1] IN
+    rel(multibs_eval(LAMBDA (k: nat):Bern_sweep_right(bspoly(k), bsdegmono)(v),
+                     bsdegmono, cf, nvars, terms)(Xmid),a)
+
+END multi_bernstein

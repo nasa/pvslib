@@ -1,0 +1,138 @@
+%-------------------------------------------------------------------------
+% Extended nnreals
+%
+%     Author: David Lester, Manchester University
+%
+%     Version 1.0           20/08/07	Initial (DRL)
+%-------------------------------------------------------------------------
+
+extended_nnreal: THEORY
+
+BEGIN
+
+  IMPORTING series@series_aux,
+            sigma_set@absconv_series_aux,
+            reals@sigma[nat],
+            analysis@epsilon_lemmas
+
+  limit: MACRO [(convergent?)->real] = convergence_sequences.limit ;
+
+  extended_nnreal: TYPE+ = [bool,nnreal] CONTAINING (TRUE,0)
+
+  i,j,low,high: VAR nat
+  x,y,x1,y1,x2,y2: VAR extended_nnreal
+  z:   VAR real
+  S,T: VAR [nat->extended_nnreal]
+  U:   VAR [nat->nnreal]
+  X:   VAR set[extended_nnreal]
+  epsilon: VAR posreal
+  c:   VAR nnreal
+
+  x_inf(X):extended_nnreal
+    = IF (FORALL (x:(X)): NOT x`1)
+      THEN (FALSE,0)
+      ELSE (TRUE,glb({z | EXISTS x: X(x) AND x`1 AND x`2 = z})) ENDIF
+
+  x_sup(X):extended_nnreal
+    = IF empty?(X)
+      THEN (TRUE,0)
+      ELSIF (EXISTS (x:(X)): NOT x`1) OR
+            NOT bounded_above?({z | EXISTS x: X(x) AND x`1 AND x`2 = z})
+      THEN (FALSE,0)
+      ELSE (TRUE,lub({z | EXISTS x: X(x) AND x`1 AND x`2 = z})) ENDIF
+
+  x_inf(S):extended_nnreal = x_inf(image(S,fullset[nat]))
+  x_sup(S):extended_nnreal = x_sup(image(S,fullset[nat]))
+
+  x_sigma(low,high,S):extended_nnreal
+    = IF (FORALL i: low <= i AND i <= high => S(i)`1)
+      THEN (TRUE,sigma(low,high,lambda i: S(i)`2))
+      ELSE (FALSE,0) ENDIF
+
+  x_sum(S):extended_nnreal
+    = IF (FORALL i: S(i)`1) AND convergent?(series(lambda i: S(i)`2))
+      THEN (TRUE,limit(series(lambda i: S(i)`2)))
+      ELSE (FALSE,0) ENDIF
+
+  x_sum(U):extended_nnreal
+    = IF convergent?(series(U))
+      THEN (TRUE,limit(series(U)))
+      ELSE (FALSE,0) ENDIF
+
+  x_converges?(S,x):bool
+    = IF (FORALL i: S(i)`1) AND convergent?(lambda i: S(i)`2)
+      THEN x`1 AND x`2 = limit(lambda i: S(i)`2)
+      ELSE NOT x`1 ENDIF
+
+  x_limit(S):extended_nnreal
+    = IF (FORALL i: S(i)`1) AND convergent?(lambda i: S(i)`2)
+      THEN (TRUE,limit(lambda i: S(i)`2))
+      ELSE (FALSE,0) ENDIF
+
+  x_add(x,y):extended_nnreal
+    = IF x`1 AND y`1 THEN (TRUE,x`2+y`2) ELSE (FALSE,0) ENDIF
+
+  x_add(x,c):extended_nnreal = IF x`1 THEN (TRUE,x`2+c) ELSE (FALSE,0) ENDIF
+
+  x_eq(x,y):bool = (x`1 = y`1) AND (x`1 => x`2 = y`2)
+  x_le(x,y):bool = (x`1 AND y`1 AND x`2 <= y`2) OR (NOT y`1)
+  x_lt(x,y):bool = (x`1 AND y`1 AND x`2 <  y`2) OR (NOT y`1)
+
+  x_eq(x,c):bool = x`1 AND x`2 = c
+
+  x_times(x,y):extended_nnreal
+    = IF (x`1 AND y`1) OR x_eq(x,0) OR x_eq(y,0) THEN (TRUE,x`2*y`2)
+                                                 ELSE (FALSE,0) ENDIF
+
+  x_times(x,c):extended_nnreal = IF x`1 OR c = 0 THEN (TRUE,x`2*c)
+                                                 ELSE (FALSE,0) ENDIF
+  x_times(c,x):extended_nnreal = x_times(x,c)
+
+  x_add_commutative:   LEMMA commutative?(x_add)
+  x_add_associative:   LEMMA associative?(x_add)
+  x_times_commutative: LEMMA commutative?(x_times)
+  x_times_associative: LEMMA associative?(x_times)
+  x_eq_equivalence:    LEMMA equivalence?(x_eq)
+  x_le_preorder:       LEMMA preorder?(x_le)
+  x_le_antisymmetric:  LEMMA x_le(x,y) AND x_le(y,x) => x_eq(x,y)
+
+  x_sigma_le: LEMMA (FORALL i: low <= i AND i <= high => x_le(S(i),T(i))) =>
+                    x_le(x_sigma(low,high,S),x_sigma(low,high,T))
+
+  x_sigma_lt: LEMMA (FORALL i: low <= i AND i <= high => x_lt(S(i),T(i))) AND
+                    low <= high =>
+                    x_lt(x_sigma(low,high,S),x_sigma(low,high,T))
+
+  x_sum_le: LEMMA (FORALL i: x_le(S(i),T(i))) => x_le(x_sum(S),x_sum(T))
+  x_sum_eq: LEMMA (FORALL i: x_eq(S(i),T(i))) => x_eq(x_sum(S),x_sum(T))
+  x_sum_lt: LEMMA (FORALL i: x_lt(S(i),T(i))) => x_lt(x_sum(S),x_sum(T))
+
+  x_inf_le: LEMMA (FORALL i: x_le(S(i),T(i))) => x_le(x_inf(S),x_inf(T))
+
+  x_le_add: LEMMA x_le(x1,y1) AND x_le(x2,y2) =>
+                  x_le(x_add(x1,x2),x_add(y1,y2))
+
+  x_add_sum: LEMMA x_eq(x_add(x_sum(S),x_sum(T)),
+                        x_sum(lambda i: x_add(S(i),T(i))))
+
+  x_limit_to_sum: LEMMA (FORALL i: x_eq(S(i),x_sigma(0,i,T))) =>
+                        x_eq(x_limit(S),x_sum(T))
+
+  x_times_sum: LEMMA (FORALL i: x_eq(x_times(x,S(i)),T(i))) =>
+                     x_eq(x_times(x,x_sum(S)),x_sum(T))
+
+  epsilon_x_le: LEMMA
+    x_le(x,y) <=> (FORALL epsilon: x_le(x,x_add(y,epsilon)))
+
+  IMPORTING double_index[extended_nnreal],
+            double_nn_sequence
+
+  U: VAR [[nat,nat]->extended_nnreal]
+
+  double_x_sum: LEMMA x_eq(x_sum(single_index(U)),
+                           x_sum(lambda i: x_sum(lambda j: U(i,j))))
+
+  double_x_sum_eq: LEMMA x_eq(x_sum(lambda i: x_sum(lambda j: U(i,j))),
+                              x_sum(lambda j: x_sum(lambda i: U(i,j))))
+
+END extended_nnreal

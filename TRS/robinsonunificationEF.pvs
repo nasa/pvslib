@@ -1,0 +1,545 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%         
+%% Authors         : Andréia Borges Avelar and
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil 
+%%
+%%                         and 
+%%
+%%                   Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil 
+%%    
+%% Last Modified On: June 15, 2011
+%%
+%%----------------------------------------------------------------------------
+
+
+robinsonunificationEF[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+BEGIN
+
+   ASSUMING
+
+     IMPORTING variables_term[variable,symbol,arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+
+     var_countable : ASSUMPTION is_countably_infinite(V)
+      var_nonempty : ASSUMPTION nonempty?(V)
+   symbol_nonempty : ASSUMPTION nonempty?({f : symbol | arity(f) = 1})
+   ENDASSUMING
+
+
+   IMPORTING robinsonunification[variable,symbol, arity]
+
+
+                 Vs: VAR set[(V)]
+             V1, V2: VAR finite_set[(V)]
+                 V3: VAR finite_set[term]
+            x, y, z: VAR (V)
+    tau, sig, sigma, 
+  delta, rho, theta: VAR Sub 
+            st, stp: VAR finseq[term]
+    r, s, t, t1, t2: VAR term
+                  n: VAR nat
+   p, q, q1, p1, p2: VAR position
+                  R: VAR pred[[term, term]]
+
+
+%%%%% Function to compute the set of rigth positions of a %%%%%%%%%%%%
+%%%%% given position of a given term %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ right_pos(s:term, p : position) : RECURSIVE  positions =
+  IF NOT positionsOF(s)(p) THEN emptyset
+   ELSE
+   IF p = empty_seq THEN only_empty_seq
+   ELSE 
+    LET p1 = delete(p,length(p) - 1) IN 
+     LET i: nat = last(p) IN
+       LET n: nat = arity(f(subtermOF(s,p1))) IN
+         union( union(singleton(p), right_pos(s, p1)), 
+                IUnion(LAMBDA (j : below(n - i)) :
+                       {q | EXISTS q1 : positionsOF(subtermOF(s,
+                                         add_last(p1, i + j + 1)))(q1)
+                               AND  q = p1 o #( i + j + 1) o q1 }))
+   ENDIF
+  ENDIF
+ MEASURE length(p)
+
+
+%%%%% Function to compute the next position of a given position %%%%%%%%
+%%%%% where a conflict between two given terms occurs %%%%%%%%%%%%%%%%%%
+
+ next_position(s, t : term, 
+               p : position | positionsOF(s)(p) AND positionsOF(t)(p)): 
+   RECURSIVE position = 
+   IF p = empty_seq THEN empty_seq 
+   ELSE
+     LET pi0 = delete(p,length(p) - 1) IN
+      IF f(subtermOF(s,pi0)) /= f(subtermOF(t,pi0)) THEN pi0 
+      ELSE     
+        LET pi = add_last(delete(p, length(p) - 1), last(p) + 1) IN
+        IF positionsOF(s)(pi) THEN 
+            IF subtermOF(s, pi) /= subtermOF(t, pi) THEN pi 
+            ELSE next_position(s,t, pi) ENDIF
+        ELSE IF pi0 /= empty_seq THEN
+                    next_position(s, t, pi0)
+             ELSE empty_seq 
+            ENDIF 
+        ENDIF
+      ENDIF  
+   ENDIF  
+  MEASURE IF p = empty_seq 
+          THEN lex2(0,0)
+          ELSE lex2(length(p), 
+                    arity(f(subtermOF(s, 
+                                   delete(p,length(p) - 1)))) - last(p))
+          ENDIF
+
+
+%%%%%%% auxiliary lemmas %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ right_pos_subset : LEMMA
+ FORALL (s : term, p : position | positionsOF(s)(p)):
+    subset?(right_pos(s, p), positionsOF(s))
+
+ next_position_commute : LEMMA
+  FORALL (s, t : term, p : position |
+    positionsOF(s)(p) AND positionsOF(t)(p)):
+      next_position(s, t, p) = next_position(t, s, p)
+
+ next_position_is_position : LEMMA
+  FORALL (s, t : term, p : position |
+    positionsOF(s)(p) AND positionsOF(t)(p)):
+      positionsOF(s)(next_position(s, t, p))
+
+ next_pos_length_and_last : LEMMA
+  FORALL (s, t : term, p : position |
+    positionsOF(s)(p) AND positionsOF(t)(p) AND p /= empty_seq):
+      length(next_position(s, t, p)) < length(p) OR
+      (length(next_position(s, t, p)) = length(p) AND
+       last(p) < last(next_position(s, t, p)))
+
+ next_pos_is_a_diff_pos : LEMMA
+  FORALL (s, t : term, p : position |
+    positionsOF(s)(p) AND positionsOF(t)(p)):
+      (NOT p = empty_seq) IMPLIES
+      next_position(s, t, p) /= p
+
+ member_right_pos : LEMMA
+   FORALL (s : term, p : position | positionsOF(s)(p), 
+           q : position | positionsOF(s)(q)):
+     (member(q, right_pos(s, p)) AND p /= q) IFF left_pos(p, q)
+
+ next_pos_member_right_pos : LEMMA
+  FORALL (s, t : term, p : position |
+    positionsOF(s)(p) AND positionsOF(t)(p) AND p /= empty_seq):
+      member(next_position(s, t, p), right_pos(s, p))
+
+ equal_right_pos : LEMMA
+   FORALL (s : term, p : position | positionsOF(s)(p), 
+           q : position | positionsOF(s)(q)):
+      right_pos(s, p) = right_pos(s, q) IMPLIES p = q
+
+
+ subset_right_pos : LEMMA
+  FORALL (s : term, p : position | positionsOF(s)(p), 
+          q : position | positionsOF(s)(q)):
+    member(q, right_pos(s, p)) AND q /= p
+      IMPLIES strict_subset?(right_pos(s, q), right_pos(s, p))
+
+ next_pos_to_the_right : LEMMA
+    FORALL(s:term, t:term, p: position |
+           positionsOF(s)(p) AND positionsOF(t)(p) AND p /= empty_seq ):
+      Card(right_pos(s, next_position(s, t, p)))
+      < Card(right_pos(s, p))
+
+ ext_link_remove_x : LEMMA
+    FORALL(s : term, t : term, p : position | positionsOF(s)(p) AND 
+           positionsOF(t)(p) AND subtermOF(s,p) /= subtermOF(t,p)):
+        LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+         (NOT sig = fail AND  Dom(sig)(x)) IMPLIES  
+            (NOT member(x, Vars(ext(sig)(s)))) AND
+            (NOT member(x, Vars(ext(sig)(t))))
+
+ vars_ext_link_s_subset : LEMMA
+    FORALL(s : term, t : term, p : position | positionsOF(s)(p) AND 
+           positionsOF(t)(p) AND subtermOF(s,p) /= subtermOF(t,p)):
+        LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           NOT sig = fail IMPLIES 
+           subset?(Vars(ext(sig)(s)), union( Vars(s), Vars(t)))
+
+ vars_ext_link_t_subset : LEMMA
+    FORALL(s : term, t : term, p : position | positionsOF(s)(p) AND 
+           positionsOF(t)(p) AND subtermOF(s,p) /= subtermOF(t,p)):
+        LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           NOT sig = fail IMPLIES 
+           subset?(Vars(ext(sig)(t)), union( Vars(s), Vars(t)))
+
+ union_vars_ext_link_subterm : LEMMA
+  FORALL (s : term, t : term, p : position | 
+    positionsOF(s)(p) AND  positionsOF(t)(p) 
+    AND subtermOF(s,p) /= subtermOF(t,p)):
+      LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           NOT sig = fail IMPLIES
+             union(Vars(ext(sig)(s)), Vars(ext(sig)(t)))
+              = difference(union( Vars(s), Vars(t)), Dom(sig))
+
+ termination_lemma_subterm : LEMMA
+  FORALL (s : term, t : term, p : position | 
+    positionsOF(s)(p) AND  positionsOF(t)(p) 
+    AND subtermOF(s,p) /= subtermOF(t,p)):
+      LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           NOT sig = fail IMPLIES
+             Card(union( Vars(ext(sig)(s)), Vars(ext(sig)(t))))
+             < Card(union( Vars(s), Vars(t)))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ subtermOF_next_position : LEMMA
+   FORALL (s : term, 
+           t : term | s /= t, 
+           p : position | positionsOF(s)(p) AND  
+	       		  positionsOF(t)(p)) :
+      LET q = next_position(s, t, p) IN
+        subtermOF(s, q) /= subtermOF(t, q)
+
+ np_o_fd_is_position : LEMMA
+   FORALL (s : term,
+   	   t : term | s /= t,
+	   p : position | positionsOF(s)(p) AND
+	       		  positionsOF(t)(p)) :
+     LET q = next_position(s, t, p) IN
+      LET q1 = first_diff(subtermOF(s,q), subtermOF(t,q)) IN
+         positionsOF(t)(q o q1)
+
+
+ child_np_child_p : LEMMA
+   FORALL (s : term, 
+           t : term, 
+           p : position | positionsOF(s)(p) AND  
+	       		  positionsOF(t)(p)) :
+     (FORALL (q: position | positionsOF(s)(q) AND
+                            positionsOF(t)(q)):
+        child(next_position(s, t, p), q)
+         IMPLIES child(p, q))
+
+ next_pos_empty_equal_subterm : LEMMA
+   FORALL (s : term, 
+           t : term, 
+           p : position | positionsOF(s)(p) AND  
+	       		  positionsOF(t)(p) AND 
+                          p /= empty_seq ) :
+      ( next_position(s, t, p) = empty_seq AND
+        FORALL (p1 : position | positionsOF(s)(p1) AND
+                                positionsOF(t)(p1) ):
+         child(p, p1) => f(subtermOF(s, p1)) = f(subtermOF(t, p1)) )
+      IMPLIES
+      ( FORALL (q : position | positionsOF(s)(q) AND  
+	       		       positionsOF(t)(q)):
+          left_without_children(p, q) => 
+              subtermOF(s, q) = subtermOF(t, q) )
+
+ next_pos_equal_subterm : LEMMA
+   FORALL (s : term, 
+           t : term, 
+           p : position | positionsOF(s)(p) AND  
+	       		  positionsOF(t)(p) AND
+                          p /= empty_seq ) :
+      ( (FORALL (p1 : position | positionsOF(s)(p1) AND
+                                 positionsOF(t)(p1) ):
+           child(p, p1) => 
+               f(subtermOF(s, p1)) = f(subtermOF(t, p1)))
+       AND 
+        (FORALL (q: position | positionsOF(s)(q) AND
+                               positionsOF(t)(q)):
+           left_without_children(q, p) =>
+               subtermOF(s, q) = subtermOF(t, q))
+       AND
+         subtermOF(s, p) = subtermOF(t, p)       
+       AND
+         next_position(s, t, p) /= empty_seq  )
+      IMPLIES
+      (  FORALL (q : position | positionsOF(s)(q) AND  
+	       		        positionsOF(t)(q)):
+           left_without_children(q, next_position(s, t, p)) => 
+               subtermOF(s, q) = subtermOF(t, q) )
+
+ fd_equal_subterm : LEMMA
+  FORALL (s : term, 
+          t : term | s /= t,
+          p : position | positionsOF(s)(p) AND
+                         positionsOF(t)(p) ):
+      LET fd = first_diff(s, t) IN
+          left_without_children(p, fd) 
+             IMPLIES subtermOF(s,p) = subtermOF(t,p)
+ 
+ child_p_o_fd : LEMMA
+  FORALL (s : term, 
+          t : term, 
+          p : position | positionsOF(s)(p) AND
+                         positionsOF(t)(p) AND
+                         subtermOF(s,p) /= subtermOF(t,p)):
+      LET fd = first_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           (FORALL (q : position | positionsOF(s)(q) AND
+                                   positionsOF(t)(q) ):
+                    child(p, q) => 
+                    f(subtermOF(s, q)) = f(subtermOF(t, q)))
+          IMPLIES (FORALL (q : position | positionsOF(ext(sig)(s))(q) AND
+                                          positionsOF(ext(sig)(t))(q) ):
+                            child(p o fd, q) => 
+                            f(subtermOF(ext(sig)(s), q)) = f(subtermOF(ext(sig)(t), q)))
+
+
+ separation_lwc_pos : LEMMA
+    left_without_children(q, p o p1) AND NOT left_without_children(q, p)
+    IMPLIES EXISTS q1: q = p o q1 AND left_without_children(q1, p1)
+
+ lwc_o_fd_empty_seq : LEMMA
+  FORALL (s : term, 
+          t : term | s /= t):
+      LET fd = first_diff(s, t) IN
+       ( left_without_children(p, fd) AND positionsOF(s)(p)
+         AND p = p1 o p2 AND positionsOF(t)(p1)
+         AND vars?(subtermOF(t, p1)) )
+       IMPLIES p2 = empty_seq
+
+ lwc_p_o_fd : LEMMA
+  FORALL (s : term, 
+          t : term, 
+          p : position | positionsOF(s)(p) AND
+                         positionsOF(t)(p) AND
+                         subtermOF(s,p) /= subtermOF(t,p)):
+      LET fd = first_diff(subtermOF(s,p), subtermOF(t,p)) IN
+           (FORALL (q : position | positionsOF(s)(q) AND
+                                   positionsOF(t)(q) ):
+                    left_without_children(q, p) => 
+                    subtermOF(s, q) = subtermOF(t, q))
+          IMPLIES (FORALL (q : position | positionsOF(ext(sig)(s))(q) AND
+                                          positionsOF(ext(sig)(t))(q) ):
+                            left_without_children(q, p o fd) => 
+                            subtermOF(ext(sig)(s), q) = subtermOF(ext(sig)(t), q))
+
+ np_p_o_fd_empty_unifiable_term : LEMMA
+  FORALL (s : term, 
+          t : term, 
+          p : position | positionsOF(s)(p) AND
+                         positionsOF(t)(p) AND
+                         subtermOF(s,p) /= subtermOF(t,p)):
+      LET fd = first_diff(subtermOF(s,p), subtermOF(t,p)) IN
+        LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+          (  NOT sig = fail
+           AND
+             next_position(ext(sig)(s), ext(sig)(t), p o fd) = empty_seq
+           AND
+             (FORALL (q: position | positionsOF(s)(q) AND 
+                                    positionsOF(t)(q)):
+                 left_without_children(q, p) =>
+                      subtermOF(s, q) = subtermOF(t, q))
+           AND
+             (FORALL (p1: position | positionsOF(s)(p1) AND
+                                     positionsOF(t)(p1)):
+                 child(p, p1) => 
+                      f(subtermOF(s, p1)) = f(subtermOF(t, p1)))  )
+          IMPLIES
+            ext(sig)(s) = ext(sig)(t)
+
+ np_p_o_fd_equal_subterm : LEMMA
+  FORALL (s : term, 
+          t : term, 
+          p : position | positionsOF(s)(p) AND
+                         positionsOF(t)(p) AND 
+                         subtermOF(s,p) /= subtermOF(t,p)):
+      LET fd = first_diff(subtermOF(s,p), subtermOF(t,p)) IN
+        LET sig = link_of_frst_diff(subtermOF(s,p), subtermOF(t,p)) IN
+          (  NOT sig = fail
+           AND
+             next_position(ext(sig)(s), ext(sig)(t), p o fd) /= empty_seq
+           AND
+             (FORALL (q: position | positionsOF(s)(q) AND 
+                                    positionsOF(t)(q)):
+                 left_without_children(q, p) =>
+                      subtermOF(s, q) = subtermOF(t, q))
+           AND
+             (FORALL (p1: position | positionsOF(s)(p1) AND
+                                     positionsOF(t)(p1)):
+                 child(p, p1) => 
+                      f(subtermOF(s, p1)) = f(subtermOF(t, p1)))  )
+          IMPLIES
+             (FORALL (q: position | positionsOF(ext(sig)(s))(q) AND
+                                    positionsOF(ext(sig)(t))(q)):
+                 left_without_children(q, 
+                         next_position(ext(sig)(s), ext(sig)(t), p o fd)) =>
+                   subtermOF(ext(sig)(s), q) = subtermOF(ext(sig)(t), q))
+
+
+%%%% Function to compute mgu's of unifiable terms %%%%%%%%%%%%%%%%%%%%%
+
+ robinson_unification_algorithm_aux(s, t : term, p : position | 
+    positionsOF(s)(p) AND  positionsOF(t)(p)) : RECURSIVE Sub = 
+ IF subtermOF(s,p) = subtermOF(t,p) THEN 
+   LET pi = next_position(s, t, p) IN
+      IF pi = empty_seq THEN identity
+      ELSE robinson_unification_algorithm_aux(s,t,pi)
+      ENDIF
+ ELSE
+     LET sig = link_of_frst_diff(subtermOF(s,p),subtermOF(t,p)) 
+     IN
+        IF sig = fail THEN fail
+        ELSE 
+          LET pi = next_position(ext(sig)(s), ext(sig)(t), 
+                         p o first_diff(subtermOF(s,p),subtermOF(t,p)))
+          IN
+            IF pi = empty_seq THEN  sig
+            ELSE LET sigma = robinson_unification_algorithm_aux(
+                                        ext(sig)(s), ext(sig)(t), pi) IN
+                   IF sigma = fail THEN fail ELSE comp(sigma, sig) ENDIF
+            ENDIF  
+        ENDIF
+ ENDIF 
+  MEASURE  lex2(Card(union(Vars(s), Vars(t))),
+                Card(right_pos(s,p)))
+
+
+ robinson_unification_algorithm_EF(s, t : term) : Sub =
+   robinson_unification_algorithm_aux(s, t , empty_seq)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+unifiable_implies_not_fail1 : LEMMA
+   FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND 
+                          positionsOF(t)(p) AND 
+                          subtermOF(s, p) /= subtermOF(t, p)):
+      LET sig = link_of_frst_diff(subtermOF(s, p), subtermOF(t, p)) IN
+            unifiable(s, t) IMPLIES
+            NOT sig = fail
+
+preserving_generality1 : LEMMA
+   FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND 
+                          positionsOF(t)(p) AND 
+                          subtermOF(s, p) /= subtermOF(t, p)):
+       member(rho, U(s, t)) IMPLIES
+           LET sig = link_of_frst_diff(subtermOF(s, p), subtermOF(t, p)) IN
+              EXISTS theta : rho = comp(theta, sig)
+
+
+ unifiable_preserves_unifiability1 : LEMMA
+    FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND 
+                          positionsOF(t)(p) AND 
+                          subtermOF(s, p) /= subtermOF(t, p)):
+      LET sig = link_of_frst_diff(subtermOF(s, p), subtermOF(t, p)) IN
+          unifiable(s, t) IMPLIES unifiable(ext(sig)(s), (ext(sig)(t)))
+
+
+ dom_ruaEF_subset_union_vars_aux : LEMMA
+    FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND positionsOF(t)(p)) :
+    unifiable(s, t) IMPLIES 
+       LET sigma = robinson_unification_algorithm_aux(s, t, p) IN
+          subset?( Dom(sigma), union(Vars(s), Vars(t)) )
+
+
+ dom_ruaEF_subset_union_vars : LEMMA
+    unifiable(s, t) IMPLIES 
+       LET sigma = robinson_unification_algorithm_EF(s, t) IN
+          subset?( Dom(sigma), union(Vars(s), Vars(t)) )
+
+
+ vran_ruaEF_subset_union_aux : LEMMA
+    FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND 
+                          positionsOF(t)(p) AND 
+                          subtermOF(s, p) /= subtermOF(t, p)) :
+  LET pi = first_diff(subtermOF(s, p), subtermOF(t, p)) IN
+   LET sig1 = link_of_frst_diff(subtermOF(s, p), subtermOF(t, p)) IN
+    LET np = next_position(ext(sig1)(s), ext(sig1)(t), p o pi) IN
+     LET sig2 = robinson_unification_algorithm_aux(ext(sig1)(s), ext(sig1)(t), np) IN
+        unifiable(s, t) IMPLIES
+          subset?(VRan(comp(sig2, sig1)), 
+                  union(VRan(sig2), difference(VRan(sig1), Dom(sig2))))
+
+
+ dom_ran_ruaEF_disjoint : LEMMA
+   FORALL (s : term, t : term,
+            p: position | positionsOF(s)(p) AND positionsOF(t)(p)) :
+    unifiable(s, t) IMPLIES 
+       LET sigma = robinson_unification_algorithm_aux(s, t, p) IN
+           subset?( VRan(sigma) , 
+                     difference( union(Vars(s), Vars(t)), Dom(sigma) ))
+
+
+ ruaEF_fails_iff_non_unifiable_aux : LEMMA
+   FORALL (s : term,
+   	   t : term,
+           p : position | positionsOF(s)(p) AND 
+	       		  positionsOF(t)(p) ):
+      ( FORALL (q : position | positionsOF(s)(q) AND
+                               positionsOF(t)(q) ): 
+         left_without_children(q, p) => subtermOF(s,q) = subtermOF(t, q) ) 
+     AND
+      ( FORALL (p1 : position | positionsOF(s)(p1) AND
+                                positionsOF(t)(p1) ):
+           child(p, p1) => f(subtermOF(s, p1)) = f(subtermOF(t, p1)) )
+     IMPLIES     
+      ( NOT unifiable(s,t) IFF 
+        robinson_unification_algorithm_aux(s, t, p) = fail)
+
+
+ ruaEF_gives_unifier_aux : LEMMA
+   FORALL (s : term,
+   	   t : term,
+           p : position | positionsOF(s)(p) AND 
+	       		  positionsOF(t)(p) ):
+      ( FORALL (q : position | positionsOF(s)(q) AND
+                               positionsOF(t)(q) ): 
+         left_without_children(q, p) => subtermOF(s,q) = subtermOF(t, q) ) 
+     AND
+      ( FORALL (p1 : position | positionsOF(s)(p1) AND
+                                positionsOF(t)(p1) ):
+           child(p, p1) => f(subtermOF(s, p1)) = f(subtermOF(t, p1)) )
+     IMPLIES     
+      ( unifiable(s,t) IFF
+          member(robinson_unification_algorithm_aux(s, t, p), U(s, t)) )
+
+
+ ruaEF_gives_mg_subs_aux : LEMMA
+   FORALL (s : term,
+   	   t : term,
+           p : position | positionsOF(s)(p) AND 
+	       		  positionsOF(t)(p) ):
+      ( FORALL (q : position | positionsOF(s)(q) AND
+                               positionsOF(t)(q) ): 
+         left_without_children(q, p) => subtermOF(s,q) = subtermOF(t, q) ) 
+     AND
+      ( FORALL (p1 : position | positionsOF(s)(p1) AND
+                                positionsOF(t)(p1) ):
+           child(p, p1) => f(subtermOF(s, p1)) = f(subtermOF(t, p1)) )
+     IMPLIES     
+      ( member(rho, U(s, t)) IMPLIES
+          robinson_unification_algorithm_aux(s, t, p) <= rho )
+
+
+ ruaEF_fails_iff_non_unifiable : LEMMA
+    NOT unifiable(s,t) IFF robinson_unification_algorithm_EF(s,t) = fail
+
+%%%% Soundness of "robinson_unification_algorithm_EF" %%%%%%%%%%%%%%%%%%%%
+
+ ruaEF_gives_unifier : LEMMA
+    unifiable(s,t) IFF member(robinson_unification_algorithm_EF(s, t), U(s, t))
+ 
+ ruaEF_gives_mg_subs : LEMMA
+    member(rho, U(s, t)) IMPLIES robinson_unification_algorithm_EF(s, t) <= rho
+ 
+%%%% Completeness of "robinson_unification_algorithm_EF" %%%%%%%%%%%%%%%%%
+
+ completeness_ruaEF : LEMMA
+   IF unifiable(s,t) THEN  mgu(robinson_unification_algorithm_EF(s,t))(s,t)
+                     ELSE  robinson_unification_algorithm_EF(s,t) = fail 
+   ENDIF
+ 
+
+END robinsonunificationEF

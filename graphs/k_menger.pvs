@@ -1,0 +1,488 @@
+k_menger[T: TYPE]: THEORY 
+BEGIN
+   %% IMPORTING h_menger[T], 
+
+   %% IMPORTING meng_scaff_prelude[T], 
+      IMPORTING ind_paths[T]
+
+
+   IMPORTING graph_inductions[T], graph_ops[T], path_ops[T]
+   IMPORTING finite_sets@finite_sets_inductions[T]
+
+   G,GG,H,HH,MM: VAR graph[T]
+   v,s,t,w,w1,w2,a,b,c,av,ajm,z,x: VAR T
+   W,W1,W2: VAR finite_set[T]
+   p,p1,p2,q,q1,q2: VAR prewalk
+   e: VAR doubleton[T]
+   U,U1,V,V1,V2: VAR finite_set[T]
+   k,i,j,m,n: VAR nat
+ 
+        
+   good?(G,s,t):bool = separable?(G,s,t) AND vert(G)(s) AND vert(G)(t)
+
+   green?(V,s,t):bool = NOT V(s) AND NOT V(t)
+
+   B(G,s,t,k): bool = good?(G,s,t) AND (FORALL V: separates(G,V,s,t) IMPLIES card(V)>=k)
+
+   set_of_prewalks: TYPE = finite_set[prewalk]
+
+   ips,ipt,ips1,ips2,ipss,ipst,ipsg: VAR set_of_prewalks
+
+   ind_prewalk_set?(ips): bool = 
+                   (FORALL (p1,p2): 
+                             ips(p1) AND ips(p2) AND  p1 /= p2
+                                         IMPLIES independent?(p1,p2))
+   st_path_set?(G,s,t,ips): bool = (FORALL p1 : ips(p1) IMPLIES path_from?(G,p1,s,t))
+
+   many_ind(G,s,t,j):bool = EXISTS (ips): ind_prewalk_set?(ips) 
+                                          AND st_path_set?(G,s,t,ips) 
+                                          AND card[prewalk](ips)=j
+
+
+   B_many(G,s,t,k): bool = B(G,s,t,k) IMPLIES many_ind(G,s,t,k)
+
+%  Relation to sep_num is mentioned for comparison; minimal separating set or 
+%  separating number will not be used in the sequel.
+
+   sep_num_B:       LEMMA  B(G,s,t,k) IMPLIES sep_num(G,s,t)>=k
+
+   sep_num_implies: LEMMA  good?(G,s,t) AND sep_num(G,s,t)=k IMPLIES B(G,s,t,k)
+
+% We do not perform a new proof of easy_menger but simply recast it in our
+% notation.
+
+  % We use some basic results on card from extension that are originally found
+  % in finite_sets module.
+
+  IMPORTING finite_sets_card_from
+
+  card_extension_W   : LEMMA subset?(V,W) IMPLIES 
+                             card(extend[T,(W),bool,false](V))=card(V)
+
+  card_extension_same: LEMMA card(extend[T,(W),bool,false](W))=card(W)
+
+  % This last result will be used in comparing card for prewalk sets AND vertex
+  % sets.
+
+   %% IMPORTING menger
+
+   IMPORTING easy_menger[T], subgraph_paths[T] %% , meng_scaff_defs[T]
+   IMPORTING complem 
+
+   easy_menger_B: LEMMA good?(G,s,t) AND many_ind(G,s,t,k) IMPLIES B(G,s,t,k)
+
+
+% No min_sep_set after this point.  Also specifications from "menger.pvs"
+% will no longer be used. Lemma "easy_menger" was the basis of "easy_menger_B"
+% above. 
+
+   C(G,s,t):bool = (FORALL k: B_many(G,s,t,k))
+
+   sep_set_small: LEMMA B(G,s,t,k) AND green?(V,s,t) AND card(V) < k 
+                        IMPLIES EXISTS p : path_from?(del_verts(G,V),p,s,t)
+
+   B_many_1     : LEMMA B_many(G,s,t,1)
+
+% Here you prove all special cases.
+
+  tight?(G,s,t,W): bool = subset?(W, intersection(path_verts(G,s),path_verts(G,t)))
+
+  sub_tight     : LEMMA subset?(V,W) AND tight?(G,s,t,W) IMPLIES tight?(G,s,t,V)
+
+  smaller_tight : LEMMA separates(G,W,s,t) 
+                        IMPLIES tight?(G,s,t,W)
+                           OR EXISTS V :subset?(V,W) AND NOT V=W AND separates(G,V,s,t)
+
+  small_tight   : LEMMA separates(G,W,s,t) IMPLIES
+                        EXISTS V :subset?(V,W) AND separates(G,V,s,t) AND tight?(G,s,t,V)
+
+  exists_tight  : LEMMA good?(G,s,t) IMPLIES 
+                                   EXISTS V: separates(G,V,s,t) AND tight?(G,s,t,V)
+
+  close?(G,s,t,W): bool = FORALL (w:T) :  W(w) 
+                          IMPLIES EXISTS p: path_from?(G,p,s,t) 
+                                    AND intersection(W,internal_verts(p))=singleton[T](w)
+
+  close_tight   : LEMMA close?(G,s,t,W) IMPLIES tight?(G,s,t,W)
+
+  smaller_close : LEMMA separates(G,W,s,t) AND tight?(G,s,t,W) IMPLIES
+                       close?(G,s,t,W) OR EXISTS V :subset?(V,W) AND 
+                              NOT V=W AND separates(G,V,s,t) AND tight?(G,s,t,V)
+        
+  small_close   : LEMMA separates(G,W,s,t) IMPLIES
+                        EXISTS V :subset?(V,W) AND separates(G,V,s,t) AND close?(G,s,t,V)
+
+  exists_close: LEMMA good?(G,s,t) 
+                        IMPLIES EXISTS V: separates(G,V,s,t) AND close?(G,s,t,V)
+
+  closed_minimal: LEMMA separates(G,W,s,t) AND close?(G,s,t,W) 
+                        AND subset?(V,W) AND separates(G,V,s,t) IMPLIES V=W
+
+  closed_verts: LEMMA close?(G,s,t,W) IMPLIES subset?(W,vert(G))
+
+  attached?(G,s,t,W): bool = (FORALL w: W(w) IMPLIES edge?(G)(s,w)) OR 
+                             (FORALL w: W(w) IMPLIES edge?(G)(t,w))
+
+  attach_edges(W,x): finite_set[doubleton[T]] 
+                         = {e :doubleton[T]|EXISTS w: W(w) AND e=dbl[T](w,x)}
+
+  %%%%%%%  Definition of special graphs.
+
+  Hverts(G,W,x): finite_set[T] = path_verts(del_verts(G,W),x)
+
+  Kgraph(G,W,x): graph = subgraph(G, difference[T](vert(G),Hverts(G,W,x)))
+
+  Mgraph(G,W,x):graph = (# vert :=  add(x,vert(Kgraph(G,W,x))), 
+                           edges := union(edges(Kgraph(G,W,x)),
+                                          attach_edges(intersection(vert(G),W),x))
+                         #)
+
+  %%%%%%%   End of definitions.
+
+  Hst_intersect: LEMMA separates(G,W,s,t) 
+                       IMPLIES empty?(intersection(Hverts(G,W,s),Hverts(G,W,t)))       
+
+  subset_Ws: LEMMA good?(G,s,t) AND separates(G,W,s,t) AND NOT attached?(G,s,t,W) 
+                   IMPLIES subset?(vert(Mgraph(G,W,s)),vert(G))
+
+  subset_Wt: LEMMA good?(G,s,t) AND separates(G,W,s,t) AND NOT attached?(G,s,t,W) 
+                   IMPLIES subset?(vert(Mgraph(G,W,t)),vert(G))
+
+  size_Ws: LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                 AND close?(G,s,t,W) AND NOT attached?(G,s,t,W) 
+                 IMPLIES size(Mgraph(G,W,s)) < size(G)
+
+  size_Wt: LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                 AND close?(G,s,t,W) AND NOT attached?(G,s,t,W) 
+                 IMPLIES size(Mgraph(G,W,t)) < size(G)
+
+  C_induct(G,s,t):bool = (FORALL GG: size(GG)<size(G) IMPLIES C(GG,s,t))
+                              IMPLIES C(G,s,t)
+
+  Menger_hard: LEMMA (FORALL G:C_induct(G,s,t)) IMPLIES
+                           (FORALL G: C(G,s,t))          %Proved from graph inductions.
+
+   % We include some elementary lemmas on paths.  Some were proved 
+   % earlier in meng_scaff_defs.pvs, and the "greatest" and "least"
+   % constructions would follow from meng_scaff.pvs. We give a formulation
+   % specific to subsets of vertices in a graph.
+
+  subgraph_walks: LEMMA subgraph?(GG,G) AND walk?(GG,p1) IMPLIES walk?(G,p1)
+
+
+  subgraph_paths: LEMMA subgraph?(GG,G) AND path_from?(GG,p1,s,t) 
+                        IMPLIES path_from?(G,p1,s,t)
+
+  greatest?(p,V,i): bool = i<length(p) AND V(seq(p)(i)) AND 
+                    FORALL j:(j<length(p) AND V(seq(p)(j)) IMPLIES j<=i)
+
+  least?(p,V,i): bool = i<length(p) AND V(seq(p)(i)) AND FORALL j:(j<length(p) AND V(seq(p)(j)) 
+                        IMPLIES j>=i)
+
+  greatest_is: LEMMA i<length(p) AND V(seq(p)(i)) IMPLIES EXISTS k: greatest?(p,V,k)
+
+  least_is: LEMMA i<length(p) AND V(seq(p)(i)) IMPLIES EXISTS k: least?(p,V,k)
+
+  set_small_s: LEMMA B(G,s,t,k) AND good?(G,s,t) 
+                     AND separates(G,W,s,t) AND green?(V,s,t) AND card(V) < k 
+                     IMPLIES EXISTS p : path_from?(del_verts(Mgraph(G,W,s),V),p,s,t)
+
+  set_small_t: LEMMA B(G,s,t,k) AND good?(G,s,t) AND separates(G,W,s,t) 
+                     AND green?(V,s,t) AND card(V) < k 
+                     IMPLIES EXISTS p : path_from?(del_verts(Mgraph(G,W,t),V),p,s,t)
+
+  separates_Ws: LEMMA B(G,s,t,k) AND separates(G,W,s,t) IMPLIES B(Mgraph(G,W,s),s,t,k) 
+
+  separates_Wt: LEMMA B(G,s,t,k) AND separates(G,W,s,t) IMPLIES B(Mgraph(G,W,t),s,t,k) 
+
+
+  separ_sub: LEMMA subgraph?(GG,G) AND separates(G,V,s,t) 
+                   IMPLIES separates(GG,V,s,t)
+
+  separ_plus: LEMMA separates(del_vert(G,a),V,s,t) 
+                    IMPLIES separates(G,add(a,V),s,t) or a=s or a=t
+
+  % A main lemma based on graph induction is used only in the version of k_Menger
+  % Theorem below called 'Many_indep_paths'.
+
+  super_separ: LEMMA good?(G,s,t) AND subset?(V,W) 
+                     AND green?(W,s,t) AND separates(G,V,s,t) 
+                     IMPLIES separates(G,W,s,t)
+
+  % Requires a graph induction.
+
+  intermediate_subgraph: LEMMA (good?(G,s,t) AND subgraph?(H,G) AND green?(vert(H),s,t) 
+                                AND size(H)<=k AND k< size(G)-1) 
+                          IMPLIES (EXISTS HH: (green?(vert(HH),s,t) AND 
+                                               subgraph?(H,HH) AND size(HH)=k AND 
+                                               subgraph?(HH,G)))
+
+  intermediate_verts: LEMMA good?(G,s,t) AND green?(V,s,t) 
+                            AND subset?(V,vert(G)) AND card(V)<=k AND k<size(G)-1 
+                        IMPLIES (EXISTS W: subset?(V,W) AND card(W)=k AND 
+                                           green?(W,s,t) AND subset?(W,vert(G)))
+
+  % The section necessary for 'Many_indep_paths' is closed. 
+
+  one_wedge_s: LEMMA good?(G,s,t) 
+                     AND path_from?(G,q,s,t) IMPLIES 
+                             EXISTS k: k<length(q)-1 AND edge?(G)(s,seq(q)(k)) 
+                     AND (FORALL j: j < length(q) AND edge?(G)(s, seq(q)(j)) IMPLIES j <= k) 
+                     AND path_from?(G,gen_seq1(G,s) o q^(k,length(q)-1),s,t)
+
+  one_edge_s: LEMMA good?(G,s,t) 
+                    AND path_from?(G,q,s,t) IMPLIES EXISTS p:path_from?(G,p,s,t) 
+                    AND FORALL (i: below(length(p))):( edge?(G)(s,seq(p)(i)) IMPLIES i=1)
+                    AND subset?(verts_of(p),verts_of(q))
+
+  % Auxiliary LEMMA  one_edge_t: LEMMA good?(G,s,t) AND path_from?(G,q,s,t) 
+  %                  IMPLIES EXISTS p:path_from?(G,p,s,t) 
+  %                      AND FORALL (i: below(length(p))):( edge?(G)(seq(p)(i),t) 
+  %                      IMPLIES i=length(p)-2) AND subset?(verts_of(p),verts_of(q))
+
+
+  IMPORTING sep_set_lems[T]
+
+  short_path_k: LEMMA k>=1 AND B(G,s,t,k) IMPLIES EXISTS p:path_from?(G,p,s,t) AND
+                       FORALL (i: below(length(p))): ((edge?(G)(s,seq(p)(i)) 
+                              IMPLIES i=1) AND (edge?(G)(seq(p)(i),t) IMPLIES i=length(p)-2))
+
+  indep_path_sub: LEMMA subgraph?(GG,G)AND many_ind(GG,s,t,j) IMPLIES many_ind(G,s,t,j)
+
+
+  second: VAR [prewalk -> T]
+
+  %  [{p:prewalk | length(p)>1} -> T]
+
+  ips_lem1: LEMMA (FORALL q,q1:(ips(q) IMPLIES V(second(q))) AND (ips(q) AND ips(q1) 
+                          AND q /= q1 IMPLIES second(q) /= second(q1)))
+               IMPLIES subset?(image(second,ips),V) AND 
+                       injective?(restrict[prewalk,(ips),T](second)) 
+
+  ips_lem2: LEMMA (FORALL q,q1:(ips(q) IMPLIES V(second(q))) AND (ips(q) 
+                          AND ips(q1) AND q /= q1 IMPLIES second(q) /= second(q1))) 
+                   AND card[prewalk](ips)=card[T](V) 
+               IMPLIES image(second,ips)=V 
+
+
+  secoo(p:prewalk | length(p)>1): T = p(1)
+
+  secpp(p:prewalk|length(p)>1): T = p(length(p)-2)
+        
+   inj_ips: LEMMA (FORALL (q,q1):(ips(q) IMPLIES V(second(q))) 
+                                  AND (ips(q) AND ips(q1) AND q /= q1 IMPLIES
+                                      second(q) /= second(q1)))
+                  AND card[prewalk](ips)=card[T](V)
+               IMPLIES EXISTS (fq:[(V) -> prewalk]): image(fq,V)=ips AND 
+                       (FORALL (v:(V)): second(fq(v))=v) AND 
+                       (FORALL q2:ips(q2) IMPLIES fq(second(q2))=q2)
+
+  long_ipss_paths: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                         AND ipss(p) IMPLIES length(p)>1 
+
+  ipss_W: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                AND separates(G,W,s,t) AND ipss(p) IMPLIES W(secoo(p))
+
+  long_ipst_paths: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,t),s,t,ipss) 
+                         AND ipss(p) IMPLIES length(p)>1
+
+  ipst_W: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,t),s,t,ipss) 
+                AND separates(G,W,s,t) AND ipss(p) IMPLIES W(secpp(p))
+
+  long_ipss_2: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                     AND ipss(p) AND separates(G,W,s,t) IMPLIES length(p)>2
+
+  long_ipst_2: LEMMA good?(G,s,t) AND st_path_set?(Mgraph(G,W,t),s,t,ipss) 
+                     AND ipss(p) AND separates(G,W,s,t) IMPLIES length(p)>2  
+
+  ind_path_set_secoo: LEMMA good?(G,s,t) AND card[T](W)= card[prewalk](ipss) 
+                            AND separates(G,W,s,t) AND ind_prewalk_set?(ipss) 
+                            AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                        IMPLIES image(secoo, ipss)=W AND 
+                               FORALL (q,q1):(ipss(q) AND ipss(q1) AND q /=q1 
+                                              IMPLIES secoo(q) /= secoo(q1))
+
+
+  ind_path_set_secpp: LEMMA good?(G,s,t) AND card[T](W)= card[prewalk](ipst) 
+                            AND separates(G,W,s,t) AND ind_prewalk_set?(ipst) 
+                            AND st_path_set?(Mgraph(G,W,t),s,t,ipst) 
+                        IMPLIES image(secpp, ipst)=W 
+                                AND FORALL (q,q1):(ipst(q) AND ipst(q1) AND q /=q1 
+                                                  IMPLIES secpp(q) /= secpp(q1))
+
+  uniq_w_ipss:   LEMMA good?(G,s,t) AND card[T](W)= card[prewalk](ipss) 
+                       AND ind_prewalk_set?(ipss) 
+                       AND st_path_set?(Mgraph(G,W,s),s,t,ipss) AND separates(G,W,s,t) 
+                       AND ipss(p) AND verts_of(p)(w) AND W(w) 
+                    IMPLIES w=secoo(p)
+
+
+  uniq_w_ipst:   LEMMA good?(G,s,t) AND card[T](W)= card[prewalk](ipst) 
+                       AND ind_prewalk_set?(ipst) 
+                       AND st_path_set?(Mgraph(G,W,t),s,t,ipst) AND separates(G,W,s,t) 
+                       AND ipst(q) AND verts_of(q)(w) AND W(w) 
+                   IMPLIES w=secpp(q) 
+
+% Instead of calling on minimal separating set, we show by induction that such a set EXISTS.
+
+  low_card_sep: LEMMA B(G,s,t,k) IMPLIES EXISTS W: separates(G,W,s,t) 
+                         AND card(W)>=k AND FORALL V: (separates(G,V,s,t) 
+                     IMPLIES card(V)>= card(W))
+
+  smaller_ips : LEMMA j<=card[prewalk](ips) 
+                      IMPLIES EXISTS ips1: subset?(ips1,ips) AND card[prewalk](ips1)=j
+
+  few_many    : LEMMA i>=j AND many_ind(G,s,t,i) 
+                      IMPLIES many_ind(G,s,t,j)
+   
+  min_B       : LEMMA B(G,s,t,k) IMPLIES 
+                        EXISTS (i,W): i>=k AND B(G,s,t,i) AND
+                                      separates(G,W,s,t) AND card(W)=i
+
+  no_sep_req  : LEMMA (FORALL k,W: B(G,s,t,k) AND separates(G,W,s,t) 
+                       AND card(W)=k IMPLIES many_ind(G,s,t,k)) 
+                     IMPLIES (FORALL k: B(G,s,t,k) IMPLIES many_ind(G,s,t,k))
+
+  k_sep_close : LEMMA FORALL k,W: B(G,s,t,k) AND separates(G,W,s,t) 
+                      AND card(W)=k IMPLIES close?(G,s,t,W)
+
+  p_Ht        : LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                      AND path_from?(Mgraph(G,W,s),p,s,t) AND length(p)>2 
+                      AND (FORALL w: W(w) AND verts_of(p)(w) IMPLIES w=secoo(p)) 
+                   IMPLIES subset?(verts_of(p^(2,length(p)-1)),Hverts(G,W,t))
+
+  q_Hs        : LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                      AND path_from?(Mgraph(G,W,t),q,s,t) AND length(q)>2 
+                      AND (FORALL w: W(w) AND verts_of(q)(w) IMPLIES w=secpp(q)) 
+                   IMPLIES subset?(verts_of(q^(0,length(q)-3)),Hverts(G,W,s))
+
+  disjoint_M_paths: LEMMA good?(G,s,t) AND close?(G,s,t,W) AND separates(G,W,s,t) 
+                          AND card[T](W)= card[prewalk](ipss) 
+                          AND card[T](W)= card[prewalk](ipst) 
+                          AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                          AND st_path_set?(Mgraph(G,W,t),s,t,ipst) 
+                          AND ind_prewalk_set?(ipss) AND ind_prewalk_set?(ipst) 
+                          AND ipss(p) AND ipst(q)
+                    IMPLIES (secoo(p)=secpp(q) AND 
+                             intersection(verts_of(p^(1,length(p)-1)),verts_of(q^(0,length(q)-2)))
+                                =singleton[T](secoo(p)) AND 
+                             W(secoo(p))) 
+                        OR (secoo(p) /= secpp(q) AND 
+                            empty?(intersection(verts_of(p^(1,length(p)-1)),
+                                                verts_of(q^(0,length(q)-2)))))
+
+  % The first two hypotheses of sec_image are mainly to assure a non-empty type for
+  % Thence for prewalk. We could have used the lemmas of prelude function_image and
+  % function_inverse_def but a brute force approach is serviceable.  Note however
+  % that producing an inverse for 'second' mapping involves the possibility of
+  % (ipss) that is an empty set of prewalks.  Some of the work in sec_image
+  % is to recall how a function defined from an empty set to an empty set
+  % has an inverse.
+
+   sec_image: LEMMA good?(G,s,t) AND separates(G,W,s,t) AND image(second, ipss)=W 
+                    AND injective?(LAMBDA (s: (ipss)): second(s))
+                          IMPLIES 
+                EXISTS (tau:[(W) -> prewalk]): image(tau,W)=ipss 
+                                             AND FORALL w:(W(w) 
+                                                    IMPLIES second(tau(w))=w) 
+
+   Map_s    : LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                    AND card[T](W)= card[prewalk](ipss) AND ind_prewalk_set?(ipss) 
+                    AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+               IMPLIES EXISTS (tau:[(W) -> prewalk]): image(tau,W)=ipss 
+                          AND FORALL w: (W(w) IMPLIES secoo(tau(w))=w) 
+
+   Map_t    : LEMMA good?(G,s,t) AND separates(G,W,s,t) 
+                    AND card[T](W)= card[prewalk](ipst) AND ind_prewalk_set?(ipst) 
+                    AND st_path_set?(Mgraph(G,W,t),s,t,ipst) 
+             IMPLIES EXISTS (tau:[(W) -> prewalk]): image(tau,W)=ipst 
+                          AND FORALL w: (W(w) IMPLIES secpp(tau(w))=w) 
+
+% The following took twenty days to complete.
+
+   Mapper_ips:  LEMMA good?(G,s,t) AND close?(G,s,t,W) AND separates(G,W,s,t) 
+                      AND card[T](W)= card[prewalk](ipss) 
+                      AND card[T](W)= card[prewalk](ipst) 
+                      AND st_path_set?(Mgraph(G,W,s),s,t,ipss) 
+                      AND st_path_set?(Mgraph(G,W,t),s,t,ipst) 
+                      AND ind_prewalk_set?(ipss) AND ind_prewalk_set?(ipst) 
+                IMPLIES EXISTS (phi:[(W) -> prewalk]): 
+                             card[prewalk](image(phi,W))=card[T](W) AND 
+                             st_path_set?(G,s,t,image(phi,W)) AND 
+                             ind_prewalk_set?(image(phi,W)) 
+
+   non_attached_induct: LEMMA good?(G,s,t) AND separates(G,W,s,t) AND B(G,s,t,k) 
+                              AND card[T](W)=k 
+                              AND (FORALL GG: size(GG)<size(G) IMPLIES C(GG,s,t)) 
+                            IMPLIES many_ind(G,s,t,k) or attached?(G,s,t,W)
+
+   plus_sep_vert : LEMMA good?(G,s,t) AND separates(del_vert(G,a),W,s,t) 
+                         IMPLIES separates(G,add(a,W),s,t) or a=s or a=t
+
+   separ_del_vert: LEMMA separates(G,W,s,t) 
+                         IMPLIES separates(G,remove(x,W),s,t) OR vert(G)(x)
+
+   plus_path_set : LEMMA good?(G,s,t) AND path_from?(G,q,s,t) 
+                         AND st_path_set?(del_verts(G,verts_of(q^(1,length(q)-2))),s,t,ips) 
+                         AND ind_prewalk_set?(ips) 
+                   IMPLIES EXISTS ipss: card[prewalk](ipss)= card[prewalk](ips)+1 AND
+                                        st_path_set?(G,s,t,ipss) AND 
+                                        ind_prewalk_set?(ipss)
+
+   short_path_attach: LEMMA B(G,s,t,k) AND separates(G,W,s,t) AND card[T](W)=k 
+                            AND (FORALL V: separates(G,V,s,t) 
+                            AND card[T](V)=k  IMPLIES attached?(G,s,t,V)) 
+                            AND (FORALL GG: size(GG)<size(G) IMPLIES C(GG,s,t)) 
+                   IMPLIES many_ind(G,s,t,k) 
+                           OR EXISTS a: edge?(G)(s,a) AND (edge?(G)(a,t) 
+                           OR EXISTS c: edge?(G)(a,c) AND edge?(G)(c,t))    
+
+   bridge_one  : LEMMA edge?(G)(s,a) AND edge?(G)(a,t) 
+                       AND (FORALL GG: size(GG)<size(G) IMPLIES C(GG,s,t)) 
+                   IMPLIES B_many(G,s,t,k)
+
+   bridge_two  : LEMMA k>=1 AND edge?(G)(s,a) AND edge?(G)(a,c) AND edge?(G)(c,t) 
+                       AND  B(del_verts(G,dbl[T](a,c)),s,t,k-1) 
+                       AND (FORALL GG: size(GG)<size(G) IMPLIES C(GG,s,t)) 
+                   IMPLIES B_many(G,s,t,k)
+
+   bridge_three: LEMMA  k>=1 AND edge?(G)(s,a) AND edge?(G)(a,c) AND edge?(G)(c,t) 
+                        AND B(G,s,t,k) AND separates(G,W,s,t) AND card[T](W)=k 
+                        AND (FORALL V: separates(G,V,s,t) 
+                        AND card[T](V)=k IMPLIES attached?(G,s,t,V)) 
+                  IMPLIES B(del_verts(G,dbl[T](a,c)),s,t,k-1) 
+                          OR edge?(G)(s,c) OR edge?(G)(a,t)    
+
+   C_induct_lemma: LEMMA  C_induct(G,s,t)   % Major lemma to prove.
+
+
+   Menger_k_hard: THEOREM C(G,s,t)          % Proved from C_induct lemma.
+
+
+   % Next is a 'constructive' version of hard Menger theorem. We search for separating
+   % sets only among suitable subsets of the vertices of G, 
+   % those not containing the terminals. If all such 
+   % 'green' subsets of vert(G) of cardinality k (< size(G) -1) fail to separate s 
+   % from t in G, one concludes that there are k+1 independent paths in G from s to t.
+
+   Many_indep_paths: THEOREM good?(G,s,t) AND k<=size(G)-2 
+                             AND (FORALL W: card[T](W)=k 
+                             AND subset?(W,difference(vert(G), dbl(s,t))) 
+                                    IMPLIES EXISTS q: walk_from?(del_verts(G,W),q,s,t)) 
+                           IMPLIES many_ind(G,s,t,k+1)
+
+
+   % We proved the general hard k-Menger theorem independently of the
+   % proof for case k=2, without using 'sep_num' or
+   % 'minimal separating set'. Using the definitions of these
+   % terms, we may derive the traditional version directly from Menger_k_hard.
+
+   hard_menger_trad: THEOREM  separable?(G,s,t) AND sep_num(G,s,t) = k 
+                              AND vert(G)(s) AND vert(G)(t) 
+                        IMPLIES
+                            (EXISTS (ips: set_of_paths(G,s,t)):
+                                   card(ips) = k AND ind_path_set?(G,s,t,ips))
+  
+
+END k_menger
+        

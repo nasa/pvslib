@@ -1,0 +1,171 @@
+cd3d_ii[D,H:posreal,T:posreal,N,M:above[1]]  : THEORY 
+BEGIN
+
+  % note: T is the absolute max lookahead time (relative to the ownship's first waypoint time)
+  %       N is the size of the ownship flightplan
+  %	  M is the size of the intruder flightplan
+
+  % So, effectively, both T and N are limits on the ownship flightplan
+
+  IMPORTING flightplan,
+            cd3d_si
+
+  fp : VAR FlightPlan[N]
+
+  % A flightplan where there is some actual overlap with the ownship plan fp (within lookahead time T)
+  FlightPlanRelevant2(fp): 
+        TYPE+ = {flp: FlightPlan[M] | flp(0)`time < fp(N-1)`time AND fp(0)`time < flp(M-1)`time AND flp(0)`time < fp(0)`time + T}
+
+  % A time is relevant if there is more than 1 point of overlap between the two flightplans within the lookahead time
+  % Does not consider the last points of either plan (velocities cannot be calculated here)
+  FlightTimesRelevant2(fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)): 
+        TYPE = {aa: real | fp(0)`time <= aa AND aa < fp(N-1)`time AND aa < fp(0)`time + T AND
+                           fp2(0)`time <= aa AND aa < fp2(M-1)`time}
+
+  % A limited time is a waypoint on the ownship's flight plan that occurs within or before the overlap of the two plans.
+  FlightTimesLimited2(fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+        TYPE = {aa: FlightTimes[N](fp) | 
+                EXISTS(j:below[N-1]): aa = fp(j)`time AND fp(j+1)`time > fp2(0)`time AND aa < fp(0)`time + T AND aa < fp(N-1)`time 
+                                                                                                             AND aa < fp2(M-1)`time}
+
+  % There exists a conflict
+  % so, vo are position & velocity at time to
+  conflict_3D_ii?(fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)): bool =
+    EXISTS (tt: FlightTimesRelevant2(fp,fp2)):
+      horizontal_los?[D](location_at[N](fp)(tt) - location_at[M](fp2)(tt)) AND
+      vertical_los?[H](location_at[N](fp)(tt)`z - location_at[M](fp2)(tt)`z)
+
+
+  % various properties of segments and types
+  seg_allowable: LEMMA
+    FORALL (fp:FlightPlan[N], fp2:FlightPlanRelevant2(fp), t1: FlightTimesLimited2(fp,fp2), j:below[N]):
+      j = segment(fp)(t1) IMPLIES 
+      j < N-1 AND min(fp(1 + j)`time - fp(j)`time, fp(0)`time - fp(j)`time + T) > 0
+
+  time_in_range: LEMMA
+    FORALL (fp:FlightPlan[N], fp2:FlightPlanRelevant2(fp), t1: FlightTimesLimited2(fp,fp2)):
+      LET 
+        j = segment(fp)(t1)
+      IN
+      FORALL(t2: FlightTimesRelevant[D, H, 0, min(fp(1 + j)`time - fp(j)`time, fp(0)`time - fp(j)`time + T), M](fp(j)`time, fp2)):
+        t2 <= fp(j+1)`time AND t2 <= fp(0)`time + T AND fp(0)`time <= t2 AND t1 = fp(j)`time
+
+  limited_bounds: LEMMA
+    FORALL (fp:FlightPlan[N], fp2:FlightPlanRelevant2(fp), jt: FlightTimesLimited2(fp,fp2), j:below[N]):
+      segment(fp)(jt) = j IMPLIES
+        fp2(0)`time < jt + min(fp(j+1)`time-fp(j)`time, fp(0)`time - fp(j)`time + T) AND
+        jt < fp2(M-1)`time
+
+  upper_seg_bounds: LEMMA
+    FORALL (fp:FlightPlan[N], fp2:FlightPlanRelevant2(fp), jt: FlightTimesLimited2(fp,fp2), j:below[N]):
+      segment(fp)(jt) = j IMPLIES
+      min(fp(1 + j)`time - fp(j)`time, fp(0)`time - fp(j)`time + T) + jt <= fp(j+1)`time
+
+  
+  % rewriting conflict_3D_ii? in terms of cd3d_si.conflict_3D?
+  cd3d_ii_rew: LEMMA
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+    conflict_3D_ii?(fp,fp2) IFF
+    EXISTS (tt:FlightTimesLimited2(fp,fp2)): 
+      LET
+        j = segment(fp)(tt),
+        relT = T - (fp(j)`time - fp(0)`time),		% remaining overall lookahead time
+	t = min(fp(j+1)`time - fp(j)`time, relT),	% relative end time of ownship segment
+	so = fp(j)`position,
+      	vo = velocity[N](fp)(j)
+      IN
+      conflict_3D?[D,H,0,t,M](so,tt,vo,fp2)
+
+
+  % conflict_3D inductive definition version
+  cd3d_ii_ind?(fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp))(j: below[N-1]): INDUCTIVE bool =
+    LET
+      relT = T - (fp(j)`time - fp(0)`time),	% remaining overall lookahead time
+      t = min(fp(j+1)`time - fp(j)`time, relT),	% relative end time of ownship segment
+      so = fp(j)`position,
+      to = fp(j)`time,
+      vo = velocity[N](fp)(j)
+    IN
+    IF relT > 0 AND (fp2(0)`time < min(fp(j+1)`time, fp(j)`time+relT) AND fp2(M-1)`time > fp(j)`time) THEN 
+      cd3d_si?[D,H,0,t,M](so,vo,to,fp2)
+    ELSE 
+      FALSE 
+    ENDIF 
+    OR 
+    (j>0 AND cd3d_ii_ind?(fp,fp2)(j-1))
+
+  % if cd3d holds for some i, it holds for some j <= i
+  some_cd3d_ii: LEMMA
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp), i: below[N-1]):
+    cd3d_ii_ind?(fp, fp2)(i) IFF 
+    EXISTS (j: below[N-1]) :
+    j <= i AND cd3d_ii_ind?(fp,fp2)(j)
+
+  % main function
+  cd3d_ii?(fp:FlightPlan[N], fp2:FlightPlanRelevant2(fp)): bool = cd3d_ii_ind?(fp,fp2)(N-2)
+
+  % if cd3d_ii_ind says it is in conflict at or below some segement i, then there is a segment j<=i where 
+  % conflict_ii_3d? says it is in conflict
+  cd3d_ii_ind_correct: LEMMA 
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+    	   (FORALL (i: below[N-1]): cd3d_ii_ind?(fp,fp2)(i) IMPLIES
+    	   EXISTS (j: below[N-1]): 
+           LET
+	     relT = T - (fp(j)`time - fp(0)`time),	% remaining overall lookahead time
+	     t = min(fp(j+1)`time - fp(j)`time, relT),	% relative end time of ownship segment
+	     so = fp(j)`position,
+	     to = fp(j)`time,
+      	     vo = velocity[N](fp)(j)
+           IN
+	   (j<=i AND 
+           IF relT > 0 AND fp2(0)`time < min(fp(j+1)`time, fp(j)`time+relT) AND fp2(M-1)`time > fp(j)`time THEN
+             conflict_3D?[D,H,0,t,M](so,to,vo,fp2)
+           ELSE
+             FALSE
+           ENDIF))
+
+  % if there is a segment j where conflict_3d? says it is in conflict, then cd3d_ind says it is in conflict at
+  % segment i >= j 
+  cd3d_ii_ind_complete: LEMMA
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+    	   (FORALL (i: below[N-1]):
+	     EXISTS (j: below[N-1]): 
+             LET
+  	       relT = T - (fp(j)`time - fp(0)`time),	% remaining overall lookahead time
+  	       t = min(fp(j+1)`time - fp(j)`time, relT),	% relative end time of ownship segment
+	       so = fp(j)`position,
+	       to = fp(j)`time,
+      	       vo = velocity[N](fp)(j)
+             IN
+	     (j<=i AND 
+               IF relT > 0 AND fp2(0)`time < min(fp(j+1)`time, fp(j)`time+relT) AND fp2(M-1)`time > fp(j)`time THEN
+                 conflict_3D?[D,H,0,t,M](so,to,vo,fp2)
+               ELSE
+                 FALSE
+               ENDIF)
+	     IMPLIES  
+	       cd3d_ii_ind?(fp,fp2)(i))
+
+  % a version allowing unification of parameters
+  cd3d_si_complete_parameters: LEMMA
+    FORALL (so,vo:Vect3,to:real,t1: posreal, fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+           LET
+             t2=t1
+           IN
+           fp2(0)`time < t2 + to AND to < fp2(M - 1)`time AND
+    	   conflict_3D?[D,H,0,t1,M](so,to,vo,fp2) IMPLIES
+	   cd3d_si?[D,H,0,t2,M](so,vo,to,fp2)
+
+  % main theorem, part 1
+  cd3d_ii_correct: THEOREM
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+    	   cd3d_ii?(fp,fp2) IMPLIES
+	   conflict_3D_ii?(fp,fp2)
+
+  % main theorem, part 2
+  cd3d_ii_complete: THEOREM
+    FORALL (fp:FlightPlan[N],fp2:FlightPlanRelevant2(fp)):
+    	   conflict_3D_ii?(fp,fp2) IMPLIES
+	   cd3d_ii?(fp,fp2)
+
+END cd3d_ii

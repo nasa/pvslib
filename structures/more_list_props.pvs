@@ -1,0 +1,153 @@
+%------------------------------------------------------------------------
+%
+% This theory defines additional properties of lists.
+%
+%    Author: Kristin Y. Rozier,
+%                      Formal Methods Group, NASA Langley Research Center
+%            with thanks to Paul Miner and Ben Di Vito for their helpful
+%                 comments and suggestions
+%            Cesar Munoz 2012, Anthony Narkawicz 2013
+%------------------------------------------------------------------------
+
+more_list_props   [ T : TYPE ]
+		: THEORY
+
+  BEGIN
+
+  m, n: VAR nat
+  L: VAR list[T]
+  p: VAR PRED[T]
+  A: VAR finite_set[T]
+  B: VAR list[T]
+  X, Y: VAR list[T]
+  l1, l2, l3: VAR list[T]
+  pair: VAR [nat, nat]
+  t: VAR T
+
+%
+% Functions
+%
+
+  prefix?(x: list[T], 
+          y: list[T]): RECURSIVE bool = 
+    IF length(y) < length(x) THEN FALSE 
+    ELSE 
+      CASES x OF
+        null: TRUE,
+        cons(sigma_x, x1):
+          CASES y OF
+            null: FALSE,
+	    cons(sigma_y, y1): 
+              IF sigma_x = sigma_y AND prefix?(x1, y1) THEN TRUE
+              ELSE FALSE
+              ENDIF
+          ENDCASES
+      ENDCASES
+    ENDIF
+    MEASURE length(x)
+
+
+  suffix?(x: list[T], 
+          y: list[T]): RECURSIVE bool = 
+    IF length(y) < length(x) THEN FALSE 
+    ELSE 
+      CASES reverse(x) OF
+        null: TRUE,
+        cons(sigma_x, x1):
+          CASES reverse(y) OF
+            null: FALSE,
+	    cons(sigma_y, y1): 
+              IF sigma_x = sigma_y AND suffix?(x1, y1) THEN TRUE
+              ELSE FALSE
+              ENDIF
+          ENDCASES
+      ENDCASES
+    ENDIF
+    MEASURE length(x)
+
+
+%Multiple concatenation of a list: w^3 means (: w  w  w :).
+;
+  ^(l1, n): RECURSIVE list[T] = 
+    IF n = 0 THEN (null)
+    ELSE append( l1, ^(l1, n-1) )
+    ENDIF
+    MEASURE n
+
+
+% Just like for sequences, a sub-list can be extracted with the operator '^'.
+% Note that ^ allows any natural numbers m and n to define the range; 
+% if m > n then the empty sequence is returned.
+;
+  ^(l1, pair): RECURSIVE list[T] =
+    LET (m, n) = pair
+     IN IF m > n OR m >= length(l1) OR m < 0
+        THEN null
+        ELSIF m = n THEN cons( nth(l1, m), null)
+        ELSE cons( nth(l1, m), ^(l1, (m+1, n)))
+        ENDIF
+  MEASURE IF pair`2 > pair`1 THEN pair`2 - pair`1 ELSE 0 ENDIF
+
+
+%
+% Lemmas and Theorems
+%
+
+  prefix_length: LEMMA
+    prefix?(X,Y) IMPLIES length(X) <= length(Y)
+
+  suffix_length: LEMMA
+    suffix?(X,Y) IMPLIES length(X) <= length(Y)
+
+  every_forall: LEMMA
+    every(p)(L) IFF FORALL (n:below(length(L))): p(nth(L,n))
+
+  some_exists: LEMMA
+    some(p)(L) IFF EXISTS (n:below(length(L))): p(nth(L,n))
+
+  list_extensionality : LEMMA
+    l1=l2 IFF length(l1) = length(l2) AND FORALL(n:below(length(l1))): nth(l1,n) = nth(l2,n)
+
+
+  %If the length of the list of elements from set A is greater than the 
+  %cardinality of the set, then there is at least one repeated element
+  %in the list.
+  list_pigeonhole: THEOREM
+      every(A)(B) AND 
+      length(B) > card(A)
+    IMPLIES
+      EXISTS (n:below[length(B)], m:below[length(B)]):
+         n /= m 
+         AND nth(B, n) = nth(B, m)  
+
+   nth_append : LEMMA
+     FORALL(i:nat): i < length(l1)+length(l2) IMPLIES
+       nth(append(l1,l2),i) = IF i < length(l1) THEN nth(l1,i)
+                              ELSE nth(l2,i-length(l1))
+                              ENDIF
+
+  length_null : LEMMA
+    length(null[T]) = 0
+
+  length_singleton : LEMMA
+    length((:t:)) = 1
+
+  AUTO_REWRITE+ length_singleton
+  AUTO_REWRITE+ length_null
+
+  length_null_list: LEMMA
+    length(L)=0 IFF null?(L)
+
+  reverse_def: LEMMA FORALL (j:nat): 
+    j<length(L) IMPLIES nth(reverse(L),j) = nth(L,length(L)-1-j)
+
+  cons_append: LEMMA
+    cons(t,L) = append((: t :),L)
+
+  expand_list: LEMMA
+    null?(L) OR L = cons(car(L),cdr(L))
+
+  append_null_left: LEMMA append(null,L) = L
+
+  END more_list_props
+

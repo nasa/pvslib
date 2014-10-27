@@ -1,0 +1,81 @@
+matrix_upper_triang: THEORY
+
+
+BEGIN
+
+  IMPORTING matrix_det
+
+
+  SM,SM1,SM2: VAR FullMatrix
+
+  r: VAR real
+
+  nzr: VAR nzreal
+
+  M,N,A,B: VAR Matrix
+
+  v,v1,v2: VAR Vector
+
+  i,j,k,p : VAR nat
+
+  m,n : VAR nat
+
+  pn,pm : VAR posnat
+
+  F,G: VAR [[nat,nat]->real]
+
+  Mp,Np: VAR (nonempty?)
+
+  PFM,D1,D2,D: VAR PosFullMatrix
+
+  SQ,IQ,GQ,
+  SQ2,IQ2,GQ2,DQ,DQ2,
+  Q,R,S,T,
+  Q2,R2,S2,T2: VAR Square
+
+  ut_point1(SQ)(j): bool = 
+    j<rows(SQ) AND
+    (FORALL (k,p):p<j AND k>p AND k<rows(SQ) IMPLIES entry(SQ)(k,p)=0)
+
+  ut_point2(SQ,j)(i): bool =
+    i<rows(SQ) AND i>=j AND
+    (FORALL (k):k>i AND k<rows(SQ) IMPLIES entry(SQ)(k,j)=0)
+
+  % j is the column, i is the row. j comes first as an input
+
+  upper_triangulate(pn)(comp_matrix,comp_inverse:bool,
+    S:SquareMatrix(pn),
+    (Q:SquareMatrix(pn)|is_simple_prod?(pn,false,false)(Q)),
+    (R:SquareMatrix(pn)|is_simple_prod?(pn,false,false)(R) 
+                 AND (comp_matrix AND comp_inverse IMPLIES (R*Q=Id(pn) AND Q*R=Id(pn)))),
+    (T:SquareMatrix(pn)|comp_matrix IMPLIES Q*T = S),
+    (j|ut_point1(S)(j)),(i|ut_point2(S,j)(i)),stop_rec:bool,k): RECURSIVE
+      {SGI:[SquareMatrix(pn),SquareMatrix(pn),SquareMatrix(pn)]|
+        (not stop_rec) IMPLIES (LET (S2,Q2,R2)=SGI IN
+	 upper_triangular?(S2) AND
+	 (comp_matrix IMPLIES Q2*T=S2 AND is_simple_prod?(pn,false,false)(Q2)) AND
+	 (comp_matrix AND comp_inverse IMPLIES (R2*Q2=Id(pn) AND Q2*R2=Id(pn) AND 
+	        is_simple_prod?(pn,false,false)(R2))) AND
+	 det(S2)=det(S))} =
+    IF (stop_rec AND k=0) OR (i=pn-1 AND j=pn-1) THEN (S,Q,R)
+    ELSIF i=j THEN upper_triangulate(pn)(comp_matrix,comp_inverse,S,Q,R,T,j+1,pn-1,stop_rec,max(k-1,0))
+    ELSIF entry(S)(i,j)=0 THEN upper_triangulate(pn)(comp_matrix,comp_inverse,S,Q,R,T,j,i-1,stop_rec,max(k-1,0))
+    ELSIF entry(S)(j,j)=0 THEN 
+      upper_triangulate(pn)(comp_matrix,comp_inverse,
+	                   replace_row(j,row(S)(j)+row(S)(i))(S),
+			   IF comp_matrix THEN replace_row(j,row(Q)(j)+row(Q)(i))(Q)
+				ELSE Id(pn) ENDIF,
+			   IF comp_matrix AND comp_inverse THEN R*Easr(pn)(j,i,-1) ELSE Id(pn) ENDIF,
+			   T,j,i,stop_rec,max(k-1,0))
+    ELSE LET pivnum = -entry(S)(i,j)/entry(S)(j,j) IN
+      upper_triangulate(pn)(comp_matrix,comp_inverse,
+    			   replace_row(i,row(S)(i)+pivnum*row(S)(j))(S),
+    			   IF comp_matrix THEN replace_row(i,row(Q)(i)+pivnum*row(Q)(j))(Q) ELSE Id(pn) ENDIF,
+    			   IF comp_matrix AND comp_inverse THEN R*Easr(pn)(i,j,-pivnum) ELSE Id(pn) ENDIF,
+    			   T,j,i-1,stop_rec,max(k-1,0))
+    ENDIF MEASURE lex3(pn-j,i,IF entry(S)(i,j)/=0 AND entry(S)(j,j)=0 THEN 1 ELSE 0 ENDIF)
+
+
+
+
+END matrix_upper_triang

@@ -1,0 +1,83 @@
+%
+%
+% Purpose : communication model with the integration fault model
+%
+%
+
+comm_integration
+[
+  N: [nat -> posnat],     % the number of nodes at each stage
+  T: TYPE+
+] : THEORY
+
+  BEGIN
+
+  i, j, k: VAR nat
+
+  IMPORTING
+    comm_integration_stage,
+    exact_comm[N, message[T]]
+
+  UT: TYPE = message[T]
+
+  v: VAR UT
+
+  tau: VAR [i: nat -> tau_type]
+
+  valid_check_function: TYPE = [i: nat -> valid_check_stage[N(i),N(i+1),T]]
+
+  status:       VAR [i: nat -> node_status[N(i)]]
+  sent:         VAR [i: nat -> [below(N(i)) -> UT]]
+  check:        VAR valid_check_function
+  common_check: VAR [i: nat -> non_empty_finite_set[below(N(i))]]
+
+  rcvd(sent, status)(i): [below(N(i+1)) -> [below(N(i)) -> UT]] =
+    rcvd[N(i), N(i+1), T](sent(i), status(i))
+
+  correct_denotation(status)(i): finite_set[below(N(i))] = correct_denotation(status(i))
+  symmetric_denotation(status)(i): finite_set[below(N(i))] = symmetric_denotation(status(i))
+  single_denotation(status)(i): finite_set[below(N(i))] = single_denotation(status(i))
+
+  conforms(check, common_check)(i): check_stage[N(i),N(i+1),UT] =
+    conforms[N(i),N(i+1),T](check(i), common_check(i))
+
+%  conforms_type: JUDGEMENT conforms(check, common_check) HAS_TYPE valid_check_function
+
+  uniform?(check, status, j, k): bool =
+    FORALL i: j <= i AND i < k IMPLIES
+      uniform?[N(i), N(i + 1), UT](check(i))(symmetric_denotation(status(i)))
+
+  quorum_correct?(sent, check, status, tau, j, k): bool =
+    FORALL i: j <= i AND i < k IMPLIES
+      quorum_correct?[N(i), N(i + 1), T](sent(i), check(i), status(i), tau(i))
+
+  quorum_correct_integration: LEMMA
+      quorum_correct?(sent, check, status, tau, j, k)
+    IMPLIES
+      quorum_correct?(sent, rcvd(sent, status), check, tau, j, k)
+
+  majority_correct?(sent, check, status, j, k): bool =
+    FORALL i: j <= i AND i < k IMPLIES
+      majority_correct?[N(i), N(i + 1), T](sent(i), check(i), status(i))
+
+  majority_correct_rw: LEMMA
+      majority_correct?(sent, check, status, j, k) IFF
+        quorum_correct?(sent, check, status, mid, j, k)
+
+  exists_all_symmetric?(sent, check, status, tau, j, k): bool =
+    EXISTS i: j <= i AND i < k AND 
+      all_symmetric?(sent(i), check(i), status(i)) AND
+      quorum_correct?(sent, check, status, tau, i + 1, k)
+
+%      majority_correct?(sent, check, status, i + 1, k)
+
+  exists_all_symmetric?(sent, check, status, j, k): bool =
+    exists_all_symmetric?(sent, check, status, mid, j, k)
+
+
+  all_symmetric_integration: LEMMA
+      exists_all_symmetric?(sent, check, status, tau, j, k)
+    IMPLIES
+      exists_all_symmetric?(sent, rcvd(sent, status), check, tau, j, k)
+
+END comm_integration

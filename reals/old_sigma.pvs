@@ -1,0 +1,272 @@
+old_sigma[T: TYPE FROM int]: THEORY
+%------------------------------------------------------------------------------
+% The summations theory introduces and defines properties of the sigma 
+% function that sums an arbitrary function F: [T -> real] over a range
+% from low to high
+%
+%  		          high
+%		          ----
+%  sigma(low, high, F) =  \     F(j)
+%		          /
+%		          ----
+%		         j = low
+%
+%  NOTE:
+%
+%     This is the generic theory.  It is usually preferable to use
+%     sigma_nat, sigma_int, sigma_below, etc.
+%
+%  MODIFICATIONS:
+%
+%    8/7/01   added sigma_zero, sigma_with 
+%
+%    3/24/06  generalized to allow index ranges to fall outside of
+%             domain of T when high < low.  This upgrade will break
+%             some old proofs, but will reduce TCC generation significantly
+%  
+%  AUTHORS:
+%
+%    Rick Butler     NASA Langley Research Center           
+%    Paul Miner      NASA Langley Research Center           
+%
+%------------------------------------------------------------------------------
+
+BEGIN
+
+  ASSUMING
+
+    connected_domain: ASSUMPTION (FORALL (x, y: T), (z: integer):
+                                       x <= z AND z <= y IMPLIES T_pred(z))
+
+  ENDASSUMING
+
+  T_low?: MACRO set[int] = {i:int | EXISTS (j:T): j <= i}
+  T_low  : TYPE = {i:int | T_pred(i) OR T_low?(i)}
+
+  T_high?: MACRO set[int] = {i:int | EXISTS (j:T): i <= j}
+  T_high : TYPE = {i:int | T_pred(i) OR T_high?(i)}
+
+  low       : VAR T_low
+  high      : VAR T_high 
+  l,h,n,m,i : VAR T
+  rng, nn   : VAR nat
+  pn        : VAR posnat
+  z         : VAR int
+  a,x,B     : VAR real
+
+  T_pred_lem : LEMMA low <= z AND z <= high IMPLIES T_pred(z)
+
+% AUTO_REWRITE+ T_pred_lem  %% THIS DOES NOT HELP
+
+% T_pred_low : LEMMA low <= m IMPLIES T_pred(low)
+% T_pred_high: LEMMA m <= high IMPLIES T_pred(high)
+%  AUTO_REWRITE+ T_pred_low, T_pred_high  %% DOES NOT HELP
+
+  high_low_rewrite: LEMMA
+   (FORALL (p: pred[[T_high, T_low]]):
+     (FORALL (high: T_high), (low: T_low):
+      IF high < low THEN p(high, low) 
+      ELSE (FORALL (n: subrange(low, high)): p(n, low))
+      ENDIF)
+    IMPLIES
+      (FORALL high, low:  p(high, low)))
+
+
+  F, G: VAR function[T -> real]
+  
+  sigma(low, high, F): RECURSIVE real
+      = IF low > high THEN 0
+        ELSIF high = low THEN F(low) 
+        ELSE  F(high) + sigma(low, high-1, F)
+        ENDIF
+   MEASURE (LAMBDA low, high, F: abs(high+1-low))
+
+% ---- the following rewrite can be used in place of "expand" to obtain a more
+% ---- compact expansion.  The above form retained for upward compatibility.
+
+  sigma_rew: LEMMA sigma(low, high, F) = IF low > high THEN 0
+       					 ELSE  F(high) + sigma(low, high-1, F)
+       					 ENDIF                            
+
+
+  sigma_spl     : THEOREM T_pred(low + nn + rng) IMPLIES 
+                           sigma(low, low+nn+rng, F) = 
+                              sigma(low,low+nn,F) + sigma(low+nn+1,low+nn+rng,F)
+
+  sigma_split   : THEOREM low - 1 <= z AND z <= high IMPLIES 
+                            sigma(low, high, F) = 
+                                     sigma(low, z, F) + sigma(z+1, high, F)
+
+
+% Both of the following are now coverd by sigma_split
+
+%   sigma_split_l: THEOREM %T_pred(low-1) AND
+%                           low-1 <= m AND m < high IMPLIES 
+%                             sigma(low, high, F) = 
+%                                      sigma(low, m, F) + sigma(m+1, high, F)
+
+
+%   sigma_split_h: THEOREM low <= m AND m <= high AND T_pred(m+1) IMPLIES 
+%                             sigma(low, high, F) = 
+%                                      sigma(low, m, F) + sigma(m+1, high, F)
+
+
+  sigma_diff    : THEOREM low - 1 <= z AND z <= high IMPLIES
+                    sigma(low, high, F) - sigma(low, z, F) = sigma(z+1, high, F)
+
+  sigma_diff_neg: THEOREM low - 1 <= z AND z <= high IMPLIES
+                  sigma(low, z, F) - sigma(low, high, F) = - sigma(z+1, high, F)
+ 		 
+  sigma_eq_arg  : THEOREM sigma(m, m, F) = F(m)
+
+  sigma_first   : THEOREM high >= low IMPLIES 
+                           sigma(low, high, F) = F(low) + sigma(low+1, high, F)
+
+  sigma_last    : THEOREM high >= low IMPLIES 
+                          sigma(low, high, F) = sigma(low, high-1, F) + F(high)
+
+  sigma_middle : THEOREM high >= i AND i >= low IMPLIES
+                          sigma(low, high, F) = sigma(low, i-1, F) + F(i) +
+                                                sigma(i+1, high, F) 
+
+%  Covered by sigma_middle
+%   sigma_mid     : THEOREM high >= i AND i >= low AND T_pred(i-1) AND T_pred(i+1) 
+%                           IMPLIES 
+%                           sigma(low, high, F) = sigma(low, i-1, F) + F(i) +
+%                                                 sigma(i+1, high, F) 
+
+
+
+  sigma_const   : THEOREM sigma(low, high, (LAMBDA i: x)) = 
+                           IF high >= low THEN (high-low+1) * x ELSE 0 ENDIF
+
+
+  sigma_zero    : THEOREM sigma(low, high, (LAMBDA i: 0)) = 0
+ 		 
+  sigma_scal    : THEOREM sigma(low, high, (LAMBDA i: a * F(i)))
+                             = a * sigma(low, high, F)
+		 
+  sigma_bound   : THEOREM low - 1 <= high AND
+                         (FORALL i: i >= low AND i <= high IMPLIES F(i) <= B)
+                            IMPLIES sigma(low, high, F) <= B*(high-low+1) %was abs(high-low+1)
+
+  sigma_abs     : THEOREM abs(sigma(low, high, F)) <= 
+                              sigma(low, high, LAMBDA (n: T): abs(F(n)))
+
+  sigma_ge_0    : THEOREM (FORALL (n: subrange(low,high)): F(n) >= 0)
+                                IMPLIES sigma(low,high,F) >= 0
+
+  sigma_gt_0    : THEOREM low <= high AND 
+                          (FORALL (n: subrange(low,high)): F(n) > 0)
+                                IMPLIES sigma(low,high,F) > 0
+
+
+  sigma_shift_T : THEOREM (FORALL (i:T): T_pred(i+z)) IMPLIES 
+			         sigma(low+z,high+z,F) = 
+                                    sigma(low,high, (LAMBDA (i:T): F(i+z)))
+
+  sigma_shift_T2 : THEOREM T_pred(low+z) AND T_pred(high+z) IMPLIES 
+			         sigma(low+z,high+z,F) = 
+                 sigma(low,high, (LAMBDA (i:T): IF T_pred(i+z) THEN F(i+z)
+                                                ELSE 0 ENDIF))
+
+
+% ------------------ Summation Involving Two Functions ------------------
+
+  sigma_sum     : THEOREM sigma(low, high, F) + sigma(low, high, G)
+                             = sigma(low, high, (LAMBDA i: F(i) + G(i)))
+
+  sigma_minus   : THEOREM sigma(low, high, F) - sigma(low, high, G)
+                             = sigma(low, high, (LAMBDA i: F(i) - G(i)))
+
+  sigma_abs_bnd  : THEOREM (FORALL (i: subrange(low,high)): abs(F(i)) <= G(i))
+                       IMPLIES sigma(low, high, LAMBDA (n: T): abs(F(n))) <=
+                                        sigma(low, high, G)
+
+  restrict(F, low, high): function[T -> real] = 
+     (LAMBDA i: IF i < low OR i > high THEN 0 ELSE F(i) ENDIF )
+
+  sigma_restrict   : THEOREM l <= low AND h >= high IMPLIES	
+                            sigma(low,high,F) = sigma(low,high,restrict(F,l,h))
+
+
+  sigma_restrict_to: THEOREM sigma(low,high,F) = 
+                                sigma(low,high,restrict(F,low,high))
+
+  sigma_restrict_eq: THEOREM restrict(F,low,high) = restrict(G,low,high) 
+                                IMPLIES sigma(low,high,F) = sigma(low,high,G) 
+
+
+  sigma_eq         : THEOREM (FORALL (n: subrange(low,high)): F(n) = G(n))
+                                IMPLIES sigma(low,high,F) = sigma(low,high,G) 
+
+
+  sigma_le         : THEOREM (FORALL (n: subrange(low,high)): F(n) <= G(n))
+                                IMPLIES sigma(low,high,F) <= sigma(low,high,G) 
+
+  sigma_lt         : THEOREM low <= high AND
+                             (FORALL (n: subrange(low,high)): F(n) < G(n))
+                                IMPLIES sigma(low,high,F) < sigma(low,high,G) 
+
+
+  sigma_with       : THEOREM low <= i AND i <= high AND
+                             F = G WITH [i := a] IMPLIES
+                          sigma(low, high,F) = sigma(low,high,G) - G(i) + a
+
+
+% ------------------------ Special Arguments --------------------------------
+
+  sigma_nonneg     : THEOREM (FORALL i: F(i) >= 0) 
+                                 IMPLIES sigma(low, high, F) >= 0
+ 
+  sigma_nonpos     : THEOREM (FORALL i: F(i) <= 0) 
+                                 IMPLIES sigma(low, high, F) <= 0
+
+
+  Fnnr: VAR function[T -> nonneg_real]
+  Fnpr: VAR function[T -> nonpos_real]
+  Fnat: VAR function[T -> nat]
+  Fnpi: VAR function[T -> nonpos_int]
+
+  JUDGEMENT sigma(low,high,Fnnr) HAS_TYPE nonneg_real
+
+  JUDGEMENT sigma(low,high,Fnpr) HAS_TYPE nonpos_real
+
+  JUDGEMENT sigma(low,high,Fnat) HAS_TYPE nat
+
+  JUDGEMENT sigma(low,high,Fnpi) HAS_TYPE nonpos_int
+
+  sigma_nonneg_eq_0  : THEOREM sigma(low,high,Fnnr) = 0 
+                              AND low <= i AND i <= high IMPLIES Fnnr(i) = 0
+
+  sigma_nn_ge_comps  : THEOREM low <= i AND i <= high IMPLIES 
+                                  sigma(low,high,Fnnr) >= Fnnr(i) 
+
+% ------------------- Iterative Summation (tail recursion) ------------
+
+   sum_it_def(low, high, F,a): RECURSIVE real
+      = IF low > high THEN a
+        ELSE  sum_it_def(low+1,high,F,a+F(low))
+        ENDIF
+   MEASURE (LAMBDA low, high, F, a: abs(high+1-low))
+
+   sum_it(low,high,F) : real = sum_it_def(low,high,F,0)
+
+   sum_it_prop : LEMMA
+     low - 1 <= i AND i <= high =>
+     sum_it_def(i+1,high,F,sigma(low,i,F)) = sigma(low,high,F)
+
+   sum_it_sigma: LEMMA sum_it(low,high,F) = sigma(low,high,F)
+
+% Note: We would have preferred to use the following definitions:
+%
+%   T_low?: MACRO set[int] = {i:int | EXISTS (j:T): j <= i}
+%   T_low  : TYPE = {i:int | T_low?(i)}
+%
+%   T_high?: MACRO set[int] = {i:int | EXISTS (j:T): i <= j}
+%   T_high : TYPE = {i:int | T_high?(i)}
+%
+% but could not find any judgements that would fire and prevent
+% spurious TCC generation.
+
+END old_sigma

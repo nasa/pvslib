@@ -1,0 +1,85 @@
+%------------------------------------------------------------------------------
+% vs_circle.pvs
+% ACCoRD v.1.0
+%
+% Computes a resolution that only changes the vertical speed.
+%
+%------------------------------------------------------------------------------
+
+vs_circle[D,H: posreal] : THEORY
+BEGIN
+
+  IMPORTING vs_only[D,H],
+            circle_solutions[D,H],
+	    vertical_criterion[D,H]
+  
+  sp         : VAR Sp_vect3     % 3-D separation
+  s,v,w,
+  nvo,nvi,
+  nvo1,nvo2 : VAR Vect3
+  eps,dir   : VAR Sign
+  t         : VAR posreal
+  vo,vi     : VAR Nzv2_vect3
+  b,bt	    : VAR nnreal
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  % vectors_2D.zero indicates no ground speed solution
+
+  vs_circle(s,vo,vi,eps) : {nvo | nz_vect2?(nvo) IMPLIES vs_only?(vo)(nvo)} =
+    LET v = vo-vi IN
+    IF zero_vect2?(v) AND eps=sign(s`z) THEN vo WITH [z:=vi`z]
+    ELSIF Delta(s,v) > 0 THEN
+       LET (res,vz) = vs_only(s,v,Theta_D(s,v,Exit),eps) IN
+       IF res THEN vo WITH [z := vi`z+vz]
+       ELSE zero
+       ENDIF
+    ELSE zero
+    ENDIF
+
+  vs_circle?(s,vo,vi,eps)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    nvo = vs_circle(s,vo,vi,eps)
+
+  vs_circle?(s,vo,vi)(nvo) : MACRO bool =
+    EXISTS (eps): vs_circle?(s,vo,vi,eps)(nvo)
+
+  %------------%
+  % LEMMAS     %
+  %------------%
+
+  vs_circle_meets_vertical_criterion: LEMMA
+    horizontal_conflict?(sp,vo-vi) AND
+    vs_circle?(sp,vo,vi,eps)(nvo) IMPLIES
+    vertical_criterion?(eps)(sp,vo-vi)(nvo-vi)
+
+  vs_only_vs_criterion_ge_vz: LEMMA
+    vertical_criterion?(eps)(s,v)(nvo1-vi) AND  
+    vs_only?(nvo1)(nvo2) AND
+    eps*nvo2`z >= eps*nvo1`z IMPLIES
+    vertical_criterion?(eps)(s,v)(nvo2-vi)
+
+  %--------------------------%
+  % THEOREM: Independence    %
+  %--------------------------%
+
+  vs_circle_independence : THEOREM
+    horizontal_conflict?(sp,vo-vi) AND
+    vs_circle?(sp,vo,vi,eps)(nvo) 
+    IMPLIES
+      NOT conflict?(sp,nvo-vi)
+
+  %--------------------------%
+  % THEOREM: Coordination    %
+  %--------------------------%
+
+  vs_circle_coordination : THEOREM
+    conflict?(sp,vo-vi) AND
+    vs_circle?(sp,vo,vi,eps)(nvo) AND
+    vs_circle?(-sp,vi,vo,-eps)(nvi)
+    IMPLIES
+      NOT conflict?(sp,nvo-nvi)
+
+END vs_circle

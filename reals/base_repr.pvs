@@ -1,0 +1,108 @@
+base_repr : THEORY
+
+%------------------------------------------------------------
+%
+%   Base n representation of natural numbers. 
+%   
+%   Given n>1, the base n representation of k>=0 is
+%   k = (a_0, a_1, a_2, ...) where 0<=a_i<n
+%   
+%   k = sum_{i=0}^\infty a_i*n^i. 
+%
+%   
+%
+%   Author: Aaron Dutle, NASA Langley Research Center
+%
+%
+%
+%------------------------------------------------------------
+
+  BEGIN
+
+  IMPORTING log_nat, sigma_nat, structures@array2list
+
+ 
+  base_n(n: {x:nat| x>1}, k:nat)(i:nat): RECURSIVE nat = 
+       	       	       IF k<n THEN (IF i = 0 THEN k ELSE 0 ENDIF)
+		       ELSE (IF i=0 THEN mod(k, n)  ELSE base_n(n, (k-mod(k,n))/n)(i-1) ENDIF)
+		       ENDIF
+		       MEASURE k 
+
+  %base_n_lt_n: LEMMA
+  %	   FORALL (n: {x:nat| x>1}, k,i:nat):
+  %	   base_n(n,k)(i)<=n-1 
+
+  upper_index(n: {x:nat| x>1}, k:nat): nat = IF k=0 THEN 0 ELSE log_nat(k,n)`1 ENDIF
+
+  base_n_lt_n: LEMMA FORALL (n:{x:nat|x>1},k,i:nat):
+    base_n(n,k)(i)<n
+
+  upper_is_bound: LEMMA FORALL (n: {x:nat|x>1}, k:nat, m:nat):  
+        m>upper_index(n, k) IMPLIES base_n(n,k)(m) = 0
+
+  base_n_is_n: LEMMA FORALL(n:{x:nat|x>1}, k:nat):
+        k = sigma(0, upper_index(n,k), LAMBDA(s:nat): n^s*base_n(n,k)(s))
+
+  base_n_to_nat(n:{x:nat|x>1},F:[nat->nat], m:nat): nat = sigma(0, m, LAMBDA(s:nat): n^s*F(s))
+
+  base_n_is_n_alt: LEMMA FORALL (n: {x:nat|x>1}, k, m:nat):
+        k<n^(m+1) IMPLIES  k = base_n_to_nat(n,base_n(n,k),m)  
+
+  base_n_to_nat_lt: LEMMA FORALL (F:[nat->nat],m:nat,(n:nat|n>1)):
+    (FORALL (i:nat): i<=m IMPLIES F(i)<n) IMPLIES base_n_to_nat(n,F,m) < n^(m+1)
+
+  base_n_0: LEMMA FORALL (n: {x:nat|x>1}, k:nat, m:nat):  
+        k<n^m IMPLIES base_n(n,k)(m) = 0
+
+  base_n_unique: LEMMA FORALL (d:nat,n:{x:nat|x>1},numseq:[nat->below(n)]):
+    LET k = sigma(0,d,LAMBDA (s:nat): n^s*numseq(s)) IN
+      (FORALL (j:nat): j<=d IMPLIES numseq(j)=base_n(n,k)(j))
+
+  base_n_base_n_to_nat: LEMMA FORALL (n:{x:nat|x>1},F:[nat->nat], m:nat):
+    (FORALL (i:upto(m)): F(i)<n)
+    IMPLIES
+    FORALL (i:upto(m)): base_n(n,base_n_to_nat(n,F,m))(i) = F(i)
+
+  base_n_to_nat_eq: LEMMA FORALL (n: {x:nat|x>1}, k, m:nat,F,G:[nat->nat]):
+    (FORALL (i:upto(m)): F(i)=G(i)) IMPLIES
+    base_n_to_nat(n,F,m) = base_n_to_nat(n,G,m)
+
+  base_n_to_nat_unique: LEMMA FORALL (n: {x:nat|x>1}, k, m:nat,F,G:[nat->nat]):
+    (FORALL (i:upto(m)): F(i)<n AND G(i)<n) AND
+    base_n_to_nat(n,F,m) = base_n_to_nat(n,G,m)
+    IMPLIES
+    (FORALL (i:upto(m)): F(i)=G(i))
+  
+  base_list(n: {x:nat|x>1},k:nat): 
+    listn[below(n)](upper_index(n,k)+1) = 
+     array2list[below(n)](upper_index(n,k)+1)( base_n(n,k))
+
+  base_list(n: {x:nat|x>1}, k:nat, digits:posnat):
+     listn[below(n)](digits) = array2list[below(n)](digits)(base_n(n,k))
+
+  base_list_cdr: LEMMA FORALL (n: {x:nat|x>1}, k:nat, j:posnat):
+          cdr(base_list(n,k,j+1)) = base_list(n, (k-mod(k,n))/n, j)
+
+  base_list_faster(n: {x:nat|x>1}, k:nat, digits:posnat): RECURSIVE listn[below(n)](digits) = 
+    IF digits = 1 THEN (: mod(k, n) :) 
+    ELSE cons(mod(k, n), base_list_faster(n, (k-mod(k, n))/n, digits-1))
+    ENDIF
+    MEASURE digits
+
+  base_list_same: LEMMA FORALL (n: {x:nat|x>1}, k:nat, digits:posnat): 
+       base_list_faster(n, k, digits) = base_list(n,k,digits)
+
+  base_to_array(n:posnat, l:list[below(n)]): [nat->below(n)] = list2array[below(n)](0)(l) 
+
+  base_to_array_sound: LEMMA FORALL (n:{x:nat|x>1}, k:nat, j:above(upper_index(n,k))): 
+       base_to_array(n, base_list(n, k, j)) = base_n(n,k)  
+
+
+
+
+  END base_repr
+
+
+
+
+

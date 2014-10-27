@@ -1,0 +1,141 @@
+%-------------------------------------------------------------------------
+%
+%  Sets that pivot about an element.  This includes prefixes and suffixes,
+%  as well as generalizations of upto, below, upfrom, and above sets.
+%
+%  For PVS version 3.2.  February 28, 2005
+%  ---------------------------------------------------------------------
+%      Author: Jerry James (jamesj@acm.org), University of Kansas
+%
+%  EXPORTS
+%  -------
+%  prelude: orders[T], relation_props2[T, T, T, T], relations[T], sets[T]
+%  orders: closure_ops[T], indexed_sets_extra, ordered_subset[T],
+%    relation_iterate[T], relations_extra[T]
+%
+%-------------------------------------------------------------------------
+ordered_subset[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING sets[T], closure_ops[T]
+
+  ord: VAR (order?)
+  t, r: VAR T
+  S, R: VAR set
+  <: VAR pred[[T, T]]
+
+
+  % ==========================================================================
+  % Prefixes and suffixes
+  % ==========================================================================
+
+  prefix?(S, <): bool = FORALL t, (r: (S)): t < r => member(t, S)
+  prefix?(<)(S): MACRO bool = prefix?(S, <)
+
+  emptyset_is_prefix: LEMMA FORALL <: prefix?(emptyset, <)
+
+  fullset_is_prefix: LEMMA FORALL <: prefix?(fullset, <)
+
+  suffix?(S, <): bool = FORALL t, (r: (S)): r < t => member(t, S)
+  suffix?(<)(S): MACRO bool = suffix?(S, <)
+
+  emptyset_is_suffix: LEMMA FORALL <: suffix?(emptyset, <)
+
+  fullset_is_suffix: LEMMA FORALL <: suffix?(fullset, <)
+
+
+  % ==========================================================================
+  % Pivot sets
+  % ==========================================================================
+
+  upto(t, ord):   (prefix?(ord)) = {r | reflexive_closure(ord)(r, t)}
+  below(t, ord):  (prefix?(ord)) = {r | irreflexive_kernel(ord)(r, t)}
+  upfrom(t, ord): (suffix?(ord)) = {r | reflexive_closure(ord)(t, r)}
+  above(t, ord):  (suffix?(ord)) = {r | irreflexive_kernel(ord)(t, r)}
+  unrelated(t, ord): set[T] = {r | NOT (ord(r, t) OR ord(t, r) OR t = r)}
+
+  add_below_is_upto: LEMMA
+    FORALL t, ord: add(t, below(t, ord)) = upto(t, ord)
+
+  remove_upto_is_below: LEMMA
+    FORALL t, ord: remove(t, upto(t, ord)) = below(t, ord)
+
+  add_above_is_upfrom: LEMMA
+    FORALL t, ord: add(t, above(t, ord)) = upfrom(t, ord)
+
+  remove_upfrom_is_above: LEMMA
+    FORALL t, ord: remove(t, upfrom(t, ord)) = above(t, ord)
+
+  upto_above_related: LEMMA
+    FORALL t, ord:
+      union(upto(t, ord), above(t, ord)) = complement(unrelated(t, ord))
+
+  below_upfrom_related: LEMMA
+    FORALL t, ord:
+      union(below(t, ord), upfrom(t, ord)) = complement(unrelated(t, ord))
+
+% --------- New Content Provided By David Lester
+
+  tr:   VAR (transitive?[T])
+
+  % ==========================================================================
+  % Alternative Names
+  % ==========================================================================
+
+  lower_set?(<)(S): MACRO bool = prefix?(<)(S)
+  upper_set?(<)(S): MACRO bool = suffix?(<)(S)
+
+  % Ideally, we'd write the following as:
+  %   down(tr)(t): MACRO (lower_set?(tr)) = upto(t,tr)
+  %   up(tr)(t):   MACRO (upper_set?(tr)) = upfrom(t,tr)
+  % But upto and upfrom have been given overly restrictive types (i.e. they
+  % are only defined on order relations not merely transitive relations).
+
+  down(tr)(t): MACRO (lower_set?(tr)) = {r | reflexive_closure(tr)(r, t)}
+  up(tr)(t):   MACRO (upper_set?(tr)) = {r | reflexive_closure(tr)(t, r)}
+
+  % ==========================================================================
+  % Additional Properties
+  % ==========================================================================
+
+  x,y: VAR T
+  X,Y: VAR set[T]
+  U:   VAR setofsets[T]
+
+  down_subset: LEMMA tr(x,y) IMPLIES subset?(down(tr)(x),down(tr)(y))
+  up_subset:   LEMMA tr(x,y) IMPLIES subset?(up(tr)(y),up(tr)(x))
+
+  complement_lower_set: LEMMA FORALL (X:(lower_set?(<))):
+                                                upper_set?(<)(complement(X))
+
+  complement_upper_set: LEMMA FORALL (X:(upper_set?(<))):
+                                                lower_set?(<)(complement(X))
+
+  lower_set_def: LEMMA lower_set?(tr)(X) IFF X = Union(image(down(tr),X))
+
+  upper_set_def: LEMMA upper_set?(tr)(X) IFF X = Union(image(up(tr),X))
+
+  Union_lower_set: LEMMA every(lower_set?(tr),U)
+                                              IMPLIES lower_set?(tr)(Union(U))
+
+  Union_upper_set: LEMMA every(upper_set?(<),U) IMPLIES upper_set?(<)(Union(U))
+
+  union_lower_set: LEMMA FORALL (X,Y:(lower_set?(tr))):
+                                                    lower_set?(tr)(union(X,Y))
+
+  union_upper_set: LEMMA FORALL (X,Y:(upper_set?(<))):
+                                                    upper_set?(<)(union(X,Y))
+
+  Intersection_lower_set: LEMMA every(lower_set?(<),U) IMPLIES
+                                lower_set?(<)(Intersection(U))
+
+  Intersection_upper_set: LEMMA every(upper_set?(tr),U) IMPLIES
+                                upper_set?(tr)(Intersection(U))
+
+  intersection_lower_set: LEMMA FORALL (X,Y:(lower_set?(<))):
+                                              lower_set?(<)(intersection(X,Y))
+
+  intersection_upper_set: LEMMA FORALL (X,Y:(upper_set?(tr))):
+                                              upper_set?(tr)(intersection(X,Y))
+
+ END ordered_subset

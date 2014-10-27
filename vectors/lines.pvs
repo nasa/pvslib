@@ -1,0 +1,135 @@
+lines[n: posnat]: THEORY
+%----------------------------------------------------------------------------
+% The traditional way to defines a line L is by specifying two distinct points,
+% P0 and P1, on it.  
+% 
+% A line L can also be defined by a point and a direction.  Let P0 be a
+% point on the line L and let dv be a nonzero vector specifying the direction
+% of the line.  This is equivalent to the two point definition, since we
+% could just put dv=(P1-P0).
+ 
+% We can also add dynamics to our line.  If we assume a particle is
+% moving in a line with a constant velocity, then we can define
+% this linear motion using the location of the point at time zero,
+% a velocity vector and a time parameter t:
+% 
+%       p0 + t*vel
+% 
+% which provides the location of the particle at time t.
+%
+% Author: Ricky Butler              NASA Langley Research Center
+%----------------------------------------------------------------------------
+BEGIN
+
+   IMPORTING distance
+                                        %     Basic        |   Parametric
+                                        %------------------|-----------------
+   Line : TYPE = [# p: Vector[n],       % point on the line| position at time 0
+                    v: Nz_vector[n] #]  % direction vector | velocity vector
+  
+   LineND: TYPE = Line   
+
+   p0 (L: Line): MACRO Vector[n] = p(L)  % alternate field names
+   vel(L: Line): MACRO Vector[n] = v(L)
+
+   vv: VAR [Vector[n],Nz_vector[n]]
+   vecpair_to_Line(vv): MACRO Line = (# p := vv`1, v := vv`2 #)
+
+   CONVERSION vecpair_to_Line 
+
+   p,p1,p2,u,v,v0,v1,v2: VAR Vector[n]
+   t: VAR nzreal
+
+
+   loc(L: Line)(tt: real): MACRO Vector[n] = p(L) + tt*v(L)
+
+%  ------- generate vector from two points
+
+   vec_from(p1,p2) : Vector[n] = p2 - p1
+
+   line_from(p1,(p2:{v| v /= p1})): Line = (p1,vec_from(p1,p2))
+
+   vec_from_eq_args : LEMMA vec_from(p,p) = zero
+
+
+%  ------- generate velocity vector from two points and transport time
+
+   vel_from_tm(p1,p2,t): { v | p2 = p1 + t*v } = 1/t*(p2 - p1)
+
+   line_from_tm(p1,(p2:{v| v /= p1}),t): Line = (p1,vel_from_tm(p1,p2,t))
+
+   vel_from_tm_nz      : LEMMA p1 /= p2 IMPLIES vel_from_tm(p1,p2,t) /= zero
+
+   vel_from_tm_lem     : LEMMA p2 = p1 + t*vel_from_tm(p1,p2,t)
+
+   vel_from_tm_rew     : LEMMA vel_from_tm(p1,p2,t) = 1/t*(p2 - p1)
+
+   vel_from_tm_eq_args : LEMMA vel_from_tm(p,p,t) = zero
+
+   vel_from_tm_length  : LEMMA sq(norm(vel_from_tm(p1,p2,t))) =
+                                    sq_dist(p1,p2)/sq(t)
+
+%  ------- generate velocity vector from two points and speed ------
+
+   s: VAR posreal
+
+   vel_from_spd(p1,p2,s):  Vector[n] = IF p1 = p2 then zero
+                                   ELSE s/dist(p1,p2)*(p2-p1)
+                                   ENDIF
+   ps: VAR posreal
+   vel_from_spd_lem: LEMMA p1 /= p2 IMPLIES
+                     vel_from_spd(p1,p2,ps) = vel_from_tm(p1,p2,dist(p1,p2)/ps)
+
+
+   vel_from_spd_norm: LEMMA p1 /= p2 IMPLIES
+                               vel_from_spd(p1,p2,s) = s*normalize(p2-p1)
+
+   pt: VAR posreal
+   gen_speed(p1,p2,pt): { s1: nnreal | s1 = 1/pt * dist(p1,p2) }
+
+
+%  ------- generate velocity vector from a point, heading, speed  ------
+
+%   IMPORTING trig@trig
+
+%   hdg: VAR posreal
+%   vel_from_hdg(p1,hdg,s): Vector[n] = LET p2 = p1+(cos(hdg),sin(hdg)) IN
+%                                       vel_from_spd(p1,p2,s)
+
+
+%  -------------- Line Predicates -----------------
+
+   L,L1,L2: VAR Line
+
+   on_line?(p,L): bool = EXISTS (x : real) : p = p(L) + x * v(L)
+
+   on_segment?(p,L): bool =
+                EXISTS (x : { y: nnreal | y <= 1}) : p = p(L) + x * v(L)
+
+   orthogonal?(L1,L2): bool = ^(v(L1))*^(v(L2)) = 0 
+
+   parallel?(L1,L2)  : bool = ^(v(L1))*^(v(L2)) = 1 OR ^(v(L1))*^(v(L2)) = -1 
+
+
+%  -------------- Generate Parametric Lines -------
+
+   gen_line_tm(p1,(p2:{v| v /= p1}),t) : Line = (# p := p1,
+                                    v := vel_from_tm(p1,p2,t) #)
+
+   gen_line_spd(p1,(p2:{v| v /= p1}),s): Line = (# p := p1,
+                                    v := vel_from_spd(p1,p2,s) #)
+
+
+   test1: LEMMA p1 /= p2 IMPLIES on_line?(p1,gen_line_tm(p1,p2,t))
+   test2: LEMMA p1 /= p2 IMPLIES on_line?(p2,gen_line_tm(p1,p2,t))
+   test3: LEMMA p1 /= p2 IMPLIES on_line?(p1,gen_line_spd(p1,p2,s))
+   test4: LEMMA p1 /= p2 IMPLIES on_line?(p2,gen_line_spd(p1,p2,s))
+
+
+   vel_from_spd_on_line: LEMMA  LET vv = vel_from_spd(p1,p2,s) IN 
+                                  p = p1 + t*vv 
+                                    IMPLIES on_line?(p1,p2,p) 
+
+
+
+END lines

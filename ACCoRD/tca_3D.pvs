@@ -1,0 +1,140 @@
+% ----------------------------------------------------------%
+% tca_3D - Time of closest approach for cylindrical distance
+% between the two aircraft.
+% ----------------------------------------------------------% 
+
+tca_3D[D,H:posreal]  : THEORY 
+BEGIN
+
+  IMPORTING circle_criterion[D,H],
+  	    cd_vertical,
+            omega_2D,
+	    util,
+	    analysis@metric_space_real_fun[real,real_dist],
+	    analysis@real_fun_continuity_equiv,
+	    analysis@continuity_of_max_min[real,real_dist]
+
+  s,v 	    : VAR Vect3       
+  t,t1,t2,r,
+  B1,B2	    : VAR real
+  eps	    : VAR Sign
+  nnt,pt    : VAR nnreal
+
+cyl_norm_sq(s): nnreal = max(sqv(vect2(s))/sq(D),sq(s`z)/sq(H))
+
+cyl_norm_sq_diff_cont: LEMMA
+		       continuous?(LAMBDA (t:real): (sqv(vect2(s) + t*vect2(v))/sq(D) - sq(s`z+t*v`z)/sq(H)),fullset[real])
+
+cyl_norm_sq_IVT1: LEMMA cyl_norm_sq(s+t1*v) = sqv(vect2(s)+t1*vect2(v))/sq(D) AND cyl_norm_sq(s+t2*v) /= sqv(vect2(s)+t2*vect2(v))/sq(D)
+		  IMPLIES (EXISTS (t:real): ((t1<=t AND t<=t2) OR (t2<=t AND t<=t1)) AND sqv(vect2(s)+t*vect2(v))/sq(D) = sq(s`z+t*v`z)/sq(H))
+
+cyl_norm_sq_IVT2: LEMMA cyl_norm_sq(s+t1*v) = sq(s`z+t1*v`z)/sq(H) AND cyl_norm_sq(s+t2*v) /= sq(s`z+t2*v`z)/sq(H)
+		  IMPLIES (EXISTS (t:real): ((t1<=t AND t<=t2) OR (t2<=t AND t<=t1)) AND sqv(vect2(s)+t*vect2(v))/sq(D) = sq(s`z+t*v`z)/sq(H))
+
+cyl_norm_sq_fun(s,v)(t) : nnreal = cyl_norm_sq(s+t*v)
+
+cyl_norm_sq_fun_convex: LEMMA convex?(cyl_norm_sq_fun(s,v))
+
+cyl_norm_sq_fun_cont: LEMMA continuous?(cyl_norm_sq_fun(s,v),fullset[real])
+
+cyl_norm_min_exists: LEMMA B1<=B2 IMPLIES (EXISTS (t:real): B1<=t AND t<=B2 AND (FORALL (r:real): B1<=r AND r<=B2 IMPLIES cyl_norm_sq_fun(s,v)(r) >= cyl_norm_sq_fun(s,v)(t)))
+
+cyl_norm_min_exists_inf: LEMMA EXISTS (tz: nnreal): FORALL (nnt:nnreal): cyl_norm_sq_fun(s,v)(nnt) >= cyl_norm_sq_fun(s,v)(tz)
+
+conflict_at_cyl_norm_sq: LEMMA
+		      conflict_at?(s,v,t) IFF cyl_norm_sq(s+t*v) < 1
+
+Min_Info: TYPE = [# min_time : nnreal , min_dist : nnreal #]
+
+info(s,v,nnt): Min_Info = (# min_time := nnt, min_dist := cyl_norm_sq(s+nnt*v) #)
+
+MI1,MI2 : VAR Min_Info
+
+minimum_info(MI1,MI2): {MI : Min_Info | (MI = MI1 OR MI = MI2) AND MI`min_dist <= MI1`min_dist AND MI`min_dist <= MI2`min_dist}
+		       = IF MI1`min_dist <= MI2`min_dist THEN MI1
+		         ELSE MI2 ENDIF
+
+horizontal_min_info(s,v) : {MI : Min_Info | MI`min_dist <= info(s,v,0)`min_dist AND 
+			       	 	  (vect2(v) /= zero AND horizontal_tca(s,v)>=0 IMPLIES MI`min_dist<=info(s,v,horizontal_tca(s,v))`min_dist)}=
+			 IF vect2(v) = zero OR (vect2(v) /= zero AND horizontal_tca(s,v) <= 0) THEN
+			    info(s,v,0)
+			 ELSE minimum_info(info(s,v,horizontal_tca(s,v)),info(s,v,0))
+			 ENDIF
+
+horiz_vert_min_info(s,v) : {MI : Min_Info | MI`min_dist <= info(s,v,0)`min_dist AND 
+			       	 	  (vect2(v) /= zero AND horizontal_tca(s,v)>=0 IMPLIES MI`min_dist<=info(s,v,horizontal_tca(s,v))`min_dist)
+					  AND (v`z/=0 AND -s`z/v`z>=0 IMPLIES MI`min_dist <= info(s,v,-s`z/v`z)`min_dist)} =
+			 IF v`z = 0 OR (v`z /= 0 AND -s`z/v`z <= 0) THEN
+			    horizontal_min_info(s,v)
+			 ELSE
+				minimum_info(horizontal_min_info(s,v),info(s,v,-s`z/v`z))
+			 ENDIF
+
+cyl_intersect_time(s,v,eps) : real = 
+			LET
+				a = sqv(vect2(v))/sq(D) - sq(v`z)/sq(H),
+				b = vect2(s)*vect2(v)/sq(D) - s`z*v`z/sq(H),
+				c = sqv(vect2(s))/sq(D) - sq(s`z)/sq(H)
+			IN
+				IF a = 0 AND b = 0 THEN 0
+				ELSIF a = 0 THEN -c/(2*b)
+				ELSIF discr2b(a,b,c) < 0 THEN 0
+				ELSE root2b(a,b,c,sign(a)*eps) ENDIF % This uses sign(a)*eps instead of just eps, so that the LT lemma will prove
+
+cyl_intersect_time_lt: LEMMA
+		       cyl_intersect_time(s,v,-1) <= cyl_intersect_time(s,v,1)
+
+cyl_intersect_time_id : LEMMA
+		      (EXISTS (t1:real): sqv(vect2(s+t1*v))/sq(D) /= sq((s+t1*v)`z)/sq(H))
+		      AND
+		      sqv(vect2(s + t*v))/sq(D) = sq((s+t*v)`z)/sq(H) IMPLIES
+		      (EXISTS (eps): t = cyl_intersect_time(s,v,eps))
+
+cyl_intersect_min_info(s,v) : {MI : Min_Info | FORALL (eps:Sign): cyl_intersect_time(s,v,eps)>0 IMPLIES
+			    MI`min_dist<=info(s,v,cyl_intersect_time(s,v,eps))`min_dist} =
+			  LET
+			    mt1 = cyl_intersect_time(s,v,-1),
+			    mt2 = cyl_intersect_time(s,v,1)
+			  IN
+			    IF mt2 <= 0 THEN horizontal_min_info(s,v)
+			    ELSIF mt1 <=0 THEN (# min_time := mt2, min_dist := cyl_norm_sq(s+mt2*v) #)
+			    ELSE
+			    minimum_info((# min_time := mt1, min_dist := cyl_norm_sq(s+mt1*v) #),
+			    		    (# min_time := mt2, min_dist := cyl_norm_sq(s+mt2*v) #))
+			    ENDIF
+
+tca_3D(s,v) : nnreal = minimum_info(horiz_vert_min_info(s,v),cyl_intersect_min_info(s,v))`min_time
+
+tca_3D_id : LEMMA nnt = 0 OR (vect2(v) /= zero AND nnt = -(vect2(s)*vect2(v))/sqv(vect2(v))) OR (v`z /= 0 AND nnt = -(s`z*v`z)/sq(v`z))
+	  OR sqv(vect2(s+nnt*v))/sq(D) = sq((s+nnt*v)`z)/sq(H) IMPLIES
+	  cyl_norm_sq(s + nnt*v) >= cyl_norm_sq(s+tca_3D(s,v)*v)
+
+tca_3D_vect2_zero: LEMMA vect2(v)=zero AND cyl_norm_sq_fun(s,v)(nnt) = sqv(vect2(s+nnt*v))/sq(D) IMPLIES
+		   cyl_norm_sq_fun(s,v)(nnt) >= cyl_norm_sq_fun(s,v)(tca_3D(s,v))
+
+tca_3D_vz_zero: LEMMA v`z=0 AND cyl_norm_sq_fun(s,v)(nnt) = sq((s+nnt*v)`z)/sq(H) IMPLIES
+		   cyl_norm_sq_fun(s,v)(nnt) >= cyl_norm_sq_fun(s,v)(tca_3D(s,v))
+
+tca_3D_def: LEMMA cyl_norm_sq(s + nnt*v) >= cyl_norm_sq(s+tca_3D(s,v)*v)
+
+tca_3D_conflict: LEMMA conflict?(s,v) IFF cyl_norm_sq(s + tca_3D(s,v)*v) < 1
+
+tca_3D_conflict_at: LEMMA conflict?(s,v) IFF conflict_at?(s,v,tca_3D(s,v))
+
+% for nonnegative times, cyl_norm_sq_fun is decreasing to the left of tca_3D
+% and increasing to the right.
+
+tca_3D_left_decreasing: LEMMA nnt<=pt AND pt<=tca_3D(s,v) IMPLIES
+			cyl_norm_sq_fun(s,v)(nnt)>=cyl_norm_sq_fun(s,v)(pt)
+
+tca_3D_right_increasing: LEMMA tca_3D(s,v)<=nnt AND nnt<=pt IMPLIES
+			cyl_norm_sq_fun(s,v)(nnt)<=cyl_norm_sq_fun(s,v)(pt)
+
+
+
+
+
+
+
+
+END tca_3D

@@ -1,0 +1,161 @@
+%-----------------------------------------------------------------------------
+% Suffixes of sequences of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_suffix[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_concatenate[T], orders[csequence]
+
+  p: VAR pred[T]
+  n, m: VAR nat
+  cseq, cseq1, cseq2: VAR csequence
+  fseq, fseq1, fseq2: VAR finite_csequence
+  iseq: VAR infinite_csequence
+  nseq: VAR nonempty_csequence
+  eseq: VAR empty_csequence
+
+  suffix?(cseq1, cseq2): INDUCTIVE bool =
+      cseq1 = cseq2 OR (nonempty?(cseq2) AND suffix?(cseq1, rest(cseq2)))
+
+  suffix?(cseq2)(cseq1): MACRO bool = suffix?(cseq1, cseq2)
+
+  suffix?_empty: THEOREM
+    FORALL eseq, cseq: suffix?(eseq, cseq) IFF is_finite(cseq)
+
+  suffix?_rest_left: THEOREM
+    FORALL nseq, cseq: suffix?(nseq, cseq) IMPLIES suffix?(rest(nseq), cseq)
+
+  suffix?_rest_right: THEOREM
+    FORALL cseq, nseq: suffix?(cseq, rest(nseq)) IMPLIES suffix?(cseq, nseq)
+
+  suffix?_finite_left: THEOREM
+    FORALL fseq, cseq: suffix?(fseq, cseq) IMPLIES is_finite(cseq)
+
+  suffix?_finite_right: THEOREM
+    FORALL cseq, fseq: suffix?(cseq, fseq) IMPLIES is_finite(cseq)
+
+  suffix?_infinite_left: THEOREM
+    FORALL iseq, cseq: suffix?(iseq, cseq) IMPLIES is_infinite(cseq)
+
+  suffix?_infinite_right: THEOREM
+    FORALL cseq, iseq: suffix?(cseq, iseq) IMPLIES is_infinite(cseq)
+
+  suffix?_length: THEOREM
+    FORALL fseq1, fseq2:
+      suffix?(fseq1, fseq2) IMPLIES length(fseq1) <= length(fseq2)
+
+  suffix?_length_eq: THEOREM
+    FORALL fseq1, fseq2:
+      suffix?(fseq1, fseq2) AND length(fseq1) = length(fseq2) IMPLIES
+       fseq1 = fseq2
+
+  suffix?_index: THEOREM
+    FORALL cseq1, cseq2, n:
+      suffix?(cseq1, cseq2) AND index?(cseq1)(n) IMPLIES index?(cseq2)(n)
+
+  suffix?_concatenate: THEOREM FORALL fseq, cseq: suffix?(cseq, fseq o cseq)
+
+  suffix?_def: THEOREM
+    FORALL cseq1, cseq2:
+      suffix?(cseq1, cseq2) IFF (EXISTS fseq: fseq o cseq1 = cseq2)
+
+  %  Note that suffix? is not a partial order, because it is not
+  %  antisymmetric.  These two sequences are suffixes of each other,
+  %  but are not equal:
+  %
+  %    1, 2, 1, 2, 1, 2, ...
+  %    2, 1, 2, 1, 2, 1, ...
+
+  suffix?_is_preorder: JUDGEMENT suffix? HAS_TYPE (preorder?[csequence])
+
+  %  However, suffix? is a partial order when restricted to finite
+  %  sequences.
+
+  suffix?_finite_antisymmetric: THEOREM
+    partial_order?[finite_csequence]
+        (restrict
+             [[csequence, csequence], [finite_csequence, finite_csequence],
+              bool]
+             (suffix?))
+
+  % A dichotomous?-like property for suffixes of a given sequence.
+  suffix?_order: THEOREM
+    FORALL cseq, cseq1, cseq2:
+      suffix?(cseq1, cseq) AND suffix?(cseq2, cseq) IMPLIES
+       suffix?(cseq1, cseq2) OR suffix?(cseq2, cseq1)
+
+
+  % The suffix of cseq after skipping over n elements
+  suffix(cseq, n): RECURSIVE (suffix?(cseq)) =
+    IF n = 0 OR empty?(cseq) THEN cseq ELSE suffix(rest(cseq), n - 1) ENDIF
+     MEASURE n
+
+  suffix_is_finite: JUDGEMENT suffix(fseq, n) HAS_TYPE finite_csequence
+
+  suffix_is_infinite: JUDGEMENT suffix(iseq, n) HAS_TYPE infinite_csequence
+
+  suffix_0: THEOREM FORALL cseq: suffix(cseq, 0) = cseq
+
+  suffix_1: THEOREM FORALL nseq: suffix(nseq, 1) = rest(nseq)
+
+  suffix_rest1: THEOREM
+    FORALL nseq, n: suffix(rest(nseq), n) = suffix(nseq, n + 1)
+
+  suffix_rest2: THEOREM
+    FORALL cseq, (n: indexes(cseq)):
+      rest(suffix(cseq, n)) = suffix(cseq, n + 1)
+
+  suffix_suffix: THEOREM
+    FORALL cseq, n, m: suffix(suffix(cseq, n), m) = suffix(cseq, n + m)
+
+  suffix_length: THEOREM
+    FORALL fseq, n: length(suffix(fseq, n)) = max(0, length(fseq) - n)
+
+  suffix_first: THEOREM
+    FORALL nseq, (n: indexes(nseq)): first(suffix(nseq, n)) = nth(nseq, n)
+
+  suffix_index: THEOREM
+    FORALL cseq, n, m: index?(suffix(cseq, n))(m) IFF index?(cseq)(n + m)
+
+  suffix_nth: THEOREM
+    FORALL cseq, n, (m: indexes(suffix(cseq, n))):
+      nth(suffix(cseq, n), m) = nth(cseq, n + m)
+
+  suffix_empty: THEOREM
+    FORALL cseq, n: empty?(suffix(cseq, n)) IFF NOT index?(cseq)(n)
+
+  suffix_nonempty: THEOREM
+    FORALL cseq, n: nonempty?(suffix(cseq, n)) IFF index?(cseq)(n)
+
+  suffix_concatenate: THEOREM
+    FORALL cseq1, cseq2, n:
+      suffix(cseq1 o cseq2, n) =
+       IF index?(cseq1)(n) THEN suffix(cseq1, n) o cseq2
+       ELSE suffix(cseq2, n - length(cseq1))
+       ENDIF
+
+  suffix?_suffix: THEOREM
+    FORALL cseq1, cseq2:
+      suffix?(cseq1, cseq2) IFF (EXISTS n: cseq1 = suffix(cseq2, n))
+
+  suffix_some: THEOREM
+    FORALL cseq, n, p:
+      some(p)(suffix(cseq, n)) IFF
+       (EXISTS (i: indexes(cseq)): i >= n AND p(nth(cseq, i)))
+
+  suffix_every: THEOREM
+    FORALL cseq, n, p:
+      every(p)(suffix(cseq, n)) IFF
+       (FORALL (i: indexes(cseq)): i >= n IMPLIES p(nth(cseq, i)))
+
+ END csequence_suffix

@@ -1,0 +1,70 @@
+arithmetic_ops
+  [b,p:above(1),
+   alpha,E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min],
+            real_to_fp[b,p,alpha,E_max,E_min],
+            enumerated_type_defs
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% fp_op provides a template for defining a floating point operation
+%  for the case when both arguments are finites.    
+
+  fin,fin1,fin2: var (finite?)
+  op: var fp_ops
+  mode: var rounding_mode
+
+  apply(op,fin1,(fin2:{fin| div?(op) => not zero?(fin)})): real =
+    cases op of
+      add:  value(fin1) + value(fin2),
+      sub:  value(fin1) - value(fin2),
+      mult: value(fin1) * value(fin2),
+      div:  value(fin1) / value(fin2)
+    endcases
+
+  signed_zero(op, fin1, fin2, mode): {fin | zero?(fin)} =
+    CASES op OF
+      add:
+          IF zero?(fin1)
+                & zero?(fin2) & sign(fin1) = sign(fin2) THEN fin1
+          ELSIF to_neg?(mode) THEN neg_zero
+          ELSE pos_zero
+          ENDIF,
+      sub:
+          IF zero?(fin1)
+                & zero?(fin2) & sign(fin1) /= sign(fin2) THEN fin1
+          ELSIF to_neg?(mode) THEN neg_zero
+          ELSE pos_zero
+          ENDIF,
+      mult:
+          IF sign(fin1) = sign(fin2) THEN pos_zero
+          ELSE neg_zero
+          ENDIF,
+      div:
+          IF sign(fin1) = sign(fin2) THEN pos_zero
+          ELSE neg_zero
+          ENDIF
+      ENDCASES  
+
+  fp_op(op, fin1, (fin2: {fin | div?(op) => NOT zero?(fin)}), mode): fp_num =
+    LET r = fp_round(apply(op, fin1, fin2), mode)
+      IN IF r = 0 THEN signed_zero(op, fin1, fin2, mode)
+        ELSE real_to_fp(r)
+        ENDIF
+
+  fp_op_x(op,fin1,(fin2:{fin| div?(op) => not zero?(fin)}),mode): 
+    [fp_num, exception]
+           = 
+    LET rp = fp_round_x(apply(op, fin1, fin2), mode)
+      IN IF proj_1(rp) = 0 THEN (signed_zero(op, fin1, fin2, mode),proj_2(rp))
+        ELSE real_to_fp_x(rp)
+        ENDIF
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+  END arithmetic_ops

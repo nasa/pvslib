@@ -1,0 +1,270 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%            
+%% Last Modified On: April 25, 2011
+%%                                                                          
+%%----------------------------------------------------------------------------
+
+
+
+subterm[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+ BEGIN
+
+     IMPORTING positions[variable,symbol, arity],
+               IUnion_extra[(V)],
+               sets_aux@infinite_nat_def[position] 
+
+     x, y: VAR (V)
+     p, q: VAR position
+     s, t: VAR term
+      i,j: VAR posnat
+     m,n: VAR nat
+
+
+%%%% Definition: subterm of t at position p %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+   subtermOF(t: term, (p: positions?(t))): RECURSIVE term =
+         (IF length(p) = 0
+          THEN
+            t
+          ELSE
+            LET st = args(t),
+                 i = first(p),
+                 q = rest(p)  IN
+            subtermOF(st(i-1), q)
+          ENDIF)
+   MEASURE length(p)
+
+ 
+%%%%%%%%%%%% Definition: variables occurring in t %%%%%%%%%%%%%%%%%%%%%%%%%
+
+  Vars?(t): TYPE = 
+          {x:term | V(x) &  EXISTS (p: positions?(t)): subtermOF(t, p) = x}
+
+  Vars(t): set[(V)] = {x: (V) |  EXISTS (p: positions?(t)): subtermOF(t, p) = x}
+
+  
+
+   ground(t): bool = Vars(t) = emptyset
+
+ 
+   Pos_var(t, x): positions = {p: positions?(t) | subtermOF(t,p) = x}
+
+
+   pos_vars_subset_pos : LEMMA
+                           LET Posv = Pos_var(t, x) IN
+                           subset?(Posv, positionsOF(t))
+
+   Pos_var_is_finite: LEMMA 
+                        LET Posv = Pos_var(t, x) IN
+                        is_finite(Posv)
+
+
+
+%%%%%%%%%%%% Properties of subterms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  Vars_is_var: LEMMA vars?(t) => Vars(t) = {y: (V) | y = t}
+
+
+  vars_term_is_union: LEMMA 
+  (CASES t OF 
+    vars(t): Vars(vars(t)) = singleton(vars(t)),
+    app(f, st): Vars(t) = IUnion(LAMBDA (i: below[length(st)]): Vars(st(i)))
+   ENDCASES)
+
+ 
+  vars_of_term_finite: LEMMA  is_finite(Vars(t))
+
+
+  pos_subterm_ax: LEMMA positionsOF(t)(p o q) =>
+                                            positionsOF(subtermOF(t, p))(q)
+
+  pos_subterm: LEMMA  positionsOF(t)(p o q) => 
+                        subtermOF(t, p o q) = subtermOF(subtermOF(t, p), q)
+
+  pos_o_term: LEMMA positionsOF(t)(p)  &  positionsOF(subtermOF(t, p))(q)
+                         => positionsOF(t)(p o q)
+
+  subterm_is_app: LEMMA positionsOF(s)(p) AND length(p) /= 0 => 
+                             app?(subtermOF(s,delete(p, length(p) - 1)))
+
+  vars_subterm: LEMMA positionsOF(t)(p) => 
+                                    subset?(Vars(subtermOF(t, p)), Vars(t))
+
+  disjoint_subterm: LEMMA positionsOF(t)(p) =>
+    ( disjoint?(Vars(t), Vars(s)) => disjoint?(Vars(subtermOF(t, p)), Vars(s)) )
+
+
+  variable_positions_parallel: LEMMA
+        FORALL (p, q: positions?(t)):
+            subtermOF(t,p) = x &  
+            subtermOF(t,q) = y & x /= y 
+             =>     parallel(p,q)
+
+
+  variable_positions: LEMMA  FORALL (p, q: positions?(t)):
+                               LET Posv = Pos_var(t, x) IN
+                               member(p, Posv) & 
+                               member(q, Posv) 
+                                     =>  p = q OR parallel(p,q)
+
+
+
+  pos_occ_var_HAStypePP: LEMMA    
+                           LET Posv = Pos_var(t, x),
+                               seqv = set2seq(Posv) IN
+                           PP?(seqv)
+
+
+
+  pos_occ_var_HAStypeSP: LEMMA 
+                           LET Posv = Pos_var(t, x),
+                               seqv = set2seq(Posv) IN
+                           SP?(t)(seqv)
+
+
+  no_empty_set_positions: LEMMA	FORALL t, x, (p: positions?(t)):
+                                  LET Posv = Pos_var(t, x) IN
+                                  subtermOF(t, p) = x =>  Posv(p) 
+
+  length_seq_var_g0: LEMMA  FORALL t, x: 
+                      LET Posv = Pos_var(t, x),
+                          seqv = set2seq(Posv) IN
+                       (EXISTS (p: positions?(t)): subtermOF(t, p) = x) 
+                             => length(seqv) > 0  
+
+
+%%%% Auxiliary lemmas about subterms - Andréia B. Avelar                   %%%%
+%%%% Note: the constructor "subterm(?,?)" can be found in the term_adt.pvs %%%%
+
+ subterm_empty_seq : LEMMA
+    subtermOF(s, empty_seq) = s
+
+ equal_subterms_equal_term : LEMMA
+   IF FORALL (p : position | positionsOF(s)(p) AND
+                             positionsOF(t)(p) ):
+      subtermOF(s, p) = subtermOF(t, p)
+   THEN s = t
+   ELSE s /= t
+   ENDIF
+
+
+ subt_of_subt_is_subt_of_term : LEMMA
+    FORALL (s : term,
+           (k : posnat   | positionsOF(s)( #(k))),
+           (p : position | positionsOF(subtermOF(s, #(k)))(p)),
+           (x : position | positionsOF(s)(x))):
+       x = add_first(k, p) IMPLIES 
+                   subtermOF(s, x) = subtermOF( subtermOF(s, #(k)), p)
+
+ subterm_to_subtermOF : LEMMA
+    FORALL (s : term, t : term):
+      subterm(s, t) IMPLIES
+      (EXISTS ( p : position | positionsOF(t)(p) ) : subtermOF(t, p) = s)
+
+ subtermOF_to_subterm : LEMMA
+    FORALL (s : term, t: term, (p : position | positionsOF(t)(p))):
+      subtermOF(t, p) = s IMPLIES subterm(s, t)
+
+ subterm_to_subterm : LEMMA 
+    FORALL (s : term, t : term, r : term):
+      ( subterm(s, r) AND subterm(r, t) ) IMPLIES subterm(s, t)
+
+
+ comp_of_pos(p : position, n : nat) : RECURSIVE  position =  
+    IF n = 0 then empty_seq 
+    ELSE p o comp_of_pos(p, n - 1) 
+    ENDIF
+  MEASURE n 
+
+
+ set_of_seq_pos(p) : set[position] =
+                  IUnion(LAMBDA (n : nat) : singleton(comp_of_pos(p,n))) 
+
+ n_for_a_pstart : LEMMA
+    FORALL (p : position, q : (set_of_seq_pos(p)) ) : 
+       p /= empty_seq IMPLIES  EXISTS (n : nat) : q = comp_of_pos(p,n)
+
+
+  length_comp_p : LEMMA 
+   length(comp_of_pos(p,n)) = n * length(p)
+
+  m_neq_n : LEMMA 
+    p /= empty_seq AND m/= n IMPLIES comp_of_pos(p,n) /= comp_of_pos(p,m)
+
+
+  function_inj(p)(n): position =  comp_of_pos(p,n)
+
+  is_injective_function_inj: LEMMA 
+     p /= empty_seq 
+           IMPLIES injective?[nat,(set_of_seq_pos(p))](function_inj(p))
+
+
+  infinite_set_of_seq_pos : LEMMA
+    p /= empty_seq IMPLIES  is_infinite(set_of_seq_pos(p))
+
+
+ comp_of_pos_is_pos: LEMMA 
+    FORALL (n: nat): positionsOF(s)(p) AND subtermOF(s, p) = s 
+                                        IMPLIES positionsOF(s)(comp_of_pos(p,n))
+
+ subset_of_seq_pos : LEMMA
+    positionsOF(s)(p) AND subtermOF(s, p) = s IMPLIES  
+                        subset?(set_of_seq_pos(p),positionsOF(s))
+
+ term_eq_subterm : LEMMA
+    positionsOF(s)(p) AND subtermOF(s, p) = s IMPLIES p = empty_seq
+
+ app_term : LEMMA
+     ( positionsOF(s)(p) AND positionsOF(s)(q) AND child(p, q) )
+     IMPLIES app?(subtermOF(s, q))
+
+
+ positions_of_a_term : LEMMA
+   FORALL (p : position | positionsOF(t)(p)) :
+     positionsOF(t)(q) IMPLIES (left_without_children(p, q) OR
+                                left_without_children(q, p) OR
+				child(p, q) OR
+				(EXISTS(q1 : position) :
+                                      positionsOF(subtermOF(t, p))(q1) 
+                                      AND q = p o q1) )
+
+ equal_app_term : LEMMA
+  ( app?(s) AND app?(t) AND f(s) = f(t) AND args(s) = args(t) )
+  IMPLIES s = t
+
+ equal_term : LEMMA
+   FORALL (s : term, 
+           t : term, 
+           p : position | positionsOF(s)(p) AND  
+	       		  positionsOF(t)(p)) :
+   ( (FORALL (q: position | positionsOF(s)(q) AND 
+                            positionsOF(t)(q)):
+        left_without_children(p, q) =>
+         subtermOF(s, q) = subtermOF(t, q))
+    AND
+     (FORALL (q: position | positionsOF(s)(q) AND
+                            positionsOF(t)(q)):
+        left_without_children(q, p) =>
+         subtermOF(s, q) = subtermOF(t, q))
+    AND
+     (FORALL (p1: position | positionsOF(s)(p1) AND
+                             positionsOF(t)(p1)):
+        child(p, p1) => f(subtermOF(s, p1)) = f(subtermOF(t, p1)))
+    AND
+      subtermOF(s, p) = subtermOF(t, p)
+    AND
+      NOT p = empty_seq )
+    IMPLIES s = t
+
+END subterm
+
+   

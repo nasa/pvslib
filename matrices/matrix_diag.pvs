@@ -1,0 +1,100 @@
+matrix_diag: THEORY
+
+
+BEGIN
+
+  IMPORTING matrix_upper_triang
+
+
+  SM,SM1,SM2: VAR FullMatrix
+
+  r: VAR real
+
+  nzr: VAR nzreal
+
+  M,N,A,B: VAR Matrix
+
+  v,v1,v2: VAR Vector
+
+  i,j,k,p : VAR nat
+
+  m,n : VAR nat
+
+  pn,pm : VAR posnat
+
+  F,G: VAR [[nat,nat]->real]
+
+  Mp,Np: VAR (nonempty?)
+
+  PFM,D1,D2,D: VAR PosFullMatrix
+
+  comp_matrix,comp_inverse: VAR bool
+
+  SQ,IQ,GQ,
+  SQ2,IQ2,GQ2,DQ,DQ2,
+  Q,R,S,T,
+  Q2,R2,S2,T2: VAR Square
+
+  d_point1(SQ)(j): bool = 
+    j<rows(SQ) AND
+    (FORALL (k,p):p>j AND k<p AND k<rows(SQ) IMPLIES (entry(SQ)(p,p)=0 OR entry(SQ)(k,p)=0))
+
+  d_point2(SQ,j)(i): bool =
+    i<rows(SQ) AND i<=j AND
+    (FORALL (k):k<i AND k<rows(SQ) IMPLIES (entry(SQ)(j,j)=0 OR entry(SQ)(k,j)=0))
+
+  diagonalize(pn)(comp_matrix,comp_inverse:bool,
+    (S:SquareMatrix(pn)|upper_triangular?(S)),
+    (Q:SquareMatrix(pn)|is_simple_prod?(pn,false,false)(Q)),
+    (R:SquareMatrix(pn)|is_simple_prod?(pn,false,false)(R)
+                 AND (comp_matrix AND comp_inverse IMPLIES (R*Q=Id(pn) AND Q*R=Id(pn)))),
+    (T:SquareMatrix(pn)|upper_triangular?(T) AND (comp_matrix IMPLIES Q*T = S) 
+           AND (FORALL (i):i<rows(T) IMPLIES entry(T)(i,i)=entry(S)(i,i))),
+    (j|d_point1(S)(j)),(i|d_point2(S,j)(i)),stop_rec:bool,k): RECURSIVE
+      {SGI:[SquareMatrix(pn),SquareMatrix(pn),SquareMatrix(pn)]|
+        (not stop_rec) IMPLIES (LET (S2,Q2,R2)=SGI IN
+  	 upper_triangular?(S2) AND
+  	 (FORALL (k): k<rows(T) IMPLIES entry(T)(k,k)=entry(S2)(k,k)) AND
+	 (FORALL (k,p): k<rows(S2) AND k<rows(S2) AND k<p IMPLIES (entry(S2)(p,p)=0 OR entry(S2)(k,p)=0)) AND
+  	 (comp_matrix IMPLIES Q2*T= S2 AND is_simple_prod?(pn,false,false)(Q2)) AND
+  	 (comp_matrix AND comp_inverse IMPLIES (R2*Q2=Id(pn) AND Q2*R2=Id(pn) AND is_simple_prod?(pn,false,false)(R2))) AND
+  	 det(S2)=det(S))} =
+    IF (stop_rec AND k=0) OR (i=0 AND j=0) THEN (S,Q,R)
+    ELSIF i=j OR entry(S)(j,j)=0 THEN diagonalize(pn)(comp_matrix,comp_inverse,S,Q,R,T,j-1,0,stop_rec,max(k-1,0))
+    ELSIF entry(S)(i,j)=0 THEN diagonalize(pn)(comp_matrix,comp_inverse,S,Q,R,T,j,i+1,stop_rec,max(k-1,0))
+    ELSE LET pivnum = -entry(S)(i,j)/entry(S)(j,j) IN
+      diagonalize(pn)(comp_matrix,comp_inverse,
+    			   replace_row(i,row(S)(i)+pivnum*row(S)(j))(S),
+    			   IF comp_matrix THEN replace_row(i,row(Q)(i)+pivnum*row(Q)(j))(Q) ELSE Id(pn) ENDIF,
+    			   IF comp_matrix AND comp_inverse THEN R*Easr(pn)(i,j,-pivnum) ELSE Id(pn) ENDIF,
+    			   T,j,i+1,stop_rec,max(k-1,0))
+    ENDIF MEASURE lex2(j,pn-i)
+
+
+  diag(comp_matrix,comp_inverse:bool,S): {SGI : [# ans: SquareMatrix(rows(S)),
+  					    multip: SquareMatrix(rows(S)),
+  					    inv: SquareMatrix(rows(S)) #] |
+    upper_triangular?(SGI`ans) AND
+    (FORALL (k,p): k<rows(S) AND p<rows(S) AND entry(SGI`ans)(k,p)/=0 IMPLIES (k=p OR (k<p AND entry(SGI`ans)(p,p)=0))) AND
+    (comp_matrix IMPLIES SGI`multip*S=SGI`ans AND is_simple_prod?(rows(S),false,false)(SGI`multip)) AND
+    (comp_matrix AND comp_inverse IMPLIES (SGI`inv*SGI`multip=Id(rows(S)) AND SGI`multip*SGI`inv=Id(rows(S)) AND is_simple_prod?(rows(S),false,false)(SGI`inv))) AND
+    det(SGI`ans)=det(S) AND
+    (det(S) /=0 IFF (FORALL (k,p): k<rows(S) AND p<rows(S) IMPLIES (entry(SGI`ans)(k,p)/=0 IFF k=p)))} =
+      LET (S2,Q2,R2) = upper_triangulate(rows(S))(comp_matrix,comp_inverse,S,Id(rows(S)),Id(rows(S)),S,0,rows(S)-1,false,0),
+      	  (S3,Q3,R3) = diagonalize(rows(S))(comp_matrix,comp_inverse,S2,Id(rows(S)),Id(rows(S)),S2,rows(S)-1,0,false,0) IN
+	  (# ans:= S3, multip:= Q3*Q2, inv:=R2*R3 #)
+
+  diag_det_zero_row: LEMMA comp_matrix AND
+    det(S)=0 IMPLIES EXISTS (i): i<rows(S) AND 
+      FORALL (j): entry(diag(comp_matrix,comp_inverse,S)`ans)(i,j)=0
+
+
+  % Mult 
+
+  det_mult: LEMMA rows(S)=rows(R) IMPLIES
+    det(S*R)=det(S)*det(R)
+
+
+
+
+END matrix_diag

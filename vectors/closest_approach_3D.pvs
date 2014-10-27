@@ -1,0 +1,232 @@
+closest_approach_3D: THEORY
+%----------------------------------------------------------------------------
+%  We compute the closest point of approach (CPA) between two
+%  points that are dynamically moving in a straight line.  This is 
+%  an important computation in collision detection. For example,
+%  to calculate the time and distance of two planes (represented as 
+%  line vectors) when they are at their closest point.
+%  
+%  We use time-parametric equations to represent the paths of the
+%  two planes:
+%  
+%     p(t) = p0 + t*u      q(t) = q0 + t*v     
+%  
+%  Minimum separation occurs at:
+%
+%      t_cpa = -w0*(u-v)/sq(norm(u-v))  
+%
+%  where w0 = p0 - q0
+%
+%    dist(L1,L2,t): MACRO nnreal = dist(loc(L1)(t),loc(L2)(t))
+%    dist(L1,L2): nnreal = dist(L1,L2,t_cpa(L1,L2))
+%
+% We also introduce the following convenient predicates
+%
+%   divergent?(p0,q0,u,v): bool = 
+%     FORALL (t: posreal): dist(p0,q0) < dist(p0+t*u,q0+t*v)
+%
+%   dot_prop?(p0,q0,u,v): bool = (p0-q0)*(u-v) >= 0
+%
+% and we prove there equivalence when u /= v. See "dot_prop_divergent".
+ 
+%
+%  See
+%     http://geometryalgorithms.com/Archive/algorithm_0106/algorithm_0106.htm
+%  
+%  for a very nice discussion.
+%
+%  Author: Ricky Butler              NASA Langley Research Center
+%
+%----------------------------------------------------------------------------
+BEGIN
+ 
+  IMPORTING distance_3D, 
+            reals@quad_minmax
+
+  t,t0,t1,t2     : VAR real
+  a,b,c          : VAR real
+  p0,q0,u,v,w0,wt: VAR Vect3
+
+
+  sq_dist_lem: LEMMA LET p(t) = p0 + t*u, q(t) = q0 + t*v,
+                         w0 = p0 - q0,
+                         w(t) = w0 + t*(u-v) IN
+                       sq_dist(p(t),q(t)) = w(t)*w(t)
+
+
+
+%  --- distance between two moving points is a quadratic function ----
+
+  sq_dist_quad: LEMMA w0 = p0 - q0 AND
+                      a = (u-v)*(u-v) AND
+                      b = 2*w0*(u-v) AND
+                      c = w0*w0
+                      IMPLIES sq_dist(p0+t*u,q0+t*v) = a*sq(t) + b*t + c
+
+
+%  -----  p(t) = p0 + t*u      q(t) = q0 + t*v  -----  
+
+
+  dist_eq_vel   : LEMMA dist(p0 + t*v, q0 + t*v) = dist(p0,q0)
+
+  norm_diff_eq_0: LEMMA norm(u-v) = 0 IMPLIES
+                        dist(p0+t1*u, q0+t1*v) = dist(p0+t2*u, q0+t2*v)
+
+
+%  ----- time of closest point of approach --------
+
+  time_closest(p0,q0,u,v): real = IF norm(u-v) = 0 THEN  % parallel, eq speed
+                                     0
+                                  ELSE
+                                     -((p0-q0)*(u-v))/sq(norm(u-v))
+                                  ENDIF 
+
+  time_closest_lem: LEMMA norm(u-v) /= 0 AND
+                          a = (u-v)*(u-v) AND
+                          b = 2*(p0-q0)*(u-v) 
+                          IMPLIES
+                            time_closest(p0,q0,u,v) = -b/(2*a)
+
+%  ----- time of closest point of approach between p(t) and q0
+
+  time_closest(p0,q0,u): MACRO real = time_closest(p0,q0,u,zero)
+
+%  ----- distance at time of closest point of approach
+
+  dist_closest(p0,q0,u,v): MACRO nnreal = 
+    LET t_cpa=time_closest(p0,q0,u,v) IN
+       dist(p0+t_cpa*u, q0+t_cpa*v)
+
+%  ----- distance at time of closest point of approach between p(t) and q0 
+
+  dist_closest(p0,q0,u): MACRO nnreal = 
+     dist_closest(p0,q0,u,zero)
+
+%  ----- distance at closest point is indeed a minimum -------
+
+  t_cpa: VAR real
+  d_cpa: VAR nnreal
+
+  cpa_prep_mono: LEMMA w0 = p0 - q0 AND
+                    a = (u-v)*(u-v) AND
+                    b = 2*w0*(u-v) AND
+                    c = w0*w0 AND
+                    t_cpa = time_closest(p0,q0,u,v) AND
+                    norm(u-v) /= 0 AND
+                    t_cpa <= t1 AND t1 < t2 
+                 IMPLIES
+                    LET D2 = (LAMBDA t: sq_dist(p0+t*u,q0+t*v)) IN
+                        D2(t1) < D2(t2)
+
+  time_cpa: LEMMA t_cpa = time_closest(p0,q0,u,v) 
+               IMPLIES
+                  is_minimum?(t_cpa,(LAMBDA t: sq_dist(p0+t*u,q0+t*v))) 
+                  
+  dist_cpa: LEMMA 
+             dist_closest(p0,q0,u,v) <= dist(p0+t*u, q0+t*v)
+
+  dist_cpa_lt: LEMMA t_cpa = time_closest(p0,q0,u,v) AND
+                     norm(u-v) /= 0 AND
+                     t_cpa <= t1 AND t1 < t2 
+               IMPLIES
+                    LET D2 = (LAMBDA t: sq_dist(p0+t*u,q0+t*v)) IN
+                        D2(t1) < D2(t2)
+
+  dist_min: LEMMA LET p(t) = p0 + t*u,      
+                      q(t) = q0 + t*v IN
+                  t_cpa = time_closest(p0,q0,u,v) 
+              IMPLIES
+                  dist(p(t_cpa),q(t_cpa)) <= dist(p(t),q(t))
+
+%  ------ points diverge from point of closest approach ------
+
+  tt: VAR real
+  dist_diverges: LEMMA  LET p(t) = p0 + t*u,      
+                            q(t) = q0 + t*v IN
+                        t_cpa = time_closest(p0,q0,u,v) AND
+                        t_cpa <= t1 AND t1 < t2 AND
+                        norm(u-v) /= 0 
+              IMPLIES
+                  dist(p(t1),q(t1)) < dist(p(t2),q(t2))
+
+  dist_parallel_lines: LEMMA  LET p(t) = p0 + t*u,      
+                                  q(t) = q0 + t*v IN
+                              norm(u-v) = 0
+                           IMPLIES
+                              dist(p(t1),q(t1)) = dist(p(t2),q(t2))
+ 
+%  ------ Relation between positive dot product and tcpa
+
+
+  dot_nneg_tca_npos : LEMMA 
+    (p0-q0)*(u-v) >= 0 IMPLIES 
+      time_closest(p0,q0,u,v) <= 0
+
+  divergent?(p0,q0,u,v): bool = 
+    FORALL (t: posreal): dist(p0,q0) < dist(p0+t*u,q0+t*v)
+
+  dot_prop?(p0,q0,u,v): bool = (p0-q0)*(u-v) >= 0
+
+  divergent_u_neq_v : LEMMA
+    divergent?(p0,q0,u,v) IMPLIES
+      u /= v
+
+  dot_nneg_divergent : THEOREM 
+    (p0-q0)*(u-v) >= 0 AND u /= v IMPLIES 
+      divergent?(p0,q0,u,v)   
+
+  divergent_dot_nneg : THEOREM 
+    divergent?(p0,q0,u,v) IMPLIES 
+      (p0-q0)*(u-v) >= 0 
+ 
+  divergent_t1_lt_t2 : LEMMA
+    divergent?(p0,q0,u,v) IFF
+      FORALL (t1,t2): 0 <= t1 AND t1 < t2 
+        IMPLIES dist(p0+t1*u,q0+t1*v) <  dist(p0+t2*u,q0+t2*v)
+
+  dot_prop_divergent: THEOREM u /= v IMPLIES 
+                              (dot_prop?(p0,q0,u,v) IFF divergent?(p0,q0,u,v))
+
+
+
+%  ------ Intersection of dynamic line and a sphere -----
+
+  s:              VAR Vect3
+
+  % The first lemma states that if t1 and t2 are the intersection
+  % points with a sphere of radius D, then the distance for all times
+  % between t1 and t2 is less than D 
+
+  t1_lt_t2_lt_D : LEMMA FORALL (t,t1,t2,D:real):
+      	     	     v*v /= 0 AND
+      	     	     t1 < t2 AND
+      	     	     (s+t1*v)*(s+t1*v) = D AND
+      	     	     (s+t2*v)*(s+t2*v) = D AND
+      	     	     t1 < t AND t < t2 IMPLIES
+      	     	     (s+t*v)*(s+t*v) < D
+
+  % The second lemma is the reciprocal of the previous lemma. It states that
+  % if the distance at time t is less than D, then t is between t1 and
+  % t2.
+ 
+  lt_D_t1_lt_t2 : LEMMA FORALL (t,t1,t2,D:real):
+      		      	   v*v /= 0 AND
+      		      	   t1 < t2 AND
+      	     	           (s+t1*v)*(s+t1*v) = D AND
+      	     	           (s+t2*v)*(s+t2*v) = D AND
+      	     	           (s+t*v)*(s+t*v) < D IMPLIES
+      		      	   t1 < t AND t < t2 
+
+
+  % The third lemma states that if there are no intersection points with
+  % a sphere of radius D then the distance at any time is greater than D.
+
+  discr_le_0 : LEMMA FORALL (t,discrm,D:real): 
+                        sos(v) /= 0 AND
+                        discr(sos(v),2*(s*v),sos(s) - D) <= 0
+      		  	IMPLIES
+      		  	  (s+t*v)*(s+t*v) >= D 
+
+
+
+END closest_approach_3D

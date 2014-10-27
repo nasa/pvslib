@@ -1,0 +1,226 @@
+circle_optimum_2D: THEORY
+%------------------------------------------------------------------------------
+%  This file defines an algorithm that finds the point on a circle
+%  with the largest norm such that it lies between two half planes 
+%  that are inputs
+%
+%  Anthony N
+%
+%             /-half plane 1
+%           /\
+%         /   \
+%       /      \ -circle
+%     0         \
+%       \	 |
+%	  \      |
+%	    \   /
+%	      \X-point
+%	        \- half plane 2
+%
+%  This function uses Theta_D, which is defined in ACCoRD.
+%------------------------------------------------------------------------------
+
+BEGIN
+
+   IMPORTING vectors@vectors_2D,
+   	     horizontal,
+	     vectors@law_cos_pos_2D,
+	     vectors@basis_2D,
+	     analysis@interm_value_thm,
+	     analysis@continuous_lambda
+
+   v,u,w,c,p        : VAR Vect2
+   e1,e2 	: VAR Nz_vect2
+   R,k	  	: VAR posreal
+   t	  	: VAR nnreal
+
+  circle?(c,R)(w): bool = norm(w-c) = R
+  segment?(v)(w): bool  = EXISTS (t): w = t*v
+  
+  % First, a function to compute the maximum norm of a point that lies both in the
+  % circle and along the vector v from the origin.
+
+  intersects_circle_fun?(v,c,R): bool = (v/=zero AND Delta[R](-c,v)>=0 AND (c*v >=0 OR sqv(-c)<=sq(R)))
+  				      	OR
+					(v =zero AND sqv(c) = sq(R))
+
+  intersects_circle_fun_scal: LEMMA intersects_circle_fun?(v,c,R) IFF
+    			           intersects_circle_fun?(k*v,c,R)
+
+  intersects_circle_fun_def: LEMMA intersects_circle_fun?(v,c,R) IFF
+    			       (EXISTS (w): circle?(c,R)(w) AND segment?(v)(w))
+
+  intersects_circle_fun_inc: LEMMA v/=zero AND u/=zero AND intersects_circle_fun?(v,c,R) AND
+    ^(v)*c<=^(u)*c IMPLIES intersects_circle_fun?(u,c,R)
+
+  inter_circle_max_time(v,c,R): nnreal =
+    IF v/=zero AND intersects_circle_fun?(v,c,R) THEN Theta_D[R](-c,v,1)
+    ELSE 0 ENDIF
+
+  inter_circle_max_time_scal: LEMMA
+    FORALL (pt:posreal): inter_circle_max_time(pt*v,c,R) = (1/pt)*inter_circle_max_time(v,c,R)
+
+  inter_circle_max_time_def: LEMMA
+    LET t = inter_circle_max_time(v,c,R) IN
+    	(intersects_circle_fun?(v,c,R) IMPLIES
+  	circle?(c,R)(t*v)) AND
+  	(FORALL (nnt:nnreal): circle?(c,R)(nnt*v) IMPLIES
+  	       norm(nnt*v) <= norm(t*v) AND
+  	       (nnt /= t AND v/=zero IMPLIES norm(nnt*v) < norm(t*v)))
+
+  inter_circle_max_norm(v,c,R): nnreal = 
+        IF intersects_circle_fun?(v,c,R) THEN inter_circle_max_time(v,c,R)*norm(v)
+        ELSE 0 ENDIF
+
+  inter_circle_max_norm_scal: LEMMA
+    FORALL (pt:posreal): inter_circle_max_norm(pt*v,c,R) = inter_circle_max_norm(v,c,R)
+
+  % inter_circle_max_norm_def: LEMMA
+  %   LET maxnorm = inter_circle_max_norm(v,c,R) IN
+  %     FORALL (nnt:nnreal): circle?(c,R)(nnt*v) IMPLIES norm(nnt*v) <= maxnorm
+
+  max_norm_increasing: LEMMA
+    (v/=zero AND u/=zero AND ^(v)*c<=^(u)*c) OR
+    ((v=zero OR u=zero) AND norm(v)<=norm(u))
+    IMPLIES
+    inter_circle_max_norm(v,c,R) <= inter_circle_max_norm(u,c,R)
+
+  %%%%%%% An algorithm that computes the point x with (1/norm(x))*x*c maximal such that
+  %%%%%%% x*e1 >= k1 AND x*e2 >= k2
+
+  %%%%%%% An algorithm that computes the point x on a circle of radius R around a point c
+  %%%%%%% that is the maximal point from p satisfying (x-p)*e1>=0 AND (x-p)*e2>=0
+
+  max_circle_point_in_slice(p,c,R,e1,e2): Vect2 =
+    IF    c = p AND perpR(e1)*e2>=0 
+        THEN p + (R/norm(e1))*perpR(e1)
+    ELSIF c = p
+        THEN p - (R/norm(e1))*perpR(e1)
+    ELSIF (c-p)*e1 >= 0 AND (c-p)*e2 >= 0
+        THEN p + (1+R/norm(c-p))*(c-p)
+    ELSE
+        LET e1perp = IF perpR(e1)*e2 >= 0 THEN perpR(e1) ELSE -perpR(e1) ENDIF,
+	    e2perp = IF (-sign(e1*e2))*(perpR(e2)*e1) >= 0 THEN (-sign(e1*e2))*perpR(e2) ELSE sign(e1*e2)*perpR(e2) ENDIF,
+	    e1vect = p + inter_circle_max_time(e1perp,c-p,R)*e1perp,
+	    e2vect = p + inter_circle_max_time(e2perp,c-p,R)*e2perp
+	IN
+	    IF (e2perp/=zero AND e1perp/=zero AND ^(e2perp)*(c-p)<=^(e1perp)*(c-p)) OR
+    	       ((e2perp=zero OR e1perp=zero) AND norm(e2vect-p)<=norm(e1vect-p))
+	    THEN 
+	       e1vect
+	    ELSE
+	       e2vect
+	    ENDIF
+    ENDIF
+
+  % max_circle_point_in_slice_composition: LEMMA
+  %   LET vv = max_circle_point_in_slice(p,c,R,e1,e2),
+  %   	ww = max_circle_point_in_slice(p,c,R,e2,e3),
+  % 	zz = max_circle_point_in_slice(p,c,R,e1,e3)
+  %   IN intersects_circle_fun?(vv-p,c-p,R) AND
+  %      intersects_circle_fun?(ww-p,c-p,R) AND
+       
+  %      IMPLIES
+  %      intersects_circle_fun?(ww-p,c-p,R)
+
+  lem1: LEMMA FORALL (v1,v2:Vect2): norm(v1) = 1 AND norm(v2) = 1
+    IMPLIES ((v1*v2>=0 IFF norm(v1-v2)<=sqrt(2)) AND
+    	    (v1*v2> 0 IFF norm(v1-v2)<sqrt(2)))
+
+  lem2: LEMMA FORALL (v1,v2,v3:Vect2): norm(v1) = 1 AND norm(v2) = 1 AND
+  	      	     		       norm(v3) = 1
+    IMPLIES ((v1*v3 <= v2*v3) IFF norm(v1-v3)>=norm(v2-v3)) AND
+    	    ((v1*v3 < v2*v3) IFF norm(v1-v3)>norm(v2-v3))
+
+
+
+  max_circle_point_in_slice_intersection: LEMMA
+    FORALL (aa, bb, cc, dd, ap, bp, cp, dp, h, g: Nz_vect2):
+             orthonormal?(aa, ap) AND orthonormal?(bb, bp)
+         AND orthonormal?(cc, cp) AND orthonormal?(dd, dp) AND norm(h) = 1 and norm(g) = 1
+         AND bp * aa >= 0 AND ap * bb >= 0 AND cp * dd >= 0 AND dp * cc >= 0
+         AND (aa = bb IMPLIES ap/=bp)
+	 AND h * aa > 0 AND h * bb > 0
+         AND h * cc > 0 AND h * dd > 0 AND g*cc>0 AND g*dd>0 AND (NOT (g*aa>=0 AND g*bb>=0))
+         IMPLIES
+         (ap * cc > 0 AND ap * dd > 0) OR
+          (bp * cc > 0 AND bp * dd > 0)
+
+  max_circle_point_in_slice_union: LEMMA
+    FORALL (aa, bb, cc, dd, ap, bp, cp, dp, h, g: Nz_vect2):
+             orthonormal?(aa, ap) AND orthonormal?(bb, bp)
+         AND orthonormal?(cc, cp) AND orthonormal?(dd, dp) AND norm(h) = 1 and norm(g) = 1
+         AND bp * aa >= 0 AND ap * bb >= 0 AND cp * dd >= 0 AND dp * cc >= 0
+         AND (aa = bb IMPLIES ap/=bp)
+	 AND h * aa > 0 AND h * bb > 0 AND g*cc = g*dd
+         AND (h * cc > 0 OR h * dd > 0) AND (g*cc>0 OR g*dd>0) AND (NOT (g*aa>=0 AND g*bb>=0))
+         IMPLIES
+         (ap * cc > 0 OR ap * dd > 0) OR
+          (bp * cc > 0 OR bp * dd > 0)
+
+  dot_gt_dot_equals_slice_intersection: LEMMA 
+    FORALL (g,rp:Vect2): rp*g>=0 AND norm(g) = 1 AND norm(rp) = 1
+        IMPLIES  (EXISTS (vv1, vv2: Nz_vect2): norm(vv1) = 1 AND norm(vv2) = 1 AND
+	   g*vv1 = g*vv2 AND
+           (FORALL (ww: Nz_vect2): norm(ww) = 1 IMPLIES
+               (ww * g > rp * g IFF (ww * vv1 > 0 AND ww * vv2 > 0))))
+
+  dot_gt_dot_equals_slice_union: LEMMA 
+    FORALL (g,rp:Vect2): rp*g<0 AND norm(g) = 1 AND norm(rp) = 1 AND rp/=-g
+        IMPLIES  (EXISTS (vv1, vv2: Nz_vect2): norm(vv1) = 1 AND norm(vv2) = 1 AND
+           g * vv1 = g * vv2 AND
+	   (FORALL (ww: Nz_vect2): norm(ww) = 1 IMPLIES
+               (ww * g > rp * g IFF (ww * vv1 > 0 OR ww * vv2 > 0))))
+
+  max_circle_point_in_slice_lem: LEMMA
+     (FORALL (r, s, g, h, rp, sp: Vect2):
+             norm(r) = 1 AND norm(s) = 1 AND norm(g) = 1 AND norm(h) = 1
+         AND norm(rp) = 1 AND norm(sp) = 1
+         AND (NOT (g * r >= 0 AND g * s >= 0)) AND sp * g <= rp * g
+         AND h * r >= 0 AND h * s >= 0 AND orthonormal?(r, rp)
+         AND orthonormal?(s, sp) AND rp * s >= 0 AND sp * r >= 0 AND (r=s IMPLIES rp/=sp)
+	 AND (NOT (sp * g <= 0 AND r = -s AND rp = sp AND h = -sp))
+         IMPLIES h * g <= rp * g)
+
+  max_circle_point_in_slice_lem_eq: LEMMA
+     (FORALL (r, s, g, h, rp, sp: Vect2):
+             norm(r) = 1 AND norm(s)  = 1 AND norm(g) = 1 AND norm(h) = 1
+         AND norm(rp) = 1 AND norm(sp) = 1
+         AND (NOT (g * r >= 0 AND g * s >= 0)) AND sp * g <= rp * g
+         AND h * r >= 0 AND h * s >= 0 AND orthonormal?(r, rp)
+         AND orthonormal?(s, sp) AND rp * s >= 0 AND sp * r >= 0 AND r=s and		rp = -sp
+         IMPLIES h * g <= rp * g)
+
+  max_circle_point_in_slide_sym_lem: LEMMA FORALL (vv:Vect2,e1perp,e2perp:Nz_vect2):
+     vv = p + inter_circle_max_time(e1perp, c - p, R) * e1perp AND circle?(c, R)(w) AND 
+     (w - p) * e1 >= 0 AND  (w - p) * e2 >= 0 AND  orthogonal?(e1, e1perp)
+     AND  orthogonal?(e2, e2perp) AND  e1perp * e2 >= 0 AND  e2perp * e1 >= 0
+     AND ((e2perp /= zero AND e1perp /= zero AND ^(e2perp) * (c - p) <= ^(e1perp) * (c - p) AND
+          (c-p/=zero AND (NOT (^(c - p) * ^(e1) >= 0 AND ^(c - p) * ^(e2) >= 0)) AND
+       ^(e1) = ^(e2) AND ^(e1perp) = -^(e2perp) OR (c-p/=zero AND NOT (^(c - p) * ^(e1) >= 0 AND ^(c - p) * ^(e2) >= 0)) AND
+       (^(e1) = ^(e2) IMPLIES ^(e1perp) /= ^(e2perp)) AND
+        (NOT (^(e2perp) * ^(c - p) <= 0 AND
+               ^(e1) = -^(e2) AND
+                ^(e1perp) = ^(e2perp) AND w-p /= zero AND ^(w - p) = -^(e2perp))))) 
+     OR ((e2perp = zero OR e1perp = zero) AND norm(perpR(e2)) <= norm(perpR(e1))))
+     IMPLIES  (((c - p) * e1 >= 0 AND (c - p) * e2 >= 0) OR norm(w - p) <= norm(vv - p) OR c = p)
+
+  max_circle_point_in_slice_def: LEMMA
+    LET vv = max_circle_point_in_slice(p,c,R,e1,e2) IN
+    (intersects_circle_fun?(vv-p,c-p,R)
+    IMPLIES circle?(c,R)(vv) AND
+    (vv-p)*e1 >= 0 AND
+    (vv-p)*e2 >= 0) AND
+    (FORALL (w): circle?(c,R)(w) AND (w-p)*e1 >= 0 AND (w-p)*e2 >= 0
+    	    	 IMPLIES norm(w-p) <= norm(vv-p))
+
+  max_circle_point_in_slice_complete: LEMMA 
+    LET vv = max_circle_point_in_slice(p,c,R,e1,e2) IN
+    FORALL (w): circle?(c,R)(w) AND (w-p)*e1 >= 0 AND (w-p)*e2 >= 0
+    	   	IMPLIES
+		intersects_circle_fun?(vv-p,c-p,R)
+
+
+
+END circle_optimum_2D
+

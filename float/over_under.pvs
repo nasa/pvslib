@@ -1,0 +1,115 @@
+over_under
+  [b,p:above(1),
+   alpha,E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min], 
+            fp_round_aux[b,p],
+            enumerated_type_defs,
+            round
+
+  over_under?(r:real): bool = (r/=0 & (abs(r)>max_pos or abs(r)<b^E_min))
+
+% A real number that real_to_fp maps to infinity
+  infinity: real = b^(E_max+1)
+
+  trap_over((r1:nzreal), (r2: real), (mode: rounding_mode)): real =
+    IF trap_enabled?(overflow) THEN round_scaled(r1 * b ^ (-alpha), mode)
+    ELSE r2
+    ENDIF
+
+  overflow((r: nzreal | abs(r) > max_pos), (mode: rounding_mode)):
+      [real, exception] =
+    CASES mode OF
+      to_nearest:
+          IF abs(r)
+                >= b ^ (E_max + 1)
+                     - (1 / 2) * b ^ (E_max + 1 - p)
+            THEN (trap_over(r, (sgn(r) * infinity), mode),overflow)
+          ELSE (sgn(r) * max_pos, inexact)
+          ENDIF,
+      to_zero:
+          IF abs(r) >= b ^ (E_max + 1)
+            THEN (trap_over(r, (sgn(r) * max_pos), mode),overflow)
+          ELSE (sgn(r) * max_pos, inexact)
+          ENDIF,
+      to_pos:
+          IF r > max_pos THEN (trap_over(r, infinity, mode),overflow)
+          ELSIF r <= -b ^ (E_max + 1)
+            THEN (trap_over(r, max_neg, mode),overflow)
+          ELSE (max_neg, inexact)
+          ENDIF,
+      to_neg:
+          IF r < max_neg THEN (trap_over(r, -infinity, mode),overflow)
+          ELSIF r >= b ^ (E_max + 1)
+            THEN (trap_over(r, max_pos, mode),overflow)
+          ELSE (max_pos, inexact)
+          ENDIF
+      ENDCASES
+
+
+  tiny_flag: bool % = true for tininess detected after rounding
+  inaccurate_flag: bool % = true for inaccurate detected using first option
+
+  exact_underflow((r:nzreal|abs(r)<b^E_min),mode:rounding_mode):bool =
+       (r*b^alpha=round_scaled(r*b^alpha,mode))
+  
+  %implicitly already have tininess detected before rounding
+  tiny?((r: nzreal | abs(r) < b ^ E_min), (mode: rounding_mode)): bool =
+    IF tiny_flag THEN abs(round_scaled(r, mode)) < b ^ E_min ELSE TRUE ENDIF
+
+  round_under((r: nzreal | abs(r) < b ^ E_min), (mode: rounding_mode)): real
+    = b^(E_min - (p - 1))*round(b^(-(E_min - (p - 1)))*r,mode)
+
+  mode: var rounding_mode
+ 
+  round_under_correct: LEMMA
+        round_under(min_pos,mode) = min_pos
+
+  fin: var (finite?)
+
+  round_under_value: lemma subnormal?(fin) =>
+                 round_under(value(fin),mode) = value(fin)
+
+  r:var nzreal
+
+  round_under_error: LEMMA
+        abs(r) < b ^ E_min
+          => abs(r - round_under(r, mode)) < b ^ (E_min - (p - 1))
+
+  round_under_near: LEMMA
+        abs(r) < b ^ E_min
+          => abs(r - round_under(r, to_nearest)) <= b ^ (E_min - (p - 1)) / 2
+
+  round_under_pos: lemma abs(r)<b^E_min => round_under(r,to_pos)>=r
+
+  round_under_neg: lemma abs(r)<b^E_min => round_under(r,to_neg)<=r
+
+  round_under_zero: lemma abs(r)<b^E_min => abs(round_under(r,to_zero))<=abs(r)
+
+
+  inaccurate?((r: nzreal | abs(r) < b ^ E_min), (mode: rounding_mode)): bool =
+    IF inaccurate_flag THEN (round_scaled(r,mode)/=round_under(r,mode))
+    ELSE (r/=round_under(r,mode))
+    ENDIF
+
+  underflow((r: nzreal | abs(r) < b ^ E_min), (mode: rounding_mode)):
+      [real, exception] =
+    IF tiny?(r, mode)
+      THEN IF trap_enabled?(underflow(FALSE))
+        THEN (round_scaled(r * b ^ alpha, mode),
+              underflow(exact_underflow(r, mode)))
+      ELSIF inaccurate?(r, mode) THEN (round_under(r, mode), underflow(TRUE))
+      ELSE (round_under(r, mode),
+            IF r = round_under(r, mode) THEN no_exceptions
+            ELSE inexact
+            ENDIF)
+      ENDIF
+    ELSE (round_under(r, mode), inexact)
+    ENDIF
+  
+  END over_under
+

@@ -1,0 +1,209 @@
+rs_partition[T:TYPE+ from real]: THEORY
+%----------------------------------------------------------------------------
+%    Partitions for Riemann-Stieltjes Integration
+%----------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+
+   IMPORTING finite_sets@finite_sets_minmax[real,<=],
+   	     structures@sort_fseq[T,<=],
+	     structures@fseqs_ops[T]
+
+   AUTO_REWRITE+ finseq_appl
+
+
+   a,b,c,x:VAR T
+   f,g,h: VAR [T -> real]
+   n: VAR nat
+
+
+   IMPORTING reals@intervals_real[T]
+
+
+   bounded_on?(a,b,f): bool = (EXISTS (B: real): 
+                   (FORALL (x: closed_interval(a,b)): abs(f(x)) <= B))
+
+% When the riemann integral was orginally defined, a partition was striclty increasing. Here, it is defined
+% only as increasing.
+
+   partition_pred?(a:T,b:{x:T|a<x})(fs:fseq): MACRO bool = 
+   		      (Let N = fs`length, xx = fs`seq IN
+                      N > 1 AND xx(0) = a AND xx(N-1) = b AND 
+		      increasing?(fs) AND
+		      (FORALL (i:below(N)): a <= xx(i) AND xx(i) <= b))
+
+   partition(a:T,b:{x:T|a<x}): TYPE = (partition_pred?(a,b))
+
+   partition_strictly_sort: LEMMA a<b IMPLIES FORALL (P:partition(a,b)): partition_pred?(a,b)(strictly_sort(P))
+
+   width(a:T, b:{x:T|a<x}, P: partition(a,b)): posreal =
+             LET xx = P`seq, N = P`length IN
+                      max({ l: real | EXISTS (ii: below(N-1)):
+                                         l = xx(ii+1) - xx(ii)}) 
+
+   width_lem     : LEMMA (FORALL (a:T), (b:{x:T|a<x}),
+                            (P: partition(a,b)),(ii: below(P`length-1)):
+                         width(a,b,P) >= P(ii+1) - P(ii))
+
+   width_lem_exists: LEMMA a<b IMPLIES FORALL (P:partition(a,b)):
+   		     EXISTS (ii:below(P`length-1)): width(a,b,P) = P(ii+1)-P(ii)
+
+   parts_order   : LEMMA  FORALL (P: partition(a,b), ii,jj: below(P`length)):
+                              ii <= jj IMPLIES P`seq(ii) <= P`seq(jj)
+   
+   parts_disjoint: LEMMA FORALL (P: partition(a,b), ii,jj: below(P`length-1)):
+                             P`seq(ii) < x AND x < P`seq(1 + ii) AND
+                             P`seq(jj) < x AND x < P`seq(1 + jj)
+                             IMPLIES
+                                jj = ii
+
+   in_part?(a:T, b:{x:T|a<x},P: partition(a,b),xx:T): MACRO bool = 
+                        EXISTS (ii: below(P`length-1)): xx = P`seq(ii)
+
+   in_sect?(a:T, b:{x:T|a<x},P: partition(a,b),
+            ii: below(P`length-1),xx:T): MACRO bool = 
+                      P`seq(ii) < xx AND xx < P`seq(ii+1)
+
+
+   part_in       : LEMMA FORALL (P: partition(a,b)):    
+                             a < b AND a <= x AND x <= b IMPLIES
+                                 (EXISTS (ii: below(P`length-1)): 
+                                       P`seq(ii) <= x AND x <= P`seq(ii+1))
+
+   part_in_strict_left       : LEMMA FORALL (P: partition(a,b)):    
+                             a < b AND a < x AND x <= b IMPLIES
+                                 (EXISTS (ii: below(P`length-1)): 
+                                       P`seq(ii) < x AND x <= P`seq(ii+1))
+
+   part_not_in       : LEMMA a < b IMPLIES FORALL (P: partition(a,b)):    
+                                FORALL (ii,jj: below(P`length-1)): 
+                                  P`seq(ii) < x AND x < P`seq(ii+1) 
+                                IMPLIES x /= P`seq(jj)
+
+   Prop: VAR [T -> bool]
+   part_induction: LEMMA  (FORALL (P: partition(a,b)): 
+                              (FORALL ( x: closed_interval(a,b)):
+                           LET xx = P`seq, N = P`length IN 
+                   (FORALL (ii : below(N-1)):
+                           xx(ii) <= x AND x <= xx(ii+1) IMPLIES
+                                Prop(x))
+                  IMPLIES Prop(x) ) )
+
+
+   IMPORTING reals@sigma_below, reals@sigma_upto
+
+   eq_partition(a:T,b:{x:T|a<x},N: above(1)): partition(a,b) =
+                  (# length := N,
+                     seq := (LAMBDA (ii: nat): IF ii<N THEN a + ii*(b-a)/(N-1) ELSE default ENDIF) #)
+
+
+
+
+   N: VAR above(1)
+
+   len_eq_part  : LEMMA a < b IMPLIES length(eq_partition(a,b,N)) = N 
+   eq_part_lem_a: LEMMA a < b IMPLIES seq(eq_partition(a,b,N))(0) = a 
+   eq_part_lem_b: LEMMA a < b IMPLIES seq(eq_partition(a,b,N))(N-1) = b
+
+   width_eq_part: LEMMA a < b IMPLIES 
+                            width(a,b,eq_partition(a,b,N)) = (b-a)/(N-1)
+
+
+   delta: VAR posreal
+   N_from_delta: LEMMA a < b IMPLIES
+                          LET N = 2 + floor((b - a) / delta),
+                              EP = eq_partition(a, b, N) IN
+                          width(a, b, EP) < delta
+
+   partition_exists: LEMMA a < b IMPLIES
+                        (EXISTS (P: partition(a,b)): width(a,b,P) < delta)
+
+   % Joining Partitions
+
+
+   partjoin(a:T,b: {bb:T | a<bb}, c: {cc:T | b<cc})(Pab: partition(a,b),Pbc: partition(b,c)): partition(a,c) =
+     concat(Pab,delete(0,Pbc))
+
+   partjoin_def: LEMMA a<b AND b<c IMPLIES FORALL (Pab: partition(a,b),Pbc: partition(b,c)):
+   		 LET Pac = partjoin(a,b,c)(Pab,Pbc) IN
+		 (n < Pab`length IMPLIES Pac`seq(n) = Pab`seq(n)) AND
+		 (Pab`length-1 <= n AND n<Pac`length IMPLIES Pac`seq(n) = Pbc`seq(n-Pab`length+1))
+
+   partjoin_width: LEMMA a<b AND b<c IMPLIES FORALL (Pab: partition(a,b),Pbc: partition(b,c)):
+   		   width(a,c,partjoin(a,b,c)(Pab,Pbc)) = max(width(a,b,Pab),width(b,c,Pbc))
+
+   partition_union(a,(b|a<b))(P,Q: partition(a,b)): {PQ: partition(a,b) |
+   			(FORALL (x:T): member(x,PQ) IFF (member(x,P) OR member(x,Q))) AND
+			strictly_increasing?(PQ)}
+
+   partition_union_sym: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b)):
+   			partition_union(a,b)(P,Q) = partition_union(a,b)(Q,P)
+
+   partition_union_unique: LEMMA a<b IMPLIES FORALL (P,Q,PQ:partition(a,b)):
+   			   ((FORALL (x:T): member(x,PQ) IFF (member(x,P) OR member(x,Q))) AND
+			strictly_increasing?(PQ))
+			   IFF
+			   PQ = partition_union(a,b)(P,Q)
+
+   partition_union_width: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b)):
+   			  width(a,b,partition_union(a,b)(P,Q)) <= min(width(a,b,P),width(a,b,Q))
+
+   partition_strictly_sort_union: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b)):
+   				  partition_union(a,b)(P,Q) = partition_union(a,b)(strictly_sort(P),Q)
+
+   partition_union_is_strictly_sort: LEMMA a<b IMPLIES FORALL (P:partition(a,b)):
+   				     partition_union(a,b)(P,P) = strictly_sort(P)
+
+   partition_union_map(a,(b|a<b),P,Q:partition(a,b)): {pm:[below(P`length)->below(partition_union(a,b)(P,Q)`length)] | 
+   						      FORALL (ii:below(P`length)): P`seq(ii) = partition_union(a,b)(P,Q)`seq(pm(ii))}
+
+   partition_union_map_unique: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b),pm:[below(P`length)->below(partition_union(a,b)(P,Q)`length)]):
+			       (FORALL (ii:below(P`length)): P`seq(ii) = partition_union(a,b)(P,Q)`seq(pm(ii)))
+			       IMPLIES
+			       pm = partition_union_map(a,b,P,Q)
+
+   partition_union_map_increasing: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b),ii,jj:below(P`length)):
+   				   strictly_increasing?(P) AND ii<jj IMPLIES partition_union_map(a,b,P,Q)(ii) < partition_union_map(a,b,P,Q)(jj)
+
+   partition_union_strictly_sort_map_inv: LEMMA a<b IMPLIES FORALL (P:partition(a,b),ii:below(strictly_sort(P)`length)):
+   				      partition_union_map(a,b,P,P)(strictly_sort_map(P)(ii)) = ii
+
+   partition_union_map_inv(a,(b|a<b),P,Q:partition(a,b)): {pm:[below(partition_union(a,b)(P,Q)`length)->below(P`length)] | 
+   			FORALL (jj:below(partition_union(a,b)(P,Q)`length)): 
+			P`seq(pm(jj)) <= partition_union(a,b)(P,Q)`seq(jj) AND (pm(jj) < P`length-1 IMPLIES partition_union(a,b)(P,Q)`seq(jj) < P`seq(pm(jj)+1))}
+
+   partition_union_map_inv_def: LEMMA a<b IMPLIES FORALL (P,Q:partition(a,b)): 
+   			    LET PQ = partition_union(a,b)(P,Q),
+			    	pum = partition_union_map(a,b,P,Q),	
+				puminv = partition_union_map_inv(a,b,P,Q)
+			    IN
+   				FORALL (ii:below(PQ`length),jj:below(P`length)):
+				(pum(jj) <= ii AND (jj<P`length-1 IMPLIES ii < pum(jj+1)))
+				IMPLIES
+				puminv(ii) = jj
+
+
+   partition_sort_inv_map: LEMMA a<b IMPLIES FORALL (P:partition(a,b)):
+   			   LET SSP = partition_union(a,b)(P,P),
+			       sig = partition_union_map_inv(a,b,P,P)
+			   IN
+			       FORALL (ii:below(SSP`length)): SSP`seq(ii) = P`seq(sig(ii))
+
+
+
+
+
+
+
+END rs_partition
+

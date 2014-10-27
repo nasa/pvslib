@@ -1,0 +1,136 @@
+%
+%
+% Purpose: basic results for "reducing" the vector of quantities.  
+%
+%
+
+reduce_properties[
+  N: posnat, 
+  T: TYPE+, 
+  <=: (total_order?[T])
+]: THEORY
+
+BEGIN
+
+  IMPORTING
+    ordered_finite_sequences[T, <=],
+    finite_sets@finite_sets_card_eq,
+    node[N, T]
+
+  default: VAR T
+  nodes, eligible: VAR finite_set[below(N)]
+  enabled:  VAR non_empty_finite_set[below(N)]
+  v, v1, v2: VAR vec
+  n: VAR below(N)
+  i: VAR nat
+
+  tau: VAR tau_type
+
+
+  % set declarations for use in pigeonhole arguments for ordered finite sequences
+  lowset(v, enabled, (i: below(card(enabled)))): finite_set[below(N)] =
+    {j:below(N) | enabled(j) AND v(j) <= sort(vec2seq(v, enabled))`seq(i) }
+
+  card_lower_leq_lowset: LEMMA
+    FORALL (i: below(card(enabled))):
+    card[below(card(enabled))](lower(vec2seq(v, enabled), card(enabled), i)) <=
+      card[below(N)](lowset(v, enabled, i))
+
+  card_lowset: LEMMA
+    FORALL (i: below(card(enabled))):
+      i+1 <= card(lowset(v, enabled, i)) 
+
+  highset(v, enabled, (i: below(card(enabled)))): finite_set[below(N)] =
+    {j:below(N) | enabled(j) AND sort(vec2seq(v, enabled))`seq(i) <= v(j)}
+
+  card_upper_leq_highset: LEMMA
+    FORALL (i: below(card(enabled))):
+    card[below(card(enabled))](upper(vec2seq(v, enabled), card(enabled), i)) <=
+      card[below(N)](highset(v, enabled, i))
+  
+  card_highset: LEMMA
+    FORALL (i: below(card(enabled))):
+      card(enabled) - i <= card(highset(v, enabled, i)) 
+
+  % The function "reduce" takes a vector of values, filters out the
+  % unenabled elements, sorts them, then removes the "tau" highest and 
+  % "tau" lowest values.
+  reduce(tau)(v, enabled): ne_seqs = 
+    LET s = vec2seq(v, enabled) IN
+    LET t = tau(s`length) IN 
+            sort(s) ^ (t, s`length - (t + 1))
+
+  min_reduce: LEMMA min(reduce(tau)(v, enabled)) = sort(vec2seq(v, enabled))`seq(tau(card(enabled)))
+
+  max_reduce: LEMMA max(reduce(tau)(v, enabled)) = 
+                      sort(vec2seq(v, enabled))`seq(card(enabled) - 1 - tau(card(enabled)))
+
+  reduce_length: LEMMA reduce(tau)(v, enabled)`length = M(enabled, tau)
+
+  reduce_rewrite: LEMMA
+      i < M(enabled, tau)
+    IMPLIES
+      reduce(tau)(v, enabled)`seq(i) = sort(vec2seq(v, enabled))`seq(tau(card(enabled)) + i)
+
+  reduce_overlap: LEMMA
+       i < M(enabled, tau) 
+    IMPLIES
+      EXISTS n:
+        enabled(n) AND
+        v1(n) <= reduce(tau)(v1, enabled)`seq(i) AND
+        reduce(tau)(v2, enabled)`seq(i) <= v2(n)
+
+  reduce_agreement: LEMMA
+      enabled_symmetric?(enabled, v1, v2)
+    IMPLIES
+      reduce(tau)(v1, enabled) = reduce(tau)(v2, enabled)
+
+  % Validity results for the tau-reduced multiset
+  min_validity: LEMMA
+      quorum?(enabled, tau)(nodes)
+    IMPLIES
+      EXISTS n: nodes(n) AND enabled(n) AND v(n) <= min(reduce(tau)(v, enabled))
+
+  max_validity: LEMMA
+      quorum?(enabled, tau)(nodes)
+    IMPLIES
+      EXISTS n: nodes(n) AND enabled(n) AND max(reduce(tau)(v, enabled)) <= v(n)
+
+  cf: VAR consensus_function
+
+  % reduce_choice is a function to choose one value
+  % from the sequence of values that came from reduce.
+  reduce_choice(cf, eligible, v, tau, default): T =
+    IF empty?[below(N)](eligible) 
+      THEN default
+      ELSE cf(reduce(tau)(v, eligible))
+    ENDIF
+
+  % reduce_choice2(tau, cf, default) HAS_TYPE node level choice function
+  reduce_choice2(tau, cf, default)(v, eligible): T =
+    IF empty?[below(N)](eligible) 
+      THEN default
+      ELSE cf(reduce(tau)(v, eligible))
+    ENDIF
+
+  choice_lower_validity: LEMMA
+      quorum?(eligible, tau)(nodes)
+    IMPLIES
+      EXISTS n: nodes(n) AND eligible(n) AND 
+        v(n) <= reduce_choice(cf, eligible, v, tau, default)
+
+  choice_upper_validity: LEMMA
+      quorum?(eligible, tau)(nodes)
+    IMPLIES
+      EXISTS n: nodes(n) AND eligible(n) AND 
+        reduce_choice(cf, eligible, v, tau, default) <= v(n)
+
+   
+  choice_agreement_generation: LEMMA
+      enabled_symmetric?(eligible, v1, v2)
+    IMPLIES
+      reduce_choice(cf, eligible, v1, tau, default) = 
+        reduce_choice(cf, eligible, v2, tau, default)
+
+
+END reduce_properties

@@ -1,0 +1,196 @@
+bernstein_minmax : THEORY
+BEGIN 
+
+  IMPORTING vardirselector,
+	    structures@for_iterate,
+            multi_bernstein,
+	    minmax
+ 
+  bspoly,
+  bspolz      : VAR MultiBernstein
+  bsdegmono   : VAR DegreeMono
+  nvars,terms : VAR posnat
+  cf          : VAR Coeff
+  f           : VAR CoeffMono
+  intendpts   : VAR IntervalEndpoints
+  depth,v     : VAR nat
+  e           : VAR posreal
+  a,b         : VAR real
+  rf	      : VAR [real->real]
+  l           : VAR list[real]
+  ep          : VAR bool
+  varselect   : VAR VarSelector
+  omm,
+  omm1,omm2   : VAR Outminmax
+
+  unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm): bool =
+    cons?(omm`lb_var) IMPLIES
+      (length(omm`lb_var) = nvars AND
+       LET lb_varlam  = list2array(0)(omm`lb_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(0,1,intendpts(iup),(true,true))(lb_varlam(iup)))
+	   AND
+           multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(lb_varlam) = omm`lb_max)
+
+  unit_box_lb_id : LEMMA
+    (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+    unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts) =
+    unit_box_lb?(bspolz,bsdegmono,nvars,terms,cf,intendpts)
+
+  unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm): bool =
+    cons?(omm`ub_var) IMPLIES
+      (length(omm`ub_var) = nvars AND
+      LET ub_varlam  = list2array(0)(omm`ub_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(0,1,intendpts(iup),(true,true))(ub_varlam(iup))) AND
+           multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(ub_varlam) = omm`ub_min)
+
+  unit_box_ub_id : LEMMA
+    (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+    unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts) =
+    unit_box_ub?(bspolz,bsdegmono,nvars,terms,cf,intendpts)
+
+  sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) : bool =
+    forall_X_between(omm`lb_min,omm`ub_max)(bspoly,bsdegmono,cf,nvars,terms) AND
+    unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+    unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+    length_eq?(nvars)(omm)
+
+  sound_id : LEMMA
+    (FORALL(t:below(terms),v:below(nvars),i:upto(bsdegmono(v))):
+       bspoly(t)(v)(i) = bspolz(t)(v)(i)) IMPLIES
+    sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) =
+    sound?(bspolz,bsdegmono,nvars,terms,cf,intendpts)(omm)
+
+  sound_lb_le_ub: LEMMA
+    sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm)
+    IMPLIES
+    lb_le_ub?(omm)
+    
+  combine_sound: LEMMA
+    (EXISTS (VPr:[Vars->bool]): FORALL (X:(unitbox?(nvars))): (VPr(X) 
+    IMPLIES eval_X_between(omm1`lb_min,omm1`ub_max)(bspoly,bsdegmono,cf,nvars,terms)(X))
+    AND ((NOT VPr(X)) 
+    IMPLIES eval_X_between(omm2`lb_min,omm2`ub_max)(bspoly,bsdegmono,cf,nvars,terms)(X)))
+    AND
+    unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm1) AND
+    unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm1) AND
+    unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm2) AND
+    unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm2) AND
+    length_eq?(nvars)(omm1) AND length_eq?(nvars)(omm2)
+    IMPLIES
+    sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(combine(omm1,omm2))
+ 
+  Bern_coeffs_minmax_rec(bspoly,bsdegmono,cf,nvars,terms,f,
+                         depth,intendpts,v,
+			 (ep:(edge_point?(bsdegmono,nvars,f,intendpts,v)))): 
+    RECURSIVE {omm:Outminmax |
+      (FORALL (nf:CoeffMono): (FORALL (i:below(nvars)): nf(i)<=bsdegmono(i) AND 
+                                      (v <= i IMPLIES f(i)=nf(i)))
+      	      		      IMPLIES
+			      omm`lb_min <= multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(nf)  AND
+                              multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(nf) <= omm`ub_max) AND
+      unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+      unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+      length_eq?(nvars)(omm) AND
+      omm`max_depth = depth} =
+    IF v = 0 THEN 
+      LET coefffun      = multibscoeff(bspoly,bsdegmono,cf,nvars,terms),
+          thiscoeff     = coefffun(f),
+  	  thisvar       = IF ep THEN corner_to_point(f,nvars) ELSE null ENDIF,
+          thisachval    = IF ep THEN thiscoeff ELSE 0 ENDIF IN
+        single_outminmax(thiscoeff,thisachval,thisvar,depth) 
+    ELSE 
+      LET iepts = intendpts(v-1) IN
+        iterate_left(0,bsdegmono(v-1),
+         LAMBDA(d:upto(bsdegmono(v-1))):
+           LET nf    = f WITH [(v-1) := d],
+               nep   = ep AND (d=0 AND iepts`1 OR 
+                               bsdegmono(v-1)/=0 AND 
+                               d=bsdegmono(v-1) AND iepts`2) IN
+           Bern_coeffs_minmax_rec(bspoly,bsdegmono,cf,nvars,terms,nf,depth,intendpts,v-1,nep),
+         combine)
+    ENDIF 
+    MEASURE v
+
+  Bern_coeffs_minmax(bspoly,bsdegmono,cf,nvars,terms,depth,intendpts) : 
+    (sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) = 
+    Bern_coeffs_minmax_rec(bspoly,bsdegmono,cf,nvars,terms,zeroes,depth,intendpts,nvars,true)
+
+  Bern_coeffs_minmax_length: LEMMA 
+    LET omm = Bern_coeffs_minmax(bspoly,bsdegmono,cf,nvars,terms,depth,intendpts) IN
+    length_eq?(nvars)(omm)
+
+  Bern_coeffs_minmax_maxdepth: LEMMA 
+    LET omm = Bern_coeffs_minmax(bspoly,bsdegmono,cf,nvars,terms,depth,intendpts) IN
+    omm`max_depth = depth
+
+  Bern_coeffs_minmax_var: LEMMA 
+   LET omm = Bern_coeffs_minmax(bspoly,bsdegmono,cf,nvars,terms,depth,intendpts),
+       bseval = multibs_eval(bspoly, bsdegmono, cf, nvars, terms) 
+   IN
+     (cons?(omm`lb_var) OR cons?(omm`ub_var)) IMPLIES
+       bseval(list2array(0)(omm`lb_var)) = omm`lb_max AND
+       bseval(list2array(0)(omm`ub_var)) = omm`ub_min
+
+  localexit  : VAR [Outminmax -> bool]
+
+  globalexit : VAR [Outminmax->bool]
+
+  %%%% BEGIN 3M: used to close TCC obligations
+  list2array_sound_pi : LEMMA
+    FORALL(l:list[real],t:real) : 
+      list2array(t)(l) = LAMBDA(i: nat):
+        IF i < length(l) THEN nth(l,i)
+        ELSE t
+      ENDIF 
+  %%%% END 3M
+
+  Bernstein_minmax_rec(bspoly,bsdegmono,nvars,terms,cf,depth,(level:upto(depth)),
+                       localexit,globalexit,intendpts,varselect,omm) : 
+    RECURSIVE (sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) =
+    LET bp     = translist(polylist(bspoly,bsdegmono,nvars,terms)),
+        minmax = Bern_coeffs_minmax(bp,bsdegmono,cf,nvars,terms,level,intendpts)
+    IN
+      IF level = depth OR localexit(minmax) OR between?(omm,minmax) OR globalexit(minmax) THEN
+        minmax
+      ELSE
+        LET
+	  varsel       = varselect(bp,bsdegmono,nvars,terms,cf,level),
+          v            = mod(varsel`2,nvars),
+	  spleft       = Bern_split_left_mpoly(bp,bsdegmono)(mod(varsel`2,nvars)),
+	  spright      = Bern_split_right_mpoly(bp,bsdegmono)(mod(varsel`2,nvars)),
+	  ipleft       = intendpts WITH [(v)`2 := true],
+	  ipright      = intendpts WITH [(v)`1 := true],
+	  (LR1,LR2)    = IF varsel`1 THEN (spleft,spright) ELSE (spright,spleft) ENDIF,
+	  LR1intendpts = IF varsel`1 THEN ipleft ELSE ipright ENDIF,
+	  LR2intendpts = IF varsel`1 THEN ipright ELSE ipleft ENDIF,
+	  combine_this = IF varsel`1 THEN combine_l ELSE combine_r ENDIF,
+	  newmm1       = combine(omm,minmax),
+          level        = level + 1,
+          bslr1        = Bernstein_minmax_rec(LR1,bsdegmono,nvars,terms,cf,depth,level,
+                                              localexit,globalexit,LR1intendpts,varselect,newmm1)
+	IN
+          IF globalexit(bslr1) THEN
+            combine_this(v,bslr1,minmax)
+          ELSE 
+            LET
+	      newmm2   = combine(newmm1,bslr1),
+              bslr2    = Bernstein_minmax_rec(LR2,bsdegmono,nvars,terms,cf,depth,level,
+                                              localexit,globalexit,LR2intendpts,varselect,newmm2),
+	      bslrleft = IF varsel`1 THEN bslr1 ELSE bslr2 ENDIF,
+	      bslrright = IF varsel`1 THEN bslr2 ELSE bslr1 ENDIF
+            IN
+              combine_lr(v,bslrleft,bslrright)
+	  ENDIF
+      ENDIF
+      MEASURE depth-level
+
+  Bernstein_minmax(bspoly,bsdegmono,nvars,terms,cf,depth,localexit,globalexit,
+                   intendpts,varselect) : (sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) =
+    Bernstein_minmax_rec(bspoly,bsdegmono,nvars,terms,cf,depth,0,
+                         localexit,globalexit,intendpts,varselect,empty_minmax)
+
+END bernstein_minmax

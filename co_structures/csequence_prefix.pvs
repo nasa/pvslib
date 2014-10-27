@@ -1,0 +1,147 @@
+%-----------------------------------------------------------------------------
+% Prefixes of sequences of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_prefix[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_concatenate[T], csequence_extract[T], orders[csequence]
+
+  p: VAR pred[T]
+  n, m: VAR nat
+  cseq, cseq1, cseq2: VAR csequence
+  fseq, fseq1, fseq2: VAR finite_csequence
+  eseq: VAR empty_csequence
+  nseq, nseq1, nseq2: VAR nonempty_csequence
+  iseq: VAR infinite_csequence
+
+  prefix?(cseq1, cseq2): COINDUCTIVE bool =
+      empty?(cseq1) OR
+       (nonempty?(cseq2) AND
+         first(cseq1) = first(cseq2) AND prefix?(rest(cseq1), rest(cseq2)))
+
+  prefix?(cseq2)(cseq1): MACRO bool = prefix?(cseq1, cseq2)
+
+  prefix?_finite: THEOREM
+    FORALL cseq, fseq: prefix?(cseq, fseq) IMPLIES is_finite(cseq)
+
+  prefix?_infinite: THEOREM
+    FORALL iseq, cseq: prefix?(iseq, cseq) IFF iseq = cseq
+
+  prefix?_empty: THEOREM
+    FORALL cseq, eseq: prefix?(cseq, eseq) IFF empty?(cseq)
+
+  prefix?_empty_is_prefix: THEOREM FORALL eseq, cseq: prefix?(eseq, cseq)
+
+  prefix?_first: THEOREM
+    FORALL nseq1, nseq2:
+      prefix?(nseq1, nseq2) IMPLIES first(nseq1) = first(nseq2)
+
+  prefix?_rest: THEOREM
+    FORALL nseq1, nseq2:
+      prefix?(nseq1, nseq2) IMPLIES prefix?(rest(nseq1), rest(nseq2))
+
+  prefix?_length: THEOREM
+    FORALL fseq1, fseq2:
+      prefix?(fseq1, fseq2) IMPLIES length(fseq1) <= length(fseq2)
+
+  prefix?_length_eq: THEOREM
+    FORALL fseq1, fseq2:
+      prefix?(fseq1, fseq2) AND length(fseq1) = length(fseq2) IMPLIES
+       fseq1 = fseq2
+
+  prefix?_index: THEOREM
+    FORALL cseq1, cseq2, n:
+      prefix?(cseq1, cseq2) AND index?(cseq1)(n) IMPLIES index?(cseq2)(n)
+
+  prefix?_nth: THEOREM
+    FORALL cseq1, cseq2, (n: indexes(cseq1)):
+      prefix?(cseq1, cseq2) IMPLIES nth(cseq1, n) = nth(cseq2, n)
+
+  prefix?_concatenate: THEOREM
+    FORALL cseq1, cseq2: prefix?(cseq1, cseq1 o cseq2)
+
+  prefix?_def: THEOREM
+    FORALL cseq1, cseq2:
+      prefix?(cseq1, cseq2) IFF (EXISTS cseq: cseq1 o cseq = cseq2)
+
+  % Unlike suffix?, prefix? is a partial order
+  prefix?_is_partial_order: JUDGEMENT
+    prefix? HAS_TYPE (partial_order?[csequence])
+
+  % Prefixes of a given sequence are totally ordered
+  prefix?_total_order: THEOREM
+    FORALL cseq:
+      total_order?(restrict
+                       [[csequence, csequence],
+                        [(prefix?(cseq)), (prefix?(cseq))], bool]
+                       (prefix?))
+
+
+  % The prefix of cseq of length at most n
+  prefix(cseq, n): RECURSIVE {fseq | prefix?(fseq, cseq)} =
+    IF n = 0 OR empty?(cseq) THEN empty_cseq
+    ELSE add(first(cseq), prefix(rest(cseq), n - 1))
+    ENDIF
+     MEASURE n
+
+  prefix_0: THEOREM FORALL cseq: empty?(prefix(cseq, 0))
+
+  prefix_extract: THEOREM
+    FORALL cseq, n: prefix(cseq, n + 1) = cseq ^ (0, n)
+
+  prefix_rest: THEOREM
+    FORALL nseq, n: prefix(rest(nseq), n) = rest(prefix(nseq, n + 1))
+
+  prefix_prefix: THEOREM
+    FORALL cseq, n, m: prefix(prefix(cseq, n), m) = prefix(cseq, min(n, m))
+
+  prefix_length: THEOREM
+    FORALL cseq, n:
+      length(prefix(cseq, n)) =
+       IF is_finite(cseq) THEN min(n, length(cseq)) ELSE n ENDIF
+
+  prefix_index: THEOREM
+    FORALL cseq, n, m:
+      index?(prefix(cseq, n))(m) IFF index?(cseq)(m) AND m < n
+
+  prefix_full: THEOREM
+    FORALL cseq, n: index?(cseq)(n) OR prefix(cseq, n) = cseq
+
+  prefix_concatenate: THEOREM
+    FORALL cseq1, cseq2, n:
+      prefix(cseq1 o cseq2, n) =
+       IF index?(cseq1)(n) THEN prefix(cseq1, n)
+       ELSE cseq1 o prefix(cseq2, n - length(cseq1))
+       ENDIF
+
+  prefix?_prefix: THEOREM
+    FORALL cseq1, cseq2:
+      prefix?(cseq1, cseq2) IFF
+       cseq1 = cseq2 OR (EXISTS n: cseq1 = prefix(cseq2, n))
+
+  prefix_some: THEOREM
+    FORALL cseq, n, p:
+      some(p)(prefix(cseq, n)) IFF
+       (EXISTS (i: indexes(cseq)): i < n AND p(nth(cseq, i)))
+
+  prefix_every: THEOREM
+    FORALL cseq, n, p:
+      every(p)(prefix(cseq, n)) IFF
+       (FORALL (i: indexes(cseq)): i < n IMPLIES p(nth(cseq, i)))
+
+  % Prefixes of a given sequence are ordered by number
+  prefix?_order: THEOREM
+    FORALL cseq, n, m:
+      n <= m IMPLIES prefix?(prefix(cseq, n), prefix(cseq, m))
+
+ END csequence_prefix

@@ -1,0 +1,111 @@
+real_to_fp
+  [b,p:above(1),
+   alpha,E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min], 
+            over_under[b,p,alpha,E_max,E_min],
+            fp_round_aux[b,p],
+            round
+
+  r: var real
+  mode: var rounding_mode
+  op: var fp_ops
+  fin, fin1, fin2: var (finite?)
+
+  px: var posreal
+  E: var integer
+
+  JUDGEMENT truncate has_type [integer,nonneg_real -> digits]
+
+  truncate_zero: lemma truncate(E,0)=d_zero
+
+  digits_of_finite: lemma truncate(Exp(fin),abs(value(fin))) = d(fin)
+
+  real_to_fp(r): fp_num =
+    IF abs(r) >= b^(E_max+1) THEN 
+       infinite(sign_of(r))
+    ELSIF abs(r) < b^E_min THEN 
+       finite(sign_of(r), E_min, truncate(E_min, abs(r)))
+    ELSE 
+       finite(sign_of(r), Exp_of(abs(r)), truncate(Exp_of(abs(r)), abs(r)))
+    ENDIF    
+
+  real_to_fp_x(r:real,e:exception): [fp_num,exception] = (real_to_fp(r),e)
+
+  real_to_fp_zero: lemma real_to_fp(0) = pos_zero
+
+  sign_of_value: lemma not zero?(fin) =>(sign_of(value(fin))= sign(fin))
+
+  Exp_of_value_normal: LEMMA
+         normal?(fin)
+          => Exp_of(abs(value(fin))) = Exp(normalize(fin))
+
+  real_to_fp_normal: LEMMA 
+	        normal?(fin) 
+          => real_to_fp(value(fin)) = normalize(fin)
+
+  real_to_fp_subnormal: LEMMA 
+        subnormal?(fin) 
+          => real_to_fp(value(fin)) = normalize(fin)
+
+  real_to_fp_inverts_value: LEMMA 
+       not zero?(fin) => real_to_fp(value(fin)) = normalize(fin)
+
+  round_exceptions_x(x:(over_under?),mode:rounding_mode): [real,exception] =
+    IF abs(x)>max_pos THEN 
+            overflow(x,mode)
+       ELSE underflow(x,mode)
+       ENDIF
+
+  round_exceptions(r:(over_under?),mode): real 
+      = proj_1(round_exceptions_x(r,mode))
+
+  fp_round(r, mode): real =
+    IF r = 0 THEN 0
+    ELSIF over_under?(r) then
+      round_exceptions(r,mode)
+    ELSE round_scaled(r,mode)
+    ENDIF
+
+  is_exact?(r:nzreal,mode):exception =
+    IF round_scaled(r,mode) = r then no_exceptions ELSE inexact ENDIF
+  
+  fp_round_x(r, mode): [real,exception] =
+    IF r = 0 THEN (0,no_exceptions)
+    ELSIF over_under?(r) then
+      round_exceptions_x(r,mode)
+    ELSE (round_scaled(r,mode),is_exact?(r,mode))
+    ENDIF
+
+  round_value: lemma not over_under?(value(fin)) =>
+                 fp_round(value(fin),mode) = value(fin)
+
+  round_value2: lemma not trap_enabled?(underflow(FALSE)) =>
+                 fp_round(value(fin),mode) = value(fin)
+
+  round_0: lemma fp_round(0,mode)=0
+
+  round_value3: lemma not trap_enabled?(underflow(FALSE)) =>
+                 not zero?(fin) =>
+                 real_to_fp(fp_round(value(fin),mode)) = normalize(fin)
+
+  round_error: lemma r/=0 & not over_under?(r)
+            => abs(r-fp_round(r,mode))<b^(Exp_of(abs(r))-(p-1))
+
+  round_near: LEMMA
+        r /= 0 & not over_under?(r)
+          => abs(r - fp_round(r, to_nearest))
+               <= b ^ (Exp_of(abs(r)) - (p - 1)) / 2
+
+  round_pos: lemma not over_under?(r) => fp_round(r,to_pos)>=r
+
+  round_neg: lemma not over_under?(r) => fp_round(r,to_neg)<=r
+
+  round_zero: lemma not over_under?(r) => abs(fp_round(r,to_zero))<=abs(r)
+  
+  END real_to_fp
+
+

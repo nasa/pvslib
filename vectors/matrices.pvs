@@ -1,0 +1,141 @@
+matrices : THEORY
+BEGIN
+  
+  IMPORTING vect2D,vect3D
+
+  Mat3 : TYPE = ARRAY[[below(3),below(3)]->real]
+
+  Mat2 : TYPE = {m:Mat3|m(2,0)=0 AND m(2,1)=0 AND m(2,2)=1}
+
+  m,n,l        : VAR Mat3
+  v,w          : VAR Vect3
+  x00,x01,x02,
+  x10,x11,x12,
+  x20,x21,x22,
+  k            : VAR real
+
+  mat3(x00,x01,x02,x10,x11,x12,x20,x21,x22): Mat3 =
+      					       LAMBDA(x,y:below(3)):
+      					  	 IF    (x=0 AND y=0) THEN x00
+      					  	 ELSIF (x=0 AND y=1) THEN x01
+      					  	 ELSIF (x=0 AND y=2) THEN x02
+      					  	 ELSIF (x=1 AND y=0) THEN x10
+      					  	 ELSIF (x=1 AND y=1) THEN x11
+      					  	 ELSIF (x=1 AND y=2) THEN x12
+      					  	 ELSIF (x=2 AND y=0) THEN x20
+      					  	 ELSIF (x=2 AND y=1) THEN x21
+      					  	 ELSIF (x=2 AND y=2) THEN x22
+      					  	 ELSE 0
+      					  	 ENDIF  
+    
+  putAt(m:Mat3, i, j:below(3),r:real): Mat3 =  m WITH [(i,j) := r]
+
+  id: Mat3 = mat3(1,0,0,
+                  0,1,0,
+                  0,0,1)
+
+  row(m:Mat3, i:below(3)): Vect3 = vect3(m(i,0),m(i,1),m(i,2))
+
+  col(m:Mat3, i:below(3)): Vect3 = vect3(m(0,i),m(1,i),m(2,i))
+
+% ------- Determinant
+
+  det(m): real = m(0,0)*m(1,1)*m(2,2) +
+    		 m(0,1)*m(1,2)*m(2,0) +
+    		 m(0,2)*m(1,0)*m(2,1) -
+    		 m(0,2)*m(1,1)*m(2,0) -
+    		 m(0,0)*m(1,2)*m(2,1) -
+    		 m(0,1)*m(1,0)*m(2,2)
+
+  singular?(m): bool = (det(m) = 0)
+
+  NonSingular  : TYPE = {m: Mat3 | NOT singular?(m)} 
+  ns           : VAR NonSingular
+
+  det_id : LEMMA  det(id) = 1
+    
+% ------- Transposed
+
+  T(m): Mat3 =  mat3(m(0,0),m(1,0),m(2,0),
+                     m(0,1),m(1,1),m(2,1),
+                     m(0,2),m(1,2),m(2,2)) 
+
+  det_T: LEMMA det(m) = det(T(m));
+ 
+% ------ Products
+
+  *(k,m): Mat3 =    mat3(k*m(0,0),k*m(0,1),k*m(0,2),
+                         k*m(1,0),k*m(1,1),k*m(1,2),
+                         k*m(2,0),k*m(2,1),k*m(2,2));
+
+  *(v,m): Vect3 =   vect3(v*col(m,0),v*col(m,1),v*col(m,2));
+
+  *(m,v): Vect3 =   vect3(row(m,0)*v,row(m,1)*v,row(m,2)*v);
+   
+  *(m,n): Mat3 =    mat3(row(m,0)*col(n,0),row(m,0)*col(n,1),row(m,0)*col(n,2),
+                         row(m,1)*col(n,0),row(m,1)*col(n,1),row(m,1)*col(n,2),
+                         row(m,2)*col(n,0),row(m,2)*col(n,1),row(m,2)*col(n,2))
+  
+  id_left1 : LEMMA id*m = m
+
+  id_right1: LEMMA m*id = m
+
+  id_left2 : LEMMA id*v = v
+
+  id_right2: LEMMA v*id = v
+
+  associativity_1    : LEMMA (m*n)*l = m*(n*l)
+
+  associativity_2    : LEMMA (m*n)*v = m*(n*v)
+
+  associativity_3    : LEMMA (v*m)*n = v*(m*n)
+
+  distribution_minus : LEMMA m*(v-w) = (m*v)-(m*w)
+
+  distribution_add   : LEMMA  m*(v+w) = (m*v)+(m*w)
+
+% ------ Mat2
+
+  mat2(x00,x01,x10,x11): Mat2 =  mat3(x00,x01,0,x10,x11,0,0,0,1)
+
+  det_mat2 : LEMMA  det(mat2(x00,x01,x10,x11)) = x00*x11 - x01*x10
+
+  cofactor_ij(m:Mat3, i,j:below(3)): Mat3 = LAMBDA(a,b:below(3)):
+      					     IF    (a=i AND b=j) THEN 1
+      					     ELSIF (a=i OR  b=j) THEN 0
+      					     ELSE  m(a,b)
+      					     ENDIF
+                             
+  cofactor(m:Mat3): Mat3 =   LAMBDA(i,j:below(3)): det(cofactor_ij(m,i,j))
+
+% ------ Inverse
+
+  inv(ns): Mat3 = (1/det(ns))*T(cofactor(ns))
+
+  inv_id    : LEMMA inv(id) = id
+
+  inv_left  : LEMMA inv(ns)*ns = id
+
+  inv_right : LEMMA ns*inv(ns) = id
+
+% ------ pp: Mat3 -> (Vect3,Vect3,Vect3) 
+
+  pp(m):[Vect3,Vect3,Vect3]= (row(m,0),row(m,1),row(m,2))
+
+% ------ System of equations
+% ------ Ax=B
+
+  sol_eqs(A:NonSingular,B:Vect3):Vect3 = inv(A)*B
+
+  sol_eqs_correctness : LEMMA ns*sol_eqs(ns,v) = v
+
+% ------ 2 equations 2 variables
+
+  system2(v,u:Vect2): MACRO Mat2 =  mat2(x(v),y(v),x(u),y(u))
+
+% ------ 3 equations 3 variables
+
+  system3(v,u,w:Vect3): MACRO Mat3 =
+                         mat3(x(v),y(v),z(v),x(u),y(u),z(u),x(w),y(w),z(w))
+  
+END matrices

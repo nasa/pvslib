@@ -1,0 +1,170 @@
+virtual_clocks
+[
+    P: posnat,      % Nominal duration of a synchronization interval
+    T0: int,        % Clocktime at start of protocol
+    rho: nnreal     % Bound on drift for a good oscillator
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    interval_clocks[P, T0, rho],
+    inverse_clocks[rho],
+    event_sequences
+
+  ic, ic1, ic2: VAR interval_clock
+  es, es1, es2: VAR event_sequence
+  k, A: VAR nat
+  t1: VAR real
+  p: VAR posreal
+  adj, pi: VAR nnreal
+  au, al: VAR nnreal
+
+  %
+
+  VC(es)(ic)(t1): int = C(ic(index_of(es)(t1)))(t1)
+
+  VC_j: LEMMA VC(es)(ic)(es(k)) = C(ic(k))(es(k))
+
+  % an event sequence, es, of adjustments to an interval clock, ic
+  % has to satisfy these conditions:
+
+  earliest_adjustment?(ic, A)(es): bool =
+    FORALL k: ic(k)(T(k) - A) <= es(k)
+
+  latest_adjustment?(ic, A)(es): bool =
+    FORALL k: es(k + 1) <= ic(k)(T(k + 1) + A)
+
+  earliest_cross_adjustment?(ic, A)(es): bool =
+    FORALL k: ic(k)(T(k + 1) - A) <= es(k + 1)
+
+  latest_cross_adjustment?(ic, A)(es): bool =
+    FORALL k: es(k) <= ic(k)(T(k) + A)
+
+  self_adjustment?(ic, A)(es): bool =
+    earliest_adjustment?(ic, A)(es) AND
+    latest_adjustment?(ic, A)(es)
+
+  cross_adjustment?(ic, A)(es): bool =
+    earliest_cross_adjustment?(ic, A)(es) AND
+    latest_cross_adjustment?(ic, A)(es)
+
+  % observability properties for virtual clock update windows
+
+  observable_peers: LEMMA
+      self_adjustment?(ic, A)(es) AND
+      es(0) <= t1
+    IMPLIES
+      obs?(P + A, T(index_of(es)(t1)),  ic(index_of(es)(t1)), t1)
+
+  observable_master: LEMMA
+      self_adjustment?(ic1, A)(es1) AND
+      cross_adjustment?(ic1, A)(es2) AND
+      max(es1(0),es2(0)) <= t1 AND
+      index_of(es2)(t1) = index_of(es1)(t1) + 1
+    IMPLIES
+      obs?(A, T(index_of(es1)(t1) + 1), ic1(index_of(es1)(t1)), t1)
+
+  observable_slave: LEMMA
+      self_adjustment?(ic2, A)(es2) AND
+      cross_adjustment?(ic2, A)(es1) AND
+      max(es1(0), es2(0)) <= t1 AND
+      index_of(es2)(t1) = index_of(es1)(t1) + 1
+    IMPLIES
+      obs?(A, T(index_of(es1)(t1) + 1), ic2(index_of(es1)(t1) + 1), t1)
+
+  % nonoverlap properties for virtual clocks
+
+  adjustment_nonoverlap: LEMMA   %%% NOT USED, but curious
+      latest_cross_adjustment?(ic, A)(es1) AND
+      earliest_cross_adjustment?(ic, A)(es2) AND
+      2 * A <= P
+    IMPLIES
+      nonoverlap?(es1, es2)
+
+  % precision results for virtual clocks
+
+  Pi(adj, A): int = ceiling(rate * (adj + drift * (P + A)))
+
+  VC_precision_0: LEMMA
+      peer_precision?(ic1, ic2, adj) AND
+      peer_precision?(ic2, ic1, adj) AND
+      self_adjustment?(ic1, A)(es1) AND
+      self_adjustment?(ic2, A)(es2) AND
+      max(es1(0), es2(0)) <= t1 AND
+      index_of(es2)(t1) = index_of(es1)(t1)
+    IMPLIES
+      abs(VC(es1)(ic1)(t1) - VC(es2)(ic2)(t1)) <= Pi(adj, A)
+
+  VC_precision_1: LEMMA
+      compatible?(ic1, ic2, adj) AND
+      self_adjustment?(ic1, A)(es1) AND
+      self_adjustment?(ic2, A)(es2) AND
+      cross_adjustment?(ic1, A)(es2) AND
+      cross_adjustment?(ic2, A)(es1) AND
+      max(es1(0), es2(0)) <= t1 AND
+      index_of(es2)(t1) = index_of(es1)(t1) + 1
+    IMPLIES
+      abs(VC(es1)(ic1)(t1) - VC(es2)(ic2)(t1)) <= Pi(adj, A)
+
+  VC_precision_sym: LEMMA
+      compatible?(ic1, ic2, adj) AND
+      compatible?(ic2, ic1, adj) AND
+      nonoverlap?(es1, es2) AND
+      self_adjustment?(ic1, A)(es1) AND
+      self_adjustment?(ic2, A)(es2) AND
+      cross_adjustment?(ic1, A)(es2) AND
+      cross_adjustment?(ic2, A)(es1) AND
+      max(es1(0), es2(0)) <= t1 AND
+      index_of(es2)(t1) >= index_of(es1)(t1)
+    IMPLIES
+      abs(VC(es1)(ic1)(t1) - VC(es2)(ic2)(t1)) <= Pi(adj, A)
+
+  VC_precision: THEOREM
+      compatible?(ic1, ic2, adj) AND
+      compatible?(ic2, ic1, adj) AND
+      nonoverlap?(es1, es2) AND
+      nonoverlap?(es2, es1) AND
+      self_adjustment?(ic1, A)(es1) AND
+      self_adjustment?(ic2, A)(es2) AND
+      cross_adjustment?(ic1, A)(es2) AND
+      cross_adjustment?(ic2, A)(es1) AND
+      max(es1(0), es2(0)) <= t1
+    IMPLIES
+      abs(VC(es1)(ic1)(t1) - VC(es2)(ic2)(t1)) <= Pi(adj, A)
+
+
+  % accuracy results for virtual clocks
+
+  index_upper_bound: LEMMA
+      lower_accuracy_bound?(ic, al, pi) AND
+      earliest_adjustment?(ic, A)(es) AND
+      p = P / rate - al AND
+      es(0) <= t1
+    IMPLIES
+      index_of(es)(t1) <= (t1 - t(ic)(0) + A * rate + pi) / p
+
+  VC_lower_accuracy: THEOREM
+      upper_accuracy_bound?(ic, au, pi) AND
+      lower_accuracy_bound?(ic, al, pi) AND
+      earliest_adjustment?(ic, A)(es) AND
+      p = P / rate - al AND
+      es(0) <= t1
+    IMPLIES
+      ((t1 - t(ic)(0)) * (1 - au / p) 
+       - pi * (1 + au / p)
+       - A * (drift + rate * au / p)) / rate 
+        < 1 + VC(es)(ic)(t1) - T(0)
+
+  VC_upper_accuracy: THEOREM
+      lower_accuracy_bound?(ic, al, pi) AND
+      earliest_adjustment?(ic, A)(es) AND
+      p = P / rate - al AND
+      es(0) <= t1
+    IMPLIES
+      VC(es)(ic)(t1) - T(0) <=
+        ((t1 - t(ic)(0)) * (1 + al / p) 
+         + pi * (1 + al / p)
+         + A * (drift + rate * al / p)) * rate
+
+  END virtual_clocks

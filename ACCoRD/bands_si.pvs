@@ -1,0 +1,377 @@
+bands_si[D,H:posreal,B:nnreal,T: {AB: posreal|AB>B},N:above[1],
+         gsmin:posreal,gsmax:{x:posreal | x > gsmin},
+         vsmin:real,vsmax:{x:real | x > vsmin}] : THEORY
+BEGIN
+
+  %% Work in progress
+  
+  IMPORTING cd3d_si[D,H,B,T,N],
+            bands_3D
+
+   so	    : VAR Vect3
+   vo	    : VAR Nzv2_vect3
+   to	    : VAR real
+   x,y	    : VAR real
+   fp	    : VAR FlightPlan_nz
+   trkb	    : VAR {fs : (trk_fseq?[gsmin,gsmax]) | increasing?(fs)}
+   gsb	    : VAR {fs : (gs_fseq?[gsmin,gsmax]) | increasing?(fs)}
+   vsb	    : VAR {fs : (vs_fseq?[vsmin,vsmax]) | increasing?(fs)}
+
+   rs	    : VAR {fs : fseq[real] | increasing?(fs)}
+
+   % bands require that relevant flightplans have nonzero horizontal velocities
+   FlightPlanRelevant_nz(to): TYPE+ = {flp: FlightPlanRelevant(to) | FORALL(i:below[N-1]): nz_vect2?(velocity(flp)(i))}
+
+ 
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  % return bands for a given segment i
+  % i <= N-2 because we need a next point to calculate the velocity
+  trk_bands_si_i(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : {fs : (trk_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    LET
+      fi_st = fp(i)`time,		% assume 0 <= fi_st <= to
+      fi_et = fp(i+1)`time,		% assume fist < fi_et
+      vi = velocity(fp)(i),		% intruder velocity for segment i
+      Bo = B+to,			% absolute range bottom
+      To = T+to				% absolute range bottom
+    IN
+    IF fi_et <= Bo OR fi_st >= To THEN
+      emptyseq
+    ELSE
+        LET
+          st = max(fi_st,Bo),		% start of range time
+          et = min(fi_et,To),		% end of range time
+          si = fp(i)`position,		% intruder position for segment i
+          si_o = si-(fi_st-to)*vi,      % projected intruder position back to to
+          s = so-si_o,			% relative position at start time
+          rel_st = st-to,		% relative start time
+          rel_et = et-to		% relative end time
+        IN
+        trk_bands_3D[D,H,rel_st,rel_et,gsmin,gsmax,vsmin,vsmax](s, vo, vi)
+    ENDIF
+
+  % stupid parameters
+  expand_trk_bands_si_i : LEMMA
+    FORALL (i:below[N-1]):
+    fp(i+1)`time > B+to AND fp(i)`time < T+to IMPLIES
+      trk_bands_si_i(so,vo,to,fp)(i) = 
+          LET
+            LB = max(fp(i)`time,B+to)-to,
+            UB = min(fp(1+i)`time,T+to)-to
+          IN
+          trk_bands_3D[D,H,LB,UB,gsmin,gsmax,vsmin,vsmax](so-(fp(i)`position-(fp(i)`time-to)*velocity(fp)(i)), vo, velocity(fp)(i))
+
+
+  % returns track bands for a flightplan
+  trk_bands_si(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : RECURSIVE {fs : (trk_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    IF i=0 THEN
+      trk_bands_si_i(so,vo,to,fp)(i)
+    ELSE
+      sort (trk_bands_si_i(so,vo,to,fp)(i) o trk_bands_si(so,vo,to,fp)(i-1))
+    ENDIF
+  MEASURE i
+
+
+  % return bands for a given segment i
+  % i <= N-2 because we need a next point to calculate the velocity
+  gs_bands_si_i(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : {fs : (gs_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    LET
+      fi_st = fp(i)`time,		% assume 0 <= fi_st <= to
+      fi_et = fp(i+1)`time,		% assume fist < fi_et
+      vi = velocity(fp)(i),		% intruder velocity for segment i
+      Bo = B+to,			% absolute range bottom
+      To = T+to				% absolute range bottom
+    IN
+    IF fi_et <= Bo OR fi_st >= To THEN
+      emptyseq
+    ELSE
+        LET
+          st = max(fi_st,Bo),		% start of range time
+          et = min(fi_et,To),		% end of range time
+          si = fp(i)`position,		% intruder position for segment i
+          si_o = si-(fi_st-to)*vi,      % projected intruder position back to to
+          s = so-si_o,			% relative position at start time
+          rel_st = st-to,		% relative start time
+          rel_et = et-to		% relative end time
+        IN
+        gs_bands_3D[D,H,rel_st,rel_et,gsmin,gsmax,vsmin,vsmax](s, vo, vi)
+    ENDIF
+
+  % returns gs bands for a flightplan
+  gs_bands_si(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : RECURSIVE {fs : (gs_fseq?[gsmin,gsmax]) | increasing?(fs)} =
+    IF i=0 THEN
+      gs_bands_si_i(so,vo,to,fp)(i)
+    ELSE
+      sort (gs_bands_si_i(so,vo,to,fp)(i) o gs_bands_si(so,vo,to,fp)(i-1))
+    ENDIF
+  MEASURE i
+
+
+  % return bands for a given segment i
+  % i <= N-2 because we need a next point to calculate the velocity
+  vs_bands_si_i(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : {fs : (vs_fseq?[vsmin,vsmax]) | increasing?(fs)} =
+    LET
+      fi_st = fp(i)`time,		% assume 0 <= fi_st <= to
+      fi_et = fp(i+1)`time,		% assume fist < fi_et
+      vi = velocity(fp)(i),		% intruder velocity for segment i
+      Bo = B+to,			% absolute range bottom
+      To = T+to				% absolute range bottom
+    IN
+    IF fi_et <= Bo OR fi_st >= To THEN
+      emptyseq
+    ELSE
+        LET
+          st = max(fi_st,Bo),		% start of range time
+          et = min(fi_et,To),		% end of range time
+          si = fp(i)`position,		% intruder position for segment i
+          si_o = si-(fi_st-to)*vi,      % projected intruder position back to to
+          s = so-si_o,			% relative position at start time
+          rel_st = st-to,		% relative start time
+          rel_et = et-to		% relative end time
+        IN
+        vs_bands_3D[D,H,rel_st,rel_et,gsmin,gsmax,vsmin,vsmax](s, vo, vi)
+    ENDIF
+
+  % returns gs bands for a flightplan
+  vs_bands_si(so: Vect3, vo: Nzv2_vect3, to: real, fp: FlightPlan_nz) (i : below[N-1]) 
+  : RECURSIVE {fs : (vs_fseq?[vsmin,vsmax]) | increasing?(fs)} =
+    IF i=0 THEN
+      vs_bands_si_i(so,vo,to,fp)(i)
+    ELSE
+      sort (vs_bands_si_i(so,vo,to,fp)(i) o vs_bands_si(so,vo,to,fp)(i-1))
+    ENDIF
+  MEASURE i
+
+  %-------------%
+  % Definitions %
+  %-------------%
+
+  % is a track band red?
+  red_trk_band_fp?(so,vo,to,fp,trkb)(i:subrange(0,trkb`length-2)) : bool =
+    LET
+      mp = (trkb`seq(i)+trkb`seq(i+1))/2,
+      trk = trk2v3(vo)(mp) 
+    IN
+    conflict_3D?(so,to,trk,fp)
+
+  red_gs_band_fp?(so,vo,to,fp,gsb)(i:subrange(0,gsb`length-2)) : bool =
+    LET
+      mp = (gsb`seq(i)+gsb`seq(i+1))/2,
+      gs = gs2v3(vo)(mp) 
+    IN
+    conflict_3D?(so,to,gs,fp)
+
+  red_vs_band_fp?(so,vo,to,fp,vsb)(i:subrange(0,vsb`length-2)) : bool =
+    LET
+      mp = (vsb`seq(i)+vsb`seq(i+1))/2,
+      vs = vs2v3(vo)(mp) 
+    IN
+    conflict_3D?(so,to,vs,fp)
+
+
+  %------------%
+  % Utilities  %
+  %------------%
+
+  % just to save a bit of typing
+  segdefs : LEMMA
+    FORALL (j:subrange(0,N-2)):
+      seg_lh_bottom(fp,to)(j)+fp(j)`time-to = max(fp(j)`time,B+to)-to AND
+      seg_lh_top(fp,to)(j)+fp(j)`time-to = min(fp(1+j)`time,T+to)-to
+
+  %------------%
+  % Theorems   %
+  %------------%
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%% TRK %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  % a critical point occurs in a trk_bands_si result iff it occurs in some trk_bands_si_i subcall result
+  trk_bands_si_combines : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,trk_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): member(x,trk_bands_si_i(so,vo,to,fp)(j))
+
+  % not used - practice
+  empty_no_members : LEMMA
+    NOT member(x,emptyseq)
+
+  % a critical point occurs in a trk_bands_si result iff it occurs in some trk_bands_3D on a relevant segment j
+  % note: delay asserting to preserve the local variables -- once they become theory parameters it    may not be possible
+  % to easily unify them
+  trk_bands_si_component : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,trk_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): 
+          LET
+            LB = max(fp(j)`time,B+to)-to,
+            UB = min(fp(1+j)`time,T+to)-to
+          IN
+          fp(j+1)`time > B+to AND fp(j)`time < T+ to AND 
+          member(x,trk_bands_3D[D,H,LB,UB,gsmin,gsmax,vsmin,vsmax]
+		   (so-(fp(j)`position - (fp(j)`time-to)*velocity(fp)(j)), vo, velocity(fp)(j)))
+
+   % the overall bands have at least as many critical points as any of the segments
+   trk_bands_si_length : LEMMA
+     FORALL (i:subrange(0,N-2), j: subrange(0,i)):
+       trk_bands_si(so,vo,to,fp)(i)`length >= trk_bands_si_i(so,vo,to,fp)(j)`length
+
+   % we got something from trk_bands_si_i iff the flightplan segment is relevant
+   trk_bands_si_i_relevant : LEMMA
+     FORALL (i:subrange(0,N-2)):
+       trk_bands_si_i(so,vo,to,fp)(i)`length > 0 IFF fp(i)`time < to+T AND to+B < fp(i+1)`time
+
+   % if the flightplan segment has any points, it will have at least 2 points
+   trk_bands_si_i_relevant_has_2 : LEMMA
+     FORALL (i:subrange(0,N-2)):
+       trk_bands_si_i(so,vo,to,fp)(i)`length > 0 IFF trk_bands_si_i(so,vo,to,fp)(i)`length > 1
+
+   % we got something from trk_bands_si iff the flightplan is relevant
+   trk_bands_si_relevant : LEMMA
+     FORALL (i:subrange(0,N-2)):
+       trk_bands_si(so,vo,to,fp)(i)`length > 0 IFF fp(0)`time < to+T AND to+B < fp(i+1)`time
+
+   % relevant bands have at least 2 critical points
+   trk_bands_si_relevant_has_2 : LEMMA
+     FORALL (i:subrange(0,N-2)):
+       trk_bands_si(so,vo,to,fp)(i)`length > 0 IFF trk_bands_si(so,vo,to,fp)(i)`length > 1
+
+   % if a point is conflicting for the flightplan, it must be conflicting for one of the segments
+   % (this is conflict_3D_rew_absolute_time)
+  trk_bands_si_equivalence: LEMMA
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+       LET
+         trkb = trk_bands_si(so,vo,to,fpr)(N-2),
+         trk = trk2v3(vo) 
+       IN
+       FORALL (x,y): (0<=x AND x<=y AND y<=2*pi AND
+         (FORALL (i:subrange(0,trkb`length-1)): trkb`seq(i) < x OR y < trkb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(so,to,trk(x),fpr) IFF conflict_3D?(so,to,trk(y),fpr))
+
+   trk_red_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET trkb = trk_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,trkb`length-2) | trkb`seq(i) /= trkb`seq(i+1)) : 
+       red_trk_band_fp?(so,vo,to,fpr,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         LET trk = trk2v3(vo)(x) IN
+         conflict_3D?(so,to,trk,fpr))
+
+  trk_green_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET trkb = trk_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,trkb`length-2) | trkb`seq(i) /= trkb`seq(i+1)) : 
+       NOT red_trk_band_fp?(so,vo,to,fpr,trkb)(i) IFF
+       (FORALL (x | trkb`seq(i) < x AND x < trkb`seq(i+1)):
+         LET trk = trk2v3(vo)(x) IN
+         NOT conflict_3D?(so,to,trk,fpr))
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%% GS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  gs_bands_si_combines : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,gs_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): member(x,gs_bands_si_i(so,vo,to,fp)(j))
+
+  gs_bands_si_component : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,gs_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): 
+          LET
+            LB = max(fp(j)`time,B+to)-to,
+            UB = min(fp(1+j)`time,T+to)-to
+          IN
+          fp(j+1)`time > B+to AND fp(j)`time < T+ to AND 
+          member(x,gs_bands_3D[D,H,LB,UB,gsmin,gsmax,vsmin,vsmax]
+		   (so-(fp(j)`position - (fp(j)`time-to)*velocity(fp)(j)), vo, velocity(fp)(j)))
+
+
+  gs_bands_si_equivalence: LEMMA
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+       LET
+         gsb = gs_bands_si(so,vo,to,fpr)(N-2),
+         gs = gs2v3(vo) 
+       IN
+       FORALL (x,y): (gsmin<=x AND x<=y AND y<=gsmax AND
+         (FORALL (i:subrange(0,gsb`length-1)): gsb`seq(i) < x OR y < gsb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(so,to,gs(x),fpr) IFF conflict_3D?(so,to,gs(y),fpr))
+
+   gs_red_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET gsb = gs_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,gsb`length-2) | gsb`seq(i) /= gsb`seq(i+1)) : 
+       red_gs_band_fp?(so,vo,to,fpr,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         LET gs = gs2v3(vo)(x) IN
+         conflict_3D?(so,to,gs,fpr))
+
+  gs_green_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET gsb = gs_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,gsb`length-2) | gsb`seq(i) /= gsb`seq(i+1)) : 
+       NOT red_gs_band_fp?(so,vo,to,fpr,gsb)(i) IFF
+       (FORALL (x | gsb`seq(i) < x AND x < gsb`seq(i+1)):
+         LET gs = gs2v3(vo)(x) IN
+         NOT conflict_3D?(so,to,gs,fpr))
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%% VS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  vs_bands_si_combines : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,vs_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): member(x,vs_bands_si_i(so,vo,to,fp)(j))
+
+  vs_bands_si_component : LEMMA
+    FORALL (i:subrange(0,N-2), x:real):
+      member(x,vs_bands_si(so,vo,to,fp)(i)) IFF
+        EXISTS (j:subrange(0,i)): 
+          LET
+            LB = max(fp(j)`time,B+to)-to,
+            UB = min(fp(1+j)`time,T+to)-to
+          IN
+          fp(j+1)`time > B+to AND fp(j)`time < T+ to AND 
+          member(x,vs_bands_3D[D,H,LB,UB,gsmin,gsmax,vsmin,vsmax]
+		   (so-(fp(j)`position - (fp(j)`time-to)*velocity(fp)(j)), vo, velocity(fp)(j)))
+
+
+  vs_bands_si_equivalence: LEMMA
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+       LET
+         vsb = vs_bands_si(so,vo,to,fpr)(N-2),
+         vs = vs2v3(vo) 
+       IN
+       FORALL (x,y): (vsmin<=x AND x<=y AND y<=vsmax AND
+         (FORALL (i:subrange(0,vsb`length-1)): vsb`seq(i) < x OR y < vsb`seq(i)))
+	 IMPLIES
+         (conflict_3D?(so,to,vs(x),fpr) IFF conflict_3D?(so,to,vs(y),fpr))
+
+   vs_red_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET vsb = vs_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,vsb`length-2) | vsb`seq(i) /= vsb`seq(i+1)) : 
+       red_vs_band_fp?(so,vo,to,fpr,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         LET vs = vs2v3(vo)(x) IN
+         conflict_3D?(so,to,vs,fpr))
+
+  vs_green_bands_si : THEOREM
+    FORALL (fpr:FlightPlanRelevant_nz(to)):
+    LET vsb = vs_bands_si(so,vo,to,fpr)(N-2) IN
+     FORALL (i:subrange(0,vsb`length-2) | vsb`seq(i) /= vsb`seq(i+1)) : 
+       NOT red_vs_band_fp?(so,vo,to,fpr,vsb)(i) IFF
+       (FORALL (x | vsb`seq(i) < x AND x < vsb`seq(i+1)):
+         LET vs = vs2v3(vo)(x) IN
+         NOT conflict_3D?(so,to,vs,fpr))
+
+
+END bands_si
+

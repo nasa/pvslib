@@ -1,0 +1,132 @@
+sort_fseq[T: TYPE+, <= : (total_order?[T]) ]: THEORY
+%------------------------------------------------------------------------
+%
+%  sort_fseq (basic definitions and properties)
+%  -------------------------------------------
+%
+%      Author: Ricky W. Butler
+%
+%  This theory defines the sort function over an seq of
+%  values.  Most of the text of this theory is scaffolding to
+%  demonstrate that the definition of "sort" is sound.  In particular,
+%  the function "asort" is a witness function and not intended
+%  to be used externally.
+%  
+%  The following definitions should be used exclusively:
+%
+%    is_permutation(A1,A2): bool = (EXISTS (f: [below(N) -> below(N)]): 
+%                      bijective?(f) AND (FORALL ii: A1(ii) = A2(f(ii))))
+%  
+%    increasing(A): bool = (FORALL i,j: 0 <= i AND i < j AND j < N 
+%                                 IMPLIES A(i) <= A(j))
+%
+%    sort(A): {a: seqs | is_permutation(A,a) AND increasing(a)}
+%
+%  Note:
+%     The properties of sort are readily obtained via
+%     TYPEPRED "sort" or through use of sort_lem.
+%
+%------------------------------------------------------------------------
+
+  EXPORTING ALL BUT seq_to_array % i.e. do not export sort_array
+        WITH permutations_fseq[T,<=], fseqs[T], fsq[T]
+
+BEGIN
+
+  IMPORTING fseqs[T]
+
+
+  s,s1,s2,ss: VAR fseq
+  x, t: VAR T
+  i,j: VAR nat 
+
+%%  <(x,y: T): bool = x <= y AND x /= y                         %% CAUSED SOME PROBLEMS
+
+  IMPORTING sort_array, below_arrays, permutations_fseq
+
+  seq_to_array(s): below_array[length(s),T] =
+             (LAMBDA (i: below(length(s))): seq(s)(i))
+
+  increasing?(s): bool = (FORALL i,j: 0 <= i AND i < j AND j < length(s)
+                            IMPLIES seq(s)(i) <= seq(s)(j))
+
+  strictly_increasing?(s): bool = (FORALL i,j: 0 <= i AND i < j AND j < length(s)
+                            IMPLIES (seq(s)(i) <= seq(s)(j) AND seq(s)(i) /= seq(s)(j)))
+
+  sort(s): {ss: fseq | permutation?[T,<=](s,ss) AND increasing?(ss)}
+
+  sort_length  : LEMMA length(sort(s)) = length(s)
+
+  AUTO_REWRITE+ sort_length
+
+  sort_fseq_lem  : LEMMA permutation?[T,<=](s,sort(s)) AND increasing?(sort(s))
+
+  sort_fseq_in?  : LEMMA in?(x,s) IFF in?(x,sort(s))
+
+  sort_fseq_in   : LEMMA FORALL (ii: below(length(s))): 
+                                     in?(seq(sort(s))(ii),s)
+
+  sort_fseq_in2  : LEMMA FORALL (ii: below(length(s))): in?(seq(s)(ii),sort(s))
+
+  sort_fseq_lt   : LEMMA FORALL (i,j: below(length(s))): 
+                         sort(s)(i) <= sort(s)(j) AND sort(s)(i) /= sort(s)(j) IMPLIES i < j
+
+  sort_singleton : LEMMA sort(singleton(x)) = singleton(x)
+
+  member_sort	 : LEMMA member(x,s) IFF member(x,sort(s))
+
+
+  %----------------- Strictly Sorting ----------------%
+
+  strictly_sort(s): {ss: fseq | strictly_increasing?(ss) AND (FORALL (x:T): member(x,s) IFF member(x,ss))}
+
+  strictly_sort_length: LEMMA strictly_sort(s)`length <= s`length
+
+  strictly_sort_subint_eq: LEMMA LET sss = strictly_sort(s) IN increasing?(s) IMPLIES FORALL (ii:below(sss`length-1)):
+  			   EXISTS (jj:below(s`length-1)): sss`seq(ii+1)=s`seq(jj+1) AND sss`seq(ii) = s`seq(jj)
+
+  strictly_sort_map(s): {sq: [below(strictly_sort(s)`length)->below(s`length)] |
+  			     LET sss = strictly_sort(s) IN
+			     (increasing?(s) AND sss`length >= 1 IMPLIES sq(sss`length-1) = s`length-1) AND
+			     (FORALL (ii:below(sss`length)): (sss`seq(ii) = s`seq(sq(ii)) AND
+			     (increasing?(s) AND ii<sss`length-1 IMPLIES sss`seq(ii+1) = s`seq(sq(ii)+1))))}
+
+  strictly_sort_map_between: LEMMA LET sss = strictly_sort(s) IN
+  			     	   FORALL (ii:below(sss`length-1)): FORALL (jj:below(s`length)):
+				   increasing?(s) AND strictly_sort_map(s)(ii)<jj AND jj<=strictly_sort_map(s)(ii+1) IMPLIES
+				   s`seq(strictly_sort_map(s)(ii+1)) = s`seq(jj)
+
+  strictly_sort_map_increasing: LEMMA increasing?(s) IMPLIES FORALL (ii,jj:below(strictly_sort(s)`length)):
+  				LET sq = strictly_sort_map(s) IN ii<jj IMPLIES sq(ii)<sq(jj)
+
+
+% ------------------ NEW ------------------%
+
+  sort_map(s): { map: [below(length(s)) -> below(length(s))] | 
+            bijective?(map) AND
+              (FORALL (i: below(length(s))): seq(s)(i) = seq(sort(s))(map(i)))}
+
+  sort_map_def: LEMMA FORALL (i: below(length(s))):
+                            seq(s)(i) = seq(sort(s))(sort_map(s)(i))
+
+  sort_map_bij: LEMMA bijective?(sort_map(s))
+
+
+
+
+  isort_map(s: {ss: fseq | length(ss) > 0}):
+       { map: [below(length(s)) -> below(length(s))] | 
+             bijective?(map) AND
+               (FORALL (i:below(length(s))): seq(s)(map(i)) = seq(sort(s))(i))}
+
+  isort_map_def: LEMMA FORALL (i: below(length(s))):
+                             seq(s)(isort_map(s)(i)) = seq(sort(s))(i)
+
+  isort_map_bij: LEMMA FORALL (s: {ss: fseq  | length(ss) > 0}):
+                            bijective?(isort_map(s))
+
+
+
+
+END sort_fseq
+

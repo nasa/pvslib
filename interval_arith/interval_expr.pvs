@@ -1,0 +1,251 @@
+interval_expr : THEORY
+BEGIN
+
+  IMPORTING IntervalExpr,
+            box,
+	    structures@more_list_props
+
+  v,n  : VAR nat
+  vs   : VAR Env
+  box  : VAR Box
+  pox,
+  qox  : VAR ProperBox
+
+  r2E(r:real) : RealExpr =
+    CONST(LAMBDA(u:Unit):r,[| r |])
+
+  I2E(X:ProperInterval) : RealExpr =
+    CONST(LAMBDA(u:Unit):midpoint(X),X)
+
+  PreTrue : (Precondition?) = LAMBDA (X:Interval) : true
+
+  CONVERSION r2E
+  CONVERSION I2E
+
+  X(v:nat): RealExpr = VARIDX(v)
+
+  realexpr?(expr:IntervalExpr) : bool =
+    const?(expr) OR varidx?(expr) OR
+    add?(expr) OR abs?(expr) OR
+    neg?(expr) OR sub?(expr) OR
+    mult?(expr) OR sq?(expr) OR
+    pow?(expr) OR div?(expr) OR
+    fun?(expr) OR letin?(expr)
+
+  boolexpr?(expr:IntervalExpr) : bool =
+    bconst?(expr) OR bnot?(expr) OR
+    band?(expr) OR bor?(expr) OR
+    bimplies?(expr) OR brel?(expr) OR
+    bincludes?(expr) OR bite?(expr) OR
+    bletin?(expr)
+
+   real_bool_expr : LEMMA
+     FORALL (expr:IntervalExpr):
+       realexpr?(expr) OR boolexpr?(expr) 
+
+  expr : VAR RealExpr
+
+  eval(expr,vs,n) : RECURSIVE real =
+    IF const?(expr) THEN opc(expr)(unit)
+    ELSIF varidx?(expr) THEN 
+       vs(varidx(expr))
+    ELSIF add?(expr) THEN
+      eval(op1(expr),vs,n)+eval(op2(expr),vs,n)
+    ELSIF abs?(expr) THEN
+      abs(eval(op(expr),vs,n))
+    ELSIF neg?(expr) THEN
+      -eval(op(expr),vs,n)
+    ELSIF sub?(expr) THEN
+      eval(op1(expr),vs,n)-eval(op2(expr),vs,n)
+    ELSIF mult?(expr) THEN
+      eval(op1(expr),vs,n)*eval(op2(expr),vs,n)
+    ELSIF sq?(expr) THEN
+      sq(eval(op(expr),vs,n))
+    ELSIF pow?(expr) THEN
+      eval(op(expr),vs,n)^opn(expr)
+    ELSIF div?(expr) THEN
+      LET d = eval(op2(expr),vs,n) IN
+      IF d = 0 THEN 0 
+      ELSE 
+        eval(op1(expr),vs,n)/eval(op2(expr),vs,n)
+      ENDIF
+    ELSIF fun?(expr) THEN 
+      opf(expr)(eval(op(expr),vs,n))
+    ELSE
+      LET rlet = eval(rlet(expr),vs,n) IN
+        eval(rin(expr),vs WITH [`n := rlet],n+1)
+    ENDIF
+  MEASURE expr BY <<
+
+  Eval(expr,box) : RECURSIVE Interval =
+    IF const?(expr) THEN opC(expr)
+    ELSIF varidx?(expr) THEN 
+      IF varidx(expr) >= length(box) THEN EmptyInterval
+      ELSE nth(box,varidx(expr))
+      ENDIF
+    ELSIF add?(expr) THEN
+      LET op1 = Eval(op1(expr),box) IN
+      IF Proper?(op1) THEN
+        LET op2 = Eval(op2(expr),box) IN
+        IF Proper?(op2) THEN Add(op1,op2) ELSE EmptyInterval ENDIF
+      ELSE EmptyInterval
+      ENDIF
+    ELSIF abs?(expr) THEN
+      LET op = Eval(op(expr),box) IN
+      IF Proper?(op) THEN Abs(op) ELSE EmptyInterval ENDIF
+    ELSIF neg?(expr) THEN
+      Neg(Eval(op(expr),box))
+    ELSIF sub?(expr) THEN
+      LET op1 = Eval(op1(expr),box) IN
+      IF Proper?(op1) THEN
+        LET op2 = Eval(op2(expr),box) IN
+        IF Proper?(op2) THEN Sub(op1,op2) ELSE EmptyInterval ENDIF
+      ELSE EmptyInterval
+      ENDIF
+    ELSIF mult?(expr) THEN
+      LET op1 = Eval(op1(expr),box) IN
+      IF Proper?(op1) THEN
+        LET op2 = Eval(op2(expr),box) IN
+        IF Proper?(op2) THEN Mult(op1,op2) ELSE EmptyInterval ENDIF
+      ELSE EmptyInterval
+      ENDIF
+    ELSIF sq?(expr) THEN
+      LET op = Eval(op(expr),box) IN
+      IF Proper?(op) THEN Sq(op) ELSE EmptyInterval ENDIF
+    ELSIF pow?(expr) THEN
+      LET op = Eval(op(expr),box) IN
+      IF Proper?(op) THEN Pow(op,opn(expr)) ELSE EmptyInterval ENDIF
+    ELSIF div?(expr) THEN
+      LET op1 = Eval(op1(expr),box) IN
+      IF Proper?(op1) THEN
+        LET op2 = Eval(op2(expr),box) IN
+        IF Proper?(op2) AND Zeroless?(op2) THEN Div(op1,op2) 
+        ELSE EmptyInterval ENDIF
+      ELSE EmptyInterval
+      ENDIF
+    ELSIF fun?(expr) THEN
+      LET op = Eval(op(expr),box) IN
+      IF Proper?(op) AND pre(expr)(op) THEN opF(expr)(op) ELSE EmptyInterval ENDIF
+    ELSE
+      LET rlet = Eval(rlet(expr),box) IN
+      IF Proper?(rlet) THEN
+        Eval(rin(expr),append(box,(: rlet :)))
+      ELSE EmptyInterval
+      ENDIF
+    ENDIF
+  MEASURE expr BY <<
+
+  Eval(expr) : Interval = Eval(expr,null)
+
+  well_typed?(box)(expr) : INDUCTIVE bool =
+    const?(expr) OR
+    (varidx?(expr) AND varidx(expr) < length(box)) OR
+    (add?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (abs?(expr) AND well_typed?(box)(op(expr))) OR
+    (sub?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (neg?(expr) AND well_typed?(box)(op(expr))) OR
+    (mult?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (sq?(expr) AND well_typed?(box)(op(expr))) OR
+    (div?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr)) AND
+     Zeroless?(Eval(op2(expr),box))) OR
+    (pow?(expr) AND well_typed?(box)(op(expr))) OR
+    (fun?(expr) AND well_typed?(box)(op(expr)) AND pre(expr)(Eval(op(expr),box))) OR
+    (letin?(expr) AND well_typed?(box)(rlet(expr)) AND 
+      well_typed?(append(box,(: Eval(rlet(expr),box) :)))(rin(expr)))
+
+  Proper_well_typed : LEMMA
+    Proper?(Eval(expr,box)) IMPLIES
+    well_typed?(box)(expr) 
+
+  Eval_inclusion : THEOREM
+     FORALL (box:Box,vs:(vars_in_box?(box)),expr) :
+        well_typed?(box)(expr) IMPLIES
+        eval(expr,vs,length(box)) ## Eval(expr,box)
+
+  Eval_inclusion_Proper : THEOREM
+    FORALL (box:Box,vs:(vars_in_box?(box)))(expr) :
+      LET E = Eval(expr,box) IN
+        Proper?(E) IMPLIES
+        eval(expr,vs,length(box)) ## E
+
+  well_typed_Proper : LEMMA
+    well_typed?(pox)(expr) IMPLIES
+    Proper?(Eval(expr,pox))
+
+  Eval_fundamental_aux : LEMMA
+    FORALL (expr):
+      Inclusion?(box,pox) IMPLIES 
+      well_typed?(pox)(expr) AND Proper?(Eval(expr,box)) IMPLIES 
+      Eval(expr,box) << Eval(expr,pox)
+
+  well_typed_Inclusion_aux : LEMMA
+    FORALL (expr):
+      Inclusion?(pox,box) IMPLIES
+      well_typed?(box)(expr) 
+      IMPLIES
+      well_typed?(pox)(expr)
+
+  well_typed_Inclusion : LEMMA
+    Inclusion?(pox,box) IMPLIES
+    FORALL (expr):
+      well_typed?(box)(expr) 
+      IMPLIES
+      well_typed?(pox)(expr)
+
+  Proper_Inclusion : LEMMA
+    Inclusion?(pox,box) IMPLIES
+      FORALL (expr):
+        Proper?(Eval(expr,box))
+        IMPLIES
+        Proper?(Eval(expr,pox))
+
+  Eval_fundamental : THEOREM
+    Inclusion?(pox,box) IMPLIES 
+    FORALL (expr):
+      well_typed?(box)(expr) IMPLIES 
+      Eval(expr,pox) << Eval(expr,box)
+
+  Eval_fundamental_proper : THEOREM
+    Inclusion?(pox,box) IMPLIES 
+    FORALL (expr):
+      LET E = Eval(expr,box) IN
+      Proper?(E) IMPLIES
+      Eval(expr,pox) << E
+
+  split(v,box) : RECURSIVE {lrb:[Box,Box] | LET (lb,rb) = lrb IN 
+                            length(lb) = length(box) AND length(rb) = length(box) AND
+                            FORALL (i:below(length(box))) : IF i=v THEN nth(lb,i) = HalfLeft(nth(box,i)) AND
+                                                                          nth(rb,i) = HalfRight(nth(box,i)) 
+                                                              ELSE nth(lb,i) = nth(box,i) AND
+                                                                   nth(rb,i) = nth(box,i)
+                                                              ENDIF} =
+    IF null?(box) THEN (null,null)
+    ELSIF v = 0 THEN (cons(HalfLeft(car(box)),cdr(box)),
+                      cons(HalfRight(car(box)),cdr(box)))
+    ELSE LET (lb,rb) = split(v-1,cdr(box)) IN
+             (cons(car(box),lb),cons(car(box),rb))
+    ENDIF
+  MEASURE box BY <<
+
+  split_eq : RECURSIVE JUDGEMENT 
+    split(v,(box:Box|length(box) <= v)) HAS_TYPE {lrb:[Box,Box] | LET (lb,rb)=lrb IN lb = box AND rb=box}
+
+  split_vars_in_box : LEMMA
+    FORALL (box:Box,vs:(vars_in_box?(box)),v) :
+      LET (bl,br) = split(v,box) IN
+        vars_in_box?(bl)(vs) OR vars_in_box?(br)(vs)
+
+  split_Inclusion : LEMMA
+    FORALL (pox,v):
+      LET (bl,br) = split(v,pox) IN
+      Inclusion?(bl,pox) AND Inclusion?(br,pox)
+
+  split_Proper : JUDGEMENT split(v,pox) HAS_TYPE [ProperBox,ProperBox]
+
+  length_split_1 : LEMMA
+    length(split(v,pox)`1) = length(pox)
+
+  length_split_2 : LEMMA
+    length(split(v,pox)`2) = length(pox)
+ 
+END interval_expr

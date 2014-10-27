@@ -1,0 +1,81 @@
+% This theory contains the following strategies for selecting a variable:
+%   AltVarLeftRight : Select variables in alternate way, split left first
+%   AltVarRightLeft : Select variables in alternate way, split right first
+%   MaxVarMinDir    : Select the variable of maximum variation and the direction with the minimum coefficient
+%   MaxVarMaxDir    : Select the variable of maximum variation and the direction with the maximum coefficient
+
+vardirselector : THEORY
+BEGIN
+
+  IMPORTING multi_bernstein
+
+  bspoly      : VAR MultiBernstein
+  bsdegmono   : VAR DegreeMono
+  nvars,terms : VAR posnat
+  cf          : VAR Coeff
+  level,v     : VAR nat
+
+  % Parameters are bspoly,bsdegmono,nvars,terms,cf,level  (bool=true is Left)
+
+  VarSelector : TYPE = [[MultiBernstein,DegreeMono,posnat,posnat,Coeff,nat]->[bool,nat]] 
+     
+  % Alternate variable, Left-Right direction
+  AltVarLeftRight(bspoly,bsdegmono,nvars,terms,cf,level): [bool,nat]  = 
+    (true,level)
+
+  % Alternate variable, Right-Left direction
+  AltVarRightLeft(bspoly,bsdegmono,nvars,terms,cf,level): [bool,nat] = 
+    (false,level)
+
+  var_coeff_range_rec(bspoly,bsdegmono,nvars,terms,cf,v,(iup:upto(bsdegmono(v)))) : 
+    RECURSIVE [# currmin: real, currmax:real, firstc:real,lastc:real #] =
+    LET coefffun  = multibscoeff(bspoly,bsdegmono,cf,nvars,terms), 
+        thismono  = zeroes WITH [(v):=iup], 
+        thiscoeff = coefffun(thismono) 
+    IN 
+      IF iup=0 THEN 
+        (# currmin := thiscoeff,
+           currmax := thiscoeff,
+           firstc  := thiscoeff,
+           lastc   := thiscoeff #)
+      ELSE 
+        LET vcrrlast = var_coeff_range_rec(bspoly,bsdegmono,nvars,terms,cf,v,iup-1) IN
+          (# currmin := min(vcrrlast`currmin,thiscoeff),
+             currmax := max(vcrrlast`currmax,thiscoeff),
+             firstc  := vcrrlast`firstc,
+             lastc   := IF iup=bsdegmono(v) THEN thiscoeff ELSE vcrrlast`lastc ENDIF #)
+      ENDIF 
+  MEASURE iup
+
+  var_maxcoeff_rec(bspoly,bsdegmono,nvars,terms,cf,v): 
+    RECURSIVE [# variable:nat,firstc:real,lastc:real #] =
+    LET vcrr       = var_coeff_range_rec(bspoly,bsdegmono,nvars,terms,cf,v,bsdegmono(v)),
+        thisanswer = (# variable := v,
+                        firstc   := vcrr`firstc,
+                        lastc    := vcrr`lastc #) 
+    IN
+      IF v = 0 THEN thisanswer
+      ELSE 
+        LET vmr = var_maxcoeff_rec(bspoly,bsdegmono,nvars,terms,cf,v-1),
+	    vcrrlast = var_coeff_range_rec(bspoly,bsdegmono,nvars,terms,cf,vmr`variable,
+                                           bsdegmono(vmr`variable)),
+	    lastanswer =  (# variable :=vmr`variable,
+                             firstc   :=vcrrlast`firstc,
+                             lastc    :=vcrrlast`lastc #) IN
+	IF vcrr`currmax-vcrr`currmin > vcrrlast`currmax-vcrrlast`currmin THEN 
+          thisanswer
+	ELSE 
+          lastanswer  
+        ENDIF
+      ENDIF 
+  MEASURE v
+
+  MaxVarMinDir(bspoly,bsdegmono,nvars,terms,cf,level): [bool,nat] = 
+    LET vcrr = var_maxcoeff_rec(bspoly,bsdegmono,nvars,terms,cf,nvars-1) IN
+      (vcrr`firstc<=vcrr`lastc,vcrr`variable)
+
+  MaxVarMaxDir(bspoly,bsdegmono,nvars,terms,cf,level): [bool,nat] = 
+    LET vcrr = var_maxcoeff_rec(bspoly,bsdegmono,nvars,terms,cf,nvars-1) IN
+      (vcrr`firstc > vcrr`lastc,vcrr`variable)
+
+END vardirselector

@@ -1,0 +1,170 @@
+%------------------------------------------------------------------------------
+% predicate_coordination_2D.pvs - General Theory of Coordination for 3D Maneuvers
+%------------------------------------------------------------------------------
+
+predicate_coordination_2D: THEORY
+BEGIN
+
+  IMPORTING definitions
+
+  s,v,nv,
+  nw,vo,nvo,
+  vi,nvi  : VAR Vect2
+  eps     : VAR Sign
+  pr	  : VAR posreal
+  l,l1,l2 : VAR real
+
+  Criter: TYPE = [[Vect2,Vect2]->set[Vect2]]
+  SignedCrit2D: TYPE = [Sign -> Criter]
+
+  Vector_Predicate: TYPE+ = [[Vect2,Vect2]->set[Vect2]]
+
+  Crit,Crit1,Crit2,Crit3: VAR Criter
+  Scrit,Scrit1,Scrit2,Scrit3: VAR SignedCrit2D
+
+
+  C : VAR Vector_Predicate
+
+
+
+    % BASIC DEFINITIONS
+
+    sum_closed_2D?(C): bool =
+        FORALL (s,v,nv,nw:Vect2):
+	C(s,v)(nv) AND C(s,v)(nw) IMPLIES C(s,v)(nv+nw)
+
+    symmetric_2D?(C) : bool = 
+       FORALL (s,v,nv:Vect2):
+	C(s,v)(nv) IFF C(-s,-v)(-nv)
+
+
+    crit_sum_closed_2D?(Crit): bool =
+        FORALL (s,v,nv,nw:Vect2):
+	Crit(s,v)(nv) AND Crit(s,v)(nw) IMPLIES Crit(s,v)(nv+nw)
+
+
+    sum_independent_2D?(Crit,C): bool = 
+        FORALL (v,s,nv,nw: Vect2):
+        (Crit(s,v)(nv) AND Crit(s,v)(nw) AND C(s,v)(v)
+        IMPLIES
+        NOT C(s,v)(nv+nw))
+
+    open_2D?(C): bool = 
+        FORALL (s,v,nv: Vect2): C(s,v)(nv) IMPLIES
+	(EXISTS (epsilon:posreal):
+	FORALL (nw: Vect2):
+	norm(nw)<epsilon
+	IMPLIES
+	C(s,v)(nv+nw))
+
+
+    crit_independent_of_length_2D?(Crit): bool =
+        FORALL (v,s,nv: Vect2,pr: posreal):
+	(Crit(s,v)(nv) IFF Crit(s,pr*v)(nv))
+
+    independent_of_length_2D?(C): bool = 
+        FORALL (s,v,nv:Vect2,pr,pz:posreal):
+	(C(s,v)(nv) IFF C(s,pz*v)(pr*nv))
+
+    coordinated_2D?(Crit1,Crit2,C): bool =
+        FORALL (vo,vi,nvo,nvi,s: Vect2):
+        (C(s,vo-vi)(vo-vi) AND
+        Crit1(s,vo-vi)(nvo-vi) AND
+        Crit2(-s,vi-vo)(nvi-vo)
+        IMPLIES
+        NOT C(s,vo-vi)(nvo-nvi))
+
+    coordinated_symmetric_2D: LEMMA symmetric_2D?(C) IMPLIES
+    			   (coordinated_2D?(Crit1,Crit2,C) IFF coordinated_2D?(Crit2,Crit1,C))
+
+
+    crit_symmetric_2D?(Crit): bool =
+        FORALL (v,s,nv: Vect2):
+        (Crit(s,v)(nv) IFF Crit(-s,-v)(-nv))
+
+    sum_indep_coordinated_2D: LEMMA
+        crit_symmetric_2D?(Crit) AND
+        sum_independent_2D?(Crit,C) AND
+	sum_closed_2D?(C)
+        IMPLIES
+        coordinated_2D?(Crit,Crit,C)
+
+    coordinated_sum_indep_2D: LEMMA
+    	crit_symmetric_2D?(Crit) AND
+        crit_independent_of_length_2D?(Crit) AND
+	coordinated_2D?(Crit,Crit,C) AND
+	open_2D?(C) AND
+	independent_of_length_2D?(C)
+	IMPLIES
+	sum_independent_2D?(Crit,C)
+
+    crit_antisymmetric_2D?(Scrit): bool =
+        FORALL (v,s,nv: Vect2, eps:Sign):
+        (Scrit(eps)(s,v)(nv) IFF Scrit(-eps)(-s,-v)(-nv))
+
+    sum_indep_coordinated_antisym_2D: LEMMA
+        crit_antisymmetric_2D?(Scrit) AND
+        sum_independent_2D?(Scrit(eps),C) AND
+	sum_closed_2D?(C)
+        IMPLIES
+        coordinated_2D?(Scrit(eps),Scrit(-eps),C)
+
+    coordinated_antisym_sum_indep_2D: LEMMA
+    	crit_antisymmetric_2D?(Scrit) AND
+        crit_independent_of_length_2D?(Scrit(eps)) AND
+	coordinated_2D?(Scrit(eps),Scrit(-eps),C) AND
+	open_2D?(C) AND
+	independent_of_length_2D?(C)
+	IMPLIES
+	sum_independent_2D?(Scrit(eps),C)
+
+
+  % The DERIVED Criterion
+
+  deriv(Crit,l): Criter = (LAMBDA (s,v): (LAMBDA (nv): Crit(s,v)(nv-l*v)))
+
+  deriv_0_2D: LEMMA deriv(Crit,0) = Crit
+
+  deriv_subset_2D: LEMMA
+    Crit(s,v)(-l*v) AND
+    crit_sum_closed_2D?(Crit)
+     IMPLIES
+    subset?(Crit(s,v),deriv(Crit,l)(s,v))
+
+  deriv_coordinated_2D: LEMMA l1+l2 = 1 IMPLIES
+  			      crit_symmetric_2D?(Crit) AND
+  			      sum_independent_2D?(Crit,C) IMPLIES
+			      coordinated_2D?(deriv(Crit,l1),deriv(Crit,l2),C)
+
+  deriv_coordinated_1: LEMMA crit_symmetric_2D?(Crit) AND
+  			      sum_independent_2D?(Crit,C) IMPLIES
+			      coordinated_2D?(deriv(Crit,1),Crit,C)
+
+  Comb(Crit1,Crit2): Criter = (LAMBDA (s,v): (LAMBDA (nv): Crit1(s,v)(nv) OR (Crit2(s,v)(nv) AND deriv(Crit1,1)(s,v)(nv))))
+
+  Comb_coordinated_2D: LEMMA
+    sum_independent_2D?(Crit1,C) AND
+    crit_symmetric_2D?(Crit1) AND
+    coordinated_2D?(Crit2,Crit3,C) AND
+    sum_closed_2D?(C) AND
+    symmetric_2D?(C)
+    IMPLIES
+    coordinated_2D?(Comb(Crit1,Crit2),Comb(Crit1,Crit3),C)
+
+    coordinated_implies_independent_2D: LEMMA
+        crit_symmetric_2D?(Crit) AND
+        crit_independent_of_length_2D?(Crit) AND
+	coordinated_2D?(Crit,Crit,C) AND
+	open_2D?(C) AND
+	independent_of_length_2D?(C) AND
+	crit_sum_closed_2D?(Crit) AND
+	sum_closed_2D?(C) IMPLIES
+	(FORALL (s,v,nv:Vect2): ((C(s,v)(v) AND Crit(s,v)(nv)) IMPLIES (NOT C(s,v)(nv))))
+
+    
+
+  			      	    
+
+
+
+END predicate_coordination_2D

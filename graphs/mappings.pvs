@@ -1,0 +1,169 @@
+mappings[T: TYPE]: THEORY
+BEGIN
+
+  IMPORTING graphs[T], trees[T], walks[T],tree_paths[T],
+            structures@seq_pigeon
+
+  G1,G2,G,H,HH,U: VAR graph[T]
+  x,y,s,t: VAR T 
+  e: VAR doubleton[T]
+  w,p,q: VAR prewalk
+  k,l,m,n: VAR nat
+
+  premap(G1,G2): TYPE = {psi:[T -> T]| FORALL (x:T):
+                                  vert(G1)(x) IMPLIES vert(G2)(psi(x))}
+
+  map(G1,G2)   : TYPE = {phi: premap(G1,G2) | FORALL (x,y: T):
+                           edge?(G1)(x,y) IMPLIES
+                               edge?(G2)(phi(x),phi(y)) OR phi(x) = phi(y)} 
+ 
+  proper?(G1:graph[T],G2:graph[T],M: map(G1,G2)): bool = 
+                (FORALL (x,y: T): edge?(G1)(x,y) IMPLIES
+                          edge?(G2)(M(x),M(y)))
+
+  injective?(G1:graph[T],G2:graph[T],M: map(G1,G2)): bool = 
+                injective?(M)
+
+  fixed?(G:graph[T], phi:map(G,G)):bool = (FORALL (v: (vert(G))):  
+                                           v /= phi(v))
+                           IMPLIES (EXISTS (x,y: (vert(G))): 
+                               y = phi(x) AND x = phi(y) AND edge?(G)(x,y))
+
+  reachable(G,x): finite_set[T] = {y: T |  vert(G)(y) AND 
+                                    (EXISTS (w: Seq(G)): walk_from?(G,w,x,y))}
+
+  reachable_subset: LEMMA subset?(reachable(G,x),vert(G))
+
+	
+  IMPORTING graph_conn_defs[T], graph_connected, graph_pair[T], tree_paths
+  IMPORTING subgraph_paths 
+  IMPORTING graph_deg,graph_deg_sum,path_lems, doubletons 
+
+
+  path_reach1: LEMMA path_connected?(G) IFF
+                       (EXISTS (x: T): vert(G)(x) AND reachable(G,x) = vert(G))
+
+  path_reach2:  LEMMA path_connected?(G) IFF
+                      (FORALL (x: T): vert(G)(x) 
+                           IMPLIES reachable(G,x) = vert(G)) 
+                      AND NOT empty?(G)
+
+  reachable_conn: LEMMA FORALL (x:(vert(G))): 
+                               connected?(subgraph(G,reachable(G,x)))
+
+  sub_tree_k: LEMMA (FORALL k,H,G: subgraph?(H,G) AND tree?(G) AND 
+                                   connected?(H) AND size(G)=size(H)+k 
+                       IMPLIES tree?(H)) 
+                  IMPLIES (FORALL H,G: subgraph?(H,G) AND 
+                           tree?(G) AND connected?(H)  IMPLIES tree?(H))
+
+  sub_tree_0     : LEMMA tree?(G) AND subgraph?(H,G) AND size(H)=size(G) 
+		          AND connected?(H) IMPLIES H=G
+
+  sub_tree_k_lemm: LEMMA (FORALL k,H,G: subgraph?(H,G) AND tree?(G) AND
+	                   connected?(H) AND size(G)=size(H)+k IMPLIES tree?(H))
+ 
+  sub_tree_all    : LEMMA tree?(G) AND subgraph?(H,G) AND connected?(H)
+                            IMPLIES tree?(H)
+
+  path_reach4    : LEMMA tree?(G) AND edges(G)(e) IMPLIES
+                           NOT path_connected?(del_edge(G,e))
+
+  size_subgraph_path: LEMMA path?(G,p) IMPLIES size(G_from(G,p))=length(p)
+
+  path_gap     : LEMMA tree?(G) AND edges(G)(e) AND e(x) AND e(y) AND
+                       walk_from?(del_edge(G,e),w,x,y) IMPLIES x=y
+
+  set_card_less: LEMMA FORALL (A: finite_set[T], B: finite_set[T]):
+	                subset?(A,B) AND B(x) IMPLIES card(A) < card(B) OR A(x)
+
+  conn_compon  : LEMMA FORALL (  x: (vert(G))): EXISTS H:
+                               (subgraph?(H,G) AND connected?(H) AND
+                                vert(H)(x) AND 
+	                         FORALL (y:(vert(H))): (deg(y,G)=deg(y,H)))  
+
+ 
+  Bush(Tr:Tree, v:(vert(Tr)), e:(incident_edges(v,Tr))): Subgraph(Tr) = 
+                                subgraph(Tr, reachable(del_edge(Tr,e),v))
+
+  Bush_less: LEMMA FORALL (Tr: Tree,v,z:(vert(Tr)), e:(incident_edges(v,Tr)),
+                           f:(incident_edges(z,Tr))): 
+                     f(v) AND NOT e(z) 
+	                 IMPLIES size(Bush(Tr,z,f)) < size(Bush(Tr,v,e))
+
+  Fox(Tr:Tree, G: Subgraph(Tr), H: Subgraph(Tr), phi:map(Tr,Tr)): bool =
+                   ( EXISTS w:path?(Tr,w) AND length(w)>1 AND 
+                            phi(w(0))=w(length(w)-1) AND G = G_from(Tr,w) AND
+                            H = Bush(Tr,w(length(w)-1),dbl(w(length(w)-2),w(length(w)-1))))
+
+  short_hound: LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr)): 
+                     path_from?(Tr,w,x,phi(x)) AND length(w)=1 IMPLIES fixed?(Tr,phi)
+
+  back_hound : LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr)): 
+                     path_from?(Tr,w,x,phi(x)) AND length(w)=2 AND 
+                     phi(w(1))=w(length(w)-2) IMPLIES fixed?(Tr,phi)
+
+  stuck_hound: LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr)): 
+                    path_from?(Tr,w,x,phi(x)) AND length(w)>1 AND phi(w(1))=w(length(w)-1)
+                IMPLIES
+                    EXISTS (p:prewalk):
+	                      path_from?(Tr,p,w(1),phi(w(1))) AND length(p)<length(w) AND 
+                            ((length(p)>1 AND p(length(p)-2)=w(length(w)-2)) OR fixed?(Tr,phi))
+
+  whole_hound: LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr)): 
+                     path_from?(Tr,w,x,phi(x)) AND length(w)>2 AND 
+                     phi(w(1))=w(length(w)-2) IMPLIES
+                EXISTS (p:prewalk):
+	            path_from?(Tr,p,w(1),phi(w(1))) AND length(p)<length(w) AND 
+                  (length(p)>1 IMPLIES p(length(p)-2)=w(length(w)-3))
+
+  fixed_fox  : LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr)):
+                       (EXISTS (G,H:Subgraph(Tr)):Fox(Tr,G,H,phi)) 
+                       OR fixed?(Tr,phi)
+
+  small_fox  : LEMMA FORALL (Tr:Tree, phi:map(Tr,Tr),(G,H:Subgraph(Tr))): 
+                     Fox(Tr,G,H,phi) 
+                     IMPLIES (EXISTS (GG,HH:Subgraph(Tr)): 
+                                   Fox(Tr,GG,HH,phi) AND
+	                            lsth((size(GG),size(HH)),(size(G),size(H)))) 
+                         OR fixed?(Tr,phi)
+
+  num_edge_tree: LEMMA connected?(G) AND num_edges(G)<size(G) 
+	                     IMPLIES tree?(G)
+
+  uniq_paths?(G): bool = FORALL (s,t,p,q): path_from?(G,p,s,t) AND
+                                           path_from?(G,q,s,t) IMPLIES p = q
+
+  uniq_del_vert: LEMMA FORALL ( v:(vert(G))): uniq_paths?(G) 
+                                              IMPLIES uniq_paths?(del_vert(G,v))
+
+  del_edge_uniq: LEMMA FORALL ( e:(edges(G))):connected?(del_edge(G,e)) 
+                                   IMPLIES NOT uniq_paths?(G) 
+
+  charact_tree : LEMMA connected?(G) AND uniq_paths?(G) IMPLIES tree?(G)
+
+  iff_tree     : LEMMA tree?(G) IFF connected?(G) AND uniq_paths?(G)
+
+  tree_num_iff : LEMMA connected?(G) and num_edges(G)=size(G)-1 IFF tree?(G)
+
+  tree_map     : LEMMA FORALL (phi:map(G,G)):tree?(G)
+ 		            IMPLIES fixed?(G,phi)
+
+
+% We take advantage of some of the tree properties proved above to 
+% deduce the theorem stated in "graphs" context that a graph with vertices
+% only of degree > 1, must have a cycle.
+
+  sub_cycle     : LEMMA FORALL (w: Seq(H)): subgraph?(H,G) and cycle?(H,w) 
+                                              IMPLIES cycle?(G,w)
+
+  exclus_cycl   : THEOREM connected?(G) IMPLIES 
+                             tree?(G) XOR (EXISTS (w:Seq(G)): cycle?(G,w))
+
+  deg_gt_1_cycle: LEMMA (FORALL (v: T): vert(G)(v) IMPLIES deg(v,G) > 1)
+                          IMPLIES (EXISTS (w: Seq(G)): cycle?(G,w)) OR empty?(G)
+ 
+                                   
+END mappings
+
+

@@ -1,0 +1,252 @@
+multi_polylist: THEORY
+BEGIN
+
+  IMPORTING util,reals@polynomials,
+            multi_polynomial,
+  	    MPoly
+
+  MonoList: TYPE = list[nat]
+
+  n,i        : VAR nat
+  xvar       : VAR [nat->real]
+  x,y        : VAR real
+  ml,ml1,ml2 : VAR MonoList
+  c	     : VAR real
+
+  maxnum(x,y:nat): {z:nat |
+    z>=x AND z>=y AND (z=x OR z=y)} =
+    IF x>=y THEN x ELSE y ENDIF
+
+  max(ml1,ml2): RECURSIVE {ml |
+    length[nat](ml)=maxnum(length[nat](ml1),length[nat](ml2)) AND
+    FORALL (i:nat): i<length(ml) IMPLIES
+    	   	    nth(ml,i) = IF null?(ml1) OR i>=length(ml1) THEN nth(ml2,i)
+    	   	    	        ELSIF null?(ml2) OR i>=length(ml2) THEN nth(ml1,i)
+				ELSE maxnum(nth(ml1,i),nth(ml2,i)) ENDIF } =
+    IF null?(ml1) THEN ml2
+    ELSIF null?(ml2) THEN ml1
+    ELSE cons(maxnum(car(ml1),car(ml2)),max(cdr(ml1),cdr(ml2)))
+    ENDIF MEASURE length(ml1)+length(ml2)
+
+  max_id: LEMMA max(ml,ml)=ml
+
+  max_cdr: LEMMA null?(ml1) OR null?(ml2) OR cdr(max(ml1,ml2)) = max(cdr(ml1),cdr(ml2))
+
+  max_sym: LEMMA max(ml1,ml2)=max(ml2,ml1)
+
+  max_assoc: LEMMA max(ml,max(ml1,ml2))=max(max(ml,ml1),ml2)
+
+  %%% A function that turns x(i)^n into a monomial 
+
+  varmono(i,n): RECURSIVE MonoList =
+    IF i=0 THEN (: n :) ELSE cons(0,varmono(i-1,n)) ENDIF MEASURE i
+
+  %%% Evaluation of monomials 
+
+  monolist_eval_rec(ml,c,i)(xvar): RECURSIVE 
+    {r : real | r = c*product(0,length(ml)-1,LAMBDA (k:nat): 
+         IF k<length(ml) THEN xvar(k+i)^nth(ml,k) 
+	 ELSE 1 ENDIF) } =
+    IF null?(ml) THEN c
+    ELSE monolist_eval_rec(cdr(ml),c*xvar(i)^car(ml),i+1)(xvar)
+    ENDIF 
+  MEASURE ml BY <<
+
+  monolist_eval(ml)(xvar) : real =
+    monolist_eval_rec(ml,1,0)(xvar)
+
+  monolist_eval_prod: LEMMA 
+    monolist_eval(ml)(xvar) =
+      product(0,length(ml)-1,LAMBDA (i:nat): IF i<length(ml) THEN xvar(i)^nth(ml,i) 
+	                                     ELSE 1 ENDIF)
+
+  %%% Multiplying monomials, which is really adding them
+
+  monosum(ml1,ml2) : RECURSIVE {pml2:MonoList|
+    FORALL (xvar): monolist_eval(pml2)(xvar) 
+      = monolist_eval(ml1)(xvar)*monolist_eval(ml2)(xvar)} =
+  IF null?(ml1) THEN ml2
+  ELSIF null?(ml2) THEN ml1
+  ELSE cons(car(ml1)+car(ml2),monosum(cdr(ml1),cdr(ml2)))
+  ENDIF
+  MEASURE length(ml1)+length(ml2)
+
+  ;+(ml1,ml2) : MACRO MonoList = monosum(ml1,ml2)
+
+  %%% Multivariate Polynomials
+
+  MultiPolyList: TYPE = list[[real,MonoList]]
+
+  mpl,mpl1,mpl2 : VAR MultiPolyList
+
+  meval(mpl)(xvar) : RECURSIVE real =
+    IF null?(mpl) THEN 0
+    ELSE LET (coe,mon) = car(mpl) IN
+      coe*monolist_eval(mon)(xvar) + meval(cdr(mpl))(xvar)
+    ENDIF MEASURE length(mpl)
+
+  meval_sigma: LEMMA 
+    meval(mpl)(xvar) =
+      sigma(0,length(mpl)-1,LAMBDA (i:nat): IF i<length(mpl) THEN
+        nth(mpl,i)`1*monolist_eval(nth(mpl,i)`2)(xvar) ELSE 0 ENDIF)
+
+  %%% Degree 
+
+  degree(mpl): RECURSIVE {ml |
+    (NOT null?(mpl)) IMPLIES
+    FORALL (i:below(length(mpl))):
+      ml = max(nth(mpl,i)`2,ml) AND
+      length(ml)>=length(nth(mpl,i)`2)} =
+    IF null?(mpl) THEN (: :)
+    ELSIF null?(cdr(mpl)) THEN car(mpl)`2
+    ELSE max(car(mpl)`2,degree(cdr(mpl)))
+    ENDIF MEASURE length(mpl)
+
+  degree_zero: LEMMA
+    null?(degree(mpl)) IMPLIES
+    FORALL (i:nat): i<length(mpl) IMPLIES
+      null?(nth(mpl,i)`2)
+
+  %%% Converting to a Polynomial
+
+  multipoly_to_poly(mpl)(t:nat)(v:nat)(d:nat): real =
+    IF t<length(mpl) AND v<length(nth(mpl,t)`2) AND d=nth(nth(mpl,t)`2,v)
+      THEN 1
+    ELSIF t<length(mpl) AND null?(nth(mpl,t)`2) AND d=0 THEN 1
+    ELSIF t<length(mpl) AND v>=length(nth(mpl,t)`2) AND d=0 THEN 1
+    ELSE 0 ENDIF
+
+  multipoly_to_mpoly(mpl): MPoly =
+    IF length(mpl)=0 THEN mk_mpoly(LAMBDA (t:nat): LAMBDA (v:nat): LAMBDA (d:nat): 0,
+      		    	 	  LAMBDA (v:nat): 0, 1,LAMBDA (i:nat): 0)
+    ELSE mk_mpoly(multipoly_to_poly(mpl),list2array[nat](0)(degree(mpl)),
+			length(mpl),LAMBDA (i:nat): IF i<length(mpl) THEN nth(mpl,i)`1 ELSE 0 ENDIF) ENDIF
+
+  %%% Simplifying 
+
+  mp_simp_rec(swiped,toswipe,ans:MultiPolyList,mono:MonoList,thiscoeff:real):
+    RECURSIVE {mpl | FORALL (xvar): meval(mpl)(xvar)=meval(swiped)(xvar)+meval(toswipe)(xvar)
+		     +meval(ans)(xvar)+thiscoeff*monolist_eval(mono)(xvar)} =
+    IF null?(swiped) AND null?(toswipe) AND thiscoeff/=0 THEN cons((thiscoeff,mono),ans)
+    ELSIF null?(swiped) AND null?(toswipe) THEN ans
+    ELSIF null?(toswipe) AND thiscoeff/=0 THEN 
+          mp_simp_rec(null,cdr(swiped),cons((thiscoeff,mono),ans),car(swiped)`2,car(swiped)`1)
+    ELSIF null?(toswipe) THEN 
+          mp_simp_rec(null,cdr(swiped),ans,car(swiped)`2,car(swiped)`1)
+    ELSIF mono = car(toswipe)`2 THEN mp_simp_rec(swiped,
+    	       	 		cdr(toswipe),ans,mono,car(toswipe)`1+thiscoeff)
+    ELSE mp_simp_rec(cons(car(toswipe),swiped),cdr(toswipe),ans,mono,thiscoeff)
+    ENDIF MEASURE lex2(length(swiped)+length(toswipe),length(toswipe))
+
+  mp_simp(mpl): {mulist:MultiPolyList| meval(mpl)=meval(mulist)} =
+    IF null?(mpl) THEN mpl
+    ELSE mp_simp_rec(null,mpl,null,car(mpl)`2,0) ENDIF
+
+  %%% Construction of MultyPolyList
+
+  mpconst(c): MultiPolyList = (: (c, (: :)) :)
+
+  mpmonom(c,i,n): MultiPolyList = (: (c,varmono(i,n)) :)
+
+  mpvar(i): MultiPolyList = mpmonom(1,i,1)
+
+  mpvarn(i,n): MultiPolyList = mpmonom(1,i,n)
+
+  mpsum(mpl1,mpl2): {mpl|meval(mpl)=meval(mpl1)+meval(mpl2)} = mp_simp(append(mpl1,mpl2))
+
+  ;+(mpl1,mpl2): MACRO MultiPolyList = mpsum(mpl1,mpl2)
+
+  mpprod_rec(mpl1,mpl2): RECURSIVE {mpl |
+    FORALL (xvar): meval(mpl)(xvar)=
+    	   	   meval(mpl1)(xvar)*meval(mpl2)(xvar)} =
+    IF null?(mpl1) THEN (: :)
+    ELSIF null?(mpl2) THEN (: :)
+    ELSIF null?(cdr(mpl1)) AND null?(cdr(mpl2))
+      THEN (: (car(mpl1)`1*car(mpl2)`1,
+               monosum(car(mpl1)`2,car(mpl2)`2)) :)
+    ELSIF null?(cdr(mpl1)) THEN
+      mpprod_rec(mpl1,cdr(mpl2))+mpprod_rec(mpl1,(: car(mpl2) :))
+    ELSE mpprod_rec(cdr(mpl1),mpl2)+mpprod_rec((: car(mpl1) :),mpl2)
+    ENDIF MEASURE length(mpl1)+length(mpl2)
+
+  mpprod(mpl1,mpl2): {mpl |
+    FORALL (xvar): meval(mpl)(xvar)=
+    	   	   meval(mpl1)(xvar)*meval(mpl2)(xvar)} =
+    mp_simp(mpprod_rec(mpl1,mpl2))
+
+  ;*(mpl1,mpl2): MACRO MultiPolyList = mpprod(mpl1,mpl2)
+
+  mpscal(c,mpl): RECURSIVE MultiPolyList =
+    IF null?(mpl) THEN mpl
+    ELSE cons((c*car(mpl)`1,car(mpl)`2),mpscal(c,cdr(mpl))) ENDIF
+    MEASURE length(mpl)
+
+  ;*(c,mpl): MACRO MultiPolyList = mpscal(c,mpl)
+
+  mpminus(mpl1,mpl2): MultiPolyList =
+    mpl1 + ((-1)*mpl2)
+
+  ;-(mpl1,mpl2): MACRO MultiPolyList = mpminus(mpl1,mpl2)
+
+  mppow(mpl,n): RECURSIVE MultiPolyList =
+    IF n = 0 THEN (: (1,(: :)) :)
+    ELSIF n = 1 THEN mpl
+    ELSE mpl*mppow(mpl,n-1) ENDIF
+    MEASURE n
+
+  ;^(mpl,n): MACRO MultiPolyList = mppow(mpl,n)
+
+  mpneg(mpl): MultiPolyList = (-1)*mpl
+
+  ;-(mpl): MACRO MultiPolyList = mpneg(mpl)
+  
+  rnz: VAR nzreal
+
+  mpdiv(mpl,rnz): MultiPolyList = (1/rnz)*mpl
+
+  ;/(mpl,rnz): MACRO MultiPolyList = mpdiv(mpl,rnz)
+
+  mpsq(mpl): MACRO MultiPolyList = mpl*mpl
+
+  %%% Lemmas for rewriting
+
+  multipolylist_eval: LEMMA
+    meval(mpl)(xvar) = mpoly_eval(multipoly_to_mpoly(mpl),max(length(degree(mpl)),1))(xvar)
+
+  multipolylist_const: LEMMA
+    meval(mpconst(c))(xvar) = c
+
+  multipolylist_monom: LEMMA 
+    meval(mpmonom(c,i,n))(xvar) = c*xvar(i)^n
+
+  multipolylist_var: LEMMA 
+    meval(mpvar(i))(xvar) = xvar(i)
+
+  multipolylist_varn: LEMMA 
+    meval(mpvarn(i,n))(xvar) = xvar(i)^n
+
+  multipolylist_sum: LEMMA
+    meval(mpl1+mpl2)(xvar) = meval(mpl1)(xvar)+meval(mpl2)(xvar)
+
+  multipolylist_prod: LEMMA
+    meval(mpl1*mpl2)(xvar) = meval(mpl1)(xvar)*meval(mpl2)(xvar)
+  
+  multipolylist_scal: LEMMA
+    meval(c*mpl)(xvar) = c*meval(mpl)(xvar)
+
+  multipolylist_pow: LEMMA
+    meval(mpl^n)(xvar) = meval(mpl)(xvar)^n
+
+  multipolylist_neg: LEMMA
+    meval(-mpl)(xvar) = -meval(mpl)(xvar)
+
+  multipolylist_minus: LEMMA
+    meval(mpl1-mpl2)(xvar) = meval(mpl1)(xvar)-meval(mpl2)(xvar)
+
+  multipolylist_div: LEMMA
+    meval(mpl/rnz)(xvar) = meval(mpl)(xvar)/rnz
+
+  multipolylist_sq: LEMMA
+    meval(mpsq(mpl))(xvar) = sq(meval(mpl)(xvar))
+
+END multi_polylist

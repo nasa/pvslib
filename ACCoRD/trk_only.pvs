@@ -1,0 +1,174 @@
+%------------------------------------------------------------------------------
+% trk_only.pvs
+% ACCoRD v1.0
+%
+% Line solutions. Solve the following equation on k:
+%   || k*v + vi || = || vo ||.
+%
+% Circle solutions. Solve the following equations on v:
+%   sq(s+t*v) = sq(D)
+%   || v + vi || = || vo || 
+%
+%------------------------------------------------------------------------------
+
+trk_only[D:posreal] : THEORY
+BEGIN
+  
+  IMPORTING vectors@vectors_2D, 
+	    vectors@det_2D,
+            reals@quadratic_2b,
+	    horizontal[D],
+	    line_solutions[D]
+
+  u,vnz,
+  vnzo,vnzi  : VAR Nz_vect2
+  dir,irt    : VAR Sign
+  vo,vi,    
+  nvo,
+  vo1,vo2,
+  s          : VAR Vect2
+  sp	     : VAR Sp_vect2
+  k,k1,k2,j  : VAR real
+  t          : VAR posreal
+
+  %---------------%
+  % Line Solution %
+  %---------------%
+
+  % Vector vnz is a directional vector
+  % Zero indicates no track solution
+  trk_only_line(vnz,vo,vi,irt): {k:real,nvo:Vect2 | 
+                                 nz_vect2?(nvo) => trk_only?(vo)(nvo) AND
+                                                   k*vnz = nvo-vi} =
+    LET a = sqv(vnz),
+        b = vnz*vi,
+        c = sqv(vi) - sqv(vo) IN
+    IF discr2b(a,b,c) >= 0 THEN
+      LET k = root2b(a,b,c,irt) IN
+      (k,k*vnz+vi)
+    ELSE
+      (0,zero)
+    ENDIF
+
+  % trk_only_line computes the same roots for vectors of the same length
+  same_trk_only_line: LEMMA 
+    norm(vo1) = norm(vo2) IMPLIES
+    trk_only_line(vnz,vo1,vi,irt) = trk_only_line(vnz,vo2,vi,irt)
+
+  trk_only_line?(vnz,vo,vi,irt)(k,nvo) : bool =
+    nz_vect2?(nvo) AND
+    (k,nvo) = trk_only_line(vnz,vo,vi,irt)
+
+  trk_only_line_complete : LEMMA
+    trk_only?(vnzo)(nvo) AND
+    k*vnz = nvo-vi IMPLIES
+      EXISTS(irt):trk_only_line?(vnz,vnzo,vi,irt)(k,nvo)
+
+  trk_only_line_lt : LEMMA
+    trk_only_line?(vnz,vo,vi,-1)(k1,vo1) AND
+    trk_only_line?(vnz,vo,vi,1)(k2,vo2) IMPLIES
+      k1 <= k2
+
+  % Solve equation on nvo: u*(nvo-vi) = j, such that ||nvo|| = ||vo||
+  trk_only_dot(u,vo,vi,j,irt) : {nvo | nz_vect2?(nvo) => 
+                                       trk_only?(vo)(nvo) AND
+                                       u*(nvo-vi) = j} =
+    trk_only_line(Vdir(u,vo-vi),vo,vi+W0(u,j),irt)`2 
+
+
+  trk_only_dot_complete : LEMMA
+    trk_only?(vnzo)(nvo) AND
+    u*(nvo-vi) = j IMPLIES
+    EXISTS (irt) : nvo = trk_only_dot(u,vnzo,vi,j,irt)
+
+
+  %-----------------%
+  % CircleSolution %
+  %-----------------%
+
+  trk_only_circle_eq_dot : LEMMA
+    LET v = nvo-vi,
+        w = s-t*vi,
+        e = (sq(D) - sqv(s) - sq(t)*(sqv(vo)-sqv(vi)))/(2*t) IN
+      trk_only?(vo)(nvo) IMPLIES
+        (sqv(s+t*v) = sq(D) IFF
+         w*v = e)
+
+  trk_special_case?(s,vo,vi,t) : bool =
+    s = t*vi AND sqv(vo) = sq(D/t)
+
+  trk_spc_on_D : LEMMA
+    trk_special_case?(s,vo,vi,t) AND
+    trk_only?(vo)(nvo) IMPLIES
+    sqv(s+t*(nvo-vi)) = sq(D)
+
+  trk_spc_Delta_ge_0 : LEMMA
+    trk_special_case?(s,vo,vi,t) IMPLIES
+    Delta(s,vo-vi) >= 0
+
+  trk_spc_dot : LEMMA
+    trk_special_case?(s,vo,vi,t) AND
+    trk_only?(vo)(nvo) IMPLIES
+    sq(D/t) - vi*nvo = ((s+t*(nvo-vi)) * (nvo-vi))/t
+
+  trk_spc_line_solution: LEMMA 
+    trk_special_case?(sp,vo,vi,t) AND
+    (sp+t*(vo-vi)) * (vo-vi) = 0 
+    IMPLIES line_solution?(sp,vo-vi)
+
+  trk_spc_horizontal_dir : LEMMA
+    trk_special_case?(s,vo,vi,t) AND
+    trk_only?(vo)(nvo) IMPLIES
+    (dir*(vi*nvo - sq(D/t)) <= 0 IFF horizontal_dir_at?(s,nvo-vi,t,dir))
+
+  trk_only_circle(s,vo,vnzi,t,dir,irt): {nvo | nz_vect2?(nvo) => 
+                                               trk_only?(vo)(nvo)} =
+      LET w = s-t*vnzi,
+          e = (sq(D) - sqv(s) - sq(t)*(sqv(vo)-sqv(vnzi)))/(2*t) IN
+      IF nz_vect2?(w) THEN
+        LET nvo = trk_only_dot(w,vo,vnzi,e,irt) IN
+        IF horizontal_dir_at?(s,nvo-vnzi,t,dir) THEN
+          nvo
+        ELSE
+	  zero
+        ENDIF
+      ELSE
+        zero
+      ENDIF
+
+  trk_only_circle?(s,vo,vnzi,t,dir)(nvo): bool =
+     nz_vect2?(nvo) AND
+     EXISTS (irt:Sign): nvo = trk_only_circle(s,vo,vnzi,t,dir,irt)
+
+  trk_only_circle_solution : LEMMA
+    trk_only_circle?(s,vo,vnzi,t,dir)(nvo) IMPLIES
+    circle_solution_2D?(s,nvo-vnzi,t,dir)
+
+  trk_only_circle_complete : LEMMA     
+    trk_only?(vnzo)(nvo) AND
+    NOT trk_special_case?(s,vnzo,vnzi,t) AND                                              
+    circle_solution_2D?(s,nvo-vnzi,t,dir) IMPLIES                                          
+      trk_only_circle?(s,vnzo,vnzi,t,dir)(nvo)     
+
+  trk_only_vertical(s,vo,vi,t,dir,irt): {nvo | nz_vect2?(nvo) => 
+                                               trk_only?(vo)(nvo)} =
+    LET v = vo-vi IN
+    IF Delta(s,v) > 0 AND Theta_D(s,v,dir) > 0 THEN
+      LET p = s + Theta_D(s,v,dir)*v IN
+        trk_only_dot(t*p,vo,vi,sq(D)-s*p,irt) 
+    ELSE
+      zero
+    ENDIF
+
+  trk_only_vertical?(s,vo,vi,t,dir)(nvo) : bool = 
+    nz_vect2?(nvo) AND
+    EXISTS (irt) : nvo = trk_only_vertical(s,vo,vi,t,dir,irt)
+
+  trk_only_vertical_on_D: LEMMA
+    LET v = vo-vi IN
+    trk_only_vertical?(s,vo,vi,t,dir)(nvo) IMPLIES
+      Delta(s,v) > 0 AND
+      Theta_D(s,v,dir) > 0 AND
+      (s+t*(nvo-vi))*(s+Theta_D(s,v,dir)*v) = sq(D) 
+
+END trk_only

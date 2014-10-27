@@ -1,0 +1,197 @@
+minmax : THEORY
+BEGIN 
+
+  IMPORTING util
+
+  nvars	      : VAR nat
+  depth,v     : VAR nat
+  e           : VAR posreal
+  a,b,d       : VAR real
+  rf	      : VAR [real->real]
+  l           : VAR list[real]
+  rel         : VAR RealOrder
+  exitatdepth : VAR bool
+
+  Outminmax   : TYPE = [# lb_min,lb_max:real,
+                          lb_var: list[real],
+  	                  ub_max,ub_min:real,
+                          ub_var: list[real],
+                          max_depth : nat,
+                          splits : nat
+                        #]
+
+  omm,
+  omm1,omm2   : VAR Outminmax
+
+  lb_le_ub?(omm): bool =
+    omm`lb_min <= omm`ub_max
+
+  single_outminmax(a,b,l,depth): Outminmax = (# 
+    lb_min := a,
+    lb_max := b,
+    lb_var := l,
+    ub_max := a,
+    ub_min := b,
+    ub_var := l,
+    max_depth := depth,
+    splits    := 0 
+  #)
+
+  empty_minmax : Outminmax = 
+    single_outminmax(0,0,null,0)
+
+  outminmax_translate(j:nat,rf)(omm): Outminmax =
+    IF j < length(omm`lb_var) AND j<length(omm`ub_var) THEN
+     omm WITH [lb_var := setnth(omm`lb_var,j,rf),
+               ub_var := setnth(omm`ub_var,j,rf)]
+   ELSE
+     omm
+   ENDIF
+
+  length_eq?(nvars)(omm): bool = 
+    (cons?(omm`lb_var) OR cons?(omm`ub_var)) IMPLIES 
+      length(omm`lb_var) = nvars AND length(omm`ub_var) = nvars
+
+  %% Combine in the same interval
+  combine(omm1,omm2): Outminmax =
+    LET lbmax = IF    null?(omm1`lb_var) THEN omm2
+		ELSIF null?(omm2`lb_var) OR omm1`lb_max <= omm2`lb_max THEN omm1 
+                ELSE  omm2 
+                ENDIF,
+        ubmin = IF    null?(omm1`ub_var) THEN omm2
+		ELSIF null?(omm2`ub_var) OR omm1`ub_min >= omm2`ub_min THEN omm1 
+                ELSE  omm2 
+                ENDIF
+    IN (#
+      lb_min    := min(omm1`lb_min,omm2`lb_min),
+      lb_max    := IF null?(lbmax`lb_var) THEN 0 ELSE lbmax`lb_max ENDIF,
+      lb_var    := lbmax`lb_var,
+      ub_max    := max(omm1`ub_max,omm2`ub_max),
+      ub_min    := IF null?(ubmin`ub_var) THEN 0 ELSE ubmin`ub_min ENDIF,
+      ub_var    := ubmin`ub_var,
+      max_depth := max(omm1`max_depth,omm2`max_depth),
+      splits    := 0
+    #)
+
+  %% Combine left and right intervals
+  combine_lr(v,omm1,omm2): Outminmax = 
+    combine(outminmax_translate(v,LAMBDA(x:real):x/2)(omm1),
+            outminmax_translate(v,LAMBDA(x:real):(x+1)/2)(omm2)) WITH [
+      splits := omm1`splits + omm2`splits + 1
+    ]
+
+  % omm1 is child, omm2 is father
+  combine_l(v,omm1,omm2): Outminmax = 
+    combine(outminmax_translate(v,LAMBDA(x:real):x/2)(omm1),omm2)  WITH [
+       splits := omm1`splits + 1
+    ]
+
+  % omm2 is father, omm1 is child
+  combine_r(v,omm1,omm2): Outminmax = 
+    combine(outminmax_translate(v,LAMBDA(x:real):(x+1)/2)(omm1),omm2)  WITH [
+      splits := omm1`splits + 1
+    ]
+
+  % is omm2 between omm1?
+  between?(omm1,omm2): bool = 
+    cons?(omm1`lb_var) AND cons?(omm1`ub_var) AND 
+    omm1`lb_max <= omm2`lb_min AND omm2`ub_max <= omm1`ub_min
+
+  between_combine_lr : LEMMA
+    between?(omm,combine(omm1,omm2)) IFF
+    between?(omm,combine_lr(v,omm1,omm2))
+
+  pre_sound?(omm:Outminmax) : bool =
+    length(omm`lb_var) = length(omm`ub_var) AND
+    omm`lb_min <= omm`ub_max AND
+    (cons?(omm`lb_var) IMPLIES 
+      omm`lb_min <= omm`lb_max AND
+      omm`ub_min <= omm`ub_max AND
+      omm`lb_max <= omm`ub_min)
+
+  eps_localexit(e)(omm): bool = 
+    cons?(omm`lb_var) AND cons?(omm`ub_var) AND 
+    omm`lb_max-omm`lb_min <= e AND omm`ub_max-omm`ub_min <= e
+
+  false_globalexit(omm): bool = FALSE
+
+  %%%%%%%%%%%%%%%%%%% Maximum of Two Polynomials %%%%%%%%%%%%%%%%%%%
+
+  % single_max_outminmax is for maximums of two polynomials
+  % a is the max possible, b is the min possible, and d is the achieved
+
+  single_max_outminmax(a,b,d,l,depth): Outminmax = (# 
+    lb_min    := b,
+    lb_max    := d,
+    lb_var    := l,
+    ub_max    := a,
+    ub_min    := d,
+    ub_var    := l,
+    max_depth := depth,
+    splits    := 0 
+  #)
+
+  %% Combine in the same interval
+  combine_max(omm1,omm2): Outminmax =
+    IF    omm1`lb_min >= omm2`ub_max THEN omm1
+    ELSIF omm2`lb_min >= omm1`ub_max THEN omm2
+    ELSE
+     (#
+      lb_min    := min(omm1`lb_min,omm2`lb_min),
+      lb_max    := 0,
+      lb_var    := null,
+      ub_max    := max(omm1`ub_max,omm2`ub_max),
+      ub_min    := 0,
+      ub_var    := null,
+      max_depth := max(omm1`max_depth,omm1`max_depth),
+      splits    := 0
+     #)
+    ENDIF
+
+  %%%%%%%%%% Exiting %%%%%%%%%%
+
+  rel_localexit(rel)(omm)  : bool = IF rel(0,1) THEN % Case < 0 or <= 0
+                                      rel(omm`ub_max,0)
+                                    ELSE % Case > 0 or >= 0
+                                      rel(omm`lb_min,0)
+                                    ENDIF
+
+  rel_counterex(rel)(omm) : bool = IF rel(0,1) THEN % Case < 0 or <= 0
+               		             cons?(omm`ub_var) AND NOT rel(omm`ub_min,0) 
+                                   ELSE % Case > 0 or >= 0
+                                     cons?(omm`lb_var) AND NOT rel(omm`lb_max,0)
+                                   ENDIF
+
+  rel_globalexit(rel,depth,exitatdepth)(omm) : bool = 
+    (exitatdepth AND omm`max_depth = depth) OR
+    rel_counterex(rel)(omm)
+
+  globalexit_inv?(globalexit:[Outminmax->bool]) : bool =
+    (FORALL(omm1,omm2): globalexit(omm1) IMPLIES 
+      globalexit(combine(omm1,omm2))) AND
+    (FORALL(n:nat,omm) : globalexit(omm) IMPLIES
+      globalexit(omm WITH [splits:= n])) AND
+    (FORALL(j:nat,rf,omm) : globalexit(omm) IMPLIES
+      globalexit(outminmax_translate(j,rf)(omm)))
+
+  false_globalexit_inv : JUDGEMENT
+    false_globalexit HAS_TYPE (globalexit_inv?)
+
+  rel_globalexit_inv : LEMMA
+    globalexit_inv?(rel_globalexit(rel,depth,false))
+
+  localexit_inv?(localexit:[Outminmax->bool]) : bool = 
+    (FORALL(omm1,omm2): localexit(omm1) AND localexit(omm2) IMPLIES 
+      localexit(combine(omm1,omm2))) AND
+    (FORALL(n:nat,omm) : localexit(omm) IMPLIES
+      localexit(omm WITH [splits:= n])) AND
+    (FORALL(j:nat,rf,omm) : localexit(omm) IMPLIES
+      localexit(outminmax_translate(j,rf)(omm)))
+
+  eps_localexit_inv : JUDGEMENT
+    eps_localexit(e) HAS_TYPE (localexit_inv?)
+
+  rel_localexit_inv : JUDGEMENT
+    rel_localexit(rel) HAS_TYPE (localexit_inv?)
+
+END minmax

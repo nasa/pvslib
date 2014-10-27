@@ -1,0 +1,401 @@
+%
+%
+% Purpose: Models the temporal correlation of send and receive
+%          events (aka communication) under the integration (hybrid) 
+%          fault model and the message filter in the time domain.
+%
+%
+
+timing_integration_stage
+[
+   rho     : nonneg_real, % Bound on drift for a good oscillator
+   min_latency   : nonneg_real, % Minimum real time latency (in ticks
+                          % of real time) of the communication link
+                          % determined by things like length of wire, speed
+                          % of light, and clock rate.
+   var_latency: nonneg_real, % Max variation (in ticks of real 
+                          % time) caused by both wire length 
+                          % differences and clock jitter.  
+   S   : posnat,          % Number of sending nodes
+   D   : posnat           % Number of destination nodes
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    timing_window[rho, min_latency, var_latency],
+    integration_fault_model[S],
+    inexact_comm_stage[S, D],
+    finite_sets@finite_sets_minmax[real, <=],
+    finite_sets@finite_sets_below[D]
+
+  s, s1, s2: VAR below(S)
+  d, d1, d2: VAR below(D)
+  status:    VAR node_status[S]
+
+  tau: VAR tau_type
+
+  check: VAR check_stage
+
+  common_check: VAR finite_set[below(S)] % who is supposed to send
+ 
+  T:  VAR integer
+  ev: VAR real
+  pi: VAR nonneg_real
+
+  c_src: VAR [below(S) -> good_clock]
+  c_dst: VAR [below(D) -> good_clock]
+
+  t_of(c_dst, T)(d): real = c_dst(d)(T)
+
+  t_min(c_dst, T): real = min(image(t_of(c_dst, T),fullset[below(D)]))
+
+  c: VAR good_clock
+  f: VAR [below(D) -> real]
+
+
+  uniformly_good_range?(c, T)(f): bool =
+    FORALL d: good_range(c(T-W))(f(d))
+
+  uniformly_inner_window?(c_dst, T, pi)(f): bool =
+    FORALL d: inner_window?(c_dst(d), T, pi)(f(d))
+
+  uniformly_outer_window?(c_dst, T, pi)(f): bool =
+    FORALL d: outer_window?(c_dst(d), T, pi)(f(d))
+
+  uniformly_outer_exists: LEMMA
+    EXISTS f: uniformly_outer_window?(c_dst, T, pi)(f)
+
+  single_denotation_timing?(c_dst, T, pi)(f): bool =
+    FORALL d1, d2: 
+        inner_window?(c_dst(d1), T, pi)(f(d1)) AND
+        inner_window?(c_dst(d2), T, pi)(f(d2))
+      IMPLIES
+        abs(f(d1) - f(d2)) <= var_latency
+
+  symmetric_timing_conforms?(c_dst, T, pi)(f): bool =
+    FORALL d1, d2:
+      inner_window?(c_dst(d1), T, pi)(f(d1))
+    IMPLIES
+      inner_window?(c_dst(d2), T, pi)(f(d2))
+
+  symmetric_timing_uniform: LEMMA
+      symmetric_timing_conforms?(c_dst, T, pi)(f)
+    IFF
+      (uniformly_inner_window?(c_dst, T, pi)(f) OR
+       uniformly_outer_window?(c_dst, T, pi)(f))
+
+  uniformly_outer_single_denotation: LEMMA
+      uniformly_outer_window?(c_dst, T, pi)(f)
+    IMPLIES
+      single_denotation_timing?(c_dst, T, pi)(f)
+  
+  % The message of good source s sent at Clocktime T-W is received in the
+  % interval [c_src(s)(T-W) + min_latency, c_src(s)(T-W) + min_latency + var_latency].
+  good_send(c_src, T, s)(d): (good_range(c_src(s)(T-W)))
+
+  % The message of a ommissive symmetric source is either received like 
+  % that of a good source by all destinations or falls in the outer 
+  % window of all destinations.
+  osym_send(c_src, c_dst, T, pi, s):
+    (union(uniformly_good_range?(c_src(s), T),
+           uniformly_outer_window?(c_dst, T, pi)))
+
+  % The message of an omissive asymmetric source may either be received
+  % like that of a good source or may fall in the outer window.
+  oasym_send(c_src, c_dst, T, pi, s, d):
+    (union(good_range(c_src(s)(T-W)), outer_window?(c_dst(d), T, pi)))
+
+  % Reception of the message of a transmissive symmetric source is constrained
+  % only as follows:
+  % 1) the message falls in the inner window of all recipients or it
+  % falls in the outside window of all recipients;
+  % 2) if they fall in the inner window, the messages differ at most by
+  % "var_latency".
+
+  tsym_send(c_dst, T, pi, s) : 
+    (union(intersection(uniformly_inner_window?(c_dst, T, pi),
+                        single_denotation_timing?(c_dst, T, pi)),
+           uniformly_outer_window?(c_dst, T, pi)))
+
+  sv_send(c_dst, T, pi, s) : (single_denotation_timing?(c_dst, T, pi))
+
+  tsym_single_denotation: LEMMA
+    single_denotation_timing?(c_dst, T, pi)(tsym_send(c_dst, T, pi, s))
+
+  % An asymmetrically faulty source may generate an unrestricted, potentially
+  % distinct event at each destination.
+  tasym_send(c_dst, T, pi, s, d): real
+
+  % The time the message is received which was sent by source s at Clocktime
+  % T-W.
+  % This includes corruption by the given fault of the source, and the
+  % uncertain delay caused by the wire and clock jitter.
+  send(c_src, c_dst, T, pi, status)(d)(s): real =
+    CASES status(s) OF 
+      good                     : good_send(c_src, T, s)(d),
+      omissive_symmetric       : osym_send(c_src, c_dst, T, pi, s)(d),
+      omissive_asymmetric      : oasym_send(c_src, c_dst, T, pi, s, d),
+      transmissive_symmetric   : tsym_send(c_dst, T, pi, s)(d),
+      single_error_asymmetric  : sv_send(c_dst, T, pi, s)(d),
+      transmissive_asymmetric  : tasym_send(c_dst, T, pi, s, d) 
+    ENDCASES
+
+  % Source and destination clocks have bounded skew. This implicitly assumes
+  % that all sources have good clocks. The clock events of bad sources are
+  % not observable through the network.
+  clock_relation?(T, c_src, c_dst, pi): bool = 
+    FORALL s, d: abs(c_src(s)(T) - c_dst(d)(T)) <= pi
+
+  % the event of timestamping the received message happens within the
+  % reception window around clocktime T of the destination clock,
+  % and the source passes both the local_check and common_check.
+  check(c_dst, T, common_check, pi)(d)(s)(ev): bool =
+    timing_conforms?(c_dst(d), T, pi)(ev) AND common_check(s)
+
+
+  sent(c_src, T)(s): real = c_src(s)(T-W)
+  nominal(c_src, T)(s): real = c_src(s)(T)
+
+  % the Timestamped reception of the message sent by the source at time T-W
+  received(c_dst, c_src, T, status, pi)(d)(s): real =
+    c_dst(d)(Timestamp(c_dst(d), send(c_src, c_dst, T, pi, status)(d)(s)))
+
+  received_clock_edge: LEMMA
+    clock_edge?(c_dst(d), received(c_dst, c_src, T, status, pi)(d)(s))
+
+  enabled_within_stage: LEMMA
+    enabled_within?(
+      received(c_dst, c_src, T, status, pi),
+      check(c_dst, T, common_check, pi))
+        (common_check)
+
+  % The message sent by a correct_denotation s at Clocktime T-W is received either
+  % in the good range or in the outer window.
+  correct_denotation_send: LEMMA
+      correct_denotation?(status(s))
+    IMPLIES
+      good_range(c_src(s)(T-W))(send(c_src, c_dst, T, pi, status)(d)(s)) OR
+      outer_window?(c_dst(d), T, pi)(send(c_src, c_dst, T, pi, status)(d)(s))
+
+  % The message sent by a correct_denotation s at Clocktime T-W, if it conforms,
+  % is received in the good range.
+  conforming_correct_denotation_send: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) AND
+      correct_denotation(status)(s) AND
+      enabled(received(c_dst, c_src, T, status, pi), 
+              check(c_dst, T, common_check, pi))(d)(s)
+    IMPLIES
+      good_range(c_src(s)(T-W))(send(c_src, c_dst, T, pi, status)(d)(s))
+
+  single_denotation_send: LEMMA
+      single_denotation?(status(s)) AND
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      single_denotation_timing?(c_dst, T, pi)(transpose(send(c_src, c_dst, T, pi, status))(s))
+
+  symmetric_send: COROLLARY
+      symmetric_denotation?(status(s)) AND
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      single_denotation_timing?(c_dst, T, pi)(transpose(send(c_src, c_dst, T, pi, status))(s))
+
+  symmetric_timing_conforms: LEMMA
+      symmetric_denotation?(status(s)) AND
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      symmetric_timing_conforms?(c_dst, T, pi)(transpose(send(c_src, c_dst, T, pi, status))(s))
+
+
+  % "received" satisfies the inexact comm properties wrt. "sent" and
+  % "nominal".
+
+  correct_lower_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      correct_lower_inaccuracy?(
+        nominal(c_src, T),
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi),
+        epsilon_l)
+          (correct_denotation(status))
+
+  correct_quorum_lower: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       quorum?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi), tau)
+           (correct_denotation(status))
+     IMPLIES
+       quorum_lower?(        
+         nominal(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         tau,
+         epsilon_l)
+
+  correct_majority_lower: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       majority?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi))
+           (correct_denotation(status))
+     IMPLIES
+       majority_lower?(        
+         nominal(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         epsilon_l)
+
+
+  correct_upper_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi)
+    IMPLIES
+      correct_upper_inaccuracy?(
+        nominal(c_src, T),
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi),
+        epsilon_u)
+          (correct_denotation(status))
+
+  correct_majority_upper: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       majority?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi))
+           (correct_denotation(status))
+     IMPLIES
+       majority_upper?(        
+         nominal(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         epsilon_u)
+
+  correct_quorum_upper: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       quorum?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi), tau)
+           (correct_denotation(status))
+     IMPLIES
+       quorum_upper?(        
+         nominal(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         tau,
+         epsilon_u)
+
+  correct_accuracy_timing: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       majority?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi))
+           (correct_denotation(status))
+     IMPLIES
+       majority_accuracy?(        
+         nominal(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         epsilon_l,
+         epsilon_u)
+
+  correct_imprecision_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) 
+    IMPLIES
+      correct_imprecision?(
+        sent(c_src, T),
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi), 
+        epsilon)
+          (correct_denotation(status)) 
+
+  quorum_imprecision: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       quorum?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi), tau)
+           (correct_denotation(status))
+     IMPLIES
+       quorum_imprecision?(        
+         sent(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         tau,
+         epsilon)
+
+  majority_imprecision: LEMMA
+       clock_relation?(T, c_src, c_dst, pi) AND
+       majority?(received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi))
+           (correct_denotation(status))
+     IMPLIES
+       majority_imprecision?(        
+         sent(c_src, T),
+         received(c_dst, c_src, T, status, pi),
+         check(c_dst, T, common_check, pi),
+         epsilon)
+
+  % the Timestamped received message of a symmetric source is either
+  % conforming at all destinations and the received events vary by at most
+  % "var_latency", or it is non-conforming at all destinations.
+
+  single_imprecision_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) 
+    IMPLIES
+      single_imprecision?(
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi),
+        epsilon)
+          (single_denotation(status))
+
+  uniformly_enabled: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) 
+    IMPLIES
+      uniformly_enabled?(
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi))
+          (symmetric_denotation(status))
+
+  symmetric_imprecision_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) 
+    IMPLIES
+      single_imprecision?(
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi),
+        epsilon)
+          (symmetric_denotation(status))
+
+%  enabled_symmetric?(c_src, c_dst, T, common_check, status, pi)
+
+  all_symmetric_timing: LEMMA
+      clock_relation?(T, c_src, c_dst, pi) AND
+      enabled_within?(
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi))
+         (symmetric_denotation(status))
+    IMPLIES
+      all_symmetric?(
+        received(c_dst, c_src, T, status, pi),
+        check(c_dst, T, common_check, pi), 
+        epsilon)
+    
+
+  % Synchronization fault assumptions
+  majority_synch?(status, c_src, c_dst, T, common_check, pi): bool =
+    majority?(
+      received(c_dst, c_src, T, status, pi),
+      check(c_dst, T, common_check, pi)
+       )(correct_denotation(status))
+
+  quorum_synch?(status, c_src, c_dst, T, common_check, tau, pi): bool =
+    quorum?(
+      received(c_dst, c_src, T, status, pi),
+      check(c_dst, T, common_check, pi),
+      tau
+       )(correct_denotation(status))
+
+  all_symmetric_synch?(status, c_src, c_dst, T, common_check, pi): bool =
+    enabled_within?(
+      received(c_dst, c_src, T, status, pi),
+      check(c_dst, T, common_check, pi))(symmetric_denotation(status)) AND
+    enabled_nonempty?(
+      received(c_dst, c_src, T, status, pi),         
+      check(c_dst, T, common_check, pi))
+
+
+
+END timing_integration_stage

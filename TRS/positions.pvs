@@ -1,0 +1,228 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%               
+%% Last Modified On: May 10, 2011
+%%                                                                          
+%%----------------------------------------------------------------------------
+
+
+positions[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+  BEGIN
+    
+   position: TYPE = finseq[posnat]
+  positions: TYPE = set[position]
+  
+  IMPORTING IUnion_extra[position],
+            structures@seq_extras[position] as fspos,
+            structures@seq_extras[posnat]   as fsepn,
+            variables_term[variable,symbol, arity],
+            structures@seq_extras[term]     as fset
+
+
+%%%%%%%%%%%% Definition: The set of positions of a term %%%%%%%%%%%%%%%%%%%
+
+
+  only_empty_seq: positions = {x: position | x = empty_seq}
+
+  catenate(i: posnat, s: positions): positions  =
+        {seq: position | EXISTS (x: position): (member(x,s) AND 
+                                                 seq = add_first(i,x))}
+
+
+  positionsOF(t: term): RECURSIVE positions =
+    (CASES t OF 
+       vars(t): only_empty_seq,
+       app(f, st): IF length(st) = 0
+                   THEN
+                    only_empty_seq
+                   ELSE
+                    union(only_empty_seq, 
+                          IUnion((LAMBDA (i: upto?(length(st))):
+                               catenate(i, positionsOF(st(i-1)) ))))
+                   ENDIF
+     ENDCASES)
+  MEASURE t BY << 
+
+  positions?(t: term): TYPE = {p: position | positionsOF(t)(p)}
+ 
+  positions(t: term): set[position] = {p: position | positionsOF(t)(p)}
+
+
+
+%%%%%%%%%%%% Definition: Order on positions %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ 
+     p, q: VAR position
+  s, r, t: VAR term
+     j, i: VAR posnat
+
+
+  <=(p, q): bool = (EXISTS (p1: position): q = p o p1);
+
+  parallel(p, q): bool = (NOT p <= q) & (NOT q <= p)
+
+  child(p, q): bool = (EXISTS (p1: position):
+       (p1 /= empty_seq AND p = q o p1))
+
+  left_without_children(p, q): bool = (EXISTS (r,p1,q1: position): 
+       (q = r o q1 AND p = r o p1 AND 
+        q1 /= empty_seq AND p1 /= empty_seq AND
+        first(p1) < first(q1)))
+
+  left_pos(p, q): bool = (EXISTS (r,p1,q1: position): 
+       (q = r AND p1 /= empty_seq AND p = r o p1) OR
+       (q = r o q1 AND p = r o p1 AND 
+        q1 /= empty_seq AND p1 /= empty_seq AND
+        first(p1) < first(q1))) 
+
+
+%%%% Auxiliar definitions %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+     
+
+      fsp: VAR finseq[position]
+
+
+  PP?(fsp): bool = IF fsp`length < 2
+                   THEN true
+                   ELSE
+                     FORALL (i, j: below[length(fsp)]): i /= j  => 
+                                     parallel(fsp(i), fsp(j))
+                   ENDIF
+ 
+
+  SP?(t)(fsp): bool = FORALL (i: below[length(fsp)]): 
+                          positionsOF(t)(fsp(i))
+
+
+  SPP?(t)(fsp): bool = PP?(fsp) & SP?(t)(fsp)
+
+  
+     PP : TYPE = (PP?)
+
+   SP(t): TYPE = (SP?(t))
+  
+  SPP(t): TYPE = (SPP?(t))
+
+
+
+%%%%%%%%%%%% Properties of positions %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  positions_of_terms_finite : LEMMA is_finite(positionsOF(t))
+
+  empty_pos: LEMMA q = empty_seq  &  p <= q => p = empty_seq
+
+  closed_positions: LEMMA (positionsOF(t)(q) & p <= q) => positionsOF(t)(p)
+
+  equal_symbol_equal_length_arg : LEMMA
+      FORALL (s, t: term, fs, ft: symbol, 
+              ss:{args: finite_sequence[term] | args`length = arity(fs)},
+              st:{argt: finite_sequence[term] | argt`length = arity(ft)}) :
+       (s = app(fs, ss) AND t = app(ft,st) AND fs = ft)
+                               IMPLIES ss`length = st`length
+
+  not_var: LEMMA (positionsOF(t)(p) & p = add_first(i, q)) => app?(t)
+
+  not_var1: LEMMA (positionsOF(t)(p) & p = add_last(q,i)) => app?(t)
+
+  pos_ax: LEMMA positionsOF(t)(p o q) => positionsOF(t)(p)
+
+  rest_of_positions: LEMMA (positionsOF(s)(p) & length(p) /= 0)  =>
+	                  positionsOF(args(s)(first(p) - 1))(rest(p))
+
+  delete_is_position: LEMMA positionsOF(s)(p) & length(p) /= 0 =>
+                                positionsOF(s)(delete(p, length(p) - 1))
+
+
+  parallel_comm: LEMMA parallel(p, q) => parallel(q, p)
+
+  rest_parallel: LEMMA length(p)/= 0 & length(q)/= 0 & first(p) = first(q)
+                           & parallel(p, q) => parallel(rest(p), rest(q))
+
+
+  rest_of_PP_is_PP: LEMMA FORALL (fss: PP): PP?(rest(fss))
+
+
+  rest_of_SP_is_SP: LEMMA  FORALL s, (fss: SP(s)): SP?(s)(rest(fss))
+
+
+  delete_of_PP_is_PP: LEMMA
+     FORALL (fss: PP), (i: below[length(fss)]): PP?(delete(fss, i))
+
+  delete_of_SP_is_SP: LEMMA
+     FORALL s, (fss: SP(s)), (i: below[length(fss)]): SP?(s)(delete(fss, i))
+
+
+
+  add_first_parallel_pos_to_PP_is_PP : LEMMA 
+   FORALL (fss: PP), (q: position): 
+       (FORALL (i: below[length(fss)]): parallel(fss(i),q))
+           =>
+            PP?(add_first(q, fss))
+
+
+  add_first_parallel_pos_to_SP_is_SP : LEMMA 
+   FORALL s, (fss: SP(s)), (q: positions?(s)): SP?(s)(add_first(q, fss) )
+
+
+  add_last_parallel_pos_to_PP_is_PP : LEMMA 
+   FORALL (fss: PP), (q: position): 
+       (FORALL (i: below[length(fss)]): parallel(fss(i),q))
+           =>
+            PP?(add_last(fss, q))
+
+
+  add_last_parallel_pos_to_SP_is_SP : LEMMA 
+   FORALL s, (fss: SP(s)), (q: positions?(s)): SP?(s)(add_last(fss, q))
+
+
+%%%% Auxiliary lemmas - Andréia B. Avelar %%%%%%%%%%%%%%%%%%%%%%
+
+ positions_of_arg : LEMMA
+      FORALL ( (s : term | app?(s) ), k : below[length(args(s))] ) :
+      positionsOF(s)( #[posnat]( k+1 ) )
+
+ left_pos_transitive : LEMMA
+    FORALL (q1 : position) :
+    left_pos(p, q1) AND left_pos(q1, q) IMPLIES left_pos(p, q)
+
+ lwc_is_left_pos: LEMMA 
+    left_without_children(p, q) IMPLIES left_pos(p, q)
+
+ lwc_transitive : LEMMA
+    FORALL (q1 : position) :
+      left_without_children(p, q1) AND left_without_children(q1, q)
+      IMPLIES left_without_children(p, q)
+
+ subterm_if_le_arity : LEMMA
+    ( app?(s) AND arity(f(s)) >= i )
+     IMPLIES positionsOF(s)( #(i))
+
+ subterms_acc_arity : LEMMA
+    positionsOF(s)( #(i)) AND j <= i IMPLIES positionsOF(s)( #(j))
+
+ lwc_add_last_delete : LEMMA
+     FORALL (q1 : position) : 
+        (p /= empty_seq AND left_without_children(p, q1)) IMPLIES
+          LET q = add_last(delete(p, length(p) - 1), 1 + last(p)) IN
+            left_without_children(q, q1) OR child(q1, q) OR q1 = q
+      
+ lwc_add_last_delete1 : LEMMA
+     FORALL (q1 : position, p : position | p /= empty_seq) :
+      LET q = add_last(delete(p, length(p) - 1), 1 + last(p)) IN
+        left_without_children(q1, q) IMPLIES
+          left_without_children(q1, p) OR child(q1, p) OR q1 = p
+
+ leftmost_pos : LEMMA
+   ( NOT positionsOF(s)( #(i + 1)) AND
+     positionsOF(s)( #(i)) AND positionsOF(s)(q) )
+     IMPLIES ( q = empty_seq OR left_pos(q, #(i)) OR q = #(i) )
+
+ END positions

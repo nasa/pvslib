@@ -1,0 +1,164 @@
+%------------------------------------------------------------------------------
+% cd3d.pvs
+% ACCoRD v1.0
+%
+% Correctness and completeness of 3-D conflict detection algorithm. 
+%   D : Horizontal separation
+%   H : Vertical separation
+%   T : Lookahead time
+%------------------------------------------------------------------------------
+
+cd3d[D,H:posreal,B:nnreal,T: {AB: posreal|AB>B}]  : THEORY 
+BEGIN
+
+  IMPORTING circle_criterion[D,H],
+  	    cd_vertical,
+            omega_2D,
+	    util
+
+  s,v : VAR Vect3       
+  t   : VAR Lookahead[B,T]
+
+  % Conflict during interval [0,T]
+  conflict_3D?(s,v) : bool =
+    EXISTS (t: Lookahead[B,T]): conflict_at?(s,v,t)
+
+  conflict_3D_2D_stable: LEMMA v`z/=0 AND max(-H-sign(v`z)*s`z,B*abs(v`z)) < min(H-sign(v`z)*s`z,T*abs(v`z))
+    IMPLIES
+    (conflict_3D?(s,v) IFF 
+    conflict_2D?[D*abs(v`z),max(-H-sign(v`z)*s`z,B*abs(v`z)),min(H-sign(v`z)*s`z,T*abs(v`z))](abs(v`z)*s,v))
+
+  conflict_3D_vz_swap: LEMMA conflict_3D?(s,v) IFF conflict_3D?(s WITH [z:=-(s`z)],v WITH [z:=-(v`z)])
+
+  conflict_3D_on_open_interval: LEMMA conflict_3D?(s,v) IFF
+    EXISTS (topen: Lookahead[B,T]): B<topen AND topen <T AND sqv(vect2(s)+topen*vect2(v))<sq(D) AND abs(s`z + topen*v`z) < H
+
+  conflict_3D_vertical: LEMMA vect2(v) /= zero AND Delta(s,v) >= 0 AND max(Theta_D(s,v,Entry),B) < min(Theta_D(s,v,Exit),T)
+    IMPLIES
+    (conflict_3D?(s,v) IFF
+    conflict_vertical?[H,max(Theta_D(s,v,Entry),B),min(Theta_D(s,v,Exit),T)](s`z,v`z))
+
+  %-----------------------------------------------%
+  % 3-D Conflict interval detection [tin,tout]    %
+  %     (tin,tout) is the conflict interval       %
+  %-----------------------------------------------%  
+ 
+  detection(s,v) : [Lookahead[B,T],Lookahead[B,T]] =
+    IF zero_vect2?(v) AND horizontal_los?(s) THEN
+      IF v`z /= 0 THEN
+        (min(max(Theta_H(s`z,v`z,Entry),B),T),max(min(Theta_H(s`z,v`z,Exit),T),B))
+      ELSIF vertical_los?(s`z) THEN
+        (B,T)
+      ELSE 
+        (B,B)
+      ENDIF
+    ELSIF Delta(s,v) > 0 THEN
+      LET td1 = Theta_D(s,v,Entry),
+          td2 = Theta_D(s,v,Exit) IN
+      IF v`z /= 0 THEN
+        LET tin  = max(td1,Theta_H(s`z,v`z,Entry)),
+            tout = min(td2,Theta_H(s`z,v`z,Exit)) IN      
+        (min(max(tin,B),T),max(min(tout,T),B))
+      ELSIF vertical_los?(s`z) THEN
+        (min(max(td1,B),T),max(min(td2,T),B))
+      ELSE
+        (B,B)
+      ENDIF
+    ELSE
+      (B,B)
+    ENDIF
+ 
+  detection_correct : THEOREM
+    LET (tin,tout) = detection(s,v) IN
+     tin < t AND t < tout IMPLIES conflict_at?(s,v,t)
+
+  detection_complete : THEOREM
+    LET (tin,tout) = detection(s,v) IN
+      conflict_at?(s,v,t) IMPLIES tin <= t AND t <= tout AND tin < tout
+
+  conflict_detection : THEOREM
+    LET (tin,tout) = detection(s,v) IN
+    conflict_3D?(s,v) IFF tin < tout
+
+  %-----------------------------------------------%
+  % 3-D Conflict Detection (cd3d)                 %
+  %-----------------------------------------------%
+
+  cd3d?(s,v) : bool =
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d?[D,B,T](s,v)
+    ELSIF v`z /= 0 AND max(-H-sign(v`z)*s`z,B*abs(v`z)) < min(H-sign(v`z)*s`z,T*abs(v`z))
+       THEN cd2d?[D*abs(v`z),max(-H-sign(v`z)*s`z,B*abs(v`z)),min(H-sign(v`z)*s`z,T*abs(v`z))](abs(v`z)*s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_rewrite: LEMMA cd3d?(s,v) IFF 
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d?[D,B,T](s,v)
+    ELSIF v`z /= 0 AND max(Theta_H(s`z,v`z,Entry),B) < min(Theta_H(s`z,v`z,Exit),T)
+       THEN cd2d?[D,max(Theta_H(s`z,v`z,Entry),B),min(Theta_H(s`z,v`z,Exit),T)](s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_test: LEMMA
+  	     FORALL (nvo,vi:Vect3):
+  	     D = 10000.8 AND
+	     H = 283.464 AND
+	     B = 0 AND
+	     T = 300 AND
+	     s = (0,110733.65,0) AND
+	     nvo = (0,-236.48,0) AND
+	     vi = (0,236.48,0)
+	     IMPLIES cd3d?(s,nvo-vi)
+
+  cd3d_correct : THEOREM
+    cd3d?(s,v) IMPLIES
+    conflict_3D?(s,v)
+
+  cd3d_complete : THEOREM 
+    conflict_3D?(s,v)
+    IMPLIES
+    cd3d?(s,v)
+
+  %-----------------------------------------------%
+  % THEOREM: cd3d is correct and complete         %
+  %-----------------------------------------------%
+
+  cd3d : THEOREM
+    conflict_3D?(s,v) IFF
+    cd3d?(s,v) 
+
+  %-----------------------------------------------%
+  % Additional Lemmas on conflict_3D              %
+  %-----------------------------------------------%
+
+
+  % Rewriting cd3d in terms of cd_vertical - the vertical conflict probe
+
+  cd3d_rewrite_vertical: LEMMA cd3d?(s,v) IFF
+    (vect2(v) = zero AND sqv(vect2(s)) < sq(D) AND cd_vertical?[H,B,T](s`z,v`z))
+    OR
+    (Delta(s,v)>0 AND max(Theta_D(s,v,Entry),B) < min(Theta_D(s,v,Exit),T) AND
+    cd_vertical?[H,max(Theta_D(s,v,Entry),B),min(Theta_D(s,v,Exit),T)](s`z,v`z))
+
+  % ----------------------------------------------%
+
+  vertical_solution_not_conflict_3D : LEMMA
+    vertical_solution?(s`z,v`z,T,Entry) IMPLIES
+    NOT conflict_3D?(s,v)           
+
+  conflict_3D_horizontal_conflict : LEMMA
+    conflict_3D?(s,v) IMPLIES
+      horizontal_conflict?(s,v) 
+
+  conflict_3D_vertical_conflict : LEMMA
+    conflict_3D?(s,v) IMPLIES
+      vertical_conflict?(s`z,v`z) 
+
+  circle_solution_2D_not_conflict_3D: LEMMA
+    circle_solution_2D?(s,v,T,Entry) IMPLIES
+    NOT conflict_3D?(s,v)
+
+END cd3d

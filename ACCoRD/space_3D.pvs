@@ -1,0 +1,165 @@
+%------------------------------------------------------------------------------
+% space_3D.pvs
+% ACCoRD v1.0
+%
+% This theory provides definitons that are common to horizontal and vertical
+% resolutions.
+%------------------------------------------------------------------------------
+
+space_3D[D,H: posreal] : THEORY
+BEGIN
+
+  IMPORTING util,
+            definitions_3D,
+            trk_only[D],
+            horizontal[D],
+            vertical[H]
+ 
+  s,v,w,
+  vo,vi,nvo : VAR Vect3
+  t,vz      : VAR real
+  s2,v2     : VAR Vect2
+  nzs       : VAR Nz_vect3
+
+  separation?(s) : MACRO bool = 
+    vertical_sep?(s`z) OR
+    horizontal_sep?(s)
+
+  separation_at?(s,v,t) : MACRO bool =
+    vertical_sep_at?(s`z,v`z,t) OR
+    horizontal_sep_at?(s,v,t)
+
+  conflict_at?(s,v,t) : MACRO bool =
+    vertical_los_at?(s`z,v`z,t) AND 
+    horizontal_los_at?(s,v,t)
+
+  los?(s) :  MACRO bool =
+    vertical_los?(s`z) AND
+    horizontal_los?(s) 
+
+  %% Conflict ever (infinite lookahead time)
+  conflict_ever?(s,v): bool =
+    EXISTS (t:real) : vertical_los_at?(s`z,v`z,t) AND 
+                      horizontal_los_at?(s,v,t)
+
+  %% Conflict in the future (infinite look-ahead time)
+  conflict?(s,v):bool =
+    EXISTS (nnt:nnreal) : vertical_los_at?(s`z,v`z,nnt) AND 
+                          horizontal_los_at?(s,v,nnt) 
+
+  conflict_symm : LEMMA
+    conflict?(-s,-v) IFF conflict?(s,v)
+
+  conflict_ever : LEMMA
+    conflict?(s,v) IMPLIES conflict_ever?(s,v)
+
+  conflict_ever_shift : LEMMA
+    conflict_ever?(s,v) IFF conflict_ever?(s+t*v,v)
+
+  conflict_sum_closed: LEMMA
+    conflict?(s,v) AND conflict?(s,w)
+    IMPLIES
+    conflict?(s,v+w)
+
+  conflict_is_an_open_set: LEMMA
+      FORALL (ss, vv: Vect3):
+      conflict?(ss, vv) IMPLIES
+      (EXISTS (epsilon: posreal):
+      FORALL (ww: Vect3):
+      norm(ww) < epsilon IMPLIES conflict?(ss, vv + ww))
+
+  vertical_horizontal_conflict : LEMMA
+    conflict?(s,v) IMPLIES
+    vertical_conflict?(s`z,v`z) AND
+    horizontal_conflict?(s,v)
+ 
+  Spz_vect3  : TYPE = {s : Vect3 | vertical_sep?(s`z)}
+  Sp2_vect3  : TYPE = {s : Vect3 | horizontal_sep?(s)}
+  Ss2_vect3  : TYPE = {s : Vect3 | strict_horizontal_sep?(s)}
+  Sp_vect3   : TYPE = (separation?)
+
+  spz : VAR Spz_vect3
+  sp2 : VAR Sp2_vect3
+  sp  : VAR Sp_vect3
+  ss2 : VAR Ss2_vect3
+
+  neg_spz : JUDGEMENT
+   -(spz) HAS_TYPE Spz_vect3
+
+  neg_sp2 : JUDGEMENT
+   -(sp2) HAS_TYPE Sp2_vect3
+
+  neg_sp : JUDGEMENT
+    -(sp) HAS_TYPE Sp_vect3
+
+  spv2 : JUDGEMENT
+    vect2(sp2) HAS_TYPE Sp_vect2  
+
+  ssv2 : JUDGEMENT
+    vect2(ss2) HAS_TYPE Ss_vect2  
+
+  sp_nzv : JUDGEMENT
+    Sp_vect3 SUBTYPE_OF Nz_vect3
+
+  verticalCoordinationConflict(s,v) : Sign =
+    LET a = sqv(vect2(v)),
+        b = vect2(s)*vect2(v),
+        c = sqv(vect2(s)) - sq(D),
+        d = sq(b)-a*c IN
+    IF s = zero THEN
+      break_symmetry(v)
+    ELSIF v`z = 0 OR zero_vect2?(v) OR d < 0 OR eq(v`z,sq(b)-a*c,s`z*a-v`z*b) THEN
+      break_symmetry(s)
+    ELSIF gt(v`z,sq(b)-a*c,s`z*a-v`z*b) THEN 
+       -1
+    ELSE
+        1
+    ENDIF
+
+  % VerticalCoordinationConflict is a vertical strategy
+  verticalCoordinationConflict_asymm : LEMMA
+    (s /= zero OR v /= zero) IMPLIES verticalCoordinationConflict(-s,-v) = -verticalCoordinationConflict(s,v)
+
+  Vertical_Strategy : TYPE+ = {f:[[Vect3,Vect3]->Sign]| FORALL (s,v): 
+    (s /= zero OR v /= zero) => f(-s,-v)=-f(s,v)}
+
+  verticalCoordinationConflict_strategy : JUDGEMENT
+    verticalCoordinationConflict HAS_TYPE Vertical_Strategy
+
+  verticalCoordinationConflict_correct : LEMMA
+    Delta(nzs,v) > 0 IMPLIES
+    LET sz=nzs`z+Theta_D(nzs,v,Entry)*v`z IN
+    sz /= 0 IMPLIES
+      verticalCoordinationConflict(nzs,v) = sign(sz)
+
+  % vs_los_strategy for recovery from vertical loss of separation
+
+  vs_los_strategy(s,v): Sign =
+    IF (horizontal_exit?(s,v) OR vect2(v) = zero) THEN
+      (IF s`z /= 0 THEN
+        sign(s`z)
+      ELSIF v`z/=0 THEN
+        sign(v`z)
+      ELSIF s /= zero THEN
+        break_symmetry(s)
+      ELSIF v /= zero THEN
+        break_symmetry(v)
+      ELSE
+        1
+      ENDIF)
+    ELSIF (s + horizontal_tca(s,v)*v)`z /= 0 THEN
+      sign((s + horizontal_tca(s,v)*v)`z)
+    ELSIF v`z/=0 THEN
+      sign(v`z)
+    ELSIF s /= zero THEN
+      break_symmetry(s)
+    ELSIF v /= zero THEN
+      break_symmetry(v)
+    ELSE
+      1
+    ENDIF
+
+  vs_los_vertical_strategy: JUDGEMENT
+    vs_los_strategy HAS_TYPE Vertical_Strategy
+
+END space_3D

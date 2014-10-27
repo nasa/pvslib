@@ -1,0 +1,121 @@
+sigma_nat: THEORY
+%------------------------------------------------------------------------------
+% The summations theory provides properties of the sigma 
+% function that sums an arbitrary function F: [T -> real] over a range
+% from low to high
+%
+%  		          high
+%		          ----
+%  sigma(low, high, F) =  \     F(j)
+%		          /
+%		          ----
+%		         j = low
+%
+%
+% NOTE. Older versions of the library used a slightly more general
+%       version of "sigma_first", namely for high >= low rather
+%       than just high > low.  The lemma "sigma_first_ge" has been 
+%       added here to facilitate the upgrade to the new library.
+%
+%------------------------------------------------------------------------------
+
+
+BEGIN
+
+  IMPORTING sigma[nat]
+
+  int_is_T_high: JUDGEMENT int SUBTYPE_OF T_high
+  nat_is_T_low : JUDGEMENT nat SUBTYPE_OF T_low
+
+  high, high1, high2, i: VAR int
+  low,low1,low2, n, m: VAR nat
+  F,G: VAR function[nat -> real]
+
+
+% --------- Following Theorems Not Provable In Generic Framework -------
+
+
+  sigma_shift:  THEOREM sigma(low+m,high+m,F) = 
+                              sigma(low,high, (LAMBDA (n: nat): F(n+m)))
+
+  sigma_shift_neg:  THEOREM low - m >= 0 IMPLIES 
+                         sigma(low-m,high-m,F) = 
+                             sigma(low,high, (LAMBDA n: IF n-m < 0 THEN 0 
+                                                        ELSE F(n-m) 
+                                                        ENDIF))
+
+  sigma_shift_ng2:  THEOREM low - m >= 0 IMPLIES 
+                         sigma(low-m,high-m,F) = 
+                             sigma(low,high, (LAMBDA n: F(n~m)))
+
+
+  sigma_shift_i:  THEOREM 0 <= low + i IMPLIES
+                              sigma(low+i,high+i,F) = 
+                              sigma(low,high, (LAMBDA (n: nat): IF n < low THEN 0
+                                                                  ELSE F(n+i) ENDIF))
+
+  sigma_shift_to_zero: LEMMA n<=m IMPLIES
+    sigma(n,m,F) = sigma(0,m-n, (LAMBDA (i:nat): F(i+n)))
+
+% These next two are now trivial instatiations of the updated framework.
+
+  sigma_first_ge : THEOREM high >= low IMPLIES  % slightly more general
+                           sigma(low, high, F) = F(low) + sigma(low+1, high, F)
+
+
+  sigma_split_ge : THEOREM low-1 <= i AND i <= high IMPLIES 
+                            sigma(low, high, F) = 
+                                     sigma(low, i, F) + sigma(i+1, high, F)
+
+% Summation in the opposite direction
+
+  sigma_reverse : THEOREM sigma(low,high,F) = 
+         sigma(low,high,(LAMBDA (n:nat): IF n > high+low THEN 0 ELSE F(high+low-n) ENDIF))
+
+
+  sigma_product    : THEOREM sigma(low1,high1,F)*sigma(low2,high2,G) =
+  		             sigma(low1+low2,high1+high2,LAMBDA (k:nat):
+			         sigma(low1,high1, 
+				   LAMBDA (i:nat): IF (i<k-high2 OR i>k-low2) THEN 0
+				                 ELSE F(i)*G(k-i) ENDIF))
+
+  sigma_tolambda: LEMMA sigma(low,high,F) =
+    sigma(low,high,LAMBDA (i:nat): F(i))
+
+  sigma_bij: LEMMA FORALL (sig:[nat->nat]):
+    (FORALL (i:subrange(low,high)): low<=sig(i) AND sig(i)<=high) AND
+    (FORALL (i:subrange(low,high)): EXISTS (j:subrange(low,high)): sig(j)=i) AND
+    (FORALL (i,j:subrange(low,high)): i/=j IMPLIES sig(i)/=sig(j))
+    IMPLIES
+    sigma(low,high,F) = sigma(low,high,F o sig)
+
+  sigma_inj: LEMMA FORALL (sig:[nat->nat]):
+    (FORALL (i:subrange(low1,high1)): low2<=sig(i) AND sig(i)<=high2) AND
+    (FORALL (i,j:subrange(low1,high1)): i/=j IMPLIES sig(i)/=sig(j)) AND
+    (FORALL (i:subrange(low2,high2)): (EXISTS (j:subrange(low1,high1)): sig(j)=i) OR
+      G(i)=0) AND
+    (FORALL (i:subrange(low1,high1)): F(i) = G(sig(i)))
+    IMPLIES
+    sigma(low1,high1,F) = sigma(low2,high2,G)
+    
+
+ 
+% ---- Auto-rewrites
+
+
+  nn: VAR negint
+  sigma_0_neg: LEMMA sigma(0,nn,F) = 0
+  AUTO_REWRITE+ sigma_0_neg
+
+
+  sigma_product2   : THEOREM FORALL(M: posnat, N: posnat): 
+  		     	     sigma(0,M-1,F)*sigma(0,N-1,G) = 
+  		     	     sigma(0, M*N-1, LAMBDA(k:nat): F( (k-mod(k,N))/N)*G(mod(k,N)))	       	  
+
+
+  sigma_geometric: LEMMA FORALL (r:real):
+    r/=1 AND n<=m IMPLIES
+    sigma(n,m,LAMBDA (k:nat): r^k) = (r^n-r^(m+1))/(1-r)
+
+                                                      
+END sigma_nat

@@ -1,0 +1,202 @@
+%---------------------------------------------------------------------
+% A formal theory of cooperative TU-games in PVS 4.2
+%
+% Author: Erik Martin-Dorel,
+% University Montpellier 2 & University of Perpignan
+%
+%   THEORY tu_game[U]
+%
+%   Version 1.0    2009/05/06    Initial version
+%   Version 1.1    2009/05/10    Identifiers renamed
+%   Version 1.2    2009/05/14    COV_core proved
+%   Version 1.3    2009/10/03    Universal quantifiers merged
+%
+% This work has been done at the University of Perpignan
+% within the Master's Thesis, under the supervision of
+% Marc Daumas and Annick Truffert, with the help of Michel Ventou
+%
+% This library is available under GNU Lesser General Public License,
+% either version 3 of the Licence, or any later version  (cf. infra)
+%---------------------------------------------------------------------
+
+
+tu_game[U: TYPE+]: THEORY
+
+ BEGIN
+
+  IMPORTING players_set[U],
+            coalition_fun,
+            imputations
+
+  % cooperative Transferable-Utility game
+  tu_game: TYPE = [N: players_set, v: coalition_fun[U,N]]
+  % which is a dependent 2-ary tuple type
+
+  N: VAR players_set
+  powset(N): TYPE = powset[U,N]
+  set_vect(N): TYPE = set_vect[U,N]
+
+  g: VAR tu_game
+  setFP(g): set_vect(g`1) = setFP[U,g`1,g`2]
+  setPI(g): set_vect(g`1) = setPI[U,g`1,g`2]
+  setI(g):  set_vect(g`1) =  setI[U,g`1,g`2]
+  core(g):  set_vect(g`1) =  core[U,g`1,g`2]
+
+  ss: VAR [g:tu_game -> set_vect(g`1)]
+  solution_concept?(ss): bool = FORALL (g:tu_game): subset?(ss(g), setFP(g))
+  solution_concept: TYPE+ = (solution_concept?) CONTAINING core
+  % core_type: JUDGEMENT core HAS_TYPE solution_concept
+
+  s: VAR solution_concept
+  a_test: LEMMA subset?(s(g), setFP(g)) % and this FOR ALL game g.
+
+  % Thanks to the equivalence between
+  % [[t_1,...,t_n] -> t] and [t_1,...,t_n -> t],
+  % our definition of "tu_game" as a tuple type makes
+  % the functions defined on it very handy to use.
+  test_param: LEMMA s(g) = s(g`1, g`2)
+
+  %--------------------------------
+  % Predicates on solution_concept:
+  %--------------------------------
+
+  % 1) Pareto optimal (PO)
+  PO(s): bool = FORALL g: subset?(s(g), setPI(g))
+
+  % 2) anonymous (AN)
+  NN: VAR players_set
+  tau_type(N,NN): TYPE = (bijective?[(N),(NN)])
+  tau_v(g:tu_game,NN:players_set,tau:tau_type(g`1,NN)): coalition_fun[U,NN] =
+    g`2 o inverse_image(tau)
+  tau_x(g:tu_game,NN:players_set,tau:tau_type(g`1,NN))(
+    x:[(g`1)->real]): [(NN)->real] =
+    LAMBDA (i:(NN)): x(inverse(tau)(i))
+  % AN(s): bool = FORALL g,NN:
+  %               FORALL (tau:tau_type(g`1,NN)):
+  AN(s): bool = FORALL (g:tu_game, NN:players_set,
+                        tau:tau_type(g`1,NN)):
+  s(NN,tau_v(g,NN,tau)) = image(tau_x(g,NN,tau),s(g))
+
+  % 3) equal treatment property (ETP)
+  interchangeable?(g)(i,j:(g`1)): bool =
+    FORALL (S:setof[(g`1)]): (NOT member(i,S)) AND (NOT member(j,S)) =>
+    g`2(add(i,S)) = g`2(add(j,S))
+  % ETP(s): bool = FORALL g: FORALL (x:(s(g))):
+  %   FORALL (i,j:(g`1)): interchangeable?(g)(i,j) =>
+  %   x(i) = x(j)
+  ETP(s): bool = FORALL (g:tu_game, x:(s(g)), i,j:(g`1)):
+    interchangeable?(g)(i,j) => x(i) = x(j)
+
+  % 4) desirability (DES)
+  more_desirable?(g)(i,j:(g`1)): bool =
+    FORALL (S:setof[(g`1)]): (NOT member(i,S)) AND (NOT member(j,S)) =>
+    g`2(add(i,S)) >= g`2(add(j,S))
+  % DES(s): bool = FORALL g: FORALL (x:(s(g))):
+  %   FORALL (i,j:(g`1)): more_desirable?(g)(i,j) =>
+  %   x(i) >= x(j)
+  DES(s): bool = FORALL (g:tu_game, x:(s(g)), i,j:(g`1)):
+    more_desirable?(g)(i,j) => x(i) >= x(j)
+
+  % 5) nullplayer property (NPP)
+  nullplayer?(g)(i:(g`1)): bool =
+    FORALL (S:setof[(g`1)]): (NOT member(i,S)) =>
+    g`2(add(i,S)) = g`2(S) + g`2(singleton(i))
+  % nullplayer(g): TYPE = (nullplayer?(g)) % if needed
+  NPP(s): bool = FORALL (g:tu_game, x:(s(g)), i:(g`1)):
+  % FORALL (i:nullplayer(g)): x(i) = g`2(singleton(i))
+  nullplayer?(g)(i) => x(i) = g`2(singleton(i))
+
+  %   NPP(s): bool = FORALL g: FORALL (x:(s(g))):
+  %   FORALL (i:(g`1)): nullplayer?(g)(i) =>
+  %     x(i) = g`2(singleton(i))
+
+  % 6) covariant under strategic equivalence (COV)
+  lin(N: players_set, a:real, x: [(N) -> real])(i:(N)): real
+    = a*x(i)
+  affine(N: players_set, a:real, b: [(N) -> real])
+    (x: [(N) -> real]): [(N) -> real] =
+    LAMBDA (i:(N)): lin(N,a,x)(i) + b(i)
+  dif(N: players_set, y, b: [(N) -> real])(i:(N)): real
+    = y(i) - b(i)
+  affineinv(N: players_set, a:nzreal, b: [(N) -> real])
+    (y: [(N) -> real]): [(N) -> real] =
+    LAMBDA (i:(N)): dif(N,y,b)(i) / a
+  bstar(N: players_set, b: [(N) -> real]): coalition_fun[U,N] =
+    LAMBDA (S:powset(N)): tot(S, b)
+  affinestar(N: players_set, a:real, b: [(N) -> real])
+    (v: coalition_fun[U,N]): coalition_fun[U,N] =
+    LAMBDA (S:powset(N)): a*v(S) + bstar(N,b)(S)
+  % COV(s): bool = FORALL (N:players_set):
+  %   FORALL (a:posreal, b:[(N) -> real]):
+  %   FORALL (v: coalition_fun[U,N]):
+  %   s(N,affinestar(N,a,b)(v)) = image(affine(N,a,b), s(N,v))
+  COV(s): bool = FORALL (N:players_set, a: posreal, b: [(N) -> real],
+                         v:coalition_fun[U,N]):
+    s(N,affinestar(N,a,b)(v)) = image(affine(N,a,b), s(N,v))
+
+  % 7) single valued (SIVA)
+  SIVA(s): bool = FORALL g: is_finite(s(g)) AND card(s(g)) = 1
+
+  % 8) nonemptiness (NE)
+  NE(s): bool =   FORALL g: nonempty?(s(g))
+
+  % 9) Reasonableness, on both side (REAS)
+  % REAS(s): bool = FORALL (N:players_set, v:coalition_fun[U,N]):
+  %   FORALL (x:(s(N,v))): FORALL (i:(N)):
+  % (EXISTS (S1:powset(N)): (NOT member(i,S1)) AND x(i) >= v(add(i,S1))-v(S1))
+  % AND
+  % (EXISTS (S2:powset(N)): (NOT member(i,S2)) AND x(i) <= v(add(i,S2))-v(S2))
+  REAS(s): bool = FORALL (N:players_set, v:coalition_fun[U,N],
+                          x:(s(N,v)), i:(N)):
+    (EXISTS (S1:powset(N)): (NOT member(i,S1)) AND x(i) >= v(add(i,S1))-v(S1))
+    AND
+    (EXISTS (S2:powset(N)): (NOT member(i,S2)) AND x(i) <= v(add(i,S2))-v(S2))
+
+  %--------------------------------
+
+  % DES_ETP_lemma1: LEMMA FORALL g: FORALL (i,j:(g`1)):
+  %   interchangeable?(g)(i,j) => more_desirable?(g)(i,j)
+  interch_impl_desir: LEMMA FORALL (g:tu_game, i,j:(g`1)):
+    interchangeable?(g)(i,j) => more_desirable?(g)(i,j)
+
+  % DES_ETP_lemma2: LEMMA FORALL g: FORALL (i,j:(g`1)):
+  %   interchangeable?(g)(i,j) => interchangeable?(g)(j,i)
+  interch_is_sym: LEMMA FORALL (g:tu_game, i,j:(g`1)):
+    interchangeable?(g)(i,j) => interchangeable?(g)(j,i)
+
+  DES_implies_ETP: THEOREM DES(s) => ETP(s)
+
+  SIVA_implies_NE: THEOREM SIVA(s) => NE(s)
+
+  PO_core: THEOREM PO(core)
+
+  affine_bij: LEMMA FORALL (N:players_set,
+    a: posreal, b,x: [(N) -> real]):
+    affine(N,a,b)(affineinv(N,a,b)(x)) = x
+  COV_core: THEOREM COV(core)
+
+ END tu_game
+
+
+%---------------------------------------------------------------------
+% License for use and distribution
+%
+% Copyright (C) 2009 Erik Martin-Dorel.
+%
+% GNU LGPL information:
+% ---------------------
+%
+% This library is free software: you can redistribute it and/or
+% modify it under the terms of the GNU Lesser General Public License
+% as published by the Free Software Foundation, either version 3 of
+% the License, or (at your option) any later version.
+%
+% This library is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU Lesser General Public
+% License along with this library.
+% If not, see <http://www.gnu.org/licenses/>.
+%---------------------------------------------------------------------

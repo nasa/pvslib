@@ -1,0 +1,242 @@
+matrix_props: THEORY
+
+
+BEGIN
+
+  IMPORTING matrices,reals@real_fun_ops
+
+
+  SM,SM1,SM2: VAR FullMatrix
+
+  r: VAR real
+
+  nzr: VAR nzreal
+
+  M,N,A,B: VAR Matrix
+
+  v,v1,v2: VAR Vector
+
+  i,j,k,p : VAR nat
+
+  m,n : VAR nat
+
+  pn,pm : VAR posnat
+
+  F,G: VAR [[nat,nat]->real]
+
+  Mp,Np: VAR (nonempty?)
+
+  PFM,D1,D2,D: VAR PosFullMatrix
+
+  matrix_2x2: LEMMA
+    rows(D)=2 AND columns(D)=2 IMPLIES
+    D = (:(:entry(D)(0,0),entry(D)(0,1):),
+      	  (:entry(D)(1,0),entry(D)(1,1):):)
+
+  SQ,IQ,GQ: VAR Square
+
+  length_row: LEMMA length(row(SM)(i)) = IF i>=rows(SM) THEN 0 ELSE columns(SM) ENDIF
+
+  length_nth_row: LEMMA i<length(SM) IMPLIES length(nth(SM,i)) = columns(SM)
+
+  columns_cdr: LEMMA rows(D)>1 IMPLIES columns(cdr(D)) = columns(D)
+
+  columns_cons: LEMMA columns(cons(v,M)) = max(length(v),columns(M))
+
+  access_col: LEMMA access(col(SM)(i))(j) = access(row(SM)(j))(i)
+
+  % Determinant %
+
+  remove(M,i,j): {N |
+    (rows(M)>1 AND columns(M)>1  IMPLIES
+    (rows(N)=rows(M)-1 AND columns(N)=columns(M)-1)) AND
+    (FORALL (m,n):
+      LET newm= IF m>=i OR i>=rows(M) THEN m+1 ELSE m ENDIF,
+      	  newn= IF n>=j OR j>=columns(M) THEN n+1 ELSE n ENDIF IN
+      entry(N)(m,n)=entry(M)(newm,newn))} =
+    IF rows(M)=0 OR columns(M)=0 THEN null[list[real]] ELSE
+     form_matrix(LAMBDA (m,n): 
+      LET newm= IF m>=i OR i>=rows(M) THEN m+1 ELSE m ENDIF,
+      	  newn= IF n>=j OR j>=columns(M) THEN n+1 ELSE n ENDIF IN entry(M)(newm,newn),rows(M)-1,columns(M)-1) ENDIF
+
+  remove_posfullmatrix: JUDGEMENT
+    remove(D,i,j) HAS_TYPE FullMatrix
+
+  rows_remove: LEMMA
+    rows(remove(M,i,j)) = IF rows(M)=0 or columns(M)=0 THEN 0 ELSE rows(M)-1 ENDIF
+
+  columns_remove: LEMMA
+    columns(remove(M,i,j)) = IF rows(M)<=1 OR columns(M)=0 THEN 0
+    			     ELSE columns(M)-1 ENDIF
+
+  remove_remove_1_0: LEMMA rows(D)>2 AND
+    columns(D)>2 AND m<=n 
+    AND n<columns(D)-1 AND m<columns(D)-1 IMPLIES
+    remove(remove(D, 1, n+1), 0, m) = 
+    remove(remove(D, 0, m), 0, n)
+
+  remove_remove_1_0_0: LEMMA rows(D)>2 AND
+    columns(D)>2 
+    AND n<columns(D)-1 IMPLIES
+    remove(remove(D, 1, 0), 0, n)=remove(remove(D, 0, 1 + n), 0, 0)
+
+  remove_remove_1_n: LEMMA rows(D)>2 AND
+    columns(D)>2 
+    AND n+m<columns(D)-1 IMPLIES
+    remove(remove(D, 1, n), 0, m + n)
+       =remove(remove(D, 0, 1 + m + n), 0, n)
+
+  entry_remove: LEMMA 
+    entry(remove(M,i,j))(m,n) =
+      LET newm= IF m>=i OR i>=rows(M) THEN m+1 ELSE m ENDIF,
+      	  newn= IF n>=j OR j>=columns(M) THEN n+1 ELSE n ENDIF IN
+      entry(M)(newm,newn)
+  
+  remove_Id_0_0: LEMMA pm>1 IMPLIES remove(Id(pm),0,0) = Id(pm-1)
+
+  % remove_remove: LEMMA
+  %   remove(remove(M,i,j),k,p)=
+  %     LET newi = IF k<i THEN k ELSE k 
+
+  remove_test: LEMMA remove((:(:1,2:),(:3,4:):),1,1)=(:(:1:):)
+
+  det(M): RECURSIVE real =
+    IF null?(M) OR rows(M)/=columns(M) THEN 0
+    ELSIF rows(M)=1 THEN entry(M)(0,0)
+    ELSE sigma(0,columns(M)-1,LAMBDA (k): 
+         (-1)^k*entry(M)(0,k)*det(remove(M,0,k))) ENDIF
+    MEASURE length(M)
+
+  det_test: LEMMA FORALL (a,b,c,d:real):
+    det((:(:a,b:),(:c,d:):))=a*d-b*c
+
+  det_size_noteq: LEMMA rows(M)/=columns(M) IMPLIES det(M)=0
+
+  % Elementary matrix operations
+
+  % Swapping two rows
+
+  swap(i,j)(F)(k,p): real = IF k=i THEN F(j,p)
+  		     	  ELSIF k=j THEN F(i,p)
+			  ELSE F(k,p) ENDIF
+
+  swap_fun_test: LEMMA
+    LET FF = (LAMBDA (i,j:nat): 0) IN
+      swap(0,1)(FF)(1,1)=0
+
+  swap(i,j)(D): {PFM|rows(PFM)=rows(D) AND columns(PFM)=columns(D) AND
+    FORALL (k,p): i<rows(D) AND j<rows(D) IMPLIES entry(PFM)(k,p)=(IF k=i 
+    		       	       THEN entry(D)(j,p) ELSIF k=j THEN entry(D)(i,p)
+			  ELSE entry(D)(k,p) ENDIF)} =
+   form_matrix(swap(i,j)(entry(D)),rows(D),columns(D))
+
+  entry_swap: LEMMA
+    entry(swap(i,j)(D))(k,p) = IF k<rows(D) AND p<columns(D)
+      THEN swap(i,j)(entry(D))(k,p) ELSE 0 ENDIF
+
+  swap_test: LEMMA swap(0,1)((:(:1,2:),(:3,4:):)) = (:(:3,4:),(:1,2:):)
+
+  remove_swap_1: LEMMA rows(D)>=2 AND columns(D)>=2 IMPLIES
+    remove(swap(0, 1)(D), 0, n) =
+    remove(D,1,n)
+
+  remove_swap_2: LEMMA i/=0 AND j/=0 AND i<rows(D) AND j<rows(D)
+    AND rows(D)=columns(D)
+    IMPLIES
+     remove(swap(i,j)(D),0,n)=swap(i-1,j-1)(remove(D,0,n))
+
+  swap_sym: LEMMA swap(i,j)(D) = swap(j,i)(D)
+
+  det_swap_0_1: LEMMA rows(D)>1 IMPLIES det(swap(0,1)(D))=-det(D)
+
+  swap_swap_matrix: LEMMA i<rows(D) AND j<rows(D) IMPLIES
+    swap(i,j)(swap(i,j)(D))=D
+
+  swap_similar: LEMMA i<rows(D) AND j<rows(D) AND k<rows(D) AND
+  i/=j AND j/=k AND k/=i IMPLIES
+    swap(k,j)(D) = swap(i,j)(swap(k,i)(swap(i,j)(D)))
+
+  det_swap: LEMMA i/=j AND i<rows(D) AND j<rows(D) IMPLIES
+    det(swap(i,j)(D))=-det(D)
+
+  row_swap: LEMMA i<rows(D) AND j<rows(D) IMPLIES
+    row(swap(i,j)(D))(k) =
+    row(D)(IF k=i THEN j ELSIF k=j THEN i ELSE k ENDIF)
+
+  rows_swap: LEMMA rows(swap(i,j)(D)) = rows(D)
+
+  columns_swap: LEMMA columns(swap(i,j)(D)) = columns(D)
+
+  swap_id: LEMMA swap(i,i)(D)=D
+
+  swap_eq: LEMMA row(D)(i) = row(D)(j) IMPLIES
+    swap(i,j)(D) = D
+
+  det_rows_eq_0: LEMMA i<rows(D) AND j<rows(D) AND
+    row(D)(i) = row(D)(j) AND i/=j IMPLIES
+    det(D) = 0
+
+  % Multiplying a row by a scalar
+
+  replace_row(i,v)(D|columns(D)=length(v)): RECURSIVE 
+    {PFM|rows(PFM)=rows(D) AND columns(PFM)=columns(D) AND
+      (FORALL (j): row(PFM)(j) = IF j<rows(D) AND j=i THEN v ELSE row(D)(j) ENDIF) AND
+      (FORALL (j,k): entry(PFM)(j,k)=IF j<rows(D) AND j=i THEN access(v)(k) ELSE entry(D)(j,k) ENDIF)} =
+    IF i>=rows(D) THEN D
+    ELSIF rows(D)=1 THEN cons(v,null[list[real]])
+    ELSIF i=0 THEN cons(v,cdr(D))
+    ELSE cons(car(D),replace_row(i-1,v)(cdr(D))) ENDIF MEASURE rows(D)
+
+  entry_replace_row: LEMMA columns(D)=length(v) IMPLIES
+    entry(replace_row(i,v)(D))(j,k) = (IF j<rows(D) AND j=i THEN access(v)(k) ELSE entry(D)(j,k) ENDIF)
+
+  rows_replace_row: LEMMA columns(D) = length(v) IMPLIES
+    rows(replace_row(i,v)(D)) = rows(D)
+
+  columns_replace_row: LEMMA columns(D) = length(v) IMPLIES
+    columns(replace_row(i,v)(D)) = columns(D)
+
+  remove_replace_row: LEMMA columns(D) = length(v) AND rows(D)>1 AND columns(D)>1 IMPLIES
+    remove(replace_row(k,v)(D),k,j) = remove(D,k,j)
+
+  swap_replace_row: LEMMA columns(D)=length(v) AND i<rows(D) AND 
+    j<rows(D) AND k<rows(D) IMPLIES
+    swap(i,j)(replace_row(k,v)(D)) = (IF i = k THEN replace_row(j,v)(swap(i,j)(D))
+    				     ELSIF j = k THEN replace_row(i,v)(swap(i,j)(D))
+				     ELSE replace_row(k,v)(swap(i,j)(D)) ENDIF)
+
+  row_replace_row: LEMMA columns(D) = length(v) IMPLIES
+    row(replace_row(i,v)(D))(j) = IF j<rows(D) AND j=i THEN v ELSE row(D)(j) ENDIF
+
+  remove_replace_row_eq: LEMMA columns(D) = length(v) IMPLIES
+    remove(replace_row(i,v)(D),i,j) = remove(D,i,j)
+
+  det_replace_row_sum: LEMMA length(v1)=length(v2) AND columns(D)=length(v1) AND i<rows(D) IMPLIES
+    det(replace_row(i,v1+v2)(D)) = det(replace_row(i,v1)(D)) + det(replace_row(i,v2)(D))
+
+  det_replace_row_scal: LEMMA columns(D) = length(v) AND i<rows(D) IMPLIES
+    det(replace_row(i,r*v)(D)) = r*det(replace_row(i,v)(D))
+
+  replace_row_id: LEMMA i<rows(D) IMPLIES
+    replace_row(i,row(D)(i))(D) = D
+
+  det_replace_row_sum_scal: LEMMA i<rows(D) AND j<rows(D) AND i/=j IMPLIES
+    det(replace_row(i,row(D)(i)+r*row(D)(j))(D)) = det(D)
+
+  replace_row_sum_to_scal: LEMMA i<rows(D) AND j<rows(D) IMPLIES
+    replace_row(i,row(D)(i)+row(D)(j))(D)=replace_row(i,row(D)(i)+1*row(D)(j))(D)
+
+  det_Id: LEMMA det(Id(pn))=1
+
+  det_first_column_zero: LEMMA
+    (FORALL (i): i<rows(D) IMPLIES entry(D)(i,0)=0) IMPLIES
+    det(D)=0
+
+  remove_transpose: LEMMA 
+    rows(D)>1 AND columns(D)>1 IMPLIES
+    remove(transpose(D),i,j) =
+    transpose(remove(D,j,i))
+
+
+
+END matrix_props

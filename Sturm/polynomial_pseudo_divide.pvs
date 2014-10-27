@@ -1,0 +1,139 @@
+polynomial_pseudo_divide: THEORY
+BEGIN
+
+  IMPORTING reals@polynomials ,structures@array2list[int],
+  	    polynomial_division, gcd_list
+
+  g,h,qu,rm: VAR [nat->int]
+  n,m,lastnonzero,i: VAR nat
+
+%%%   Pseudo Remainders (Computable)   %%%
+
+  DivListType : TYPE = [# quotl: list[int],qdegl:nat,
+  		      reml : list[int],rdegl :nat #]
+
+  qul,rml: VAR list[int]
+
+  make_divlisttype(qul,n,rml,m): DivListType = (# quotl:=qul,qdegl:=n,reml:=rml,rdegl:=m #)
+
+  poly_pseudo_divide(g,n)(h,(m|h(m)/=0))(i): RECURSIVE {DT: DivListType |
+  					     	    (m>n OR i>n-m AND length(DT`reml)=n+1 AND DT`rdegl = n) OR
+  						    (m=0 AND length(DT`reml)=0 AND DT`rdegl=0) OR 
+						    (m>0 AND length(DT`reml)=m+i AND length(DT`reml)=DT`rdegl+1)}=
+    IF m>n OR i>n-m THEN make_divlisttype((::),0,array2list(n+1)(g),n)
+    ELSIF m = 0 THEN make_divlisttype(array2list(n+1)(g),n,(::),0)
+    ELSE
+      LET ldt = IF i=n-m THEN make_divlisttype((::),n-m,array2list(n+1)(g),n)
+    	          ELSE poly_pseudo_divide(g,n)(h,m)(i+1) ENDIF,
+    	  thisterm = nth(ldt`reml,ldt`rdegl)
+      IN  make_divlisttype(cons(thisterm,ldt`quotl),
+  	               n-m,array2list(m+i)(LAMBDA (j:nat):
+  		       	     IF j>m+i THEN 0
+  			     ELSIF j<i THEN h(m)*nth(ldt`reml,j)
+  			     ELSE h(m)*nth(ldt`reml,j)-thisterm*h(j-i) ENDIF),m+i-1)
+    ENDIF
+   MEASURE max(n-m-i+1,0)
+
+  poly_pseudo_divide_lengths: LEMMA
+    h(m)/=0 IMPLIES
+    LET psd = poly_pseudo_divide(g,n)(h,m)(i),
+    	pd  = poly_divide(g,n)(h,m)(i),
+	qlength = length(psd`quotl),
+	rlength = length(psd`reml)
+    IN  psd`qdegl = pd`qdeg AND psd`rdegl = pd`rdeg AND psd`rdegl = max(rlength-1,0) AND
+    	qlength = (IF i>n-m THEN 0 ELSIF m=0 THEN n-m+1 ELSE n-m-i+1 ENDIF)
+
+  R,T : VAR nat
+
+  Ka,Kn,Km,Ki: int
+  Ca,Cn,Cm,Ci: int
+
+  GG(k:nat,n,m,i,R,T): int = IF i>n-m THEN 0 ELSIF m=0 OR i = n-m OR k<i THEN 1 ELSE (1+(n-m-k)) ENDIF
+
+  HH(k:nat,n,m,i,R,T): int =  IF i>n-m THEN 0 ELSIF m=0 OR i=n-m OR k>=i+m THEN 1 ELSE 1+(n-m-i) ENDIF
+
+  HHGGLEM: LEMMA FORALL (k:nat):
+    (k<=n-m AND i<=n-m) IMPLIES
+    (GG(k,n,0,i,R,T)=1 AND
+    (n-m>=0 IMPLIES GG(k,n,m,n-m,R,T)=1) AND
+    (k<=n-m AND k>i IMPLIES GG(k,n,m,1+i,R,T)=GG(k,n,m,i,R,T)) AND
+    HH(k,n,0,i,R,T)=1 AND
+    (n-m>=0 IMPLIES HH(k,n,m,n-m,R,T)=1) AND
+    (m/=0 IMPLIES HH(i+m,n,m,1+i,R,T)+1=GG(i,n,m,i,R,T)) AND
+    (m/=0 AND k<i IMPLIES HH(k,n,m,i,R,T) = HH(k,n,m,1+i,R,T)+1) AND
+    (m/=0 AND k>=i AND k<i+m IMPLIES (HH(k,n,m,i,R,T)=HH(k,n,m,1+i,R,T)+1 AND 
+      HH(i+m,n,m,1+i,R,T)+1=HH(k,n,m,i,R,T) AND HH(i+m,n,m,1+i,R,T)=HH(k,n,m,1+i,R,T))))
+
+  poly_pseudo_divide_def: LEMMA
+    h(m)/=0 AND
+    (FORALL (ii:nat): ii>n IMPLIES g(ii)=0) AND
+    (FORALL (ii:nat): ii>m IMPLIES h(ii)=0) IMPLIES
+    LET psd = poly_pseudo_divide(g,n)(h,m)(i),
+    	pd  = poly_divide(g,n)(h,m)(i),
+	qlength = length(psd`quotl),
+	rlength = length(psd`reml)
+    IN  pd`quot = (LAMBDA (k:nat): (1/h(m))^GG(k,n,m,i,R,T))
+    		    *(LAMBDA (k:nat): IF k<=pd`qdeg AND 
+		  	  	   k>=pd`qdeg-qlength+1 
+				   THEN nth(psd`quotl,k-(pd`qdeg-qlength+1))      %n-m-pd`qdeg+j)
+		  	  	   ELSE 0 ENDIF) AND
+	pd`rem  = (LAMBDA (k:nat): (1/h(m))^HH(k,n,m,i,R,T))*(LAMBDA (k:nat): IF k<=pd`rdeg AND (i>n-m OR m>0) THEN nth(psd`reml,k) ELSE 0 ENDIF)
+
+  poly_pseudo_remainder_def: LEMMA
+    h(m)/=0 AND n>=m AND
+    (FORALL (ii:nat): ii>n IMPLIES g(ii)=0) AND
+    (FORALL (ii:nat): ii>m IMPLIES h(ii)=0) IMPLIES
+    LET psd = poly_pseudo_divide(g,n)(h,m)(0),
+    	pd  = poly_divide(g,n)(h,m)(0),
+	qlength = length(psd`quotl),
+	rlength = length(psd`reml)
+    IN pd`rem = (1/h(m))^(n-m+1) * (LAMBDA (k:nat): IF k<=psd`rdegl AND m>0 THEN nth(psd`reml,k) ELSE 0 ENDIF)
+
+  polynomial_rem(g,n)(h,(m|h(m)/=0)): list[int] =
+    LET ppd = poly_pseudo_divide(g,n)(h,m)(0),
+    	thisrem = ppd`reml,
+	pseudosign:nzint = IF h(m)>0 OR mod(n-m+1,2)=0 OR m>n THEN 1 ELSE -1 ENDIF
+    IN descalarize_list(nonzero_version(primitize_list(thisrem)),-pseudosign)
+
+  polynomial_rem_def: LEMMA
+      h(m)/=0 AND
+      (FORALL (ii:nat): ii>n IMPLIES g(ii)=0) AND
+      (FORALL (ii:nat): ii>m IMPLIES h(ii)=0)
+    IMPLIES
+      LET thisrem  = polynomial_rem(g,n)(h,m),
+      	  pd       = poly_divide(g,n)(h,m)(0),
+	  thisdeg  = length[int](thisrem)-1,
+	  thispoly = (LAMBDA (i:nat): IF i<=thisdeg THEN nth(thisrem,i) ELSE 0 ENDIF)
+      IN thisdeg>=0 IMPLIES ((EXISTS (cp:posreal):
+        polynomial(thispoly,thisdeg) = polynomial(-cp*pd`rem,pd`rdeg)) AND
+	thispoly(thisdeg) /= 0)
+
+  polynomial_rem_length: LEMMA
+    h(m)/=0 IMPLIES
+    LET pr = polynomial_rem(g,n)(h,m) IN
+      length(pr)<=m
+
+  polynomial_rem_length2: LEMMA
+    h(m)/=0 IMPLIES
+    LET pr = polynomial_rem(g,n)(h,m) IN
+      length(pr)<=n+1
+
+  polynomial_rem_empty: LEMMA
+    (FORALL (i:nat): i>n IMPLIES g(i)=0) AND
+    (FORALL (i:nat): i>m IMPLIES h(i)=0) AND
+    h(m)/=0 AND
+    length(polynomial_rem(g,n)(h,m))=0
+    IMPLIES
+    FORALL (j:nat): j<=poly_divide(g,n)(h,m)(0)`rdeg IMPLIES
+           poly_divide(g,n)(h,m)(0)`rem(j)=0
+
+  polynomial_rem_test: LEMMA
+    LET g = (LAMBDA (i:nat): IF i=0 THEN 1 ELSIF i=1 THEN 2
+			     ELSIF i=2 THEN 2 ELSIF i=3 THEN 5
+			     ELSIF i=5 THEN 2 ELSIF i=6 THEN -7 ELSE 0 ENDIF),
+	h = (LAMBDA (i:nat): IF i=0 THEN -4 ELSIF i=1 THEN -4
+			     ELSIF i=2 THEN 2 ELSIF i=3 THEN 5
+			     ELSIF i=4 THEN -2 ELSE 0 ENDIF)
+    IN polynomial_rem(g,6)(h,4) = (: -740, -996, -10, 887 :)
+
+END polynomial_pseudo_divide

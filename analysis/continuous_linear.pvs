@@ -1,0 +1,122 @@
+continuous_linear[T: TYPE FROM real]: THEORY
+%----------------------------------------------------------------------------
+%  Author:  Ricky W. Butler     NASA Langley Research Center
+%----------------------------------------------------------------------------
+BEGIN
+   
+   ASSUMING            %% ----- restrict T to single interval ------
+
+    connected_domain : ASSUMPTION
+	FORALL (x, y : T), (z : real) :
+	    x <= z AND z <= y IMPLIES T_pred(z)
+
+    not_one_element : ASSUMPTION
+	 FORALL (x : T) : EXISTS (y : T) : x /= y
+
+   ENDASSUMING
+
+
+   IMPORTING continuous_functions, linear_functions
+
+
+   a,b,c,x,y: VAR T
+   m,k: VAR real
+
+   f,f1,f2: VAR [T -> real]
+
+   linear_cont: LEMMA linear?(f) IMPLIES continuous?(f)
+
+%  linear_on?(f,a,b): bool = 
+%           (EXISTS m,k: (FORALL x: a <= x AND x <= b IMPLIES f(x) = m*x + k))
+
+   continuous_in?(f,a,b): bool = (FORALL x: a < x AND x < b IMPLIES
+                                       continuous?[T](f,x))
+
+   cont_in_linear: LEMMA linear_on?(f,a,b) IMPLIES continuous_in?(f,a,b)
+
+
+   unary_minus_dist: LEMMA -(a-x) = x - a
+
+
+   AUTO_REWRITE+ unary_minus_dist
+
+
+   piecewise: LEMMA   f1(b) = f2(b) AND a < b AND b < c AND
+                      linear_on?(f1,a,b) AND
+                      linear_on?(f2,b,c)
+                   IMPLIES
+            LET f = (LAMBDA x: IF x <= b THEN f1(x) ELSE f2(x) ENDIF) IN
+                      continuous?(f,b)
+
+   cont_piece: LEMMA (FORALL y: a < y AND y < b IMPLIES f1(y) = f2(y)) AND
+                     a < x AND x < b AND
+                     continuous?(f1,x) IMPLIES
+                     continuous?(f2,x) 
+
+
+% -------- results for closed intervals:  [ bot(a), top(a) ] -----------
+
+  top(a): real = IF bounded_above?(fullset[T]) THEN lub(fullset[T])
+                 ELSE a ENDIF
+
+  bot(a): real = IF bounded_below?(fullset[T]) THEN glb(fullset[T])
+                 ELSE a ENDIF
+
+  top_lem: LEMMA bounded_above?(fullset[T]) IMPLIES (FORALL x: x <= top(a)) 
+
+  top_least: LEMMA (FORALL y: upper_bound?(y, fullset[T]) IMPLIES
+                                            top(a) <= y)    
+
+
+  bot_lem: LEMMA bounded_below?(fullset[T]) IMPLIES (FORALL x: bot(a) <= x) 
+
+  bot_least: LEMMA (FORALL y: lower_bound?(y, fullset[T]) IMPLIES
+                                               y <= bot(a) )    
+
+  cont_upto_lub: LEMMA T_pred(x) AND  a < x AND
+                             bounded_above?(fullset[T]) AND 
+                             T_pred(top(a)) AND
+                             linear_on?(f, a, top(a))
+                             IMPLIES
+                                continuous?(f, x )
+
+  cont_downto_glb: LEMMA T_pred(x) AND  a > x AND
+                             bounded_below?(fullset[T]) AND 
+                             T_pred(bot(a)) AND
+                             linear_on?(f, bot(a), a)
+                             IMPLIES
+                                continuous?(f, x )
+
+%  -------- results for piecewise linear functions
+
+   on_linear_part?(x,f): bool = EXISTS a,b: a < x AND x < b AND
+                                         linear_on?(f,a,b)
+
+
+   on_linear_top?(x,f): bool = bounded_above?(fullset[T]) AND
+                                  (EXISTS a:  a < x AND T_pred(top(a)) AND
+                                        linear_on?(f,a,top(x)))
+
+
+   on_linear_bottom?(x,f): bool = bounded_below?(fullset[T]) AND
+                               (EXISTS a: a > x AND T_pred(bot(a)) AND
+                                         linear_on?(f,bot(a),a))
+
+   on_junction?(b,f): bool =  (EXISTS a,c: a < b AND b < c AND
+                                 (EXISTS (m1,k1,m2,k2: real):
+             (FORALL y: a <= y AND y <= b IMPLIES f(y) = m1*y + k1) AND
+             (FORALL y: b <= y AND y <= c IMPLIES f(y) = m2*y + k2) AND
+                                  m1*b+k1 = m2*b + k2))
+                              
+
+   piecewise_linear?(f): bool = (FORALL x: on_linear_part?(x,f) OR
+                                           on_linear_top?(x,f) OR
+                                           on_linear_bottom?(x,f) OR
+                                           on_junction?(x,f))        
+
+   cont_piecewise_linear: LEMMA piecewise_linear?(f) IMPLIES
+                                  continuous?(f)                              
+
+END continuous_linear
+
+

@@ -1,0 +1,155 @@
+integral_step[T: TYPE FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%  Integration over Step Functions: 
+%
+%  Author: Rick Butler   NASA Langley Research Center
+%
+%------------------------------------------------------------------------------
+
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+   IMPORTING step_fun_def[T], integral_pulse[T]
+
+   a,b,x,y,z,xx: VAR T
+   c:      VAR real
+   f,g:    VAR [T -> real]
+   xl,xh:     VAR T
+
+   fn: VAR [nat -> real]
+
+   sigma_0_m1: LEMMA sigma(0,-1,fn) = 0
+
+%   AUTO_REWRITE+ sigma_0_m1
+
+   pick(a:T,b:{x:T|a<x},(P: partition[T](a,b)),j: below(length(P)-1)): 
+       {t:T | seq(P)(j) < t AND t < seq(P)(j + 1)} =
+             choose({t:T | seq(P)(j) < t AND t < seq(P)(j + 1)})
+
+   val_in(a:T,b:{x:T|a<x},(P: partition[T](a,b)),j: below(length(P)-1),f): real
+     = f(pick(a,b,P,j))
+
+   stp_sect(a:T, b:{x:T|a<x},(P: partition(a,b)), 
+           jj: nat,f)(x): real = 
+                IF jj >= length(P)-1 THEN 0
+                ELSIF x = seq(P)(jj) THEN f(x)
+                ELSIF seq(P)(jj) < x AND x < seq(P)(jj + 1)
+                     THEN val_in(a,b,P,jj,f)
+                ELSE 0  ENDIF
+
+
+
+   stp_sect_lem: LEMMA a < b IMPLIES FORALL (P: partition(a,b)):
+                      FORALL (ii,jj: upto(length(P)-1)):
+                       x > seq(P)(jj) AND ii < jj IMPLIES
+                       stp_sect(a, b, P, ii , f)(x) = 0
+
+
+   sigma_stp_sect: LEMMA a < b IMPLIES FORALL (P: partition(a,b)):
+                         FORALL (j: nat): j <= length(P) - 2 AND
+                         x > seq(P)(1 + j) IMPLIES
+                         sigma(0, j, LAMBDA (ii: nat):
+                                       IF ii >= 1 + j THEN 0
+                                       ELSE stp_sect(a, b, P, ii, f)(x)
+                                       ENDIF) = 0
+
+   integral_stp_sect: LEMMA FORALL (a:T, b: {x:T|a<x}, P: partition[T](a,b),
+                                    j: below(length(P)-1)):
+                integral?(a, b, stp_sect(a, b, P, j, f),
+                   val_in(a, b, P, j, f)*(seq(P)(j+1) - seq(P)(j)))
+
+
+   n: VAR nat
+   list_of_funs(n): TYPE = [upto(n) -> [T -> real]]
+
+   sumof(n: nat,ff: list_of_funs(n))(x): real = 
+        sigma[nat](0,n,(LAMBDA (ii: nat): IF ii > n THEN 0
+                                          ELSE ff(ii)(x)
+                                          ENDIF))
+
+
+   sigma_sumof: LEMMA FORALL (a:T, b: {x:T|a<x}, P: partition[T](a,b)):
+                   step_function_on?(a,b,f,P) 
+                   IMPLIES 
+                      (FORALL (n: nat):
+                       n <= length(P) - 2 IMPLIES
+              (FORALL (x: closed_interval[T](a,b)): x <= seq(P)(n+1) IMPLIES
+          sumof(n, (LAMBDA (jj: upto(n)): stp_sect(a,b,P,jj,f)))(x)
+          + IF x = seq(P)(n+1) THEN f(x) ELSE 0 ENDIF
+           = f(x)))
+
+
+   integrable_sumof: LEMMA FORALL (n: nat, a:T, b: {x:T|a<x}, 
+                                 P: partition[T](a,b)):
+          n <= length(P) - 2 IMPLIES
+          integrable?(a,b,
+                   sumof(n, (LAMBDA (jj: upto(n)): stp_sect(a,b,P,jj,f))))
+
+
+   integral_sumof: LEMMA FORALL (n: nat, a:T, b: {x:T|a<x}, 
+                                 P: partition[T](a,b)):
+          n <= length(P) - 2 IMPLIES
+          integral(a,b,
+                   sumof(n, (LAMBDA (jj: upto(n)): stp_sect(a,b,P,jj,f)))) = 
+             sigma(0,n,(LAMBDA (ii: below(length(P)-1)):
+                          val_in(a,b,P,ii,f)*(P(ii+1) - P(ii))))
+
+
+   step_fun_is_sumof_n: LEMMA FORALL (n: nat, a:T, b: {x:T|a<x}, 
+                                      P: partition[T](a,b)):
+          n <= length(P) - 2 AND
+          step_function_on?(a,b,f,P) IMPLIES 
+             LET endx = seq(P)(n+1) IN
+             (FORALL (x: closed_interval[T](a,endx)):
+                sumof(n, (LAMBDA (jj: upto(n)): stp_sect(a,b,P,jj,f))) 
+                     WITH [endx := f(endx)](x)
+                                 = f(x))
+
+
+   step_fun_is_sumof: LEMMA FORALL (a:T, b: {x:T|a<x}, P: partition[T](a,b)):
+        step_function_on?(a,b,f,P) IMPLIES   
+             (FORALL (x: closed_interval[T](a,b)):
+                  LET N = length(P)-2 IN
+                sumof(N, (LAMBDA (jj: upto(N)): stp_sect(a,b,P,jj,f))) 
+                     WITH [b := f(b)](x)
+                                 = f(x))
+
+
+   step_function_integrable?: LEMMA a < b AND step_function?(a,b,f) IMPLIES
+                                                integrable?(a,b,f)
+
+
+
+   step_function_on_integral: LEMMA a < b IMPLIES     
+                              FORALL (P: partition[T](a,b)):
+                              step_function_on?(a,b,f,P) IMPLIES
+                           integral(a,b,f) = 
+                     LET N = length(P) IN
+               sigma(0,N-2,(LAMBDA (ii: below(N-1)):
+                          val_in(a,b,P,ii,f)*(P(ii+1) - P(ii)))) ;
+                               
+
+   step_to_integrable: LEMMA a < b AND    % Rosenlict pg 120 forward direction
+                         (FORALL (eps: posreal): 
+                           (EXISTS (f1,f2: [T -> real]):
+                              step_function?(a,b,f1) AND step_function?(a,b,f2)
+                              AND (FORALL (xx: closed_interval(a,b)):
+                                           f1(xx) <= f(xx) AND f(xx) <= f2(xx))
+                              AND integrable?(a,b,f2-f1) 
+                              AND integral(a,b,f2-f1) < eps))
+                       IMPLIES integrable?(a,b,f) 
+
+
+
+
+END integral_step

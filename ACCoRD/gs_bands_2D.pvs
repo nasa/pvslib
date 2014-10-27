@@ -1,0 +1,100 @@
+%------------------------------------------------------------------------------
+% gs_bands_2D.pvs
+% ACCoRD v.1.0
+%------------------------------------------------------------------------------
+
+gs_bands_2D[D:posreal,B:nnreal,T: {AB: posreal|AB>B}] : THEORY
+BEGIN
+
+  IMPORTING analysis@interm_value_thm,
+  	    vect_analysis@vect2_cont_dot[real],
+            omega_v2[D,B,T],
+            gs_line[D],
+	    line_solutions[D],
+            bands_util
+ 
+  s     : VAR Vect2
+  vo,vi,
+  nvo	: VAR Nz_vect2
+  sp    : VAR Sp_vect2
+  ss    : VAR Ss_vect2
+  band  : VAR ConnectedGt(0)
+  gsp   : VAR posreal
+  k     : VAR real
+  pm,
+  eps   : VAR Sign
+
+  gs_band_pos : JUDGEMENT
+    (band) SUBTYPE_OF posreal
+
+  gs2v2_continuous : JUDGEMENT
+    gs2v2(vo) HAS_TYPE continuous_rv_fun
+
+  %-----------------------------------------------%
+  % 2-D Ground Speed Critical Points              %
+  %-----------------------------------------------%
+
+  gs_critical?(s,vo,vi)(gsp) : bool =
+    LET gso = gs2v2(vo)(gsp) IN
+    (sqv(s)>=sq(D) AND gs_line?(s,vo,vi)(gso)) OR
+    gs_only_circle?(s,vo,vi,T,Entry)(gso) OR
+    (B>0 AND gs_only_circle?(s,vo,vi,B,Exit)(gso))
+
+  Vgs(vo,vi)(gsp:real) : Vect2 = 
+    gs2v2(vo)(gsp)-vi
+
+  Vgs_continuous : JUDGEMENT
+    Vgs(vo,vi) HAS_TYPE continuous_rv_fun
+
+  Omega_gs(s,vo,vi) : (continuous_rr?) = 
+    omega_v2(s) o Vgs(vo,vi)
+
+  Omega_gs_critical : LEMMA
+    Omega_gs(s,vo,vi)(gsp) = 0 AND
+    NOT (sqv(s)>=sq(D) AND two_parallel?(s,vo,vi)) IMPLIES
+      gs_critical?(s,vo,vi)(gsp) 
+
+  % Bands do not contain critical points
+  gs_band?(s,vo,vi)(band) : bool =
+    FORALL (gso:(band)) :
+      NOT gs_critical?(s,vo,vi)(gso)
+
+  gs_green?(s,vo,vi)(band) : bool =
+    FORALL (gso:(band)) :
+      NOT conflict_2D?(s,Vgs(vo,vi)(gso))
+
+  gs_green_two_parallel : LEMMA
+    two_parallel?(sp,vo,vi) IMPLIES
+    gs_green?(sp,vo,vi)(band)
+
+  gs_red?(s,vo,vi)(band) : bool =
+    FORALL (gso:(band)) :
+      conflict_2D?(s,Vgs(vo,vi)(gso))
+
+  gs_line_color : LEMMA
+    pm*(Q(ss,eps)*vo) > 0 IFF
+    IF pm*(eps*det(ss,vo)) > 0 THEN pm*(ss*vo) > 0 AND sq(D)*sqv(vo) > sq(det(ss,vo)) 
+    ELSE pm*(ss*vo) > 0 OR pm*(ss*vo) <= 0 AND sq(D)*sqv(vo) < sq(det(ss,vo))
+    ENDIF
+
+  %------------------------------------------------%
+  % THEOREM: Ground Speed Green Bands Correctness  %
+  %------------------------------------------------%
+
+  gs_green_band : THEOREM
+    FORALL (gso:(band)) :
+       gs_band?(s,vo,vi)(band) IMPLIES
+       (NOT cd2d?(s,Vgs(vo,vi)(gso)) IFF
+        gs_green?(s,vo,vi)(band))
+
+  %-----------------------------------------------%
+  % THEOREM: Ground Speed Red Bands Correctness   %
+  %-----------------------------------------------%
+
+  gs_red_band : THEOREM
+    FORALL (gso:(band)) :
+      gs_band?(s,vo,vi)(band) IMPLIES
+      (cd2d?(s,Vgs(vo,vi)(gso)) IFF
+        gs_red?(s,vo,vi)(band))
+ 
+END gs_bands_2D

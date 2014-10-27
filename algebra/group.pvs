@@ -1,0 +1,188 @@
+%------------------------------------------------------------------------------
+% Groups
+%
+%     Author: David Lester, Manchester University & NIA
+%             Rick Butler
+%             
+%
+%     Version 1.0            3/1/02
+%     Version 1.1           12/3/03   New library structure
+%     Version 1.2            5/5/04   Reworked for definition files DRL
+%     Version 1.3           12/5/07   Added a*H notation for cosets and
+%                                     changed cosets so that they are over parent
+%                                     type T rather thatn(G).
+%------------------------------------------------------------------------------
+
+group[T:Type+,*:[T,T->T],one:T]: THEORY
+
+BEGIN
+%------------------------------------------------------------------------
+%  The imported type T with * and "one" must be a group.
+%  From this foundation other groups are created.  These are just subgroups of the
+%  underlying imported type.  I have wrestled with the question of whether it
+%  would be preferable to weaken the importing assumptions so as to allow
+%
+%     G: VAR group[real,*,1]
+%
+%  rather than requiring
+%
+%     G: VAR group[nzreal,*,1]
+%
+%  The advantage of the former is that it is more general and there is already sufficient
+%  mechanism to handle this.  But the advantage of the latter is that lemmas such as
+%  inv_left and cancel_right (see below) do not have to have constraining predicates, e.g.
+%
+%     G: VAR group
+%     inv_left: LEMMA G(x) IMPLIES inv(G)(x) * x = one 
+%
+%  where
+%  
+%     inv(G)(x: (G)): {y: (G) | x*y = one AND y*x = one}
+%
+%------------------------------------------------------------------------
+   ASSUMING IMPORTING group_def[T,*,one]
+
+       fullset_is_group: ASSUMPTION group?(fullset[T])
+
+   ENDASSUMING
+
+   IMPORTING group_def[T,*,one], monoid[T,*,one]
+
+   group: TYPE+ = (group?) CONTAINING fullset[T]
+
+   subgroup(G: group): TYPE = {H: group | subgroup?(H,G)}
+	
+   group_is_monoid: JUDGEMENT group SUBTYPE_OF monoid
+
+
+   finite_group: TYPE+ = (finite_group?) 
+
+   finite_group_is_group: JUDGEMENT finite_group SUBTYPE_OF group
+   finite_group_is_finite_monoid:
+                          JUDGEMENT finite_group SUBTYPE_OF finite_monoid
+
+   finite_subgroups: LEMMA FORALL (S:set[T], H: finite_group): subgroup?(S,H) IMPLIES
+                                                               finite_group?(S)
+
+   one_is_group    : LEMMA group?(singleton[T](one))
+   AUTO_REWRITE+     one_is_group
+   one_finite_group: LEMMA finite_group?(singleton[T](one))
+   AUTO_REWRITE+     one_finite_group
+
+   one_group: finite_group = singleton[T](one)
+
+   group_card_gt_0: LEMMA FORALL (G: finite_group): card(G) > 0
+
+   S,R:       VAR set[T]
+   H,G:       VAR group
+   a,b,x,y,z: VAR T
+   m:         VAR nat
+   i,j:       VAR int
+
+   inv_exists: LEMMA EXISTS y: x*y = one AND y*x = one
+
+   inv(x): {y | x*y = one AND y*x = one}
+   inverse(x): MACRO {y | x*y = one AND y*x = one} = inv(x)
+
+%  ---- The following hold because the fullset[T] is constrained to be a group by the
+%       assuming clause
+
+   inv_left            : LEMMA inv(x) * x = one 
+   inv_right           : LEMMA x * inv(x) = one 
+   cancel_right        : LEMMA x*z = y*z IFF x = y
+   cancel_left         : LEMMA z*x = z*y IFF x = y
+   inv_inv             : LEMMA inv(inv(x)) = x 
+   cancel_right_inv    : LEMMA x*inv(z) = y*inv(z) IFF x = y
+   cancel_left_inv     : LEMMA z*inv(x) = z*inv(y) IFF x = y
+   inv_one             : LEMMA inv(one) = one
+   inv_star            : LEMMA inv(x*y) = inv(y)*inv(x)
+   unique_inv          : LEMMA x*y = one AND y*x = one IFF y = inv(x)
+   inv_member          : LEMMA member(inv(x),G) IFF member(x,G)
+   inv_in              : LEMMA FORALL (a:(G)): G(inv(a))
+   divby               : LEMMA x = y * z IFF inv(y)*x = z
+
+   product_in          : LEMMA G(a) AND G(b) IMPLIES G(a*b)
+
+   AUTO_REWRITE+  inv_left
+   AUTO_REWRITE+  inv_right
+   AUTO_REWRITE+  inv_inv
+   AUTO_REWRITE+  inv_one
+   AUTO_REWRITE+  inv_in
+   AUTO_REWRITE+  member
+
+
+   inv_closed?(S): bool = (FORALL (x:(S)): member(inv(x),S))
+
+   one_is_subgroup:   LEMMA subgroup?(one_group,G)
+
+   group_is_subgroup: LEMMA subgroup?(G,G)
+
+   subgroup_is_group: LEMMA subgroup?(S,G) IMPLIES group?(S)
+
+
+% Herstein Lemma 2.4.1 (Characterization of any subgroup)
+
+   subgroup_def: LEMMA subgroup?(S,G) IFF
+     (nonempty?(S) AND subset?(S,G) AND star_closed?(S) AND inv_closed?(S))
+
+
+   inv_power:       LEMMA inv(power(a,m))   = power(inv(a),m)
+   power_inv_right: LEMMA power(a,m) * power(inv(a),m) = one
+   power_inv_left:  LEMMA power(inv(a),m) * power(a,m) = one
+
+   ; % needed for syntax purposes!
+
+   ^(a,i): T = IF i < 0 THEN power(inv(a),-i) ELSE power(a,i) ENDIF
+
+   expt_0:             LEMMA a^0                = one
+   expt_1:             LEMMA a^1                = a
+   expt_m1:            LEMMA a^(-1)             = inv(a)
+   one_expt:           LEMMA one^i              = one
+   expt_neg:           LEMMA a^(-i)             = inv(a)^i
+   inv_expt:           LEMMA inv(a^i)           = inv(a)^i
+   expt_def1:          LEMMA a^(i+1)            = a^i*a
+   expt_def2:          LEMMA a^(i+1)            = a*a^i
+   expt_mult:          LEMMA a^i*a^j            = a^(i+j)
+   expt_div :          LEMMA a^i*inv(a)^j       = a^(i-j)
+   expt_expt:          LEMMA (a^i)^j            = a^(i*j)
+   expt_commutes:      LEMMA a^i*a^j            = a^j*a^i
+   expt_inv_right:     LEMMA a^i * inv(a)^i = one
+   expt_inv_left:      LEMMA inv(a)^i * a^i = one
+   expt_member:        LEMMA member(a,G) IMPLIES member(a^i,G)
+
+%   AUTO_REWRITE+  expt_0
+%   AUTO_REWRITE+  expt_1
+%   AUTO_REWRITE+  one_expt
+
+   generated_by(a):group = {t: T | EXISTS (i: int): t = a^i}
+
+   cyclic?(G): boolean = EXISTS (a:(G)): G = generated_by(a)
+
+   generated_by_lem     : LEMMA generated_by(a)(a^i)
+
+   generated_is_subgroup: LEMMA member(a,G) IMPLIES
+                                              subgroup?(generated_by(a),G)
+
+   generated_by_is_finite: LEMMA S = generated_by(a) AND 
+                                 (EXISTS (k: posnat): a^k = one)
+                              IMPLIES finite_group?(S)
+
+
+% ----- Center of a Group
+
+   center(G): {s: set[T] | subset?(s,G)} = { s: (G) | FORALL (x:(G)): x*s = s*x}
+
+   center_def     : LEMMA center(G)(x) IFF G(x) AND FORALL (y:(G)): y*x = x*y
+
+   center_subgroup: LEMMA subgroup?(center(G),G)
+
+%  ---- Some Easy to Remember versions of Lemmas
+
+   one_left:         LEMMA one * x = x
+   one_right:        LEMMA x * one = x
+   assoc:            LEMMA x * (y * z) = (x * y) * z    %% often want to rewrite this way
+ 
+   AUTO_REWRITE+ one_left  
+   AUTO_REWRITE+ one_right
+
+END group

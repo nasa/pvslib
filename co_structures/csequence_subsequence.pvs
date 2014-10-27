@@ -1,0 +1,162 @@
+%-----------------------------------------------------------------------------
+% Subsequences of sequences of countable length.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_subsequence[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING csequence_prefix[T], csequence_suffix[T]
+
+  p: VAR pred[T]
+  n, m: VAR nat
+  cseq, cseq1, cseq2: VAR csequence
+  nseq, nseq1, nseq2: VAR nonempty_csequence
+  fseq, fseq1, fseq2: VAR finite_csequence
+
+  subsequence?(cseq1, cseq2): COINDUCTIVE bool =
+      empty?(cseq1) OR
+       (EXISTS (n: indexes(cseq2)):
+          first(cseq1) = nth(cseq2, n) AND
+           subsequence?(rest(cseq1), suffix(cseq2, n + 1)))
+
+  subsequence?(cseq2)(cseq1): MACRO bool = subsequence?(cseq1, cseq2)
+
+  subsequence?_empty_left: THEOREM
+    FORALL cseq: subsequence?(empty_cseq, cseq)
+
+  subsequence?_empty_right: THEOREM
+    FORALL cseq: subsequence?(cseq, empty_cseq) IFF empty?(cseq)
+
+  subsequence?_rest1: THEOREM
+    FORALL nseq1, nseq2:
+      subsequence?(nseq1, nseq2) IMPLIES
+       subsequence?(rest(nseq1), rest(nseq2))
+
+  subsequence?_rest2: THEOREM
+    FORALL cseq, nseq:
+      subsequence?(cseq, rest(nseq)) IMPLIES subsequence?(cseq, nseq)
+
+  subsequence?_extensionality: THEOREM
+    FORALL nseq1, nseq2:
+      subsequence?(rest(nseq1), rest(nseq2)) AND
+       first(nseq1) = first(nseq2)
+       IMPLIES subsequence?(nseq1, nseq2)
+
+  subsequence?_finite: THEOREM
+    FORALL cseq, fseq: subsequence?(cseq, fseq) IMPLIES is_finite(cseq)
+
+  subsequence?_nth: THEOREM
+    FORALL cseq1, cseq2:
+      subsequence?(cseq1, cseq2) IMPLIES
+       (FORALL (n: indexes(cseq1)):
+          EXISTS (m: indexes(cseq2)):
+            nth(cseq1, n) = nth(cseq2, m) AND
+             subsequence?(suffix(cseq1, n + 1), suffix(cseq2, m + 1)))
+
+  subsequence?_concatenate_left: THEOREM
+    FORALL cseq1, cseq2:
+      subsequence?(cseq1, cseq2) IMPLIES
+       (FORALL fseq: subsequence?(cseq1, fseq o cseq2))
+
+  subsequence?_concatenate_right: THEOREM
+    FORALL cseq1, cseq2:
+      subsequence?(cseq1, cseq2) IMPLIES
+       (FORALL cseq: subsequence?(cseq1, cseq2 o cseq))
+
+  subsequence?_prefix: THEOREM
+    FORALL cseq, n, m:
+      n <= m IMPLIES subsequence?(prefix(cseq, n), prefix(cseq, m))
+
+  subsequence?_suffix: THEOREM
+    FORALL cseq, n, m:
+      n <= m IMPLIES subsequence?(suffix(cseq, m), suffix(cseq, n))
+
+  subsequence?_length: THEOREM
+    FORALL fseq1, fseq2:
+      subsequence?(fseq1, fseq2) IMPLIES length(fseq1) <= length(fseq2)
+
+  subsequence?_length_eq: THEOREM
+    FORALL fseq1, fseq2:
+      subsequence?(fseq1, fseq2) AND length(fseq1) = length(fseq2) IMPLIES
+       fseq1 = fseq2
+
+  %  Note that subsequence? is not a partial order, because it is not
+  %  antisymmetric.  These two sequences are subsequences of each other,
+  %  but are not equal:
+  %
+  %    1, 2, 1, 2, 1, 2, ...
+  %    2, 1, 2, 1, 2, 1, ...
+
+  subsequence?_is_preorder: JUDGEMENT
+    subsequence? HAS_TYPE (preorder?[csequence])
+
+  %  However, subsequence? is a partial order when restricted to finite
+  %  sequences.
+
+  subsequence?_finite_antisymmetric: THEOREM
+    partial_order?[finite_csequence]
+        (restrict
+             [[csequence, csequence], [finite_csequence, finite_csequence],
+              bool]
+             (subsequence?))
+
+  prefix?_is_subsequence?: JUDGEMENT
+    (prefix?(cseq)) SUBTYPE_OF (subsequence?(cseq))
+
+  suffix?_is_subsequence?: JUDGEMENT
+    (suffix?(cseq)) SUBTYPE_OF (subsequence?(cseq))
+
+  subsequence?_some: THEOREM
+    FORALL cseq1, cseq2, p:
+      subsequence?(cseq1, cseq2) AND some(p)(cseq1) IMPLIES some(p)(cseq2)
+
+  subsequence?_every: THEOREM
+    FORALL cseq1, cseq2, p:
+      subsequence?(cseq1, cseq2) AND every(p)(cseq2) IMPLIES every(p)(cseq1)
+
+
+  % An alternative characterization of subsequences: there exists a
+  % monotonically increasing function from the indexes of the "smaller"
+  % sequence to the indexes of the "larger" sequence such that the
+  % mapped elements are equal
+  subsequence_func(cseq2, (cseq1: (subsequence?(cseq2))))
+                  (n: indexes(cseq1)): RECURSIVE
+        indexes(cseq2) =
+    LET index =
+          min[indexes(cseq2)]
+              ({i: indexes(cseq2) | first(cseq1) = nth(cseq2, i)})
+      IN
+      IF n = 0 THEN index
+      ELSE index + 1 +
+            subsequence_func(suffix(cseq2, index + 1), rest(cseq1))(n - 1)
+      ENDIF
+     MEASURE n
+
+  subsequence_func_monotonic: LEMMA
+    FORALL cseq1, cseq2, (n, m: indexes(cseq1)):
+      subsequence?(cseq1, cseq2) AND n < m IMPLIES
+       subsequence_func(cseq2, cseq1)(n) < subsequence_func(cseq2, cseq1)(m)
+
+  subsequence_func_nth: LEMMA
+    FORALL cseq1, cseq2, (n: indexes(cseq1)):
+      subsequence?(cseq1, cseq2) IMPLIES
+       nth(cseq1, n) = nth(cseq2, subsequence_func(cseq2, cseq1)(n))
+
+  subsequence?_def: THEOREM
+    FORALL cseq1, cseq2:
+      subsequence?(cseq1, cseq2) IFF
+       (EXISTS (f: [indexes(cseq1) -> indexes(cseq2)]):
+          (FORALL (i1, i2: indexes(cseq1)): i1 < i2 IMPLIES f(i1) < f(i2))
+           AND
+           (FORALL (i: indexes(cseq1)): nth(cseq1, i) = nth(cseq2, f(i))))
+
+ END csequence_subsequence

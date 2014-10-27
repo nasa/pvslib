@@ -1,0 +1,178 @@
+criteria_flightplan[D:posreal,B:nnreal,T: {AB: posreal|AB>B}]: THEORY
+BEGIN
+
+  IMPORTING horizontal[D],
+  	    Lookahead[B,T]
+
+
+  %%%%%%% General Trajectories %%%%%%%
+
+  Trajectory : TYPE = [Lookahead -> Vect2]
+
+  so,si,rtraj,newrtraj,newso,newsi,traj: VAR Trajectory
+
+  rel_traj(so,si)(t:Lookahead): Vect2 = so(t)-si(t)
+
+  horizontal_conflict_ever_traj?(rtraj): bool = 
+    EXISTS (t:Lookahead): norm(rtraj(t)) < D
+
+  hconflictever_rew: LEMMA horizontal_conflict_ever_traj?(rtraj) 
+  		     	   IFF 
+			   (EXISTS (t:Lookahead): sqv(rtraj(t)) < sq(D))
+
+  %%%%%%% Repulsiveness %%%%%%%
+
+  repulsive?(rtraj)(newrtraj): bool = 
+    (FORALL (t:Lookahead): rtraj(t)/=zero AND 
+     FORALL (p:nnreal): 
+     	    norm(p*newrtraj(t) + (1-p)*rtraj(t)) >= norm(rtraj(t)))
+
+  repulsive_crit_vect?(vv:Vect2)(ww:Vect2): MACRO bool =
+    vv*(ww-vv)>=0
+
+  repulsive_criterion?(rtraj)(newrtraj): bool = 
+    FORALL (t:Lookahead): rtraj(t)/=zero AND 
+    repulsive_crit_vect?(rtraj(t))(newrtraj(t))
+
+  repulisve_criterion_independent: LEMMA 
+    repulsive_criterion?(rtraj)(newrtraj) 
+    IFF
+    repulsive?(rtraj)(newrtraj)
+
+  repulsive_criterion_coordinated: LEMMA
+    repulsive_criterion?(rel_traj(so,si))(rel_traj(newso,si)) AND
+    repulsive_criterion?(rel_traj(si,so))(rel_traj(newsi,so))
+    IMPLIES
+    repulsive_criterion?(rel_traj(so,si))(rel_traj(newso,newsi))
+
+  %%%%%%% Horizontal Criterion %%%%%%%
+
+  horizontal_criterion?(rtraj)(newrtraj): bool = 
+    (FORALL (t:Lookahead): 
+      rtraj(t)/=zero AND 
+      rtraj(t)*newrtraj(t) >= max(sqv(rtraj(t)),norm(rtraj(t))*D))
+
+  horizontal_criterion_repulsive: LEMMA 
+    horizontal_criterion?(rtraj)(newrtraj) 
+    IMPLIES 
+    repulsive_criterion?(rtraj)(newrtraj)
+
+  horizontal_criterion_independent: LEMMA
+    horizontal_criterion?(rtraj)(newrtraj)
+    IMPLIES
+    NOT horizontal_conflict_ever_traj?(newrtraj)
+
+  horizontal_criterion_coordinated: LEMMA
+    horizontal_criterion?(rel_traj(so,si))(rel_traj(newso,si)) AND
+    horizontal_criterion?(rel_traj(si,so))(rel_traj(newsi,so))
+    IMPLIES
+    horizontal_criterion?(rel_traj(so,si))(rel_traj(newso,newsi))
+
+  %%%%%%% Flightplan Criterion %%%%%%%
+
+  safe_vect?(position1,position2:Vect2): bool = 
+    position1*position2 >= 
+      max(norm(position1)*(D/2 + norm(position1)/2),norm(position1)*D)
+
+  flightplan_criterion?(rtraj)(newrtraj): bool = 
+    (FORALL (t:Lookahead): 
+      rtraj(t)/=zero AND 
+      safe_vect?(rtraj(t),newrtraj(t)))
+
+  horizontal_flightplan_criterion: LEMMA
+    horizontal_criterion?(rtraj)(newrtraj)
+    IMPLIES
+    flightplan_criterion?(rtraj)(newrtraj)
+
+  flightplan_criterion_independent: LEMMA
+    flightplan_criterion?(rtraj)(newrtraj)
+    IMPLIES
+    NOT horizontal_conflict_ever_traj?(newrtraj)
+
+  flightplan_criterion_coordinated: LEMMA
+    flightplan_criterion?(rel_traj(so,si))(rel_traj(newso,si)) AND
+    flightplan_criterion?(rel_traj(si,so))(rel_traj(newsi,so))
+    IMPLIES
+    NOT horizontal_conflict_ever_traj?(rel_traj(newso,newsi))
+
+  %%%%%%% An Analytic Method to Determine Repulsiveness %%%%%%%
+
+  nv,rv,mv,sv: VAR Vect2
+  x,a,b,c: VAR real
+
+  repulsive_quad(rv,sv,nv,mv): [real->real] =
+    quadratic(sv*(mv-sv),sv*(nv-rv)+rv*(mv-sv),rv*(nv-rv))
+
+  repulsive_quad_def: LEMMA
+    LET newrv = rv+x*sv, newnv = nv+x*mv IN
+    repulsive_quad(rv,sv,nv,mv)(x) =
+    newrv*(newnv-newrv)
+
+  f: VAR [real->real]
+  
+  min?(t1,t2:Lookahead,f)(t:real): bool =
+    t1<=t AND t<=t2 AND
+    (FORALL (la:Lookahead): t1<=la AND la<=t2 IMPLIES f(t)<=f(la))
+
+  min_quad(t1,t2:real)(a,b,c:real): real =
+    LET fq    = quadratic(a,b,c), 
+	p     = IF a/=0 AND t1<=-b/(2*a) AND -b/(2*a)<=t2 THEN -b/(2*a) ELSE t1 ENDIF,
+	pnew  = IF fq(t2)<fq(t1) THEN t2 ELSE t1 ENDIF
+    IN
+        IF fq(p)<fq(pnew) THEN p ELSE pnew ENDIF
+
+  min_quad_def: LEMMA FORALL (t1,t2:Lookahead): t1<t2 IMPLIES
+    min?(t1,t2,quadratic(a,b,c))(min_quad(t1,t2)(a,b,c))
+
+  v,w,u: VAR Vect2
+
+  p,tp:  VAR nnreal
+
+  tl,th: VAR Lookahead
+
+  linear_between?(tl,th)(traj): bool = tl<th AND FORALL (t:Lookahead): tl<=t AND t<=th IMPLIES
+  				       traj(t) = traj(tl) + ((t-tl)/(th-tl))*(traj(th)-traj(tl))
+
+  linear_between_sub: LEMMA linear_between?(tl,th)(so) AND linear_between?(tl,th)(si)
+  		      	    IMPLIES
+  			    linear_between?(tl,th)(rel_traj(so,si))
+
+  TCP_sequence: TYPE = [# points:{nn:posnat|nn>1}, time: [below(points)->Lookahead] #]
+
+  positions: VAR TCP_sequence
+
+  linear_between_traj_seq?(positions)(traj): bool =
+    (FORALL (t:Lookahead): (EXISTS (i:below(positions`points-1)):
+    LET tl = positions`time(i), th = positions`time(i+1) IN
+     tl <= t AND t <= th AND linear_between?(tl,th)(traj)))
+
+  repulsive_criterion_analytic(rtraj,positions)(newrtraj): 
+
+  repulsive_criterion_linear: LEMMA
+    linear_between_traj_seq?(positions)(newrtraj)
+    IMPLIES
+    (repulsive_criterion?(rtraj)(newrtraj) IFF
+    (FORALL (i:below(positions`points)): rtraj(positions`time(i))/= zero AND repulsive_crit_vect?(rtraj(positions`time(i)))(newrtraj(positions`time(i)))))
+
+
+
+
+  % TCP_sequence: TYPE = (# points:{nn:posnat | nn>1}, time: [below(points)->Lookahead], tcp : [below(points)->Vect2] #)
+
+  % positions: VAR TCP_sequence
+
+  % increasing?(positions): bool = FORALL (i:below(positions`points)): pos
+
+  % piecewise_linear?(positions)(rtraj): bool =
+  %   LET points = positions`points IN
+  %   FORALL (i:below(points-1)):
+  %   LET tl = positions`time(i),
+  %   	th = positions`time(i+1),
+  % 	sl = positions`tcp(i),
+  % 	sh = positions`tcp(i)
+  %   IN
+  %       FORALL (t:Lookahead): tl <= t AND t <= th IMPLIES
+  % 	       		      rtraj(t) = sl + (
+
+      
+END criteria_flightplan

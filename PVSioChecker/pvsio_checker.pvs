@@ -1,0 +1,113 @@
+pvsio_checker : THEORY
+BEGIN
+
+  IMPORTING time_fun,
+            pathname
+
+  % Global variables
+
+  Records     : Global[nat,0]
+  Fails       : Global[nat,0]
+  CurrentLine : Global[nat,0]
+  Frequency   : Global[posnat,10]
+  Precision   : Global[nnreal,0.001]
+
+  % Generic checker: 
+  % Iterates check on a file until maxr (or end of file if maxr = 0)
+
+  safe_div(m,n:real):real =
+    IF n = 0 THEN 0 ELSE m/n ENDIF
+
+  print_etc(fin:IStream,maxr:nat) : void =
+    IF mod(val[nat](Records),val[posnat](Frequency)) = 0 THEN
+      LET is   = IF maxr = 0 THEN safe_div(flength(fin),fgetpos(fin))
+                 ELSE safe_div(maxr,val[nat](Records)) ENDIF,
+          per  = floor(100*safe_div(1,is)),
+          time = toc`1*(is-1) IN
+        printf("[~d% - Line: ~d, Records: ~a] Estimated Time of Completion: ~a~%",
+              (per,val(CurrentLine),val(Records),hms(time)))
+    ELSE
+      skip
+    ENDIF 
+
+  checker(file:string,check:[[IStream,OStream]->bool],maxr:nat) : void =
+    IF file = "" OR fexists(file) THEN
+      LET fin     = IF file = "" THEN stdin ELSE fopenin(file) ENDIF,
+          nameout = IF maxr = 0 THEN format("~a~a.out",
+                                           (pathname_dir(file),pathname_name(file))) 
+                    ELSE format("~a~a-~a.out",
+                               (pathname_dir(file),pathname_name(file),maxr)) ENDIF,
+          fout    = IF file = "" THEN stdout ELSE fopenout(create,nameout) ENDIF IN
+        IF file /= "" THEN 
+          printf("Reading: ~a. Writing: ~a~%",(file,nameout)) &
+ 	  fprintf(fout,"Date: ~a~%",date) &
+          fprintf(fout,"Input file: ~a~%",file) 
+        ELSE skip ENDIF &
+        set[nat](Records,0) &
+        set[nat](Fails,0) &
+	set[nat](CurrentLine,0) &
+	tic &
+        while(NOT eof?(fin) AND maxr <= 0 OR val[nat](Records) < maxr,
+              set[nat](Records,val[nat](Records)+1) &
+              IF check(fin,fout) THEN skip ELSE set[nat](Fails,val[nat](Fails)+1) ENDIF &
+              IF file /= "" THEN print_etc(fin,maxr) ELSE skip ENDIF) &
+        LET msg = format("~a~%Lines: ~a. Records: ~a. Fails: ~a~%",
+                        (str_toc,val[nat](CurrentLine),val[nat](Records),val[nat](Fails))) IN
+        printf(msg) & 
+	IF file /= "" THEN fprintf(fout,msg) ELSE skip ENDIF &
+        fclose(fin) &
+        fclose(fout) 
+    ELSE
+      printf("File ~a doesn't exist",file)
+    ENDIF
+
+  empty_line(line:string) : bool =
+    LET trln = trim(line) IN
+      trln = "" OR strfind("%",trln) = 0
+
+  readln_checker(fin:IStream):string =
+    LET lvar = ref[string]("") IN
+      prog(while (NOT eof?(fin) AND empty_line(val(lvar)),
+             set[nat](CurrentLine,val[nat](CurrentLine)+1) &
+             set[string](lvar,fread_line(fin))),
+           val(lvar))
+
+  almost_equal_prec?(r1,r2:real,prec:nnreal) : bool =
+    abs(r1-r2) <= prec
+
+  almost_equal?(r1,r2:real) : bool =
+    almost_equal_prec?(r1,r2,val(Precision))
+
+  check_real_prec(fout:OStream,msg:string,pvs,io:real,prec:nnreal) : bool =
+    IF NOT almost_equal_prec?(pvs,io,prec) THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~,8f vs. Input: ~,8f~%",
+             (msg,val(CurrentLine),val(Records),pvs,io)) &
+      FALSE
+    ELSE
+      TRUE
+    ENDIF
+
+  check_real(fout:OStream,msg:string,pvs,io:real) : bool =
+    check_real_prec(fout,msg,io,pvs,val(Precision))
+
+  check_bool(fout:OStream,msg:string,pvs,io:bool) : bool =
+    IF pvs /= io THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
+             (msg,val(CurrentLine),val(Records),pvs,io)) &
+      FALSE
+    ELSE
+      TRUE
+    ENDIF
+
+  check_int(fout:OStream,msg:string,pvs,io:int) : bool =
+    IF pvs /= io THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
+             (msg,val(CurrentLine),val(Records),pvs,io)) &
+      FALSE
+    ELSE
+      TRUE
+    ENDIF
+
+  IMPORTING reals@sqrt
+
+END pvsio_checker

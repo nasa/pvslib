@@ -1,0 +1,133 @@
+%=============================================================================
+%
+%   Mantel's Theorem
+%  ——————————————————
+%
+%   Author: Aaron Dutle    University of South Carolina
+%
+%  Mantel's Theorem states that any graph on N vertices that does not contain
+%  a triangle can have at most N²/4 edges.   
+%
+%  Comment: This is the author's first attempt at proving a theorem using PVS. 
+%           Because of this, some of the proofs are likely longer than needed,
+%           and some of the organization of the file may be nonstandard. 
+% 
+%=============================================================================
+mantel[T: TYPE ]: THEORY
+
+  BEGIN
+
+IMPORTING graphs[T], graph_ops[T], graph_inductions[T],
+  graph_deg[T], finite_sets[doubleton[T]], sets[doubleton[T]], 
+  sets_lemmas[doubleton[T]]
+
+x,y,z,w: VAR T
+G, GG, GS: VAR graph[T]
+e: VAR doubleton[T]
+
+%
+% Definitions for use in the proofs.
+
+tri?(G)(x,y,z): bool = vert(G)(x) AND vert(G)(y) AND vert(G)(z) 
+AND x/=y AND y/=z AND x/=z AND edge?(G)(x,y) AND edge?(G)(y,z) AND edge?(G)(x,z)
+
+tri?(G): bool = EXISTS x,y,z : tri?(G)(x,y,z)
+
+tri?(G)(x,y): bool = EXISTS z : tri?(G)(x,y,z)
+
+del2_vert(G, x,y): graph[T] = del_vert( del_vert(G,x), y)
+
+common_neighbor?(G)(x,y): bool = EXISTS z: x/=z AND y/=z 
+                                 AND edge?(G)(x,z) AND edge?(G)(y,z) 
+
+%
+%  Three lemmas about the existence of triangles
+%
+
+one_to_some: LEMMA (tri?(G)(x,y,z) IMPLIES tri?(G)(x,y) )
+some_to_lots: LEMMA (tri?(G)(x,y) IMPLIES tri?(G) )
+one_to_lots: LEMMA (tri?(G)(x,y,z) IMPLIES tri?(G))
+
+% The collection of Lemmas used in the proof
+
+exst_tri: LEMMA (edge?(G)(x,y) AND common_neighbor?(G)(x,y)
+                                 IMPLIES tri?(G)(x,y))
+
+one_vert_edges: LEMMA singleton?(G) IMPLIES edges(G) = emptyset[doubleton[T]] 
+
+edge_adjacent: LEMMA ( edge?(G)(x,y) IMPLIES member(y, adjacent(G,x)))
+
+disj_neighbor_sets: LEMMA ( disjoint?(adjacent(G,x), adjacent(G,y)) 
+                         IMPLIES NOT common_neighbor?(G)(x,y))
+
+adj_is_subset: LEMMA subset?(union(adjacent(G,x), adjacent(G,y)),vert(G))
+
+adj_is_subset2: LEMMA subset?(adjacent(G,x), vert(G))
+
+no_cn: LEMMA NOT common_neighbor?(G)(x,y) 
+                IMPLIES disjoint?(adjacent(G,x), adjacent(G,y))
+
+disj_adj_card: LEMMA disjoint?(adjacent(G,x), adjacent(G,y))
+                     IMPLIES card(adjacent(G,x))+card(adjacent(G,y))<=size(G)
+
+pre_edges_del21: LEMMA edges(G) = union(edges(del2_vert(G,x,y)),
+                             union(incident_edges(x,G), incident_edges(y,G)))
+
+pre_edges_del22: LEMMA disjoint?(edges(del2_vert(G,x,y)),
+                             union(incident_edges(x,G), incident_edges(y,G)))
+
+edges_del2: LEMMA  num_edges(del2_vert(G,x,y))+ 
+                   card(union(incident_edges(x,G), incident_edges(y,G)))
+                   =num_edges(G) 
+
+verts_del2: LEMMA vert(G)(x) AND vert(G)(y) AND x/=y 
+                  IMPLIES size(del2_vert(G,x,y)) = size(G)-2 
+
+tri_del2: LEMMA tri?(del2_vert(G,x,y)) IMPLIES tri?(G)
+
+int_lem:    LEMMA edge?(G)(x,y) 
+                  IMPLIES singleton?({e: doubleton[T] | 
+                  (edges(G)(e) AND e(x)) AND edges(G)(e) AND e(y)}) 
+
+card_union: LEMMA edge?(G)(x,y) IMPLIES 
+                  card(union(incident_edges(x,G),incident_edges(y,G))) =
+                  card(incident_edges(x,G))+card(incident_edges(y,G))-1
+
+% Used in a previous proof attempt. Not required now.
+
+adj_helper: LEMMA empty?(G) IMPLIES card(adjacent(G,x))=0
+
+% Five lemmas, some with difficult proofs, used to prove the Obvious Fact. 
+ 
+adj_helper2: LEMMA edges(G)=emptyset[doubleton[T]] 
+                   IMPLIES card(adjacent(G,x))=0
+
+inc_ind1: LEMMA edges(G)(e) AND NOT e(x) IMPLIES
+                incident_edges(x, del_edge(G,e)) = 
+                incident_edges(x, G)
+adj_ind1: LEMMA edges(G)(e) AND NOT e(x) IMPLIES
+                adjacent(del_edge(G,e),x)=
+                adjacent(G,x)
+inc_ind2: LEMMA edges(G)(e) AND e(x) IMPLIES
+                card(incident_edges(x, del_edge(G,e))) = 
+                card(incident_edges(x, G))-1
+adj_ind2: LEMMA edges(G)(e) AND e(x) IMPLIES
+               card(adjacent(del_edge(G,e),x))=
+                card(adjacent(G,x))-1
+
+%  The Obvious Fact. 
+
+inc_equals_adj: LEMMA card(incident_edges(x,G)) = card(adjacent(G,x))
+
+%
+%  Mantel's Theorem. Any graph on N vertices with no triangle has at 
+%                    most N^2/4 edges. 
+%
+
+Mantel: THEOREM ( FORALL G: NOT tri?(G) 
+                IMPLIES num_edges(G)<= size(G)*size(G)/4)
+
+  END mantel
+
+
+

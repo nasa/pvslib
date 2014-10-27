@@ -1,0 +1,101 @@
+%
+% Purpose      : This theory provides the basic definitions and
+%                properties for the pseudo-inverse function to a clock.
+%                The pseudo-inverse is a function from realtime to Clocktime.
+%
+% Assumptions  : Oscillators have a bounded rate of drift with respect
+%                to (Newtonian) real time.  This bound is captured by
+%                formal parameter rho.
+%
+% Guarantees   : Skew conversion results to transform bounds on
+%                realtime separation of good_clocks at a given
+%                Clocktime to Clocktime separation at specific
+%                realtimes. 
+%
+inverse_clocks
+[
+   rho : nonneg_real 
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+     physical_clocks[rho], bounded_ints
+
+% Various variable declarations
+
+  T, T1, T2: VAR int
+  t, t1, t2: VAR real
+  c, c1, c2: VAR good_clock
+  skew: VAR nonneg_real
+
+% Every clock c has a corresponding Clock
+
+  lower_Clocktime_exists: LEMMA EXISTS T: c(T) <= t
+
+  upper_Clocktime_exists: LEMMA EXISTS T: t < c(T)
+
+  past_ticks(c)(t)(T): boolean = c(T) <= t
+
+  past_ticks_max_set: JUDGEMENT past_ticks(c)(t) HAS_TYPE max_set[int]
+
+  C(c)(t): int = max(past_ticks(c)(t))
+
+  Clock_rewrite: LEMMA C(c)(c(T)) = T
+
+  Clock_lower: LEMMA c(C(c)(t)) <= t
+
+  Clock_upper: LEMMA t < c(C(c)(t) + 1)
+
+  Clock_nondecreasing: LEMMA 
+    t1 <= t2 IMPLIES C(c)(t1) <= C(c)(t2)
+
+  offset(c, T)(t): MACRO real = c(C(c)(t) + T)
+
+  alt_clock_edge: LEMMA
+    clock_edge?(c, t) IFF c(C(c)(t)) = t
+
+  conversion_left: LEMMA  %%% UNUSED
+    t <= c(T)
+  IMPLIES
+    C(c)(t) <= T
+
+  conversion_left_alt: LEMMA
+    C(c)(t) <= T IFF t < c(T + 1)
+
+  conversion_right: LEMMA
+    T <= C(c)(t) IFF c(T) <= t
+
+  % conversion from real time precision to clock time precision
+
+  X : VAR nat
+
+  obs?(X, T, c, t): bool = c(T - X) <= t AND t < c(T + X)
+
+  obs_bound: LEMMA obs?(X, T, c, t) IMPLIES abs(C(c)(t) - T) <= X
+
+  precision_conversion_sym: LEMMA
+      abs(c1(T) - c2(T)) <= skew AND
+      obs?(X, T, c2, t) AND
+      c1(C(c1)(t)) <= c2(C(c2)(t)) 
+    IMPLIES 
+      abs(C(c1)(t) - C(c2)(t)) <= ceiling(rate * (skew + drift * X))
+
+  precision_conversion: THEOREM
+      abs(c1(T) - c2(T)) <= skew AND
+      obs?(X, T, c1, t) AND
+      obs?(X, T, c2, t)
+    IMPLIES 
+      abs(C(c1)(t) - C(c2)(t)) <= ceiling(rate * (skew + drift * X))
+
+  lower_accuracy_conversion: LEMMA
+      c(T - X) <= t
+    IMPLIES
+      (t - c(T) - drift * X) / rate < 1 + C(c)(t) - T
+
+  upper_accuracy_conversion: LEMMA
+      c(T - X) <= t
+    IMPLIES
+      C(c)(t) - T <= (t - c(T) + drift * X) * rate
+
+  END inverse_clocks

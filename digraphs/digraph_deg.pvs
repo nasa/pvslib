@@ -1,0 +1,151 @@
+digraph_deg[T: TYPE]: THEORY
+%------------------------------------------------------------------------
+% 
+%  Defines degree of a vertex
+%  ------------------------------------------------
+%
+%      Authors: Ricky W. Butler   NASA Langley Research Center
+%               Kristin Y. Rozier NASA Langley Research Center
+%
+%  Defines:
+%
+%    incident_edges(v,G) -- returns set of edges attached to vertex v
+%
+%    in_deg(v,G), out_deg(v,G) -- number of edges attached to vertex v    
+%
+%------------------------------------------------------------------------
+
+BEGIN
+
+   IMPORTING digraphs[T], digraph_ops[T]
+
+   v: VAR T
+   G,GS: VAR digraph[T]
+
+   incoming_edges(v,G): finite_set[edgetype[T]] 
+                              = {e: edgetype[T] | edges(G)(e) AND e`2 = v}
+
+   outgoing_edges(v,G): finite_set[edgetype[T]] 
+                              = {e: edgetype[T] | edges(G)(e) AND e`1 = v}
+
+   incident_edges(v,G)  : finite_set[edgetype[T]] 
+                              = {e: edgetype[T] | edges(G)(e) AND in?(v,e)}
+
+   incoming_edges_subset: LEMMA subset?(incoming_edges(v,G),edges(G))
+
+   outgoing_edges_subset: LEMMA subset?(outgoing_edges(v,G),edges(G))
+
+   incident_edges_subset: LEMMA subset?(incident_edges(v,G),edges(G))
+
+   in_deg(v,G): nat = card(incoming_edges(v,G))
+
+   out_deg(v,G): nat = card(outgoing_edges(v,G))
+
+   %This definition of degree doesn't work for digraphs
+   %deg(v,G): nat = card(incident_edges(v,G))
+
+   deg(v,G): nat = in_deg(v,G) + out_deg(v,G)
+
+
+   P : VAR pred[digraph[T]]
+   n : VAR nat
+   e: VAR edgetype[T]
+   x,y: VAR T
+
+   self_loop?(e): bool = (e`1 = e`2)
+   %possible alternate: self_loop?(e,G): bool = edges(G)(e) AND (e`1 = e`2)
+
+   incoming_edges_emptyset: LEMMA edges(G) = emptyset[edgetype[T]] IMPLIES
+                                  incoming_edges(v,G) = emptyset[edgetype[T]]
+
+   outgoing_edges_emptyset: LEMMA edges(G) = emptyset[edgetype[T]] IMPLIES
+                                  outgoing_edges(v,G) = emptyset[edgetype[T]]
+
+   %Define incident edges independently from in & out so self-loops aren't
+   %counted twice (i.e. incident edges /= in_edges + out_edges)
+   incident_edges_emptyset: LEMMA edges(G) = emptyset[edgetype[T]] IMPLIES
+                                  incident_edges(v,G) = emptyset[edgetype[T]]
+
+   deg_del_edge_incoming  : LEMMA e = (x,y) AND edges(G)(e) IMPLIES  
+                                  in_deg(y, G) = in_deg(y, del_edge(G, e)) + 1
+
+   deg_del_edge_outgoing  : LEMMA e = (x,y) AND edges(G)(e) IMPLIES  
+                                  out_deg(x, G) = out_deg(x, del_edge(G, e)) + 1
+
+   deg_del_non_edge       : LEMMA NOT in?(y,e)  IMPLIES  
+                                  deg(y, G) = deg(y, del_edge(G, e))
+
+   deg_del_non_edge_incoming : LEMMA NOT y = e`2  IMPLIES  
+                                  in_deg(y, G) = in_deg(y, del_edge(G, e))
+
+   deg_del_non_edge_outgoing : LEMMA NOT y = e`1  IMPLIES  
+                                  out_deg(y, G) = out_deg(y, del_edge(G, e))
+
+   deg_del_edge    : LEMMA in?(y,e) AND edges(G)(e) AND NOT self_loop?(e) 
+                             IMPLIES deg(y, G) = deg(y, del_edge(G, e)) + 1
+
+   deg_del_self_loop : LEMMA in?(y,e) AND edges(G)(e) AND self_loop?(e) 
+                             IMPLIES deg(y, G) = deg(y, del_edge(G, e)) + 2
+
+   deg_del_edge_ge_incoming : LEMMA in_deg(y, G) >= in_deg(y, del_edge(G, e))
+
+   deg_del_edge_ge_outgoing : LEMMA out_deg(y, G) >= out_deg(y, del_edge(G, e))
+
+   deg_del_edge_ge : LEMMA deg(y, G) >= deg(y, del_edge(G, e))
+
+   deg_del_edge_le_incoming : LEMMA in_deg(y, G) - 1 <= in_deg(y, del_edge(G, e))
+
+   deg_del_edge_le_outgoing : LEMMA out_deg(y, G) - 1 
+                                         <= out_deg(y, del_edge(G, e))
+
+   deg_del_edge_le : LEMMA deg(y, G) - 2 <= deg(y, del_edge(G, e))
+
+   in_deg_edge_exists       : LEMMA in_deg(v,G) > 0 IMPLIES
+                             (EXISTS e: (e`2 = v) AND edges(G)(e))
+      
+   out_deg_edge_exists      : LEMMA out_deg(v,G) > 0 IMPLIES
+                             (EXISTS e: (e`1 = v) AND edges(G)(e))
+      
+   deg_edge_exists          : LEMMA deg(v,G) > 0 IMPLIES
+                             (EXISTS e: in?(v,e) AND edges(G)(e))
+      
+   deg_to_card     : LEMMA FORALL (SG: simple_digraph):
+                               deg(v,SG) > 0 IMPLIES size(SG) >= 2
+
+   del_vert_deg_0  : LEMMA deg(v,G) = 0 IMPLIES 
+                               edges(del_vert(G,v)) = edges(G)
+
+   singleton_loops: LEMMA FORALL (SG: simple_digraph): singleton?(SG) 
+                          IMPLIES FORALL (e | edges(SG)(e)): self_loop?(e)
+
+   singleton_edges: LEMMA FORALL (SG: simple_digraph): singleton?(SG) IMPLIES 
+                            incoming_edges(v, SG) = outgoing_edges(v, SG)
+
+   singleton_deg: LEMMA FORALL (SG: simple_digraph):
+                            singleton?(SG) IMPLIES in_deg(v, SG) = out_deg(v, SG)
+
+   in_deg_1_sing    : LEMMA in_deg(v, G) = 1 IMPLIES 
+                           (EXISTS e: incoming_edges(v, G) = singleton(e) AND
+                                      e`2 = v AND edges(G)(e))
+
+   out_deg_1_sing   : LEMMA out_deg(v, G) = 1 IMPLIES 
+                           (EXISTS e: outgoing_edges(v, G) = singleton(e) AND
+                                      e`1 = v AND edges(G)(e))
+
+   deg_1_sing       : LEMMA deg(v, G) = 1 IMPLIES 
+                           (EXISTS e: incident_edges(v, G) = singleton(e) AND
+                                      in?(v,e) AND edges(G)(e))
+
+   deg_1_in_out     : LEMMA deg(v, G) = 1 IMPLIES 
+                           (in_deg(v, G) = 1 AND out_deg(v, G) = 0)
+                           OR (in_deg(v, G) = 0 AND out_deg(v, G) = 1)
+
+   deg_1_edge: LEMMA deg(v,G) = 1 IMPLIES 
+		EXISTS (e:{e:edgetype | edges(G)(e)}, u:{u:T | vert(G)(u)}):
+                        (e = (v,u) OR e = (u,v))
+			AND v /= u
+ 
+END digraph_deg
+
+
+

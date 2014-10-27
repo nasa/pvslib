@@ -1,0 +1,64 @@
+%
+%
+% Purpose : properties of a check in the time domain.  A check
+%   in the time domain can be considered as answering the 
+%   question does an event fall within a timing window.
+%                
+%
+%
+
+timing_window[
+   rho     : nonneg_real, % Bound on drift for a good oscillator
+   min_latency   : nonneg_real, % minimum real time latency (in ticks
+                          % of real time) of the communication link
+                          % determined by things like length of wire, speed
+                          % of light, and clock rate.
+   var_latency: nonneg_real
+                          % Max variation (in ticks of real 
+                          % time) caused by both wire length 
+                          % differences and clock jitter.  
+]: THEORY
+
+BEGIN
+
+  IMPORTING timing_imprecision[rho, min_latency, var_latency]
+
+  skew: VAR nonneg_real
+  ev, ev1, ev2: VAR real
+  c, c1, c2: VAR good_clock 
+  T : VAR integer
+
+  Delta_max(skew): nat = floor(rate * (skew + max_error))
+
+  % The Timestamped event ev at the destination falls within the
+  % reception window for time T of destination clock c.
+  timing_conforms?(c, T, skew)(ev): bool = 
+    c(T - Delta_max(skew)) <= ev & ev <= c(T + Delta_max(skew))
+
+  % The timing check can also be expressed as a property on
+  % Clocktimes. This is the basis for its implementation.
+  timing_conforms_def: LEMMA
+      timing_conforms?(c, T, skew)(c(Timestamp(c, ev)))
+    IFF
+      abs(Timestamp(c, ev) - T) <= Delta_max(skew)
+
+  inner_window?(c, T, skew)(ev): bool = 
+    timing_conforms?(c, T, skew)(c(Timestamp(c, ev)))
+
+  outer_window?(c, T, skew)(ev): bool =
+    NOT timing_conforms?(c, T, skew)(c(Timestamp(c, ev)))
+
+  good_range_always_conforms: LEMMA
+      good_range(c1(T - W))(ev) AND
+      abs(c1(T) - c2(T)) <= skew 
+    IMPLIES
+      timing_conforms?(c2, T, skew)(c2(Timestamp(c2, ev)))
+
+  good_range_inner_window: LEMMA
+      good_range(c1(T - W))(ev) AND
+      abs(c1(T) - c2(T)) <= skew 
+    IMPLIES
+      inner_window?(c2, T, skew)(ev)
+
+
+END timing_window

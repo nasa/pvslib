@@ -1,0 +1,112 @@
+%------------------------------------------------------------------------------
+% gs_circle.pvs
+% ACCoRD v.1.0
+%
+% Ground speed circle solutions satisfy the following equations:
+%   sq(s+v*t) = sq(D)       [2D]
+%   v = l*vo - vi           [2D]
+%   abs((s+v*t)`z) = H
+%
+% It is shown that ground speed circle solutions are ground speed only 
+% solutions for the ownship.
+%
+% The sign value dir determines horizontal direction (Entry/Exit).
+% The sign value irt determines two possible ground speed circle solutions.  
+%------------------------------------------------------------------------------
+
+gs_circle[D,H: posreal] : THEORY
+BEGIN
+  
+   IMPORTING gs_only[D],
+             circle_solutions[D,H],
+             vertical_criterion[D,H]
+
+  s,nvo     : VAR Vect3
+  sp        : VAR Sp2_vect3
+  vo,vi     : VAR Nzv2_vect3 
+  dir,irt,
+  epsh,epsv : VAR Sign
+
+  %------------%
+  % ALGORITHMS %
+  %------------%
+
+  % vectors_2D.zero indicates no ground speed solution
+
+  gs_circle(s,vo,vi,dir,irt): {nvo | nz_vect2?(nvo) => gs_only_3D?(vo)(nvo)} =
+    IF vo`z = vi`z THEN zero
+    ELSE
+      LET t = Theta_H(s`z,vo`z-vi`z,-dir) IN
+      IF t > 0 THEN
+        LET nvo2 = gs_only_circle(s,vo,vi,t,dir,irt) IN
+          nvo2 WITH [z |-> vo`z] 
+      ELSE
+         zero
+      ENDIF
+    ENDIF
+
+  gs_circle?(s,vo,vi,dir)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    EXISTS (irt): nvo = gs_circle(s,vo,vi,dir,irt)
+
+  gs_circle?(s,vo,vi)(nvo) : MACRO bool =
+    EXISTS (dir): gs_circle?(s,vo,vi,dir)(nvo)
+
+  gs_vertical(s,vo,vi,epsh,epsv): {nvo | nz_vect2?(nvo) => 
+                                         gs_only_3D?(vo)(nvo)} =
+    IF vo`z = vi`z THEN zero
+    ELSE LET v = vo-vi,
+             dir:Sign = IF abs(s`z) >= H THEN epsv*sign(s`z) ELSE Entry ENDIF,
+             t = Theta_H(s`z,v`z,-dir) IN
+      IF t > 0 AND epsv = sign(s`z + t*v`z) THEN
+        LET nvo2 = gs_only_vertical(s,vo,vi,t,dir) IN
+          IF horizontal_los?(s) OR horizontal_criterion?(s,epsh)(nvo2-vo) THEN
+            nvo2 WITH [z |-> vo`z] 
+          ELSE
+            zero
+          ENDIF
+      ELSE
+         zero
+      ENDIF
+    ENDIF
+
+  gs_vertical?(s,vo,vi,epsh,epsv)(nvo) : bool =
+    nz_vect2?(nvo) AND
+    nvo = gs_vertical(s,vo,vi,epsh,epsv)
+
+  %------------%
+  % LEMMAS     %
+  %------------%
+
+  gs_circle_nzvz : LEMMA
+    gs_circle?(s,vo,vi,dir)(nvo) IMPLIES
+    vo`z /= vi`z 
+
+  gs_circle_solution_2D : LEMMA
+    gs_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      circle_solution_2D?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir)
+
+  gs_circle_solution : LEMMA
+    gs_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      circle_solution?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir)
+
+  gs_circle_independence: THEOREM
+    gs_circle?(s,vo,vi,dir)(nvo) IMPLIES
+      NOT conflict_ever?(s,nvo-vi)
+
+  gs_circle_complete: THEOREM
+    vo`z /= vi`z AND
+    gs_only_3D?(vo)(nvo) AND
+    circle_solution?(s,nvo-vi,Theta_H(s`z,vo`z-vi`z,-dir),dir)
+    IMPLIES
+      gs_circle?(s,vo,vi,dir)(nvo)
+
+  gs_vertical_meets_horizontal_criterion : THEOREM
+    gs_vertical?(sp,vo,vi,epsh,epsv)(nvo) IMPLIES
+    horizontal_criterion?(sp,epsh)(nvo-vo)
+
+  gs_vertical_meets_vertical_criterion : THEOREM
+    gs_vertical?(s,vo,vi,epsh,epsv)(nvo) IMPLIES
+    vertical_criterion?(epsv)(s,vo-vi)(nvo-vi)
+
+END gs_circle

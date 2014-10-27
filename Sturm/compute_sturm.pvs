@@ -1,0 +1,253 @@
+compute_sturm: THEORY
+BEGIN
+
+  IMPORTING sturm,
+	    remainder_sequence,
+	    clear_denominators,
+            reals@RealInt,
+	    reals@more_polynomial_props,
+	    reals@real_orders,
+	    reals@real_order_ep
+
+  a : VAR [nat->int]
+  n : VAR posnat
+  I : VAR RealInt	
+  x,y,z: VAR real
+
+  %%% Support Lemmas %%%
+
+  finite_bij_real_remove_one: LEMMA
+    FORALL (m:nat,A:set[real],bij:[below(m)->(A)]):
+      bijective?(bij) AND A(x) IMPLIES
+       m-1>=0 AND EXISTS (bijec:[below(m-1)->{r:(A)|r/=x}]):
+         bijective?(bijec)
+
+  finite_bij_real_remove_two: LEMMA
+    FORALL (m:nat,A:set[real],bij:[below(m)->(A)]):
+      bijective?(bij) AND A(x) AND A(y) AND x/=y IMPLIES
+       m-2>=0 AND EXISTS (bijec:[below(m-2)->{r:(A)|r/=x AND r/=y}]):
+         bijective?(bijec)
+
+  computed_sturm_spec: LEMMA a(n)/=0 AND (FORALL (i:nat): i>n IMPLIES a(i)=0) IMPLIES
+    LET sl = compute_remainder_sequence(a,n,poly_deriv(a),n-1),
+    	P: [nat->[nat->int]] = (LAMBDA (j:nat): IF j<length(sl) 
+	   		          THEN list2array[int](0)(nth(sl,length(sl)-1-j))
+	   		         ELSE (LAMBDA (i:nat): 0) ENDIF),
+        N: [nat->nat] = (LAMBDA (j:nat): IF j<length(sl) 
+	                   THEN max(length(nth(sl,length(sl)-1-j))-1,0) ELSE 0 ENDIF),
+	M: nat = length(sl)-1
+    IN  constructed_sturm_sequence?(P,N,M) AND P(0)=a AND N(0)=n
+
+
+  Eq_computed_remainder?(a,(n|a(n)/=0))(sl:list[list[int]]): bool =
+    sl = compute_remainder_sequence(LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF,
+           n,poly_deriv(LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),n-1)
+
+  % Standard but possibly unbounded interval %
+
+  lower_bound,upper_bound: VAR bool
+
+  % Formalizatin brings in complications with evaluating at infinity
+
+  roots_closed_int(a,(n|a(n)/=0),low:real,(high:real|low<high),lower_bound,upper_bound:bool,
+		   sl:(Eq_computed_remainder?(a,n))): 
+    int =
+    LET newa       = (LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
+    	P: [nat->[nat->int]] = (LAMBDA (j:nat): IF j<length(sl) 
+	                          THEN list2array[int](0)(nth(sl,length(sl)-1-j))
+	   		         ELSE (LAMBDA (i:nat): 0) ENDIF),
+        N: [nat->nat] = (LAMBDA (j:nat): IF j<length(sl) 
+	                   THEN max(length(nth(sl,length(sl)-1-j))-1,0) ELSE 0 ENDIF),
+	M: nat     = length(sl)-1,
+	nscnorm    = LAMBDA (xyz:real): number_sign_changes(
+	                  LAMBDA (i:nat): polynomial(P(i),N(i))(xyz),M-1),
+        nschighlow = LAMBDA (b:bool): IF b THEN number_sign_changes(LAMBDA (i:nat): P(i)(N(i)),M-1)
+		     	    	      ELSE number_sign_changes(LAMBDA (i:nat): (-1)^N(i)*P(i)(N(i)),M-1) ENDIF,
+	newlow     = IF ((NOT lower_bound) OR polynomial(P(0),N(0))(low)/=0 
+	                                   OR polynomial(P(1),N(1))(low)/=0) THEN low
+		     ELSE low-poly_rootless_width(a,n,low,TRUE)/2 ENDIF,
+	newhigh    = IF ((NOT upper_bound) OR polynomial(P(0),N(0))(high)/=0 
+		     	      		   OR polynomial(P(1),N(1))(high)/=0) THEN high
+		     ELSE high+poly_rootless_width(a,n,high,TRUE)/2 ENDIF,
+      	Nroots     = IF lower_bound and upper_bound THEN nscnorm(newlow)`num-nscnorm(newhigh)`num
+		     ELSIF upper_bound THEN nschighlow(FALSE)`num-nscnorm(newhigh)`num
+		     ELSIF lower_bound THEN nscnorm(newlow)`num-nschighlow(TRUE)`num
+		     ELSE nschighlow(FALSE)`num-nschighlow(TRUE)`num ENDIF,
+        adjlow     = IF lower_bound AND polynomial(P(0),N(0))(low)=0 AND polynomial(P(1),N(1))(low)/=0
+		     THEN 1 ELSE 0 ENDIF
+    IN Nroots + adjlow
+
+
+  roots_closed_int_def_truetrue: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
+	LET rootnum = roots_closed_int(a,n,x,y,true,true,sl),
+	    Aset = {z:real|x<=z AND z<=y AND polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+  roots_closed_int_def_falsetrue: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
+	LET rootnum = roots_closed_int(a,n,x,y,false,true,sl),
+	    Aset = {z:real|z<=y AND polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+  roots_closed_int_def_truefalse: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
+	LET rootnum = roots_closed_int(a,n,x,y,true,false,sl),
+	    Aset = {z:real|x<=z AND polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+  roots_closed_int_def_falsefalse: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
+	LET rootnum = roots_closed_int(a,n,x,y,false,false,sl),
+	    Aset = {z:real| polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+
+  roots_closed_int_def: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
+	LET rootnum = roots_closed_int(a,n,x,y,lower_bound,upper_bound,sl),
+	    Aset = {z:real|(lower_bound IMPLIES x<=z) 
+		       	    AND (upper_bound IMPLIES z<=y)
+                      	    AND polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+  number_roots_interval(a,(n|a(n)/=0),I,(sl:(Eq_computed_remainder?(a,n)))): nat =
+    IF I`lb >= I`ub THEN 0
+    ELSE
+      LET rootstotal = roots_closed_int(a,n,I`lb,I`ub,I`bounded_below,I`bounded_above,sl),
+          adjlow     = IF I`bounded_below AND (NOT I`closed_below) AND polynomial(a,n)(I`lb)=0
+	    	       THEN -1 ELSE 0 ENDIF,
+          adjhigh    = IF I`bounded_above AND (NOT I`closed_above) AND polynomial(a,n)(I`ub)=0
+	  	       THEN -1 ELSE 0 ENDIF
+      IN rootstotal + adjlow + adjhigh
+    ENDIF
+
+  number_roots_interval_def: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND I`lb<I`ub
+	   IMPLIES
+  	LET rootnum = number_roots_interval(a,n,I,sl),
+	    Aset = {z:real|contains?(I)(z) AND polynomial(a,n)(z)=0}
+        IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
+
+  meas_fun_alw_nonneg(a,(n|a(n)/=0),x,y:real,sl:(Eq_computed_remainder?(a,n))):real = y-x
+
+  always_nonnegative_int(a,(n|a(n)/=0),x,y:real,(sl:(Eq_computed_remainder?(a,n)))): RECURSIVE {bb:bool|
+    bb IFF FORALL (z:real): x<=z AND z<=y IMPLIES polynomial(a,n)(z)>=0} =
+    IF x>y THEN TRUE
+    ELSIF x=y THEN polynomial(a,n)(x)>=0
+    ELSIF roots_closed_int(a,n,x,y,TRUE,TRUE,sl) <= 1 THEN
+      polynomial(a,n)(x)>=0 AND polynomial(a,n)(y)>=0
+    ELSE
+      always_nonnegative_int(a,n,x,(x+y)/2,sl) AND
+      always_nonnegative_int(a,n,(x+y)/2,y,sl)
+    ENDIF
+  MEASURE meas_fun_alw_nonneg BY real_ord_ep(min_poly_root_dist(a,n))
+
+  always_nonnegative(a,(n|a(n)/=0),(I|I`lb<I`ub)): bool =
+    LET newa = (LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
+        sl = compute_remainder_sequence(newa,n,poly_deriv(newa),n-1)
+    IN
+      IF I`bounded_below AND I`bounded_above 
+        THEN always_nonnegative_int(a,n,I`lb,I`ub,sl)
+      ELSE
+        LET M = Knuth_poly_root_strict_bound(a,n) IN
+          IF I`bounded_above THEN
+	    always_nonnegative_int(a,n,min(-M,I`ub-1),I`ub,sl)
+	  ELSIF I`bounded_below THEN
+	    always_nonnegative_int(a,n,I`lb,max(M,I`lb+1),sl)
+	  ELSE always_nonnegative_int(a,n,-M,M,sl)
+	  ENDIF
+      ENDIF
+
+  always_nonnegative_def: LEMMA a(n)/=0 AND I`lb<I`ub IMPLIES
+    (always_nonnegative(a,n,I) IFF
+    (FORALL (x:real): contains?(I)(x) IMPLIES polynomial(a,n)(x)>=0))
+
+  R:VAR [[real,real]->bool]
+  
+  SturmRel?(R): bool = (R = (<)) OR (R = (<=)) OR (R = (>)) OR (R = (>=))
+  	       	       OR (R = (/=[real]))
+
+  realord,ro: VAR (SturmRel?)
+
+  strict?(realord): bool = (realord = (<)) OR (realord = (>)) OR (realord = (/=[real]))
+
+  swap(realord): (SturmRel?) =
+	  IF realord = (<) THEN >
+	  ELSIF realord = (<=) THEN >=
+	  ELSIF realord = (>) THEN <
+	  ELSIF realord = (>=) THEN <=
+	  ELSE (/=[real])
+	  ENDIF
+
+  swap_lt : LEMMA
+    swap(<) = (>)
+
+  swap_gt : LEMMA
+    swap(>) = (<)
+
+  swap_le : LEMMA
+    swap(<=) = (>=)
+
+  swap_ge : LEMMA
+    swap(>=) = (<=)
+
+  swap_ne : LEMMA
+    swap(/=[real]) = (/=[real])
+
+  real_order_scal_pos: LEMMA
+    FORALL (p:posreal,x,y:real): realord(p*x,p*y)=realord(x,y)
+
+  compute_poly_sat(a,(n|a(n)/=0),(I|I`lb<I`ub),realord): bool =
+    IF realord = (>=) THEN always_nonnegative(a,n,I)
+    ELSIF realord = (<=) THEN always_nonnegative(-a,n,I)
+    ELSE
+      LET newa = (LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
+          sl = compute_remainder_sequence(newa,n,poly_deriv(newa),n-1)
+      IN number_roots_interval(a,n,I,sl)=0 AND realord(polynomial(a,n)((I`lb+I`ub)/2),0)
+    ENDIF
+
+  compute_poly_sat_def: LEMMA a(n)/=0 AND I`lb<I`ub IMPLIES
+    (compute_poly_sat(a,n,I,realord) IFF
+     (FORALL (x:real): contains?(I)(x) IMPLIES realord(polynomial(a,n)(x),0)))
+
+  aq: VAR [nat->rat]
+
+  compute_poly_sat_rational(aq,(n|aq(n)/=0),(I|I`lb<I`ub),realord): bool =
+    compute_poly_sat(rat_poly_to_int(aq,n),n,I,realord)
+
+  compute_poly_sat_rational_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
+    (compute_poly_sat_rational(aq,n,I,realord) IFF
+    (FORALL (x:real): contains?(I)(x) IMPLIES realord(polynomial(aq,n)(x),0)))
+
+  % Next function assumes x<y
+
+  compute_poly_mono_basic(aq,(n|aq(n)/=0),(I|I`lb<I`ub),realord): bool =
+    IF n = 1 THEN realord(sign(aq(1))*I`lb,sign(aq(1))*I`ub)
+    ELSIF (realord = (/=[real])) THEN
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,>=) OR
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,<=)
+    ELSIF realord(I`lb,I`ub) THEN
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,>=)
+    ELSE
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,<=)
+    ENDIF
+
+  compute_poly_mono_basic_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
+    ((FORALL (x,y:real): x<y AND contains?(I)(x) AND contains?(I)(y) IMPLIES
+      realord(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
+    compute_poly_mono_basic(aq,n,I,realord))
+
+  compute_poly_monotonic(aq,(n|aq(n)/=0),(I|I`lb<I`ub),ro,realord): bool =
+    IF ro(1,1) AND NOT realord(1,1) THEN FALSE
+    ELSIF (ro=(<)) OR (ro=(<=)) THEN compute_poly_mono_basic(aq,n,I,realord)
+    ELSIF (ro=(>)) OR (ro=(>=)) THEN compute_poly_mono_basic(aq,n,I,swap(realord))
+    ELSIF NOT (realord=(/=[real])) THEN FALSE
+    ELSE compute_poly_mono_basic(aq,n,I,realord)
+         OR compute_poly_mono_basic(aq,n,I,swap(realord))
+    ENDIF 
+
+  poly_non_constant_real_int: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
+    EXISTS (x,y:real): x<y AND contains?(I)(x) AND contains?(I)(y) AND
+      polynomial(aq,n)(x)/=polynomial(aq,n)(y)
+
+  compute_poly_monotonic_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
+    ((FORALL (x,y:real): ro(x,y) AND contains?(I)(x) AND contains?(I)(y) IMPLIES
+      realord(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
+    compute_poly_monotonic(aq,n,I,ro,realord))
+
+END compute_sturm

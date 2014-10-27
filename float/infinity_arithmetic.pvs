@@ -1,0 +1,122 @@
+infinity_arithmetic
+  [b,p:above(1),
+   E_max:integer, 
+   E_min:{i:integer|E_max>i}]: THEORY
+
+  BEGIN
+
+  IMPORTING IEEE_854_values[b,p,E_max,E_min],
+            enumerated_type_defs
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Special functions for handling arithmetic on infinities
+%  These definitions return an undetermined NaN when the Invalid 
+%   exception should be raised.
+%
+%  The definitions come from constraints enumerated in sections
+%   6.1, 6.3, and 7.1 of IEEE-854
+%
+
+  fp: var fp_num
+
+  num,num1,num2: var {fp| finite?(fp) or infinite?(fp)}
+
+% Addition when at least one operand is an infinity
+  fp_add_inf(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): fp_num 
+     =
+    IF infinite?(num1) & infinite?(num2) THEN 
+      IF (i_sign(num1) = i_sign(num2)) THEN num1
+      ELSE invalid
+      ENDIF
+    ELSIF infinite?(num1) THEN num1
+    ELSE num2
+    ENDIF
+
+% Addition when at least one operand is an infinity with exceptions
+
+  fp_add_inf_x(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): 
+    [fp_num, exception]
+     =
+    IF infinite?(num1) & infinite?(num2) THEN 
+      IF (i_sign(num1) = i_sign(num2)) THEN (num1,no_exceptions)
+      ELSE (invalid,invalid_operation)
+      ENDIF
+    ELSIF infinite?(num1) THEN (num1,no_exceptions)
+    ELSE (num2,no_exceptions)
+    ENDIF
+
+% Similarly for subtraction
+
+  fp_sub_inf(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): fp_num 
+     =
+    IF infinite?(num1) & infinite?(num2) THEN 
+      IF (i_sign(num1) /= i_sign(num2)) THEN num1
+      ELSE invalid
+      ENDIF
+    ELSIF infinite?(num1) THEN num1
+    ELSE toggle_sign(num2)
+    ENDIF
+
+% Similarly for subtraction with exceptions
+
+  fp_sub_inf_x(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): 
+   [fp_num , exception]
+     =
+    IF infinite?(num1) & infinite?(num2) THEN 
+      IF (i_sign(num1) /= i_sign(num2)) THEN (num1, no_exceptions)
+      ELSE (invalid, invalid_operation)
+      ENDIF
+    ELSIF infinite?(num1) THEN (num1, no_exceptions)
+    ELSE (toggle_sign(num2), no_exceptions)
+    ENDIF
+
+% Alternate definition for fp_sub_inf
+  fp_sub_inf_def: lemma
+   forall num1,(num2:{num|infinite?(num1) OR infinite?(num)}):
+    fp_sub_inf(num1,num2) = fp_add_inf(num1,toggle_sign(num2));
+
+% xor function defined on sign_rep to determine correct sign for mult/div
+  xor(s1,s2:sign_rep): sign_rep = if s1=s2 then 0 else 1 endif
+
+% Determine correct sign for multiplication and division
+%  this definition is complicated by a bug in the adt mechanism
+%  PVS does not currently allow use of the same accessor for 
+%  different constructors. 
+  mult_sign(num1,num2):sign_rep =
+    if infinite?(num1) then
+       if infinite?(num2) then
+          xor(i_sign(num1),i_sign(num2))
+       else
+          xor(i_sign(num1),sign(num2))
+       endif
+    elsif infinite?(num2) then
+          xor(sign(num1),i_sign(num2))
+    else
+          xor(sign(num1),sign(num2))
+    endif
+          
+
+% Multiplication of infinity
+%  The use of mult_sign may be replaced by xor(sign(num1),sign(num2)) 
+%  as soon as the accessor bug is fixed.
+  fp_mul_inf(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): fp_num 
+     =
+    If zero?(num1) or zero?(num2) then invalid
+    else infinite(mult_sign(num1,num2))
+    endif 
+
+
+% Division with infinities
+  fp_div_inf(num1, (num2: {num | infinite?(num1) OR infinite?(num)})): fp_num 
+     =
+    IF infinite?(num1) & infinite?(num2) THEN invalid
+    ELSIF infinite?(num1) THEN infinite(mult_sign(num1,num2))
+    ELSE finite(mult_sign(num1,num2),E_min,d_zero)
+    ENDIF   
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  
+
+  END infinity_arithmetic

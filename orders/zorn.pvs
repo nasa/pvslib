@@ -1,0 +1,111 @@
+%-------------------------------------------------------------------------
+%
+%  Zorn's lemma: if every chain in a partially ordered set has an upper
+%  bound, then the set has a maximal element.
+%
+%  For PVS version 3.2.  January 14, 2005
+%  ---------------------------------------------------------------------
+%      Author: Jerry James (jamesj@acm.org), University of Kansas
+%
+%  EXPORTS
+%  -------
+%  prelude: orders[T], relations[T], sets[T]
+%  orders: bounded_orders[T], chain[T,<=], minmax_orders[T],
+%    relations_extra[T], zorn[T,<=]
+%
+%-------------------------------------------------------------------------
+zorn[T: TYPE, <=: (partial_order?[T])]: THEORY
+
+ % Hide the technical lemmas and supporting theories from public view
+ EXPORTING zorn WITH orders[T], relations[T], sets[T], bounded_orders[T],
+   minmax_orders[T], relations_extra[T], chain[T, <=]
+
+ BEGIN
+
+  IMPORTING chain_chain[T, <=], subset_chain[T], ordered_subset[T]
+  IMPORTING minmax_orders[T], minmax_orders[subchain]
+
+  t, r: VAR T
+  ch, ch1, ch2: VAR subchain
+  CH: VAR chain_chain
+
+  % An alternative characterization of a maximal element
+  maximal_upto_subset: LEMMA
+    FORALL t:
+      (FORALL r: subset?(upto(t, <=), upto(r, <=)) IMPLIES t = r) IFF
+       maximal?[T](t, fullset[T], <=)
+
+  % If every chain of Ts is bounded above, then for each chain of Ts, there
+  % exists some T that is that bound; its upto set then includes the chain
+  bounded_chain_upto: LEMMA
+    (FORALL ch: bounded_above?[T](ch, <=)) IMPLIES
+     (FORALL ch: EXISTS t: subset?(ch, upto(t, <=)))
+
+  % The set of all Ts that, when added to ch, produce a (longer) chain
+  add_set(ch): set[T] =
+      {t | NOT member(t, ch) AND chain?[T, <=](add(t, ch))}
+
+  % Given a maximal chain, return it; otherwise, increase the length of the
+  % chain by one
+  succ(ch): subchain =
+      IF empty?(add_set(ch)) THEN ch ELSE add(choose(add_set(ch)), ch) ENDIF
+
+  % If the add set is empty, then succ doesn't add anything
+  empty_succ: LEMMA FORALL ch: empty?(add_set(ch)) IFF ch = succ(ch)
+
+  % If the add set is empty, then the chain is maximal
+  maximal_chain_add_set: LEMMA
+    FORALL ch:
+      empty?(add_set(ch)) IFF
+       maximal?[subchain[T, <=]](ch, fullset[subchain], chain_incl)
+
+  % A tower is a set of chains of Ts containing the emptyset, and closed
+  % under succ and chain_union
+  tower?(tow: set[subchain]): bool =
+      member(emptyset[T], tow) AND
+       (FORALL (ch: (tow)): member(succ(ch), tow)) AND
+        (FORALL CH:
+           (FORALL (ch: (CH)): member(ch, tow)) IMPLIES
+            member(chain_union(CH), tow))
+
+  % The intersection of a set of towers is also a tower
+  tower_intersection: LEMMA
+    FORALL (Tow: set[set[subchain]]):
+      (FORALL (t: (Tow)): tower?(t)) IMPLIES
+       tower?(Intersection[subchain](Tow))
+
+  % The smallest tower
+  T0: (tower?) = Intersection[subchain]({CH: set[subchain] | tower?(CH)})
+
+  % An element of T0 is T0_comparable? if it is related by set inclusion to
+  % all other elements of T0
+  T0_comparable?(ch1: (T0)): bool =
+      FORALL (ch2: (T0)): subset?(ch1, ch2) OR subset?(ch2, ch1)
+
+  % A proof that T0 is the smallest tower
+  T0_smallest: LEMMA FORALL (tow: (tower?)): subset?(T0, tow)
+
+  % Construct a tower from some element ch1 of T0 by taking all elements of T0
+  % that are included in ch1, and all those that include ch1's sucessor
+  make_tower(ch1: (T0_comparable?)): (tower?) =
+      {ch2 | T0(ch2) AND (subset?(ch2, ch1) OR subset?(succ(ch1), ch2))}
+
+  % Every T0_comparable? element of T0 constructs T0 via make_tower
+  T0_construct: LEMMA FORALL (ch: (T0_comparable?)): T0 = make_tower(ch)
+
+  % Every successor of a T0_comparable? element is also T0_comparable?
+  T0_comparable: JUDGEMENT
+    succ(ch: (T0_comparable?)) HAS_TYPE (T0_comparable?)
+
+  % Every element of T0 is T0_comparable?
+  T0_all_comparable: LEMMA FORALL (ch: (T0)): T0_comparable?(ch)
+
+  % T0 is a chain of chains
+  T0_chain: JUDGEMENT T0 HAS_TYPE chain_chain
+
+  % Zorn's Lemma
+  zorn: THEOREM
+    (FORALL (ch: chain[T, <=]): bounded_above?[T](ch, <=)) IMPLIES
+     (EXISTS t: maximal?[T](t, fullset[T], <=))
+
+ END zorn

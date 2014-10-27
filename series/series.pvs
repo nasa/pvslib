@@ -1,0 +1,265 @@
+series: THEORY
+%------------------------------------------------------------------------------
+% The series theory introduces and defines properties of the (infinite) series 
+% function that sums a sequence up to n:
+%
+%                               n
+%                             ----
+%  series(a) =   (LAMBDA n:   \     a(j) )
+%                             /
+%                              ----
+%                             j = 0
+%
+%
+%                                 n
+%                               ----
+%  series(a,m) =  (LAMBDA n:    \     a(j) )
+%                               /
+%                               ----
+%                               j = m
+%
+%  The theory develops convergence properties of the series as n --> infinity
+%
+%      convergent?(series(a)) IMPLIES convergence(a,0)
+%     
+%      comparison test
+%   
+%      convergence(series(geometric(x)), 1 / (1 - x))
+%   
+%      ratio test
+%
+% Developed  by Ricky W. Butler      NASA Langley Research Center
+% 
+%      Version 1.0    last modified 10/02/00
+%   
+%------------------------------------------------------------------------------
+BEGIN
+ 
+%   analysis: LIBRARY "../analysis"
+%   reals: LIBRARY "../reals"
+
+   IMPORTING analysis@convergence_ops,
+             reals@sigma_nat 
+%             prelude_aux_series
+
+
+   i: VAR int
+   n,m,N,k: VAR nat
+   pn: VAR posnat
+   x,l1,l2,c: VAR real
+
+   a,b,s: VAR sequence[real]
+
+   series(a): sequence[real] =  (LAMBDA (n: nat): sigma(0, n, a))
+
+   series(a,m): sequence[real] =  (LAMBDA (n: nat): sigma(m, n, a))
+
+%   Convergent_Series: TYPE = {s: sequence[real] | convergent?(series(s))}
+
+   conv_series?(a): bool = convergent?(series(a))
+
+   inf_sum(cs: (conv_series?)): real = limit(series(cs))
+
+   conv_series?(a,m): bool = convergent?(series(a,m))
+
+   inf_sum(m: nat, a: {s | conv_series?(s,m)}): real = limit(series(a,m))
+
+   abs(a): sequence[real] = (LAMBDA (n: nat): abs(a(n)))
+
+
+   series_diff  : LEMMA series(a) - series(b) = series(a-b)
+
+   series_sum   : LEMMA series(a) + series(b) = series(a+b)
+
+   series_m_diff: LEMMA series(a,m) - series(b,m) = series(a-b,m)
+
+   series_m_sum : LEMMA series(a,m) + series(b,m) = series(a+b,m)
+   
+   series_m_scal: LEMMA  c*series(a,m) = series(c*a,m)
+
+   series_m_eq  : LEMMA (FORALL k: k >= m IMPLIES a(k) = b(k))
+                                IMPLIES series(a,m)  = series(b,m) 
+
+   series_scal  : LEMMA c*series(a) =  series(LAMBDA n: c*a(n))
+
+
+
+% -------------------- convergence properties of series -------------------
+
+   conv_series_terms_to_0: THEOREM convergent?(series(a)) IMPLIES
+                                  convergence(a,0)
+
+   series_limit_0    : COROLLARY convergent?(series(a)) IMPLIES
+                                  limit(a) = 0
+
+
+
+   convergent_abs    : THEOREM convergent?(series(abs(a)))
+                              IMPLIES convergent?(series(a))
+
+
+   partial_sums      :    THEOREM convergent?(series(a)) IFF
+                             (FORALL (epsilon: posreal): 
+                                 (EXISTS (N: posint):
+                                    (FORALL n,m: (n > m AND m >= N) IMPLIES
+                                        abs(sigma(m+1,n,a)) < epsilon)))
+
+   zero_series_conv  : LEMMA convergent?(series(LAMBDA n: 0))
+
+   zero_series_limit : LEMMA limit(series(LAMBDA n: 0)) = 0
+
+
+%  --------- only behavior at end matters, so shifting changes nothing --------
+
+   tail_series_conv  : LEMMA convergent?(series(a)) 
+                                 IMPLIES convergent?(series((LAMBDA n: a(n+N))))
+
+   tail_series_conv2 : LEMMA convergent?(series((LAMBDA n: a(n+N)))) IMPLIES
+                                  convergent?(series(a)) 
+   
+   conv_series_shift : LEMMA convergent?(series(a)) 
+                                 IFF convergent?(series((LAMBDA n: a(n+N))))
+
+
+   tail_conv         : LEMMA convergent?(series(a)) AND
+                               (EXISTS (N: nat): (FORALL (n: nat): 
+                                          n >= N IMPLIES a(n) = b(n)))
+                                                IMPLIES convergent?(series(b))
+
+   end_series_conv   : THEOREM convergent?(series(a)) IFF convergent?(series(a,m)) 
+                                
+   scal_series_conv   : LEMMA convergent?(series(a))
+                                IMPLIES convergent?(c*series(a))
+
+   cnz: VAR nzreal
+   conv_series_scal  : LEMMA convergent?(cnz*series(a))  IFF convergent?(series(a)) 
+
+   limit_series_shift: LEMMA convergent?(series(a)) IMPLIES
+                      limit(series(a)) = sigma(0,pn-1,a)  
+                                + limit(series(LAMBDA n: a(n+pn)))
+
+   limit_pos         : LEMMA (FORALL n: a(n) > 0) AND convergent?(a)
+                                   IMPLIES limit(a) >= 0
+                          
+   series_first : LEMMA convergent?(series(a)) IMPLIES
+                          limit(series(a)) = a(0) + limit(series(a,1)) 
+
+   inf_sum_scal: LEMMA convergent?(series(a, k)) IMPLIES  
+                             c*inf_sum(k,a) = inf_sum(k,c*a) 
+
+
+% -------------------- comparison test --------------------
+
+   comparison_test   : THEOREM convergent?(series(b)) AND
+                                 (FORALL n: abs(a(n)) <= b(n))
+                                       IMPLIES convergent?(series(a))
+
+
+   comparison_test_gen: THEOREM convergent?(series(b)) AND
+                          (EXISTS (N: nat): (FORALL (n: nat):
+                              n >= N IMPLIES abs(a(n)) <= b(n)))
+                         IMPLIES convergent?(series(a))
+
+
+   inf_sum_eq: LEMMA (FORALL k: k >= m IMPLIES a(k) = b(k)) AND
+                     conv_series?(a,m) AND conv_series?(b,m) IMPLIES
+                           inf_sum(m,a) = inf_sum(m,b) 
+
+
+   inf_sum_le: LEMMA (FORALL (n: upfrom(m)): abs(a(n)) <= b(n)) AND
+                     convergent?(series(b,m))
+                         IMPLIES inf_sum(m,a) <= inf_sum(m,b)
+
+
+   inf_sum_le_abs: LEMMA (FORALL (n: upfrom(m)): abs(a(n)) <= b(n)) AND
+                     convergent?(series(b,m))
+                         IMPLIES abs(inf_sum(m,a)) <= inf_sum(m,b)
+
+   inf_sum_triangle: LEMMA convergent?(series(abs(a))) IMPLIES
+                             abs(inf_sum(m, a)) <= inf_sum(m, abs(a))
+
+
+%  -------------------- series sum -------------------------
+
+   series_sum_conv   : LEMMA convergent?(series(a)) AND convergent?(series(b))
+                               IMPLIES convergent?(series(a+b))
+
+
+   series_sum_convergence: LEMMA convergence(series(a), l1) AND
+                                 convergence(series(b), l2)
+                     IMPLIES convergence(series(a + b), l1+l2)
+
+   inf_sum_of_sum: LEMMA convergent?(series(a)) AND convergent?(series(b))
+               IMPLIES inf_sum(a+b) = inf_sum(a) + inf_sum(b)
+
+
+% ----------- geometric series ----------------------------
+
+   abs_x_to_n_conv   : LEMMA abs(x) < 1 IMPLIES
+                                 convergent?((LAMBDA (n: nat): abs(x)^n))   
+
+   cnv_seq_abs_x_to_n  : LEMMA abs(x) < 1 IMPLIES
+                                 limit(LAMBDA (n: nat): abs(x)^n) = 0  
+
+   x_to_n_conv       : LEMMA abs(x) < 1 IMPLIES
+                                 convergent?((LAMBDA (n: nat): x^n))   
+
+   convergence_x_to_n: LEMMA abs(x) < 1 IMPLIES
+                                 convergence((LAMBDA (n: nat): c*x^n), 0)   
+
+   geometric(x): sequence[real] = (LAMBDA n: x^n)
+
+   sigma_geometric_aux   : LEMMA 
+                         (1-x)* sigma(0, n, geometric(x)) = (1 - x^(n+1))
+
+   sigma_geometric   : LEMMA x /= 1 IMPLIES
+                          sigma(0, n, geometric(x)) = (1 - x^(n+1))/(1 - x)
+
+   geometric_series  : LEMMA abs(x) < 1 IMPLIES
+                          convergence(series(geometric(x)), 1 / (1 - x))
+
+   geometric_conv    : COROLLARY abs(x) < 1 IMPLIES
+                                    convergent?(series(geometric(x)))
+
+
+   const_geometric_series: LEMMA abs(x) < 1 IMPLIES
+                               convergence(series(c*geometric(x)), c / (1 - x))
+
+   geometric_sum     : LEMMA abs(x) < 1 IMPLIES
+                               inf_sum(geometric(x)) = 1/(1-x)
+
+% -------------------- ratio test --------------------
+
+   rho: VAR posreal
+
+   scaf_abs: LEMMA (FORALL (n: nat):  abs(a(n+1)) <= rho* abs(a(n)))
+                       IMPLIES abs(a(n)) <= abs(a(0))*rho^n
+
+   ratio_test: THEOREM (FORALL n: a(n) /= 0) AND
+                          (EXISTS (rho: posreal): rho < 1 AND
+                            (FORALL (n: nat): abs(a(n+1)/a(n)) <= rho))
+                        IMPLIES convergent?(series(a))
+
+   ratio_test_gen: THEOREM (FORALL n: a(n) /= 0) AND
+                          (EXISTS (rho: posreal): rho < 1 AND
+                            (EXISTS (N: nat): (FORALL (n: nat):
+                           n >= N IMPLIES  abs(a(n+1)/a(n)) <= rho)))
+                          IMPLIES convergent?(series(a))
+
+
+   ratio_test_gt_N: THEOREM (EXISTS (N: nat): (EXISTS (rho: posreal): 
+                                rho < 1 AND
+                              (FORALL (n: nat): n >= N IMPLIES a(n) /= 0 
+                                        AND abs(a(n+1)/a(n)) <= rho)))
+                          IMPLIES convergent?(series(a))
+
+
+   ratio_test_lim: THEOREM (FORALL n: a(n) /= 0) AND
+                           convergent?(LAMBDA n: abs(a(n+1)/a(n))) AND
+                           limit(LAMBDA n: abs(a(n+1)/a(n))) < 1
+                              IMPLIES convergent?(series(a))
+
+
+END series
+
+

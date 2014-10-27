@@ -1,0 +1,428 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Andre Luiz Galdino 
+%%                   Universidade Federal de Goiás - Brasil
+%%
+%%                         and 
+%%
+%%                   Mauricio Ayala Rincon  
+%%                   Universidade de Brasília - Brasil  
+%%            
+%% Last Modified On: April 26, 2011
+%%                                                                          
+%%----------------------------------------------------------------------------
+
+
+substitution[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+BEGIN
+
+   ASSUMING
+ 
+     IMPORTING compatibility[variable,symbol, arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term], 
+               identity[(V)],
+               extending_rename[(V)]
+                    
+       var_countable: ASSUMPTION is_countably_infinite(V)
+      
+   ENDASSUMING
+
+
+                 Vs: VAR set[(V)]
+             V1, V2: VAR finite_set[(V)]
+                 V3: VAR finite_set[term]
+            x, y, z: VAR (V)
+                sig: VAR [(V) -> term] 
+                 st: VAR finseq[term]
+    r, s, t, t1, t2: VAR term
+                  n: VAR nat
+       p, q, p1, p2: VAR position
+                  R: VAR pred[[term, term]]
+ 
+
+%%%% Defining Domain and Range (of a substitution "sigma") %%%%%%%%%%%%%%%%%%%%
+
+ 
+      Dom(sig): set[(V)] = {x: (V) | sig(x) /= x}
+      
+      Ran(sig): set[term] = 
+                 {y: term | EXISTS (x: (V)): member(x, Dom(sig)) &  y = sig(x)}
+
+     VRan(sig): set[(V)] = IUnion(LAMBDA (x | Dom(sig)(x)): Vars(sig(x)))
+
+
+%%%% Defining a substitution "sigma" %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+     Sub?(sig): bool = is_finite(Dom(sig))  
+
+
+           Sub: TYPE = (Sub?)
+
+  delta, theta,
+    sigma, tau, 
+      sg1, sg2: VAR Sub
+
+
+%%%% Defining renaming %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+   Ren?(sigma): bool =  subset?(Ran(sigma),V) & 
+                        (bijective?[(Dom(sigma)),(Ran(sigma))])(sigma)
+
+           Ren: TYPE = (Ren?)
+
+     rho, rho1: VAR Ren
+
+
+%%%% Properties of renaming %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  range_finite: LEMMA is_finite(Ran(rho))
+
+    exists_var: LEMMA  EXISTS z: NOT member(z, union(V1, V2))
+
+
+%%%% Restriction of a substitution %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  restriction(sigma)(Vs)(x): term = IF member(x, Vs)
+                               THEN 
+                                  sigma(x)
+                                ELSE
+                                  x
+                                ENDIF
+
+
+  restriction_Dom: LEMMA  subset?(Dom(restriction(sigma)(Vs)), Dom(sigma))
+
+  restriction_Dom_fin: LEMMA is_finite(Dom(restriction(sigma)(Vs)))
+
+  restriction_Subs: LEMMA Sub?(restriction(sigma)(Vs))
+  
+  dom_restriction: LEMMA subset?(Dom(restriction(sigma)(Vs)), Vs)
+
+
+
+%%%%% Disjoint Domain %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  disjoint_D?(sigma, tau): bool = disjoint?(Dom(sigma), Dom(tau))
+ 
+  disjoint_D: TYPE = (disjoint_D?)
+
+  sgi: VAR disjoint_D
+
+  union_subs(sgi)(x): term = IF member(x, Dom(sgi`1)) 
+                                 THEN sgi`1(x)
+                                 ELSE 
+                                  IF member(x, Dom(sgi`2)) 
+                                  THEN sgi`2(x)
+                                  ELSE x
+                                  ENDIF 
+                                 ENDIF
+
+
+ 
+  Dom_union: LEMMA Dom(union_subs(sgi)) = union(Dom(sgi`1), Dom(sgi`2))
+
+  union_is_sub: LEMMA Sub?(union_subs(sgi))
+
+  union_commute: LEMMA disjoint?(Dom(sigma), Dom(tau)) => 
+                           union_subs((sigma, tau)) = union_subs((tau, sigma))
+
+
+%%%%% Extending a substitution "sigma" to a mapping "ext: Term -> Term" %%%%%%%
+
+
+ ext(sigma)(t): RECURSIVE term = 
+    CASES t OF
+      vars(t): sigma(t),
+   app(f, st): IF length(st) = 0
+               THEN t
+               ELSE   
+                 LET
+                 sst = (# length := st`length,
+                             seq := (LAMBDA (n: below[st`length]):
+                                       ext(sigma)(st(n)))#)
+                 IN
+                  app(f, sst)
+               ENDIF
+    ENDCASES
+ MEASURE t BY <<
+
+
+
+%%%% Substitution identity %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+ iden_subs: LEMMA Sub?(identity)
+
+ iden_rename: LEMMA Ren?(identity)
+ 
+ ext_iden: LEMMA  ext(identity)(t) = t
+
+ restriction_term: LEMMA subset?(Vars(t), Vs) =>  
+                      ext(sigma)(t) =  ext(restriction(sigma)(Vs))(t)
+
+ restriction_union: LEMMA disjoint?(Dom(sg1), Dom(sg2)) & 
+                       disjoint?(Vars(t), Dom(sg2)) 
+                        =>
+                         ext(union_subs(sg1, sg2))(t) = ext(sg1)(t)
+
+
+%%%% Defining the composition of two substitution: comp %%%%%%%%%%%%%%%%%%%%%%%
+
+
+ comp(sigma, tau)(x: (V)): term = ext(sigma)(tau(x))
+
+
+ dom_o: LEMMA subset?(Dom(comp(sigma, tau)), union(Dom(sigma), Dom(tau)))
+
+ dom_o_fin: LEMMA is_finite(Dom(comp(sigma, tau)))
+
+ subs_o: LEMMA Sub?(comp(sigma, tau))
+
+ ext_o: LEMMA ext(comp(sigma, tau)) = ext(sigma) o ext(tau)
+
+ subs_o_identity: LEMMA comp(sigma, identity) = sigma
+
+ ext_subs_o_identity: LEMMA ext(comp(sigma, identity)) = ext(sigma)
+
+ o_ass: LEMMA comp(comp(sigma, delta), tau) = comp(sigma, comp(delta, tau))
+
+ inverse_renaming: LEMMA
+      EXISTS rho1: 
+        FORALL x: Dom(rho)(x) => comp(rho1, rho)(x) = x
+
+ inverse_rename_identity: LEMMA
+    subset?(Vars(t), Dom(rho)) &
+   (FORALL x: Dom(rho)(x) => comp(rho1, rho)(x) = x)
+     => 
+      ext(comp(rho1, rho))(t) = t
+ 
+
+
+%%%% Defining an idempotent substitution - Andréia B. Avelar %%%%%%%%%%%%%%%%%%
+
+
+ idempotent_sub?(sigma): bool = comp(sigma, sigma) = sigma
+
+ idempotent_sub: TYPE = (idempotent_sub?)
+
+ idemp_sub_term_empty_inter: LEMMA
+    FORALL (t: term, sigma: Sub): 
+       ext(sigma)(t) = t IFF  empty?(intersection(Dom(sigma), Vars(t)))
+
+ idemp_sub_iff_empty_intersection : LEMMA
+      idempotent_sub?(sigma) IFF empty?(intersection( Dom(sigma), VRan(sigma)))
+
+
+
+%%%% Useful definition %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ 
+  DSigma(s,x)(y): term =
+       IF y = x THEN s
+       ELSE y
+       ENDIF
+
+
+  Dom_DSigma: LEMMA subset?(Dom(DSigma(s,x)),union(singleton(s), singleton(x)))
+
+  Dom_DSigma_is_finite: LEMMA is_finite(Dom(DSigma(s,x)))
+
+  DSigma_is_Sub: LEMMA Sub?(DSigma(s,x))
+
+
+  DSigma_do_nothing: LEMMA
+   FORALL t, s, x:
+     empty?(Pos_var(s, x))
+        IMPLIES ext(DSigma(t,x))(s) = s
+
+
+
+  RSigma(R, sg1, sg2, x): bool = FORALL (y: (V)): IF y /= x 
+                                                  THEN sg1(y) = sg2(y)
+                                                  ELSE R(sg1(x), sg2(x))
+                                                  ENDIF
+
+
+  SigmaP(sigma, t, x, (p: positions?(sigma(x))))(y): term = 
+       IF y /= x 
+       THEN sigma(y)
+       ELSE replaceTerm(sigma(x), t, p)
+       ENDIF
+
+
+  gamma(sg1, sg2, x, y)(z): term = IF y /= z 
+                                   THEN sg1(z)
+                                   ELSE sg2(x)
+                                   ENDIF
+
+
+  Rhop(rho, x, y)(z): (V) = IF x /= z 
+                            THEN rho(z)
+                            ELSE y
+                            ENDIF
+
+
+  SigmaP_Dom: LEMMA  positionsOF(sigma(x))(p) =>
+    subset?(Dom(SigmaP(sigma, t, x, p)), union(Dom(sigma), singleton(x)))
+
+  SigmaP_Dom_fin: LEMMA positionsOF(sigma(x))(p) =>
+                        is_finite(Dom(SigmaP(sigma, t, x, p)))
+
+  SigmaP_Subs: LEMMA positionsOF(sigma(x))(p) => 
+                          Sub?(SigmaP(sigma, t, x, p))
+
+  SigmaP_is_RSigma: LEMMA (positionsOF(sigma(x))(p) &
+                               comp_cont?(R) &
+                               R(subtermOF(sigma(x), p), t)) =>
+                               RSigma(R, sigma, SigmaP(sigma, t, x, p), x)
+
+
+  gamma_Dom: LEMMA 
+    LET sg1Usg2 = union(Dom(sg1), Dom(sg2)) IN 
+    subset?(Dom(gamma(sg1, sg2, x, y)), union(sg1Usg2, singleton(y)))
+
+   gamma_Dom_fin: LEMMA 
+                   is_finite(Dom(gamma(sg1, sg2, x, y)))
+
+   gamma_Subs: LEMMA 
+                Sub?(gamma(sg1, sg2, x, y))
+
+   gamma_is_RSigma: LEMMA 
+      RSigma(R, sg1, sg2, z) & z /= y
+          => 
+            RSigma(R, gamma(sg1, sg2, x, y), gamma(sg2, sg2, x, y), z)
+
+  gamma_term: LEMMA 
+                NOT member(y, Vars(t)) 
+                    => 
+                      ext(gamma(sg1, sg2, x, y))(t) = ext(sg1)(t) &
+                      ext(gamma(sg2, sg2, x, y))(t) = ext(sg2)(t)
+
+   Rhop_Dom: LEMMA
+            x /= y          &
+            NOT Dom(rho)(x)
+              =>  
+               Dom(Rhop(rho, x, y)) = union(Dom(rho), singleton(x))
+
+   Rhop_Ran: LEMMA
+            x /= y          &
+            NOT Dom(rho)(x) &
+            NOT Ran(rho)(y)
+              =>  
+               Ran(Rhop(rho, x, y)) = union(Ran(rho), singleton(y))
+
+   Rhop_Dom_fin: LEMMA 
+            x /= y &
+            NOT Dom(rho)(x)   
+              =>   
+                is_finite(Dom(Rhop(rho, x, y)))
+
+   Rhop_Subs: LEMMA 
+           x /= y &
+           NOT Dom(rho)(x)   
+             =>   Sub?(Rhop(rho, x, y))
+
+   Rhop_Ren: LEMMA	
+                 x /= y &
+                 NOT Dom(rho)(x) &
+                 NOT Ran(rho)(y) => 
+                 Ren?(Rhop(rho, x, y))     
+
+
+%%%% Properties %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+ ext_preserv_pos: LEMMA positionsOF(s)(p) => positionsOF(ext(sigma)(s))(p)
+
+
+ subterm_ext_commute: LEMMA 
+  positionsOF(s)(p) => subtermOF(ext(sigma)(s), p) = ext(sigma)(subtermOF(s, p))
+
+
+ ext_replace_ext: LEMMA positionsOF(s)(p) =>
+  ext(sigma)(replaceTerm(s, t, p)) 
+        = replaceTerm(ext(sigma)(s), ext(sigma)(t), p)
+
+
+ positions_of_ext: LEMMA positionsOF(ext(sigma)(t)) = 
+   union({p | positionsOF(t)(p) & (NOT vars?(subtermOF(t, p)))}, 
+         {q | EXISTS p1, p2: q = p1 o p2 AND 
+                             positionsOF(t)(p1) AND 
+                             vars?(subtermOF(t, p1)) AND 
+                             positionsOF(ext(sigma)(subtermOF(t, p1)))(p2)})
+
+
+rename_preserv_pos: LEMMA positionsOF(ext(rho)(t)) = positionsOF(t)
+
+
+subterm_of_ext: LEMMA positionsOF(t)(p) => 
+(IF vars?(subtermOF(t, p))
+ THEN 
+ (positionsOF(ext(sigma)(subtermOF(t, p)))(p1) =>
+  subtermOF(ext(sigma)(t), p o p1) = subtermOF(ext(sigma)(subtermOF(t, p)), p1))
+ ELSE
+ subtermOF(ext(sigma)(t), p) = ext(sigma)(subtermOF(t, p))
+ ENDIF)
+
+
+ rename_preserv_inclusion: LEMMA subset?(Vars(t), Vars(s)) => 
+                                 subset?(Vars(ext(rho)(t)), Vars(ext(rho)(s)))
+
+
+ same_substitution: LEMMA ext(sg1)(t) = ext(sg2)(t) => 
+                           (FORALL x: member(x, Vars(t)) => sg1(x) = sg2(x))
+
+
+  same_term: LEMMA (FORALL x: member(x, Vars(t)) => sg1(x) = sg2(x)) =>  
+                                                    ext(sg1)(t) = ext(sg2)(t)
+
+
+  term_is_a_var: LEMMA  ext(rho)(t) = x => vars?(t)
+ 
+
+  vars_term_rename: LEMMA 
+       Dom(rho) = Vars(t) => subset?(Vars(ext(rho)(t)), Ran(rho))
+
+
+  exists_renaming: LEMMA 
+        EXISTS rho: Dom(rho) = V1 & disjoint?(V2, Ran(rho))    
+
+
+
+ add_parallel_pos: LEMMA FORALL t, sigma, (fst: SPP(t)), (p: positions?(t)):
+       ( FORALL (i: below[length(fst)]): parallel(fst(i),p)) =>
+                                       SPP?(ext(sigma)(t))(add_first(p,fst))
+
+
+ ext_parallel_pos: LEMMA FORALL t, sigma, (fst: SPP(t)): SPP?(ext(sigma)(t))(fst)
+
+
+
+ rest_parallel_first: LEMMA FORALL t, (fst: SPP(t)): fst`length /= 0 
+                     =>
+                       FORALL (i: below[length(rest(fst))]):
+                                   parallel(rest(fst)(i), fst`seq(0))
+
+ rest_parallel_pos_parallel: LEMMA  FORALL t, (fst: SPP(t)), (p: positions?(t)):
+               ( FORALL (i: below[length(fst)]): parallel(fst(i),p))
+                =>
+                 FORALL (i: below[length(rest(fst))]):
+                                         parallel(rest(fst)(i), p)
+
+vars_subst_not_in: LEMMA
+  FORALL t, sigma, x: Dom(sigma)(x) AND 
+                     (FORALL r: Ran(sigma)(r) IMPLIES NOT member(x, Vars(r)))
+   IMPLIES NOT member(x, Vars(ext(sigma)(t)))
+
+ext_preserve_symbol : LEMMA
+    FORALL (s : term,
+            sig : Sub, 
+            p : position | positionsOF(s)(p)):
+       app?(subtermOF(s, p)) IMPLIES
+           f(subtermOF(s, p)) = f(subtermOF(ext(sig)(s), p)) 
+
+
+END substitution

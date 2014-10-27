@@ -1,0 +1,153 @@
+integral_bounded[T: TYPE FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%  An Integrable Function is bounded
+%
+%  Author:  Rick Butler               NASA Langley
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+      IMPORTING deriv_domain_def[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+   AUTO_REWRITE+ not_one_element
+
+   IMPORTING reals@sigma_below,
+             integral_prep[T]
+
+   a,b,c,d,x,y,z: VAR T
+
+   f,f1,f2,g: VAR [T -> real]
+
+   eps, delta: VAR posreal
+
+   xv,yv: VAR real
+
+
+   
+%    integrable?(a:T,b:{x:T|a<x})(f:[T->real]): bool = 
+%                     integrable?(a,b,f)
+
+
+   bounded_on?(a,b,f): bool = (EXISTS (B: real): 
+                   (FORALL (x: closed_interval(a,b)): abs(f(x)) <= B))
+
+   int_to_bnd: LEMMA  % Rosenlicht pg 122 
+                    a < b IMPLIES
+               (integrable?(a,b,f) IMPLIES 
+                   (EXISTS (EP: partition[T](a,b)):
+                           FORALL (j: below(length(EP) - 1)):
+                              bounded_on?(EP(j), EP(1 + j), f)))
+
+
+
+   bounded_on_all?(a:T,b:{x:T|a<x},P: partition[T](a,b))(f:[T->real]): bool = 
+             (FORALL (j: below(P`length - 1)): bounded_on?((P(j),P(j+1),f)))
+		   
+
+   bounded_on_all_lem: LEMMA  % Rosenlicht pg 122 
+                    a < b IMPLIES
+               integrable?(a,b,f) IMPLIES 
+                   (EXISTS (P: partition[T](a,b)): bounded_on_all?(a,b,P)(f))
+
+
+   MINj_prep: LEMMA FORALL (a: T, b: {x: T | a < x}, 
+                            P: partition[T](a, b), 
+                            f: (bounded_on_all?(a, b, P)),
+                            j: below(P`length - 1)):
+		   nonempty?[real] ({fx: real | EXISTS (xx: T):
+		         P`seq(j) <= xx AND xx <= P`seq(1 + j) AND fx = f(xx)})
+		    AND
+		    bounded?({fx: real | EXISTS (xx: T):
+			P`seq(j) <= xx AND xx <= P`seq(1 + j) AND fx = f(xx)})
+
+
+   MINj(a:T,b:{x:T|a<x},P: partition[T](a,b),j: below(length(P)-1), 
+             f: (bounded_on_all?(a,b,P))): real =
+                  glb({fx: real | EXISTS (xx: T):
+                                  P`seq(j) <= xx AND xx <= P`seq(1 + j) AND
+                                  fx = f(xx)})
+
+   MINj_lem: LEMMA a < b IMPLIES
+                     FORALL (P: partition[T](a, b),
+                             f: (bounded_on_all?(a, b, P)),
+                             j: below(length(P)-1),
+                             x: closed_interval[T](seq(P)(j), seq(P)(1+j))):
+                         MINj(a,b,P,j,f) <= f(x)
+
+   MAXj(a:T,b:{x:T|a<x},P: partition[T](a,b),j: below(length(P)-1),
+            f: (bounded_on_all?(a,b,P))): real =
+                  lub({fx: real | EXISTS (xx: T):
+                                  P`seq(j) <= xx AND xx <= P`seq(1 + j) AND
+                                  fx = f(xx)})
+
+   MAXj_lem: LEMMA a < b IMPLIES
+                     FORALL (P: partition[T](a, b),
+                             f: (bounded_on_all?(a, b, P)),
+                             j: below(length(P)-1),
+                             x: closed_interval[T](seq(P)(j), seq(P)(1+j))):
+                         MAXj(a,b,P,j,f) >= f(x)
+
+
+
+    MIN_ALL(a:T,b:{x:T|a<x},P: partition[T](a,b),
+            f: (bounded_on_all?(a,b,P))): real =
+         min({mm: real | EXISTS (jj: below(length(P) - 1)): 
+                              mm = MINj(a,b,P,jj,f)})
+
+    MAX_ALL(a:T,b:{x:T|a<x},P: partition[T](a,b), 
+           f: (bounded_on_all?(a,b,P))): real =
+           max({mm: real | EXISTS (jj: below(length(P) - 1)): 
+                             mm = MAXj(a,b,P,jj,f)})
+
+    MIN_ALL_lem: LEMMA  a < b IMPLIES
+                    FORALL (P: partition[T](a, b),
+                            f: (bounded_on_all?(a, b, P)),
+                            x: closed_interval(a,b)):
+                         MIN_ALL(a, b, P, f) <= f(x)
+
+    MAX_ALL_lem: LEMMA  a < b IMPLIES
+                    FORALL (P: partition[T](a, b),
+                            f: (bounded_on_all?(a, b, P)),
+                            x: closed_interval(a,b)):
+                         MAX_ALL(a, b, P, f) >= f(x)
+
+
+   bounded_on_all_is: LEMMA a < b AND 
+                           (EXISTS (P: partition[T](a,b)): 
+                                   bounded_on_all?(a,b,P)(f))
+                           IMPLIES bounded_on?(a, b, f)
+
+
+   integrable_bounded: LEMMA a < b AND % Rosenlicht pg 122 
+                             integrable?(a,b,f) 
+                          IMPLIES bounded_on?(a, b, f)
+
+
+   bnded_on?(a:T,b:{x:T|a<x})(f:[T->real]): bool = bounded_on?(a, b, f)
+
+
+   bnd_on_lem: LEMMA a < b IMPLIES FORALL (P: partition[T](a,b)): 
+                     bounded_on?(a, b, f)
+                  IMPLIES  bounded_on_all?(a, b, P)(f)
+
+   integrable_bounded_on_all: LEMMA a < b IMPLIES 
+                  FORALL (P: partition[T](a,b)): 
+                  integrable?(a, b, f) IMPLIES 
+                         bounded_on_all?(a, b, P)(f)
+
+
+
+END integral_bounded
+
+
+
+

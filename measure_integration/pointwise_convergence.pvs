@@ -1,0 +1,124 @@
+%-------------------------------------------------------------------------
+% Pointwise Convergence
+%
+%     Author: David Lester, Manchester University
+%
+%     Version 1.0           04/05/09    Initial (DRL)
+%-------------------------------------------------------------------------
+
+pointwise_convergence[T:TYPE]: THEORY
+
+BEGIN
+
+  IMPORTING metric_space@convergence_aux
+
+  u,v:     VAR sequence[[T->real]]
+  f,f0,f1: VAR [T->real]
+  g:   VAR [T->nnreal]
+  x:   VAR T
+  c:   VAR real
+  n,m: VAR nat
+  P:   VAR pred[sequence[real]]
+
+
+  zero_seq(n)(x):real = 0
+
+  pointwise?(P)(u):bool = FORALL x: P(LAMBDA n: u(n)(x))
+
+  pointwise_bounded_above?(u):bool = pointwise?(bounded_above?)(u)
+  pointwise_bounded_below?(u):bool = pointwise?(bounded_below?)(u)
+  pointwise_bounded?(u):bool       = pointwise?(bounded_seq?)(u)
+
+  pointwise_bounded_def: LEMMA pointwise_bounded?(u) <=>
+                                (pointwise_bounded_above?(u) AND
+                                 pointwise_bounded_below?(u))
+
+  pointwise_bounded_above:TYPE+ =(pointwise_bounded_above?) CONTAINING zero_seq
+  pointwise_bounded_below:TYPE+ =(pointwise_bounded_below?) CONTAINING zero_seq
+  pointwise_bounded:      TYPE+ =(pointwise_bounded?)       CONTAINING zero_seq
+
+  pointwise_bounded_is_bounded_above:
+        JUDGEMENT pointwise_bounded        SUBTYPE_OF pointwise_bounded_above
+  pointwise_bounded_is_bounded_below:
+        JUDGEMENT pointwise_bounded        SUBTYPE_OF pointwise_bounded_below
+
+  pointwise_convergence?(u,f):bool=FORALL x:convergence?(LAMBDA n:u(n)(x),f(x))
+  pointwise_convergent?(u):bool   =EXISTS f:pointwise_convergence?(u,f)
+
+  pointwise_convergent: TYPE+ = (pointwise_convergent?)    CONTAINING zero_seq
+
+  IMPORTING reals@real_fun_ops_aux[T]
+;
+  +(u,v):  sequence[[T->real]]   = LAMBDA n: u(n)+v(n);
+  *(c,u):  sequence[[T->real]]   = LAMBDA n: c*u(n);
+  -(u):    sequence[[T->real]]   = LAMBDA n: -(u(n));
+  -(u,v):  sequence[[T->real]]   = LAMBDA n: u(n)-v(n);
+  plus(u): sequence[[T->nnreal]] = LAMBDA n: plus(u(n));
+  minus(u):sequence[[T->nnreal]] = LAMBDA n: minus(u(n));
+
+  pointwise_convergence_sum:  LEMMA pointwise_convergence?(u,f0) AND
+                                    pointwise_convergence?(v,f1)      =>
+                                    pointwise_convergence?(u+v,f0+f1)
+
+  pointwise_convergence_scal: LEMMA pointwise_convergence?(u,f)       =>
+                                    pointwise_convergence?(c*u,c*f)
+
+  pointwise_convergence_opp:  LEMMA pointwise_convergence?(u,f)       =>
+                                    pointwise_convergence?(-u,-f)
+
+  pointwise_convergence_diff: LEMMA pointwise_convergence?(u,f0) AND
+                                    pointwise_convergence?(v,f1)      =>
+                                    pointwise_convergence?(u-v,f0-f1)
+
+  w,w0,w1: VAR pointwise_convergent
+
+  pointwise_convergent_sum:  JUDGEMENT +(w0,w1) HAS_TYPE pointwise_convergent
+  pointwise_convergent_scal: JUDGEMENT *(c,w)   HAS_TYPE pointwise_convergent
+  pointwise_convergent_opp:  JUDGEMENT -(w)     HAS_TYPE pointwise_convergent
+  pointwise_convergent_diff: JUDGEMENT -(w0,w1) HAS_TYPE pointwise_convergent
+
+  pointwise_convergent_is_pointwise_bounded:
+                    JUDGEMENT pointwise_convergent SUBTYPE_OF pointwise_bounded
+
+  pointwise_increasing?(u):bool = FORALL x: increasing?(LAMBDA n: u(n)(x))
+  pointwise_decreasing?(u):bool = FORALL x: decreasing?(LAMBDA n: u(n)(x))
+
+  pointwise_converges_upto?(u,f):bool
+           = pointwise_convergence?(u,f) AND pointwise_increasing?(u)
+
+  pointwise_converges_downto?(u,f):bool
+           = pointwise_convergence?(u,f) AND pointwise_decreasing?(u)
+
+  plus_minus_pointwise_convergence: LEMMA
+    pointwise_convergence?(u,f)                    <=>
+    (pointwise_convergence?(plus(u), plus(f))  AND 
+     pointwise_convergence?(minus(u),minus(f)))
+
+  p: VAR pointwise_bounded_below
+  a: VAR pointwise_bounded_above
+  b: VAR pointwise_bounded
+
+  inf(p)(n)(x):real = inf(image[nat,real](LAMBDA m: p(m)(x),{m| m >= n}))
+  limsup(b)(x):real = sup(image[nat,real](LAMBDA m: inf(b)(m)(x),fullset[nat]))
+  sup(a)(n)(x):real = sup(image[nat,real](LAMBDA m: a(m)(x),{m| m >= n}))
+  liminf(b)(x):real = inf(image[nat,real](LAMBDA m: sup(b)(m)(x),fullset[nat]))
+
+  sup_inf_def:       LEMMA sup(a)    = -inf(-a)
+  liminf_limsup_def: LEMMA liminf(b) = -limsup(-b)
+
+  inf_pointwise_increasing: LEMMA pointwise_increasing?(inf(p))
+  inf_le:                   LEMMA inf(p)(n)(x) <= p(n)(x)
+  inf_pointwise_le:         LEMMA pointwise_convergence?(p,f)        =>
+                                  (FORALL n,x: inf(p)(n)(x) <= f(x))
+
+  limsup_pointwise_convergence: LEMMA pointwise_convergence?(inf(b),limsup(b))
+
+  inf_pointwise_convergence_upto: LEMMA pointwise_convergence?(p,f) =>
+                                        pointwise_converges_upto?(inf(p),f)
+
+  pointwise_convergence_plus_minus_def: LEMMA
+    pointwise_convergence?(u,f)                               =>
+     (pointwise_converges_upto?(inf(plus(u)),  plus(f))   AND
+      pointwise_converges_upto?(inf(minus(u)), minus(f)))
+
+END pointwise_convergence

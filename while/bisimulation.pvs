@@ -1,0 +1,85 @@
+%------------------------------------------------------------------------------
+% The Equivalence of a Compiler/Abstract Machine
+%         and Structural Operational Semantics
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+bisimulation[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING compiler[V], am[V], sos[V]
+
+  x: VAR V
+  a: VAR AExp
+  b: VAR BExp
+  n,m: VAR nat
+  pn: VAR posnat
+  e: VAR list[int]
+  s,s0,s1: VAR State
+  S: VAR Stm
+  sc,sc0,sc1: VAR sos.Config
+  ac,ac0,ac1,ac2: VAR am.Config
+
+  correct_AExp: LEMMA EXISTS n: am.tr(n)((CA(a),e,s),(null,cons(A(a)(s),e),s))
+                                                                     % N&N 3.18
+  correct_BExp: LEMMA EXISTS n: am.tr(n)((CB(b),e,s),(null,cons(B(b)(s),e),s))
+                                                                     % N&N 3.19
+
+  eq_AExp: LEMMA am.tr(n)((CA(a),e,s),(null,cons(A(a)(s),e),s)) AND
+                 am.tr(m)((CA(a),e,s),ac) AND
+                 null?(ac`1) =>
+                 n = m AND ac`2 = cons(A(a)(s),e) AND ac`3 = s
+
+  AExp_steps: LEMMA am.tr(n)((CA(a),e,s),(null,cons(A(a)(s),e),s)) => n >= 1
+
+  AExp_e: LEMMA am.tr(n)((CA(a),e,s),(null,cons(A(a)(s),e),s)) AND
+                      pn <= n AND am.tr(pn)((CA(a),e,s),ac) =>
+                      length(ac`2) >= 1+length(e)
+
+  eq_BExp: LEMMA am.tr(n)((CB(b),e,s),(null,cons(B(b)(s),e),s)) AND
+                 am.tr(m)((CB(b),e,s),ac) AND
+                 null?(ac`1) =>
+                 n = m AND ac`2 = cons(B(b)(s),e) AND ac`3 = s
+
+  BExp_steps: LEMMA am.tr(n)((CB(b),e,s),(null,cons(B(b)(s),e),s)) => n >= 1
+
+  BExp_e: LEMMA am.tr(n)((CB(b),e,s),(null,cons(B(b)(s),e),s)) AND
+                      pn <= n AND am.tr(pn)((CB(b),e,s),ac) =>
+                      length(ac`2) >= 1+length(e)
+
+;
+  ~(sc,ac): bool
+    = IF terminal?(sc)
+      THEN ac`1 = null[Instruction] AND ac`2 = null[int] AND s1(sc) = ac`3
+      ELSE ac`1 = CS(S(sc))         AND ac`2 = null[int] AND s(sc)  = ac`3
+      ENDIF
+
+  sos_step: LEMMA
+     sos.I(S,s) ~ ac0 =>
+     EXISTS pn,ac1: sos.step(S,s) ~ ac1 AND am.tr(pn)(ac0,ac1)
+
+  sos_steps: LEMMA sos.tr(n)(sos.I(S,s0),T(s1)) =>
+                   EXISTS m: am.tr(m)((CS(S),null[int],s0),
+                                      (null[Instruction],null[int],s1))
+
+  am_step1: LEMMA sos.I(S,s) ~ ac AND
+                  sos.step(S,s) ~ ac1 =>
+                  EXISTS pn: am.tr(pn)(ac,ac1) AND
+                  FORALL n,ac2: n <= pn AND am.tr(n)(ac,ac2) =>
+                                (null?(ac2`2) IFF (n=0 OR n=pn))
+
+  am_steps: LEMMA                                                    % N&N 3.27
+    am.tr(m)((CS(S),null[int],s0),(null[Instruction],null[int],s1)) =>
+    EXISTS n: sos.tr(n)(sos.I(S,s0),T(s1))
+
+  bisimulation: LEMMA M(CS(S)) = SS(S)                               % N&N 3.28
+
+END bisimulation

@@ -1,0 +1,147 @@
+%------------------------------------------------------------------------------
+% Subset Algebra Definition File
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            8/7/04   Initial Version
+%------------------------------------------------------------------------------
+subset_algebra_def[T:TYPE]: THEORY
+
+BEGIN
+
+  IMPORTING sets_aux@countable_props,
+            structures@fun_preds_partial[nat,set[T],reals.<=,subset?[T]],
+            sets_aux@indexed_sets_aux[nat,T],   % Proof only
+            sets_aux@countable_indexed_sets[T], % Proof only
+            sets_aux@nat_indexed_sets[T],       % Proof only
+            sets_aux@countable_image    % Proof only
+
+  n,i:   VAR nat
+  a,b:   VAR set[T]
+  S,X,Y: VAR setofsets[T]
+  NX:    VAR (nonempty?[set[T]])
+  E:     VAR sequence[set[T]]
+
+  subset_algebra_empty?(S):      bool = member(emptyset[T],S)
+  subset_algebra_complement?(S): bool = FORALL (x:(S)): member(complement(x),S)
+  subset_algebra_union?(S):      bool = FORALL (x,y:(S)): member(union(x,y),S)
+
+  subset_algebra?(S):bool = subset_algebra_empty?(S)      AND
+                            subset_algebra_complement?(S) AND
+                            subset_algebra_union?(S)
+
+  sigma_algebra_union?(S): bool = FORALL X: is_countable[set[T]](X) AND
+                                  (FORALL (x:(X)): member(x,S)) =>
+                                  member(Union(X),S)
+
+  sigma_algebra?(S):bool = subset_algebra_empty?(S)      AND
+                           subset_algebra_complement?(S) AND
+                           sigma_algebra_union?(S)
+
+  sigma_union_implies_subset_union: LEMMA
+    sigma_algebra_union?(S) => subset_algebra_union?(S)
+
+  sigma_algebra_implies_subset_algebra: LEMMA
+    sigma_algebra?(S) => subset_algebra?(S)
+
+  trivial_subset_algebra:(subset_algebra?)
+     = union(singleton(emptyset[T]),singleton(fullset[T]))
+
+  subset_algebra: TYPE+ = (subset_algebra?) CONTAINING trivial_subset_algebra
+
+  sigma_algebra:  TYPE+ = (sigma_algebra?)  CONTAINING trivial_subset_algebra
+
+  A: VAR sigma_algebra
+  I: VAR set[sigma_algebra]
+
+  sigma_algebra_is_subset_algebra:
+                              JUDGEMENT sigma_algebra SUBTYPE_OF subset_algebra
+
+  powerset_is_sigma_algebra: LEMMA sigma_algebra?(powerset(fullset[T]))
+
+  generated_sigma_algebra(X):sigma_algebra
+    = Intersection({Y | sigma_algebra?(Y) AND subset?(X,Y)})
+
+  generated_sigma_algebra_subset1: LEMMA
+                      subset?(X,generated_sigma_algebra(X))
+
+  generated_sigma_algebra_subset2: LEMMA
+                  subset?(X,Y) AND sigma_algebra?(Y) =>
+                      subset?(generated_sigma_algebra(X),Y)
+
+  generated_sigma_algebra_idempotent: LEMMA generated_sigma_algebra(A) = A
+
+  intersection_sigma_algebra: LEMMA FORALL (A,B:sigma_algebra):
+                                    sigma_algebra?(intersection(A,B))
+
+  sigma(I):sigma_algebra = generated_sigma_algebra(Union(I))
+
+  sigma_member: LEMMA member(A,I) => subset?(A,sigma(I))
+
+  B: VAR subset_algebra
+  J: VAR set[subset_algebra]
+
+  powerset_is_subset_algebra: LEMMA subset_algebra?(powerset(fullset[T]))
+
+  generated_subset_algebra(X):subset_algebra
+    = Intersection({Y | subset_algebra?(Y) AND subset?(X,Y)})
+
+  generated_subset_algebra_subset1: LEMMA
+                      subset?(X,generated_subset_algebra(X))
+
+  generated_subset_algebra_subset2: LEMMA
+                  subset?(X,Y) AND subset_algebra?(Y) =>
+                      subset?(generated_subset_algebra(X),Y)
+
+  generated_subset_algebra_idempotent: LEMMA generated_subset_algebra(B) = B
+
+  intersection_subset_algebra: LEMMA FORALL (A,B:subset_algebra):
+                                     subset_algebra?(intersection(A,B))
+
+  subset(J):subset_algebra = generated_subset_algebra(Union(J))
+
+  subset_member: LEMMA member(B,J) => subset?(B,subset(J))
+
+  finite_disjoint_union?(X)(a):bool
+    = EXISTS E,n: disjoint?(E) AND a = IUnion(E) AND
+                  (FORALL i: (i < n  => member(E(i),X)) AND
+                             (i >= n => empty?(E(i))))
+
+  finite_disjoint_union_of?(X)(a)(E,n):bool
+    = disjoint?(E) AND a = IUnion(E) AND
+      (FORALL i: (i < n  => member(E(i),X)) AND (i >= n => empty?(E(i))))
+
+  card(X:setofsets[T],a:(finite_disjoint_union?(X))):nat
+    = min({n:nat | EXISTS E: finite_disjoint_union_of?(X)(a)(E,n)})
+
+  finite_disjoint_unions(X):setofsets[T] = fullset[(finite_disjoint_union?(X))]
+
+  disjoint_algebra_construction: LEMMA                             % SKB 4.6.1
+    (FORALL (a,b:(NX)): member(intersection(a,b),NX)) AND
+    (FORALL (a:(NX)): finite_disjoint_union?(NX)(complement(a))) =>
+    generated_subset_algebra(NX) = finite_disjoint_unions(NX)
+
+  monotone?(X):bool
+    = FORALL E: (FORALL n: member(E(n),X)) =>                      % SKB 4.6.4
+                ((increasing?(E) => member(IUnion(E),X)) AND
+                 (decreasing?(E) => member(IIntersection(E),X)))
+
+  monotone_class: TYPE+ = (monotone?) CONTAINING trivial_subset_algebra
+
+  powerset_is_monotone: LEMMA monotone?(powerset(fullset[T]))
+
+  sigma_algebra_is_monotone_class:
+                             JUDGEMENT sigma_algebra SUBTYPE_OF monotone_class
+
+  monotone_algebra_is_sigma: LEMMA subset_algebra?(X) AND monotone?(X) =>
+                                   sigma_algebra?(X)
+
+  C: VAR monotone_class
+  K: VAR set[monotone_class]
+
+  monotone_class_Intersection: LEMMA monotone?(Intersection(K))
+
+  monotone_class: THEOREM                                           % SKB 4.6.6
+    subset?(B,C) => subset?(generated_sigma_algebra(B),C)
+
+END subset_algebra_def

@@ -1,0 +1,120 @@
+repulsive_iterative : THEORY
+BEGIN
+
+  IMPORTING repulsive
+
+  s,so,si,v,vo,vi,
+  nv,nw   : VAR Vect2
+  nvo,nvi : VAR Nz_vect2
+  eps	  : VAR Sign
+  cc	  : VAR posreal
+  t	  : VAR posreal
+  i	  : VAR posnat
+  n,m	  : VAR nat
+  Nsteps  : VAR posnat % Number of maneuver segments
+  	    	       % before turning straight
+
+  VelSeq: TYPE = [posnat->Vect2]
+  timestep: VAR posreal
+
+  velseqo,velseqi,velseq: VAR VelSeq
+
+  % Sequence of positions so
+
+  man_pos_seq(so,timestep,velseqo)(i): RECURSIVE Vect2 =
+    IF    i = 1 THEN so
+    ELSE LET soprev = man_pos_seq(so,timestep,velseqo)(i-1),
+    	     voprev = velseqo(i-1)
+	 IN soprev + timestep*voprev
+    ENDIF MEASURE i
+
+  man_pos_seq_test: LEMMA
+    man_pos_seq(so,timestep,velseqo)(1) = so AND
+    man_pos_seq(so,timestep,velseqo)(2) = so+timestep*velseqo(1) AND
+    man_pos_seq(so,timestep,velseqo)(3) = so+timestep*velseqo(1)
+    			+ timestep*velseqo(2) AND
+    man_pos_seq(so,timestep,velseqo)(4) = so+timestep*velseqo(1)
+    			+ timestep*velseqo(2) +timestep*velseqo(3)
+
+  maneuver_position_at(so,timestep,velseqo,Nsteps)(t:nnreal): Vect2 =
+    LET numsteps = min(floor(t/timestep)+1,Nsteps),
+    	lastso    = man_pos_seq(so,timestep,velseqo)(numsteps),
+	lastvo	  = velseqo(numsteps)
+    IN  lastso + (t-timestep*(numsteps-1))*lastvo
+
+  manuever_position_at_def: LEMMA m+1<=Nsteps IMPLIES
+    maneuver_position_at(so,timestep,velseqo,Nsteps)(m*timestep) =
+    man_pos_seq(so,timestep,velseqo)(m+1)
+
+  repulsive_iterative?(s,v,timestep,velseq,Nsteps): bool =
+    (s*v<0 AND
+    (FORALL (t): norm(maneuver_position_at(s,timestep,velseq,Nsteps)(t))>=norm(s+tca(s,v)*v)))
+    OR
+    (s*v>=0 AND
+    (FORALL (t): norm(maneuver_position_at(s,timestep,velseq,Nsteps)(t))>=norm(s)))
+
+  repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps): bool =
+    repulsive_criteria(s,v,eps)(velseq(1)) AND
+    FORALL (m:subrange(1,Nsteps-1)): repulsive_criteria(man_pos_seq(s,timestep,velseq)(m+1),velseq(m),eps)(velseq(m+1))
+
+  repulsive_criteria_iterative_repulsive: LEMMA
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    repulsive_iterative?(s,v,timestep,velseq,Nsteps)
+
+  repulsive_criteria_iterative_reduces_seq: LEMMA s*v<0 AND
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    FORALL (m:subrange(1,Nsteps)):
+      repulsive_criteria(s,v,eps)(velseq(m))
+      AND (m<Nsteps IMPLIES repulsive_criteria(s,v,eps)(man_pos_seq(s,timestep,velseq)(m+1)-s))
+
+  repulsive_criteria_iterative_reduces: LEMMA s*v<0 AND
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    repulsive_criteria(s,v,eps)(maneuver_position_at(s,timestep,velseq,Nsteps)(t)-s)
+
+  repulsive_criteria_iterative_reduces_seq_divergent_special: LEMMA
+    timestep = 1 AND s = (1,0) AND s * v >= 0 AND repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    FORALL (m:subrange(1,Nsteps)):
+      repulsive_criteria(s,v,eps)(velseq(m))
+      AND (m<Nsteps IMPLIES repulsive_criteria(s,(m*timestep)*v,eps)((man_pos_seq(s,timestep,velseq)(m+1)-s)))
+
+  repulsive_criteria_iterative_reduces_seq_divergent: LEMMA s/=zero AND s*v>=0 AND
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    FORALL (m:subrange(1,Nsteps)):
+      repulsive_criteria(s,v,eps)(velseq(m))
+      AND (m<Nsteps IMPLIES repulsive_criteria(s,(m*timestep)*v,eps)((man_pos_seq(s,timestep,velseq)(m+1)-s)))
+
+  repulsive_criteria_iterative_reduces_seq_div: LEMMA s*v>=0 AND
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    FORALL (m:subrange(1,Nsteps)): s*velseq(m)>=0 AND
+     (m<Nsteps IMPLIES 
+      LET vv=man_pos_seq(s,timestep,velseq)(m+1)-s 
+	    IN  s*vv>=0)
+
+  repulsive_criteria_iterative_reduces_div: LEMMA s*v>=0 AND
+    repulsive_criteria_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    s*(maneuver_position_at(s,timestep,velseq,Nsteps)(t)-s)>=t*(s*v)
+
+  % Relative sequence of velocities
+
+  relative_velseq_vel(velseqo,vi)(i): Vect2 =
+    velseqo(i)-vi
+
+  relative_velseq(velseqo,velseqi)(i): Vect2 =
+    velseqo(i)-velseqi(i)
+
+  repulsive_criteria_iterative_coordinated: LEMMA
+    repulsive_criteria_iterative(s,vo-vi,timestep,
+	      relative_velseq_vel(velseqo,vi),Nsteps,eps) AND
+    repulsive_criteria_iterative(-s,vi-vo,timestep,
+	      relative_velseq_vel(velseqi,vo),Nsteps,eps)
+    IMPLIES
+    repulsive_iterative?(s,vo-vi,timestep,relative_velseq(velseqo,velseqi),Nsteps)
+
+END repulsive_iterative

@@ -1,0 +1,220 @@
+util : THEORY
+BEGIN
+
+  IMPORTING structures@array2list
+
+  %%% Types 
+
+  IntervalEndpoints : TYPE = [nat->[bool,bool]]  % Index i represent i-th var. It points to a qualification
+                             % of lowwer and upper bounds of the variable in a box. It's either open/closed
+                             % or bounded/unbounded.
+  Vars              : TYPE = [nat->real] % Index i represents i-th var. 
+                                         % It points to the value of that variable.
+  DegreeMono        : TYPE = [nat->nat] % Index i represents i-th var. It points to the degree of that var.
+  CoeffMono         : TYPE = [nat->nat] %
+  Polynomial        : TYPE = [nat->real] % Index i represents degree i. It points to the coeffient on that
+                             % degree
+  Polyproduct       : TYPE = [nat->Polynomial] % Index i represents i-th var.
+                             % It points to a univariate polynomial on that variable
+  Coeff             : TYPE = [nat->real] % Index i represents degree i. 
+                             % It points to the coefficient of that var.
+  MultiPolynomial   : TYPE = [nat->Polyproduct] % Index i points to the ith-term (standard polynomial)
+  MultiBernstein    : TYPE = [nat->Polyproduct] % Index i points to the ith-term (Bernstein polynomial)
+  PolyList          : TYPE = list[list[list[real]]] % List representation of multi-variate polynomial
+
+  %%% Variables 
+
+  mpoly           : VAR MultiPolynomial
+  boundedpts,  
+  intendpts	  : VAR IntervalEndpoints
+  rel    	  : VAR [[real,real]->bool]
+  nvars,terms     : VAR posnat
+  v		  : VAR nat
+  degmono1,
+  degmono2,
+  degmono         : VAR DegreeMono
+  f,
+  coeffmono1,
+  coeffmono2,
+  coeffmono	  : VAR CoeffMono
+  Avars,Bvars,
+  X               : VAR Vars
+
+  realorder?(rel) : bool = (rel = (<=)) OR (rel = (<)) OR (rel = (>=)) OR (rel = (>))
+  RealOrder       : TYPE = (realorder?)
+  relreal         : VAR RealOrder
+
+  le_realorder    : JUDGEMENT <= HAS_TYPE RealOrder
+  lt_realorder    : JUDGEMENT <  HAS_TYPE RealOrder
+  ge_realorder    : JUDGEMENT >= HAS_TYPE RealOrder
+  gt_realorder    : JUDGEMENT >  HAS_TYPE RealOrder
+
+  zeroes(i:nat)   : MACRO real = 0
+  ones(i:nat)     : MACRO real = 1
+
+  closed_box?(nvars)(intendpts) : bool = 
+    FORALL (iup:below(nvars)): intendpts(iup)`1 AND intendpts(iup)`2
+
+  intendpts_true(i:nat): MACRO [bool,bool] = (TRUE,TRUE)
+  boundedpts_true(i:nat): MACRO [bool,bool] = (TRUE,TRUE)
+
+  bounded_points_true?(nvars)(boundedpts): bool =
+    FORALL (i:below(nvars)): LET bpt = boundedpts(i) IN bpt`1 AND bpt`2
+
+  relreal_scal : LEMMA 
+    FORALL (x,y:real,pr:posreal): relreal(x,y) IFF relreal(pr*x,pr*y)
+
+  corner_point?(nvars,degmono)(coeffmono): bool =
+    FORALL (j:below(nvars)): coeffmono(j) = 0 OR coeffmono(j) = degmono(j)
+
+  edge_point?(degmono,nvars,f,intendpts,v)(ep:bool) : bool =
+    v <= nvars AND 
+    (ep IMPLIES FORALL (i:subrange(v,nvars-1)):
+                f(i) = 0 AND intendpts(i)`1 OR
+                degmono(i)/=0 AND f(i) = degmono(i) AND intendpts(i)`2)
+
+  %%% Unitbox
+
+  unitbox?(nvars)(X) : bool = 
+   FORALL (j:below(nvars)): 0 <= X(j) AND X(j) <= 1
+
+  bounded_points_exclusive?(nvars)(boundedpts): bool = 
+    FORALL (ii:below(nvars)): boundedpts(ii)`1 OR boundedpts(ii)`2
+
+  lt_below?(nvars)(Avars,Bvars) : bool = 
+    FORALL (j:below(nvars)): Avars(j)<Bvars(j)
+
+  le_below_mono?(nvars)(degmono1,degmono2) : bool = 
+    FORALL (j:below(nvars)): degmono1(j)<=degmono2(j)
+
+  eq_below_mono?(nvars)(coeffmono1,coeffmono2) : bool = 
+    FORALL (j:below(nvars)): coeffmono1(j)=coeffmono2(j)
+
+  interval_between?(A,B:real,intpt,bdpt:[bool,bool])(xyz:real): bool =
+     LET relA: [[real,real]->bool]= IF intpt`1 THEN <= ELSE < ENDIF,	
+     	 relB: [[real,real]->bool]= IF intpt`2 THEN <= ELSE < ENDIF
+     IN
+      (bdpt`1 AND bdpt`2 IMPLIES A < B) AND
+      (bdpt`1 OR bdpt`2) AND
+      (bdpt`1 IMPLIES relA(A,xyz)) AND
+      (bdpt`2 IMPLIES relB(xyz,B))
+
+  boxbetween?(nvars)(Avars,Bvars,intendpts,boundedpts)(X) : bool =
+    FORALL (j:below(nvars)):
+     interval_between?(Avars(j),Bvars(j),intendpts(j),boundedpts(j))(X(j))
+ 
+  %%% Translate intervals [A,B],(A,B],[A,B),(A,B),[A,infty),(A,infty),(-infty,B]
+  %%% (-infty,B) to [0,1],(0,1],[0,1),(0,1),(0,1],(0,1),(0,1],(0,1), respectively
+
+  interval_endpoints_inf_trans(Avars,Bvars,intendpts,boundedpts)(i:nat): [bool,bool] =
+    IF (boundedpts(i)`1 AND boundedpts(i)`2) THEN intendpts(i)
+    ELSIF boundedpts(i)`1 THEN (FALSE,intendpts(i)`1)
+    ELSE  (FALSE,intendpts(i)`2)
+    ENDIF
+
+  %%% Translate X to [Avars,Bvars] for Arrays
+
+  denormalize_lambda(nvars,X,boundedpts)(Avars,Bvars) : Vars = 
+    LAMBDA (i:nat): 
+      IF i < nvars THEN 
+        IF (boundedpts(i)`1 AND boundedpts(i)`2) THEN 
+          Avars(i) + X(i)*(Bvars(i)-Avars(i))
+        ELSIF boundedpts(i)`1 AND X(i)/=0 THEN 
+          (1+X(i)*(Avars(i)-1))/X(i)
+	ELSIF boundedpts(i)`2 AND X(i)/=0 THEN 
+          (-1-X(i)*(-Bvars(i)-1))/X(i)
+	ELSE 0 ENDIF
+      ELSE 0
+      ENDIF
+
+  normalize_lambda(nvars,X,boundedpts)(ABvars:(lt_below?(nvars))) : Vars = 
+    LAMBDA (i:nat): LET (Avars,Bvars) = ABvars IN 
+      IF i < nvars AND (boundedpts(i)`1 IMPLIES 
+         X(i)/=Avars(i)-1) AND (boundedpts(i)`2 IMPLIES X(i)/=Bvars(i)+1) THEN
+        IF (boundedpts(i)`1 AND boundedpts(i)`2) THEN 
+          (X(i)-Avars(i))/(Bvars(i)-Avars(i))
+	ELSIF boundedpts(i)`1 THEN 
+          1/(X(i)-Avars(i)+1)
+	ELSIF boundedpts(i)`2 THEN 
+          1/(Bvars(i)+1-X(i))
+	ELSE  0 ENDIF
+      ELSE 0
+      ENDIF
+
+  normalize_lambda_unitbox: LEMMA
+    boxbetween?(nvars)(Avars, Bvars, intendpts, boundedpts)(X) AND
+    lt_below?(nvars)(Avars,Bvars)
+    IMPLIES
+    unitbox?(nvars)
+              (normalize_lambda(nvars, X, boundedpts)
+                               (Avars, Bvars))
+
+  %%% Translate X to [Avars,Bvars] for Lists
+
+  denormalize_listreal_rec(l:list[real],nnvars:upfrom(length(l)),Avars,Bvars,boundedpts): RECURSIVE 
+    {norml : listn[real](length(l)) |
+             FORALL(i:below(length(l))) :
+               nth(norml,i) = LET n = nnvars-length(l) IN 
+	                       IF n+i<nnvars THEN
+	       		          IF (boundedpts(n+i)`1 AND boundedpts(n+i)`2) THEN 
+                                    Avars(n+i) + nth(l,i)*(Bvars(n+i)-Avars(n+i))
+				  ELSIF boundedpts(n+i)`1 AND nth(l,i)/=0 THEN 
+                                    (1+nth(l,i)*(Avars(n+i)-1))/nth(l,i)
+				  ELSIF boundedpts(n+i)`2 AND nth(l,i)/=0 THEN 
+                                    (-1-nth(l,i)*(-Bvars(n+i)-1))/nth(l,i)
+				  ELSE  0 ENDIF
+			       ELSE 0 ENDIF} =
+    CASES l OF
+      null : null,
+      cons(a,r) : cons(LET n = nnvars-length(l) IN 
+	                       IF n<nnvars THEN
+	       		          IF (boundedpts(n)`1 AND boundedpts(n)`2) THEN 
+                                    Avars(n) + a*(Bvars(n)-Avars(n))
+				  ELSIF boundedpts(n)`1 AND a/=0 THEN 
+                                    (1+a*(Avars(n)-1))/a
+				  ELSIF boundedpts(n)`2 AND a/=0 THEN 
+                                    (-1-a*(-Bvars(n)-1))/a
+				  ELSE  0 ENDIF
+			       ELSE 0 ENDIF,
+                       denormalize_listreal_rec(cdr(l),nnvars,Avars,Bvars,boundedpts))
+    ENDCASES
+  MEASURE l BY <<
+
+  denormalize_listreal(l:list[real])(Avars,Bvars,boundedpts): listn[real](length(l)) =
+    denormalize_listreal_rec(l,length(l),Avars,Bvars,boundedpts)
+
+  %%% Polynomials as arrays <-> Polynomials as lists
+
+  polylist(mpoly,degmono,nvars,terms) : PolyList =
+    array2list[list[list[real]]](terms)(LAMBDA(t:nat):
+              array2list[list[real]](nvars)(LAMBDA(v:nat):
+                        array2list[real](degmono(v)+1)(mpoly(t)(v))))   
+
+  translist(mpl:PolyList)(t:nat)(v:nat)(d:nat) : real =
+    list2array[real](0)(
+              list2array[list[real]](null)(
+                        list2array[list[list[real]]](null)(mpl)(t))(v))(d)
+
+  translist_polylist_id: LEMMA  
+   FORALL (t:below(terms),v:below(nvars),i:upto(degmono(v))):
+     translist(polylist(mpoly,degmono,nvars,terms))(t)(v)(i) =
+     mpoly(t)(v)(i)
+ 
+  %%% Monomial utility functions
+
+  corner_to_point(f:CoeffMono,nvars): {l : listn[real](nvars) | 
+                                           unitbox?(nvars)(list2array(0)(l))} =
+    array2list(nvars)(LAMBDA(v:nat):IF f(v)=0 THEN 0 ELSE 1 ENDIF)
+
+  mono_le?(nvars)(degmono1,degmono2): bool = 
+    FORALL (ii:below(nvars)): degmono1(ii)<=degmono2(ii)
+
+  zero_poly_prod(v:nat)(i:nat): real = 0
+
+  mono_max(degmono1,degmono2)(i:nat): nat = 
+    max(degmono1(i),degmono2(i))
+
+  mono_sum(degmono1,degmono2)(i:nat): nat = 
+    degmono1(i)+degmono2(i)
+
+END util

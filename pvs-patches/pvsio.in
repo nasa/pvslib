@@ -1,0 +1,220 @@
+#!/bin/sh
+#
+# pvsio.in
+# Release: PVSio-6.0.9 (3/14/14)
+#
+# Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
+# NASA Langley Research Center
+# http://shemesh.larc.nasa.gov/people/cam/PVSio
+#
+# Copyright (c) 2011-2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# Script for batch proving several libraries in PVS 
+#
+
+PVSPATH=@PVSPATH@
+
+#-------------------------------------------------
+# Nothing below this line should need modification
+
+export PVSIOTCCS=nil
+export PVSIOVERB=nil
+export PVSIOTIME=nil
+export PVSIOVERSION="PVSio-6.0.9 (3/14/14)"
+export PVSIOPROMPTIN="<PVSio> "
+export PVSIOPROMPTOUT="==>~%"
+
+PACK=
+DEBUG=
+
+usage() {
+  echo "$PVSIOVERSION -- pvsio is a command-line utility to run the PVSio ground evaluator.
+
+Usage: pvsio <option>* [<pvsfile>][@<theory>[:[<main>]]]
+where <option> can be
+  -h|--help                
+   Print this message
+  -p|--packages <P1>,..,<Pn>   
+   Load packages (prelude libraries) <P1>,..,<Pn>
+  -promptin <string>
+   Change prompt \"$PVSIOPROMPTIN\" to <string>
+  -promptout <string>
+   Change prompt \"$PVSIOPROMPTOUT\" to <string>
+  -t|--tccs                
+   Generate TCCs     
+  -T|--timing              
+   Print timing information for each evaluation
+  -v|--version             
+   Print PVSio version
+  -V|--verbose             
+   Print typechecking information
+  -l|--lisp allegro|cmulisp,sbclisp 
+   Specify a particular PVS binary to execute PVSio. Use this option only 
+   if you know what you are doing.
+
+One-letter options can be combined.
+
+Typical use:
+  * pvsio <pvsfile.pvs>
+    Load PVS file pvsfile.pvs and start PVSio read-and-eval loop
+  * pvsio @<theory>
+    Load PVS theory <theory> from file <theory>.pvs and start PVSio 
+    read-and-eval loop
+  * pvsio @<theory>:
+    Load PVS theory <theory> from file <theory>.pvs and ground evaluate 
+    function \"main\".
+  * pvsio @<theory>:<f> <a1> ... <an>
+    Load PVS theory <theory> from file <theory>.pvs and ground evaluate
+    function f(a1,...,an) 
+  * pvsio <file>@<theory>:<f> <a1> ... <an>
+    Load PVS thoery <theory> from file <file>.pvs and ground evaluate
+    function f(a1,...,an)
+"  
+}
+
+while [ $# -gt 0 ]
+do
+  case $1 in
+      -debug|--debug)
+        DEBUG=yes;;
+      -h|-help|--help)     
+	  usage
+	  exit 0;;
+      -l|-lisp|--lisp)    
+	  case $2 in
+	      allegro) PVSLISP='-lisp allegro';;
+	      cmulisp) PVSLISP='-lisp cmulisp';;
+	      sbclisp) PVSLISP='-lisp sbclisp';;
+	      *) echo "Only allegro, cmulisp, and sbclisp are currently available"
+		  exit 1;;
+	  esac
+	  shift;;
+      -p|-packages|--packages) 
+	  if [ "$PACK" ]; then
+  	    PACK="$PACK,$2"
+          else
+            PACK=$2
+          fi
+	  shift;;
+      -promptin)
+          PVSIOPROMPTIN="$2"
+          shift;;
+      -promptout)
+          PVSIOPROMPTOUT="$2"
+          shift;;
+      -tccs|--tccs)        
+	  PVSIOTCCS=t;;
+      -timing|--timing) 
+	  PVSIOTIME=t;;
+      -verbose|--verbose)
+	  PVSIOVERB=t;;
+      -v|-version|--version)  
+	  echo $PVSIOVERSION
+	  exit 0;;
+      -*)           
+	  OPTS=`echo "$1" | sed -e s/-//g -e "s/\(.\)/\1 /g"`
+	  for opt in $OPTS
+	    do
+	    case $opt in
+		t)     
+		    PVSIOTCCS=t;;
+		T)   
+		    PVSIOTIME=t;;
+		V)   
+		    PVSIOVERB=t;;
+		*) 
+		    usage
+		    echo "Error: -$opt is not a valid option"
+		    exit 1;;
+	    esac
+	  done;;  
+      *)            
+	  ARG="$1"
+	  shift
+	  if [ "$1" ]; then
+            PARAM="$1"
+	    shift
+          fi
+          while [ $# -gt 0 ]
+          do
+            PARAM="$PARAM,$1"
+            shift
+          done
+  esac
+  shift
+done
+
+if [ "$PACK" ]; then
+    PACK=`echo "(\"$PACK\")" | sed -e "s/,/\" \"/g"`
+else
+    PACK=nil
+fi
+
+if [ -z "$ARG" ]; then
+  echo "pvsio__ : THEORY BEGIN pvsio__ : void = TRUE END pvsio__" > /tmp/pvsio__.pvs
+  ARG="/tmp/pvsio__"
+fi
+
+MAIN=
+
+case $ARG in
+  *@*) FILE=`echo $ARG | sed -e "s/\([^@]*\)@.*/\1/"`
+       THMA=`echo $ARG | sed -e "s/[^@]*@//"`;;
+  *)   FILE=$ARG
+esac
+
+case $THMA in
+  *:*) THEORY=`echo $THMA | sed -e "s/\([^:]\):.*$/\1/"`
+       MAIN=`echo $THMA | sed -e "s/[^:]*://"`
+       if [ -z "$MAIN" ]; then
+         MAIN="main"
+       fi
+       if [ "$PARAM" ]; then
+         MAIN="$MAIN($PARAM)"
+       fi;;
+  *)   THEORY=$THMA
+esac
+
+if [ "$THMA" -a -z "$FILE" ]; then
+  FILE=$THEORY
+fi
+
+DIR=`dirname $FILE`
+NAME=`basename $FILE .pvs`
+FILE="$DIR/$NAME"
+
+if [ ! -f "$FILE.pvs" ]; then
+  echo Error: "File $FILE.pvs doesn't exist"
+  exit 0
+fi
+
+if [ -z "$THEORY" ]; then
+  THEORY=$NAME
+fi
+
+export PVSIOFILE=$FILE
+export PVSIOTHEORY=$THEORY
+export PVSIOPACK=$PACK
+export PVSIOMAIN=$MAIN
+
+if [ "$DEBUG" ]; then
+  echo "*** PVSio Environment Variables"
+  echo "\$PVSIOFILE=$PVSIOFILE"
+  echo "\$PVSIOTHOERY=$PVSIOTHEORY"
+  echo "\$PVSIOPACK=$PVSIOPACK"
+  echo "\$PVSIOMAIN=$PVSIOMAIN"
+fi
+
+if [ "$PVSIOMAIN" -a "$PVSIOVERB" = nil ]; then
+    $PVSPATH/pvs -raw $PVSLISP -E "(run-pvsio)" | awk '
+BEGIN { beginpvsio = 0 }
+/Starting pvsio script/ { beginpvsio = 1; getline }
+beginpvsio == 1 { print }
+END { }
+'
+else 
+    $PVSPATH/pvs -raw $PVSLISP -E "(run-pvsio)"
+fi

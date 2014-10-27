@@ -1,0 +1,83 @@
+%------------------------------------------------------------------------------
+% A Structural Operational Semantics
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+sos[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING State[V], AExp[V], BExp[V], Stm[V], Cont[V]
+
+  S,S0,S1,S2: VAR Stm
+  a: VAR AExp
+  b: VAR BExp
+  s,s0,s1,s2: VAR State
+  i,j: VAR int
+  x: VAR V
+  n,k,k0,k1,k2: VAR nat
+
+  Config: DATATYPE
+  BEGIN
+    I(S:Stm,s:State) : I?
+    T(s1:State)      : T?
+  END Config
+
+  c,c0,c1,c2: VAR Config
+
+  step(S,s): RECURSIVE [Config]
+    = CASES S OF
+        Assign(x,a)          : T(assign(x,A(a))(s)),
+        Skip                 : T(s),
+        Sequence(S1,S2)      : CASES step(S1,s) OF
+                                 I(S11,s1) : I(Sequence(S11,S2),s1),
+                                 T(s1)     : I(S2,s1) ENDCASES,
+        Conditional(b,S1,S2) : IF B(b)(s) THEN I(S1,s) ELSE I(S2,s) ENDIF,
+        While(b,S1)          : I(Conditional(b,Sequence(S1,S),Skip),s)
+      ENDCASES MEASURE S BY <<
+
+  terminal?(c):bool = T?(c)
+  intermediate?(c):bool = I?(c)
+
+  TConfig: TYPE = (terminal?)
+  IConfig: TYPE = (intermediate?)
+
+  TConfig_is_Config: JUDGEMENT TConfig SUBTYPE_OF Config
+  IConfig_is_Config: JUDGEMENT IConfig SUBTYPE_OF Config
+
+  tr(n)(c0,c): RECURSIVE bool
+    = IF n=0 THEN c0=c
+      ELSE I?(c0) AND CASES c0 OF I(S,s): tr(n-1)(step(S,s),c) ENDCASES ENDIF
+      MEASURE n
+
+  tr_add: LEMMA tr(k1+k2)(c0,c2) IFF EXISTS c1: tr(k1)(c0,c1) AND tr(k2)(c1,c2)
+  tr_eq:  LEMMA tr(k)(c0,c1) AND tr(k)(c0,c2) => c1 = c2
+
+  tr_split: LEMMA                                                    % N&N 2.19
+     tr(k)(I(Sequence(S1,S2),s0),T(s2)) =>
+     EXISTS s1,k1,k2:
+       tr(k1)(I(S1,s0),T(s1)) AND tr(k2)(I(S2,s1),T(s2)) AND k1+k2=k
+
+  tr_partial: LEMMA                                                  % N&N 2.21
+     tr(k)(I(S1,s0),T(s1)) => tr(k)(I(Sequence(S1,S2),s0),I(S2,s1))
+
+  tr_deterministic: LEMMA
+     (tr(k1)(c,T(s1)) AND tr(k2)(c,T(s2))) => (k1 = k2 AND s1 = s2)
+
+  SS(S) : Cont
+    = lambda s:
+        IF EXISTS n,s1: tr(n)(I(S,s),T(s1))
+        THEN up(choose({s1 | EXISTS n: tr(n)(I(S,s),T(s1))}))
+        ELSE bottom ENDIF
+
+  SS_deterministic: LEMMA (EXISTS n: tr(n)(I(S,s),T(s1))) IFF SS(S)(s) = up(s1)
+                                                                     % N&N 2.22
+
+END sos

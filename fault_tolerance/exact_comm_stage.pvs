@@ -1,0 +1,107 @@
+%
+%
+% Purpose : Describe properties about exact communication in 
+%           relation to the results-based fault model.
+%
+%
+
+exact_comm_stage 
+[
+    S   : posnat,  % Number of sources 
+    D   : posnat,  % Number of destinations
+    T   : TYPE+    % Message type
+] : THEORY
+
+  BEGIN
+
+  IMPORTING
+    fault_assumptions_stage[S, D, T]
+
+  t: VAR T
+
+  s, s1, s2: VAR below(S)
+  d, d1, d2: VAR below(D)
+
+  src_set, correct_set: VAR finite_set[below(S)]
+
+  sent: VAR sent_vec_stage
+  rcvd: VAR rcvd_matrix_stage
+  check: VAR check_stage
+
+  % this predicate asserts that all sources in src_set are 
+  % correctly denoted sources
+  exact_correct_denotation?(sent, rcvd, check)(src_set): bool =
+    FORALL d, s: 
+        src_set(s) AND 
+        enabled(rcvd, check)(d)(s) 
+      IMPLIES
+        rcvd(d)(s) = sent(s)
+
+  % this predicate asserts that all sources in src_set are 
+  % singly denoted sources
+  exact_single_denotation?(rcvd, check)(src_set): bool =
+    FORALL d1, d2, s:
+        src_set(s) AND
+        enabled(rcvd, check)(d1)(s) AND
+        enabled(rcvd, check)(d2)(s)
+      IMPLIES
+        rcvd(d1)(s) = rcvd(d2)(s)
+
+  % if all nodes in a given set are enabled;
+  % all conforming correct_denotation sources send genuine values;
+  % and the sent values of all nodes in the given set agree:
+  % then the received values from enabled correct_denotation sources agree.
+  correct_uniform: LEMMA
+      enabled_within?(rcvd, check)(src_set) AND
+      exact_correct_denotation?(sent, rcvd, check)(correct_set) AND
+      uniform?(sent, t)(src_set)
+    IMPLIES
+      uniform?(rcvd(d), t)(intersection(correct_set, enabled(rcvd, check)(d)))
+
+  correct_uniform_alt: LEMMA
+      enabled_within?(rcvd, check)(src_set) AND
+      exact_correct_denotation?(sent, rcvd, check)(correct_set) AND
+      uniform?(sent, t)(enabled?(rcvd, check))
+    IMPLIES
+      uniform?(rcvd(d), t)(intersection(correct_set, enabled(rcvd, check)(d)))
+
+  tau: VAR tau_type
+ 
+  % Quorum is a generalized type of majority.  tau=0 means unamimous, tau=mid
+  % means a (simple) majority.
+
+  quorum_correct?(sent, rcvd, check, tau): bool =
+    EXISTS src_set:
+      exact_correct_denotation?(sent, rcvd, check)(src_set) AND
+      quorum?(rcvd, check, tau)(src_set)
+
+  majority_correct?(sent, rcvd, check): bool = 
+    EXISTS src_set:
+      exact_correct_denotation?(sent, rcvd, check)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  majority_correct_rw: LEMMA
+    majority_correct?(sent, rcvd, check) = quorum_correct?(sent, rcvd, check, mid)
+ 
+  all_symmetric?(rcvd, check): bool = 
+    EXISTS src_set: 
+      exact_single_denotation?(rcvd, check)(src_set) AND
+      uniformly_enabled?(rcvd, check)(src_set) AND
+      enabled_within?(rcvd, check)(src_set) 
+
+  % The following were added to enable diagnostic results for majority
+
+  majority_correct_element?(sent, rcvd, check)(s): bool = 
+    EXISTS src_set:
+      src_set(s) AND
+      exact_correct_denotation?(sent, rcvd, check)(src_set) AND
+      majority?(rcvd, check)(src_set)
+
+  symmetric_source?(rcvd, check)(s): bool = 
+    EXISTS src_set:
+      src_set(s) AND
+      exact_single_denotation?(rcvd, check)(src_set) AND
+      uniformly_enabled?(rcvd, check)(src_set) AND
+      enabled_within?(rcvd, check)(src_set)
+
+END exact_comm_stage

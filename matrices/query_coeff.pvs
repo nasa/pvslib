@@ -1,0 +1,169 @@
+query_coeff  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+  % STURM : LIBRARY = "../Sturm"
+
+
+IMPORTING tensor_product %, STURM@tarski_query
+
+f: VAR  [nat->below(3)]
+i,j,k: VAR  nat
+
+
+% First, we define a function that gets the base 3 representation of k+1 from the base 3 representation
+% of k.    
+
+bump_one_ind(j:posnat, (f| FORALL( k:above(j)): f(k)=0), (i:upto(j+1))): 
+         RECURSIVE {ff:[nat->below(3)]| FORALL(k:above(j+1)): ff(k) = 0} = 
+	    IF f(i)<2 THEN
+	       f WITH [i:=f(i)+1]
+	    ELSE 
+	       bump_one_ind (j, f,i+1) WITH [i:=0]
+	    ENDIF
+	    MEASURE (j+1-i)
+
+
+    % list version...
+
+switch_one_entry(L:{ll:list[below(3)]|cons?[below(3)](ll)}, n: below(length(L)), new:below(3)): RECURSIVE
+  {ll:list[below(3)]| length(ll) = length(L) AND FORALL (i:below(length(L))): i/=n IMPLIES nth(ll, i) = nth(L, i)} = 
+   IF n=0 THEN cons(new, cdr(L)) 
+   ELSE cons(car(L), switch_one_entry(cdr(L), n-1, new))
+   ENDIF
+   MEASURE n
+
+switch_is_with: LEMMA FORALL (L:{ll:list[below(3)]|cons?[below(3)](ll)}, n: below(length(L)), new:below(3), (f|array2list[below(3)](length(L))(f) = L)):
+         switch_one_entry(L, n, new) = array2list[below(3)](length(L))(f WITH [n:=new])
+
+bump_one_ind_list(j:posnat, L:listn[below(3)](j+1), i:upto(j+1)): RECURSIVE listn[below(3)](j+1) = 
+	    IF i=j+1 THEN L 
+	    ELSE LET ent = nth(L,i) IN
+	    	 IF ent<2 THEN
+		    switch_one_entry(L, i, ent+1)
+		 ELSE switch_one_entry(bump_one_ind_list(j, L, i+1), i, 0)
+		 ENDIF
+	    ENDIF
+	    MEASURE j+1-i
+
+
+
+   
+
+% Wonder if it's worth the trouble....  
+
+% speed_test1(i:nat, n:posnat, l:listn[below(3)](n+1) ): RECURSIVE list[below(3)] = 
+% IF i=0 THEN l
+% ELSE LET L = bump_one_ind_list(n, l, 0) IN
+%   speed_test1(i-1, n, L)
+% ENDIF
+% MEASURE i 
+
+% speed_test1(3^17-2, 16, (: 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 :))
+
+% speed_test2(i:nat, n:posnat, f): RECURSIVE [nat->below(3)] = 
+% IF i=0 THEN f
+% ELSE LET F = bump_one_ind(n, f, 0) IN
+%    speed_test2(i-1, n, F)
+% ENDIF
+% MEASURE i
+
+% array2list[below(3)](17)(speed_test2(3^17-2, 16, LAMBDA(j:nat): 0))
+
+	       
+	  
+
+bump_one_below: LEMMA FORALL (j:posnat, (f| FORALL( k:above(j)): f(k)=0),(i:upto(j+1)), (k:nat)):
+	  k<i IMPLIES bump_one_ind (j,f,i)(k) = f(k)  
+
+bump_one_ind_lem: LEMMA  FORALL(j:posnat, (f| FORALL( k:above(j)): f(k)=0), (i:upto(j+1))):
+ 		  base_n_to_nat(3, bump_one_ind(j,f,i), j+1) = 
+		  IF f(i)<2 THEN base_n_to_nat(3, f, j+1) + 3^i
+ 		  ELSE base_n_to_nat(3, bump_one_ind(j, f, i+1), j+1) - f(i)*3^i
+		  ENDIF
+
+bump_one_ind_lem2: LEMMA  FORALL(j:posnat, (f| FORALL( k:above(j)): f(k)=0), (i:upto(j+1))):
+ 		  (FORALL(m:nat): m<=i IMPLIES f(m) =2) IMPLIES  
+		  base_n_to_nat(3, bump_one_ind(j,f,0), j+1) = 
+		   base_n_to_nat(3, bump_one_ind(j, f, i+1), j+1) - sigma(0,i, LAMBDA (s:nat): 2*3^s)
+
+low2(j:posnat, (f| FORALL( k:above(j)): f(k)=0), i:{ii:upto(j+1)|f(ii)<2} ): RECURSIVE {ii:upto(j+1)|f(ii)<2}= 
+               IF (EXISTS(m:nat): m<i AND f(m)<2) THEN low2(j, f, choose({m:nat| m<i AND f(m)<2}))  
+	       ELSE i 
+	       ENDIF
+	       MEASURE i
+
+low2_lem: LEMMA FORALL (j:posnat, (f| FORALL( k:above(j)): f(k)=0), i:{ii:upto(j+1)|f(ii)<2}):
+	  LET M =  low2(j, f, i) IN 
+	  f(M)<2 AND (FORALL (m:nat): m<M IMPLIES f(m)=2)
+
+
+
+bump_one_prep: LEMMA FORALL(j:posnat, (f| FORALL( k:above(j)): f(k)=0)):
+	       base_n_to_nat(3, bump_one_ind(j, f, 0), j+1) = 
+	       base_n_to_nat(3, f, j+1) +1
+
+bump_one_prep2: LEMMA FORALL (k:nat, (f| f=base_n(3,k))): 
+		bump_one_ind(upper_index(3,k)+1, f, 0) = base_n(3, k+1)
+
+% This function gets the base 3 representation of k+1 without switching back to a natural number. 
+
+bump_one(k:nat, (f| f=base_n(3,k))): {ff:[nat->below(3)]| ff = base_n(3,k+1)} = 
+		   bump_one_ind(upper_index(3,k)+1, f, 0)
+
+
+
+% A lemma to relate the function version to the list version
+
+switch_to_array: LEMMA FORALL (j:posnat, L:listn[below(3)](j+1), (f| FORALL( k:above(j)): f(k)=0), i:upto(j+1)):
+       array2list[below(3)](j+1)(f) = L IMPLIES 
+       bump_one_ind_list(j, L, i) = array2list[below(3)](j+1)(bump_one_ind(j,f,i))
+
+bump_one_list(j:posnat, k:below(3^(j+1)), L:{ll:listn[below(3)](j+1)| ll=base_list(3,k,j+1)}):
+    {ll:listn[below(3)](j+1)| ll= base_list(3, k+1, j+1)}  
+		     = bump_one_ind_list(j, L, 0) 
+
+
+                    
+
+
+% Here's a function that takes a list, two functions on the list, and returns the product if the first is non-zero. 
+% In this way, we avoid computing G when the product is zero anyway. 
+
+is_nonzero(j:posnat, l:{ll:list[below(3)]| length(ll)=j}, F, G: [{ll:list[below(3)]| length(ll)=j}->real]): {x:real| x = F(l)*G(l)} = 
+		     IF F(l) = 0 THEN 0
+		     ELSE F(l)*G(l)
+		     ENDIF
+
+% This is bad right now...
+
+dot_tail_sum2plus(n:{x:nat|x>1}, F, G: [{ll:list[below(3)]| length(ll)=n}->real], a:real, i:upto(3^n), L:{ll:list[below(3)]| ll = base_list(3, i, n)}): RECURSIVE real = 
+		IF i=3^n THEN a
+		ELSE LET A = a+ is_nonzero(n, L, F, G) IN 
+		    dot_tail_sum2plus(n, F, G, A, i+1, bump_one_list(n-1, i, L))
+		ENDIF
+		MEASURE 3^n-i
+
+dot_tail_sum_lem: LEMMA FORALL (n:{x:nat|x>1}, F, G: [{ll:list[below(3)]| length(ll)=n}->real], a:real, i:upto(3^n), L:{ll:list[below(3)]| ll = base_list(3, i, n)}):
+		  dot_tail_sum2plus(n, F, G, a, i, L) = a+sigma( i, 3^n-1, LAMBDA(j:nat): F(base_list(3, j, n))*G(base_list(3, j, n)))
+ 
+
+is_nz(j:posnat, f, (F,G: [[nat->below(3)]->real])): 	{x:real| x = F(f)*G(f)} = 
+		     IF F(f) = 0 THEN 0
+		     ELSE F(f)*G(f)
+		     ENDIF	
+
+dot_tail_sum2(n:posnat,  F,G: [[nat->below(3)]->real], a:real, i:upto(3^n), (f|f=base_n(3,i)) ): RECURSIVE real = 
+		IF i=3^n THEN a
+		ELSE LET A = a+ is_nz(n, f, F, G) IN 
+		    dot_tail_sum2(n, F, G, A, i+1, bump_one(i, f))
+		ENDIF
+		MEASURE 3^n-i
+
+dot_tail_sum_lem2: LEMMA FORALL (n:posnat, F, G: [[nat->below(3)]->real], a:real, i:upto(3^n)):
+		  dot_tail_sum2(n, F, G, a, i, base_n(3,i)) = a+sigma( i, 3^n-1, LAMBDA(j:nat): F(base_n(3, j) )*G(base_n(3, j)))
+
+
+
+  End query_coeff

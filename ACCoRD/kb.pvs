@@ -1,0 +1,216 @@
+%
+% Karl Bilimoria's Geometric Optimization Algorithm
+% 
+
+kb[D:posreal] : THEORY
+BEGIN
+
+  IMPORTING repulsive,
+            track,
+	    trig_fnd@trig_values,
+	    trig_fnd@atan_values,
+	    horizontal[D],
+	    tangent_line[D]
+
+  s       : VAR Ss_vect2
+  vo,vi,v : VAR Nz_vect2
+  nvo,nvi : VAR Vect2
+  f,fo,fi : VAR nnreal
+  eps,irt : VAR Sign
+  p	  : VAR posreal
+  x,y,r,
+  phi	  : VAR real
+
+  angle_from_to(x,y): {aa:real|aa>=-pi AND aa<pi} =
+    to2pi((y-x) + pi)-pi
+
+  % The next lemma proves with grind
+  angle_from_to_id: LEMMA
+    to2pi(x + angle_from_to(x,y)) = to2pi(y)
+
+  angle_from_to_lt_pi: LEMMA abs(x-y)<pi IMPLIES
+    angle_from_to(x,y) = y-x
+
+  % The next lemma proves with (grind :exclude "pi")
+  angle_from_to_test: LEMMA
+    angle_from_to(2*pi,pi) = -pi AND
+    angle_from_to(pi,2*pi) = -pi AND
+    angle_from_to(pi/6,11*pi/6) = -pi/3 AND
+    angle_from_to(pi/2,5*pi/3) = -5*pi/6 AND
+    angle_from_to(pi/4,7*pi/6) = 11*pi/12 AND
+    angle_from_to(7*pi/6,pi/4) = -11*pi/12 AND
+    angle_from_to(0,2*pi) = 0 AND
+    angle_from_to(2*pi,0) = 0 AND
+    angle_from_to(3*pi/4,23*pi/12) = -5*pi/6 AND
+    angle_from_to(23*pi/12,3*pi/4) = 5*pi/6 AND
+    angle_from_to(17*pi/12,pi/6) = 3*pi/4 AND
+    angle_from_to(pi/6,17*pi/12) = -3*pi/4 AND
+    angle_from_to(34*pi + pi/4,-24*pi+7*pi/6) = 11*pi/12 AND
+    angle_from_to(34*pi+17*pi/12,-18*pi+pi/6) = 3*pi/4
+
+  chirel_star(s,v,f,eps) : nnreal_lt_2pi = 
+    to2pi(track(v) + f*angle_from_to(track(v),track(-s) - eps*asin(D/norm(s))))
+
+  chirel_star_equiv: LEMMA 
+    abs(track(v) - (track(-s) - eps*asin(D/norm(s)))) < pi AND 
+    f >= 0 AND 
+    f<=1 
+    IMPLIES
+    chirel_star(s,v,f,eps) = to2pi(track(v)+f*(track(-s) - eps*asin(D/norm(s)) - track(v)))
+
+  chirel_star_test: LEMMA
+     D = 5 AND s = (-10/sqrt(3),0) AND
+     vo = (2,0) AND
+     vi = (1,0) IMPLIES
+     track(vo) = pi/2 AND track(vi) = pi/2
+     AND horizontal_conflict?(s,vo-vi) AND
+     track(vo-vi) = pi/2 AND
+     track(-s) = pi/2 AND
+     norm(s) = 10/sqrt(3) AND
+     chirel_star(s,vo-vi,1/2,-1) = 2*pi/3 AND
+     chirel_star(s,vo-vi,1,-1) = 5*pi/6 AND
+     chirel_star(s,vo-vi,0,-1) = pi/2
+
+  chirel_star_0_id: LEMMA chirel_star(s,v,0,eps) = track(v)
+
+  chirel_star_1_id: LEMMA chirel_star(s,v,1,eps) = to2pi(track(-s) - eps*asin(D/norm(s)))
+
+  chirel_star_f_entry_scaf: LEMMA abs(phi)<=pi AND cos(r)<0 AND cos(r-phi)<0 AND f>=0 AND f<=1
+    IMPLIES cos(r-f*phi)<0
+
+  chirel_star_tangent: LEMMA line_solution?(s,trkgs2vect(chirel_star(s,v,1,eps),p),eps)
+
+  chirel_star_f_entry: LEMMA f<1 AND s*v < 0 IMPLIES s*trkgs2vect(chirel_star(s,v,f,eps),p) < 0
+
+  chi_hc(f,eps,irt)(s,vo,vi) : [nnreal_lt_2pi,bool] =
+    LET v = vo - vi IN
+      IF zero_vect2?(v) THEN (0,false) 
+      ELSE 
+        LET chirelstar = chirel_star(s,v,f,eps),
+            expr       = (norm(vi)/norm(vo))*sin(chirelstar-track(vi)),
+	    asinex     = IF abs(expr) > 1 THEN FALSE ELSE asin(expr) ENDIF,
+	    exsign     = sign(asinex),	
+	    expidiff   = exsign*(pi/2)-asinex,
+	    arcsindir  = exsign*(pi/2)+irt*expidiff,
+	    theta      = to2pi(chirelstar - arcsindir),
+	    nvovect    = trkgs2vect(theta,norm(vo))
+	IN
+          IF (abs(expr) > 1 OR s*(nvovect-vi)>=0) THEN (0,false)
+          ELSE (theta,true)
+          ENDIF
+      ENDIF
+
+  sin_track_minus: LEMMA
+    vo-vi /= zero IMPLIES
+    norm(vo)*sin(track(vo-vi)-track(vo)) = norm(vi)*sin(track(vo-vi)-track(vi))
+
+  chi_hc_sin_equivalence_2: LEMMA
+    LET ch = chi_hc(f,eps,irt)(s,vo,vi),
+        nvo = trkgs2vect(ch`1,norm(vo))
+    IN
+    ch`2 IMPLIES
+    norm(vi)*sin(chirel_star(s,vo-vi,f,eps) - track(vi)) = norm(vo)*sin(chirel_star(s,vo-vi,f,eps) - track(nvo))
+
+  chi_hc_track_eq: LEMMA
+    FORALL (v,w:Nz_vect2): v`y/=0 AND w`y/=0 AND v`x/v`y = w`x/w`y AND s*v<0 AND s*w<0 IMPLIES track(v) = track(w)
+
+  chi_hc_1_chirel: LEMMA
+    chi_hc(1,eps,irt)(s,vo,vi)`2 IMPLIES
+    track(trkgs2vect(chi_hc(1,eps,irt)(s,vo,vi)`1,norm(vo)) - vi) = chirel_star(s,vo-vi,1,eps)
+
+  chi_hc_f_chirel: LEMMA
+    s*(vo-vi)<0 AND
+    chi_hc(f,eps,irt)(s,vo,vi)`2 AND f < 1 IMPLIES
+    track(trkgs2vect(chi_hc(f,eps,irt)(s,vo,vi)`1,norm(vo)) - vi) = chirel_star(s,vo-vi,f,eps)
+
+  chi_hc_0_id: LEMMA 
+      chi_hc(0,eps,-1)(s,vo,vi)`2 AND
+      -pi/2 < track(vo-vi)-track(vo) AND
+      track(vo-vi)-track(vo) < pi/2
+    IMPLIES 
+      chi_hc(0,eps,-1)(s,vo,vi)`1 = track(vo)
+
+  chi_hc_0_id_rel: LEMMA
+      chi_hc(0,eps,irt)(s,vo,vi)`2 AND
+      -pi/2 < track(vo-vi)-track(vo) AND
+      track(vo-vi)-track(vo) < pi/2 AND
+      s*(vo-vi) < 0
+    IMPLIES 
+    LET
+      nvo = trkgs2vect(chi_hc(0,eps,irt)(s,vo,vi)`1,norm(vo))
+    IN
+      track(nvo-vi) = track(vo-vi)
+
+  kb(eps,irt,f)(s,vo,vi) : Vect2 =  
+    LET (trk,b) = chi_hc(f,eps,irt)(s,vo,vi) IN
+      IF b THEN trkgs2vect(trk,norm(vo)) 
+      ELSE zero
+      ENDIF
+
+  kb_0_id : LEMMA
+      chi_hc(0,eps,-1)(s,vo,vi)`2 AND
+      -pi/2 < track(vo-vi)-track(vo) AND
+      track(vo-vi)-track(vo) < pi/2 
+    IMPLIES 
+      kb(eps,-1,0)(s,vo,vi) = vo
+
+  kb_tangent_line : LEMMA
+        chi_hc(1,eps,irt)(s,vo,vi)`2 AND
+        -pi/2 < track(vo-vi)-track(vo) AND
+        track(vo-vi)-track(vo) < pi/2 
+    IMPLIES
+        line_solution?(s,kb(eps,irt,1)(s,vo,vi)-vi,eps)
+
+  kb_is_independent : THEOREM
+    horizontal_conflict?(s,vo-vi) AND
+    abs(track(vo-vi)-track(vo)) < 0 AND
+    abs(track(vi-vo)-track(vi)) < 0 AND
+    nvo = kb(eps,irt,1)(s,vo,vi) AND
+    nvo /= zero AND
+    nvi = kb(eps,0,irt)(-s,vi,vo) AND
+    nvi /= zero
+    IMPLIES
+      NOT horizontal_conflict?(s,nvo-vi)
+
+  %% 3 Counterexamples to the claim that kb is coordinated with respect
+  %% to the conflict-free safety property.
+
+  kb_is_not_coordinated_1 : THEOREM
+     D = 5 AND s = (-10/sqrt(3),0) AND
+     vo = (2,0) AND
+     vi = (1,0) AND
+      nvo = kb(-1,-1,1/2)(s,vo,vi) AND
+      nvi = kb(-1,-1,1/2)(-s,vi,vo)
+      IMPLIES
+      nvo /= zero AND
+      nvi /= zero AND 
+      horizontal_conflict?(s,vo-vi) AND
+      horizontal_conflict?(s,nvo-nvi)
+
+  kb_is_not_coordinated_2 : THEOREM
+     D = 5 AND s = (-10/sqrt(3),0) AND
+     vo = (500,0) AND
+     vi = (250,0) AND
+      nvo = kb(-1,-1,1/2)(s,vo,vi) AND
+      nvi = kb(-1,-1,1/2)(-s,vi,vo)
+      IMPLIES
+      nvo /= zero AND
+      nvi /= zero AND 
+      horizontal_conflict?(s,vo-vi) AND
+      horizontal_conflict?(s,nvo-nvi)
+
+  % A different proof of the above result, this time showing
+  % that minimum separation is less than 4.1
+  kb_is_not_coordinated_3 : THEOREM
+     D = 5 AND s = (-10/sqrt(3),0) AND
+     vo = (500,0) AND
+     vi = (250,0) AND
+      nvo = kb(-1,-1,1/2)(s,vo,vi) AND
+      nvi = kb(-1,-1,1/2)(-s,vi,vo)
+      IMPLIES
+      nvo /= zero AND
+      nvi /= zero AND 
+      horizontal_conflict?(s,vo-vi) AND
+      horizontal_conflict?(s,nvo-nvi)
+
+END kb

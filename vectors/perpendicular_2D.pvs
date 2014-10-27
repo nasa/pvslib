@@ -1,0 +1,173 @@
+perpendicular_2D: THEORY
+%----------------------------------------------------------------------------
+%
+%         Q.
+%         .\  .        
+%         . \   .
+%         .  \    .  d                          
+%         .   \     .            .
+%         .    \      .       .                 W  = Q - P0
+%       W .   c \       .  .
+%         .      \       *   P0 + t*v
+%         .       \   .                         del = (t-tp)*v
+%         .        *          
+%         .      .   P0 + tp*v
+%         .   .
+%         ..
+%         P0
+%
+%
+%    determine tp  = intersection of perpendicular line from Q to line (P0,v)
+%                  = perp_pt(Q-P0,nzv) = (W*v)/(v*v)
+%               c  = length of this perpendicular line
+%              del = (t-tp)*v
+%
+%    dist(q,L)     = distance from point q to line defined by perpendicular
+%
+%    perpL(v), perpR(v) = return vector perpendicular to v
+%
+%  Author: Ricky Butler              NASA Langley Research Center
+%
+%----------------------------------------------------------------------------
+BEGIN
+ 
+   IMPORTING vectors_2D
+
+   t,tp: VAR real
+   P0,Q,u,v,w,c,d,x,y,del: VAR Vect2
+
+   perpR(v): Vect2 = (v`y,-v`x)     %% RIGHT turn
+   perpL(v): Vect2 = (-v`y,v`x)     %% LEFT turn
+
+   neg_perpL : LEMMA
+     perpL(-v) = -perpL(v)
+
+   neg_perpR : LEMMA
+     perpR(-v) = -perpR(v)
+   
+   perpL_perpR : LEMMA
+     perpL(v) = -perpR(v)
+
+   dot_perpR_eq_0 : LEMMA v*perpR(v) = 0 
+
+   dot_perpL_eq_0 : LEMMA perpL(v)*v = 0
+
+   dot_perpR_scal_eq_0 : LEMMA v*perpR(t*v) = 0 
+
+   dot_perpL_scal_eq_0 : LEMMA perpL(t*v)*v = 0
+
+   sqv_perpR: LEMMA sqv(perpR(v)) = sqv(v)
+
+   sqv_perpL : LEMMA sqv(perpL(v)) = sqv(v)
+
+   perpR_add : LEMMA
+     perpR(u+v) = perpR(u)+perpR(v)
+
+   perpR_sub : LEMMA
+     perpR(u-v) = perpR(u)-perpR(v)
+
+   perpR_scal : LEMMA
+     perpR(t*v) = t*perpR(v)
+
+   perpR_neg : LEMMA
+     perpR(-u) = -perpR(u)
+
+   perpR_eq_zero : LEMMA
+      perpR(zero) = zero
+
+   perpL_add : LEMMA
+     perpL(u+v) = perpL(u)+perpL(v)
+
+   perpL_sub : LEMMA
+     perpL(u-v) = perpL(u)-perpL(v)
+
+   perpL_scal : LEMMA
+     perpL(t*v) = t*perpL(v)
+
+   perpL_neg : LEMMA
+     perpL(-u) = -perpL(u)
+
+   perpL_eq_zero : LEMMA
+      perpL(zero) = zero
+
+   perpL_plus_perpR : LEMMA
+     perpL(v) + perpR(v) = zero
+
+   perpR_perpR : LEMMA
+     perpR(perpR(u)) = -u
+
+   perpR_perpL : LEMMA
+     perpR(perpL(u)) = u
+
+   nzv: VAR Nz_vect2
+
+   perpL_nz : JUDGEMENT
+     perpL(nzv) HAS_TYPE Nz_vect2
+
+   perpR_nz : JUDGEMENT
+     perpR(nzv) HAS_TYPE Nz_vect2
+
+   AUTO_REWRITE+ perpL_eq_zero
+   AUTO_REWRITE+ perpR_eq_zero
+
+   perp_pt(Q,P0,nzv): real = (Q-P0)*nzv/(nzv*nzv)
+
+   perp_is_normal: LEMMA tp = perp_pt(Q,P0,nzv) 
+                           IMPLIES
+                              LET c = (P0 + tp*nzv) - Q,
+                                  del = (t-tp)*nzv       IN
+                                     del*c = 0
+
+
+   perp_is_min: LEMMA tp = perp_pt(Q,P0,nzv) 
+                      IMPLIES
+                          LET d = (P0 + t*nzv) - Q,
+                              c = (P0 + tp*nzv) - Q  IN
+                            norm(d) >= norm(c) 
+
+   perp_gt_del: LEMMA tp = perp_pt(Q,P0,nzv) 
+                       IMPLIES
+                          LET d = (P0 + t*nzv) - Q,
+                              del = (t-tp)*nzv   IN
+                            norm(d) >= norm(del) 
+
+
+   perp_comps: LEMMA tp = perp_pt(Q,P0,nzv) 
+                     IMPLIES
+                        LET d = (P0 + t*nzv) - Q,
+                            c = (P0 + tp*nzv) - Q,
+                            del = (t-tp)*nzv   IN
+                     sq(norm(d)) = sq(norm(del)) + sq(norm(c)) 
+
+%----------------------------------------------------------------------------
+
+   IMPORTING lines_2D
+
+%   ----- distance from a point to a line --------
+
+   p,q: VAR Vect2
+   L: Var Line
+
+
+   perp_pt(q,L): real = (q-p(L))*v(L)/(v(L)*v(L))
+
+   dist(q,L): nnreal =  LET tp = perp_pt(q,L) IN
+                               dist(p(L) + tp*v(L),q)
+
+   dist_is_min: THEOREM on_line?(p,L) IMPLIES
+                         dist(q,p) >= dist(q,L)
+
+   L1, L2: Var Line
+   perpendicular?(L1,L2): bool = orthogonal?(v(L1),v(L2))
+
+   perp_pt_perp: LEMMA q /= p(L) + perp_pt(q,L)*v(L) IMPLIES
+                        perpendicular?(L,line_from(q,p(L) 
+                                                       + perp_pt(q,L)*v(L)))
+
+%    perp_pt_parallel_perp: LEMMA LET tp = perp_pt(q,L1), 
+%                                  L2 = line_from(q,p(L1)+tp*v(L1)) IN
+%                                     parallel?(v(L2),perp(v))
+
+END perpendicular_2D
+
+

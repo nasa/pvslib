@@ -1,0 +1,163 @@
+synch_protocol_invariants
+[(IMPORTING synch_constant_definitions)
+    P: posnat,     % Nominal duration of a synchronization interval
+    T0: int,       % Clocktime at start of protocol
+    rho: nnreal,   % Bound on drift for a good oscillator
+    alpha_l, alpha_u: nnreal,  % negative and positive read error bounds
+    pi_0: {pi_0: posreal | P_bound?(P, rho, alpha_l, alpha_u, pi_0)}
+] : THEORY
+
+  BEGIN
+
+  IMPORTING 
+    synch_constant_definitions[P, T0, rho, alpha_l, alpha_u, pi_0],
+    clock_minmax[rho],
+    interval_clocks[P, T0, rho]
+
+
+% Invariants for a sequence of sets of good clocks.  If the protocol
+% guarantees a sequence of non-empty sets that satisfy these
+% properties, then it also ensures the top level properties of
+% precision and accuracy.
+
+  j, j1, j2: VAR nat
+  hst, hst1, hst2: VAR [nat -> non_empty_finite_set[good_clock]]
+  ic, ic1, ic2: VAR interval_clock
+  T, T1, T2: VAR int
+  pl, pu: VAR real
+  pi, al, au: VAR nnreal
+
+  periodic_precision?(hst, j, pi): bool =
+%    ic_max(hst)(j)(T(j)) - ic_min(hst)(j)(T(j)) <= pi
+    t(ic_max(hst))(j) - t(ic_min(hst))(j) <= pi
+
+  initial_precision?(hst, pi): bool = periodic_precision?(hst, 0, pi)
+
+  periodic_precision_enhancement?(hst, pi): bool =
+    FORALL j:
+      periodic_precision?(hst, j, pi)
+    IMPLIES
+      periodic_precision?(hst, j + 1, pi)
+
+  lower_accuracy_preservation?(hst, pl): bool =
+    adjustment_lower_bound?(ic_min(hst), ic_min(hst), pl)
+
+  upper_accuracy_preservation?(hst, pu): bool =
+    adjustment_upper_bound?(ic_max(hst), ic_max(hst), pu)
+
+  synch_protocol_invariants?(hst, pi, pl, pu): bool =
+    periodic_precision_enhancement?(hst, pi) AND
+    lower_accuracy_preservation?(hst, pl) AND
+    upper_accuracy_preservation?(hst, pu)
+
+% Intermediate consequences of the protocol invariants related to compatible?.
+
+  all_periodic_precision?(hst, pi): bool =
+    FORALL j: periodic_precision?(hst, j, pi)
+
+  all_periodic_precision_iff_peer_precision: LEMMA
+    all_periodic_precision?(hst, pi) IFF
+    peer_precision?(ic_min(hst), ic_max(hst), pi)
+
+  all_periodic_precision: LEMMA
+      initial_precision?(hst, pi) AND
+      periodic_precision_enhancement?(hst, pi)
+    IMPLIES
+      all_periodic_precision?(hst, pi)
+
+  minmax_adjustment_lower_bound: LEMMA
+      all_periodic_precision?(hst, pi) AND
+      lower_accuracy_preservation?(hst, pl)
+    IMPLIES
+      adjustment_lower_bound?(ic_max(hst), ic_min(hst), pl - pi)
+
+  minmax_adjustment_upper_bound: LEMMA
+      all_periodic_precision?(hst, pi) AND
+      upper_accuracy_preservation?(hst, pu)
+    IMPLIES
+      adjustment_upper_bound?(ic_min(hst), ic_max(hst), pu + pi)
+
+% Relating traces from a history satisfying the invariants to the
+% compatibility relations used to establish precision and weak
+% accuracy
+
+
+  trace?(ic, hst): bool = FORALL j: hst(j)(ic(j))
+
+  min_le_trace: LEMMA
+    trace?(ic, hst) IMPLIES
+%    ic_min(hst)(j)(T) <= ic(j)(T) 
+    t(ic_min(hst))(j) <= t(ic)(j) 
+
+  trace_le_max: LEMMA
+    trace?(ic, hst) IMPLIES
+%    ic(j)(T) <= ic_max(hst)(j)(T)
+    t(ic)(j) <= t(ic_max(hst))(j)
+
+  trace_diff: LEMMA
+      trace?(ic1, hst1) AND
+      trace?(ic2, hst2)
+    IMPLIES
+%      ic1(j1)(T1) - ic2(j2)(T2) <= ic_max(hst1)(j1)(T1) - ic_min(hst2)(j2)(T2)
+      t(ic1)(j1) - t(ic2)(j2) <= t(ic_max(hst1))(j1) - t(ic_min(hst2))(j2)
+
+  traces_peer_precision: LEMMA
+      trace?(ic1, hst) AND
+      trace?(ic2, hst) AND
+      initial_precision?(hst, pi) AND
+      periodic_precision_enhancement?(hst, pi)
+    IMPLIES
+      peer_precision?(ic1, ic2, pi)
+
+  traces_lower: LEMMA
+      trace?(ic1, hst) AND
+      trace?(ic2, hst) AND
+      initial_precision?(hst, pi) AND
+      periodic_precision_enhancement?(hst, pi) AND
+      lower_accuracy_preservation?(hst, pl)
+    IMPLIES
+      adjustment_lower_bound?(ic1, ic2, pl - pi)
+
+  traces_upper: LEMMA
+      trace?(ic1, hst) AND
+      trace?(ic2, hst) AND
+      initial_precision?(hst, pi) AND
+      periodic_precision_enhancement?(hst, pi) AND
+      upper_accuracy_preservation?(hst, pu)
+    IMPLIES
+      adjustment_upper_bound?(ic1, ic2, pu + pi)
+
+  % mappings from traces
+
+  traces_compatible: LEMMA
+      trace?(ic1, hst) AND
+      trace?(ic2, hst) AND
+      initial_precision?(hst, pi) AND
+      synch_protocol_invariants?(hst, pi, P / rate - al, P * rate + au)
+    IMPLIES
+      compatible?(ic1, ic2, pi + max(al, au))
+
+  trace_lower_accuracy: LEMMA
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi) AND
+      synch_protocol_invariants?(hst, pi, P / rate - al, pu)
+    IMPLIES
+      lower_accuracy_bound?(ic, al, pi)
+
+  trace_upper_accuracy: LEMMA
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi) AND
+      synch_protocol_invariants?(hst, pi, pl, P * rate + au)
+    IMPLIES
+      upper_accuracy_bound?(ic, au, pi)
+
+  weakly_accurate_clock: TYPE = {ic | weakly_accurate?(ic, p_min, p_max)}
+
+  trace_weakly_accurate: LEMMA
+      trace?(ic, hst) AND
+      initial_precision?(hst, pi_0) AND
+      synch_protocol_invariants?(hst, pi_0, p_lower, p_upper)
+    IMPLIES
+      weakly_accurate?(ic, p_min, p_max)
+      
+END synch_protocol_invariants

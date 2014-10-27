@@ -1,0 +1,104 @@
+% LOS recovery with an iterative algorithm
+
+losr_iterative : THEORY
+BEGIN
+
+  IMPORTING repulsive,reals@sign3,trig@sincos
+
+  s,v,vo,vi   : VAR Nz_vect2
+  nvo,nvo2    : VAR Vect2
+  minrelgs    : VAR nnreal
+  step	      : VAR posreal
+  eps,dir     : VAR Sign
+  maxtrk, 
+  maxgs,mings : VAR posreal 
+  i 	      : VAR posnat
+
+  %% dir = 1 is right
+  incr_trk_vect(nvo,step,dir): {nvo2: Vect2 | trk_only?(nvo)(nvo2)} =
+    cos(dir*step)*nvo + sin(dir*step)*perpR(nvo)
+
+  losr_trk_iter_dir(s,vo,vi,step,eps): Sign3 =
+    IF repulsive_criteria(s,vo-vi,eps)(incr_trk_vect(vo,step,1)-vi)
+      THEN 1
+    ELSIF repulsive_criteria(s,vo-vi,eps)(incr_trk_vect(vo,step,-1)-vi)
+      THEN -1
+    ELSE 0 ENDIF
+
+  losr_trk_iter_i(s,vo,vi,minrelgs,maxtrk,step,i,dir,eps,
+                 (nvo | trk_only?(vo)(nvo) AND
+                        repulsive_criteria(s,vo-vi,eps)(nvo-vi))): 
+    RECURSIVE {nvo2 | nz_vect2?(nvo2) => 
+                 trk_only?(vo)(nvo2) AND
+                 repulsive_criteria(s,vo-vi,eps)(nvo2-vi)} =
+      LET nvop = incr_trk_vect(nvo,step,dir) IN 
+      IF i*step >= maxtrk OR NOT repulsive_criteria(s,nvo-vi,eps)(nvop-vi) THEN
+        nvo
+      ELSIF divergent?(s,nvop-vi) AND norm(nvop-vi) >= minrelgs THEN
+        nvop
+      ELSE 
+        losr_trk_iter_i(s,vo,vi,minrelgs,maxtrk,step,i+1,dir,eps,nvop)
+      ENDIF
+  MEASURE max(0,floor(maxtrk/step)-i+1)
+
+  losr_trk_iter(s,vo,vi,minrelgs,maxtrk,step):  
+    {nvo | nz_vect2?(nvo) => 
+       trk_only?(vo)(nvo) AND
+       repulsive_criteria(s,vo-vi,-sign(det(s,vo-vi)))(nvo-vi)} = 
+    LET eps = -sign(det(s,vo-vi)),
+        dir3 = losr_trk_iter_dir(s,vo,vi,step,eps) IN
+    IF dir3 = 0 THEN
+      zero
+    ELSE LET nvo = incr_trk_vect(vo,step,dir3) IN 
+      IF repulsive_criteria(s,vo-vi,eps)(nvo-vi) THEN
+        losr_trk_iter_i(s,vo,vi,minrelgs,maxtrk,step,1,dir3,eps,nvo)
+      ELSE 
+        zero
+      ENDIF
+    ENDIF
+
+  %% dir = 1 is right
+  incr_gs_vect(vo,step,dir): {nvo: Vect2 | norm(vo)+dir*step > 0 IMPLIES gs_only?(vo)(nvo)} =
+    (norm(vo)+dir*step)*^(vo)
+
+  losr_gs_iter_dir(s,vo,vi,mings,maxgs,step,eps): Sign3 =
+    IF norm(vo) + step <= maxgs AND repulsive_criteria(s,vo-vi,eps)(incr_gs_vect(vo,step,1)-vi)
+      THEN 1
+    ELSIF norm(vo) - step >= mings AND repulsive_criteria(s,vo-vi,eps)(incr_gs_vect(vo,step,-1)-vi)
+      THEN -1
+    ELSE 0 ENDIF
+
+  losr_gs_iter_i(s,vo,vi,minrelgs,mings,maxgs,step,i,dir,eps,
+                (nvo | nvo = (norm(vo)+dir*i*step)*^(vo) AND norm(vo)+dir*i*step > 0 AND 
+                        repulsive_criteria(s,vo-vi,eps)(nvo-vi))): 
+    RECURSIVE {nvo2 | nz_vect2?(nvo2) => 
+                 gs_only?(vo)(nvo2) AND
+                 repulsive_criteria(s,vo-vi,eps)(nvo2-vi)} =
+      LET nvop = incr_gs_vect(nvo,step,dir),
+          nnorm = norm(nvo)+dir*step IN 
+      IF nnorm > maxgs OR nnorm < mings OR NOT repulsive_criteria(s,nvo-vi,eps)(nvop-vi) THEN
+        nvo
+      ELSIF divergent?(s,nvop-vi) AND norm(nvop-vi) >= minrelgs THEN
+        nvop
+      ELSE 
+        losr_gs_iter_i(s,vo,vi,minrelgs,mings,maxgs,step,i+1,dir,eps,nvop)
+      ENDIF
+  MEASURE max(0,floor(IF dir >= 0 THEN (maxgs-norm(vo))/step ELSE (norm(vo)-mings)/step ENDIF)-i+1)
+
+  losr_gs_iter(s,vo,vi,minrelgs,mings,maxgs,step):  
+    {nvo | nz_vect2?(nvo) => 
+       gs_only?(vo)(nvo) AND
+       repulsive_criteria(s,vo-vi,-sign(det(s,vo-vi)))(nvo-vi)} = 
+    LET eps = -sign(det(s,vo-vi)),
+        dir3 = losr_gs_iter_dir(s,vo,vi,mings,maxgs,step,eps) IN
+    IF dir3 = 0 THEN
+      zero
+    ELSE LET nvo = incr_gs_vect(vo,step,dir3) IN
+      IF repulsive_criteria(s,vo-vi,eps)(nvo-vi) THEN
+        losr_gs_iter_i(s,vo,vi,minrelgs,mings,maxgs,step,1,dir3,eps,nvo)
+      ELSE 
+        zero
+      ENDIF
+    ENDIF
+
+END losr_iterative

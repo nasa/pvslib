@@ -1,0 +1,121 @@
+boxes : THEORY
+BEGIN
+
+  IMPORTING structures@listn[real],
+            structures@for_iterate[real],
+            poly2bernstein,
+            strat_util,
+            OutBoxes
+
+  unpack(n:posnat,box:OutBoxes[n]): Boxes(n) =
+    IF full_box?(box) THEN
+      mk_boxes(n,(:unitbox(n):),null[Box(n)],null[Box(n)])
+    ELSIF empty_box?(box) THEN
+      mk_boxes(n,null[Box(n)],(:unitbox(n):),null[Box(n)])
+    ELSIF unknown_box?(box) THEN
+      mk_boxes(n,null[Box(n)],null[Box(n)],(:unitbox(n):))
+    ELSE
+      boxes(box)
+    ENDIF
+
+  translate_box(n:posnat,v:nat,bs:Boxes(n),f:[real->real]) : Boxes(n) =
+    mk_boxes(n,
+             map(LAMBDA(box:Box(n)):setnth_box(v,f,n)(box),inside(bs)),
+             map(LAMBDA(box:Box(n)):setnth_box(v,f,n)(box),outside(bs)),
+             map(LAMBDA(box:Box(n)):setnth_box(v,f,n)(box),unknown(bs)))
+
+  repack(n:posnat,bs1,bs2:Boxes(n)) : OutBoxes[n] =
+    Output(mk_boxes(n,
+	            append(inside(bs1),inside(bs2)),
+                    append(outside(bs1),outside(bs2)),
+                    append(unknown(bs1),unknown(bs2))))
+
+  optimize_bp(nvars:posnat)(bp:MPolyRel) : MPolyRel = 
+    bp WITH [mpoly := translist(polylist(bp`mpoly,bp`mdeg,nvars,bp`terms))]
+
+  neg_mp(mp:MPolyRel) : MPolyRel =
+    mp WITH [rel := LAMBDA(a,b:real):NOT mp`rel(a,b)]
+
+  coeffs_rel_bp(nvars:posnat)(bp:MPolyRel) : bool =
+    Bern_coeffs_rel(bp`mpoly,bp`mdeg,bp`mcoeff,nvars,bp`terms)(bp`rel,0)    
+
+  split_left_bp(v:nat)(bp:MPolyRel) : MPolyRel = 
+    bp WITH [mpoly := Bern_split_left_mpoly(bp`mpoly,bp`mdeg)(v)]
+
+  split_right_bp(v:nat)(bp:MPolyRel) : MPolyRel =
+    bp WITH [mpoly := Bern_split_right_mpoly(bp`mpoly,bp`mdeg)(v)]
+
+  Boxes_strategy_rec(bps:list[MPolyRel],nvars:posnat,precision:[nat->posreal],
+                     exit:bool,depth:nat,level:upto(depth)) : 
+    RECURSIVE OutBoxes[nvars] =
+    LET obps = map(optimize_bp(nvars),bps),
+        nbps = map(neg_mp,bps) IN
+    IF every(coeffs_rel_bp(nvars),obps) THEN
+      FullBox
+    ELSIF some(coeffs_rel_bp(nvars),nbps) THEN
+      EmptyBox
+    ELSIF exit OR level=depth THEN
+      UnknownBox
+    ELSE 
+      LET v             = mod(level,nvars),
+          level         = level + 1,
+          exit          = precision(v) >= 1,
+          precision     = precision WITH [(v) := 2*precision(v)],
+          bsleft        = Boxes_strategy_rec(map(split_left_bp(v),obps),nvars,
+                                             precision,exit,depth,level),
+          bsright       = Boxes_strategy_rec(map(split_right_bp(v),obps),nvars,
+                                             precision,exit,depth,level) IN
+      IF full_box?(bsleft) AND full_box?(bsright) THEN
+        FullBox
+      ELSIF empty_box?(bsleft) AND empty_box?(bsright) THEN
+        EmptyBox
+      ELSIF unknown_box?(bsleft) AND unknown_box?(bsright) THEN
+        UnknownBox
+      ELSE 
+        LET tleft  = translate_box(nvars,v,unpack(nvars,bsleft),LAMBDA(x:real):x/2),
+            tright = translate_box(nvars,v,unpack(nvars,bsright),LAMBDA(x:real):(x+1)/2) IN
+          repack(nvars,tleft,tright)
+      ENDIF
+    ENDIF
+  MEASURE depth-level
+
+  Boxes_strategy(bps:list[MPolyRel],nvars:posnat,depth:nat,precision:[nat->posreal]) : Boxes(nvars) =
+    LET bs = Boxes_strategy_rec(bps,nvars,precision,false,depth,0) IN
+      unpack(nvars,bs)
+
+  mp_to_bp(mv:MVars)(mp:MPolyRel):MPolyRel =
+    LET p  = multipoly_translate(mp`mpoly,mp`mdeg,mv`numvars,boundedpts_true)(mv`vars_lb,mv`vars_ub) IN
+    mp WITH [mpoly := bs_convert_poly(p,mp`mdeg,mp`mdeg,mv`numvars,mp`terms)]
+
+  add_real(x,y:real): real = x+y
+
+  boxes_strategy_and(mps:list[MPolyRel],mv:MVars,depth:nat,precision:posreal) : 
+    [nat,real,nat,real,nat,real,Boxes(mv`numvars)] =    
+    LET bps  = map(mp_to_bp(mv),mps),
+        bs   = Boxes_strategy(bps,mv`numvars,depth,LAMBDA(n:nat):precision),
+	lin  = length(bs`inside),
+	vin  = iterate_left_id(0,lin-1,LAMBDA(k:subrange(0,lin-1)):volume(mv`numvars,nth(bs`inside,k)),
+                               add_real,0),
+	lout = length(bs`outside),
+	vout = iterate_left_id(0,lout-1,LAMBDA(k:subrange(0,lout-1)):volume(mv`numvars,nth(bs`outside,k)),
+                               add_real,0),
+	lun  = length(bs`unknown),
+	vun  = iterate_left_id(0,lun-1,LAMBDA(k:subrange(0,lun-1)):volume(mv`numvars,nth(bs`unknown,k)),
+                               add_real,0),
+        f    = map_box(mv`numvars,LAMBDA(l:listn(mv`numvars)):
+                                        denormalize_listreal(l)
+                                        (mv`vars_lb,mv`vars_ub,boundedpts_true)) IN
+    (lin,vin,lout,vout,lun,vun,
+     mk_boxes(mv`numvars,map(f,inside(bs)),map(f,outside(bs)),map(f,unknown(bs))))
+
+  boxes_strategy(mp:MPolyRel,mv:MVars,depth:nat,precision:posreal) : 
+    [nat,real,nat,real,nat,real,Boxes(mv`numvars)] =    
+    boxes_strategy_and((:mp:),mv,depth,precision)
+
+  boxes_strategy_or(mps:list[MPolyRel],mv:MVars,depth:nat,precision:posreal) : 
+    [nat,real,nat,real,nat,real,Boxes(mv`numvars)] =    
+    LET mps = map(neg_mp,mps),
+        (lin,vin,lout,vout,lun,vun,bs)  = boxes_strategy_and(mps,mv,depth,precision) IN
+    (lout,vout,lin,vin,lun,vun,mk_boxes(mv`numvars,outside(bs),inside(bs),unknown(bs)))	
+
+END boxes

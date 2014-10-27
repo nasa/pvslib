@@ -1,0 +1,101 @@
+%------------------------------------------------------------------------------
+% An Abstract Machine for while
+%
+% All references are to HR and F Nielson "Semantics with Applications:
+% A Formal Introduction", John Wiley & Sons, 1992. (revised edition
+% available: http://www.daimi.au.dk/~hrn )
+%
+%     Author: David Lester, Manchester University, NIA, Université Perpignan
+%
+%     Version 1.0            25/12/07  Initial Version
+%------------------------------------------------------------------------------
+
+am[V:TYPE+]: THEORY
+
+BEGIN
+
+  IMPORTING Cont[V], Instruction[V], State[V], list_props_aux
+
+  Stack:  TYPE+ = list[int]
+  Config: TYPE+ = [Code,Stack,State]
+
+  c,c0,c1,c2: VAR Code
+  e,e0,e1,e2: VAR Stack
+  s,s0,s1,s2: VAR State
+  n,n0,n1,n2,k,k1,k2: VAR nat
+  pn: VAR posnat
+  cf,cf0,cf1,cf2: VAR Config
+  i: VAR int
+  x: VAR V
+  f1: VAR [int->int]
+  f2: VAR [[int,int]->int]
+
+  check1(c,e,s):bool = NOT null?(e)
+  check2(c,e,s):bool = (NOT null?(e)) AND (NOT null?(cdr(e)))
+
+  push(i,e):          Stack = cons(i,e)
+  pop(e:(cons?[int])):Stack = cdr(e)
+  top(e:(cons?[int])):int   = car(e)
+
+  step(c,e,s): Config
+    = IF null?(c) THEN (c,e,s) ELSE
+      CASES car(c) OF
+        PUSH(i)      : (cdr(c),push(i,e),s),
+        FETCH(x)     : (cdr(c),push(s(x),e),s),
+        UNARY(f1)    : IF check1(c,e,s)
+                       THEN (cdr(c),push(f1(top(e)),pop(e)),s)
+                       ELSE (c,e,s) ENDIF,
+        BINARY(f2)   : IF check2(c,e,s)
+                       THEN (cdr(c),push(f2(top(e),top(pop(e))),pop(pop(e))),s)
+                       ELSE (c,e,s) ENDIF,
+        STORE(x)     : IF check1(c,e,s)
+                       THEN (cdr(c),pop(e),assign(x,top(e))(s))
+                       ELSE (c,e,s) ENDIF,
+        NOOP         : (cdr(c),e,s),
+        BRANCH(c1,c2): IF check1(c,e,s)
+                       THEN IF top(e) = 1
+                            THEN (append(c1,cdr(c)),pop(e),s)
+                            ELSE (append(c2,cdr(c)),pop(e),s) ENDIF
+                       ELSE (c,e,s) ENDIF,
+        LOOP(c1,c2)  : (append(c1,
+                         cons(BRANCH(append(c2,cons(LOOP(c1,c2),null)),
+                                     cons(NOOP,null)),cdr(c))),e,s)
+      ENDCASES ENDIF
+
+  tr(n)(cf0,cf): RECURSIVE bool
+    = IF n=0 THEN cf0=cf
+             ELSE (NOT null?(cf0`1)) AND
+                  cf0 /= step(cf0)   AND
+                  tr(n-1)(step(cf0),cf) ENDIF
+      MEASURE n
+
+  step_append: LEMMA NOT null?(c1) AND
+                     (append(c1,c2),e,s) /= step((append(c1,c2),e,s)) =>
+                     (c1,e,s) /= step((c1,e,s))
+
+  tr_add: LEMMA tr(k1+k2)(cf0,cf2) IFF
+                EXISTS cf1: tr(k1)(cf0,cf1) AND tr(k2)(cf1,cf2)
+  tr_eq:  LEMMA tr(k)(cf0,cf1) AND tr(k)(cf0,cf2) => cf1 = cf2
+
+  code_partial: LEMMA                                                 % N&N 3.4
+    tr(k)((c0,e0,s0),(c1,e1,s1)) =>
+    tr(k)((append(c0,c2),append(e0,e2),s0), (append(c1,c2),append(e1,e2),s1))
+
+  code_split: LEMMA                                                   % N&N 3.5
+    tr(k)((append(c1,c2),e,s),(null,e2,s2)) =>
+    EXISTS e1,s1,k1,k2: tr(k1)((c1,e,s),(null,e1,s1)) AND
+                        tr(k2)((c2,e1,s1),(null,e2,s2)) AND
+                        k1+k2=k
+
+  IMPORTING Cont
+
+  M(c):Cont
+    = lambda s:
+        IF EXISTS n,s1: tr(n)((c,null,s),(null,null,s1))
+        THEN up(choose({s1 | EXISTS n: tr(n)((c,null,s),(null,null,s1))}))
+        ELSE bottom ENDIF
+
+  M_deterministic: LEMMA M(c)(s) = up(s1) IFF                         % N&N 3.6
+                         EXISTS n: tr(n)((c,null,s),(null,null,s1))
+
+END am

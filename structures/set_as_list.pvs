@@ -1,0 +1,95 @@
+% Computable finite sets by Pierre Neron (Ecole Polytechnique)
+
+set_as_list[T:TYPE] : THEORY
+BEGIN
+
+  IMPORTING list[T], list_adt[T], finite_sets[T]
+
+  x, y: VAR T
+
+  l, l1, l2: VAR list[T]
+
+  empty_sl?(l): bool = (l = null)
+
+  empty_sl_is_empty: LEMMA empty_sl?(l) IFF FORALL x: not member(x,l)
+
+  emptyset_sl: list[T] = null
+
+  nonempty_sl?(l): bool = NOT empty_sl?(l)
+
+  subset_sl?(l1, l2): RECURSIVE {b : bool | b IFF FORALL x: member(x, l1) => member(x, l2) } =
+  CASES l1 OF
+  	null : true,
+	cons(a,q) : member(a,l2) AND subset_sl?(q,l2)
+  ENDCASES
+  MEASURE l1 BY <<
+
+  add_sl(x, l): RECURSIVE { ll : (nonempty_sl?) | FORALL y: member(y,ll) IFF (x = y OR member(y, l))} =
+  CASES l OF
+  	null : (:x:),
+	cons(a,q) : IF x = a THEN l ELSE cons(a,add_sl(x,q)) ENDIF
+  ENDCASES
+  MEASURE l BY <<
+
+  remove_sl(x,l) : RECURSIVE { ll : list[T] | FORALL y: member(y, ll) IFF (x /= y AND member(y, l))} =
+  CASES l OF
+  	null : null,
+	cons(a,q) : IF x = a THEN remove_sl(x,q) ELSE cons(a,remove_sl(x,q)) ENDIF
+  ENDCASES
+  MEASURE l BY <<
+
+  equal_sl(l1,l2): {b : bool | b IFF FORALL x: member(x, l1) IFF member(x, l2)} =
+  	subset_sl?(l1,l2) AND subset_sl?(l2,l1)
+
+  strict_subset_sl?(l1, l2): { b : bool | b IFF subset_sl?(l1, l2) & NOT equal_sl(l2,l1) } = subset_sl?(l1, l2) & NOT subset_sl?(l2,l1) 
+
+  union_sl(l1, l2): RECURSIVE {ll : list[T] | FORALL x: member(x,ll) IFF (member(x, l1) OR member(x, l2))} =
+  CASES l1 OF
+  	null : l2,
+	cons(a,q) : add_sl(a,union_sl(q,l2))
+  ENDCASES
+  MEASURE l1 BY <<
+
+  intersection_sl(l1, l2): RECURSIVE {ll : list[T] | FORALL x: member(x,ll) IFF (member(x,l1) AND member(x,l2))} =
+  CASES l1 OF
+  	null : null,
+	cons(a,q) : IF member(a,l2) THEN cons(a,intersection_sl(q,l2)) ELSE intersection_sl(q,l2) ENDIF
+  ENDCASES
+  MEASURE l1 BY <<
+  
+  disjoint_sl?(l1, l2): bool = empty_sl?(intersection_sl(l1,l2))
+
+  difference_sl(l1, l2): RECURSIVE {ll : list[T] | FORALL x: member(x,ll) IFF (member(x, l1) AND NOT member(x, l2))} =
+  CASES l1 OF
+  	null : null,
+	cons(a,q) : IF member(a,l2) THEN difference_sl(q,l2) ELSE cons(a,difference_sl(q,l2)) ENDIF
+  ENDCASES
+  MEASURE l1 BY <<
+
+  symmetric_difference_sl(l1, l2): list[T] =
+    union_sl(difference_sl(l1, l2), difference_sl(l2, l1))
+
+  list2set(l) : RECURSIVE { s: finite_set[T] | s = { x | member(x,l)}} =
+  CASES l OF 
+  	null : emptyset,
+	cons(a,q) : add(a,list2set(q))
+  ENDCASES
+  MEASURE l BY <<
+
+  card_sl(l) : RECURSIVE {n : nat | n = Card(list2set(l)) } =
+  CASES l OF
+  	null : 0,
+	cons(a,q) : IF member(a,q) THEN card_sl(q) ELSE 1 + card_sl(q) ENDIF
+  ENDCASES
+  MEASURE l BY <<
+  
+  reduce_sl(l) : RECURSIVE {ll : list[T] | equal_sl[T](l,ll) & card_sl(ll) = length(ll)} =
+  CASES l OF
+  	null : null,
+	cons(a,q) : IF member(a,q) THEN reduce_sl(q) ELSE cons(a,reduce_sl(q)) ENDIF
+  ENDCASES
+  MEASURE l BY <<
+
+  equal_sl_card : LEMMA FORALL l1,l2: equal_sl(l1,l2) IMPLIES card_sl(l1) = card_sl(l2)
+
+END set_as_list

@@ -1,0 +1,78 @@
+%-----------------------------------------------------------------------------
+% Functions that generate sequences until a limit condition is met.
+%
+% Author: Jerry James <loganjerry@gmail.com>
+%
+% This file and its accompanying proof file are distributed under the CC0 1.0
+% Universal license: http://creativecommons.org/publicdomain/zero/1.0/.
+%
+% Version history:
+%   2007 Feb 14: PVS 4.0 version
+%   2011 May  6: PVS 5.0 version
+%   2013 Jan 14: PVS 6.0 version
+%-----------------------------------------------------------------------------
+csequence_generate_limit[T: TYPE]: THEORY
+ BEGIN
+
+  IMPORTING function_iterate[T], csequence_nth[T]
+  IMPORTING csequence_codt_coreduce[T, [[T -> T], T, pred[T]]]
+
+  t, u: VAR T
+  p: VAR pred[T]
+  f: VAR [T -> T]
+  n: VAR nat
+  stop?: VAR pred[T]
+  state: VAR [[T -> T], T, pred[T]]
+
+  % The sequence generated from a generator function, a starting element, and
+  % a predicate that determines when the next T should not appear in the
+  % sequence.
+  generate_limit_struct(state): csequence_struct =
+      IF state`3(state`2) THEN inj_empty_cseq
+      ELSE inj_add(state`2, (state`1, state`1(state`2), state`3))
+      ENDIF
+
+  generate(f, t, stop?): csequence =
+      coreduce(generate_limit_struct)((f, t, stop?))
+
+  generate_empty: THEOREM
+    FORALL f, t, stop?: empty?(generate(f, t, stop?)) IFF stop?(t)
+
+  generate_first: THEOREM
+    FORALL f, t, stop?: stop?(t) OR first(generate(f, t, stop?)) = t
+
+  generate_rest: THEOREM
+    FORALL f, t, stop?:
+      stop?(t) OR rest(generate(f, t, stop?)) = generate(f, f(t), stop?)
+
+  % This lemma is helpful in proving the next theorem
+  generate_has_length: LEMMA
+    FORALL f, t, stop?, n:
+      has_length(generate(f, t, stop?), n) IFF
+       (stop?(iterate(f, n)(t)) AND
+         (FORALL (m: below[n]): NOT stop?(iterate(f, m)(t))))
+
+  generate_finite: THEOREM
+    FORALL f, t, stop?:
+      is_finite(generate(f, t, stop?)) IFF (EXISTS n: stop?(iterate(f, n)(t)))
+
+  generate_nth: THEOREM
+    FORALL f, t, stop?, (n: indexes(generate(f, t, stop?))):
+      nth(generate(f, t, stop?), n) = iterate(f, n)(t)
+
+  generate_add: THEOREM
+    FORALL f, t, stop?, u:
+      t = f(u) AND NOT stop?(u) IMPLIES
+       add(u, generate(f, t, stop?)) = generate(f, u, stop?)
+
+  generate_some: THEOREM
+    FORALL f, t, stop?, p:
+      some(p)(generate(f, t, stop?)) IFF
+       (EXISTS (n: indexes(generate(f, t, stop?))): p(iterate(f, n)(t)))
+
+  generate_every: THEOREM
+    FORALL f, t, stop?, p:
+      every(p)(generate(f, t, stop?)) IFF
+       (FORALL (n: indexes(generate(f, t, stop?))): p(iterate(f, n)(t)))
+
+ END csequence_generate_limit

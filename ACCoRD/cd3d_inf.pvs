@@ -1,0 +1,110 @@
+%------------------------------------------------------------------------------
+% cd3d_inf.pvs
+% ACCoRD v1.0
+%
+% Correctness and completeness of 3-D conflict detection algorithm for infinite
+% lookahead time
+%   D : Horizontal separation
+%   H : Vertical separation
+%------------------------------------------------------------------------------
+
+cd3d_inf[D,H:posreal]  : THEORY 
+BEGIN
+
+  IMPORTING circle_criterion[D,H],
+  	    omega_2D,
+            cd2d,
+	    util,
+	    cd2d_inf[D]
+
+  s,v : VAR Vect3       
+  t   : VAR nnreal
+  nzv : VAR Nz_vect3
+
+  conflict_3D_2D_inf_stable: LEMMA v`z/=0 AND max(-H-sign(v`z)*s`z,0) < H-sign(v`z)*s`z
+    IMPLIES
+    (conflict?(s,v) IFF 
+    conflict_2D?[D*abs(v`z),max(-H-sign(v`z)*s`z,0),H-sign(v`z)*s`z](abs(v`z)*s,v))
+
+  conflict_vz_swap: LEMMA conflict?(s,v) IFF conflict?(s WITH [z:=-(s`z)],v WITH [z:=-(v`z)])
+
+  conflict_on_open_interval: LEMMA conflict?(s,v) IFF
+    EXISTS (topen: posreal): sqv(vect2(s)+topen*vect2(v))<sq(D) AND abs(s`z + topen*v`z) < H
+
+  %-----------------------------------------------%
+  % 3-D Conflict interval detection [tin,tout]    %
+  %     (tin,tout) is the conflict interval       %
+  %-----------------------------------------------%  
+ 
+  detection_inf(s,nzv) : [nnreal,nnreal] =
+    IF zero_vect2?(nzv) AND horizontal_los?(s) THEN
+        (max(Theta_H(s`z,nzv`z,Entry),0),max(Theta_H(s`z,nzv`z,Exit),0))
+    ELSIF Delta(s,nzv) > 0 THEN
+      LET td1 = Theta_D(s,nzv,Entry),
+          td2 = Theta_D(s,nzv,Exit) IN
+      IF nzv`z /= 0 THEN
+        LET tin  = max(td1,Theta_H(s`z,nzv`z,Entry)),
+            tout = min(td2,Theta_H(s`z,nzv`z,Exit)) IN      
+        (max(tin,0),max(tout,0))
+      ELSIF vertical_los?(s`z) THEN
+        (max(td1,0),max(td2,0))
+      ELSE
+        (0,0)
+      ENDIF
+    ELSE
+      (0,0)
+    ENDIF
+ 
+  detection_inf_correct : THEOREM
+    LET (tin,tout) = detection_inf(s,nzv) IN
+     tin < t AND t < tout IMPLIES conflict_at?(s,nzv,t)
+
+  detection_inf_complete : THEOREM
+    LET (tin,tout) = detection_inf(s,nzv) IN
+      conflict_at?(s,nzv,t) IMPLIES tin <= t AND t <= tout AND tin < tout
+
+  conflict_detection_inf : THEOREM
+    LET (tin,tout) = detection_inf(s,nzv) IN
+    conflict?(s,nzv) IFF tin < tout
+
+  %-----------------------------------------------%
+  % 3-D Conflict Detection_inf (cd3d_inf)                 %
+  %-----------------------------------------------%
+
+  cd3d_inf?(s,v) : bool =
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d_inf?[D](s,v)
+    ELSIF v`z /= 0 AND max(-H-sign(v`z)*s`z,0) < H-sign(v`z)*s`z
+       THEN cd2d?[D*abs(v`z),max(-H-sign(v`z)*s`z,0),H-sign(v`z)*s`z](abs(v`z)*s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_inf_rewrite: LEMMA cd3d_inf?(s,v) IFF 
+    IF v`z = 0 AND abs(s`z)<H 
+       THEN cd2d_inf?[D](s,v)
+    ELSIF v`z /= 0 AND max(Theta_H(s`z,v`z,Entry),0) < Theta_H(s`z,v`z,Exit)
+       THEN cd2d?[D,max(Theta_H(s`z,v`z,Entry),0),Theta_H(s`z,v`z,Exit)](s,v)
+    ELSE
+       FALSE
+    ENDIF
+
+  cd3d_inf_correct : THEOREM
+    cd3d_inf?(s,v) IMPLIES
+    conflict?(s,v)
+
+  cd3d_inf_complete : THEOREM 
+    conflict?(s,v)
+    IMPLIES
+    cd3d_inf?(s,v)
+
+  %-----------------------------------------------%
+  % THEOREM: cd3d_inf is correct and complete         %
+  %-----------------------------------------------%
+
+  cd3d_inf : THEOREM
+    conflict?(s,v) IFF
+    cd3d_inf?(s,v) 
+
+
+END cd3d_inf
