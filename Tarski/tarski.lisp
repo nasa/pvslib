@@ -216,7 +216,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 	 (mapstep #'(lambda (x)`(tarski_polylist__ ,(car x) ,(cadr x) ,labp ,labd)) nes)
 	 (with-fresh-names
 	  ((polyl_ polyl) (degl_ degl) (rell_ rell) (j_))
-	  (lemma "compute_solvable_rat_def")
+	  (lemma "tarski_def")
 	  (spread
 	   (inst -1 rell_ n degl_ polyl_)
 	   ((spread

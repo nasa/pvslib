@@ -3,9 +3,9 @@ BEGIN
 
   IMPORTING polynomials,sign,log_nat,min_max
 
-  a   : VAR sequence[real]
+  a,b,h : VAR sequence[real]
   n   : VAR nat
-  m   : VAR nat
+  m,p   : VAR nat
   x,y,z : VAR real
 
   polynomial_degree_existence: LEMMA
@@ -39,6 +39,7 @@ BEGIN
   	(FORALL (x:real): abs(x-y)<epsil IMPLIES polynomial(a,pn)(x)<=c)
   	IMPLIES
   	polynomial(poly_deriv(a),pn-1)(y) = 0
+
 
   IMPORTING binomial_identities
 
@@ -288,6 +289,11 @@ BEGIN
     polynomial(a,n)(x)=0 IMPLIES abs(x) < K} =
       max(2,sigma(0,n-1,LAMBDA (i:nat): abs(a(i)))/abs(a(n)) + 1)
 
+  poly_cancel: LEMMA (EXISTS (i:nat):i<=p AND h(i)/=0) AND
+    (FORALL (x): polynomial(h,p)(x)*polynomial(a,n)(x) =
+    	    	 polynomial(h,p)(x)*polynomial(b,m)(x)) IMPLIES
+    polynomial(a,n)=polynomial(b,m)
+
   % In order to make Knuth's bound useful, we need a way to comp kth root.
   % We follow the method of de Moura
 
@@ -355,5 +361,93 @@ BEGIN
     IFF
     ((FORALL (x,y:real): xlb <= x AND x<y AND y<=yub IMPLIES polynomial(a,n)(x) > polynomial(a,n)(y)) OR
      (FORALL (x,y:real): xlb <= x AND x<y AND y<=yub IMPLIES polynomial(a,n)(x) < polynomial(a,n)(y))))
+
+  % Max root is like max_linear_div_power, but more robust.
+
+  root_degree(a,n)(y): RECURSIVE {m| m<=n AND (a(n)/=0 IMPLIES
+    ((EXISTS (b:[nat->real]): (FORALL (x): polynomial(a,n)(x)=(x-y)^m*polynomial(b,n-m)(x)) AND
+      polynomial(b,n-m)(y)/=0 AND b(n-m)/=0) AND
+    (polynomial(a,n)(y)=0 IMPLIES m>0) AND
+    ((n>0 AND m>0) IMPLIES (EXISTS (q:[nat->real]): (FORALL (x): polynomial(poly_deriv(a),n-1)(x) = 
+             (x-y)^(m-1)*polynomial(q,n-m)(x)) AND
+      polynomial(q,n-m)(y)/=0))))} =
+    IF polynomial(a,n)(y)/=0 OR n=0 THEN 0
+    ELSE 1+root_degree(poly_shift(LAMBDA (i:nat): poly_shift(a,n)(y)(i+1),n-1)(-y),n-1)(y)
+    ENDIF MEASURE n
+
+  root_degree_pos: LEMMA a(n)/=0 IMPLIES
+    (polynomial(a,n)(y)=0 IFF root_degree(a,n)(y)>0)
+
+  root_degree_max_linear_div_power: LEMMA a(n)/=0 AND
+    (polynomial(a,n)(y)=0 OR root_degree(a,n)(y)>0) IMPLIES
+     max_linear_div_power?(a,n,y)(root_degree(a,n)(y))
+
+  root_degree_unique: LEMMA
+    a(n)/=0 AND m<=n AND (EXISTS (b:[nat->real]): (FORALL (x): 
+      polynomial(a,n)(x)=(x-y)^m*polynomial(b,n-m)(x)) AND
+      polynomial(b,n-m)(y)/=0) IMPLIES
+      m = root_degree(a,n)(y)
+
+  only_root_between?(a,n,x,y)(z): bool =
+    x<z AND z<y AND 
+    (FORALL (r:real): x<=r AND r<=y AND r/=z IMPLIES
+      polynomial(a,n)(r)/=0)
+
+  root_degree_odd: LEMMA a(n)/=0 AND only_root_between?(a,n,x,y)(z) IMPLIES
+    (odd?(root_degree(a,n)(z)) IFF sign_ext(polynomial(a,n)(x))=
+    			          -sign_ext(polynomial(a,n)(y)))
+
+  root_degree_even: LEMMA a(n)/=0 AND only_root_between?(a,n,x,y)(z) IMPLIES
+    (even?(root_degree(a,n)(z)) IFF sign_ext(polynomial(a,n)(x))=
+    			          sign_ext(polynomial(a,n)(y)))
+
+  root_degree_deriv: LEMMA a(n)/=0 AND polynomial(a,n)(y)=0 AND n>0 IMPLIES
+    root_degree(poly_deriv(a),n-1)(y) = root_degree(a,n)(y)-1
+
+  root_degree_mult: LEMMA a(n)/=0 AND b(m)/=0 IMPLIES
+    root_degree(polynomial_prod(a,n,b,m),n+m)(y) = root_degree(a,n)(y)+root_degree(b,m)(y)
+
+  root_degree_scal: LEMMA a(n)/=0 AND x/=0 IMPLIES
+    root_degree(x*a,n)(y) = root_degree(a,n)(y)
+
+  root_degree_power_linear: LEMMA
+    root_degree(power_linear(-y, 1, m),m)(y) = m
+
+  root_degree_eq: LEMMA a(n)/=0 AND
+    (FORALL (i:upto(n)): a(i)=b(i)) IMPLIES
+    root_degree(a,n)(y) = root_degree(b,n)(y)
+
+  root_degree_lower_bound: LEMMA FORALL (k:nat):
+    a(n)/=0 AND (EXISTS (b:[nat->real]): b(k)/=0 AND (FORALL (x):
+      polynomial(a,n)(x)=(x-y)^m*polynomial(b,k)(x))) IMPLIES
+      (k=n-m AND root_degree(a,n)(y)>=m)
+
+  root_degree_division: LEMMA 
+    FORALL (a,b,g,h:[nat->real],n,m,k,p:nat):
+    (FORALL (x:real): polynomial(a,n)(x) = 
+	  polynomial(g,k)(x)*polynomial(b,m)(x)
+	    + polynomial(h,p)(x)) AND h(p)/=0 AND
+    a(n)/=0 AND b(m)/=0 IMPLIES
+    ((root_degree(a,n)(y)<root_degree(b,m)(y) IMPLIES
+      root_degree(h,p)(y)=root_degree(a,n)(y)) AND
+     root_degree(h,p)(y)>=
+     min(root_degree(a,n)(y),root_degree(b,m)(y)))
+
+  signs_swap_division: LEMMA 
+    FORALL (a,b,g,h:[nat->real],n,m,k,p:nat):
+    only_root_between?(a,n,x,y)(z) AND
+    only_root_between?(b,m,x,y)(z) AND
+    only_root_between?(h,p,x,y)(z) AND
+    (FORALL (r:real): polynomial(a,n)(r) = 
+	  polynomial(g,k)(r)*polynomial(b,m)(r)
+	    + polynomial(h,p)(r)) AND h(p)/=0 AND
+    a(n)/=0 AND b(m)/=0 AND
+    root_degree(a,n)(z)=root_degree(h,p)(z) AND
+    root_degree(b,m)(z)>=root_degree(h,p)(z) IMPLIES
+     ((sign_ext(polynomial(a,n)(x))*sign_ext(polynomial(h,p)(x))=1 AND
+       sign_ext(polynomial(a,n)(y))*sign_ext(polynomial(h,p)(y))=1) OR
+       (EXISTS (sig:Sign): (FORALL (abh:[nat->real],kz:nat): 
+         ((abh=a AND kz=n) OR (abh=b AND kz=m) OR (abh=h AND kz=p)) IMPLIES
+	 sign_ext(polynomial(abh,kz)(x)) = sig*sign_ext(polynomial(abh,kz)(y)))))
 
 END more_polynomial_props

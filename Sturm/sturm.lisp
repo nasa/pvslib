@@ -206,7 +206,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 	  ((then (eval-expr (! -1 2))
 		 (replaces -1 -2)
 		 (label !stu-deg -1)
-		 (lemma "polylist_sat_rational_def")
+		 (lemma "sturm_def")
 		 (with-fresh-labels
 		  ((!stlm -1))
 		  (spread (inst !stlm xval stu_ relstr)
@@ -390,7 +390,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 		   (with-fresh-names
 		    ((xval_ xval) (lp_ lp :tcc-step (eval-formula))
 		     (deg_ deg) (rel_ relstr) (relvar_ relvarstr))
-		    (lemma "compute_poly_monotonic_def")
+		    (lemma "mono_def")
 		    (branch 
 		     (inst -1 xval_ lp_ deg_ rel_ relvar_)
 		     ((then 

@@ -4,11 +4,12 @@ BEGIN
   IMPORTING reals@sign
 
   a,b,r : VAR [nat->real]
-  i,j,k,d : VAR nat
-  x : VAR real
+  i,j,k,d,n : VAR nat
   sig: VAR real
 
-  number_sign_changes(a,i): RECURSIVE [# num: nat, lastnz: real #] =
+  NSC : TYPE = [# num: nat, lastnz: real #] 
+
+  number_sign_changes(a,i): RECURSIVE NSC =
     IF i = 0 THEN (# num:= 0, lastnz:= a(0) #)
     ELSE LET prev = number_sign_changes(a,i-1)
     	 IN  IF a(i)/=0 AND prev`lastnz/=0 AND sign_ext(a(i))/=sign_ext(prev`lastnz)
@@ -18,6 +19,27 @@ BEGIN
 	     ELSE prev
 	     ENDIF
     ENDIF MEASURE i
+
+  num    : VAR nat
+  lastnz : VAR real
+
+  sign_changes(a,n,(i:subrange(1,n+1)),num,lastnz) : RECURSIVE 
+    {m: nat | LET nsci = number_sign_changes(a,i-1),
+                  nscn = number_sign_changes(a,n) IN
+                  num = nsci`num AND lastnz = nsci`lastnz IMPLIES
+                  m = nscn`num} =
+    IF i = n+1 THEN num
+    ELSIF a(i)/=0 AND lastnz/=0 AND sign_ext(a(i))/=sign_ext(lastnz) THEN
+      sign_changes(a,n,i+1,num+1,a(i))
+    ELSIF a(i)/=0 THEN
+      sign_changes(a,n,i+1,num,a(i))
+    ELSE
+      sign_changes(a,n,i+1,num,lastnz)
+    ENDIF
+  MEASURE n-i+1
+
+  num_sign_changes_def : LEMMA
+    number_sign_changes(a,i)`num = sign_changes(a,i,1,0,a(0))
 
   number_sign_changes_lastnz_nonzero: LEMMA
     number_sign_changes(a,i)`lastnz = 0 IFF
@@ -92,9 +114,9 @@ BEGIN
     sign_ext(b(0))= sign_ext(b(1)) AND
     (FORALL (j): j<k IMPLIES (a(j)/=0 AND b(j)/=0))
     IMPLIES
-      LET nsca = number_sign_changes(a,k),
-      	  nscb = number_sign_changes(b,k)
-      IN  nsca`num = nscb`num + (IF k>=1 THEN 1 ELSE 0 ENDIF)
+      LET nsca = number_sign_changes(a,k)`num,
+      	  nscb = number_sign_changes(b,k)`num
+      IN  nsca = nscb + (IF k>=1 THEN 1 ELSE 0 ENDIF)
 
   nsc_multiroot_full: LEMMA FORALL (sigfun:[nat->real]):
     (sig=-1 OR sig=1) AND % The nominal sign
@@ -109,8 +131,8 @@ BEGIN
     sign_ext(b(0))= sign_ext(b(1)) AND
     (FORALL (j): j<=k IMPLIES (a(j)/=0 AND b(j)/=0))
     IMPLIES
-      LET nsca = number_sign_changes(a,k),
-      	  nscb = number_sign_changes(b,k)
-      IN  nsca`num = nscb`num + (IF k>=1 THEN 1 ELSE 0 ENDIF)
+      LET nsca = number_sign_changes(a,k)`num,
+      	  nscb = number_sign_changes(b,k)`num
+      IN  nsca = nscb + (IF k>=1 THEN 1 ELSE 0 ENDIF)
   
 END number_sign_changes
