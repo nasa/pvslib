@@ -1,0 +1,72 @@
+count_functions: THEORY
+
+%%% Counting the number of functions
+%%% [subrange(1,n)->subrange(1,m)]
+%%% that satisfy a given predicate.
+%%% Also represent the entire collection
+%%% as a list.
+
+BEGIN
+
+  IMPORTING array2list
+
+  n,m : VAR posnat
+  nn  : VAR nat
+
+  I(nn): TYPE = subrange(1,nn)
+
+  FinFun(nn,m): TYPE = [I(nn)->I(m)]
+
+  listrep(n,m)(f:FinFun(n,m)): listn[I(m)](n) =
+    array2list(n)(LAMBDA (i:nat): IF i>n-1 THEN 1 ELSE f(i+1) ENDIF)
+
+  listrep_test: LEMMA
+    listrep(4,3)(LAMBDA (i:I(4)): min(i,3)) =
+    (: 1,2,3,3 :)
+
+  FunEqSet(n,m)(P:pred[FinFun(n,m)],i:I(n),j:I(m),f:FinFun(n,m)): set[FinFun(n,m)] =
+    {g:FinFun(n,m) | P(g) AND (FORALL (k:nat): k>i AND k<=n IMPLIES g(k)=f(k)) AND g(i)<=j}
+    
+  update(n,m)(f:FinFun(n,m),i:I(n),j:I(m)): FinFun(n,m) =
+    (LAMBDA (k:I(n)): IF k=i THEN j ELSE f(k) ENDIF)
+
+    % i is the index above which f is fixed,
+    % j is what to set i to when recursing
+  collect_funs(n,m)(P:pred[FinFun(n,m)],f:FinFun(n,m),i:I(n),j:I(m)): 
+    RECURSIVE {l:list[listn[I(m)](n)] |
+      EXISTS (bij:[(FunEqSet(n,m)(P,i,j,f))->below(length(l))]):
+        (FORALL (g:(FunEqSet(n,m)(P,i,j,f))): nth(l,bij(g)) = listrep(n,m)(g))
+	AND bijective?(bij)} =
+    LET g = update(n,m)(f,i,j) IN
+      IF i=1 AND j=1 AND P(g) THEN (: listrep(n,m)(g) :)
+      ELSIF i=1 AND j=1 THEN (: :)
+      ELSIF i=1 AND P(g) THEN cons(listrep(n,m)(g),collect_funs(n,m)(P,f,1,j-1))
+      ELSIF i=1 THEN collect_funs(n,m)(P,f,1,j-1)
+      ELSIF j>1 THEN append(collect_funs(n,m)(P,g,i-1,m),collect_funs(n,m)(P,f,i,j-1))
+      ELSE collect_funs(n,m)(P,g,i-1,m)
+      ENDIF MEASURE i*(m+1)+j
+
+  funs_sat(n,m)(P:pred[FinFun(n,m)]): {l:list[listn[I(m)](n)] |
+      EXISTS (bij:[(P)->below(length(l))]):
+        (FORALL (g:(P)): nth(l,bij(g)) = listrep(n,m)(g))
+	AND bijective?(bij)} =
+    collect_funs(n,m)(P,LAMBDA (i:I(n)):1,n,m)
+
+  number_funs_sat(n,m)(P:pred[FinFun(n,m)]): nat =
+    length(funs_sat(n,m)(P))
+
+  isaperm5(f:FinFun(5,5)): bool =
+    FORALL (i,j:I(5)): i/=j IMPLIES f(i)/=f(j)
+
+  perm5_test: LEMMA number_funs_sat(5,5)(isaperm5)=120
+
+  isasol(n:posnat)(f:FinFun(n,n)): bool =
+    FORALL (i,j:I(n)):
+      (i/=j IMPLIES f(i)/=f(j)) AND
+      (i/=j IMPLIES (f(i)-f(j)/=i-j AND
+      	    	     f(i)-f(j)/=j-i))
+
+  isasol_test8: LEMMA
+    number_funs_sat(8,8)(isasol(8)) = 92
+
+END count_functions
