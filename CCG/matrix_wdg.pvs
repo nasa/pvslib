@@ -1,0 +1,115 @@
+%********************************************************************************%
+%										 %
+%   Authors:									 %
+%   										 %
+%       Andréia Borges Avelar -- Universidade de Brasília - Brasil  		 %
+%       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil  		 %
+%                 Cesar Muñoz -- NASA Langley Research Center - US		 %
+%		  	      	      	      	       	      		         %
+%********************************************************************************%
+%                    last modified: Mar - 03 - 2014                              %
+%********************************************************************************%
+
+matrix_wdg[T: TYPE, N: posnat]: THEORY
+BEGIN
+
+%   digraphs_copy : LIBRARY "../digraphs_copy"
+
+   IMPORTING measures[N],
+             digraphs@weighted_digraphs[T, measures[N].measure_matrix,
+                                        measures[N].*, measures[N].id],
+             digraphs@cycles[T]
+
+
+
+        G : VAR wdg
+ w, c, cy : VAR prewalk
+     u, v : VAR nat
+  i, j, k : VAR below(N)
+        e : VAR edgetype
+
+
+% ------------------------------------------------------------------------------- %
+%  Termination for matrix weighted digraphs
+% ------------------------------------------------------------------------------- %
+ 
+ mwg_termination?(G): bool =
+   FORALL (c | circuit?(dg(G), c)): positive?(wgt_walk(G, c))
+
+% ------------------------------------------------------------------------------- %
+%  Definitions
+%  -> A criterion to verify termination based on lexicographic orders
+% ------------------------------------------------------------------------------- %
+
+ double_cycle?(G)(c): bool = 
+   circuit?(dg(G), c) AND 
+   EXISTS(c1, c2: {w: prewalk | cycle?(dg(G), w)}): 
+     eq_circuit?(dg(G), c, c1 o rest(c2))
+
+ positive_double_cycle?(G,k)(c: (double_cycle?(G))): bool =
+   EXISTS(e: (edges_of(c))): wgt(G)(e)(k)(k) = 1
+
+ limiting_measure?(G)(k): bool =
+   (FORALL(e: edge(dg(G))): wgt(G)(e)(k)(k) >= 0) AND
+   (FORALL(c: (double_cycle?(G))): positive_double_cycle?(G,k)(c))
+
+ criterion_one?(G): bool = 
+   (EXISTS k: limiting_measure?(G)(k)) AND
+   (FORALL cy: cycle?(dg(G),cy) IMPLIES positive?(wgt_walk(G, cy)))
+
+% ------------------------------------------------------------------------------- %
+%  Properties: In the next...
+%     i) "lm" will be used to refer to "limiting_measure"
+%    ii) "pstv" will be used to refer to "positive"
+% ------------------------------------------------------------------------------- %
+
+ positive_eq_circuit: LEMMA
+   FORALL (w1, w2: prewalk):
+      eq_circuit?(dg(G), w1, w2) AND positive?(wgt_walk(G, w1))
+      IMPLIES positive?(wgt_walk(G, w2))
+
+ lm_defined_walks: LEMMA
+   limiting_measure?(G)(k) AND walk?(dg(G), w)
+   IMPLIES wgt_walk(G, w)(k)(k) >= 0
+
+ lm_positive_edge: LEMMA
+   limiting_measure?(G)(k) AND NOT cycle?(dg(G),c) AND circuit?(dg(G), c)
+   IMPLIES EXISTS(e: (edges_of(c))): wgt(G)(e)(k)(k) = 1
+
+ lm_pstv_cycles_pstv_circuits: THEOREM
+   criterion_one?(G) IMPLIES mwg_termination?(G)
+ 
+
+% ------------------------------------------------------------------------------- %
+%  Definitions
+%   -> A criterion to verify termination based on a fixed labeling on vertexes
+% ------------------------------------------------------------------------------- %
+
+ vertex_labeling(G): TYPE = [vert(dg(G)) -> below[N]]
+
+ limiting_labeling?(G: wdg, F: vertex_labeling(G)): bool =
+   (FORALL(e: edge(dg(G))): wgt(G)((e))(F(e`1))(F(e`2)) >= 0) AND
+   (FORALL c: cycle?(dg(G),c) => wgt_walk(G, c)(F(first(c)))(F(last(c))) = 1)
+
+ criterion_two?(G): bool =
+   EXISTS (F: vertex_labeling(G)): limiting_labeling?(G, F)
+
+% ------------------------------------------------------------------------------- %
+%  Properties: In the next...
+%     i) "ll" will be used to refer to "limiting_labeling"
+% ------------------------------------------------------------------------------- %
+
+ ll_defined_walks: LEMMA
+   FORALL(G: wdg, F: vertex_labeling(G), w: prewalk):
+     limiting_labeling?(G, F) AND walk?(dg(G), w)
+     IMPLIES wgt_walk(G, w)(F(first(w)))(F(last(w))) >= 0
+
+ ll_pstv_pos_circuits: LEMMA
+   FORALL(G: wdg, F: vertex_labeling(G)): limiting_labeling?(G, F) IMPLIES 
+     FORALL(c | circuit?(dg(G), c)): wgt_walk(G, c)(F(first(c)))(F(last(c))) = 1
+
+ ll_pstv_circuits: THEOREM
+   criterion_two?(G) IMPLIES mwg_termination?(G)
+
+
+END matrix_wdg
