@@ -325,7 +325,7 @@ rational number up to the PRECISION-1 decimal."
    (vars-sharp__$))
   "[Interval] Internal strategy." "")
 
-(defstep numerical (expr &optional (precision 3) (n 3) (maxdepth 10)
+(defstep numerical (expr &optional (precision 3) (maxdepth 10)
 			 min? max?
 			 vars 
 			 subs
@@ -349,7 +349,8 @@ rational number up to the PRECISION-1 decimal."
 	(ia-vars   (extra-get-var-ranges fms vars))
 	(unvars    (ia-find-unbound-vars ia-vars))
 	(msg       (cond ((not (check-name "IntervalStrategies4Q__"))
-			  (format nil "This strategy requires importing either interval_arith@strategies4Q (for rational expressions)
+			  (format nil
+				  "This strategy requires importing either interval_arith@strategies4Q (for rational expressions)
 or interval_arith@strategies (for real-valued expressions) for its proper operation"))
 			 (unvars
 			  (format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
@@ -360,7 +361,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 			  (format nil "Expresion ~a is not a real number expression." ia-expr))))
 	(ia-box    (unless msg (ia-box ia-vars)))
 	(m_or_m    (+ (if min? -1 0) (if max? 1 0)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars subs)))
+	(ia-iexpr  (unless msg (ia-interval-expr ia-expr precision ia-vars subs)))
 	(names     (unless msg (append (mapcar #'car *ia-let-names*) (list name))))
 	(exprs     (unless msg (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr))))
 	(namexprs  (merge-lists names exprs))
@@ -392,7 +393,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 					   (get-expr-from-obj output 'ans 'ub_min)))
 				       true precision))
 		(eqs    (extra-evalexprs))
-		(maxd   (= depth maxdepth))) 	
+		(maxd   (and ia-vars (= depth maxdepth))))
 	    (with-fresh-labels 
 	     (!iax)
 	     (relabel label -1)
@@ -417,10 +418,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 		     (when verbose?
 		       (printf "~%----")
 		       (when maxd
-			 (printf "Maximum depth has been reached. Accuracy 10^-~a is not guranteed"
-				 precision)
-			 (printf "Set either MAXDEPTH or N to values greater than ~a AND ~a, respectively" 
-				 maxdepth n))
+			 (printf "Maximum depth has been reached."))
 		       (printf "Lower bound accuracy <= ~a" lbacc) 
 		       (printf "Upper bound accuracy <= ~a" ubacc)
 		       (printf "Splits: ~a. Depth: ~a~%----~%" splits depth)
@@ -439,18 +437,15 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 	       (eval-formula)))))
 	  (skip))
 	 (skip))))))
-  "[Interval] Computes lower and upper bounds of the minimum and maximum
-values of EXPR using a branch and bound algorithm based on interval arithmetic.
-PRECISION is the number of decimals in the output interval. The parameter N
-concerns the accuracy of the computations of real-valued functions in EXPR.
-The higher the value of N, the more accurate the computation of these functions.
-MAXDEPTH is a maximum recursion depth for the branch and bound algorithm.
-
-The accuracy of the bounds is 10^-PRECISION. However, this accuracy is not
-guaranteed when MAXDEPTH is reached. The strategy also computes intervals
-whose evaluations are close to the minimum and maximum values up this
-accuracy. If MIN? (resp. MAX?) is set to t, only a minimum (resp. maximum)
-value of the specified accuracy is sought. 
+  "[Interval] Computes lower and upper bounds of the minimum and
+maximum values of EXPR using a branch and bound algorithm based on
+interval arithmetic.  PRECISION is the number of decimals in the
+output interval. PRECISION also indicates an accuracy of 10^-PRECISION
+in every computation. However, this accuracy is not guaranteed in the
+final result. MAXDEPTH is a maximum recursion depth for the branch and
+bound algorithm. For efficiency, the MIN? and MAX? options can be
+used to restrict the precision of the computations to either the lower
+or upper bound, respectively.
 
 VARS is a list of the form (<v1> ... <vn>), where each <vi> is either a
 variable name, e.g., \"x\", or a list consisting of a variable name and
@@ -459,17 +454,16 @@ the variables in EXPR and to provide their ranges. If this list is not
 provided, this information is extracted from the sequent.
 
 SUBS is a list of substitutions for translating user-defined
-real-valued functions into interval ones. Each substitution has
-the form (<f> <F>), where <f> is the name of a real-valued function
-and <F> is the name of its interval counterpart. It is assumed that
-<F> satisfies the Inclusion and the Fundamental theorems of interval
+real-valued functions into interval ones. Each substitution has the
+form (<f> <F>), where <f> is the name of a real-valued function and
+<F> is the name of its interval counterpart. It is assumed that <F>
+satisfies the Inclusion and the Fundamental theorems of interval
 arithmetic for <f>. Standard substitutions for basic arithmetic
-operators, abs, sq, sqrt, trigonometric functions, exp, and ln
-are already provided. This parameter can be used to change the
-default approximation parameter N for a particular function, e.g.,
-((\"pi\" \"PI_n(4)\") (\"cos\" (\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1)))
-specifies that pi must be computed with N=4, cos must be computed with
-N+1, and sin must be computed with N-1.
+operators, abs, sq, sqrt, trigonometric functions, exp, and ln are
+already provided. This parameter can be used to change the precision
+for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
+(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
+PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
 
 DIRVAR is the name of a direction and variable selection method for
 the branch an bound algorithm. Theory numerical_bandb includes some
@@ -497,7 +491,7 @@ unfolding of several definitions which is time consuming in PVS."
   (and (is-function-expr ans "Some")
        (extra-is-false (argument ans))))
 
-(defstep interval (&optional (fnums 1) (n 4) maxdepth sat?
+(defstep interval (&optional (fnums 1) (precision 3) maxdepth sat?
 			     vars 
 			     subs 
 			     dirvar
@@ -571,7 +565,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 	    (neg       (if sat? (<= quant 0) (or (< quant 0) (and (= quant 0) (< fn 0)))))
 	    (nname     (if neg (format nil "BNOT(~a)" name) name))
 	    (ia-box    (ia-box ia-vars))
-	    (ia-iexpr  (ia-interval-expr ia-expr n ia-vars subs))
+	    (ia-iexpr  (ia-interval-expr ia-expr precision ia-vars subs))
 	    (names     (append (mapcar #'car *ia-let-names*) (list name)))
 	    (exprs     (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr)))
 	    (namexprs  (merge-lists names exprs))
@@ -605,8 +599,8 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 		   (if (and (not istrue) (not isfalse))
 		       (then
 			(printf "Formula cannot be proved nor disproved")
-			(printf "Set either MAXDEPTH or N to values greater than ~a AND ~a, respectively" 
-				maxdepth n))
+			(printf "Set MAXDEPTH or PRECISION to values greater than ~a AND ~a, respectively" 
+				maxdepth precision))
 		     (let ((prfex    (and cex findcex (/= quant 0) (not sat?))) ;; Existential proof
 			   (prfall   (and istrue (not findcex) (not sat?))) ;; Universal proof
 			   (disprf   (and (if findcex istrue cex) (not sat?))) ;; Disproof
@@ -687,11 +681,11 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 		     (printf "See hidden formulas labeled ~a for more information~%----~%" label)))))
 	       (hide !ia))
 	      (skip)))))))))
-  "[Interval] Checks if formulas FNUMS, which may be simply quantified,
-holds using a branch and bound algorithm based on interval arithmetic.
-The parameter N concerns the accuracy of the computations of real-valued
-functions in EXPR. The higher the value of N, the more accurate the
-computation of these functions. MAXDEPTH is a maximum recursion depth
+  "[Interval] Checks if formulas FNUMS, which may be simply
+quantified, holds using a branch and bound algorithm based on interval
+arithmetic.  The parameter PRECISION indicates an accuracy of
+10^-PRECISION in every computation. However, this accuracy is not
+guaranteed in the final result. MAXDEPTH is a maximum recursion depth
 for the branch and bound algorithm.
 
 If SAT? is set to t, the strategy checks if formula FNUMS,
@@ -712,11 +706,10 @@ and <F> is the name of its interval counterpart. It is assumed that
 <F> satisfies the Inclusion and the Fundamental theorems of interval
 arithmetic for <f>. Standard substitutions for basic arithmetic
 operators, abs, sq, sqrt, trigonometric functions, exp, and ln
-are already provided. This parameter can be used to change the
-default approximation parameter N for a particular function, e.g.,
-((\"pi\" \"PI_n(4)\") (\"cos\" (\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1)))
-specifies that pi must be computed with N=4, cos must be computed with
-N+1, and sin must be computed with N-1.
+are already provided. This parameter can be used to change the precision
+for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
+(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
+PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
 
 DIRVAR is the name of a direction and variable selection method for
 the branch an bound algorithm. Theory interval_bandb includes some
@@ -759,13 +752,13 @@ TCCs generated during its execution."
 ;; In real proofs, the most ellaborated strategies numerical and interval should be used.
 ;;****
 
-(defstep simple-numerical (expr &optional (precision 3) (n 3) (maxdepth 5))
+(defstep simple-numerical (expr &optional (precision 3) (maxdepth 5))
   (let ((name    (freshname "sia"))
 	(ia-expr (extra-get-expr expr))
 	(ia-estr (expr2str ia-expr))
 	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
 	(vars    (ia-get-vars-from-expr ia-expr))
-	(ia-vars (ia-get-var-ranges fms vars))
+	(ia-vars (extra-get-var-ranges fms vars))
 	(unvars  (ia-find-unbound-vars ia-vars))
 	(msg     (cond (unvars
 			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
@@ -775,7 +768,7 @@ TCCs generated during its execution."
 		       ((not (is-number-expr ia-expr))
 			(format nil "Expresion ~a is not a real number expression." ia-expr))))
 	(ia-box    (unless msg (ia-box ia-vars)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars)))
+	(ia-iexpr  (unless msg (ia-interval-expr ia-expr precision ia-vars)))
 	(maxdepth  (if (null ia-vars) 0 maxdepth))
 	(ia-eval   (format nil "simple_interval(~a,~a,~a)" maxdepth name ia-box))
 	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
@@ -804,13 +797,17 @@ TCCs generated during its execution."
 			 (eval-formula))))
 	  (skip))
 	 (skip))))))
-  "[Interval] Computes a simple estimation of the minimum and maximum values
-of EXPR using a branch and bound algorithm based on interval arithmetic.
-PRECISION is the number of decimals in the output interval. The parameter N
-concerns the accuracy of the computations of real-valued functions in EXPR.
-The higher the value of N, the more accurate the computation of these functions.
-MAXDEPTH is a maximum recursion depth for the branch and bound algorithm.
+  "[Interval] Computes a simple estimation of the minimum and maximum
+values of EXPR using a branch and bound algorithm based on interval
+arithmetic.  PRECISION is the number of decimals in the output
+interval. PRECISION also indicates an accuracy of 10^-PRECISION in the
+computation of real-valued functions. However, this accuracy is not
+guaranteed in the final result.
 
-This strategy is a simplified version of the more elaborated strategy NUMERICAL."
+MAXDEPTH is a maximum recursion depth for the branch and bound
+algorithm.
+
+This strategy is a simplified version of the more elaborated strategy
+NUMERICAL."
   "Computing estimates to the minmax of expression ~a,~%using interval arithmetic")
 
