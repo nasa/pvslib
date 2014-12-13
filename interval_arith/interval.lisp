@@ -441,11 +441,11 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 maximum values of EXPR using a branch and bound algorithm based on
 interval arithmetic.  PRECISION is the number of decimals in the
 output interval. PRECISION also indicates an accuracy of 10^-PRECISION
-in every computation. However, this accuracy is not guaranteed in the
-final result. MAXDEPTH is a maximum recursion depth for the branch and
-bound algorithm. For efficiency, the MIN? and MAX? options can be
-used to restrict the precision of the computations to either the lower
-or upper bound, respectively.
+in every atomic computation. However, this accuracy is not guaranteed
+in the final result. MAXDEPTH is a maximum recursion depth for the
+branch and bound algorithm. For efficiency, the MIN? and MAX? options
+can be used to restrict the precision of the computations to either
+the lower or upper bound, respectively.
 
 VARS is a list of the form (<v1> ... <vn>), where each <vi> is either a
 variable name, e.g., \"x\", or a list consisting of a variable name and
@@ -684,9 +684,9 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
   "[Interval] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on interval
 arithmetic.  The parameter PRECISION indicates an accuracy of
-10^-PRECISION in every computation. However, this accuracy is not
-guaranteed in the final result. MAXDEPTH is a maximum recursion depth
-for the branch and bound algorithm.
+10^-PRECISION in every atomic computation. However, this accuracy is
+not guaranteed in the final result. MAXDEPTH is a maximum recursion
+depth for the branch and bound algorithm.
 
 If SAT? is set to t, the strategy checks if formula FNUMS,
 whether in the antecedent or in the consequent, is satisfiable
@@ -800,9 +800,9 @@ TCCs generated during its execution."
   "[Interval] Computes a simple estimation of the minimum and maximum
 values of EXPR using a branch and bound algorithm based on interval
 arithmetic.  PRECISION is the number of decimals in the output
-interval. PRECISION also indicates an accuracy of 10^-PRECISION in the
-computation of real-valued functions. However, this accuracy is not
-guaranteed in the final result.
+interval. PRECISION also indicates an accuracy of 10^-PRECISION in
+every atomic computation. However, this accuracy is not guaranteed in
+the final result.
 
 MAXDEPTH is a maximum recursion depth for the branch and bound
 algorithm.

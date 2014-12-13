@@ -1,43 +1,45 @@
 rational_interval: THEORY
-
 BEGIN
 
   IMPORTING interval
 
-r: VAR real
+  r: VAR real
+  pr,ps: VAR posreal
+  n: VAR posnat
+  m : VAR nat
+  epsil: VAR posreal
+  q: VAR rat
 
-pr: VAR posreal
+  posrat_approx_lb(epsil)(pr): posreal =
+    IF epsil>=pr THEN 1/ceiling(1/pr)
+    ELSE
+      LET
+        denom = ceiling(1/epsil),
+        num = floor(denom*pr)
+      IN
+        num/denom
+    ENDIF
 
-n: VAR posnat
+  posrat_approx_lb_increasing: LEMMA
+    pr<=ps IMPLIES posrat_approx_lb(epsil)(pr)<=posrat_approx_lb(epsil)(ps)
 
-m : VAR nat
+  posrat_approx_lb_def: LEMMA
+    LET pa = posrat_approx_lb(epsil)(pr) IN
+    pa<=pr AND pa>=pr-epsil
 
-epsil: VAR posreal
+  posrat_approx(epsil)(pr): (Pos?) =
+    [| posrat_approx_lb(epsil)(pr),posrat_approx_lb(epsil)(pr+epsil) |]
 
-q: VAR rat
+  posrat_approx_def: LEMMA
+    LET pa = posrat_approx(epsil)(pr) IN
+    pa`lb <= pr AND pr<=pa`ub AND
+    pr-pa`lb <= epsil AND pa`ub-pr <= epsil
 
-
-% dir is whether you want the approximation
-% above or below
-
-posrat_approx(epsil)(pr): (Pos?) =
-  LET
-    newep = min(pr/2,epsil),
-    denom = ceiling(1/newep),
-    num = ceiling(denom*pr)
-  IN
-    [| (num-1)/denom, num/denom |] 
-
-posrat_approx_def: LEMMA
-  LET pa = posrat_approx(epsil)(pr) IN
-  pa`lb <= pr AND pr<=pa`ub AND
-  pr-pa`lb <= epsil AND pa`ub-pr <= epsil
-
-rat_interval(epsil)(I:Interval): {J:Interval|
-  (lb(I)>0 IFF lb(J)>0) AND (lb(I)<0 IFF lb(J)<0) AND (lb(I)=0 IFF lb(J)=0) AND
-  (ub(I)>0 IFF ub(J)>0) AND (ub(I)<0 IFF ub(J)<0) AND (ub(I)=0 IFF ub(J)=0) AND
-  I<<J AND lb(J)<=lb(I) AND ub(I)<=ub(J) AND 
-  lb(I)-lb(J)<=epsil AND ub(J)-ub(I)<=epsil} =
+  rat_interval(epsil)(I:Interval): {J:Interval|
+    (lb(I)>0 IFF lb(J)>0) AND (lb(I)<0 IFF lb(J)<0) AND (lb(I)=0 IFF lb(J)=0) AND
+    (ub(I)>0 IFF ub(J)>0) AND (ub(I)<0 IFF ub(J)<0) AND (ub(I)=0 IFF ub(J)=0) AND
+    I<<J AND lb(J)<=lb(I) AND ub(I)<=ub(J) AND 
+    lb(I)-lb(J)<=epsil AND ub(J)-ub(I)<=epsil} =
     LET newlb = IF lb(I)=0 THEN 0 ELSIF lb(I)<0 
     	      	THEN -ub(posrat_approx(epsil)(-lb(I)))
 		ELSE lb(posrat_approx(epsil)(lb(I))) ENDIF,
@@ -45,19 +47,9 @@ rat_interval(epsil)(I:Interval): {J:Interval|
 	      	THEN -lb(posrat_approx(epsil)(-ub(I)))
 		ELSE ub(posrat_approx(epsil)(ub(I))) ENDIF
     IN [| newlb,newub |]
-	
 
-ratprod(m): RECURSIVE real =
-	    IF m=0 THEN 1 ELSE
-	    ((2*m+1)/(2*m))*ratprod(m-1) ENDIF MEASURE m
-
-
-ratprodint(epsil:posreal,bb:bool)(m): RECURSIVE Interval =
-	    IF m=0 THEN [| 1,1 |] ELSE
-	    LET int1:Interval = ([| (2*m+1)/(2*m),(2*m+1)/(2*m) |]),
-	    	int2:Interval = ratprodint(epsil,bb)(m-1),
-		int3:Interval = Mult(int1,int2),
-		int4:Interval = IF bb THEN rat_interval(epsil)(int3) ELSE int3 ENDIF
-            IN int4 ENDIF MEASURE m
+  rat_interval_fundamental: LEMMA
+    FORALL (X,Y:Interval): Proper?(X) AND X<<Y IMPLIES
+    rat_interval(epsil)(X) << rat_interval(epsil)(Y)
 
 END rational_interval
