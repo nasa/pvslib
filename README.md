@@ -19,7 +19,8 @@ Getting the Development Version
 -
 For PVS advanced users, the development version of the NASA PVS Library is available from
 [GitHub](https://github.com/nasa/pvslib). To clone the development
-version, type the following command from the directory `<pvsdir>`.
+version, type the following command from the directory `<pvsdir>`
+(the dollar sign represents the prompt of the operating system).
 
 ~~~
 $ git clone http://github.com/nasa/pvslib nasalib 
