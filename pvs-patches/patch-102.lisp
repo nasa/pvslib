@@ -1,6 +1,6 @@
 ;;
 ;; field.lisp
-;; Release: Field-6.0.9 (3/14/14)
+;; Release: Field-6.0.10 (xx/xx/xx)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -22,7 +22,7 @@
 %  cancel-by, cancel-formula,
 %  both-sides-f, sq-simp")
 
-(defparameter *field-version* "Field-6.0.9 (3/14/14)")
+(defparameter *field-version* "Field-6.0.10 (xx/xx/xx)")
 
 (defun check-no-relation (fnum)
   (let* ((f   (extra-get-formula fnum))

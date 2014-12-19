@@ -1,6 +1,6 @@
 ;;
 ;; proveit-init.lisp
-;; Release: ProofLite-6.0.9 (3/14/14)
+;; Release: ProofLite-6.0.10 (xx/xx/xx)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -211,7 +211,6 @@
   (let* ((proveitversion (environment-variable "PROVEITVERSION"))
 	 (context (environment-variable "PROVEITPVSCONTEXT"))
 	 (pvsfile (environment-variable "PROVEITPVSFILE"))
-	 (baseout (environment-variable "PROVEITBASEOUT"))
 	 (import (read-from-string 
 		  (environment-variable "PROVEITLISPIMPORT")))
 	 (scripts (read-from-string 
@@ -271,7 +270,7 @@
 		    (pvstheories 
 		     (if import (imported-theories-in-theories theory-names)
 		       (mapcar #'get-typechecked-theory theory-names)))
-		    (depfile (pathname (format nil "pvsbin/~a.dep" baseout))))
+		    (depfile (pathname (format nil "pvsbin/~a.dep" pvsfile))))
 	       (when (equal dependencies "t")
 		 (with-open-file 
 		  (stream (ensure-directories-exist depfile) 
