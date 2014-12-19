@@ -9,7 +9,7 @@ Langley Formal Methods Team](http://shemesh.larc.nasa.gov/fm). The NASA PVS libr
   [research on theorem proving](http://shemesh.larc.nasa.gov/fm/fm-pvs.htm) sponsored by [NASA
   Langley](http://www.nasa.gov/centers/langley/home).
 
-The current version of the library is NASA PVS Library 6.0.10 (XX/XX/XX)
+The current version of the library is NASA PVS Library 6.0.10 (xx/xx/xx)
 and requires [PVS 6.0](http://pvs.csl.sri.com/download.shtml). The
 following instructions assume that PVS 6.0 is installed in the directory
 `<pvsdir>`, i.e., in the instructions below replace `<pvsdir>` by the
