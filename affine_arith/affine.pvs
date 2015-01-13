@@ -1,0 +1,1158 @@
+affine: THEORY
+BEGIN
+
+  IMPORTING indexed_list,
+            interval_arith@interval
+
+  Xi, Xi1, Xi2: VAR Interval
+  pXi: VAR ProperInterval
+
+  BaseType: TYPE = real
+
+  x,x1,x2: VAR BaseType
+  i, n, m: VAR nat
+
+  %----------------------------------------------------------------------------%
+  %-- Affine Combination ------------------------------------------------------%
+  %----------------------------------------------------------------------------%
+
+  %-- Error Terms -------------------------------------------------------------%
+  nzBaseType: TYPE = nzreal
+  nzx: VAR nzBaseType
+
+  ErrorTerms: TYPE  = ordered_list[[nat,nzBaseType],lt_idx[nzBaseType]]
+  pds, pds1, pds2: VAR ErrorTerms
+
+  empty_ErrorTerms: ErrorTerms = null::list[[nat,nzBaseType]]
+
+  non_empty?(pds): bool = NOT null?(pds)
+
+  idxs_pd(pds: ErrorTerms): RECURSIVE list[nat]
+  = IF null_ol?(pds) THEN null
+    ELSE cons(car_ol(pds)`1, idxs_pd(cdr_ol(pds))) ENDIF
+  MEASURE length(pds)
+
+  idxs_pd_append: LEMMA FORALL(pds2: {pd:ErrorTerms|appendable_ol?(pds1,pd)}):
+  idxs_pd(append_ol(pds1,pds2)) = append(idxs_pd(pds1),idxs_pd(pds2))
+
+  % Helper function. Only adds the (n,x) pair to pds if x is not zero and
+  % n is less than the first element of pds, if any.
+  add_ET(n,x,pds): ErrorTerms
+  = IF    x = 0             THEN pds
+    ELSIF null_ol?(pds)	    THEN cons_ol((n,x), empty_ErrorTerms)
+    ELSIF n < car_ol(pds)`1 THEN cons_ol((n,x), pds)
+    	      		    ELSE pds ENDIF
+
+  last_idx_append: LEMMA 
+  FORALL(pds2: {pd:ErrorTerms|appendable_ol?(pds1,pd)}):
+  last_idx(append_ol(pds1,pds2)) = max(last_idx(pds1),last_idx(pds2))
+
+  last_error(pds: (non_empty?)): BaseType
+  = nth(pds, length(pds)-1)`2
+
+  AffineCombination: TYPE 
+  = [# cv: BaseType                     % Stands for central value.
+     , pd: ErrorTerms                   % Stands for partial deviations.
+     #]
+
+  cv1, cv2: VAR BaseType
+  Xa, Xa1, Xa2: VAR AffineCombination
+
+  {||}(x, pds): AffineCombination = (# cv := x, pd := pds #)  
+
+  {||}(x): AffineCombination = (# cv := x, pd := empty_ErrorTerms #)  
+
+  ac_proj_cv: LEMMA cv({|x, pds|}) = x
+  AUTO_REWRITE+ ac_proj_cv
+
+  ac_proj_pd: LEMMA pd({|x, pds|}) = pds
+  AUTO_REWRITE+ ac_proj_pd
+
+  idxs_ac(Xa: AffineCombination): list[nat]
+  = idxs_pd(pd(Xa))
+
+  last_idx_acs(l: list[AffineCombination]): RECURSIVE int
+  = CASES l OF
+      null: -1,
+      cons(h,t): LET last_h = last_idx(pd(h)),
+      		     last_t = last_idx_acs(t) IN
+      		 max(last_h, last_t)
+    ENDCASES
+  MEASURE length(l)
+
+  search_error_term_by_idx(pds, i): RECURSIVE BaseType 
+  = Cases pds of
+      null: 0,
+      cons(h,t): IF    h`1 = i THEN h`2
+      		 ELSIF h`1 > i THEN 0
+      		    	       ELSE search_error_term_by_idx(t, i) ENDIF
+    EndCases
+  Measure length(pds)
+
+  setbi_nnull_member: LEMMA
+  search_error_term_by_idx(pds, i) /= 0 IMPLIES member(i, idxs_pd(pds))
+
+  error_term(Xa, i): BaseType
+  = search_error_term_by_idx(pd(Xa), i)
+
+  next_idx(pds): nat  
+  = last_idx(pds) + 1
+
+  test_1: LEMMA next_idx(pd({| 1, null |})) = 0
+
+  next_idx_2(pds1,pds2): nat
+  = max(next_idx(pds1), next_idx(pds2))
+
+  %----------------------------------------------------------------------------%
+  %-- Noise Evaluation --------------------------------------------------------%
+  %----------------------------------------------------------------------------%
+  Epsilon: TYPE = {x: real | -1<=x AND x<=1 }
+
+  nzEpsilon: TYPE = {ep: Epsilon | ep /= 0}
+
+  Noise: TYPE = ordered_list[[nat,nzEpsilon],lt_idx[nzEpsilon]]
+
+  null_is_noise: JUDGEMENT
+    null HAS_TYPE Noise
+
+  %-- Noises ------------------------------------------------------------------%
+  
+  e, e2: VAR Epsilon
+
+  
+  nze: VAR nzEpsilon
+
+  
+  noise, N, N1, N2: VAR Noise
+
+  idxs_noise(N: Noise): RECURSIVE list[nat]
+  = IF null_ol?(N) THEN null
+    ELSE cons(car_ol(N)`1, idxs_noise(cdr_ol(N))) ENDIF
+  MEASURE length(N)
+
+  empty_noise: Noise = null::list[[naturalnumbers.nat, nzEpsilon]] 
+
+  empty_noise_is_ol: LEMMA
+  ordered_list?[[nat, nzBaseType], lt_idx[nzBaseType]](empty_noise)
+  AUTO_REWRITE+ empty_noise_is_ol
+
+  single_n(n, nze): Noise = cons_ol((n, nze), null)
+
+  % Helper function. Only adds the (n,e) pair to N if e is not zero and n is less
+  % than the first element of N, if any.
+  add_N(n,e,N): Noise
+  = IF    e = 0           THEN N
+    ELSIF null_ol?(N)	  THEN cons_ol((n,e), empty_noise)
+    ELSIF n < car_ol(N)`1 THEN cons_ol((n,e), N)
+    	      		  ELSE N ENDIF
+
+  % This function is useful to build Noises, once you know that you are building
+  % it right (I mean with the indexes in order) but still having the possibility
+  % of using a zero e. In such case, the term won't be included in the result.
+  extend_N(n,e,(N|null_ol?(N) OR n<car_ol(N)`1)): Noise
+  = add_N(n,e,N)
+
+  % Lemma used in the strategy. It takes care of the TCCs from well-constructed
+  % Noises.
+  extend_N_prop1: LEMMA 
+  (null_ol?(N) OR m<car_ol(N)`1) AND n < m 
+  IMPLIES (null_ol?(extend_N(m,e,N)) OR n < car_ol(extend_N(m,e,N))`1)
+  AUTO_REWRITE+ extend_N_prop1
+
+  get_noise_by_idx(n, N): RECURSIVE Epsilon 
+  = IF null_ol?(N) THEN 0
+    ELSE LET h = car_ol(N), t = cdr_ol(N) IN
+    	 IF    h`1 = n THEN h`2
+      	 ELSIF h`1 > n THEN 0
+		       ELSE get_noise_by_idx(n,t) ENDIF ENDIF
+  MEASURE length(N)
+
+  upd_noise(N, n, e): RECURSIVE {N_: Noise | 
+  	       	      		  (null_ol?(N)
+  	       	      		   IMPLIES (null_ol?(N_) OR car_ol(N_)`1 = n)) AND
+  	       	      		  (NOT null_ol?(N) 
+  	       	      		   IMPLIES null_ol?(N_) 
+				   	   OR ((n < car_ol(N)`1 AND car_ol(N_)`1 =  n) 
+					       OR (n > car_ol(N)`1 AND car_ol(N_)`1 = car_ol(N)`1)
+					        OR car_ol(N_)`1 >= min(car_ol(N)`1, n)))}
+  = IF null_ol?(N) THEN add_N(n,e,empty_noise)
+    ELSE LET hN = car_ol(N), tN = cdr_ol(N) IN
+    	 IF hN`1 > n THEN IF e/=0 THEN cons_ol((n,e),N)
+	    	     	     	  ELSE N ENDIF
+    	 ELSIF hN`1 = n THEN IF e/=0 THEN cons_ol((n,e),tN)
+	                             ELSE tN ENDIF	 
+	 ELSE cons_ol(hN, upd_noise(tN, n, e))
+	 ENDIF ENDIF
+  MEASURE length(N)
+
+  gnbi_upd: LEMMA
+  get_noise_by_idx(n, upd_noise(N,n,e)) = e
+
+  gnbi_upd_2: LEMMA
+  i /= n IMPLIES 
+  get_noise_by_idx(i, upd_noise(N,n,e)) = get_noise_by_idx(i, N)
+
+  % Restricts the noise N under the Affine Combination Xa, ie, restrict(N,Xa) 
+  % is zero for every null index of Xa.
+  restrict_by_idxs(N: Noise, idxs: list[nat])
+  : RECURSIVE {N_: Noise | null_ol?(N_) OR (NOT null_ol?(N) AND car_ol(N)`1 <= car_ol(N_)`1)}
+  = IF null_ol?(N) THEN null_ol
+    ELSIF member(car_ol(N)`1, idxs) THEN cons_ol(car_ol(N), restrict_by_idxs(cdr_ol(N), idxs))
+    ELSE restrict_by_idxs(cdr_ol(N), idxs) ENDIF
+  MEASURE length(N)
+
+  restrict_ac(N,Xa): Noise = restrict_by_idxs(N, idxs_ac(Xa))
+
+  %----------------------------------------------------------------------------%
+  %   eval_pd_noise                                                            %
+  %----------------------------------------------------------------------------%
+  eval_pd_noise(pds, noise) : RECURSIVE real
+  = IF null_ol?(noise) THEN 0 
+    ELSE IF null_ol?(pds) 
+    	 THEN 0
+	 ELSE LET h = car_ol(pds), t = cdr_ol(pds) IN
+	      IF    h`1 = car_ol(noise)`1 
+	      	    THEN h`2*car_ol(noise)`2 + eval_pd_noise(t,cdr_ol(noise))
+	      ELSIF h`1 < car_ol(noise)`1 
+		    THEN eval_pd_noise(t,noise)
+		    ELSE eval_pd_noise(pds,cdr_ol(noise)) ENDIF ENDIF ENDIF
+  MEASURE length(pds) + length(noise)
+
+  epn_pds_monotony: LEMMA
+  NOT null_ol?(pds) AND 
+  NOT null_ol?(N) AND
+  car_ol(pds)`1 < car_ol(N)`1
+  IMPLIES  eval_pd_noise(cdr_ol(pds), N) = eval_pd_noise(pds, N) 
+
+  epn_noise_monotony: LEMMA
+  NOT null_ol?(pds) AND 
+  NOT null_ol?(N) AND
+  car_ol(N)`1 < car_ol(pds)`1
+  IMPLIES  eval_pd_noise(pds, N) = eval_pd_noise(pds, cdr_ol(N))
+
+  eval_pd_noise_rec_pds_def: LEMMA
+  eval_pd_noise(pds, N) = IF null_ol?(pds) THEN 0
+  		      	   ELSE get_noise_by_idx(car_ol(pds)`1, N) * car_ol(pds)`2 
+  		      	   	+ eval_pd_noise(cdr_ol(pds), N) ENDIF
+
+  eval_pd_noise_rec_N_def: LEMMA
+  eval_pd_noise(pds, N) = IF null_ol?(N) THEN 0
+  		      	   ELSE car_ol(N)`2 * search_error_term_by_idx(pds, car_ol(N)`1) 
+  		      	   	+ eval_pd_noise(pds, cdr_ol(N)) ENDIF
+
+  appendable_Noises_1: LEMMA
+  appendable_ol?(N1, N2) AND
+  NOT null_ol?(N1) AND 
+  NOT null_ol?(N2) 
+  IMPLIES car_ol(N1)`1 < car_ol(N2)`1
+
+  eval_pd_noise_noise_append_2: LEMMA
+  n = length(pds) + length(N1) IMPLIES
+  (appendable_ol?(N1, N2)
+  IMPLIES eval_pd_noise(pds,append_ol(N1,N2)) = eval_pd_noise(pds,N1) + eval_pd_noise(pds,N2))
+
+  eval_pd_noise_noise_append: LEMMA
+  appendable_ol?(N1, N2)
+  IMPLIES eval_pd_noise(pds,append_ol(N1,N2)) 
+  	  = eval_pd_noise(pds,N1) + eval_pd_noise(pds,N2)
+
+  eval_pd_noise_append: LEMMA
+  appendable_ol?(pds1,pds2)
+  IMPLIES eval_pd_noise(append_ol(pds1,pds2),N) 
+  	  = eval_pd_noise(pds1,N) + eval_pd_noise(pds2,N)
+
+  %----------------------------------------------------------------------------%
+  %   eval_ac_noise                                                            %
+  %----------------------------------------------------------------------------%
+  eval_ac_noise	(Xa, noise): real
+  = cv(Xa) + eval_pd_noise(pd(Xa), noise)
+
+  eval_ac_partial_ext: LEMMA
+  (FORALL(i: nat): member(i, idxs_ac(Xa))
+   	     	    IMPLIES get_noise_by_idx(i, N1) = get_noise_by_idx(i, N2))
+  IMPLIES eval_ac_noise(Xa, N1) = eval_ac_noise(Xa, N2)
+
+  eval_upd_no_idxs_ac: LEMMA          
+  NOT member(n, idxs_ac(Xa)) 
+  IMPLIES eval_ac_noise(Xa, upd_noise(N,n,e)) = eval_ac_noise(Xa, N)
+  
+  %----------------------------------------------------------------------------%
+  %   Merging of noises                                                        %
+  %----------------------------------------------------------------------------%
+  mergeable?(N1)(N2): RECURSIVE bool 
+  = null_ol?(N1) OR
+    null_ol?(N2) OR
+    LET h1 = car_ol(N1), t1 = cdr_ol(N1),
+    	h2 = car_ol(N2), t2 = cdr_ol(N2) IN
+    (h1`1<h2`1 AND mergeable?(t1)(N2)) OR
+    (h1`1>h2`1 AND mergeable?(N1)(t2)) OR
+    (h1=h2 AND mergeable?(t1)(t2)) 
+  MEASURE length(N1)+length(N2)
+
+  % Holds when N2 does not contradict N1 over pds
+  mergeable_wrt_pd?(pds, N1)(N2): RECURSIVE bool
+  = null_ol?(pds) OR
+    LET pdsh = car_ol(pds), pdst = cdr_ol(pds),
+    	noise_N1 = get_noise_by_idx(pdsh`1, N1), 
+    	noise_N2 = get_noise_by_idx(pdsh`1, N2) IN
+    ((noise_N2 = 0 OR (noise_N1 = noise_N2)) AND mergeable_wrt_pd?(pdst, N1)(N2))
+  MEASURE length(pds)
+
+  mergeable_wrt_pd?_nonrec_def: LEMMA
+  mergeable_wrt_pd?(pds, N1)(N2) = 
+  FORALL(i: nat): member(i, idxs_pd(pds)) 
+  	    	  IMPLIES LET noise_N1 = get_noise_by_idx(i, N1), 
+                              noise_N2 = get_noise_by_idx(i, N2) IN
+                          (noise_N2 = 0 OR (noise_N1 = noise_N2))
+
+  mergeable_wrt_ac?(Xa, N1)(N2): bool
+  = mergeable_wrt_pd?(pd(Xa), N1)(N2)
+
+  merge(N1: Noise, N2: Noise)
+  : RECURSIVE {N_: Noise | (null_ol?(N1) AND null_ol?(N2) AND null_ol?(N_))
+    	      	   	   OR (null_ol?(N1) AND NOT null_ol?(N2) AND 
+			       NOT null_ol?(N_) AND car_ol(N_)`1 = car_ol(N2)`1)
+    	      	   	   OR (null_ol?(N2) AND NOT null_ol?(N1) AND 
+			       NOT null_ol?(N_) AND car_ol(N_)`1 = car_ol(N1)`1)
+			   OR (NOT null_ol?(N1) AND NOT null_ol?(N2) AND NOT null_ol?(N_) AND 
+			       car_ol(N_)`1 = min(car_ol(N1)`1,car_ol(N2)`1))}
+  = IF null_ol?(N1) THEN N2
+    ELSIF null_ol?(N2) THEN N1
+    ELSE LET h1 = car_ol(N1), t1 = cdr_ol(N1),
+    	     h2 = car_ol(N2), t2 = cdr_ol(N2) IN
+	 IF h2`1 < h1`1    THEN cons_ol(h2, merge(N1, t2))
+	 ELSiF h1`1 < h2`1 THEN cons_ol(h1, merge(t1, N2))
+	 ELSE cons_ol(h1, merge(t1, t2)) ENDIF ENDIF
+  MEASURE length(N2) + length(N1)
+
+  merge_prop1: LEMMA                   
+  FORALL(i: nat): get_noise_by_idx(i, N1) = get_noise_by_idx(i, N2)
+  IMPLIES get_noise_by_idx(i, merge(N1, N2)) = get_noise_by_idx(i, N1)
+
+  mergeable_wrt_null_all_idxs_zero: LEMMA
+  mergeable_wrt_pd?(pds, null)(N)
+  IMPLIES FORALL(i: nat): member(i, idxs_pd(pds)) 
+  	  	    	  IMPLIES get_noise_by_idx(i, N) = 0
+
+  mergeable_wrt_null_eval_zero: LEMMA
+  mergeable_wrt_pd?(pds, null)(N)
+  IMPLIES eval_pd_noise(pds, N) = 0
+
+  mergeable_noises_respect_eval: LEMMA 
+  mergeable_wrt_ac?(Xa,N1)(N2) 
+  IMPLIES eval_ac_noise(Xa, merge(N1,N2)) = eval_ac_noise(Xa, N1)
+
+  mergeable_suff_conditions: LEMMA 
+  (FORALL(i:nat): member(i, idxs_ac(Xa)) 
+   IMPLIES (get_noise_by_idx(i,N1) = get_noise_by_idx(i, N2) OR get_noise_by_idx(i, N2) = 0))
+  IMPLIES mergeable_wrt_ac?(Xa, N1)(N2)
+
+  merge_commutativity: LEMMA
+  (FORALL(i: nat): get_noise_by_idx(i, N1) = 0 
+          	   OR get_noise_by_idx(i, N2) = 0 
+		   OR get_noise_by_idx(i, N1) = get_noise_by_idx(i, N2))
+  IMPLIES merge(N1, N2) = merge(N2, N1)
+
+  %----------------------------------------------------------------------------%
+  %-- Affine Operations -------------------------------------------------------%
+  %----------------------------------------------------------------------------%
+  op: VAR [BaseType, BaseType -> BaseType]
+
+  map_error(pds1, pds2, op): Recursive ErrorTerms
+  = IF null_ol?(pds1)
+    THEN IF null_ol?(pds2)
+    	 THEN empty_ErrorTerms
+	 ELSE LET h2 = car_ol(pds2), t2 = cdr_ol(pds2) IN
+	      LET r = op(0, h2`2) IN
+	      add_ET(h2`1, r, map_error(pds1,t2,op)) ENDIF
+    ELSE LET h1 = car_ol(pds1), t1 = cdr_ol(pds1) IN
+    	 IF null_ol?(pds2) 
+	 THEN LET r = op(h1`2, 0) IN
+	      add_ET(h1`1, r, map_error(t1,pds2,op))
+	 ELSE LET h2 = car_ol(pds2), t2 = cdr_ol(pds2) IN
+	      IF h1`1 = h2`1
+	      THEN LET r = op(h1`2,h2`2) IN
+	      	   add_ET(h1`1, r, map_error(t1,t2,op))
+	      ELSIF h1`1 < h2`1
+	      THEN LET r = op(h1`2, 0) IN
+	      	   add_ET(h1`1, r, map_error(t1,pds2,op))
+	      ELSE LET r = op(0, h2`2) IN
+	      	   add_ET(h2`1, r, map_error(pds1,t2,op)) ENDIF ENDIF ENDIF
+  MEASURE length(pds1) + length(pds2)
+
+  nol_mp_1: LEMMA
+  null_ol?(map_error(null_ol, pds2, op)) AND
+  (FORALL (x: BaseType): op(0, x) = 0 OR op(x, 0) = 0 IMPLIES x = 0)
+  IMPLIES null_ol?(pds2)
+
+  me_ordered_1: LEMMA
+  NOT null_ol?(pds2) AND
+  NOT null_ol?(map_error(null, cdr_ol(pds2), op))
+  IMPLIES  car_ol(pds2)`1 < car_ol(map_error(null, cdr_ol(pds2), op))`1
+
+  me_ordered_1b: LEMMA
+  NOT null_ol?(pds1) AND
+  NOT null_ol?(map_error(cdr_ol(pds1), null_ol, op))
+  IMPLIES  car_ol(pds1)`1 < car_ol(map_error(cdr_ol(pds1), null_ol, op))`1
+
+  me_ordered_2: LEMMA
+  NOT null_ol?(pds1) AND
+  NOT null_ol?(pds2) AND
+  NOT null_ol?(map_error(cdr_ol(pds1), cdr_ol(pds2), op))
+  IMPLIES  min(car_ol(pds1)`1, car_ol(pds2)`1) < car_ol(map_error(cdr_ol(pds1), cdr_ol(pds2), op))`1
+
+  me_ordered_3: LEMMA
+  NOT null_ol?(pds1) AND
+  NOT null_ol?(pds2) AND
+  car_ol(pds1)`1 < car_ol(pds2)`1 AND
+  NOT null_ol?(map_error(cdr_ol(pds1), pds2, op))
+  IMPLIES  car_ol(pds1)`1 < car_ol(map_error(cdr_ol(pds1), pds2, op))`1
+
+  me_ordered_4: LEMMA
+  NOT null_ol?(pds1) AND
+  NOT null_ol?(pds2) AND
+  car_ol(pds2)`1 < car_ol(pds1)`1 AND
+  NOT null_ol?(map_error(pds1, cdr_ol(pds2), op))
+  IMPLIES  car_ol(pds2)`1 < car_ol(map_error(pds1, cdr_ol(pds2), op))`1
+
+  epn_me_null_1: LEMMA 
+  FORALL(op| op(0,0)=0 AND 
+  	     (FORALL(x: BaseType): op(0,x) = 0 OR op(x,0)=0 IMPLIES x=0) AND
+	     (FORALL(a,b,c: BaseType): c * op(a, b) = op(c * a, c * b)) AND
+	     (FORALL(a,b,c,d: BaseType): op(a+b,c+d ) = op(a, c) + op(b, d)) ):
+  null?(map_error(pds1, pds2, op))
+  IMPLIES op(eval_pd_noise(pds1, N),eval_pd_noise(pds2, N)) = 0
+
+  %
+  % Test lemmas. Intended to test that the definition of map_error is compatible
+  % with the use of the command (eval-formula).
+  %
+  pds_1_1: ErrorTerms = cons((1,1), null)
+  pds_1_2: ErrorTerms = cons((1,2), null)
+ 
+  test_map_error_1: LEMMA map_error(null, null, +) = null
+ 
+  test_map_error_2: LEMMA map_error(pds_1_1, null, +) = pds_1_1
+ 
+  test_map_error_3: LEMMA map_error(null, pds_1_1, +) = pds_1_1
+ 
+  test_map_error_4: LEMMA map_error(pds_1_1, pds_1_1, +) = pds_1_2
+ 
+  %----------------------------------------------------------------------------%
+  % Conversion between intervals and affine forms                              %
+  %----------------------------------------------------------------------------%
+  % Interval -> Affine
+  %
+  const_ac(x) : AffineCombination 
+    = {| x , null |} 
+
+  next_idx_const_ac: LEMMA
+  next_idx(pd(const_ac(x))) = 0
+
+  var_ac(Xi,n): AffineCombination
+  = {| (lb(Xi) + ub(Xi)) / 2 , 
+       IF (ub(Xi) - lb(Xi)) / 2 /= 0 THEN cons((n, (ub(Xi) - lb(Xi)) / 2), null) 
+       	  	    	      	     ELSE null ENDIF |}
+  eval_var_ac: LEMMA
+  eval_ac_noise(var_ac(Xi,n), N) 
+  = (lb(Xi) + ub(Xi)) / 2
+    + get_noise_by_idx(n,N) * ((ub(Xi) - lb(Xi)) / 2)
+
+  % Affine -> Interval
+  %
+  eval_pd_i(pds): RECURSIVE Interval
+  = IF null_ol?(pds) 
+    THEN [|0|]
+    ELSE LET h = car_ol(pds), t = cdr_ol(pds) IN 
+    	 Add(Mult([|h`2|], [|-1,1|]), eval_pd_i(t)) ENDIF
+  MEASURE length(pds)
+
+  eval_by_intervals(Xa): Interval 
+  = Add([|cv(Xa)|], eval_pd_i(pd(Xa)))
+
+  % This function mimic the interval operator <<
+  AC_leq(Xa1, Xa2): bool = eval_by_intervals(Xa1) << eval_by_intervals(Xa2)
+
+
+  ebi_var_ac: LEMMA                    
+  eval_by_intervals(var_ac(pXi, n)) = pXi
+
+  idxs_ac_var_ac: LEMMA 
+  FORALL(i: nat): member(i, idxs_ac(var_ac(Xi,n))) 
+  IMPLIES  i = n
+
+  updated_noise_on_varac1: LEMMA
+  FORALL(i: nat): i /= n 
+  IMPLIES eval_ac_noise(var_ac(Xi, i), upd_noise(N, n, e)) 
+  	  = eval_ac_noise(var_ac(Xi, i), N)
+  
+  updated_noise_on_varac2: LEMMA    
+  eval_ac_noise(var_ac(Xi, n), upd_noise(N, n, e)) 
+  = eval_ac_noise(var_ac(Xi, n), extend_N(n, e, empty_noise))
+
+  %----------------------------------------------------------------------------%
+  % Containment
+  %----------------------------------------------------------------------------%
+  containment(x,Xa) : bool = EXISTS noise : eval_ac_noise(Xa, noise) = x
+
+  AC_Includes?(x)(Xa:AffineCombination) : bool = containment(x, Xa)
+
+  containment_var : LEMMA
+  x ## Xi IMPLIES EXISTS e: 
+     	     	  eval_ac_noise(var_ac(Xi,n), extend_N(n,e,empty_noise)) = x
+
+
+  SingInterval?(Xi: Interval): bool = lb(Xi) = ub(Xi)
+  
+  containment_var_single_interval: LEMMA
+  SingInterval?(Xi) AND x ## Xi 
+  IMPLIES eval_ac_noise(var_ac(Xi,n), empty_noise) = x
+
+  containment_var_simple : LEMMA
+
+  x ## Xi IMPLIES containment(x, var_ac(Xi,n))
+
+  containment_cnt : LEMMA
+    eval_ac_noise(const_ac(x), N) = x
+
+  % -> containment_interval <--------------------------------------------------%
+  containment_pd_interval: LEMMA eval_pd_noise(pds, noise) ## eval_pd_i(pds)
+
+  containment_interval: LEMMA  
+  containment(x, Xa1) IMPLIES x ## eval_by_intervals(Xa1)
+
+  %----------------------------------------------------------------------------%
+  % Addition
+  %----------------------------------------------------------------------------%
+
+  add_pd_pd(pds1, pds2): ErrorTerms  = map_error(pds1, pds2, +)
+
+  epn_app: LEMMA
+  eval_pd_noise(add_pd_pd(pds1, pds2), N) =
+         eval_pd_noise(pds1, N) +  eval_pd_noise(pds2, N)
+
+  add_ac_ac(Xa1, Xa2) : AffineCombination
+   = {| cv(Xa1) + cv(Xa2) , add_pd_pd(pd(Xa1), pd(Xa2)) |}
+
+  containment_add: LEMMA
+    FORALL N: eval_ac_noise(Xa1, N) = x1 AND eval_ac_noise(Xa2, N) = x2
+      IMPLIES eval_ac_noise(add_ac_ac(Xa1,Xa2), N) = x1 + x2
+
+  next_idx_add_ac_ac: LEMMA
+  next_idx(pd(add_ac_ac(Xa1,Xa2))) <= max(next_idx(pd(Xa1)), next_idx(pd(Xa2)))
+
+  idxs_ac_add_ac_ac: LEMMA 
+  FORALL(i: nat): member(i, idxs_ac(add_ac_ac(Xa1,Xa2))) 
+  IMPLIES  member(i, idxs_ac(Xa1)) OR member(i, idxs_ac(Xa2))
+
+  %----------------------------------------------------------------------------%
+  % Substraction
+  %----------------------------------------------------------------------------%
+
+  sub_pd_pd(pds1, pds2): ErrorTerms  = map_error(pds1, pds2, -)
+
+  epn_spp: LEMMA
+  eval_pd_noise(sub_pd_pd(pds1, pds2), N) =
+         eval_pd_noise(pds1, N) -  eval_pd_noise(pds2, N)
+  %
+  %
+  sub_ac_ac(Xa1, Xa2) : AffineCombination
+   = {| cv(Xa1) - cv(Xa2) , sub_pd_pd(pd(Xa1), pd(Xa2)) |}
+  %
+  % PROVED Thu Oct 16 18:19:55 EDT 2014
+  containment_sub: LEMMA
+    FORALL N: eval_ac_noise(Xa1, N) = x1 AND eval_ac_noise(Xa2, N) = x2
+      IMPLIES eval_ac_noise(sub_ac_ac(Xa1,Xa2), N) = x1 - x2
+  %
+
+
+
+  % STATED Wed Dec 17                   % PROVED Wed Dec 31
+  next_idx_sub_ac_ac: LEMMA
+  next_idx(pd(sub_ac_ac(Xa1,Xa2))) <= max(next_idx(pd(Xa1)), next_idx(pd(Xa2)))
+
+  % STATED Fri Dec 19                   % PROVED Tue Dec 30
+  idxs_ac_sub_ac_ac: LEMMA 
+  FORALL(i: nat): member(i, idxs_ac(sub_ac_ac(Xa1,Xa2))) 
+  IMPLIES  member(i, idxs_ac(Xa1)) OR member(i, idxs_ac(Xa2))
+
+
+
+
+  %----------------------------------------------------------------------------%
+  % Multiplication by a scalar
+  %----------------------------------------------------------------------------%
+  %
+  %
+  mul_s_pd(x, pds): RECURSIVE ErrorTerms
+  = IF null_ol?(pds) 
+       THEN empty_ErrorTerms
+       ELSE LET h = car_ol(pds), t = cdr_ol(pds) IN
+       	    add_ET(h`1, h`2*x, mul_s_pd(x, t)) ENDIF
+  MEASURE length(pds)
+  %
+  %
+  mul_s_ac(x, Xa1): AffineCombination
+  = {| x * cv(Xa1) , mul_s_pd(x, pd(Xa1)) |}
+
+
+  car_mul_s_ac: LEMMA
+  % STATED Mon Jan 12                   % PROVED Mon Jan 12
+  x2 /= 0 AND NOT null_ol?(pds) 
+  IMPLIES car(mul_s_pd(x2, pds))`1 = car(pds)`1
+
+
+  containment_mul_s: LEMMA
+  % STATED Thu Oct 23 19:11:43 EDT 2014 % PROVED Mon Jan 12
+  FORALL N: eval_ac_noise(Xa, N) = x1
+      IMPLIES eval_ac_noise(mul_s_ac(x2,Xa), N) = x2 * x1
+
+
+  %
+  %----------------------------------------------------------------------------%
+  % Addition of a scalar
+  %----------------------------------------------------------------------------%
+  %
+  %
+  add_s_ac(x, Xa1): AffineCombination
+  = {| x + cv(Xa1) , pd(Xa1) |}
+  %
+  % PROVED Thu Oct 23 19:40:49 EDT 2014
+  containment_add_s: LEMMA
+    FORALL N: eval_ac_noise(Xa, N) = x1
+      IMPLIES eval_ac_noise(add_s_ac(x2,Xa), N) = x2 + x1
+  %
+  %----------------------------------------------------------------------------%
+  % Negation                 
+  %----------------------------------------------------------------------------%
+  %
+  %
+  neg_pd(pds) : RECURSIVE 
+  {rpd: ErrorTerms | (null?(pds) IFF null?(rpd)) AND 
+  		     (NOT null?(rpd) IMPLIES car_ol(pds)`1 = car_ol(rpd)`1)}
+  = IF null_ol?(pds) THEN empty_ErrorTerms
+    ELSE LET h=car_ol(pds), t=cdr_ol(pds) IN
+    	 cons_ol((h`1, -h`2), neg_pd(t)) ENDIF
+  MEASURE length(pds)
+  %
+  neg_ac(Xa): AffineCombination
+  = {| -cv(Xa), neg_pd(pd(Xa)) |}
+
+
+  containment_neg: LEMMA
+  % STATED Thu Oct 23 19:45:41 EDT 2014 % PROVED Wed Dec 31
+    FORALL N: eval_ac_noise(Xa, N) = x1
+      IMPLIES eval_ac_noise(neg_ac(Xa), N) = -x1
+  %
+
+
+
+
+  % STATED Wed Dec 17                   % PROVED Tue Dec 30
+  next_idx_neg_ac: LEMMA
+  next_idx(pd(neg_ac(Xa))) = next_idx(pd(Xa))
+
+  % STATED Fri Dec 19                   % PROVED Tue Dec 30
+  idxs_ac_neg_ac: LEMMA 
+  FORALL(i: nat): member(i, idxs_ac(neg_ac(Xa))) 
+  IMPLIES  member(i, idxs_ac(Xa))
+
+
+
+
+
+
+  %----------------------------------------------------------------------------%
+  %-- Non-Affine Operations ---------------------------------------------------%
+  %----------------------------------------------------------------------------%
+  %
+  %----------------------------------------------------------------------------%
+  % Multiplication
+  %----------------------------------------------------------------------------%
+  mult_pd_pd(cv1,cv2,pds1,pds2) : RECURSIVE ErrorTerms
+  = IF null_ol?(pds1) 
+    THEN IF null_ol?(pds2) 
+    	 THEN null_ol
+	 ELSE LET hd2 = car_ol(pds2), tl2 = cdr_ol(pds2) IN
+	      add_ET(hd2`1,hd2`2*cv1,mult_pd_pd(cv1,cv2,pds1,tl2))
+	      ENDIF
+    ELSE LET hd1 = car_ol(pds1), tl1 = cdr_ol(pds1) IN
+    	 IF null_ol?(pds2) 
+	 THEN add_ET(hd1`1,hd1`2*cv2, mult_pd_pd(cv1,cv2,tl1,pds2))
+	 ELSE LET hd2 = car_ol(pds2), tl2 = cdr_ol(pds2) IN
+	      IF hd1`1 = hd2`1 
+	      THEN add_ET(hd1`1,(hd1`2*cv2)+(cv1*hd2`2), mult_pd_pd(cv1,cv2,tl1,tl2))
+	      ELSE IF hd1`1 < hd2`1 
+	      	   THEN add_ET(hd1`1,hd1`2*cv2,mult_pd_pd(cv1,cv2,tl1,pds2))
+	      	   ELSE add_ET(hd2`1,hd2`2*cv1,mult_pd_pd(cv1,cv2,pds1,tl2))
+ 	      	   ENDIF ENDIF ENDIF ENDIF 
+  MEASURE length(pds1) + length(pds2)
+  %
+  % PROVED Wed Oct  1 09:56:59 EDT 2014
+  mult_pd_pd_preserves_order_1: LEMMA
+  NOT null_ol?(pds) 
+  IMPLIES null_ol?(mult_pd_pd(cv1, cv2, cdr_ol(pds), null)) OR
+          car_ol(pds)`1 
+    	    < car(mult_pd_pd(cv1, cv2, cdr_ol(pds), null))`1
+  %
+  % PROVED Tue Sep 30 19:13:55 EDT 2014
+  mult_pd_pd_preserves_order_2: LEMMA
+  NOT null_ol?(pds2) 
+  IMPLIES null_ol?(mult_pd_pd(cv1, cv2, null, cdr_ol(pds2))) OR
+          car_ol(pds2)`1 
+    	    < car(mult_pd_pd(cv1, cv2, null, cdr_ol(pds2)))`1
+  
+  % PROVED Wed Oct  1 15:40:00 EDT 2014
+  mult_pd_pd_preserves_order_3: LEMMA
+  NOT null_ol?(pds1) AND NOT null_ol?(pds2)
+  IMPLIES null_ol?(mult_pd_pd(cv1, cv2, cdr_ol(pds1), cdr_ol(pds2))) OR
+          min(car_ol(pds1)`1, car_ol(pds2)`1)
+    	    < car(mult_pd_pd(cv1, cv2, cdr_ol(pds1), cdr_ol(pds2)))`1
+ 
+  % 
+  % PROVED Thu Oct  2 18:39:19 EDT 2014
+  mult_pd_pd_last_bound__null_nnull: LEMMA  
+  NOT null_ol?(pds) AND 
+  NOT null_ol?(mult_pd_pd(x1, x2, empty_ErrorTerms, pds))
+  IMPLIES last_ol(mult_pd_pd(x1, x2, empty_ErrorTerms, pds))`1 
+    	    <= last_ol(pds)`1
+  %
+  % STATED Thu Oct  2 19:16:36 EDT 2014
+  % PROVED Fri Oct  3 14:34:55 EDT 2014
+  mult_pd_pd_last_bound__nnull_null: LEMMA  
+  NOT null_ol?(pds) AND 
+  NOT null_ol?(mult_pd_pd(x1, x2, pds, empty_ErrorTerms))
+  IMPLIES last_ol(mult_pd_pd(x1, x2, pds, empty_ErrorTerms))`1 
+    	    <= last_ol(pds)`1
+  % 
+  % PROVED Fri Oct  3 11:09:04 EDT 2014
+  mult_pd_pd_last_bound: LEMMA  
+  NOT null_ol?(pds1) AND 
+  NOT null_ol?(pds2) AND
+  NOT null_ol?(mult_pd_pd(x1, x2, pds1, pds2))
+  IMPLIES last_ol(mult_pd_pd(x1, x2, pds1, pds2))`1 
+    	    <= max(last_ol(pds1)`1, last_ol(pds2)`1)
+  %
+  % STATED Tue Sep 30 18:10:24 EDT 2014
+  % PROVED Tue Sep 30 18:13:03 EDT 2014
+  search_ET_on_add_ET: LEMMA
+  null_ol?(pds) OR  m < car(pds)`1
+  IMPLIES search_error_term_by_idx(add_ET(m,x,pds), n) 
+  	  = IF n = m 
+  	    THEN x
+	    ELSE search_error_term_by_idx(pds, n) ENDIF
+  %
+  % PROVED Tue Sep 30 18:14:47 EDT 2014
+  search_ET_car: LEMMA
+  NOT null_ol?(pds) 
+  IMPLIES search_error_term_by_idx(pds,car(pds)`1) = car(pds)`2
+  %
+  % PROVED Tue Sep 30 18:17:20 EDT 2014
+  search_ET_not_car: LEMMA
+  NOT null_ol?(pds) AND 
+  n /= car(pds)`1
+  IMPLIES search_error_term_by_idx(pds,n) = search_error_term_by_idx(cdr(pds),n)
+  %
+  % STARTING PROOF AT Tue Sep 30 14:23:43 EDT 2014    
+  % PROVED Wed Oct  1 17:05:27 EDT 2014
+  search_ET_in_mult_pd_pd: LEMMA
+  search_error_term_by_idx(mult_pd_pd(cv1,cv2,pds1,pds2), n)
+  = cv1 * search_error_term_by_idx(pds2, n) + cv2 * search_error_term_by_idx(pds1, n)
+  %
+  %
+  sum_of_modules(l: list[[nat,nzBaseType]]): RECURSIVE BaseType
+  = CASES l OF
+      null: 0,
+      cons(hd, tl): abs(hd`2) + sum_of_modules(tl)
+    ENDCASES
+  MEASURE length(l)
+  %
+  % PROVED
+  % REVISED Thu Sep 25 16:26:58 EDT 2014
+  sum_of_modules_nnreal: JUDGEMENT
+  FORALL(pds: ErrorTerms): sum_of_modules(pds) HAS_TYPE nonneg_real
+  %
+  % NOT PROVED
+  sum_of_modules_append: LEMMA
+  FORALL(l1,l2: list[[nat,nzBaseType]]):
+  sum_of_modules(append(l1,l2)) = sum_of_modules(l1) + sum_of_modules(l2)
+  
+  %
+  first_noises(N,n) : Noise = first[nzEpsilon](N,n)
+
+
+  % STATED Mon Dec 22                   % PROVED Mon Dec 29
+  first_noises_upd: LEMMA
+  first_noises(upd_noise(N,n,e),n) = first_noises(N,n)
+
+
+  
+  %
+  %
+  first_ET(pds, n) : ErrorTerms = first[nzBaseType](pds, n)
+  AUTO_REWRITE+ first_ET
+  %
+  % PROVED Tue Sep 30 11:30:48 EDT 2014
+  % {!} NOTE: this lemma should be replaced by last_up_to_idx
+  last_first_ET: LEMMA 
+  NOT null?(first_ET(pds, n)) 
+  IMPLIES last_ol(first_ET(pds, n))`1 < n
+  %
+  % PROVED Wed Sep 24 13:01:43 EDT 2014
+  % REVISED ON Fri Sep 26 16:43:45 EDT 2014
+  % {!} NOTE: this lemma should be replaced by last_up_to_idx
+  last_first_noises: LEMMA 
+  NOT null?(first_noises(N, n)) 
+  IMPLIES last_ol(first_noises(N, n))`1 < n
+  %
+  % STATED Tue Oct  7 18:56:40 EDT 2014
+  % PROVED Tue Oct  7 19:17:30 EDT 2014
+  gnbi_lt_first_idem: LEMMA
+  n < m IMPLIES
+  get_noise_by_idx(n, first_noises(N, m)) = get_noise_by_idx(n, N)
+  %
+  %
+  % STATED Wed Sep 24 14:12:18 EDT 2014
+  % PROVED Thu Sep 25 16:28:20 EDT 2014
+  first_noises_zero_prop: LEMMA
+  first_noises(N,0) = empty_noise  
+  %
+  %
+  % PROVED Mon Sep 29 17:16:10 EDT 2014
+  first_error_terms_recursive_def: LEMMA
+  first_ET(pds, n+1) = append_ol( first_ET(pds,n), 
+  	   	  	  IF search_error_term_by_idx(pds, n) = 0 
+			  THEN empty_ErrorTerms
+			  ELSE cons_ol( (n,search_error_term_by_idx(pds, n))
+			       		, empty_ErrorTerms) ENDIF )
+  %
+  % PROVED Wed Sep 24 13:48:42 EDT 2014
+  % REVISED ON Fri Sep 26 14:42:47 EDT 2014
+  first_noises_recursive_def: LEMMA
+  first_noises(N, n+1) = append_ol( first_noises(N,n), 
+  	   	  	  IF get_noise_by_idx(n,N) = 0 
+			  THEN empty_noise
+			  ELSE cons_ol( (n,get_noise_by_idx(n,N)), empty_noise) ENDIF )
+  %	  
+  %
+  % PROVED
+  % REVISED Mon Oct  6 
+  eval_pd_noise_incremental: LEMMA
+    eval_pd_noise(pds1, first_noises(N, 1 + n)) 
+    =  eval_pd_noise(pds1, first_noises(N, n)) 
+       + (search_error_term_by_idx(pds1, n) * get_noise_by_idx(n, N))
+  %
+  % PROVED Mon Sep 29 17:31:05 EDT 2014
+  % REVISED Tue Sep 30 11:03:31 EDT 2014
+  partial_eval_pd_noise_upper_bound: LEMMA
+  abs(eval_pd_noise(pds, first_noises(N, n))) <= sum_of_modules(first(pds, n))
+  %
+  %
+  mult_ac_ac(Xa1,Xa2,( newidx: nat | 
+  		       newidx >= next_idx_2(pd(Xa1),pd(Xa2)))): AffineCombination
+  = {| cv(Xa1)*cv(Xa2), 
+       append_ol( mult_pd_pd(cv(Xa1),cv(Xa2),pd(Xa1),pd(Xa2)) 
+       	        , add_ET( newidx
+	       	        , sum_of_modules(pd(Xa1))*sum_of_modules(pd(Xa2))
+	       	        , empty_ErrorTerms )) |}
+  %
+  %
+  mul_noise_value(Xa1,Xa2,N) : real % it is an Epsilon, see judgement below.
+  = LET x1 = eval_ac_noise(Xa1, N), x2 = eval_ac_noise(Xa2, N) IN
+    LET som_x_som = sum_of_modules(pd(Xa1))*sum_of_modules(pd(Xa2)) IN
+    IF som_x_som = 0 THEN 0
+    ELSE ( x1*x2 
+    	   - cv(Xa1)*cv(Xa2) 
+	   - eval_pd_noise(mult_pd_pd(cv(Xa1),cv(Xa2),pd(Xa1),pd(Xa2)), N) ) 
+	 / som_x_som
+    ENDIF
+  %
+  % Lemmas and definitions intended to prove the following judgement.
+  %
+  
+  %
+  % PROVED Mon Sep 29 10:49:34 EDT 2014
+  % REVISED Tue Sep 30 10:49:40 EDT 2014
+  som_inc: LEMMA
+  sum_of_modules(first(pds, n+1))
+  = sum_of_modules(first(pds, n)) + abs(search_error_term_by_idx(pds, n))
+  %
+  % PROVED Tue Sep 30 14:06:40 EDT 2014
+  eval_pd_noise_inc: LEMMA
+    eval_pd_noise(mult_pd_pd(cv(Xa1), cv(Xa2), pd(Xa1), pd(Xa2)), first(N, n + 1)) =
+    eval_pd_noise(mult_pd_pd(cv(Xa1), cv(Xa2), pd(Xa1), pd(Xa2)), first(N, n)) +
+       (cv(Xa1) * get_noise_by_idx(n, N) * search_error_term_by_idx(pd(Xa2), n) +
+         cv(Xa2) * get_noise_by_idx(n, N) * search_error_term_by_idx(pd(Xa1), n))
+  %
+  % PROVED
+  % REVISED ON Wed Sep 24 14:02:55 EDT 2014  
+  eval_ac_noise_inc: LEMMA
+    eval_ac_noise(Xa1, first_noises(N, 1 + n)) 
+    =  eval_ac_noise(Xa1, first_noises(N, n)) 
+       + (search_error_term_by_idx(pd(Xa1), n) * get_noise_by_idx(n, N))
+  %
+  % PROVED
+  % REVISED ON Wed Sep 24 14:05:33 EDT 2014
+  eval_ac_noise_mult_inc: LEMMA
+  eval_ac_noise(Xa1, first_noises(N, 1 + n)) * eval_ac_noise(Xa2, first_noises(N, 1 + n)) 
+  = eval_ac_noise(Xa1, first_noises(N, n)) * eval_ac_noise(Xa2, first_noises(N, n))
+    + eval_ac_noise(Xa1, first_noises(N, n)) * search_error_term_by_idx(pd(Xa2), n) * get_noise_by_idx(n, N)
+    + eval_ac_noise(Xa2, first_noises(N, n)) * search_error_term_by_idx(pd(Xa1), n) * get_noise_by_idx(n, N)
+    + search_error_term_by_idx(pd(Xa1), n) * get_noise_by_idx(n, N) * search_error_term_by_idx(pd(Xa2), n) * get_noise_by_idx(n, N)
+  %
+  % PROVED
+  sum_of_modules_decomp: LEMMA
+  sum_of_modules(first(pds1, n + 1)) * sum_of_modules(first(pds2, n + 1)) = 
+    sum_of_modules(first(pds1, n)) * sum_of_modules(first(pds2, n))
+    + sum_of_modules(first(pds1, n)) * abs(search_error_term_by_idx(pds2, n))
+    + sum_of_modules(first(pds2, n)) * abs(search_error_term_by_idx(pds1, n))
+    + abs(search_error_term_by_idx(pds1, n)) * abs(search_error_term_by_idx(pds2, n))
+  %
+  % 140922-Try
+  % PROVED (on 20140922)
+  % REVISED ON Tue Sep 30 11:17:01 EDT 2014
+  mul_ac_ac_noise_incremental_bound: LEMMA
+  abs( eval_ac_noise(Xa1, first_noises(N,n)) * eval_ac_noise(Xa2, first_noises(N,n))
+       - cv(Xa1) * cv(Xa2)
+       - eval_pd_noise(mult_pd_pd(cv(Xa1),cv(Xa2),pd(Xa1),pd(Xa2)), first_noises(N,n)))
+   <= sum_of_modules(first(pd(Xa1), n))*sum_of_modules(first(pd(Xa2), n))
+  %
+  % PROVED
+  % REVISED ON Wed Sep 24 14:40:07 EDT 2014
+  mul_noise_value_is_Epsilon: JUDGEMENT  
+  FORALL(x1,x2: real, Xa1,Xa2: AffineCombination, N: Noise):
+  mul_noise_value(Xa1,Xa2,N) HAS_TYPE Epsilon
+  %
+  % PROVED Fri Oct  3 14:40:32 EDT 2014
+  som_zero: LEMMA
+  sum_of_modules(pds) = 0 IMPLIES null_ol?(pds)
+  %
+  % PROVED Fri Oct  3 17:29:53 EDT 2014
+  % REVISED Mon Oct  6 
+  epn_aET__nnull_pds: LEMMA
+  eval_pd_noise(add_ET(n,x,pds),N)
+  = IF (null_ol?(pds) OR n < car(pds)`1) AND x /= 0
+    THEN eval_pd_noise(cons_ol((n,x),empty_ErrorTerms),N) 
+    ELSE 0 ENDIF
+    + eval_pd_noise(pds,N)
+  %
+  % PROVED Fri Oct  3 17:14:18 EDT 2014
+  % REVISED Mon Oct  6 
+  epn_mpp_null_pds1: LEMMA   
+  eval_pd_noise(mult_pd_pd(x1, x2, null, pds), N) = x1 * eval_pd_noise(pds, N)
+  %
+  % PROVED Fri Oct  3 17:20:52 EDT 2014
+  % REVISED Mon Oct  6 
+  epn_mpp_null_pds2: LEMMA   
+  eval_pd_noise(mult_pd_pd(x1, x2, pds, null), N) = x2 * eval_pd_noise(pds, N)
+  %
+  % PROVED Tue Oct  7 18:08:27 EDT 2014
+  epn_over_last_is_zero: LEMMA
+  last_idx(pds) < n
+  IMPLIES eval_pd_noise(pds, cons_ol((n, nze), empty_noise)) = 0
+  %
+  % STATED Tue Oct  7 18:34:46 EDT 2014
+  % PROVED Tue Oct  7 19:10:21 EDT 2014
+  epn_up_to_last_idx_pd_is_zero: LEMMA
+  eval_pd_noise(pds, first_noises(N, 1 + last_idx(pds))) 
+  = eval_pd_noise(pds, N)
+  %
+  % PROVED Wed Oct  8 11:02:03 EDT 2014
+  epn_trim_noise: LEMMA
+  last_idx(pds) < n
+  IMPLIES eval_pd_noise(pds, first_noises(N, n)) = eval_pd_noise(pds, N)
+  %
+  % STATED Tue Oct  7 19:25:34 EDT 2014
+  % PROVED Wed Oct  8 10:53:02 EDT 2014
+  epn_mult_first: LEMMA  
+  last_idx(pds1) < n AND last_idx(pds2) < n
+  IMPLIES eval_pd_noise(mult_pd_pd(x1, x2, pds1, pds2),
+                     first_noises(N, n))
+          = eval_pd_noise(mult_pd_pd(x1, x2, pds1, pds2), N)
+  %
+  % STATED Tue Oct  7 16:51:08 EDT 2014
+  % PROVED Tue Oct  7 19:28:58 EDT 2014
+  % REVISED Wed Oct  8 11:04:39 EDT 2014
+  mpp_first_N: LEMMA
+  n >= next_idx_2(pd(Xa1),pd(Xa2))
+  IMPLIES mul_noise_value(Xa1, Xa2,first_noises(N,n))
+  	  = mul_noise_value(Xa1, Xa2, N) 
+  %
+  % PROVED Fri Oct  3 13:24:58 EDT 2014
+  % REVISED Tue Oct  7 16:59:38 EDT 2014
+  % PROOFCHAIN PROVED Sat Oct  4 08:42:49 EDT 2014
+  % PROOFCHAIN REVISED Wed Oct  8 11:08:08 EDT 2014
+  containment_mul: LEMMA
+	      n >= next_idx_2(pd(Xa1),pd(Xa2)) AND
+    	      eval_ac_noise(Xa1, N) = x1 AND eval_ac_noise(Xa2, N) = x2
+              % The next hypothesis is needed because the multiplication is
+	      % not an affine operation and so it adds a fresh term to the 
+	      % partial deviations.
+              AND get_noise_by_idx(n, N) = mul_noise_value(Xa1,Xa2,first_noises(N,n))
+      IMPLIES eval_ac_noise(mult_ac_ac(Xa1,Xa2,n), N) = x1 * x2
+
+
+
+
+  next_idx_mult_ac_ac: LEMMA
+  % STATED Wed Dec 17                   % PROVED Wed Dec 31
+  % USEDBY tcc from Eval_ACExpr_Box_offset
+  FORALL(n: upfrom(next_idx_2(Xa1`pd, Xa2`pd))):
+  next_idx(pd(mult_ac_ac(Xa1,Xa2,n))) <= 1+n
+
+
+  % STATED Fri Dec 19                   % PROVED Tue Dec 30
+  idxs_ac_mult_ac_ac: LEMMA 
+  FORALL(n:upfrom(next_idx_2(Xa1`pd, Xa2`pd)) ,i: nat): 
+  member(i, idxs_ac(mult_ac_ac(Xa1,Xa2, n))) 
+  IMPLIES  member(i, idxs_ac(Xa1)) OR member(i, idxs_ac(Xa2)) OR i=n
+
+  %
+  %----------------------------------------------------------------------------%
+  %-- Interval Evaluation -----------------------------------------------------%
+  %----------------------------------------------------------------------------%
+
+  %
+  % Lemmas used as a rewriting rule in the proof of test_noise_2:
+  %
+  % PROVED Thu Oct  9 10:29:35 EDT 2014
+  null_ol?_empty_noise: LEMMA null_ol?(empty_noise)
+  AUTO_REWRITE+ null_ol?_empty_noise
+  %
+  % PROVED
+  var_ac_noise_unf3: LEMMA
+  (null_ol?(N) OR m<car_ol(N)`1) AND 
+  (  ( m=n AND eval_ac_noise(var_ac(Xi,n), extend_N(m,e,empty_noise)) = x )
+  OR (m/=n AND eval_ac_noise(var_ac(Xi,n), N) = x ) )
+  IMPLIES eval_ac_noise(var_ac(Xi,n), extend_N(m,e,N)) = x 
+  %
+  % PROVED
+  gnbi_extend_N_unf: LEMMA
+  (null_ol?(N) OR m<car_ol(N)`1) AND 
+  ( (m=n AND get_noise_by_idx(n, extend_N(m,e,empty_noise)) = e2)
+    OR (m/=n AND get_noise_by_idx(n, N) = e2) )
+  IMPLIES get_noise_by_idx(n, extend_N(m,e,N)) = e2
+  %
+  % PROVED Wed Oct  8 16:49:45 EDT 2014
+  gnbi_extend_N_trivial: LEMMA
+  get_noise_by_idx(n, extend_N(n,e,empty_noise)) = e
+  %
+  % STATED Tue Oct  7 15:19:06 EDT 2014
+  % PROVED Wed Oct  8 17:31:24 EDT 2014
+  % REVISED Thu Oct  9 10:28:52 EDT 2014
+  first__extend_N: LEMMA
+  (null_ol?(N) OR m<car_ol(N)`1) 
+  IMPLIES first_noises(extend_N(m,e,N),n) = IF n <= m 
+  	  			     THEN empty_noise
+			     	     ELSE extend_N(m,e,first_noises(N,n)) ENDIF
+
+
+  %
+  % HalfLeft & HalfRight
+  %
+  Half_pd(pds): RECURSIVE {pd_: ErrorTerms | null_ol?(pd_) OR (NOT null_ol?(pds) AND car_ol(pd_)`1 = car_ol(pds)`1)}
+  = IF null_ol?(pds) THEN empty_ErrorTerms
+    ELSE LET head = car_ol(pds), tail = cdr_ol(pds) IN
+    	 cons_ol((head`1,head`2/2), Half_pd(tail)) ENDIF
+  MEASURE length(pds)
+  %
+  AC_HalfLeft(Xa): AffineCombination 
+  = LET Xi = eval_by_intervals(Xa) IN
+    {| (midpoint(Xi) + lb(Xi)) / 2 , Half_pd(pd(Xa)) |}
+  %
+  AC_HalfRight(Xa): AffineCombination 
+  = LET Xi = eval_by_intervals(Xa) IN
+    {| (midpoint(Xi) + ub(Xi)) / 2 , Half_pd(pd(Xa)) |}
+
+
+
+  %----------------------------------------------------------------------------%
+  %- Examples -----------------------------------------------------------------%
+  %----------------------------------------------------------------------------%
+  y : VAR BaseType
+
+  %- Sandbox ------------------------------------------------------------------%
+  %
+  % PROVED Thu Oct  9 14:30:51 EDT 2014
+  test_noise_2: LEMMA %20140917
+    x ## [| 0, 1 |] IMPLIES x*(1-x) ## [| 0, 0.5 |]
+  %
+  % Applying the proof sugested in the email of 20140916
+  % PROVED Thu Oct  9 2014
+  test_noise_3: LEMMA %20141009
+    x ## [| 0, 1 |] IMPLIES x*(1-x) ## [| 0, 0.5 |]
+
+  % The same as test_noise_3 but proved automatically.
+  test_noise_3_auto: LEMMA %20141009
+    x ## [| 0, 1 |] IMPLIES x*(1-x)  ## [| 0, 0.5 |]
+%    x ## [| 0, 1 |] AND y ## [| 0, 1 |] IMPLIES x*y  ## [| -1/2, 1 |]
+
+
+  %- Automatic proofs ---------------------------------------------------------%
+  %
+  % AUTOMATICALLY PROVED Tue Oct 14
+  test: LEMMA
+      x ## [| 0, 1 |] IMPLIES x*(1-x) ## [| 0, 1/2 |]
+
+  % AUTOMATICALLY PROVED Thu Oct 23
+  test_leq : LEMMA
+      x ## [| 0, 1 |] IMPLIES x*(1-x) <= 0.5
+
+  % AUTOMATICALLY PROVED Thu Oct 23
+  test_leq_1 : LEMMA
+      x ## [| 0, 1 |] IMPLIES x*(1-x) <= 1
+
+  % AUTOMATICALLY PROVED Tue Oct 14
+  foo1 : LEMMA
+    x ## [|-1,1|] IMPLIES x-x ## [|0,0|]
+
+  % AUTOMATICALLY PROVED Thu Oct 23
+  foo2 : LEMMA
+    abs(x) <= 1 AND abs(y) <= 100 IMPLIES x-y <= 101
+
+  % AUTOMATICALLY PROVED Tue Oct 14
+  sandbox: LEMMA
+    x ## [| 0, 1 |] AND y ## [| 0, 1 |]  IMPLIES x*(1-y) ## [| -1/2, 1 |]
+
+  % AUTOMATICALLY PROVED Tue Oct 14
+  test_noise_1: LEMMA %20140916
+    x ## [|1,2|] AND
+    y ## [|0,1|] 
+    IMPLIES x + (y - x) ## [|0,1|]
+
+  test_noise_3_0_10: LEMMA %20141014
+  % AUTOMATICALLY PROVED Tue Oct 14 using (then (skeep) (affine$))
+    x ## [| 0, 10 |] IMPLIES x*(1-x)  ## [| -90, 50 |]
+
+  % AUTOMATICALLY PROVED Tue Oct 14
+  test_07: LEMMA
+    x ## [| 100, 200 |] AND 
+    y ## [| -2, 32 |] 
+    IMPLIES x*y - x*y ## [|0,0|]
+  
+  % AUTOMATICALLY PROVED Tue Oct 14
+  test_08: LEMMA
+    x ## [| 100, 200 |] AND 
+    y ## [| -2, 32 |] 
+    IMPLIES (x - x)*y ## [|0,0|]
+
+  test_09: LEMMA
+    x ## [| 100, 200 |] 
+    IMPLIES x*x - x^2 ## [|0,0|]
+
+  % AUTOMATICALLY PROVED Thu Oct 23
+  test_10: LEMMA
+    x ## [| -2, 5 |]
+    IMPLIES x * 2 ## [|-4, 10|]
+  
+  % AUTOMATICALLY PROVED Thu Oct 23
+  test_11: LEMMA
+    x ## [| -2, 5 |]
+    IMPLIES x + 100 ## [|98, 105|]
+  
+  % AUTOMATICALLY PROVED Thu Oct 23
+  test_12: LEMMA
+    x ## [| -20, 50 |]
+    IMPLIES -x ## [|-50, 20|]
+
+END affine

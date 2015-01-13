@@ -1,0 +1,98 @@
+affine_box: THEORY
+BEGIN
+ 
+  IMPORTING affine
+
+  Box     : TYPE = list[Interval]
+  Env     : TYPE = ARRAY[nat->BaseType]
+  box     : VAR Box
+  vs      : VAR Env
+  N,N1,N2 : VAR Noise
+  i,j     : VAR nat
+  Xa      : VAR AffineCombination
+
+  last_idx_in_box(box): upfrom(-1)
+  = length(box)-1
+
+  nth_ac(box, (i|i < length(box))): AffineCombination = var_ac(nth(box,i),i)
+
+  uptol(i): RECURSIVE list[nat] 
+  = IF i=0 THEN (:0:)
+    ELSE cons(i,uptol(i-1)) ENDIF
+  MEASURE i
+
+  uptol_decl_def: LEMMA
+  j <= i IMPLIES member(j, uptol(i))
+
+  uptol_decl_def_rl: LEMMA
+  member(j, uptol(i)) IMPLIES j <= i
+
+  idxs_box(box): list[nat] 
+  = LET lidx=last_idx_in_box(box) IN
+    IF lidx >=0 THEN uptol(lidx) ELSE null ENDIF
+
+  idxs_box_membership: LEMMA FORALL(box: {b: Box| NOT null?(b)}):
+  member(i, idxs_box(box)) IFF i <= last_idx_in_box(box)
+
+  idxs_box_nth: LEMMA
+  FORALL(i: below(length(box))): 
+  appin(idxs_ac(nth_ac(box, i)))(j) IMPLIES appin(idxs_box(box))(j)
+
+  restrict_box(N,box,Xa): Noise 
+  = restrict_by_idxs(N, append(idxs_box(box),idxs_ac(Xa)))
+
+  member_append_r[T: TYPE]: LEMMA
+  FORALL(i: T, l1,l2: list[T]):
+  member(i, l2) IMPLIES member(i, append(l1, l2))
+
+  member_append_l[T: TYPE]: LEMMA   
+  FORALL(i: T, l1,l2: list[T]):
+  member(i, l1) IMPLIES member(i, append(l1, l2))
+
+  restrict_box_preserves_eval: LEMMA
+  eval_ac_noise(Xa,N) = eval_ac_noise(Xa, restrict_box(N,box,Xa))
+
+  restrict_box_alt_def: LEMMA         
+  FORALL(i:nat):
+  (member(i, idxs_ac(Xa)) OR member(i, idxs_box(box)) 
+   IMPLIES get_noise_by_idx(i, restrict_box(N,box,Xa)) = get_noise_by_idx(i, N)) AND
+  (NOT member(i, idxs_ac(Xa)) AND NOT member(i, idxs_box(box)) 
+   IMPLIES get_noise_by_idx(i, restrict_box(N,box,Xa)) = 0)
+
+  % Holds when the noise "N" is compatible with the environment "env" and the box "box".
+  vars_in_box_compatible?(N)(box)(vs): bool
+  = FORALL(i:below(length(box))): 
+    eval_ac_noise(var_ac(nth(box,i),i), N) = vs(i) 
+    AND (SingInterval?(nth(box,i)) IMPLIES get_noise_by_idx(i, N) = 0) 
+ 
+  vars_in_box?(box)(vs) : bool 
+  = (FORALL(i:below(length(box))): Proper?(nth(box,i)))
+    AND
+    EXISTS(N): 
+      vars_in_box_compatible?(N)(box)(vs)
+ 
+  restrict_box_preserves_compbox: LEMMA
+  vars_in_box_compatible?(N)(box)(vs) 
+  IMPLIES vars_in_box_compatible?(restrict_box(N,box,Xa))(box)(vs)
+
+  compatibles_box_noises: LEMMA
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  vars_in_box_compatible?(N2)(box)(vs) 
+  IMPLIES FORALL(j: (appin(idxs_box(box)))): get_noise_by_idx(j, N1) = get_noise_by_idx(j, N2)
+
+  vars_in_box_rec(box:Box,n:nat,(i:nat | i+length(box) = n))(vs) : RECURSIVE 
+    { b : bool | b = (EXISTS(N:Noise): FORALL (k:subrange(i,n-1)): 
+      	       	     	vs(k) ## nth(box,k-i) AND
+			eval_ac_noise(var_ac(nth(box,k-i),k), N) = vs(k) 
+    AND (SingInterval?(nth(box,k-i)) IMPLIES get_noise_by_idx(k, N) = 0)) 
+
+			} =
+    null?(box) OR (vs(i) ## car(box) 
+    	       	   AND vars_in_box_rec(cdr(box),n,i+1)(vs))
+    MEASURE box BY <<
+
+  vars_in_box : LEMMA
+    FORALL (box:Box):
+      vars_in_box_rec(box,length(box),0)(vs) IMPLIES vars_in_box?(box)(vs)
+
+END affine_box

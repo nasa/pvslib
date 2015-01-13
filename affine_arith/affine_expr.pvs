@@ -1,0 +1,273 @@
+affine_expr: THEORY
+BEGIN
+
+  IMPORTING AffineExpr, affine_box
+
+  m,n  : VAR nat
+  box  : VAR Box
+  expr : VAR RealExpr
+  vs   : VAR Env
+  Xa   : VAR AffineCombination
+ 
+
+  X(v:nat): RealExpr = VARIDX(v)
+
+  r2E(r: BaseType) : RealExpr =
+    CONST(LAMBDA(u:Unit):r,{| r |})
+
+  CONVERSION r2E
+
+  % Evaluation of AffienExpr on Enviroments.
+  eval_ACExpr_Env(expr,vs): RECURSIVE BaseType
+  = CASES expr OF
+      CONST(opc,opC): opc(unit),
+      VARIDX(varidx): vs(varidx),
+      ADD(op1,op2)  : eval_ACExpr_Env(op1,vs) + eval_ACExpr_Env(op2,vs),
+      SUB(op1,op2)  : eval_ACExpr_Env(op1,vs) - eval_ACExpr_Env(op2,vs),
+      MULT(op1,op2) : eval_ACExpr_Env(op1,vs) * eval_ACExpr_Env(op2,vs),
+      NEG(op)       : -eval_ACExpr_Env(op,vs)
+    ENDCASES
+  MEASURE expr BY <<
+  
+  IMPORTING structures@Maybe
+
+  % Evaluation of AffineExpr on Boxes.
+
+  nonaff_op_count(expr): RECURSIVE nat 
+  = CASES expr OF 
+      CONST(opc, opC): 0,
+      VARIDX(varidx) : 0,
+      % affine operations
+      ADD(op1,op2)   : nonaff_op_count(op1) + nonaff_op_count(op2),
+      SUB(op1,op2)   : nonaff_op_count(op1) + nonaff_op_count(op2),
+      NEG(op)        : nonaff_op_count(op),
+      % non-affine operations
+      MULT(op1,op2)  : 1 + nonaff_op_count(op1) + nonaff_op_count(op2)
+    ENDCASES
+  MEASURE expr by <<
+
+  nidx_offset: VAR nat % The first available noise idx is given by 
+  	       	       % last_idx_in_box(box)+nidx_offset+1
+
+  ac_from(expr,box,nidx_offset)(Xa): bool
+  = LET next_off_est = last_idx_in_box(box)+nidx_offset+nonaff_op_count(expr) IN 
+    next_off_est+1 >= next_idx(pd(Xa))
+
+  Eval_ACExpr_Box_offset(expr,box,nidx_offset) 
+  : RECURSIVE Maybe[(ac_from(expr,box,nidx_offset))] 
+  = CASES expr OF
+      CONST(opc, opC): LET result=opC IN Some(result),
+      VARIDX(varidx) : IF varidx >= length(box) THEN None
+      		       ELSE LET result=nth_ac(box, varidx) IN 
+		       	    Some(result) ENDIF,
+      ADD(op1,op2)   : LET res1 = Eval_ACExpr_Box_offset(op1,box,nidx_offset) IN
+      		       IF some?(res1) 
+      		       THEN LET res2 = Eval_ACExpr_Box_offset
+		       	    	       ( op2 
+		       	    	       , box
+				       , nidx_offset+nonaff_op_count(op1)) IN
+      		       	    IF some?(res2) 
+      			    THEN LET result =
+			    	     add_ac_ac(val(res1),val(res2)) IN 
+				 Some(result)
+      			    ELSE None ENDIF
+      		       ELSE None ENDIF,
+      SUB(op1,op2)   : LET res1 = Eval_ACExpr_Box_offset(op1,box,nidx_offset) IN
+      		       IF some?(res1) 
+      		       THEN LET res2 = Eval_ACExpr_Box_offset
+		       	    	       ( op2 
+		       	    	       , box
+				       , nidx_offset+nonaff_op_count(op1)) IN
+      		       	    IF some?(res2) 
+      			    THEN LET result = sub_ac_ac(val(res1),val(res2)) IN 
+				 Some(result)
+      			    ELSE None ENDIF
+      		       ELSE None ENDIF,
+      MULT(op1,op2)  : LET res1 = Eval_ACExpr_Box_offset(op1,box,nidx_offset) IN
+      		       IF some?(res1) 
+      		       THEN LET res2 = Eval_ACExpr_Box_offset
+		       	    	       ( op2 
+		       	    	       , box
+				       , nidx_offset+nonaff_op_count(op1)) IN
+      		       	    IF some?(res2) 
+      			    THEN LET result = 
+			    	      mult_ac_ac( val(res1)
+				       		 , val(res2)
+						 , last_idx_in_box(box)
+						   + nidx_offset
+						   + nonaff_op_count(op1)
+						   + nonaff_op_count(op2) + 1)
+				      IN 
+				 Some(result)
+      			    ELSE None ENDIF
+      		       ELSE None ENDIF,
+      NEG(op)        : LET res = Eval_ACExpr_Box_offset(op,box,nidx_offset) IN
+      		       IF some?(res) 
+      		       THEN LET result=neg_ac(val(res)) IN Some(result)
+      		       ELSE None ENDIF
+    ENDCASES
+  MEASURE expr BY <<
+
+  acf_to_ac(expr,box,nidx_offset)(eresult: Maybe[(ac_from(expr,box,nidx_offset))])
+  : Maybe[AffineCombination]
+  = IF none?(eresult) THEN None ELSE Some(val(eresult)) ENDIF
+
+  Eval_ACExpr_Box(expr,box) : Maybe[AffineCombination] 
+  = LET E = Eval_ACExpr_Box_offset(expr, box, 1) IN
+    IF none?(E) THEN None ELSE Some(val(E)) ENDIF
+
+  Eval_ACExpr(expr) : Maybe[AffineCombination] 
+  = Eval_ACExpr_Box(expr,null)
+
+
+  Eval_offset_someness_monotony: LEMMA
+  some?(Eval_ACExpr_Box(expr,box))
+  IFF some?(Eval_ACExpr_Box_offset(expr,box,n))
+
+  % --------------------------------------------------------------------------- %
+  % \begin{subsubsection}{Welltypeness}
+
+  well_typed?(box)(expr) : INDUCTIVE bool =
+    const?(expr) OR
+    (varidx?(expr) AND varidx(expr) < length(box)) OR
+    (add?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (sub?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (neg?(expr) AND well_typed?(box)(op(expr))) OR
+    (mult?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr)))
+
+
+  some_well_typed : LEMMA
+  % Corresponds to interval_arith@interval_expr.Proper_well_typed
+    some?(Eval_ACExpr_Box(expr,box)) IMPLIES
+    well_typed?(box)(expr) 
+
+  % \end{subsubsection}//{Welltypeness}
+
+  % --------------------------------------------------------------------------- %
+  % \begin{subsubsection}{Indexes}
+  N1, N2: VAR Noise
+  expr1, expr2: VAR RealExpr
+
+  Eval_offset_idxs: LEMMA
+  LET Eval = Eval_ACExpr_Box_offset(expr,box,nidx_offset) IN 
+  some?(Eval)     % implies:  well_typed?(box)(expr) 
+  IMPLIES FORALL(i: nat): last_idx_in_box(box) < i AND 
+  	  	    	  i <= last_idx_in_box(box)+nidx_offset 
+			  IMPLIES NOT member(i, idxs_ac(val(Eval)))
+
+  Eval_offset_idxs_upper_bound: LEMMA
+  LET Eval = Eval_ACExpr_Box_offset(expr,box,nidx_offset) IN 
+  some?(Eval) 
+  IMPLIES FORALL(i: nat): member(i, idxs_ac(val(Eval))) 
+  	  	    	  IMPLIES i <= last_idx_in_box(box)+nidx_offset+nonaff_op_count(expr)
+
+  % STATED Thu Dec 18                   % PROVED Fri Dec 19 (Last. Rev. Dec 29)
+  noises_of_restricted_Evals_leg_1: LEMMA
+  LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  some?(Eval1) AND
+  vars_in_box_compatible?(N2)(box)(vs) AND
+  some?(Eval2)
+  IMPLIES FORALL(i:nat):
+    i <= last_idx_in_box(box) 
+    IMPLIES get_noise_by_idx(i, restrict_box(N1,box, val(Eval1)))
+            = get_noise_by_idx(i, restrict_box(N2,box,val(Eval2)))
+
+  noises_of_restricted_Evals_leg_2: LEMMA
+  LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  some?(Eval1) AND
+  vars_in_box_compatible?(N2)(box)(vs) AND
+  some?(Eval2)
+  IMPLIES FORALL(i:nat):
+    last_idx_in_box(box) < i AND i <= last_idx_in_box(box)+nonaff_op_count(expr1) + n
+    IMPLIES get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) = 0
+
+  noises_of_restricted_Evals_leg_3: LEMMA
+  LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  some?(Eval1) AND
+  vars_in_box_compatible?(N2)(box)(vs) AND
+  some?(Eval2)
+  IMPLIES FORALL(i:nat):
+    last_idx_in_box(box)+nonaff_op_count(expr1) + n < i AND
+    i <= last_idx_in_box(box)+nonaff_op_count(expr1)+nonaff_op_count(expr2)+ n
+    IMPLIES get_noise_by_idx(i, restrict_box(N1,box,val(Eval1))) = 0
+
+  noises_of_restricted_Evals_leg_4: LEMMA
+  FORALL(n:upfrom(1)):
+  LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  some?(Eval1) AND
+  vars_in_box_compatible?(N2)(box)(vs) AND
+  some?(Eval2)
+  IMPLIES FORALL(i:nat):
+    last_idx_in_box(box)+nonaff_op_count(expr1)+nonaff_op_count(expr2)+ n < i
+    IMPLIES get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) = 0
+
+  Eval_offset_noises_matching: LEMMA
+  FORALL(n:upfrom(1)):
+  LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+  vars_in_box_compatible?(N1)(box)(vs) AND
+  some?(Eval1) AND
+  vars_in_box_compatible?(N2)(box)(vs) AND
+  some?(Eval2)
+  IMPLIES FORALL(i:nat):
+    get_noise_by_idx(i, restrict_box(N1,box, val(Eval1)))
+    = get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) OR
+    get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) = 0 OR
+    get_noise_by_idx(i, restrict_box(N1,box,val(Eval1))) = 0
+  
+  % \end{subsubsection}
+  % --------------------------------------------------------------------------- %
+
+  Eval_inclusion_offset: LEMMA
+    FORALL (box:Box,vs:(vars_in_box?(box)))(expr)(n: upfrom(1)):
+      LET E = Eval_ACExpr_Box_offset(expr,box,n) IN
+      some?(E) 
+      IMPLIES (EXISTS (N: Noise):
+      	      vars_in_box_compatible?(N)(box)(vs) AND
+	      eval_ac_noise(val(E),N) = eval_ACExpr_Env(expr,vs))
+
+  Eval_inclusion_some : THEOREM
+    FORALL (box:Box,vs:(vars_in_box?(box)))(expr) :
+      LET E = Eval_ACExpr_Box(expr,box) IN
+      some?(E) 
+      IMPLIES (EXISTS (N: Noise):
+      	      vars_in_box_compatible?(N)(box)(vs) AND
+	      eval_ac_noise(val(E),N) = eval_ACExpr_Env(expr,vs))
+
+  split(v:nat,box:Box) 
+  : RECURSIVE {lrb:[Box,Box] | 
+      LET (lb,rb) = lrb IN 
+      length(lb) = length(box) AND 
+      length(rb) = length(box) AND
+      FORALL (i:below(length(box))) : IF i=v THEN nth(lb,i) = HalfLeft(nth(box,i)) AND
+                                                  nth(rb,i) = HalfRight(nth(box,i)) 
+                                      ELSE nth(lb,i) = nth(box,i) AND
+                                           nth(rb,i) = nth(box,i) ENDIF} =
+    IF null?(box) THEN (null,null)
+    ELSIF v = 0 THEN (cons(HalfLeft(car(box)),cdr(box)),
+                      cons(HalfRight(car(box)),cdr(box)))
+    ELSE LET (lb,rb) = split(v-1,cdr(box)) IN
+             (cons(car(box),lb),cons(car(box),rb))
+    ENDIF
+  MEASURE box BY <<
+
+  i,v: VAR nat
+
+  split_eq : RECURSIVE JUDGEMENT 
+  split(v,(box:Box|length(box) <= v)) 
+  HAS_TYPE {lrb:[Box,Box] | LET (lb,rb)=lrb IN lb = box AND rb=box}
+
+  split_vars_in_box : LEMMA            
+    FORALL (box:Box,vs:(vars_in_box?(box)),v:nat) :
+      LET (bl,br) = split(v,box) IN
+        vars_in_box?(bl)(vs) OR vars_in_box?(br)(vs)
+
+END affine_expr

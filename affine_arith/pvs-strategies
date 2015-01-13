@@ -1,0 +1,356 @@
+(defstep expand_ol ()
+  (expand* "null_ol?" "car_ol" "cdr_ol" "cons_ol" "empty_ErrorTerms" "empty_noise")
+  "Expands trivial definitions from ordered_list theory."
+  "Expanding definitions from oredered_list theory.")
+
+(unintern 'aa-info)
+(defstruct aa-info
+  idx ; Specific index in the Affine Form (introduced by this expression).
+  aff ; Affine Form
+  nvl ; Noise value
+)
+
+(unintern 'aa-core)
+(defstruct aa-core
+  vars      ; original list of variables
+  work-info ; working info (hashtable of Affine Form, noise value, and noise index)
+  c-noise-l ; current noise as a list of aa-info (stored in reverse order).
+)
+
+(defparameter *aa-core* nil)
+
+(defun aa-core-var-noise (core var-str)
+  (aa-info-nvl (gethash var-str (aa-core-work-info core))))
+
+(defun c-noise-l-to-noise-expr (resulting-str info)
+  (format nil "extend_N(~a::nat,~a::Epsilon,~a)" (aa-info-idx info) (aa-info-nvl info) resulting-str))
+
+;; Builds an expression that denotes the current noise.
+(defun aa-core-cur-noise (core)
+    (reduce #'c-noise-l-to-noise-expr
+	    (aa-core-c-noise-l core)
+	    :initial-value "empty_noise"))
+
+;; Returns the greatest partial deviation index used in the current affine form
+;; build.
+(defun aa-core-great-idx (core)
+  (length (aa-core-c-noise-l core)))
+
+(defun build-aa-core (vars)
+  (let*((work-info (make-hash-table :test #'equal))
+	(c-noise-l (loop for v in (reverse vars)
+			 for varindex from (- (length vars) 1) downto 0
+			 for noiseval = (freshname (format nil "epsilon_~a" v))
+			 for varrange = (gethash v *extra-varranges*)
+			 for aff-form = (format nil "var_ac([|~a,~a|],~a)"
+						(xterval-lb varrange)
+						(xterval-ub varrange)
+						varindex)
+			 for info     = (make-aa-info :idx varindex :aff aff-form :nvl noiseval)
+			 do (setf (gethash v work-info) info)
+			 collect info)))
+    (make-aa-core :vars vars
+		  :work-info work-info
+		  :c-noise-l c-noise-l)))
+
+(defun aa-core-get-aa-expr-var (core var-expr)
+  (let*((expr-as-str (expr2str var-expr))
+	(result      (gethash expr-as-str (aa-core-work-info core))))
+    ;; The information about the variables should be already loaded in the
+    ;; aa-core, if we can not get the information for the requested variable,
+    ;; something wrong happened.
+    (unless result
+      (error "aa-core-get-aa-expr-var: information about the variable couldn't be found."))
+    (aa-info-aff result)))
+
+(defun aa-core-get-aa-expr-mul (core expr)
+  (let*((expr-as-str (expr2str expr))
+	(result      (gethash expr-as-str (aa-core-work-info core))))
+    ;; If the information about this expression has been computed already, then
+    ;; we will use it. If not, we will compute it and store it in the aa-core.
+    (unless result
+      (let*((aff-expr1 (aa-affine-expr-rec (args1 expr) core))
+	    (aff-expr2 (aa-affine-expr-rec (args2 expr) core))
+	    (mul-noise (format nil "mul_noise_value(~a,~a,~a)"
+			       aff-expr1
+			       aff-expr2
+			       (aa-core-cur-noise core)))
+	    (mul-index (aa-core-great-idx core))
+	    (mul-aaexp (format nil "mult_ac_ac(~a,~a,~a)"
+			     aff-expr1
+			     aff-expr2
+			     mul-index))
+	    (info      (make-aa-info :idx mul-index :aff mul-aaexp :nvl mul-noise)))
+	(setf (gethash expr-as-str (aa-core-work-info core)) info)
+	(setf (aa-core-c-noise-l core) (cons info (aa-core-c-noise-l core)))
+	(setf result info)))
+    (aa-info-aff result)))
+
+;; see ia-interval-expr
+(defun aa-affine-expr (expr vars)
+  (setf *aa-core* (build-aa-core vars))
+  (catch '*aa-error* (aa-affine-expr-rec expr *aa-core*)))
+
+;; see ia-interval-expr-rec
+(defun aa-affine-expr-rec (expr core)
+  (let ((val (when (or (is-number-type (type expr)) (is-bool-type (type expr)))
+	       (typecheck (extra-add-evalexpr expr)))))
+    (cond ;; constant
+          ((and val (is-number-type  (type val)))
+	   (format nil "const_ac(~a)" val))
+	  ;; variable
+	  ((is-variable-expr expr)
+	   (aa-core-get-aa-expr-var core expr))
+	  ;; additive inverse
+	  ((and (unary-application? expr)
+		(is-function-expr expr "-"))
+	   (format nil "neg_ac(~a)" (aa-affine-expr-rec (args1 expr) core)))
+	  ;; substraction
+	  ((is-function-expr expr "-")
+	   (format nil "sub_ac_ac(~a,~a)"
+		   (aa-affine-expr-rec (args1 expr) core)
+		   (aa-affine-expr-rec (args2 expr) core)))
+	  ;; addition
+	  ((is-function-expr expr "+")
+	   ;; Now I have to check If the first parameter is a constant expression.
+	   (if (get-vars-from-expr (args1 expr))
+	       (format nil "add_ac_ac(~a,~a)"
+		       (aa-affine-expr-rec (args1 expr) core)
+		       (aa-affine-expr-rec (args2 expr) core))
+	     (format nil "add_s_ac(~a,~a)"
+		     (args1 expr)
+		     (aa-affine-expr-rec (args2 expr) core))))
+	  ;; multiplication
+	  ((is-function-expr expr "*")
+	   ;; Now I have to check If the first parameter is a constant expression.
+	   (if (get-vars-from-expr (args1 expr))
+	       (aa-core-get-aa-expr-mul core expr)
+	     (format nil "mul_s_ac(~a,~a)"
+		     (args1 expr)
+		     (aa-affine-expr-rec (args2 expr) core))))
+	  (t (throw '*aa-error* (list (format nil "Main operator in ~a not supported yet." expr)))))))
+
+(defparameter *aa-rws*
+' ("first__extend_N"
+   "gnbi_extend_N_trivial"
+   "gnbi_extend_N_unf"
+   "containment_cnt"
+   "var_ac_noise_unf3"
+   "containment_sub"
+   "containment_add"
+   "containment_mul"
+   "containment_mul_s"
+   "containment_add_s"
+   "containment_neg"))
+
+(defparameter *affine-num-count* 0)
+
+;; debugging function (erase it when finish).
+(defun print-hash-entry (key value)
+    (format t "The value associated with the key ~S is ~S~%" key value))
+
+
+(defstep affine (&optional (fnum 1) (default-range "[|0,1|]"))
+  (with-fresh-labels
+   ((af! fnum))
+   (assert af!)
+   (let ((formula (extra-get-formula fnum))
+	 (target  (args2 formula))
+	 (expr    (args1 formula))
+	 (vars    (get-vars-from-expr expr))
+	 (fms     (append
+		   (mapcar #'(lambda (f) (extra-get-formula-from-fnum f))
+			   (extra-get-fnums '-))
+		   (mapcar #'(lambda (f) 
+			       (make-negation
+				(extra-get-formula-from-fnum f)))
+			   (extra-get-fnums '+))))
+	 (af-vars (extra-get-var-ranges fms vars))
+	 (unvars  (ia-find-unbound-vars af-vars))
+	 (af-expr (aa-affine-expr expr af-vars))
+	 (f-noise (aa-core-cur-noise *aa-core*))
+	 (msg     (when (listp af-expr) (car af-expr))))
+     (if msg
+	 (printf msg)
+       (then
+	(with-fresh-names
+	 ((af_name_ af-expr))
+	 (let ((castr  (format nil "containment(~a,~a)" expr af_name_))
+	       (ebyint (format nil "eval_by_intervals(~a)" af_name_)))
+	  (spread
+	   (case castr)
+	   ((then
+	     (use "containment_interval")
+	     (prop)
+	     
+	     (if (is-function-expr formula "##")
+		 (then
+		  (use "Member_trans" ("x" expr  "X" ebyint  "Y" target))
+		  (assert)
+		  (eval-formula 1))
+		(then
+		 (eval-expr ebyint)
+		 (expand "##")
+		 (assert))))
+	    (then                       ; Second branch of (case "containment(
+					; expr, af_name_)"). Here we know that
+					; that the formula 1 is exactly that one.
+	     (expand af_name_ :assert? none)
+	     (let((vars-count (length vars))
+		  (xxx        (setf *affine-num-count* 0)))
+	       (then
+		(for$ vars-count
+		     (let((cur-var (nth *affine-num-count* vars))
+			  (eps-var (aa-core-var-noise *aa-core* cur-var))
+			  (idx-var *affine-num-count*)
+			  (dummy (setf *affine-num-count* (+ *affine-num-count* 1))))
+		       (then
+			(use "containment_var" ("x" cur-var "n" idx-var))
+			(spread (prop) ((skolem -1 eps-var) (then (expand "##")(assert)))))))
+		(expand "containment" :assert? none)
+		(with-fresh-names
+		 ((noise    f-noise))
+		 (inst 1 noise)
+		 (expand noise :assert? none)
+		 (let((rws *aa-rws*)) (apply (repeat* (rewrites rws :fnums 1))))
+		 (eval-formula 1)))))))))
+	(eval-formula 1)))))
+  "do affine"
+  "doing affine")
+
+;--------------------------------------------------------------------------------
+;-- simple strategy -------------------------------------------------------------
+;--------------------------------------------------------------------------------
+;; Form a string representing the box of variables vars
+(defun aa-box (vars)
+  (if vars
+      (let ((intervals (ia-var-intervals vars)))
+	(format nil "(: ~{~a~^,~} :)" (loop for int in intervals
+					    ;;for x from 0 to (length intervals)
+					    ;; collect (list int x))))
+					    collect int)))
+    "(::)"))
+
+(defstep sa (expr &optional (precision 3) (n 3) (maxdepth 5))
+  (let ((name    (freshname "sia"))
+	(ia-expr (extra-get-expr expr))
+	(ia-estr (expr2str ia-expr))
+	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
+	(vars    (ia-get-vars-from-expr ia-expr))
+	(ia-vars (extra-get-var-ranges fms vars))
+	(unvars  (ia-find-unbound-vars ia-vars))
+	(msg     (cond (unvars
+	 		(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
+				(cdr unvars) unvars (cdr unvars)))
+		       ((null ia-expr)
+			(format nil "Do not understand argument ~a." expr))
+		       ((not (is-number-expr ia-expr))
+			(format nil "Expresion ~a is not a real number expression." ia-expr))))
+	(aa-box    (unless msg (aa-box ia-vars)))
+	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars)))
+	;; (maxdepth  (if (null ia-vars) 0 maxdepth))
+	;; (ia-eval   (format nil "simple_affine(~a,~a,~a)" maxdepth name ia-box))
+	;; (ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
+;	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr))))
+	
+	(dbgmsg  (format nil "BEGIN VARS~% name: ~a~% ia-expr: ~a~% ia-estr: ~a~% fms: ~a~% vars: ~a~% ia-vars: ~a~% unvars: ~a~% aa-box: ~a~% ia-iexpr: ~a~%END VARS~% " name ia-expr ia-estr fms vars ia-vars unvars aa-box ia-iexpr)))
+;    (if msg
+;	(printf msg)
+      (spread
+       (then (printf dbgmsg) (name-label name ia-iexpr :hide? t)
+	     )
+       ((printf dbgmsg))
+      ) ;spread
+;    ) ;if
+  )
+  """")
+
+(defstep simple-affine (expr &optional (precision 3) (n 3) (maxdepth 5))
+  (let ((name    (freshname "sia"))
+	(ia-expr (extra-get-expr expr))
+	(ia-estr (expr2str ia-expr))
+	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
+	(vars    (ia-get-vars-from-expr ia-expr))
+	(ia-vars (extra-get-var-ranges fms vars))
+	(unvars  (ia-find-unbound-vars ia-vars))
+	(msg     (cond (unvars
+			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
+				(cdr unvars) unvars (cdr unvars)))
+		       ((null ia-expr)
+			(format nil "Do not understand argument ~a." expr))
+		       ((not (is-number-expr ia-expr))
+			(format nil "Expresion ~a is not a real number expression." ia-expr))))
+	(aa-box    (unless msg (aa-box ia-vars)))
+	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars)))
+	(maxdepth  (if (null ia-vars) 0 maxdepth))
+	(ia-eval   (format nil "simple_affine(~a,~a,~a)" maxdepth name aa-box))
+	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
+	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
+    (if msg
+	(printf msg)
+      (spread
+       (name-label name ia-iexpr :hide? t)
+       ((try-branch
+	 (eval-expr ia-eval :safe? nil)
+	 ((then (lemma "simple_affine_soundness")
+		(inst? -1)
+		(replaces -2)
+		(beta -1)
+		(expand "sound?" -1)
+		(branch (split -1)
+			((spread (inst -1 ia-lvars)
+				 ((branch (invoke (case "%1 = %2") (! -1 1) ia-estr)
+					  ((then (replaces -1)
+						 (decimalize -1 precision))
+					   (interval-eq__ name 1)
+					   (then (hide -1)(vars-sharp__))))
+				    (vars-in-box__$)))
+			 (eval-formula))))
+	  (skip))
+	 (skip))))))
+  "[Affine] Computes a simple estimation of the minimum and maximum values
+of EXPR using a branch and bound algorithm based on affine arithmetic.
+PRECISION is the number of decimals in the output interval. The parameter N
+concerns the accuracy of the computations of real-valued functions in EXPR.
+The higher the value of N, the more accurate the computation of these functions.
+MAXDEPTH is a maximum recursion depth for the branch and bound algorithm.
+
+This strategy is a simplified version of the more elaborated strategy NUMERICAL."
+  "Computing estimates to the minmax of expression ~a,~%using affine arithmetic")
+
+(defhelper vars-in-box__ ()
+  (then
+   (apply (repeat (expand "list2array" 1)))
+   (rewrite "vars_in_box")
+   (apply (repeat (expand "length" 1)))
+   (apply (repeat (expand "vars_in_box_rec" 1)))
+   (rewrite "containment_var_simple"))
+  "[Interval] Internal strategy." "")
+
+
+
+;------------------------------------------------------------------------------;
+
+(defun get-sub-expr-at-level (expr n)
+  (if (eq n 0) (list expr)
+    (when (application? expr)
+      (if (tuple-expr? (argument expr))
+	  (let ((result nil))
+	    (loop for arg in (exprs(argument expr))
+		  do (setq result (append result (get-sub-expr-at-level arg (-  n 1)))))
+	    result)
+	(get-sub-expr-at-level (argument expr) (- n 1))))))
+
+(defstep abstract-and-then (fnums level steps)
+  (let ((exprs (get-sub-expr-at-level (extra-get-expr (list '! fnums)) level))
+	(names (freshnames "ABS" (length exprs)))
+	(names-and-exprs nil)
+	(names-and-exprs (loop for expr in exprs
+				  for i upto (- (length exprs) 1)
+				  collect (nth i names)
+				  collect (nth i exprs))))
+    (then
+     (name-replace* names-and-exprs)
+     (then steps)))
+  "" "")
+	
