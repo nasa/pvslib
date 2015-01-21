@@ -1,7 +1,7 @@
 affine_expr: THEORY
 BEGIN
 
-  IMPORTING AffineExpr, affine_box
+  IMPORTING AffineExpr, affine_box, affine_pow
 
   m,n  : VAR nat
   box  : VAR Box
@@ -20,12 +20,13 @@ BEGIN
   % Evaluation of AffienExpr on Enviroments.
   eval_ACExpr_Env(expr,vs): RECURSIVE BaseType
   = CASES expr OF
-      CONST(opc,opC): opc(unit),
-      VARIDX(varidx): vs(varidx),
-      ADD(op1,op2)  : eval_ACExpr_Env(op1,vs) + eval_ACExpr_Env(op2,vs),
-      SUB(op1,op2)  : eval_ACExpr_Env(op1,vs) - eval_ACExpr_Env(op2,vs),
-      MULT(op1,op2) : eval_ACExpr_Env(op1,vs) * eval_ACExpr_Env(op2,vs),
-      NEG(op)       : -eval_ACExpr_Env(op,vs)
+      CONST(opc,opC)   : opc(unit),
+      VARIDX(varidx)   : vs(varidx),
+      ADD(op1,op2)     : eval_ACExpr_Env(op1,vs) + eval_ACExpr_Env(op2,vs),
+      SUB(op1,op2)     : eval_ACExpr_Env(op1,vs) - eval_ACExpr_Env(op2,vs),
+      MULT(op1,op2)    : eval_ACExpr_Env(op1,vs) * eval_ACExpr_Env(op2,vs),
+      NEG(op)          : -eval_ACExpr_Env(op,vs),
+      POWVAR(varidx,n) : vs(varidx)^n
     ENDCASES
   MEASURE expr BY <<
   
@@ -33,16 +34,34 @@ BEGIN
 
   % Evaluation of AffineExpr on Boxes.
 
+  % Count the number of non affine operations in expr.
   nonaff_op_count(expr): RECURSIVE nat 
   = CASES expr OF 
-      CONST(opc, opC): 0,
-      VARIDX(varidx) : 0,
+      CONST(opc, opC) : 0,
+      VARIDX(varidx)  : 0,
       % affine operations
-      ADD(op1,op2)   : nonaff_op_count(op1) + nonaff_op_count(op2),
-      SUB(op1,op2)   : nonaff_op_count(op1) + nonaff_op_count(op2),
-      NEG(op)        : nonaff_op_count(op),
+      ADD(op1,op2)    : nonaff_op_count(op1) + nonaff_op_count(op2),
+      SUB(op1,op2)    : nonaff_op_count(op1) + nonaff_op_count(op2),
+      NEG(op)         : nonaff_op_count(op),
       % non-affine operations
-      MULT(op1,op2)  : 1 + nonaff_op_count(op1) + nonaff_op_count(op2)
+      MULT(op1,op2)   : 1 + nonaff_op_count(op1) + nonaff_op_count(op2),
+      POWVAR(varidx,n): 1
+    ENDCASES
+  MEASURE expr by <<
+
+  % Counts the number of noise symbols introduced by all the operations
+  % present in the expresion expr.
+  new_noise_symbols_count(expr): RECURSIVE nat 
+  = CASES expr OF 
+      CONST(opc, opC) : 0,
+      VARIDX(varidx)  : 0,
+      % affine operations
+      ADD(op1,op2)    : new_noise_symbols_count(op1) + new_noise_symbols_count(op2),
+      SUB(op1,op2)    : new_noise_symbols_count(op1) + new_noise_symbols_count(op2),
+      NEG(op)         : new_noise_symbols_count(op),
+      % non-affine operations
+      MULT(op1,op2)   : 1 + new_noise_symbols_count(op1) + new_noise_symbols_count(op2),
+      POWVAR(varidx,n): IF (n>1) THEN n-1 ELSE 0 ENDIF
     ENDCASES
   MEASURE expr by <<
 
@@ -50,8 +69,11 @@ BEGIN
   	       	       % last_idx_in_box(box)+nidx_offset+1
 
   ac_from(expr,box,nidx_offset)(Xa): bool
-  = LET next_off_est = last_idx_in_box(box)+nidx_offset+nonaff_op_count(expr) IN 
-    next_off_est+1 >= next_idx(pd(Xa))
+%  = LET next_off_est = last_idx_in_box(box)+nidx_offset+nonaff_op_count(expr) IN 
+%    next_off_est+1 >= next_idx(pd(Xa)) 
+  = LET next_off_est = last_idx_in_box(box)+nidx_offset+new_noise_symbols_count(expr) IN 
+    next_off_est+1 >= next_idx(pd(Xa)) 
+
 
   Eval_ACExpr_Box_offset(expr,box,nidx_offset) 
   : RECURSIVE Maybe[(ac_from(expr,box,nidx_offset))] 
@@ -65,7 +87,7 @@ BEGIN
       		       THEN LET res2 = Eval_ACExpr_Box_offset
 		       	    	       ( op2 
 		       	    	       , box
-				       , nidx_offset+nonaff_op_count(op1)) IN
+				       , nidx_offset+new_noise_symbols_count(op1)) IN
       		       	    IF some?(res2) 
       			    THEN LET result =
 			    	     add_ac_ac(val(res1),val(res2)) IN 
@@ -77,7 +99,7 @@ BEGIN
       		       THEN LET res2 = Eval_ACExpr_Box_offset
 		       	    	       ( op2 
 		       	    	       , box
-				       , nidx_offset+nonaff_op_count(op1)) IN
+				       , nidx_offset+new_noise_symbols_count(op1)) IN
       		       	    IF some?(res2) 
       			    THEN LET result = sub_ac_ac(val(res1),val(res2)) IN 
 				 Some(result)
@@ -88,15 +110,15 @@ BEGIN
       		       THEN LET res2 = Eval_ACExpr_Box_offset
 		       	    	       ( op2 
 		       	    	       , box
-				       , nidx_offset+nonaff_op_count(op1)) IN
+				       , nidx_offset+new_noise_symbols_count(op1)) IN
       		       	    IF some?(res2) 
       			    THEN LET result = 
 			    	      mult_ac_ac( val(res1)
 				       		 , val(res2)
 						 , last_idx_in_box(box)
 						   + nidx_offset
-						   + nonaff_op_count(op1)
-						   + nonaff_op_count(op2) + 1)
+						   + new_noise_symbols_count(op1)
+						   + new_noise_symbols_count(op2) + 1)
 				      IN 
 				 Some(result)
       			    ELSE None ENDIF
@@ -104,7 +126,13 @@ BEGIN
       NEG(op)        : LET res = Eval_ACExpr_Box_offset(op,box,nidx_offset) IN
       		       IF some?(res) 
       		       THEN LET result=neg_ac(val(res)) IN Some(result)
-      		       ELSE None ENDIF
+      		       ELSE None ENDIF,
+      POWVAR(varidx,n): IF varidx >= length(box) THEN None
+      		       	ELSE LET variable=nth_ac(box, varidx) IN 
+		       	     Some(pow_var_ac( variable
+			     		    , n
+					    , nidx_offset+1+last_idx_in_box(box))) 
+		        ENDIF
     ENDCASES
   MEASURE expr BY <<
 
@@ -133,7 +161,8 @@ BEGIN
     (add?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
     (sub?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
     (neg?(expr) AND well_typed?(box)(op(expr))) OR
-    (mult?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr)))
+    (mult?(expr) AND well_typed?(box)(op1(expr)) AND well_typed?(box)(op2(expr))) OR
+    (powvar?(expr) AND varidx(expr) < length(box))
 
 
   some_well_typed : LEMMA
@@ -159,12 +188,13 @@ BEGIN
   LET Eval = Eval_ACExpr_Box_offset(expr,box,nidx_offset) IN 
   some?(Eval) 
   IMPLIES FORALL(i: nat): member(i, idxs_ac(val(Eval))) 
-  	  	    	  IMPLIES i <= last_idx_in_box(box)+nidx_offset+nonaff_op_count(expr)
+  	  	    	  IMPLIES i <= last_idx_in_box(box)
+			  	       + nidx_offset
+				       + new_noise_symbols_count(expr)
 
-  % STATED Thu Dec 18                   % PROVED Fri Dec 19 (Last. Rev. Dec 29)
   noises_of_restricted_Evals_leg_1: LEMMA
   LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
-      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, new_noise_symbols_count(expr1) + n) IN 
   vars_in_box_compatible?(N1)(box)(vs) AND
   some?(Eval1) AND
   vars_in_box_compatible?(N2)(box)(vs) AND
@@ -176,43 +206,43 @@ BEGIN
 
   noises_of_restricted_Evals_leg_2: LEMMA
   LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
-      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, new_noise_symbols_count(expr1) + n) IN 
   vars_in_box_compatible?(N1)(box)(vs) AND
   some?(Eval1) AND
   vars_in_box_compatible?(N2)(box)(vs) AND
   some?(Eval2)
   IMPLIES FORALL(i:nat):
-    last_idx_in_box(box) < i AND i <= last_idx_in_box(box)+nonaff_op_count(expr1) + n
+    last_idx_in_box(box) < i AND i <= last_idx_in_box(box)+new_noise_symbols_count(expr1) + n
     IMPLIES get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) = 0
 
   noises_of_restricted_Evals_leg_3: LEMMA
   LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
-      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, new_noise_symbols_count(expr1) + n) IN 
   vars_in_box_compatible?(N1)(box)(vs) AND
   some?(Eval1) AND
   vars_in_box_compatible?(N2)(box)(vs) AND
   some?(Eval2)
   IMPLIES FORALL(i:nat):
-    last_idx_in_box(box)+nonaff_op_count(expr1) + n < i AND
-    i <= last_idx_in_box(box)+nonaff_op_count(expr1)+nonaff_op_count(expr2)+ n
+    last_idx_in_box(box)+new_noise_symbols_count(expr1) + n < i AND
+    i <= last_idx_in_box(box)+new_noise_symbols_count(expr1)+new_noise_symbols_count(expr2)+ n
     IMPLIES get_noise_by_idx(i, restrict_box(N1,box,val(Eval1))) = 0
 
   noises_of_restricted_Evals_leg_4: LEMMA
   FORALL(n:upfrom(1)):
   LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
-      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, new_noise_symbols_count(expr1) + n) IN 
   vars_in_box_compatible?(N1)(box)(vs) AND
   some?(Eval1) AND
   vars_in_box_compatible?(N2)(box)(vs) AND
   some?(Eval2)
   IMPLIES FORALL(i:nat):
-    last_idx_in_box(box)+nonaff_op_count(expr1)+nonaff_op_count(expr2)+ n < i
+    last_idx_in_box(box)+new_noise_symbols_count(expr1)+new_noise_symbols_count(expr2)+ n < i
     IMPLIES get_noise_by_idx(i, restrict_box(N2,box,val(Eval2))) = 0
 
   Eval_offset_noises_matching: LEMMA
   FORALL(n:upfrom(1)):
   LET Eval1 = Eval_ACExpr_Box_offset(expr1, box, n), 
-      Eval2 = Eval_ACExpr_Box_offset(expr2, box, nonaff_op_count(expr1) + n) IN 
+      Eval2 = Eval_ACExpr_Box_offset(expr2, box, new_noise_symbols_count(expr1) + n) IN 
   vars_in_box_compatible?(N1)(box)(vs) AND
   some?(Eval1) AND
   vars_in_box_compatible?(N2)(box)(vs) AND

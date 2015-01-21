@@ -69,8 +69,8 @@
     ;; If the information about this expression has been computed already, then
     ;; we will use it. If not, we will compute it and store it in the aa-core.
     (unless result
-      (let*((aff-expr1 (aa-affine-expr-rec (args1 expr) core))
-	    (aff-expr2 (aa-affine-expr-rec (args2 expr) core))
+      (let*((aff-expr1 (aa-ac-from-expr-rec (args1 expr) core))
+	    (aff-expr2 (aa-ac-from-expr-rec (args2 expr) core))
 	    (mul-noise (format nil "mul_noise_value(~a,~a,~a)"
 			       aff-expr1
 			       aff-expr2
@@ -86,13 +86,13 @@
 	(setf result info)))
     (aa-info-aff result)))
 
-;; see ia-interval-expr
-(defun aa-affine-expr (expr vars)
+;; Constructs an affine combination that represents the expression expr.
+(defun aa-ac-from-expr (expr vars)
   (setf *aa-core* (build-aa-core vars))
-  (catch '*aa-error* (aa-affine-expr-rec expr *aa-core*)))
+  (catch '*aa-error* (aa-ac-from-expr-rec expr *aa-core*)))
 
 ;; see ia-interval-expr-rec
-(defun aa-affine-expr-rec (expr core)
+(defun aa-ac-from-expr-rec (expr core)
   (let ((val (when (or (is-number-type (type expr)) (is-bool-type (type expr)))
 	       (typecheck (extra-add-evalexpr expr)))))
     (cond ;; constant
@@ -104,22 +104,22 @@
 	  ;; additive inverse
 	  ((and (unary-application? expr)
 		(is-function-expr expr "-"))
-	   (format nil "neg_ac(~a)" (aa-affine-expr-rec (args1 expr) core)))
+	   (format nil "neg_ac(~a)" (aa-ac-from-expr-rec (args1 expr) core)))
 	  ;; substraction
 	  ((is-function-expr expr "-")
 	   (format nil "sub_ac_ac(~a,~a)"
-		   (aa-affine-expr-rec (args1 expr) core)
-		   (aa-affine-expr-rec (args2 expr) core)))
+		   (aa-ac-from-expr-rec (args1 expr) core)
+		   (aa-ac-from-expr-rec (args2 expr) core)))
 	  ;; addition
 	  ((is-function-expr expr "+")
 	   ;; Now I have to check If the first parameter is a constant expression.
 	   (if (get-vars-from-expr (args1 expr))
 	       (format nil "add_ac_ac(~a,~a)"
-		       (aa-affine-expr-rec (args1 expr) core)
-		       (aa-affine-expr-rec (args2 expr) core))
+		       (aa-ac-from-expr-rec (args1 expr) core)
+		       (aa-ac-from-expr-rec (args2 expr) core))
 	     (format nil "add_s_ac(~a,~a)"
 		     (args1 expr)
-		     (aa-affine-expr-rec (args2 expr) core))))
+		     (aa-ac-from-expr-rec (args2 expr) core))))
 	  ;; multiplication
 	  ((is-function-expr expr "*")
 	   ;; Now I have to check If the first parameter is a constant expression.
@@ -127,7 +127,7 @@
 	       (aa-core-get-aa-expr-mul core expr)
 	     (format nil "mul_s_ac(~a,~a)"
 		     (args1 expr)
-		     (aa-affine-expr-rec (args2 expr) core))))
+		     (aa-ac-from-expr-rec (args2 expr) core))))
 	  (t (throw '*aa-error* (list (format nil "Main operator in ~a not supported yet." expr)))))))
 
 (defparameter *aa-rws*
@@ -167,7 +167,7 @@
 			   (extra-get-fnums '+))))
 	 (af-vars (extra-get-var-ranges fms vars))
 	 (unvars  (ia-find-unbound-vars af-vars))
-	 (af-expr (aa-affine-expr expr af-vars))
+	 (af-expr (aa-ac-from-expr expr af-vars))
 	 (f-noise (aa-core-cur-noise *aa-core*))
 	 (msg     (when (listp af-expr) (car af-expr))))
      (if msg
@@ -231,40 +231,6 @@
 					    collect int)))
     "(::)"))
 
-(defstep sa (expr &optional (precision 3) (n 3) (maxdepth 5))
-  (let ((name    (freshname "sia"))
-	(ia-expr (extra-get-expr expr))
-	(ia-estr (expr2str ia-expr))
-	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
-	(vars    (ia-get-vars-from-expr ia-expr))
-	(ia-vars (extra-get-var-ranges fms vars))
-	(unvars  (ia-find-unbound-vars ia-vars))
-	(msg     (cond (unvars
-	 		(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
-				(cdr unvars) unvars (cdr unvars)))
-		       ((null ia-expr)
-			(format nil "Do not understand argument ~a." expr))
-		       ((not (is-number-expr ia-expr))
-			(format nil "Expresion ~a is not a real number expression." ia-expr))))
-	(aa-box    (unless msg (aa-box ia-vars)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars)))
-	;; (maxdepth  (if (null ia-vars) 0 maxdepth))
-	;; (ia-eval   (format nil "simple_affine(~a,~a,~a)" maxdepth name ia-box))
-	;; (ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
-;	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr))))
-	
-	(dbgmsg  (format nil "BEGIN VARS~% name: ~a~% ia-expr: ~a~% ia-estr: ~a~% fms: ~a~% vars: ~a~% ia-vars: ~a~% unvars: ~a~% aa-box: ~a~% ia-iexpr: ~a~%END VARS~% " name ia-expr ia-estr fms vars ia-vars unvars aa-box ia-iexpr)))
-;    (if msg
-;	(printf msg)
-      (spread
-       (then (printf dbgmsg) (name-label name ia-iexpr :hide? t)
-	     )
-       ((printf dbgmsg))
-      ) ;spread
-;    ) ;if
-  )
-  """")
-
 (defstep simple-affine (expr &optional (precision 3) (n 3) (maxdepth 5))
   (let ((name    (freshname "sia"))
 	(ia-expr (extra-get-expr expr))
@@ -281,7 +247,7 @@
 		       ((not (is-number-expr ia-expr))
 			(format nil "Expresion ~a is not a real number expression." ia-expr))))
 	(aa-box    (unless msg (aa-box ia-vars)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr n ia-vars)))
+	(ia-iexpr  (unless msg (aa-affine-expr ia-expr n ia-vars)))
 	(maxdepth  (if (null ia-vars) 0 maxdepth))
 	(ia-eval   (format nil "simple_affine(~a,~a,~a)" maxdepth name aa-box))
 	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
@@ -327,10 +293,140 @@ This strategy is a simplified version of the more elaborated strategy NUMERICAL.
    (rewrite "containment_var_simple"))
   "[Interval] Internal strategy." "")
 
+;;
+;; aa-affine-expr
+;;
+
+
+;; Form a string representing an affine expression of expr, where
+;;   - n      : approximation parameter
+;;   - var    : list of variables
+;;   - subs   : list of substitutions of the general form (<f> (<F> <n>) <arity>)
+;; Output:
+;;   - Expr such that EXISTS(N:Noise):
+;;     eval_ACExpr_Env(expr,vs) ## eval_ac_noise(Eval_ACExpr_Box(expr,box),N)
+(defun aa-affine-expr (expr n vars &optional subs)
+  ;; 20150116MMM For now this functions use the global variables from the interval
+  ;;   arithmetics development. Maybe it is better that they have their owns.
+  (setq *ia-let-names* nil)
+  (catch '*ia-error*
+    (aa-affine-expr-rec expr n vars
+			(append subs *ia-builtin* *ia-extended*)
+			(check-name "IntervalStrategies__"))))
+
+(defun aa-affine-expr-rec (expr n vars subs extended &optional localvars)
+  (let ((val (when (or (is-number-type (type expr)) (is-bool-type (type expr)))
+	       (typecheck (extra-add-evalexpr expr)))))
+    (cond ((and val (is-number-type  (type val)))
+	   (format nil "r2E(~a)" val))
+	  ((and val (is-bool-type (type val)))
+	   (format nil "b2B(~a)" val))
+	  ((is-const-decl-expr expr (mapcar #'car subs)) ;; Is a constant, but not a rational one
+	   (let ((opl (ia-idsubs? (expr2str expr) *ia-extended*))) ;; Check if extended import is required.
+	     (when (and opl (not extended))
+	       (ia-error (format 
+			  nil
+			  "Theory interval_arith@strategies needs to be imported to support constant ~a"
+			  expr))))
+	   ;; At this point, imported chain is OK. 
+	   (let ((opl (ia-idsubs? (expr2str expr) subs)))
+	     (if opl
+		 (let ((op (cadr opl)))
+		   (if (listp op)
+		       (format nil "~a(~a)" (car op) (ia-approx-n n (nth 1 op)))
+		     (format nil "~a" op)))
+	       (ia-error (format nil "Don't know how to translate constant ~a" expr)))))
+	  ((is-variable-expr expr)
+	   (let ((vl (when (name-expr? expr)
+		       (member (id expr) localvars :test #'(lambda(x y) (equal x (car y)))))))
+	     (if vl (ia-format-local-var vl (length vars))
+	       (let ((vl (member (expr2str expr) vars :test #'string=)))
+		 (if vl
+		     (format nil "X(~a)" (- (length vars) (length vl)))
+		   (ia-error (format nil "Don't know how to translate variable ~a" expr)))))))
+	  ((and (unary-application? expr)
+		(is-function-expr expr "-"))
+	   (format nil "NEG(~a)"
+		   (aa-affine-expr-rec (args1 expr) n vars subs extended localvars)))
+	  ((is-function-expr expr "^")
+	   (cond  ;; Eponentation simpler version (integer power applyed on a variable)
+	          ((and (is-variable-expr (args1 expr)) (is-number-type (type (args2 expr))))
+		   (let*((pow  (args2 expr))
+			 (expr (args1 expr))
+			 (vl   (when (name-expr? expr)
+				 (member (id expr) localvars :test #'(lambda(x y) (equal x (car y)))))))
+		     (if vl (ia-format-local-var vl (length vars))
+		       (let ((vl (member (expr2str expr) vars :test #'string=)))
+			 (if vl
+			     (format nil "POWVAR(~a,~a)"
+				     (- (length vars) (length vl)) pow)
+			   (ia-error (format nil "Don't know how to translate ~a as a simple exponentation" expr)))))))
+		  ;; General exponentiation operation.
+		  ;; 20150116MMM Not yet supported.
+		  (t
+		   (format nil "POW(~a,~a)"
+		   (aa-affine-expr-rec (args1 expr) n vars subs extended localvars)
+		   (args2 expr))
+		   )))
+	  ((is-function-expr expr "##")
+	   (let ((val (extra-add-evalexpr (args2 expr))))
+	     (if (record-expr? val)
+		 (format nil "BINCLUDEX(~a,~a)"
+			 (aa-affine-expr-rec (args1 expr) n vars subs extended localvars)
+			 val)
+	       (ia-error (format nil "Don't know how to translate expression ~a" (args2 expr))))))
+	  ((if-expr? expr)
+	   (if (is-bool-type (type expr))
+	       (format nil "BITE(~a,~a,~a)"
+		       (aa-affine-expr-rec (nth 0 (arguments expr)) n vars subs extended localvars)
+		       (aa-affine-expr-rec (nth 1 (arguments expr)) n vars subs extended localvars)
+		       (aa-affine-expr-rec (nth 2 (arguments expr)) n vars subs extended localvars))
+	     (ia-error "IF-THEN-ELSE construct ~a is unsupported" expr)))
+	  ((let-expr? expr)
+	   (if (or (is-bool-type (type expr)) (is-number-type (type expr)))
+	       (let* ((op  (operator expr))
+		      (typ (domain (type op))))
+		 (if (or (is-number-type typ) (and (is-bool-type (type expr))
+						   (is-bool-type typ)))
+		     (let* ((vt  (cons (id (car (bindings op))) typ))
+			    (xm  (aa-affine-expr-rec (argument expr) n vars subs extended localvars))
+			    (nm  (freshname (format nil "V_~a" (length *ia-let-names*)))))
+		       (setq *ia-let-names* (append *ia-let-names* (list (cons nm xm))))
+		       (format nil "~:[~;B~]LETIN(~a,~a)" (is-bool-type (type expr)) nm
+			       (aa-affine-expr-rec (expression op) n vars subs extended
+						     (cons vt localvars))))
+		   (ia-error "LET-IN construct ~a is unsupported" expr)))
+	     (ia-error "LET-IN construct ~a is unsupported" expr)))
+	  ((arg-tuple-expr? expr)
+	   (format nil "~{~a~^,~}"
+		   (mapcar #'(lambda(x)(aa-affine-expr-rec x n vars subs extended localvars))
+			   (exprs expr))))
+	  ((is-function-expr expr)
+	   (let ((opl (ia-idsubs? (id (operator expr)) (cdr *ia-extended*))))
+	     (when (and opl (not extended))
+	       (ia-error (format 
+			  nil
+			  "Theory interval_arith@strategies needs to be imported to support function ~a"
+			  (id (operator expr))))))
+	   (let ((opl (ia-idsubs? (id (operator expr)) subs)))
+	     (if opl 
+		 (let ((op (cadr opl)))
+		   (if (listp op)
+		       (format nil "~a(~a)(~a)"
+			       (car op) (ia-approx-n n (nth 1 op))
+			       (aa-affine-expr-rec (args1 expr) n vars subs extended localvars))
+		     (format nil "~a(~a)" op
+			     (aa-affine-expr-rec (argument expr) n vars subs extended localvars))))
+	       (ia-error (format nil "Don't know how to translate function ~a" (id (operator expr)))))))
+	  (t (ia-error (format nil "Don't know how to translate expression ~a" expr))))))
+
 
 
 ;------------------------------------------------------------------------------;
 
+;;
+;; Simple helper strategy intended to deal with inequalities on nontrivial terms.
+;;
 (defun get-sub-expr-at-level (expr n)
   (if (eq n 0) (list expr)
     (when (application? expr)
