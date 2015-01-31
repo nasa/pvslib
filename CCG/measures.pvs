@@ -14,7 +14,7 @@ measures[N: posnat]: THEORY
 
 BEGIN
 
-	IMPORTING reals@sign3
+	IMPORTING reals@sign3, sets_aux@fun_below_props
               
     
 % ------------------------------------------------------------------------------- %
@@ -34,7 +34,7 @@ BEGIN
 
        IMPORTING structures@max_array[N, measures, <=]
 
- ;+(x, y : measures) : measures =
+ MPlus(x, y : measures) : measures =
       IF (x = Undefined OR y = Undefined) THEN Undefined
       ELSIF (x = 1 OR y = 1) THEN 1
       ELSE 0
@@ -42,13 +42,20 @@ BEGIN
 
  ;*(m1, m2: measure_matrix): measure_matrix =
       LAMBDA(i: below(N))(j: below(N)): 
-            max( LAMBDA(k: below(N)): ( m1(i)(k) + m2(k)(j) ) )
+            max( LAMBDA(k: below(N)): ( MPlus(m1(i)(k) , m2(k)(j)) ) )
 
  ;+(m1, m2: measure_matrix): measure_matrix =
-      LAMBDA(i: below(N))(j: below(N)): m1(i)(j) + m2(i)(j)
+      LAMBDA(i: below(N))(j: below(N)): MPlus(m1(i)(j) , m2(i)(j))
 
  id : measure_matrix = 
       LAMBDA(i : below(N))(j : below(N)) : IF i = j THEN 0 ELSE -1 ENDIF
+
+
+
+ ;<=(m1, m2: measure_matrix): bool = 
+      FORALL (i,j: below(N)): m1(i)(j)<=m2(i)(j)
+
+ ;<(m1, m2: measure_matrix): bool = (NOT m1=m2) AND m1<=m2  
 
 
 % ------------------------------------------------------------------------------- %
@@ -57,13 +64,28 @@ BEGIN
 
  x, y, z: VAR measures
 
- add_commute: LEMMA x + y = y + x
+ add_commute: LEMMA MPlus(x , y) = MPlus(y , x)
 
- add_assoc: LEMMA x + (y + z) = (x + y) + z
+ add_assoc: LEMMA MPlus(x , MPlus(y , z)) = MPlus(MPlus(x , y) , z)
+
+ add_measures_positive: LEMMA
+   FORALL(a, b: measures):
+     a >= 0 AND b >= 0 AND (a = 1 OR b = 1) IFF MPlus(a,b) = 1
 
  id_on_measures: LEMMA
-   0 + x = x AND x + 0 = x
+   MPlus(0 , x) = x AND MPlus(x , 0) = x
 
+ card_prep: LEMMA is_finite[measure_matrix](fullset[measure_matrix])
+
+ card_measure_matrices: LEMMA card(fullset[measure_matrix]) = 3^(N^2)
+
+ matrices_order: LEMMA partial_order?(<=)
+
+ mult_left_preserves_order: LEMMA FORALL (n, m1, m2:measure_matrix):
+    m1<=m2 IMPLIES n*m1<=n*m2  
+
+ mult_right_preserves_order: LEMMA FORALL (n, m1, m2:measure_matrix):
+    m1<=m2 IMPLIES m1*n<=m2*n
 
 %---------------------------------------------------
 
@@ -72,8 +94,9 @@ BEGIN
 
  max_add: LEMMA
    FORALL(A: ARRAY[below(N) -> measures], a: measures):
-       max(A) + a = max(LAMBDA (i: below(N)): A(i) + a)
+       MPlus(max(A) , a) = max(LAMBDA (i: below(N)): MPlus(A(i) , a))
 
+ 
  measure_matrix_assoc: LEMMA
    associative?(*)
 
@@ -86,7 +109,7 @@ BEGIN
    EXISTS(j: below(N)) : m(j)(j) = 1
 
  compatible?(m1, m2: measure_matrix): bool =
-   EXISTS(j: below(N)) : m1(j)(j) + m2(j)(j) = 1
+   EXISTS(j: below(N)) : MPlus(m1(j)(j) , m2(j)(j)) = 1
 
  defined?(m: measure_matrix): bool = 
    EXISTS(j: below(N)) : m(j)(j) /= Undefined
@@ -100,14 +123,10 @@ BEGIN
 %  Properties
 % ------------------------------------------------------------------------------- %
 
- add_measures_positive: LEMMA
-   FORALL(a, b: measures):
-     a >= 0 AND b >= 0 AND (a = 1 OR b = 1) IFF a + b = 1
-
  positive_multiplication: LEMMA
    FORALL(m1, m2: measure_matrix):
      positive?(m1*m2) IFF
-     EXISTS(j, k: below(N)): m1(j)(k) + m2(k)(j) = 1
+     EXISTS(j, k: below(N)): MPlus(m1(j)(k) , m2(k)(j)) = 1
 
  positive_commute: LEMMA
    FORALL (m1, m2: measure_matrix):
@@ -115,7 +134,7 @@ BEGIN
 
  positive_mult_pos: LEMMA
    FORALL(m1, m2: measure_matrix, k: below(N)):
-     m1(k)(k) + m2(k)(k) = 1 IMPLIES (m1 * m2)(k)(k) = 1
+     MPlus(m1(k)(k),m2(k)(k)) = 1 IMPLIES (m1 * m2)(k)(k) = 1
 
  positive_sum: LEMMA
    FORALL (m1, m2: measure_matrix):
@@ -145,11 +164,10 @@ BEGIN
 
  positive_pos_mul: LEMMA
    FORALL(m1, m2: measure_matrix, i, j, k: below(N)):
-     m1(i)(j) + m2(j)(k) = 1 IMPLIES (m1*m2)(i)(k) = 1
+     MPlus(m1(i)(j),m2(j)(k)) = 1 IMPLIES (m1*m2)(i)(k) = 1
 
  positive_pos_decomposition: LEMMA
    FORALL(m1, m2: measure_matrix, i, j: below(N)):
-     (m1*m2)(i)(j) = 1 IFF EXISTS(k: below(N)): m1(i)(k) + m2(k)(j) = 1
- 
+     (m1*m2)(i)(j) = 1 IFF EXISTS(k: below(N)): MPlus(m1(i)(k),m2(k)(j)) = 1
 
 END measures
