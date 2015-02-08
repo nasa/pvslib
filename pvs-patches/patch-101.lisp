@@ -202,17 +202,21 @@
 ;; Furthermore, if over is t, then the output is an over-approximation. Otherwise, the
 ;; output is an under-approximation.
 (defun ratio2decimal (numbr over n)
-  (when (numberp numbr)
-    (let* ((r (abs (* numbr (expt 10 n))))
-	   (i (truncate r))
-	   (f (format nil "~~~a,'0d" (1+ n)))
-	   (s (format nil f (+ i (if (or (= i r) (iff over (< numbr 0))) 0 1))))
-	   (d (- (length s) n)))
-      (format nil "~:[-~;~]~a~:[.~;~]~a"
-	      (>= numbr 0)
-	      (subseq s 0 d)
-	      (= n 0)
-	      (subseq s d)))))
+  (cond ((integerp numbr)
+	 (format nil "~d" numbr))
+	((numberp numbr)
+	 (let* ((r (abs (* numbr (expt 10 n))))
+		(i (truncate r)))
+	   (if (= i r)
+	       (format nil "~:[-~;~]~a" (>= numbr 0) (exact-fp numbr))
+	     (let* ((f (format nil "~~~a,'0d" (1+ n)))
+		    (s (format nil f (+ i (if (iff over (< numbr 0)) 0 1))))
+		    (d (- (length s) n)))
+	       (format nil "~:[-~;~]~a~:[.~;~]~a"
+		       (>= numbr 0)
+		       (subseq s 0 d)
+		       (= n 0)
+		       (subseq s d))))))))
 
 (defun is-var-decl-expr (expr)
   (and (name-expr? expr)

@@ -2,7 +2,14 @@ pvsio_checker : THEORY
 BEGIN
 
   IMPORTING time_fun,
-            pathname
+            pathname,
+            reals@sqrt
+
+  % Rounding Modes
+  RoundingMode : TYPE = {ToZero,ToInfnty,ToNInfnty,ToPInfnty} 
+  AwayFromZero : MACRO RoundingMode = ToInfnty
+  Ceiling      : MACRO RoundingMode = ToPInfnty
+  Floor        : MACRO RoundingMode = ToNInfnty
 
   % Global variables
 
@@ -10,7 +17,19 @@ BEGIN
   Fails       : Global[nat,0]
   CurrentLine : Global[nat,0]
   Frequency   : Global[posnat,10]
-  Precision   : Global[nnreal,0.001]
+
+  % Default Tolerance for almost equal of real numbers
+  DefaultTolerance : Global[nnreal,0.001]
+
+  % Default precision. n = val(Precision) represents a precision of 10^-n
+  DefaultPrecision : Global[int,5]  
+  % Default rounding mode
+  DefaultMode      : Global[RoundingMode,ToZero] 
+
+  % r is a real number, n represents the precision 10^-n, and m is the rounding mode 
+  real2str(r:real,n:int,m:RoundingMode) : string
+
+  to_str(r:real) : string = real2str(r,DefaultPrecision,DefaultMode)
 
   % Generic checker: 
   % Iterates check on a file until maxr (or end of file if maxr = 0)
@@ -76,19 +95,19 @@ BEGIN
     abs(r1-r2) <= prec
 
   almost_equal?(r1,r2:real) : bool =
-    almost_equal_prec?(r1,r2,val(Precision))
+    almost_equal_prec?(r1,r2,val(DefaultTolerance))
 
   check_real_prec(fout:OStream,msg:string,pvs,io:real,prec:nnreal) : bool =
     IF NOT almost_equal_prec?(pvs,io,prec) THEN
-      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~,8f vs. Input: ~,8f~%",
-             (msg,val(CurrentLine),val(Records),pvs,io)) &
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
+             (msg,val(CurrentLine),val(Records),to_str(pvs),to_str(io))) &
       FALSE
     ELSE
       TRUE
     ENDIF
 
   check_real(fout:OStream,msg:string,pvs,io:real) : bool =
-    check_real_prec(fout,msg,io,pvs,val(Precision))
+    check_real_prec(fout,msg,io,pvs,val(DefaultTolerance))
 
   check_bool(fout:OStream,msg:string,pvs,io:bool) : bool =
     IF pvs /= io THEN
@@ -107,7 +126,5 @@ BEGIN
     ELSE
       TRUE
     ENDIF
-
-  IMPORTING reals@sqrt
 
 END pvsio_checker
