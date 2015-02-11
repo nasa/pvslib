@@ -208,7 +208,7 @@
 	 (let* ((r (abs (* numbr (expt 10 n))))
 		(i (truncate r)))
 	   (if (= i r)
-	       (format nil "~:[-~;~]~a" (>= numbr 0) (exact-fp numbr))
+	       (format nil "~:[-~;~]~a" (>= numbr 0) (exact-fp (abs numbr)))
 	     (let* ((f (format nil "~~~a,'0d" (1+ n)))
 		    (s (format nil f (+ i (if (iff over (< numbr 0)) 0 1))))
 		    (d (- (length s) n)))
