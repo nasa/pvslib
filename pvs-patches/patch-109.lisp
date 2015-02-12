@@ -75,14 +75,12 @@
 
 (defattach |real2str| (r)
   "String representation of real R"
-  (if (integerp r) 
-      (format nil "~d" r)
-    (format nil "~f" (rationalize r))))
+  (ratio2decimal r t 32))
 
 (defattach |str2real| (s)
   "Rational denoted by S"
   (let ((i (read-from-string s)))
-    (if (numberp i) (rationalize i) 
+    (if (numberp i) (rational i) 
       (throw '|NotARealNumber|
 	     (pvs2cl_record (the string "NotARealNumber")
 			    (the string s))))))
@@ -197,7 +195,7 @@
   "Queries a real number from standard input with prompt MSSG"
   (prompt mssg)
   (let ((i (read)))
-    (if (numberp i) (rationalize i)
+    (if (numberp i) (rational i)
       (throw '|NotARealNumber|
 	     (pvs2cl_record (the string "NotARealNumber")
 			    (the string (format nil "~a" i)))))))
@@ -334,7 +332,7 @@
   "Reads a real number from stream F"
   (let ((i (read f nil nil)))
     (when i 
-      (if (numberp i) (rationalize i)
+      (if (numberp i) (rational i)
 	(throw '|NotARealNumber|
 	       (pvs2cl_record (the string "NotARealNumber")
 			      (the string (format nil "~a" i))))))))
@@ -349,29 +347,32 @@
 			      (the string (format nil "~a" i))))))))
 )))
 
+(defun rat2double (x) 
+  (float x 1.0d0))
+
 (defun stdmath-attachments ()
 
 (eval '(attachments stdmath
 	     
 (defattach |PI| () 
   "Number Pi"
-  pi)
+  (rational pi))
 
 (defattach |SIN| (x) 
   "Sine of X"
-  (sin x))
+  (rational (sin (rat2double x))))
 
 (defattach |COS| (x)
   "Cosine of X"
-  (cos x))
+  (rational (cos (rat2double x))))
 
 (defattach |EXP| (x) 
   "Exponential of X"
-  (exp x))
+  (rational (exp (rat2double x))))
 
 (defattach |RANDOM| ()
   "Real random number in the interval [0..1]"
-  (random 1.0))
+  (rational (random (rat2double 1))))
 
 (defattach |NRANDOM| (x)
   "Natural random number in the interval [0..X)"
@@ -379,23 +380,23 @@
 
 (defattach |sqrt_lisp| (x) 
   "Square root of X"
-   (sqrt x))
+   (rational (sqrt (rat2double x))))
 
 (defattach |log_lisp| (x) 
   "Logarithm of X"
-  (if (<= x 0) 0 (log x)))
+  (if (<= x 0) 0 (rational (log (rat2double x)))))
 
 (defattach |atan_lisp| (x y)
   "Arctangent of Y/X"
-  (atan x y))
+  (rational (atan (rat2double x) (rat2double y))))
 
 (defattach |asin_lisp| (x)
   "Arcsine of X"
-  (asin x))
+  (rational (asin (rat2double x))))
 
 (defattach |acos_lisp| (x)
   "Arccosine of X"
-  (acos x))
+  (rational (acos (rat2double x))))
 
 )))
 
