@@ -74,8 +74,11 @@
   (format nil "~a~a" s1 s2))
 
 (defattach |real2str| (r)
-  "String representation of real R"
-  (ratio2decimal r t 32))
+  "Converts real number r to string, where the integer n represents the precision 10^-n, and m is the rounding mode
+    (0: to zero, 1: to infinity (away from zero), 2: to negative infinity (floor), 3: to positive infinity (ceiling)"
+  (let ((n 6)
+	(m 0))
+    (ratio2decimal r (or (= m 3) (and (= m 1) (> r 0)) (and (= m 0) (< r 0))) n)))
 
 (defattach |str2real| (s)
   "Rational denoted by S"
@@ -384,7 +387,7 @@
 
 (defattach |log_lisp| (x) 
   "Logarithm of X"
-  (if (<= x 0) 0 (rational (log (rat2double x)))))
+  (rational (log (rat2double x))))
 
 (defattach |atan_lisp| (x y)
   "Arctangent of Y/X"

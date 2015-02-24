@@ -36,6 +36,7 @@
   
 (defparameter *extra-trusted-oracles* nil) ; Hashtable of trusted oracles
 (setq *extra-trusted-oracles* (make-hash-table))
+(defparameter *extra-disabled-oracles* nil) ; Hashtable of disabled oracles
 (setq *extra-disabled-oracles* (make-hash-table))
 
 (defun is-trusted-oracle (orcl)
@@ -70,7 +71,7 @@
 		    orcls)))
     (loop for name in (remove-if #'(lambda (n) (member n but :test #'string=))
 				 disables)
-	  do (extra-disable-oracle (intern name)))))
+	  do (extra-disable-oracle (intern name :pvs)))))
 
 (defun extra-list-oracles (&optional (enabled t))
   (sort 
@@ -316,10 +317,10 @@
     (let* ((alllabels (union (extra-get-labels '*)
 			     (extra-get-labels '* t)))
 	   (counter   (incf *extra-label-counter*))
-	   (nn        (intern (format nil "~a:~a" prefix counter))))
+	   (nn        (intern (format nil "~a:~a" prefix counter) :pvs)))
       (if (member nn alllabels)
 	  (loop for i from 1
-		for nn = (intern (format nil "~a_~a:~a" prefix i counter))
+		for nn = (intern (format nil "~a_~a:~a" prefix i counter) :pvs)
 		unless (member nn alllabels)
 		return nn)
 	nn))))
@@ -862,17 +863,17 @@ arguments ARGS. ARGS can only have constant values.")
 FNUMS are considered to be hidden formulas when hidden? is set to t."
   "Removing ~1@*~:[all labels~;label(s) ~:*~a~] from ~@*~a")
 
-(defstep delabel (label &optional hide? (hidden? t))
-  (let ((fnums (extra-get-fnums label))
-	(seqfs  (when hidden? (extra-get-seqfs label t))))
+(defstep delabel (labl &optional hide? (hidden? t))
+  (let ((fnums (extra-get-fnums labl))
+	(seqfs  (when hidden? (extra-get-seqfs labl t))))
     (then (when fnums
-	    (unlabel* fnums label)
+	    (unlabel* fnums labl)
 	    (when hide? (hide fnums)))
 	  (when seqfs
-	    (let ((lbs (flatten-labels label)))
+	    (let ((lbs (flatten-labels labl)))
 	      (mapstep #'(lambda(x)`(unlabel :label ,x :hidden? t)) lbs)))))
-  "[Extrategies] Removes LABEL(s). If HIDE? is t, hides the delabeled formulas.
-If HIDDEN? is t, LABEL(s) are also removed from hidden formulas."
+  "[Extrategies] Removes LABL(s). If HIDE? is t, hides the delabeled formulas.
+If HIDDEN? is t, LABL(s) are also removed from hidden formulas."
   "Removing label(s) ~a")
 
 (defun set-pairing (l)
@@ -891,31 +892,31 @@ If HIDDEN? is t, LABEL(s) are also removed from hidden formulas."
       (append (flatten-labels (car label))
 	      (flatten-labels (cdr label))))))
 
-(defhelper relabel__ (label fnums)
-  (when label
-    (let ((labs   (flatten-labels label))
+(defhelper relabel__ (labl fnums)
+  (when labl
+    (let ((labs   (flatten-labels labl))
 	  (qfnums (list 'quote fnums)))
       (mapstep #'(lambda(x)`(label ,x ,qfnums :push? t)) labs)))
   "[Extrategies] Internal strategy." "")
 
-(defstep relabel (label fnums &optional pairing? (push? t))
-  (when label
-    (let ((pair (or pairing? (is-pairing label)))
-	  (lbs  (cond (pairing? label)
-		      (pair     (cdr label))
-		      (t        (flatten-labels label))))
+(defstep relabel (labl fnums &optional pairing? (push? t))
+  (when labl
+    (let ((pair (or pairing? (is-pairing labl)))
+	  (lbs  (cond (pairing? labl)
+		      (pair     (cdr labl))
+		      (t        (flatten-labels labl))))
 	  (lfs  (extra-get-fnums fnums pair))
 	  (lbfs (if pair (pair-lists lbs lfs t)
 		  (mapcar #'(lambda (x) (cons x lfs)) lbs))))
       (then
        (unless push? (unlabel* fnums))
        (mapstep #'(lambda(x)`(relabel__ ,(car x) ,(cdr x) :push? t)) lbfs))))
-  "[Extrategies] Labels FNUMS as LABEL(s), keeping the old ones. If PAIRING? is t and
-LABEL is a list of the form (LAB1 ... LABn), each LABi is paired to the i-th formula in FNUM.
+  "[Extrategies] Labels FNUMS as LABL(s), keeping the old ones. If PAIRING? is t and
+LABL is a list of the form (LAB1 ... LABn), each LABi is paired to the i-th formula in FNUM.
 If PUSH? is t, then the new labels are added to the existing ones. Otherwise, the new labels
 replace all existing ones.
 
-ADVANCED USE: If LABEL has the form (:pairing LAB1 ... LABn), PAIRING? is set to t."
+ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to t."
   "Labeling formula(s) ~1@*~a as ~@*~a")
 
 (defstep name-label (name expr &optional label (fnums *) (dir lr) hide?
@@ -1095,7 +1096,7 @@ represents the complete list at each iteration. See (help mapstep) for examples 
 					(cadr opt)))
 			  collect (let* ((tccs (format nil "*~a-tccs*" (car b)))
 					 (lccs (freshlabel tccs)))
-				    (list (car b) lccs (intern tccs) (list 'quote lccs)))))
+				    (list (car b) lccs (intern tccs :pvs) (list 'quote lccs)))))
 	  (vtccs    (mapcar #'(lambda (tcc) (cddr tcc)) ftccs))
 	  (vrs      (append vlbs vtccs))
 	  (ltccs    (mapcar #'cadr ftccs))
@@ -1156,7 +1157,7 @@ ending. BINDINGS are specified as in WITH-FRESH-LABELS.")
 	  (vlbs     (loop for b in bindgs
 			  when (cadr b)
 			  collect (let ((v (format nil "*~a*" (car b))))
-				    (list (intern v) 
+				    (list (intern v :pvs) 
 					  (list 'quote (freshlabel (string (car b))))))))
 	  (nmsexs   (loop for b in bindgs
 			  for v in vnms
@@ -1172,7 +1173,7 @@ ending. BINDINGS are specified as in WITH-FRESH-LABELS.")
 						 (cadr opt)))
 			  (let ((va (format nil "*~a-tccs*" (car b)))
 				(la (format nil "~a-tccs" (car b))))
-				      (list (intern va) (list 'quote (freshlabel la)))))))
+				      (list (intern va :pvs) (list 'quote (freshlabel la)))))))
 	  (vtccs    (remove-if-not #'identity ftccs))
 	  (tccstp   (when vtccs
 		      (set-pairing
@@ -1279,27 +1280,27 @@ labels are also copied."
 
 ;;; Defining tactics
 
-(defhelper localtactic__ (name stratn step)
+(defhelper localtactic__ (nm stratn step)
   (if (check-name stratn)
       step
-    (printf "Local strategy ~a is not defined in this proof context" name))
+    (printf "Local strategy ~a is not defined in this proof context" nm))
   "[Extrategies] Internal strategy." "")
 
-(defrule deftactic (name arg_or_step &optional step)
-  (let ((stratn  (format nil "local_tactic_~a__" name))
+(defrule deftactic (nm arg_or_step &optional step)
+  (let ((stratn  (format nil "local_tactic_~a__" nm))
 	(arg     (when step arg_or_step))
-	(stp     (list 'localtactic__ name stratn (or step arg_or_step)))
+	(stp     (list 'localtactic__ nm stratn (or step arg_or_step)))
 	(doc1    (format nil "Local tactic ~a defined in the proof context: ~a"
-			 name (label *ps*)))
-	(doc2    (format nil "Applying local tactic ~a" name)))
-    (then (lisp (defstep name arg stp doc1 doc2)) 
+			 nm (label *ps*)))
+	(doc2    (format nil "Applying local tactic ~a" nm)))
+    (then (lisp (defstep nm arg stp doc1 doc2)) 
 	  (if (check-name stratn)
-	      (printf "Redefining local tactic ~a" name)
+	      (printf "Redefining local tactic ~a" nm)
 	    (then (name stratn "TRUE")
 		  (delete -1)))))
-  "[Extrategies] Defines a tactic named NAME. A tactic is a strategy that is local to the current branch
-of the proof. NAME needs to be a valid identifier in PVS. A tactic definition can be either
-(deftactic NAME STEP) or (deftactic NAME (ARGUMENTS) STEP). For example,
+  "[Extrategies] Defines a tactic named NM. A tactic is a strategy that is local to the current branch
+of the proof. NM needs to be a valid identifier in PVS. A tactic definition can be either
+(deftactic NM STEP) or (deftactic NM (ARGUMENTS) STEP). For example,
 
 (deftactic myfirsttactic (then (flatten) (assert) (grind)))
 
