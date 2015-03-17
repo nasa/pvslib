@@ -6,26 +6,60 @@ BEGIN
   %----------------------------------------------------------------------------%
   IMPORTING reals@binomial
 
+  
+  power_Epsilon_is_Epsilon: LEMMA
+  FORALL (e: Epsilon, n: nat): -1 <= e ^ n AND e ^ n <= 1
+
   power_Epsilon_judg: JUDGEMENT
   FORALL(e: Epsilon, n: nat): e^n HAS_TYPE Epsilon
 
 
-  pow_var_pd(cv: nzBaseType, newidx: nat, pds_bt: nzBaseType, n: above(1), k: subrange(2,n))
-  : RECURSIVE {pds: ErrorTerms | NOT null?(pds) AND car(pds)`1 >= newidx+(k-2)}
-  = IF k = n THEN cons_ol((newidx+(k-2),pds_bt^k), empty_ErrorTerms)
-    ELSE cons_ol( (newidx+(k-2), C(n,k) * cv^(n-k) * pds_bt^k)
-    	 	, pow_var_pd(cv,newidx,pds_bt,n,k+1)) ENDIF
+  IMPORTING ordered_list
+
+  pow_var_pd( cv: nzBaseType, pds_bt: nzBaseType
+  	    , n: above(1), k: subrange(2,n), idxs: {idxs_: ordered_list[nat,<] | length(idxs_) > n - k})
+  : RECURSIVE {pds: ErrorTerms | NOT null?(pds) AND car(pds)`1 >= car(idxs) }
+  = IF k = n THEN cons_ol((car(idxs),pds_bt^k), empty_ErrorTerms)
+    ELSE cons_ol( (car(idxs), C(n,k) * cv^(n-k) * pds_bt^k)
+    	 	, pow_var_pd(cv,pds_bt,n,k+1,cdr_ol[nat,<](idxs))) ENDIF
   MEASURE n - k
 
-  pow_var_ac(Xa:(represents_var?), n:nat, (newidx: nat | newidx >= next_idx(pd(Xa)))): AffineCombination
-  = IF n=0 THEN {| 1, empty_ErrorTerms |}
-    ELSE {| cv(Xa)^n ,
+  pow_var_ac( Xa: (represents_var?), 
+  	      power : nat, 
+	      (idxs: ordered_list[nat,<] | (length(idxs) > power-2 AND 
+	      	     			    (NOT null?(idxs) IMPLIES car(idxs) >= next_idx(pd(Xa))))
+					   OR length(pd(Xa)) = 0))
+  : AffineCombination
+  = IF power=0 THEN {| 1, empty_ErrorTerms |}
+    ELSE {| cv(Xa)^power ,
        	    IF length(pd(Xa)) = 0 THEN empty_ErrorTerms
-	    ELSIF cv(Xa) = 0 THEN IF n=1 THEN pd(Xa) ELSE
-	    	  	     	  cons_ol((newidx+n-2, nth(pd(Xa),0)`2^n), empty_ErrorTerms) ENDIF
-       	    ELSE cons_ol( (nth(pd(Xa),0)`1, n * cv(Xa)^(n-1) * nth(pd(Xa),0)`2)
-	    	 	, IF n>1 THEN pow_var_pd(cv(Xa), newidx, nth(pd(Xa),0)`2, n, 2)
+	    ELSIF cv(Xa) = 0 THEN IF power=1 THEN pd(Xa) 
+	    	  	     	  ELSE cons_ol(
+					(nth(idxs, power - 2), nth(pd(Xa),0)`2^power)
+					, empty_ErrorTerms) ENDIF
+       	    ELSE cons_ol( (nth(pd(Xa),0)`1, power * cv(Xa)^(power-1) * nth(pd(Xa),0)`2)
+	    	 	, IF power>1 THEN pow_var_pd(cv(Xa), nth(pd(Xa),0)`2, power, 2, idxs)
 			  ELSE empty_ErrorTerms ENDIF ) ENDIF |} ENDIF
+
+
+
+
+  nats(s: nat, (e: nat | s <= e))
+  : RECURSIVE {r: ordered_list[nat,<] | NOT null_ol?[nat,<](r) 
+    	      	  		    AND car_ol[nat,<](r) = s 
+				    AND length(r) = e-s+1
+				    AND FORALL(i: below(length(r))): nth(r,i) = s+i}
+  = IF s = e THEN (:e:)
+    ELSE cons_ol[nat,<](s, nats(s+1,e)) ENDIF
+  MEASURE e-s
+
+  member_nats: LEMMA
+  FORALL(i: nat, s: nat, e: nat | s <= e):
+  member(i, nats(s,e)) IMPLIES s <= i AND i <= e
+
+
+
+
 
   Xa: VAR AffineCombination
   n, newidx, i: VAR nat
@@ -33,35 +67,81 @@ BEGIN
   x: VAR BaseType
 
   next_idx_pow_var_ac: LEMMA
-  FORALL(Xa: (represents_var?), newidx: upfrom(next_idx(Xa`pd))):
-  next_idx(pd(pow_var_ac(Xa,n,newidx))) <= newidx+(IF n>1 THEN n-1 ELSE 0 ENDIF)
+  FORALL(Xa: (represents_var?), power : nat, (idxs: ordered_list[nat,<] | (length(idxs) > power-2 AND 
+	      	     			      (NOT null?(idxs) IMPLIES car(idxs) >= next_idx(pd(Xa)))
+					      OR length(pd(Xa)) = 0))):
+  next_idx(pd(pow_var_ac(Xa,power,idxs))) = IF power = 0 OR length(pd(Xa)) = 0 THEN 0
+  					    ELSIF power=1 THEN next_idx(pd(Xa))
+  				            ELSE nth(idxs, power-2)+1 ENDIF
 
   idxs_ac_pow_var_ac: LEMMA 
-  FORALL(Xa: (represents_var?), newidx:upfrom(next_idx(Xa`pd))): 
-  member(i, idxs_ac(pow_var_ac(Xa,n,newidx))) 
-  IMPLIES  member(i, idxs_ac(Xa)) OR (n>1 AND newidx <= i AND i <= newidx+n-2)
+  FORALL( Xa: (represents_var?)
+  	, power : nat
+	, (idxs: ordered_list[nat,<] | (length(idxs) > power-2 AND 
+	      	     			 (NOT null?(idxs) IMPLIES car(idxs) >= next_idx(pd(Xa))))
+				       OR length(pd(Xa)) = 0)):
+  member(i, idxs_ac(pow_var_ac(Xa,power,idxs))) 
+  IMPLIES  member(i, idxs_ac(Xa)) 
+  	   OR (NOT length(pd(Xa)) = 0 AND 
+	       NOT null?(idxs) AND 
+	       2<=power AND
+	       member(i, take[nat](idxs,power-2+1)))
 
   
+  pow_var_compatible?(Xa: (represents_var?),power: nat,
+   (nwidxs: ordered_list[nat,<] | (length(nwidxs) > power-2 AND 
+	      	     			    (NOT null?(nwidxs) IMPLIES car(nwidxs) >= next_idx(pd(Xa))))
+					   OR length(pd(Xa)) = 0)
+			       )(N): bool
   % Holds when N1 and N2 are such that eval_ac_noise(Xa,N1)^n = eval_ac_noise(pow_var_ac(Xa,n,newidx), N2)
-  pow_var_compatible?(Xa,n,newidx)(N): bool
-  = (length(pd(Xa)) > 0 IMPLIES FORALL(i: below(n-1)): 
-  		      	        get_noise_by_idx(newidx+i, N) 
+  = (length(pd(Xa)) > 0 IMPLIES FORALL(i: below(power-1)): 
+  		      	        get_noise_by_idx(nth(nwidxs,i), N) 
 			          = get_noise_by_idx(nth(pd(Xa),0)`1, N)^(i+2))
+
 
   IMPORTING reals@polynomials   % Lemma used to prove containment_pow_var_ac
   %
   % Containment lemma
   %
   containment_pow_var_ac: LEMMA
+  FORALL(Xa: (represents_var?),power: nat,(nwidxs: ordered_list[nat,<] | (length(nwidxs) > power-2 AND 
+	      	     			    (NOT null?(nwidxs) IMPLIES car(nwidxs) >= next_idx(pd(Xa))))
+					   OR length(pd(Xa)) = 0)):
   eval_ac_noise(Xa, N) = x AND
-  represents_var?(Xa) AND
-  newidx >= next_idx(pd(Xa)) AND
-  pow_var_compatible?(Xa,n,newidx)(N)
-  IMPLIES eval_ac_noise(pow_var_ac(Xa, n, newidx),N) = x^n
+  (NOT null?(pd(Xa)) IMPLIES NOT member(car(pd(Xa))`1, nwidxs)) AND
+  pow_var_compatible?(Xa,power,nwidxs)(N)
+  IMPLIES eval_ac_noise(pow_var_ac(Xa, power, nwidxs),N) = x^power
 
+  notmember_ol_nat: LEMMA
+  FORALL(ol: ordered_list[nat,<], n: nat):
+  NOT null?(ol) AND n < car(ol) IMPLIES NOT member(n, ol)
 
   pow_var_compatible_noise: LEMMA
-  FORALL((Xa|represents_var?(Xa)AND length(pd(Xa))>0),(n|n>1),newidx:upfrom(next_idx(Xa`pd))):
-  pow_var_compatible?(Xa,n,newidx)(upd_noise_range(N,newidx,n-2,LAMBDA(i:nat):get_noise_by_idx(nth(pd(Xa),0)`1, N)^(i+2)))
+  FORALL((Xa|represents_var?(Xa)AND length(pd(Xa))>0),
+  	  power: nat,
+	  (nwidxs: ordered_list[nat,<] | (length(nwidxs) > power-2 
+	  	 		        AND (NOT null?(nwidxs) IMPLIES car(nwidxs) >= next_idx(pd(Xa)))
+					    OR length(pd(Xa)) = 0))):
+     pow_var_compatible?(Xa,power,nwidxs)
+	(upd_noise_burst( N, nwidxs
+			, LAMBDA(i: nat): (get_noise_by_idx(car(pd(Xa))`1, N)^(2 + i))))
 
-END affine_pow
+  powvar_comp_noise_extension: LEMMA 
+  FORALL( power1: above(1)
+  	, power2: above(power1)
+	, (varac:  (represents_var?) | NOT null?(pd(varac)))
+	, (idxs: ordered_list[nat,<] | (length(idxs) > power1-2 AND 
+	      	     		         (NOT null?(idxs) IMPLIES car(idxs) >= next_idx(pd(varac))))
+				       OR length(pd(varac)) = 0)
+        , nextfreeidx: above(last_ol[nat,<](take(idxs, power1 - 1)))):
+    LET newoff = nextfreeidx - power1 + power2 IN
+    pow_var_compatible?(varac, power1, idxs)(N) 
+    IMPLIES 
+      pow_var_compatible?( varac, power2, 
+    	    	           append(take(idxs, power1 - 1), nats(nextfreeidx, newoff - 1)))
+                     	 ( upd_noise_burst( N
+		     		     	  , nats(nextfreeidx, newoff - 1)
+				     	  , LAMBDA(i: nat):
+                                             (get_noise_by_idx(car(pd(varac))`1, N)^(1 + i + power1))))
+
+  END affine_pow

@@ -5,7 +5,9 @@ BEGIN
 
   Box     : TYPE = list[Interval]
   Env     : TYPE = ARRAY[nat->BaseType]
-  box     : VAR Box
+  box,
+  box1,
+  box2    : VAR Box
   vs      : VAR Env
   N,N1,N2 : VAR Noise
   i,j     : VAR nat
@@ -15,6 +17,10 @@ BEGIN
   = length(box)-1
 
   nth_ac(box, (i|i < length(box))): AffineCombination = var_ac(nth(box,i),i)
+
+  last_idx_box: LEMMA
+  FORALL(i: below(length(box))):
+  last_idx_in_box(box) >= next_idx(pd(nth_ac(box, i))) - 1
 
   uptol(i): RECURSIVE list[nat] 
   = IF i=0 THEN (:0:)
@@ -59,8 +65,8 @@ BEGIN
   (NOT member(i, idxs_ac(Xa)) AND NOT member(i, idxs_box(box)) 
    IMPLIES get_noise_by_idx(i, restrict_box(N,box,Xa)) = 0)
 
-  % Holds when the noise "N" is compatible with the environment "env" and the box "box".
   vars_in_box_compatible?(N)(box)(vs): bool
+  % Holds when the noise "N" is compatible with the environment "env" and the box "box".
   = FORALL(i:below(length(box))): 
     eval_ac_noise(var_ac(nth(box,i),i), N) = vs(i) 
     AND (SingInterval?(nth(box,i)) IMPLIES get_noise_by_idx(i, N) = 0) 
@@ -94,5 +100,45 @@ BEGIN
   vars_in_box : LEMMA
     FORALL (box:Box):
       vars_in_box_rec(box,length(box),0)(vs) IMPLIES vars_in_box?(box)(vs)
+
+
+  IMPORTING structures@listn
+
+  ProperBox?(box:Box) : bool = every(Proper?)(box)
+
+  ProperBox : TYPE = (ProperBox?)
+
+  Lbbox(box:Box): listn[Interval](length(box)) =
+    map(LAMBDA (X:Interval): [|lb(X)|])(box)   
+
+  Ubbox(box:Box): listn[Interval](length(box)) =
+    map(LAMBDA (X:Interval): [|ub(X)|])(box)   
+
+  Midbox(box:Box): listn[Interval](length(box)) =
+    map(LAMBDA (X:Interval): [|midpoint(X)|])(box)   
+
+  Inclusion?(box1,box2) : bool =
+    length(box1) = length(box2) AND
+    FORALL(i:below(length(box1))) : nth(box1,i) << nth(box2,i)
+
+  Inclusion_trans : LEMMA
+    FORALL(box1,box2,box:Box): 
+      Inclusion?(box1,box2) AND Inclusion?(box2,box) IMPLIES
+      Inclusion?(box1,box)
+
+  pox : VAR ProperBox
+
+  Lbbox_Proper : JUDGEMENT Lbbox(pox) HAS_TYPE ProperBox
+
+  Ubbox_Proper : JUDGEMENT Ubbox(pox) HAS_TYPE ProperBox
+
+  Midbox_Proper : JUDGEMENT Midbox(pox) HAS_TYPE ProperBox
+
+  Lbbox_Inclusion : LEMMA
+    Inclusion?(Lbbox(pox),pox) 
+
+  Ubbox_Inclusion : LEMMA
+    Inclusion?(Ubbox(pox),pox) 
+
 
 END affine_box

@@ -1,0 +1,212 @@
+affine_bandb_numerical : THEORY
+BEGIN
+
+  IMPORTING interval_arith@safe_arith,
+            affine_expr_Eval,
+            structures@array2list[real],
+            structures@Maybe,
+            reals@real_orders
+
+  IntervalMinMax : TYPE = Maybe[[#
+    mm     : ProperInterval,
+    lb_max : real,
+    lb_box : ProperBox,
+    ub_min : real,
+    ub_box : ProperBox
+  #]]
+
+  IMPORTING structures@branch_and_bound[RealExpr,IntervalMinMax,ProperBox,nat]
+
+  v         : VAR nat
+  maxdepth  : VAR nat
+  expr      : VAR RealExpr
+  box       : VAR ProperBox
+  dirvar    : VAR DirVar
+  dirvars   : VAR DirVarStack
+  M,M1,M2   : VAR IntervalMinMax
+  out       : VAR Output
+  precision : VAR posreal
+  prune,ge  : VAR ExitPred
+  le        : VAR LocalExitPred
+  select    : VAR DirVarSelector
+  acc       : VAR IntervalMinMax
+
+  evaluate(box,expr) : IntervalMinMax = 
+    IF none?(Eval(expr,box)) OR none?(Eval(expr,Lbbox(box)::ProperBox)) 
+       OR none?(Eval(expr,Ubbox(box)::ProperBox)) THEN None
+    ELSE LET X   = Eval(expr,box),
+             Lb  = Lbbox(box)::ProperBox,
+             Ub  = Ubbox(box)::ProperBox,
+    	     P1  = Eval(expr,Lb),
+             P2  = Eval(expr,Ub),
+	     (lb_max,lb_box) = IF ub_aff(val(P1)) < ub_aff(val(P2)) 
+	      	  		    THEN (ub_aff(val(P1)),Lb) 
+				    ELSE (ub_aff(val(P2)),Ub) ENDIF,
+             (ub_min,ub_box) = IF lb_aff(val(P1)) > lb_aff(val(P2)) 
+		  		    THEN (lb_aff(val(P1)),Lb) 
+				    ELSE (lb_aff(val(P2)),Ub) ENDIF IN
+    Some((# mm     := eval_by_intervals(val(X)),
+       lb_max := lb_max, 
+       lb_box := lb_box,
+       ub_min := ub_min,
+       ub_box := ub_box 
+    #)) ENDIF
+
+  branch(v,expr) : [RealExpr,RealExpr] = (expr,expr)
+  denorm(dirvar,M) : IntervalMinMax = M
+
+  combine(v,M1,M2) : IntervalMinMax = 
+  IF none?(M1) OR none?(M2) THEN None
+  ELSE
+    LET M_lb = IF val(M1)`lb_max < val(M2)`lb_max THEN val(M1) ELSE val(M2) ENDIF,
+        M_ub = IF val(M1)`ub_min > val(M2)`ub_min THEN val(M1) ELSE val(M2) ENDIF IN
+    Some((# mm     := Safe2(Union)(mm(val(M1)),mm(val(M2))),
+       lb_max := M_lb`lb_max,
+       lb_box := M_lb`lb_box,
+       ub_min := M_ub`ub_min,
+       ub_box := M_ub`ub_box #)) ENDIF
+
+  min_or_max: VAR int
+
+  prune_mm(min_or_max)(dirvars,acc,M) : bool = 
+    (min_or_max <= 0 IMPLIES some?(acc) AND some?(M) AND 
+    		     	     val(acc)`lb_max <= lb(val(M)`mm)) AND
+    (min_or_max >= 0 IMPLIES some?(acc) AND some?(M) AND
+    		     	     ub(val(M)`mm) <= val(acc)`ub_min)
+ 
+  le_mm(min_or_max,precision)(M) : bool =  
+    (min_or_max <= 0 IMPLIES some?(M) AND 
+    		     	     LET lb = val(M)`lb_max - lb(val(M)`mm) IN lb <= precision) AND
+    (min_or_max >= 0 IMPLIES some?(M) AND
+    		     	     LET ub = ub(val(M)`mm) - val(M)`ub_min IN ub <= precision) 
+
+  ge_mm(dirvars,acc,M) : bool = none?(M) 
+
+  accumulate(acc,M) : IntervalMinMax = 
+    combine(0,acc,M)
+
+  pox : VAR ProperBox
+  split_Proper : JUDGEMENT split(v,pox) HAS_TYPE [ProperBox,ProperBox]
+
+  subdivide(v,box) : [ProperBox,ProperBox] = split(v,box)
+
+  VarSel : TYPE = Maybe[[# thisvar: nat, lb: real, ub: real, lbub: Interval #]]
+
+  var_varsel(expr:RealExpr,box:ProperBox,both:bool,
+             Mb:listn[Interval](length(box)))
+            (v:below(length(box))) : VarSel =
+    LET X    = nth(box,v),
+    	lbub = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval):X)) IN
+    IF none?(lbub) THEN None ELSE
+    IF both 
+    THEN LET lb_eval = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| lb(X) |])),
+    	     ub_eval = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| ub(X) |])) IN
+  	 IF some?(lb_eval) AND some?(ub_eval) 
+  	 THEN Some((# thisvar  := v,
+       	 	      lb       := lb_aff(val(lb_eval)),
+       		      ub       := ub_aff(val(ub_eval)),
+       		      lbub     := eval_by_intervals(val(lbub)) #)) 
+  	 ELSE None ENDIF
+    ELSE LET lb = 0,
+    	     ub = 0 IN
+  	 Some((# thisvar  := v,
+       	 	 lb       := lb,
+       		 ub       := ub,
+       		 lbub     := eval_by_intervals(val(lbub)) #)) ENDIF ENDIF
+
+  max_varsel(vs1,vs2:VarSel) : VarSel =
+    IF some?(vs1) AND some?(vs2) THEN
+       LET vs1_val = val(vs1), vs2_val = val(vs2) IN
+       IF size(vs1_val`lbub) > size(vs2_val`lbub) THEN vs1 ELSE vs2 ENDIF
+    ELSE None ENDIF
+
+  IMPORTING structures@for_iterate
+
+  both, dir : VAR bool
+
+  mindir_maxvar_aux(both:bool)(dirvars,acc,box,expr) : DirVar =
+    IF length(box) <= 1 THEN left(0)
+    ELSE 
+      LET Mb = Midbox(box), 
+          vs = iterate_left(0,length(box)-1,var_varsel(expr,box,both,Mb),max_varsel) IN
+      IF some?(vs) THEN LET vs_v = val(vs) IN (vs_v`lb < vs_v`ub,vs_v`thisvar)
+      ELSE left(0) ENDIF
+    ENDIF
+
+  mindir_maxvar(dirvars,acc,box,expr) : DirVar =
+    mindir_maxvar_aux(TRUE)(dirvars,acc,box,expr)  
+    
+  maxdir_maxvar(dirvars,acc,box,expr) : DirVar =
+    LET (dir,v) = mindir_maxvar(dirvars,acc,box,expr) IN
+    (NOT dir,v)    
+
+  altdir_maxvar(dirvars,acc,box,expr) : DirVar =
+    LET (dir,v) = mindir_maxvar_aux(FALSE)(dirvars,acc,box,expr) IN
+      (even?(length(dirvars)),v)
+
+  dir_maxvar(dir)(dirvars,acc,box,expr) : DirVar =
+    LET v = mindir_maxvar_aux(FALSE)(dirvars,acc,box,expr)`2 IN
+      (dir,v)
+
+  max_rec(n:posnat,m:real,v:below(n),
+                 i:subrange(1,n),b:Box | n = length(b)+i) : RECURSIVE below(n) =
+    IF null?(b) THEN v
+    ELSE LET mm = size(car(b)) IN
+           IF mm > m THEN max_rec(n,mm,i,i+1,cdr(b)) 
+           ELSE max_rec(n,m,v,i+1,cdr(b))
+           ENDIF
+    ENDIF
+  MEASURE b BY <<
+
+  max_aux(box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE max_rec(length(box),size(car(box)),0,1,cdr(box))
+    ENDIF
+
+  dir_max(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,max_aux(box))
+
+  alt_max(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),max_aux(box))
+
+  altvar(dirvars,box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE mod(length(dirvars),length(box))
+    ENDIF
+
+  dir_alt(dir)(dirvars,acc,box,expr) : DirVar = 
+    (dir,altvar(dirvars,box))
+
+  alt_alt(dirvars,acc,box,expr) : DirVar = 
+    (even?(length(dirvars)),altvar(dirvars,box))
+
+  interval_minmax(maxdepth,select,le,ge,prune)(expr,box) : Output =
+    b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune,le,ge,
+               select,accumulate,maxdepth,expr,box)
+
+  VVars(dirvars,box) : nat =
+    IF length(box) <= 1 THEN 0
+    ELSE mod(length(dirvars),4)
+    ENDIF
+
+  VMZ(dirvars,acc,box,expr) : DirVar = 
+    (True,VVars(dirvars,box))
+
+  sound?(box,expr,M) : bool = 
+    some?(M) IMPLIES LET M = val(M) IN
+      (FORALL (vs:(vars_in_box?(box))): eval_ACExpr_Env(expr,vs) ## M`mm) AND
+      Inclusion?(M`lb_box,box) AND
+      Inclusion?(M`ub_box,box) AND
+      (FORALL (vs:(vars_in_box?(M`lb_box))): eval_ACExpr_Env(expr,vs) <= M`lb_max) AND
+      (FORALL (vs:(vars_in_box?(M`ub_box))): eval_ACExpr_Env(expr,vs) >= M`ub_min) 
+
+  interval_minmax_soundness : THEOREM
+    sound?(box,expr,interval_minmax(maxdepth,select,le,ge,prune)(expr,box)`ans)
+
+  numerical(maxdepth,precision,select,min_or_max)(expr,box) : Output =
+    interval_minmax(maxdepth,select,le_mm(min_or_max,precision),ge_mm,prune_mm(min_or_max))(expr,box)
+
+  numerical_soundness : THEOREM
+    sound?(box,expr,numerical(maxdepth,precision,select,min_or_max)(expr,box)`ans)
+
+END affine_bandb_numerical
