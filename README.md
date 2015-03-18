@@ -6,7 +6,7 @@ The NASA PVS Library is a
  of formal [PVS](http://pvs.csl.sri.com) developments
 maintained by the [NASA
 Langley Formal Methods Team](http://shemesh.larc.nasa.gov/fm). The NASA PVS library is part of the
-  [research on theorem proving](http://shemesh.larc.nasa.gov/fm/fm-pvs.htm) sponsored by [NASA
+  [research on theorem proving](http://shemesh.larc.nasa.gov/fm/fm-pvs.html) sponsored by [NASA
   Langley](http://www.nasa.gov/centers/langley/home).
 
 The current version of the library is NASA PVS Library 6.0.10 (xx/xx/xx)
