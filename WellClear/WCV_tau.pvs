@@ -1,0 +1,86 @@
+WCV_tau[TAU,TCOA:nnreal,DTHR,ZTHR:posreal]  : THEORY 
+
+% TAU is the tau threshold
+% TCOA is the time to co-altitude threshold
+% DTHR is the distance threshold
+% ZTHR is the altitude threshold
+
+BEGIN
+
+  IMPORTING horizontal_WCV_tau[TAU,DTHR],
+            WCV[TAU,TCOA,DTHR,ZTHR],
+            interval_arith@strategies,
+            TCASII@units
+
+  s,v : VAR Vect3  
+  B   : VAR nnreal
+  T   : VAR posreal
+
+  WCV_tau(s,v): MACRO bool = 
+    WCV(safe_tau)(s,v)
+
+  WCV_tau_symmetric : THEOREM
+    WCV_symmetric?(safe_tau)
+
+  So : Vect3 = (0,-3.25*nmi,2000*ft)
+  Vo : Vect3 = vel_from_TrkGsVs(53*deg,150*kts,0) 
+  Si : Vect3 = (-6.25*nmi,0.25*nmi,2000*ft)
+  Vi : Vect3 = vel_from_TrkGsVs(90*deg,350*kts,0)
+
+  WCV_tau_cex_91 : LEMMA
+    DTHR = 1*nmi AND
+    TAU  = 30 IMPLIES
+      LET t  = 91,
+          s0 : Vect3 = So-Si,
+          v0 : Vect3 = Vo-Vi, 
+          st : Vect3 = s0 + t*v0 IN
+      WCV_tau(st,v0) 
+
+  WCV_tau_cex_98 : LEMMA
+    DTHR = 1*nmi AND
+    TAU  = 30 IMPLIES
+      LET t  = 91+7,
+          s0 : Vect3 = So-Si,
+          v0 : Vect3 = Vo-Vi, 
+          st : Vect3 = s0 + t*v0 IN
+      NOT WCV_tau(st,v0) 
+
+  WCV_tau_cex_105 : LEMMA
+    DTHR = 1*nmi AND
+    TAU  = 30 IMPLIES
+      LET t  = 91+7+7,
+          s0 : Vect3 = So-Si,
+          v0 : Vect3 = Vo-Vi, 
+          st : Vect3 = s0 + t*v0 IN
+      WCV_tau(st,v0) 
+
+  WCV_tau_non_symmetric : LEMMA
+    DTHR = 1*nmi AND
+    TAU  = 30 IMPLIES
+    NOT WCV_locally_convex?(safe_tau)
+
+  WCV_tau_interval(B,(T|B<T),s,v): MACRO EntryExit[B,T] = 
+    WCV_interval(safe_tau,horizontal_WCV_tau_interval)(B,T,s,v)
+
+  WCV_tau_interval_sound: LEMMA B<T IMPLIES
+    FORALL (t:Lookahead[B,T]):
+      LET interval = WCV_tau_interval(B,T,s,v),
+          tentry = interval`entry,
+	  texit  = interval`exit IN
+      (nonempty?(interval) IMPLIES 
+       FORALL (t:Lookahead[B,T]):
+               ((t < tentry OR t > texit) IMPLIES NOT WCV_tau(s+t*v,v)) AND
+               ((t = tentry OR t = texit) IMPLIES WCV_tau(s+t*v,v))) AND
+      % The following clause states that if there is a violation in the future, 
+      % the interval is non-empty
+      ((EXISTS (t:Lookahead[B,T]): WCV_tau(s+t*v,v)) IMPLIES
+        nonempty?(interval))
+
+  WCV_tau_detection(B,T,s,v): MACRO bool =
+    WCV_detection(safe_tau,horizontal_WCV_tau_interval)(B,T,s,v)
+
+  WCV_tau_detection_correct: LEMMA B<T IMPLIES
+    (WCV_tau_detection(B,T,s,v) IFF
+    (EXISTS (t:Lookahead[B,T]): WCV_tau(s+t*v,v)))
+    
+END WCV_tau

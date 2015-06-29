@@ -1,0 +1,82 @@
+WCV_checker : THEORY
+BEGIN
+
+  IMPORTING PVSioChecker@pvsio_checker,util,WCV_taumod,WCV_tep,WCV_tcpa,tcasra3d
+
+  tcasra_3d(p:TCASTable,so,vo,si,vi:Vect3) : [real,real] =
+     LET io =  RA3D_interval[p`TAU,p`TAU,p`DMOD,p`ZTHR,p`HMDF,p`B,p`T](so,vo,si,vi,p`hmdf?) IN
+       (io`time_in,io`time_out)
+
+  wcv_taumod(p:WCVTable,s,v:Vect3) : [real,real] =
+    LET io =  WCV_taumod_interval[p`TTHR,p`TCOA,p`DTHR,p`ZTHR](p`B,p`T,s,v) IN
+       (io`entry,io`exit)
+
+  wcv_tep(p:WCVTable,s,v:Vect3) : [real,real] =
+    LET io =  WCV_tep_interval[p`TTHR,p`TCOA,p`DTHR,p`ZTHR](p`B,p`T,s,v) IN
+       (io`entry,io`exit)
+
+  wcv_tcpa(p:WCVTable,s,v:Vect3) : [real,real] =
+    LET io =  WCV_tcpa_interval[p`TTHR,p`TCOA,p`DTHR,p`ZTHR](p`B,p`T,s,v) IN
+       (io`entry,io`exit)
+
+  check_interval_wcv(fout:OStream,msg:string,pvs,io:[real,real]) : bool =
+    IF io`1 <= io`2 AND pvs`1 <= pvs`2 AND almost_equal?(io`1,pvs`1) AND almost_equal?(io`2,pvs`2) 
+       OR io`1 > io`2 AND pvs`1 > pvs`2 THEN
+      skip
+    ELSE 
+      fprintf(fout,"*** ERROR: ~a. Line: ~a. Record: ~a. PVS: (~a,~a) vs. Input: (~a,~a)~%",
+             (msg,val(CurrentLine),val(Records),pvs`1,pvs`2,io`1,io`2)) &
+      FALSE
+    ENDIF
+
+  check_tcas3d(fin:IStream,fout:OStream) : bool =
+    LET p  = str2pvs[TCASTable](readln_checker(fin)),
+        so = str2pvs[Vect3](readln_checker(fin)),
+        vo = str2pvs[Vect3](readln_checker(fin)),
+        si = str2pvs[Vect3](readln_checker(fin)),
+        vi = str2pvs[Vect3](readln_checker(fin)),
+        mold = str2pvs[[real,real]](readln_checker(fin)),
+  	gold = tcasra_3d(p,so,vo,si,vi) IN
+    check_interval_wcv(fout,"TCAS3D",gold,mold) 
+
+  check_wcv(fin:IStream,fout:OStream,wcv:string,
+            pvscheck:[[WCVTable,Vect3,Vect3]->[real,real]]) : bool = 
+    LET p  = str2pvs[WCVTable](readln_checker(fin)),
+        so = str2pvs[Vect3](readln_checker(fin)),
+        vo = str2pvs[Vect3](readln_checker(fin)),
+        si = str2pvs[Vect3](readln_checker(fin)),
+        vi = str2pvs[Vect3](readln_checker(fin)),
+        mold = str2pvs[[real,real]](readln_checker(fin)),
+  	gold = pvscheck(p,so-si,vo-vi) IN
+    check_interval_wcv(fout,wcv,gold,mold) 
+
+  check_wcv_taumod(fin:IStream,fout:OStream) : bool =
+    check_wcv(fin,fout,"TAUMOD",wcv_taumod) 
+
+  check_wcv_tep(fin:IStream,fout:OStream) : bool = 
+    check_wcv(fin,fout,"TEP",wcv_tep) 
+
+  check_wcv_tcpa(fin:IStream,fout:OStream) : bool = 
+    check_wcv(fin,fout,"TCPA",wcv_tcpa) 
+
+  check_all(fin:IStream,fout:OStream) : bool =
+    LET c_tcas3d = check_tcas3d(fin,fout),
+        c_taumod = check_wcv_taumod(fin,fout),
+        c_tep    = check_wcv_tep(fin,fout),
+        c_tcpa   = check_wcv_tcpa(fin,fout) IN
+      c_tcas3d AND c_taumod AND c_tep AND c_tcpa
+
+  WCVType : TYPE = {WCV,TAUMOD,TEP,TCPA}
+
+  main(file:string,wcv:WCVType,max:nat) : void =
+    set[posnat](Frequency,100) &
+    CASES wcv OF
+      WCV: checker(file,check_all,max),           % Check all
+      TAUMOD: checker(file,check_wcv_taumod,max), % Check taumod
+      TEP: checker(file,check_wcv_tep,max),       % Check tep
+      TCPA: checker(file,check_wcv_tcpa,max)      % Check tcpa
+    ENDCASES
+
+ END WCV_checker
+
+

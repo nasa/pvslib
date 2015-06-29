@@ -1,0 +1,69 @@
+horizontal_WCV_tau[TAU:nnreal,DTHR:posreal]  : THEORY 
+
+% TAU is the tau threshold
+% DTHR is the distance threshold
+
+BEGIN
+
+  IMPORTING TCASII@tcas_tau[DTHR],
+            horizontal_WCV[TAU,DTHR],
+	    vectors@vectors
+
+  s,v : VAR Vect2  
+  T   : VAR posreal
+
+  % Not well clear if either inside DTHR or the dist at tca is at most HMD and
+  % the time to TCA is at most TTHR
+
+  safe_tau(s,v) : real =
+    IF s*v < 0 THEN tau(s,v)
+    ELSE -1
+    ENDIF
+
+  safe_tau_timevar : JUDGEMENT
+    safe_tau HAS_TYPE TimeVar
+
+  safe_tau_pre_timevar : JUDGEMENT
+    safe_tau HAS_TYPE (pre_timevar?)
+
+  safe_tau_symm : LEMMA
+    symmetric?(safe_tau)
+
+  horizontal_WCV_tau(s,v): MACRO bool =
+    horizontal_WCV(safe_tau)(s,v)
+
+  horizontal_WCV_tau_symm : LEMMA
+    horizontal_WCV_tau(s,v) = horizontal_WCV_tau(-s,-v)
+
+  horizontal_WCV_tau_rew : LEMMA
+    horizontal_WCV_tau(s,v) IFF
+      (sqv(s) <= sq(DTHR) OR
+       (s*v < 0 AND 
+        sqv(s+horizontal_tca(s,v)*v)<=sq(DTHR) AND 
+        tau(s,v)<=TAU))
+
+  horizontal_WCV_tau_interval(T,s,v):[# entry:Lookahead[0,T],exit:Lookahead[0,T] #] =
+    LET a=sqv(v),
+        b=2*(s*v)+TAU*sqv(v),
+    	c=sqv(s)+TAU*(s*v) IN 
+    IF a = 0 AND sqv(s)<=sq(DTHR) THEN (# entry:=0,exit:=T #) 
+    ELSIF sqv(s)<=sq(DTHR) THEN (# entry :=0 ,exit:=min(T,Theta_D[DTHR](s,v,1))#)
+    ELSIF s*v>=0 OR Delta[DTHR](s,v)<0 THEN (#entry:=T,exit:=0#)
+    ELSE
+      LET tauin = (IF discr(a,b,c)>=0 THEN max(0,root(a,b,c,-1)) ELSE T ENDIF),
+      	  tauout = (IF discr(a,b,c)>=0 THEN min(T,root(a,b,c,1)) ELSE 0 ENDIF),
+	  Din = max(0,Theta_D[DTHR](s,v,-1)),
+	  Dout = min(T,Theta_D[DTHR](s,v,1))
+      IN
+        IF tauin>tauout AND Din>Dout THEN (#entry:=T,exit:=0#)
+	ELSIF tauin>tauout THEN (#entry:=Din,exit:=Dout#)
+	ELSIF Din>Dout THEN (#entry:=tauin,exit:=tauout#)
+	ELSE (#entry:=min(tauin,Din),exit:=Dout#)
+	ENDIF
+    ENDIF
+
+  horizontal_WCV_tau_interval_sound: LEMMA
+    horizontal_interval_sound?(safe_tau)(horizontal_WCV_tau_interval)
+
+END horizontal_WCV_tau
+

@@ -1,0 +1,121 @@
+% Theory of parametric horizontal well-clear volumes
+
+horizontal_WCV[TTHR:nnreal,DTHR:posreal] : THEORY
+
+% TTHR is the time threshold
+% DTHR is the distance threshold
+
+BEGIN
+
+  IMPORTING timevars,
+            EntryExit_interval
+
+  s,v : VAR Vect2  
+
+  horizontal_WCV(tvar:TimeVar)(s,v): bool =
+    sqv(s) <= sq(DTHR) OR
+    (sqv(s+tcpa(s,v)*v) <= sq(DTHR) AND 
+     0 <= tvar(s,v) AND tvar(s,v) <= TTHR)
+
+  horizontal_WCV_symm : LEMMA
+    FORALL (tvar:TimeVar) :
+      symmetric?(tvar) IMPLIES
+      horizontal_WCV(tvar)(s,v) = horizontal_WCV(tvar)(-s,-v)
+
+  pre_le?(s,v:Vect2) : bool =
+   s*v < 0 AND sqv(s) > sq(DTHR) AND sqv(s+tcpa(s,v)*v) <= sq(DTHR)
+
+  ;<=(tvar1,tvar2:TimeVar) : bool =
+    FORALL (s,v:Vect2) : pre_le?(s,v) IMPLIES tvar1(s,v) <= tvar2(s,v)
+
+  pre_timevar?(tvar:TimeVar) : bool = 
+    FORALL (s,v:Vect2) : pre_le?(s,v) IMPLIES tvar(s,v) > 0
+
+  horizontal_WCV_incl : LEMMA
+    FORALL (tvar1,tvar2:(pre_timevar?)):
+     tvar1 <= tvar2 IMPLIES
+     horizontal_WCV(tvar2)(s,v) IMPLIES horizontal_WCV(tvar1)(s,v)
+
+  HorizontalInterval : TYPE = [Tsv:[posreal,Vect2,Vect2] -> EntryExit[0,Tsv`1]]
+
+  % Sound and complete (only for locally-convex definitions)
+  horizontal_interval_correct?(tvar:TimeVar)(hi:HorizontalInterval) : bool =
+    FORALL (T:posreal,s,v:Vect2,t:Lookahead[0,T]) : 
+      LET interval = hi(T,s,v),
+          tentry = interval`entry,
+	  texit  = interval`exit IN
+      horizontal_WCV(tvar)(s+t*v,v) IFF
+      (tentry<=t AND t<=texit)
+
+  horizontal_interval_sound?(tvar:TimeVar)(hi:HorizontalInterval) : bool =
+    FORALL (T:posreal,s,v:Vect2) : 
+      LET interval = hi(T,s,v),
+          tentry = interval`entry,
+	  texit  = interval`exit IN
+      % The following clause states that tentry is the first time of violation and texit 
+      % is the last one
+      (nonempty?(interval) IMPLIES 
+       FORALL (t:Lookahead[0,T]):
+               ((t < tentry OR t > texit) IMPLIES NOT horizontal_WCV(tvar)(s+t*v,v)) AND
+               ((t = tentry OR t = texit) IMPLIES horizontal_WCV(tvar)(s+t*v,v))) AND
+      % The following clause states that if there is a violation in the future, 
+      % the interval is non-empty
+      ((EXISTS (t:Lookahead[0,T]): horizontal_WCV(tvar)(s+t*v,v)) IMPLIES
+        nonempty?(interval))
+
+  horizontal_interval_correct_is_sound : LEMMA
+    FORALL (tvar:TimeVar,hi:HorizontalInterval) :
+      horizontal_interval_correct?(tvar)(hi) IMPLIES
+      horizontal_interval_sound?(tvar)(hi)
+
+  horizontal_decreasing : LEMMA
+    FORALL (T:posreal,t:Lookahead[0,T],(Tt:posreal|Tt >= T-t),s,v:Vect2,
+            tvar:TimeVar,hi:(horizontal_interval_sound?(tvar))) :
+      LET interval = hi(T,s,v),
+          interval_t = hi(Tt,s+t*v,v) IN
+        (nonempty?(interval) AND t <= interval`entry) IMPLIES 
+        (nonempty?(interval_t) AND interval`entry >= interval_t`entry)
+
+  horizontal_shift : LEMMA
+    FORALL (T:posreal,t1,t2:Lookahead[0,T],s,v:Vect2,
+            tvar:TimeVar,hi:(horizontal_interval_sound?(tvar))) :
+    t1<t2 IMPLIES
+      LET interval = hi(T,s,v),
+          interval_t = hi(t2-t1,s+t1*v,v) IN
+        nonempty?(interval)  AND
+        nonempty?(interval_t) AND t1 <= interval`entry 
+	  IMPLIES interval`entry = t1 + interval_t`entry
+
+  horizontal_correct_shift : LEMMA
+    FORALL (T:posreal,t1,t2:Lookahead[0,T],s,v:Vect2,
+            tvar:TimeVar,hi:(horizontal_interval_correct?(tvar))) :
+    t1<t2 IMPLIES
+      LET interval = hi(T,s,v),
+          interval_t = hi(t2-t1,s+t1*v,v) IN
+        nonempty?(interval)  AND
+        nonempty?(interval_t) 
+	  IMPLIES interval_t`entry = max(interval`entry-t1,0)
+
+  horizontal_correct_shift2 : LEMMA
+    FORALL (T:posreal,t1,t2:Lookahead[0,T],s,v:Vect2,
+            tvar:TimeVar,hi:(horizontal_interval_correct?(tvar))) :
+    t1<t2 IMPLIES
+      LET interval = hi(T,s,v),
+          interval_t = hi(t2-t1,s+t1*v,v) IN
+        nonempty?(interval)  AND
+        nonempty?(interval_t) 
+	  IMPLIES interval_t`entry = IF horizontal_WCV(tvar)(s+t1*v,v) THEN
+	     0 ELSE interval`entry-t1 ENDIF
+
+  horizontal_correct_exit_shift : LEMMA
+    FORALL (T:posreal,t1,t2:Lookahead[0,T],s,v:Vect2,
+            tvar:TimeVar,hi:(horizontal_interval_correct?(tvar))) :
+    t1<t2 IMPLIES
+      LET interval = hi(T,s,v),
+          interval_t = hi(t2-t1,s+t1*v,v) IN
+        nonempty?(interval)  AND
+        nonempty?(interval_t) 
+	  IMPLIES interval_t`exit = IF horizontal_WCV(tvar)(s+t2*v,v) THEN
+	     t2-t1 ELSE interval`exit-t1 ENDIF
+
+END horizontal_WCV

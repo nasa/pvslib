@@ -1,0 +1,90 @@
+horizontal_WCV_taumod[TAUMOD:nnreal,DTHR:posreal]  : THEORY 
+
+% TAUMOD is the modified time threshold
+% DTHR is the distance threshold
+
+BEGIN
+
+  IMPORTING TCASII@horizontal_RA[TAUMOD,DTHR],
+            TCASII@tcasra2d,
+            horizontal_WCV[TAUMOD,DTHR]
+
+  s,v : VAR Vect2  
+  so,vo,
+  si,vi : VAR Vect2  
+  T	: VAR posreal
+
+  taumod(s,v) : real =
+    IF s*v < 0 THEN tau_mod_def(s,v)
+    ELSE -1
+    ENDIF
+
+  taumod_timevar : JUDGEMENT
+    taumod HAS_TYPE TimeVar
+
+  taumod_pre_timevar : JUDGEMENT
+    taumod HAS_TYPE (pre_timevar?)
+
+  taumod_symm : LEMMA
+    symmetric?(taumod)
+
+  horizontal_WCV_taumod(s,v): MACRO bool =
+    horizontal_WCV(taumod)(s,v)
+
+  horizontal_WCV_taumod_symm : LEMMA
+    horizontal_WCV_taumod(s,v) = horizontal_WCV_taumod(-s,-v)
+
+  horizontal_WCV_taumod_RA : LEMMA LET s = so-si, v = vo-vi IN 
+    horizontal_WCV_taumod(s,v) IFF
+    (horizontal_RA(so,vo,si,vi) AND 
+     EXISTS (t:nnreal): sqv(s+t*v) <= sq(DTHR))
+
+  horizontal_WCV_taumod_rew : LEMMA
+    horizontal_WCV_taumod(s,v) IFF
+      (sqv(s) <= sq(DTHR) OR
+       (s*v < 0 AND 
+        sqv(s+horizontal_tca(s,v)*v)<=sq(DTHR) AND 
+        tau_mod(s,v) <= TAUMOD))
+
+  horizontal_WCV_taumod_interval_rew(T,s,v): [Lookahead[0,T],Lookahead[0,T]] =
+    LET (tmin,tmout) = RA2D_interval[TAUMOD,DTHR,0,T](s,v,zero,zero) IN
+      IF tmin>T OR tmout<0 OR tmout<tmin OR Delta[DTHR](s,v)<0 THEN (T,0)
+       % detection returns false
+      ELSE (max(0,tmin),min(T,tmout))
+      ENDIF
+
+  horizontal_WCV_taumod_interval_rew_def: LEMMA FORALL (t:Lookahead[0,T]):
+    LET (nwcentry,nwcexit) = horizontal_WCV_taumod_interval_rew(T,s,v) IN
+      horizontal_WCV_taumod(s+t*v,v) IFF (nwcentry<=t AND t<=nwcexit)
+
+  horizontal_WCV_taumod_interval(T,s,v): EntryExit[0,T] =
+    LET a=sqv(v),
+        b=2*(s*v)+TAUMOD*sqv(v),
+    	c=sqv(s)+TAUMOD*(s*v)-sq(DTHR) IN 
+    IF a = 0 AND sqv(s)<=sq(DTHR) THEN WholeInterval[0,T]
+    ELSIF sqv(s)<=sq(DTHR) THEN (# entry :=0 ,exit:=min(T,Theta_D[DTHR](s,v,1))#)
+    ELSIF s*v>=0 OR discr(a,b,c)<0 THEN EmptyInterval[0,T]
+    ELSIF Delta[DTHR](s,v)>=0 AND root(a,b,c,-1)<=T THEN 
+       (#entry := max(0,root(a,b,c,-1)),exit:=min(T,Theta_D[DTHR](s,v,1))#)
+    ELSE EmptyInterval[0,T]
+    ENDIF
+
+  horizontal_WCV_taumod_interval_eq : LEMMA
+    LET nwcentryexitrew = horizontal_WCV_taumod_interval_rew(T,s,v),
+    	(t1,t2) = (nwcentryexitrew`1,nwcentryexitrew`2),
+        nwcentryexit = horizontal_WCV_taumod_interval(T,s,v),
+        (tin,tout) = (nwcentryexit`entry,nwcentryexit`exit) IN
+    (tin,tout)=(t1,t2)
+
+  horizontal_WCV_taumod_interval_def: LEMMA FORALL (t:Lookahead[0,T]):
+    LET nwcentryexit = horizontal_WCV_taumod_interval(T,s,v),
+        (tin,tout) = (nwcentryexit`entry,nwcentryexit`exit) IN
+      horizontal_WCV_taumod(s+t*v,v) IFF (tin <= t AND t <= tout)
+
+  horizontal_WCV_taumod_interval_correct : LEMMA
+    horizontal_interval_correct?(taumod)(horizontal_WCV_taumod_interval)
+
+  horizontal_WCV_taumod_interval_sound : LEMMA
+    horizontal_interval_sound?(taumod)(horizontal_WCV_taumod_interval)
+
+END horizontal_WCV_taumod 

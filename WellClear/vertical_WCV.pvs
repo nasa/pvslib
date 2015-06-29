@@ -1,0 +1,58 @@
+vertical_WCV[TCOA:nnreal,ZTHR:posreal]  : THEORY 
+
+% TCOA is the time to co-altitude threshold
+% ZTHR is the altitude threshold
+
+BEGIN
+
+  IMPORTING ACCoRD@vertical,
+  	    ACCoRD@Lookahead,
+	    timevars,
+            EntryExit_interval
+
+  tt    : VAR nnreal
+  r	  : VAR real
+  usehmdf : VAR bool
+  sz,vz   : VAR real
+  nzvz    : VAR nzreal
+  B	  : VAR nnreal
+  T	  : VAR posreal
+
+  vertical_WCV(sz,vz): bool =
+    abs(sz)<=ZTHR OR
+    (0 <= tcoa(sz,vz) AND tcoa(sz,vz)<=TCOA)
+
+  vertical_WCV_symm : LEMMA
+    vertical_WCV(sz,vz) = vertical_WCV(-sz,-vz)
+
+  vertical_WCV_rewrite: LEMMA
+    vertical_WCV(sz,vz) IFF
+    (LET t = (IF abs(sz) <= ZTHR THEN 0 ELSIF vz = 0 
+    	           THEN -1 ELSE -(sz/vz) ENDIF)
+    IN 0<=t AND t<=TCOA)
+
+  vertical_WCV_at(sz,vz)(r): bool = vertical_WCV(sz+r*vz,vz)
+
+  coalt_entry_exit(sz,nzvz): {r12: [real,real]|LET (r1,r2) = r12 IN r1 < r2} =
+    LET act_H = max(ZTHR,abs(nzvz)*TCOA)
+    IN (Theta_H[act_H](sz,nzvz,-1),Theta_H[ZTHR](sz,nzvz,1))
+
+  coalt_entry_exit_def: LEMMA
+    LET (rl,ru) = coalt_entry_exit(sz,nzvz) IN
+    (vertical_WCV_at(sz,nzvz)(r) IFF (rl<=r AND r<=ru))
+
+  vertical_WCV_interval(B,(T|B<T),sz,vz): EntryExit[B,T] =
+    IF vz = 0 AND abs(sz)<=ZTHR THEN WholeInterval[B,T]
+    ELSIF vz = 0 THEN EmptyInterval[B,T]
+    ELSE
+      LET (centry,cexit) = coalt_entry_exit(sz,vz) IN
+        IF T<centry OR cexit<B THEN EmptyInterval[B,T]
+        ELSE (# entry:=max(B,centry),exit:=min(T,cexit) #) ENDIF
+    ENDIF
+
+  vertical_WCV_interval_def: LEMMA B<T IMPLIES
+    FORALL (t:Lookahead[B,T]):
+    LET vnwci = vertical_WCV_interval(B,T,sz,vz) IN
+     (vertical_WCV_at(sz,vz)(t) IFF (vnwci`entry<=t AND t<=vnwci`exit))
+
+  END vertical_WCV

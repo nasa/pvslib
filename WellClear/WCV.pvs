@@ -1,0 +1,100 @@
+WCV[TTHR,TCOA:nnreal,DTHR,ZTHR:posreal] : THEORY
+
+% TTHR is the time threshold
+% TCOA is the time to co-altitude threshold
+% DTHR is the distance threshold
+% ZTHR is the altitude threshold
+
+BEGIN
+
+  IMPORTING horizontal_WCV[TTHR,DTHR],
+  	    vertical_WCV[TCOA,ZTHR],
+            vectors@vect_3D_2D
+
+  s,v  : VAR Vect3  
+  B    : VAR nnreal
+  T    : VAR posreal
+  tvar : VAR TimeVar
+  hi   : VAR HorizontalInterval
+
+  WCV(tvar:TimeVar)(s,v): bool =
+    horizontal_WCV(tvar)(s,v) AND vertical_WCV(s`z,v`z)
+
+  WCV_symmetric?(tvar) : bool =
+    FORALL (s,v) : WCV(tvar)(s,v) = WCV(tvar)(-s,-v)
+
+  WCV_inclusion?(tvar1,tvar2:TimeVar) : bool =
+    FORALL (s,v) : WCV(tvar1)(s,v) IMPLIES WCV(tvar2)(s,v)
+
+  WCV_locally_convex?(tvar) : bool =
+    FORALL (B,(T|B<T),s,v): 
+      NOT EXISTS(t1,t2,t3:Lookahead[B,T]): t1 <= t2 AND t2 <= t3 AND
+      WCV(tvar)(s+t1*v,v) AND
+      NOT WCV(tvar)(s+t2*v,v) AND
+      WCV(tvar)(s+t3*v,v)   
+
+  WCV_symmetric : THEOREM
+    symmetric?(tvar) IMPLIES 
+    WCV_symmetric?(tvar)
+
+  WCV_inclusion_trans : LEMMA
+    FORALL (tvar1,tvar2,tvar3:TimeVar):
+      WCV_inclusion?(tvar1,tvar2) AND
+      WCV_inclusion?(tvar2,tvar3) IMPLIES
+      WCV_inclusion?(tvar1,tvar3)     
+
+  WCV_inclusion : THEOREM
+    FORALL (tvar1,tvar2:(pre_timevar?)):
+      tvar2 <= tvar1 IMPLIES
+      WCV_inclusion?(tvar1,tvar2) 
+
+  WCV_interval(tvar:TimeVar,hi:HorizontalInterval)(B,(T|B<T),s,v): EntryExit[B,T] =
+    LET ventryexit = vertical_WCV_interval(B,T,s`z,v`z),
+        (ventry,vexit) = (ventryexit`entry,ventryexit`exit)
+    IN  IF ventry>vexit THEN EmptyInterval
+        ELSIF ventry=vexit AND horizontal_WCV(tvar)(vect2(s)+ventry*vect2(v),vect2(v))
+	  THEN (# entry:=ventry,exit:=ventry #)
+	ELSIF ventry=vexit THEN EmptyInterval
+	ELSE 
+	  LET hni = hi(vexit-ventry,vect2(s)+ventry*vect2(v),vect2(v))
+	  IN  (# entry:= hni`entry+ventry, exit:= hni`exit+ventry #)
+	ENDIF
+
+  WCV_interval_sound : THEOREM
+    FORALL (B:nnreal,(T|B<T),s,v:Vect3,
+            tvar:TimeVar,hi:(horizontal_interval_sound?(tvar))) : 
+      LET interval = WCV_interval(tvar,hi)(B,T,s,v),
+          tentry = interval`entry,
+	  texit  = interval`exit
+      IN (nonempty?(interval) IMPLIES 
+       FORALL (t:Lookahead[B,T]):
+               ((t < tentry OR t > texit) IMPLIES NOT WCV(tvar)(s+t*v,v)) AND
+               ((t = tentry OR t = texit) IMPLIES WCV(tvar)(s+t*v,v))) AND
+      ((EXISTS (t:Lookahead[B,T]): WCV(tvar)(s+t*v,v)) IMPLIES
+        nonempty?(interval))
+
+  WCV_interval_correct : THEOREM
+    FORALL (B:nnreal,(T|B<T),s,v:Vect3,t:Lookahead[B,T],
+            tvar:TimeVar,hi:(horizontal_interval_correct?(tvar))) : 
+      LET interval = WCV_interval(tvar,hi)(B,T,s,v),
+          tentry = interval`entry,
+	  texit  = interval`exit IN
+      WCV(tvar)(s+t*v,v) IFF (tentry<=t AND t<=texit)
+
+  WCV_detection(tvar:TimeVar,hi:HorizontalInterval)(B,T,s,v): bool =
+    IF B=T THEN WCV(tvar)(s+B*v,v)
+    ELSIF B>T THEN FALSE
+    ELSE LET nwcint = WCV_interval(tvar,hi)(B,T,s,v) IN nwcint`entry<=nwcint`exit
+    ENDIF
+
+  WCV_detection_correct: THEOREM
+    FORALL (B:nnreal,(T|B<T),s,v:Vect3,
+            tvar:TimeVar,hi:(horizontal_interval_correct?(tvar))) : 
+    WCV_detection(tvar,hi)(B,T,s,v) IFF
+    (EXISTS (t:Lookahead[B,T]): WCV(tvar)(s+t*v,v))
+
+  WCV_locally_convex : THEOREM
+    (EXISTS (hi:HorizontalInterval) : horizontal_interval_correct?(tvar)(hi)) IMPLIES
+    WCV_locally_convex?(tvar)
+
+END WCV

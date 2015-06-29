@@ -1,0 +1,86 @@
+horizontal_WCV_tep[TEP:nnreal,DTHR:posreal]  : THEORY 
+
+% TEP is the time to entry point threshold
+% DTHR is the distance threshold
+
+BEGIN
+
+  IMPORTING vect_analysis@vect_cont_2D,
+	    vect_analysis@vect2_cont_dot[real],
+            vectors@det_2D,
+	    ACCoRD@cd2d,
+	    analysis@polynomial_deriv,
+	    ACCoRD@Lookahead,
+            horizontal_WCV[TEP,DTHR]
+
+  s,v : VAR Vect2  
+  T   : VAR posreal
+
+  % You are not well clear if either inside DTHR or the dist at tca is at most HMD and
+  % the time to TCA is at most TEP
+
+  tep(s,v) : real =
+    IF  s*v < 0 AND Delta[DTHR](s,v) >= 0 THEN Theta_D[DTHR](s,v,-1)
+    ELSE -1
+    ENDIF
+
+  tep_timevar : JUDGEMENT
+    tep HAS_TYPE TimeVar
+
+  pre_Delta_ge_0 : LEMMA
+    pre_le?(s,v) IMPLIES Delta[DTHR](s,v) >= 0
+
+  tep_pre_timevar : JUDGEMENT
+    tep HAS_TYPE (pre_timevar?)
+
+  tep_symm : LEMMA
+    symmetric?(tep)
+
+  horizontal_WCV_tep(s,v): MACRO bool =
+    horizontal_WCV(tep)(s,v)
+
+  horizontal_WCV_tep_symm : LEMMA
+    horizontal_WCV_tep(s,v) = horizontal_WCV_tep(-s,-v)
+
+  horizontal_WCV_tep_def(s,v): bool =
+    sqv(s) <= sq(DTHR) OR
+    (sqv(v)/=0 AND
+     Delta[DTHR](s,v)>=0 AND
+     sqv(s + horizontal_tca(s,v)*v)<=sq(DTHR) AND
+     s*v<=0 AND % Aircraft are converging (getting closer together)
+     Theta_D[DTHR](s,v,-1)<=TEP)
+
+  horizontal_WCV_tep_eq : LEMMA
+    horizontal_WCV_tep(s,v) IFF horizontal_WCV_tep_def(s,v)	
+
+  horizontal_WCV_tep_rew : LEMMA
+    horizontal_WCV_tep(s,v) IFF
+      (sqv(s) <= sq(DTHR) OR
+       (s*v < 0 AND 
+        sqv(s+horizontal_tca(s,v)*v)<=sq(DTHR) AND 
+        Theta_D[DTHR](s,v,-1) <=TEP))
+
+  horizontal_WCV_tep_interval(T,s,v): EntryExit[0,T] =
+    IF    sqv(v) = 0 AND sqv(s)<=sq(DTHR) THEN WholeInterval[0,T]
+    ELSIF sqv(v)=0 THEN EmptyInterval[0,T] % detection returns false
+    ELSIF sqv(s)<=sq(DTHR) THEN (# entry:=0,exit:=min(T,Theta_D[DTHR](s,v,1)) #)
+    ELSIF s*v>0 OR Delta[DTHR](s,v)<0 OR Theta_D[DTHR](s,v,-1)-TEP>T 
+    	      THEN EmptyInterval[0,T] % detection returns false
+    ELSE  (# entry:= max(0,Theta_D[DTHR](s,v,-1)-TEP), 
+    	     exit:=min(T,Theta_D[DTHR](s,v,1)) #)
+    ENDIF
+
+  horizontal_WCV_tep_interval_def: LEMMA FORALL (t:Lookahead[0,T]):
+    LET nwcentryexit = horizontal_WCV_tep_interval(T,s,v),
+        (nwcentry,nwcexit) = (nwcentryexit`entry,nwcentryexit`exit)
+    IN
+      horizontal_WCV_tep(s+t*v,v) IFF
+      (nwcentry<=t AND t<=nwcexit)
+
+  horizontal_WCV_tep_interval_correct : LEMMA
+    horizontal_interval_correct?(tep)(horizontal_WCV_tep_interval)
+
+  horizontal_WCV_tep_interval_sound : LEMMA
+    horizontal_interval_sound?(tep)(horizontal_WCV_tep_interval)
+
+END horizontal_WCV_tep

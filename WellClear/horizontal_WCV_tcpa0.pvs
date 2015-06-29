@@ -1,0 +1,61 @@
+horizontal_WCV_tcpa0[TCPA:nnreal,DMOD,HMD:posreal]  : THEORY 
+
+% TCPA is the time to closest point of approach threshold
+% DMOD is the distance thershold
+
+BEGIN
+
+  IMPORTING vect_analysis@vect_cont_2D,
+	    vect_analysis@vect2_cont_dot[real],
+            vectors@det_2D,
+	    ACCoRD@cd2d,
+	    analysis@polynomial_deriv,
+	    ACCoRD@Lookahead
+
+  so,vo,
+  si,vi,
+  s,v : VAR Vect2  
+  r     : VAR real
+  p     : VAR posreal
+  T	: VAR posreal
+
+  % You are not well clear if either inside DMOD or the dist at tca is at most HMD and
+  % the time to TCA is at most TCPA
+
+  horizontal_WCV_tcpa0(s,v): bool =
+    sqv(s) <= sq(DMOD) OR
+    (sqv(v)/=0 AND
+     sqv(s + horizontal_tca(s,v)*v)<=sq(HMD) AND
+    s*v<=0 AND % Aircraft are converging (getting closer together)
+    horizontal_tca(s,v)<=TCPA)
+
+  horizontal_WCV_tcpa0_interval(T,s,v):[# entry:Lookahead[0,T],exit:Lookahead[0,T] #] =
+    IF    sqv(v) = 0 AND sqv(s)<=sq(DMOD) THEN (# entry:=0, exit:=T #)
+    ELSIF sqv(v)=0 THEN (# entry:=T,exit:=0 #) % detection returns false
+    ELSIF sqv(s)<=sq(DMOD) THEN (# entry:=0,exit:=min(T,Theta_D[DMOD](s,v,1)) #)
+    ELSIF s*v>0 THEN (# entry:=T,exit:=0 #) % detection returns false
+    ELSIF sqv(s + horizontal_tca(s,v)*v)>sq(HMD) AND sqv(s + horizontal_tca(s,v)*v)<=sq(DMOD)
+    	               AND Theta_D[DMOD](s,v,-1)<=T
+    	  THEN (# entry:= min(T,max(0,Theta_D[DMOD](s,v,-1))), exit:= min(T,Theta_D[DMOD](s,v,1)) #)
+    ELSIF sqv(s + horizontal_tca(s,v)*v)>sq(HMD) AND sqv(s + horizontal_tca(s,v)*v)<=sq(DMOD)
+          THEN (# entry:=T,exit:=0 #) % detection returns false
+    ELSIF sqv(s + horizontal_tca(s,v)*v)>sq(HMD) THEN (# entry:=T,exit:=0 #) % detection returns false
+    ELSIF Delta[DMOD](s,v)<0 AND horizontal_tca(s,v)-TCPA>T 
+      THEN (# entry:=T,exit:=0 #) % detection returns false
+    ELSIF Delta[DMOD](s,v)<0 THEN 
+         (# entry:=max(0,horizontal_tca(s,v)-TCPA), 
+    	     exit:=min(T,horizontal_tca(s,v)) #)
+    ELSE LET tmin = min(Theta_D[DMOD](s,v,-1),horizontal_tca(s,v)-TCPA) IN
+      IF tmin > T THEN (# entry:=T,exit:=0 #) % detection returns false
+      ELSE  (# entry:= max(0,tmin), exit:=min(T,Theta_D[DMOD](s,v,1)) #)
+      ENDIF
+    ENDIF
+
+  horizontal_WCV_tcpa0_interval_def: LEMMA FORALL (t:Lookahead[0,T]):
+    LET nwcentryexit = horizontal_WCV_tcpa0_interval(T,s,v),
+        (nwcentry,nwcexit) = (nwcentryexit`entry,nwcentryexit`exit)
+    IN
+      horizontal_WCV_tcpa0(s+t*v,v) IFF
+      (nwcentry<=t AND t<=nwcexit)
+    
+END horizontal_WCV_tcpa0

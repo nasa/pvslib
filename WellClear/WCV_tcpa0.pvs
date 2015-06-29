@@ -1,0 +1,60 @@
+WCV_tcpa0[TCPA,TCOA:nnreal,DMOD,HMD,ZTHR:posreal]  : THEORY 
+
+% TCPA is the time to closest point of approach threshold
+% TCOA is the time to co-altitude threshold
+% DTHR is the distance threshold
+% HMD  is the horizontal miss-distance threshold
+% ZTHR is the altitude threshold
+
+BEGIN
+
+  IMPORTING horizontal_WCV_tcpa0[TCPA,DMOD,HMD],
+  	    vertical_WCV[TCOA,ZTHR],
+	    vectors@vectors_3D,
+  	    ACCoRD@cd3d
+
+  s,v     : VAR Vect3  
+  s2,v2   : VAR Vect2
+  so,vo,
+  si,vi   : VAR Vect3
+  sz      : VAR real
+  nzvz    : VAR nzreal
+  B	  : VAR nnreal
+  T	  : VAR posreal
+
+  WCV_tcpa0(s,v): bool =
+    horizontal_WCV_tcpa0(vect2(s),vect2(v)) AND
+    vertical_WCV(s`z,v`z)
+
+  WCV_tcpa0_interval(B,(T|B<T),s,v): [# entry:Lookahead[B,T],
+  			       	       exit :Lookahead[B,T] #] =
+    LET ventryexit = vertical_WCV_interval(B,T,s`z,v`z),
+        (ventry,vexit) = (ventryexit`entry,ventryexit`exit)
+    IN  IF ventry>vexit THEN (# entry:=T,exit:=B #)
+        ELSIF ventry=vexit AND horizontal_WCV_tcpa0(vect2(s)+ventry*vect2(v),vect2(v))
+	  THEN (# entry:=ventry,exit:=ventry #)
+	ELSIF ventry=vexit THEN (# entry:=T,exit:=B #)
+	ELSE 
+	  LET hni = horizontal_WCV_tcpa0_interval(vexit-ventry,vect2(s)+ventry*vect2(v),vect2(v))
+	  IN  (# entry:= hni`entry+ventry, exit:= hni`exit+ventry #)
+	ENDIF
+
+  WCV_tcpa0_interval_def: LEMMA B<T IMPLIES
+    FORALL (t:Lookahead[B,T]):
+      LET nwcentryexit = WCV_tcpa0_interval(B,T,s,v),
+          (nwcentry,nwcexit) = (nwcentryexit`entry,nwcentryexit`exit)
+    IN
+      WCV_tcpa0(s+t*v,v) IFF
+      (nwcentry<=t AND t<=nwcexit)
+
+  WCV_tcpa0_detection(B,T,s,v): bool =
+    IF B=T THEN WCV_tcpa0(s+B*v,v)
+    ELSIF B>T THEN false
+    ELSE LET nwcint = WCV_tcpa0_interval(B,T,s,v) IN nwcint`entry<=nwcint`exit
+    ENDIF
+
+  WCV_tcpa0_detection_def: LEMMA
+    WCV_tcpa0_detection(B,T,s,v) IFF
+    (EXISTS (t:Lookahead[B,T]): WCV_tcpa0(s+t*v,v))
+
+END WCV_tcpa0
