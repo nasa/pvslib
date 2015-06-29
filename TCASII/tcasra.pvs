@@ -1,0 +1,92 @@
+%------------------------------------------------------------------------------
+% tcasra
+% By: Anthony Narkawicz and Cesar Munoz
+%     June 2012
+%------------------------------------------------------------------------------
+
+tcasra[TAU:nnreal,TCOA:nnreal,DMOD,ZTHR,HMD:posreal]  : THEORY 
+% TAU is the RA time threshold 
+% DMOD is the modified distance threshold
+% ZTHR is the vertical distance threshold
+% HMD is the horizontal miss distance threshold
+BEGIN
+
+  IMPORTING vectors@vectors_3D,
+  	    ACCoRD@cd3d,
+	    tcasra2d,
+	    ACCoRD@cd2d_inf[HMD],
+	    ACCoRD@vertical
+
+  s,v     : VAR Vect3  
+  s2,v2   : VAR Vect2
+  so,vo,
+  si,vi   : VAR Vect3
+  t,tt    : VAR nnreal
+  r	  : VAR real
+  usehmdf : VAR bool
+  sz,vz   : VAR real
+  nzvz    : VAR nzreal
+
+  % Vertical Dimension Analysis %
+
+  time_coalt(sz,vz): real =
+    IF abs(sz) <= ZTHR THEN 0
+    ELSIF vz = 0 THEN -1
+    ELSE -(sz/vz) ENDIF
+
+  vertical_RA(sz,vz): bool =
+    LET tcoa = time_coalt(sz,vz) IN 0<=tcoa AND tcoa<=TCOA
+
+  vertical_RA_at(sz,vz)(r): bool = vertical_RA(sz+r*vz,vz)
+
+  coalt_entry_exit(sz,nzvz): {r12: [real,real]|LET (r1,r2) = r12 IN r1 < r2} =
+    LET act_H = max(ZTHR,abs(nzvz)*TCOA)
+    IN  (Theta_H[act_H](sz,nzvz,-1),Theta_H[ZTHR](sz,nzvz,1))
+
+  coalt_entry_exit_def: LEMMA
+    LET (rl,ru) = coalt_entry_exit(sz,nzvz) IN
+    (vertical_RA_at(sz,nzvz)(r) IFF (rl<=r AND r<=ru))
+
+  cd2d_TCAS_after(s2,v2,t) : bool = 
+    (sqv(v2) = 0 AND sqv(s2+t*v2) <= sq(HMD)) OR
+    (sqv(v2) > 0 AND Delta[HMD](s2,v2) >= 0 AND Theta_D[HMD](s2,v2,1) >= t)
+
+  cd2d_TCAS_after_rewrite: LEMMA
+    (EXISTS (nnt:nnreal|nnt >= t): sqv(s2+nnt*v2)<=sq(HMD))
+    IFF
+    cd2d_TCAS_after(s2,v2,t)
+
+  cd2d_TCAS_after_shift_eq: LEMMA
+    FORALL(r | r >= t):
+      cd2d_TCAS_after(s2+t*v2,v2,r-t)
+      IFF
+      cd2d_TCAS_after(s2,v2,r)
+
+  cd2d_TCAS_after_shift_le: LEMMA
+    FORALL(r | r >= t):
+      cd2d_TCAS_after(s2,v2,r)
+      IMPLIES
+      cd2d_TCAS_after(s2,v2,t)
+
+  cd2d_TCAS(s2,v2) : MACRO bool = 
+    cd2d_TCAS_after(s2,v2,0)
+
+  TCASII_RA_def(so,vo,si,vi,usehmdf): bool =
+    ((NOT usehmdf) OR (EXISTS (nnt:nnreal): 
+    	  	        sqv(vect2(so-si)+nnt*vect2(vo-vi))<=sq(HMD))) AND
+    horizontal_RA[TAU,DMOD](so,vo,si,vi) AND
+    vertical_RA(so`z-si`z,vo`z-vi`z)
+
+  TCASII_RA(so,vo,si,vi,usehmdf) : bool =
+    (NOT usehmdf OR cd2d_TCAS(so-si,vo-vi)) AND
+    horizontal_RA[TAU,DMOD](so,vo,si,vi) AND
+    vertical_RA(so`z-si`z,vo`z-vi`z)
+
+  TCASII_RA_rewrite: LEMMA 
+    TCASII_RA_def(so,vo,si,vi,usehmdf) IFF
+    TCASII_RA(so,vo,si,vi,usehmdf)
+
+  TCASII_RA_at(so,vo,si,vi,usehmdf)(r): bool =
+    TCASII_RA_def(so+r*vo,vo,si+r*vi,vi,usehmdf)
+
+END tcasra

@@ -1,0 +1,123 @@
+%------------------------------------------------------------------------------
+% Tau in TCAS
+% By: Anthony Narkawicz and Cesar Munoz
+%     May 2012
+%------------------------------------------------------------------------------
+
+tcas_tau[DMOD:posreal]  : THEORY 
+% TAU is the RA time threshold 
+% DMOD is the modified RA distance thershold
+BEGIN
+
+  IMPORTING vect_analysis@vect_cont_2D,
+	    vect_analysis@vect2_cont_dot[real],
+            vectors@det_2D,
+	    ACCoRD@cd2d,
+	    analysis@polynomial_deriv,
+	    vectors@vectors_2D
+
+  so,vo,
+  si,vi,
+  s,v : VAR Vect2  
+  r : VAR real
+  p : VAR posreal
+
+  %%% domain of convergence between aircraft is connected
+
+  dot_at(so,vo,si,vi)(r): real = ((so-si)+r*(vo-vi))*(vo-vi)
+
+  dot_at_neg?(so,vo,si,vi)(r): bool = dot_at(so,vo,si,vi)(r) < 0
+
+  dot_at_neg_deriv_domain: LEMMA deriv_domain?[(dot_at_neg?(so,vo,si,vi))]
+
+  dot_at_neg_not_one_element: LEMMA not_one_element?[(dot_at_neg?(so,vo,si,vi))]
+
+  %%% Modified tau %%% 
+
+  tau_mod(s,(v|s*v/=0)): {rr:real | s*v<0 AND norm(s)>=DMOD IMPLIES rr>=0} =
+    LET r=norm(s),
+	c=-(s*v)/r
+    IN (r-sq(DMOD)/r)/c
+
+  tau_mod_def(s,(v|s*v/=0)): {rr:real | s*v<0 AND norm(s)>=DMOD IMPLIES rr>=0} =
+    (sq(DMOD)-sqv(s))/(s*v)
+
+  tau_mod_eq : LEMMA
+    FORALL (s,v) : s*v /= 0 IMPLIES tau_mod(s,v) = tau_mod_def(s,v)
+
+  tau_current(so,vo,si,(vi|(so-si)*(vo-vi)/=0)): 
+    {rr:real|(so-si)*(vo-vi)<0 AND norm(so-si)>=DMOD IMPLIES rr>=0} =
+    LET s=so-si,v=vo-vi IN (sq(DMOD)-sqv(s))/(s*v)
+
+  tau_mod_current: LEMMA 
+    FORALL (vi|(so-si)*(vo-vi)/=0): tau_mod(so-si,vo-vi)=tau_current(so,vo,si,vi)
+
+  tau_mod_tca: LEMMA
+    Delta[DMOD](s,v)>=0 AND
+    s*v<0 IMPLIES
+    horizontal_tca(s,v) >= tau_mod(s,v)
+
+  tau_mod_Theta_D: LEMMA
+    Delta[DMOD](s,v)>=0 AND s*v<0 AND sqv(s)>=sq(DMOD) AND v/=zero 
+    IMPLIES
+    tau_mod(s,v)>=Theta_D[DMOD](s,v,-1)
+
+  tau_current_at_numerator(so,vo,si,vi): deriv_fun[(dot_at_neg?(so,vo,si,vi))] =
+    (LAMBDA (tr:(dot_at_neg?(so,vo,si,vi))): sqv((so-si)+tr*(vo-vi))-sq(DMOD))
+
+  tau_current_at_denominator(so,vo,si,vi): deriv_fun[(dot_at_neg?(so,vo,si,vi))] =
+    (LAMBDA (tr:(dot_at_neg?(so,vo,si,vi))): -((so-si)+tr*(vo-vi))*(vo-vi))
+
+  tau_current_at(so,vo,si,vi): deriv_fun[(dot_at_neg?(so,vo,si,vi))] =
+    tau_current_at_numerator(so,vo,si,vi)/tau_current_at_denominator(so,vo,si,vi)
+
+  tau_current_min_unbounded(so,vo,si,(vi|vi/=vo AND Delta[DMOD](so-si,vo-vi)<=0)): nnreal =
+      LET s=so-si,v=vo-vi,cs: nnreal = -Delta[DMOD](s,v) IN 2*sqrt(cs)/sqv(v)
+
+  tau_current_min_unbounded_def: LEMMA
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN Delta[DMOD](s,v)<=0 IMPLIES
+    FORALL (tr:real): (s+tr*v)*v<0 AND norm(s+tr*v)>=DMOD IMPLIES 
+      tau_current(so+tr*vo,vo,si+tr*vi,vi) >= tau_current_min_unbounded(so,vo,si,vi)
+
+  tau_current_at_Delta_0: LEMMA
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN Delta[DMOD](s,v)=0 AND s*v<0 IMPLIES
+    FORALL (r:(dot_at_neg?(so,vo,si,vi))):
+    tau_current_at(so,vo,si,vi)(r) = (-s*v)/sqv(v) - r
+
+  unbounded_nominal_tau(so,vo,si,(vi|vi/=vo),r): real =
+    LET s=so-si,v=vo-vi IN
+    -(s*v)/sqv(v)-r/2
+
+  nom_tau_dot_lt: LEMMA
+    vo-vi/=zero IMPLIES
+    LET s=so-si,v=vo-vi,tr = unbounded_nominal_tau(so,vo,si,vi,p) IN
+      (s+tr*v)*v < 0
+
+  tau_current_min_unbounded_attained: LEMMA
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN
+      Delta[DMOD](s,v)<0 IMPLIES LET r = tau_current_min_unbounded(so,vo,si,vi) IN
+        r > 0 AND LET tr = unbounded_nominal_tau(so,vo,si,vi,r) IN
+	  (s+tr*v)*v < 0 AND tau_current(so+tr*vo,vo,si+tr*vi,vi) = tau_current_min_unbounded(so,vo,si,vi)
+
+  tau_current_decreasing: LEMMA FORALL (t1,t2:real):
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN
+      Delta[DMOD](s,v)<0 IMPLIES 
+        LET rr = tau_current_min_unbounded(so,vo,si,vi),
+	    tr = unbounded_nominal_tau(so,vo,si,vi,rr)
+	IN  (s+t1*v)*v<0 AND (s+t2*v)*v<0 AND t1<t2 AND t2<=tr IMPLIES
+	    tau_current(so+t1*vo,vo,si+t1*vi,vi) > tau_current(so+t2*vo,vo,si+t2*vi,vi)
+
+  tau_current_decreasing_Delta_nonneg: LEMMA FORALL (t1,t2:real):
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN
+      Delta[DMOD](s,v)>=0 AND (s+t1*v)*v<0 AND (s+t2*v)*v<0 AND t1<t2 IMPLIES
+	    tau_current(so+t1*vo,vo,si+t1*vi,vi) > tau_current(so+t2*vo,vo,si+t2*vi,vi)
+
+  tau_current_increasing: LEMMA FORALL (t1,t2:real):
+    vi/=vo IMPLIES LET s=so-si,v=vo-vi IN
+      Delta[DMOD](s,v)<0 IMPLIES 
+        LET rr = tau_current_min_unbounded(so,vo,si,vi),
+	    tr = unbounded_nominal_tau(so,vo,si,vi,rr)
+	IN  (s+t1*v)*v<0 AND (s+t2*v)*v<0 AND t1<t2 AND t1>=tr IMPLIES
+	    tau_current(so+t1*vo,vo,si+t1*vi,vi) < tau_current(so+t2*vo,vo,si+t2*vi,vi)
+
+END tcas_tau

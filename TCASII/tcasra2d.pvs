@@ -1,0 +1,118 @@
+%------------------------------------------------------------------------------
+% Formalization of 2D component of TCAS alerting algorithm
+% By: Anthony Narkawicz and Cesar Munoz
+%     May 2012
+%------------------------------------------------------------------------------
+
+tcasra2d[TAU:nnreal,DMOD:posreal,B:nnreal,T: {AB: nnreal | AB>=B}]  : THEORY 
+% TAU is the RA time threshold 
+% DMOD is the modified distance threshold
+% [B,T] is the lookahead time interval
+BEGIN
+
+  IMPORTING horizontal_RA[TAU,DMOD],
+            ACCoRD@Lookahead
+
+  so,vo,
+  si,vi : VAR Vect2  
+  t	: VAR Lookahead[B,T]
+  p	: VAR posreal
+  r	: VAR real
+
+  RA2D_interval(so,vo,si,vi): [real,real] =
+    LET s=so-si,v=vo-vi,aa=sqv(v),bb=2*(s*v)+TAU*sqv(v),
+    	cc=sqv(s)+TAU*(s*v)-sq(DMOD)
+    IN (IF aa = 0 AND sqv(s)<=sq(DMOD) THEN (B,T)
+        ELSIF sqv(s)<=sq(DMOD) THEN (B,root(sqv(v),2*(s*v),sqv(s)-sq(DMOD),1))
+        ELSIF s*v>=0 OR discr(aa,bb,cc)<0 THEN (T+1,0)
+        ELSIF Delta[DMOD](s,v)>=0 THEN (root(aa,bb,cc,-1),Theta_D[DMOD](s,v,1))
+        ELSE (root(aa,bb,cc,-1),root(aa,bb,cc,1)) ENDIF)
+
+  RA2D_interval_def: LEMMA
+    LET intv = RA2D_interval(so,vo,si,vi) IN
+      FORALL (t): horizontal_RA_at(so,vo,si,vi)(t) IFF
+		  (intv`1 <= t AND t<=intv`2)
+
+  RA2D_entry_le_Theta: LEMMA
+    LET s=so-si,v=vo-vi,aa=sqv(v),bb=2*(s*v)+TAU*sqv(v),
+    	cc=sqv(s)+TAU*(s*v)-sq(DMOD)
+    IN aa>0 AND s*v<0 AND discr(aa,bb,cc)>=0 AND Delta[DMOD](s,v)>=0
+       AND sqv(s)>sq(DMOD)
+       IMPLIES root(aa,bb,cc,-1)<=Theta_D[DMOD](s,v,-1)
+
+  horizontal_ra?(so,vo,si,vi): bool = 
+    EXISTS (t): horizontal_RA_at(so,vo,si,vi)(t)
+
+  ra_tau_at(so,vo,si,vi)(t): bool = % does not include cd2d[DMOD] when diverging
+    LET s=so-si,v=vo-vi IN
+    s*v<0 AND (s+t*v)*v<=0 AND
+    sqv(s+t*v) + TAU*(s+t*v)*v - sq(DMOD) <= 0
+
+  ra_tau?(so,vo,si,vi): bool = 
+    (EXISTS (t): ra_tau_at(so,vo,si,vi)(t))
+
+  ra_tau_def: LEMMA ((so-si)+B*(vo-vi))*(vo-vi)<0 IMPLIES 
+    ra_tau?(so,vo,si,vi) = horizontal_ra?(so,vo,si,vi)
+
+  to_lookahead(r): MACRO Lookahead[B,T] = max(B,min(T,r))
+
+  % The NOMINAL TAU
+
+  nominal_tau(so,vo,si,vi,r): Lookahead[B,T] =
+    LET s=so-si,v=vo-vi IN
+      IF vo=vi THEN B
+      ELSE to_lookahead(unbounded_nominal_tau(so,vo,si,vi,r))
+      ENDIF
+
+  nom_tau_dot_lt2: LEMMA
+    LET s=so-si,v=vo-vi IN
+    s*v<0 AND
+    (s + t*v)*v < 0 IMPLIES
+    (s + nominal_tau(so,vo,si,vi,p)*v)*v < 0
+
+  nominal_tau_def: LEMMA
+    ra_tau?(so,vo,si,vi) IFF
+    ra_tau_at(so,vo,si,vi)(nominal_tau(so,vo,si,vi,TAU))
+
+  time_of_min_tau(so,vo,si,vi): Lookahead[B,T] =
+      IF ((so-si) + B*(vo-vi))*(vo-vi)>=0 THEN B
+      ELSIF Delta[DMOD](so-si,vo-vi)<0 THEN
+        LET RR = tau_current_min_unbounded(so,vo,si,vi) IN
+	  nominal_tau(so,vo,si,vi,RR)
+      ELSIF ((so-si) + T*(vo-vi))*(vo-vi) < 0 THEN
+	  T
+      ELSE nominal_tau(so,vo,si,vi,0)
+      ENDIF 
+
+  min_tau_dot_lt: LEMMA Delta[DMOD](so-si,vo-vi)<0 IMPLIES (EXISTS (t):((so-si)+t*(vo-vi))*(vo-vi)<0)
+    IMPLIES ((so-si)+time_of_min_tau(so,vo,si,vi)*(vo-vi))*(vo-vi) < 0
+
+  nominal_tau_min: LEMMA Delta[DMOD](so-si,vo-vi)<0 AND ((so-si) + t*(vo-vi))*(vo-vi)<0 IMPLIES
+    LET mt = time_of_min_tau(so,vo,si,vi) IN
+    tau_current(so+t*vo,vo,si+t*vi,vi) >= tau_current(so+mt*vo,vo,si+mt*vi,vi)
+
+  min_tau_Delta_nonneg: LEMMA Delta[DMOD](so-si,vo-vi)>=0 IMPLIES
+    LET mt = time_of_min_tau(so,vo,si,vi) IN
+      FORALL (t): sqv((so-si)+t*(vo-vi))>=sqv((so-si)+mt*(vo-vi))
+
+  min_tau_def: LEMMA Delta[DMOD](so-si,vo-vi)<0 IMPLIES
+    (ra_tau?(so,vo,si,vi) IFF
+    ra_tau_at(so,vo,si,vi)(time_of_min_tau(so,vo,si,vi)))
+
+  min_tau_def_B_dot_nonneg: LEMMA ((so-si) + B*(vo-vi))*(vo-vi)>=0 IMPLIES
+    (ra_tau?(so,vo,si,vi) IFF
+    ra_tau_at(so,vo,si,vi)(time_of_min_tau(so,vo,si,vi)))
+
+  min_tau_undef(s,v:Vect2) : MACRO bool =  
+    Delta[DMOD](s,v) >= 0 AND
+    (s + B*v)*v < 0 AND
+    (s + T*v)*v >= 0
+
+  RA2D(so,vo,si,vi): bool =
+    min_tau_undef(so-si,vo-vi) OR
+    LET mt = time_of_min_tau(so,vo,si,vi) IN horizontal_RA_at(so,vo,si,vi)(mt)
+
+  RA2D_def: LEMMA
+    horizontal_ra?(so,vo,si,vi) IFF RA2D(so,vo,si,vi)
+
+END tcasra2d

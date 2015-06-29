@@ -1,0 +1,130 @@
+%------------------------------------------------------------------------------
+% tcasra3d
+% By: Anthony Narkawicz and Cesar Munoz
+%     June 2012
+%------------------------------------------------------------------------------
+
+tcasra3d[TAU:nnreal,TCOA:nnreal,DMOD,ZTHR,HMD:posreal,B:nnreal,T:{AB:nnreal| AB > B}]  : THEORY 
+% TAU is the RA time threshold 
+% DMOD is the modified distance threshold
+% ZTHR is the vertical distance threshold
+% HMD is the horizontal miss distance threshold
+% [B,T] is the lookahead time interval
+BEGIN
+
+  IMPORTING tcasra2d,
+            tcasra[TAU,TCOA,DMOD,ZTHR,HMD]
+
+  s,v     : VAR Vect3  
+  s2,v2   : VAR Vect2
+  so,vo,
+  si,vi   : VAR Vect3
+  t	  : VAR Lookahead[B,T]
+  sz      : VAR real
+  nzvz    : VAR nzreal
+  usehmdf : VAR bool
+
+  coalt_entry_exit_lookahead(sz,nzvz): {lr: [Lookahead[B,T],Lookahead[B,T]]| 
+  				       	    LET (lr1,lr2) = lr IN lr1 <= lr2} =
+    LET (centry,cexit) = coalt_entry_exit(sz,nzvz) 
+    IN (max(B,min(T,centry)),max(B,min(T,cexit)))
+
+  coalt_entry_exit_lookahead_def: LEMMA
+    LET (rl,ru) = coalt_entry_exit_lookahead(sz,nzvz) IN
+      rl < ru IMPLIES (vertical_RA_at(sz,nzvz)(t) IFF (rl<=t AND t<=ru))
+
+  ra_3D?(so,vo,si,vi,usehmdf): bool =
+    EXISTS (t:Lookahead[B,T]): TCASII_RA_at(so,vo,si,vi,usehmdf)(t)
+
+  ra_cd2d_after : LEMMA
+    ra_3D?(so,vo,si,vi,TRUE) IMPLIES 
+    cd2d_TCAS_after(vect2(so-si), vect2(vo-vi), B)
+
+  TCAS3D : TYPE = [# time_in,
+                     time_out,
+                     time_mintau : Lookahead[B,T]
+                  #]
+
+  mk_tcas3d(tin,tout,tmintau:Lookahead[B,T]): MACRO TCAS3D = (#
+    time_in     := tin,
+    time_out    := tout,
+    time_mintau := tmintau
+  #)
+
+  RA3D_interval(so,vo,si,vi,usehmdf): TCAS3D =
+    IF usehmdf AND NOT cd2d_TCAS_after(so-si,vo-vi,B) THEN 
+      mk_tcas3d(T,B,time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+    ELSIF (vo`z=vi`z AND abs(so`z-si`z)>ZTHR) THEN 
+      mk_tcas3d(T,B,time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+    ELSE
+      LET sz = so`z-si`z,
+	  nzvz = vo`z-vi`z,
+    	  (centry,cexit) = IF vo`z=vi`z THEN (B,T) ELSE coalt_entry_exit(sz,nzvz) ENDIF,
+	  exit_at_centry = (vect2(so-si)+centry*vect2(vo-vi))*vect2(vo-vi)>=0,
+	  los_at_centry = sqv(vect2(so-si)+centry*vect2(vo-vi))<=sq(HMD)
+      IN
+        IF cexit<B OR T<centry THEN mk_tcas3d(T,B,time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+        ELSE
+          LET (tin,tout) = (max(B,centry),min(T,cexit)),
+              (RAin2D,RAout2D) = 
+	        RA2D_interval[TAU,DMOD,tin,tout](so,vo,si,vi),
+	      (RAin2D_lookahead,RAout2D_lookahead) = 
+		(max(tin,min(tout,RAin2D)),max(tin,min(tout,RAout2D)))
+	  IN
+	    IF RAin2D>RAout2D OR RAout2D<tin OR RAin2D>tout THEN
+	      mk_tcas3d(T,B,time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+	    ELSIF usehmdf AND HMD<DMOD AND exit_at_centry AND (NOT los_at_centry) THEN
+	      mk_tcas3d(T,B,time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+	    ELSIF usehmdf AND HMD<DMOD THEN 
+	      LET exitTheta = IF sqv(vect2(vo-vi))=0 THEN T 
+	         	      ELSE max(B,min(Theta_D[HMD](so-si,vo-vi,1),T)) ENDIF,
+                  minRAoutTheta = min(RAout2D_lookahead,exitTheta) 
+              IN 
+                IF RAin2D_lookahead<=minRAoutTheta THEN
+                   mk_tcas3d(RAin2D_lookahead,minRAoutTheta,
+                             time_of_min_tau[TAU,DMOD,RAin2D_lookahead,minRAoutTheta](so,vo,si,vi))
+                ELSE
+                   mk_tcas3d(RAin2D_lookahead,minRAoutTheta,
+                             time_of_min_tau[TAU,DMOD,B,T](so,vo,si,vi))
+                ENDIF
+	    ELSE mk_tcas3d(RAin2D_lookahead,RAout2D_lookahead,
+                           time_of_min_tau[TAU,DMOD,RAin2D_lookahead,RAout2D_lookahead](so,vo,si,vi))
+            ENDIF
+    	ENDIF
+    ENDIF
+
+  RA3D_interval_def: LEMMA
+    LET raint = RA3D_interval(so,vo,si,vi,usehmdf)
+    IN
+      TCASII_RA_at(so,vo,si,vi,usehmdf)(t) IFF (raint`time_in<=t AND t<=raint`time_out)
+
+  RA3D(so,vo,si,vi,usehmdf): bool =
+    LET raint = RA3D_interval(so,vo,si,vi,usehmdf)
+    IN
+      raint`time_in<=raint`time_out
+
+  RA3D_def: LEMMA
+      ra_3D?(so,vo,si,vi,usehmdf) IFF RA3D(so,vo,si,vi,usehmdf)
+
+  time_of_min_tau_3D(so,vo,si,vi,usehmdf): Lookahead[B,T] =
+    LET raint = RA3D_interval(so,vo,si,vi,usehmdf) IN
+    raint`time_mintau
+
+  time_of_min_tau_3D_def: LEMMA
+    LET mt3D = time_of_min_tau_3D(so,vo,si,vi,usehmdf) IN
+      (FORALL (t): TCASII_RA_at(so,vo,si,vi,usehmdf)(t)
+        IMPLIES
+	  (Delta[DMOD](so-si,vo-vi)<0 AND vect2((so-si)+t*(vo-vi))*vect2(vo-vi)<0 AND
+	    vect2((so-si)+mt3D*(vo-vi))*vect2(vo-vi)<0 AND
+	    tau_current[DMOD](so+t*vo,vo,si+t*vi,vi) >= 
+	    tau_current[DMOD](so+mt3D*vo,vo,si+mt3D*vi,vi))
+	  OR
+	  vect2((so-si)+t*(vo-vi))*vect2(vo-vi)>=0
+	  OR
+	  (Delta[DMOD](so-si,vo-vi)>=0 AND sqv(vect2((so-si)+t*(vo-vi))) >= 
+           sqv(vect2((so-si)+mt3D*(vo-vi)))))
+      AND
+      (FORALL (t): TCASII_RA_at(so,vo,si,vi,usehmdf)(t) IMPLIES
+        TCASII_RA_at(so,vo,si,vi,usehmdf)(mt3D))
+
+END tcasra3d
