@@ -122,14 +122,29 @@
 (defun trim (str)
   (string-trim '(#\Space #\Tab) str))
 
-(defun ident () "([\\w\\*]+)")
+(defun ident () "([\\w\\*?]+)")
 
 (defun spaces () "[\\s\\t]*")
 
 (defun greedyspaces () "(?<!\\s\\t)[\\s\\t]*(?!\\s\\t)")
 
+(defun replace-all-str (string part replacement &key (test #'char=))
+  "Returns a new string in which all the occurences of the part 
+is replaced with replacement."
+  (with-output-to-string (out)
+    (loop with part-length = (length part)
+          for old-pos = 0 then (+ pos part-length)
+          for pos = (search part string
+                            :start2 old-pos
+                            :test test)
+          do (write-string string out
+                           :start old-pos
+                           :end (or pos (length string)))
+          when pos do (write-string replacement out)
+          while pos)))
+
 (defun expand-rex (str)
-  (format nil "^~a$" (pregexp-replace* "*" str "(.+)")))
+  (format nil "^~a$" (replace-all-str (pregexp-replace* "*" str "(.+)") "?" "\\?")))
 
 (defun read-one-line (file)
   (let* ((str   (read-line file nil nil))
@@ -146,10 +161,10 @@
 			     (ident) (greedyspaces))
 		     str))))
     (when match
-      (let* ((name (car match))
-	     (args (pregexp-split ";" (trim (cadr match))))
-	     (nargs (when (car args)
-		      (mapcar #'(lambda (x) (trim x)) args))))
+      (let* ((name   (car match))
+	     (argstr (cadr match))
+	     (args   (when argstr (pregexp-split ";" (trim argstr))))
+	     (nargs  (when args (mapcar #'(lambda (x) (trim x)) args))))
 	(cons name nargs)))))
 
 (defun is-proof-comment (str)

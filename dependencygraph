@@ -5,8 +5,6 @@
 use Getopt::Long;
 use File::Basename;
 
-@prelude = ("bitvector", "finite_sets");
-
 $usageln = "Usage: dependencygraph [--help] [<option> ...] [<file>]";
 
 sub usage() {
@@ -27,21 +25,23 @@ $usageln
   --after=<dir>            process all libraries after <dir>, exclusive
   --before=<dir>           process all libraries before <dir>, exclusive
   --but=<dir1>,..,<dirn>   do not process libraries <dir1>,...,<dirn>
-  --do=all                 process all libraries. This is the default,
-                           except when the option --zoom is also specified
   --do=<dir1>,..,<dirn>    process libraries <dir1>,...,<dirn> 
   --from=<dir>             process all libraries from <dir>, inclusive
   --to=<dir>               process all libraries to <dir>, inclusive
   --top=<topfile>          specify name of the top file directory
 
-File <file> is an ordered list of libraries as used by the script provethem.
-By default <file> is nasalib.all. If <outfile> is not specified, 
-<file><postfix> is used. The <postfix> depends on library selection option, i.e.,
---do,--but,--from,--to,--after,--before,--zoom. When the option --zoom is 
-used in conjunction with one of the other options, the libraries that are selected,
-except for those in --zoom, will appear unzoomed in the dependency graph.
+File <file> is an ordered list of developments as used by the script
+provethem.  By default <file> is nasalib.all and the dependency graph
+for the whole library is built. However, particular developments can
+be selected using the options: --do, --after, --before, --from,
+--to. The option --but unselect a list of developments. If <outfile>
+is not specified, <file><postfix> is used. The <postfix> depends on
+library selection option, i.e.,
+--do,--but,--from,--to,--after,--before,--zoom.
 
-except when the option zoom is used.
+When the option --zoom is used, the specified developments are zoomed
+such that the each theory in those developments in represented by a
+node in the dependency graph.
 EOF
   exit;
 }
@@ -61,16 +61,35 @@ sub trim($)
 	return $string;
 }
 
-sub writeedge {
-  my ($from, $to) = @_;
-  if (!(grep {$_ eq $to} @prelude)) {
-    print "*** Warning: Library $to is out of order. It should appear before $from in $file\n"
-      if !(grep {$_ eq $to} @nodes) && (grep {$_ eq $to} @libraries);    
-    push(@external,$to)
-      if !(grep {$_ eq $to} @libraries) &&
-	!(grep {$_ eq $to} @external);
-    $graph .= "  \"$from\" -> \"$to\";\n";
+my %libgraph;
+my $graph;
+
+sub qid {
+  my ($lib,$th) = @_;
+  if ($th) {
+    return "{$lib"."_at_"."$th [label=\"$th\"]}";
+  } else {
+    return "{$lib [label=\"$lib\"]}";
   }
+} 
+
+sub edgestr {
+  my ($fromlib,$fromth,$tolib,$toth) = @_;
+  my $from = $fromlib;
+  if ($fromth) {
+    $from = "$fromlib_at_$fromth";
+  }
+  my $to = $tolib;
+  if ($toth) {
+    $to = "$tolib_at_$toth";
+  }
+  if (!$libgraph{$from}{$to}) {
+    $libgraph{$from}{$to}=1;
+    push(@libraries,$tolib) if grep(/$tolib/,@nasalib) && !grep(/$tolib/,@libraries);
+    push(@external,$tolib) if !grep(/$tolib/,@nasalib) && !grep(/$tolib/,@external);
+    return qid($fromlib,$fromth)." -> ".qid($tolib,$toth).";\n";
+  }
+  return "";
 }
 
 sub writesubgraph {
@@ -78,16 +97,17 @@ sub writesubgraph {
   @tolist = split /,/,$tos;
   foreach $to (@tolist) {
     @libto = split /@/,$to;
-    if ($libto[1] && !(grep {$_ eq $libto[0]} @prelude)) {
-      if (grep {$_ eq $libto[0]} @libraries) {
-	print "*** Warning: Library $libto[0] is out of order. It should appear before $lib in $file\n"
-	  if !(grep {$_ eq $libto[0]} @nodes);
-	$subgraph{$lib} .= "    \"$from\" -> \"$libto[1]\";\n";
+    if ($libto[1]) {
+      my $str;
+      if (grep(/$libto[0]/,@zoomlist)) {
+	$str = edgestr($lib,$from,$libto[0],$libto[1]);
       } else {
-	writeedge($from,$to);
-      } 
-    } elsif (!$libto[1]) {
-      $subgraph{$lib} .= "    \"$from\" -> \"$to\";\n";
+	$str = edgestr($lib,$from,$libto[0],"");
+      }
+      $graph .= "  ".$str if $str;
+    } else {
+      my $str = edgestr($lib,$from,$lib,$to);
+      $subgraph{$lib} .= "    ".$str if $str;
     }
   }
 }
@@ -113,10 +133,6 @@ $from = deslash($from);
 $do = deslash(join(',',@do));
 $but = deslash(join(',',@but));
 $zoom = deslash(join(',',@zoom));
-if ($do eq "all") {
-  $do = "";
-  $all=1;
-}
 
 usage if $help;
 
@@ -131,7 +147,17 @@ die "$usageln\n" if shift;
 die "$file is a directory\n" if -d $file;
 open (INFILE,$file) || die "File $file doesn't exist\n";
 
-if (!$out) {
+if ($out) {
+  my ($base,$path,$type) = fileparse($out,qr{\..*});  
+  if ($type eq ".pdf") {
+    $pdf = 1;
+    $dot = 0;
+  } elsif ($type eq ".dot") {
+    $dot = 1;
+    $pdf = 0;
+  }
+  $out  = "$path$base";
+} else {
   my ($base,$path,$type) = fileparse($file,qr{\..*});  
   $out  = "$path$base";
   my $dol = join('_',@dolist);
@@ -146,7 +172,7 @@ if (!$out) {
   $out .= "-zoom_$zooml" if $zooml;
 }
 
-$go = "ok" if $all || !($from || $after || @dolist || @zoomlist);
+$go = "ok" if !($from || $after || @dolist || @zoomlist);
 
 while (<INFILE>) {
   $line = $_;
@@ -155,20 +181,18 @@ while (<INFILE>) {
   if ($line) {
     @listline = split /:/,$line;
     $lib = trim($listline[0]);
-    if ($lib) {
+    if ($lib && -d $lib) {
+      push(@nasalib,$lib);
       $go = "ok" if $from eq $lib;
       last if $before eq $lib;
-      if (($go && !(grep { "$_" eq $lib } @butlist)) || 
-	  grep { "$_" eq $lib } @dolist || 
-	  grep { "$_" eq $lib } @zoomlist) { 
-	if (-d $lib) {
-	  push(@libraries,$lib);
-	} else {
-	  die "Directory $lib not found\n";
-	}
+      if (!grep(/$lib/,@butlist) && 
+	  ($go || grep(/$lib/,@dolist) || grep(/$lib/,@zoomlist))) { 
+	push(@libraries,$lib);
       }
       $go = "ok" if $after eq $lib;
       last if $to eq $lib;
+    } elsif ($lib) {
+      die "Directory $lib not found\n";
     } 
   }
 }
@@ -178,21 +202,25 @@ if ($top) {
 } else {
   $topfile = "top";
 }
+
+die "Nothing to generate\n" if !@libraries;
+
 foreach $lib (@libraries) {
   push(@nodes,$lib);
   if (-f "$lib/pvsbin/$topfile.dep") {
     open(FILE,"$lib/pvsbin/$topfile.dep");
-    $zoom = grep { "$_" eq $lib } @zoomlist;
-    $graph .= "  \"$lib\";\n" if !$zoom;
+    $zoom = grep(/$lib/,@zoomlist);
+    $graph .= "  ".qid($lib,"").";\n" if !$zoom;
     while($line = <FILE>) {
       if ($zoom) {
 	if ($line =~/(.+):(.*)/ && $1 ne "$topfile") {
-	  $subgraph{$lib} .= "    \"$1\";\n";
+	  $subgraph{$lib} .= "    ".qid($lib,$1).";\n";
 	  writesubgraph($lib,$1,$2) if $2;
 	}
       } elsif ($line =~/(.+)\//) {
-	  writeedge($lib,$1);
-	}
+	my $str = edgestr($lib,"",$1,"");
+	$graph .= "  ".$str if $str;
+      }
     } 
     close FILE;
   } else {
@@ -201,7 +229,7 @@ foreach $lib (@libraries) {
 }
 
 foreach $ext (@external) {
-  $graph .= "  \"$ext\" [style=filled, fillcolor=yellow]\n";
+  $graph .= "  {$ext [label=\"$ext\", style=filled, fillcolor=yellow]}\n";
 }
 
 foreach $lib (@zoomlist) {
