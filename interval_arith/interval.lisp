@@ -325,163 +325,30 @@ rational number up to the PRECISION-1 decimal."
    (vars-sharp__$))
   "[Interval] Internal strategy." "")
 
-(defstep numerical (expr &optional (precision 3) (maxdepth 10)
-			 min? max?
-			 vars 
-			 subs
-			 dirvar
-			 verbose?
-			 label
-			 (equiv? t))
-  (let ((name      (freshname "nml"))
-	(label     (or label (freshlabel name)))
-	(accuracy  (ratio2decimal (expt 10 (- precision)) nil precision))
-	(ia-expr   (typecheck (extra-get-expr expr)))
-	(ia-estr   (expr2str ia-expr))
-	(fms       (append (mapcar #'(lambda (f) (extra-get-formula-from-fnum f))
-				   (extra-get-fnums '-))
-			   (mapcar #'(lambda (f) 
-				       (make-negation
-					(extra-get-formula-from-fnum f)))
-				   (extra-get-fnums '+))))
-	(vars      (ia-complete-vars (enlist-it vars) (ia-get-vars-from-expr ia-expr subs)))
-	(initeqs   (extra-reset-evalexprs))
-	(ia-vars   (extra-get-var-ranges fms vars))
-	(unvars    (ia-find-unbound-vars ia-vars))
-	(msg       (cond ((not (check-name "IntervalStrategies4Q__"))
-			  (format nil
-				  "This strategy requires importing either interval_arith@strategies4Q (for rational expressions)
-or interval_arith@strategies (for real-valued expressions) for its proper operation"))
-			 (unvars
-			  (format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
-				  (cdr unvars) unvars (cdr unvars)))
-			 ((null ia-expr)
-			  (format nil "Do not understand argument ~a." expr))
-			 ((not (is-number-type (type ia-expr)))
-			  (format nil "Expresion ~a is not a real number expression." ia-expr))))
-	(ia-box    (unless msg (ia-box ia-vars)))
-	(m_or_m    (+ (if min? -1 0) (if max? 1 0)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr precision ia-vars subs)))
-	(names     (unless msg (append (mapcar #'car *ia-let-names*) (list name))))
-	(exprs     (unless msg (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr))))
-	(namexprs  (merge-lists names exprs))
-	(ia-dirvar (or dirvar (cond ((< m_or_m 0) "mindir_maxvar")
-				    ((> m_or_m 0) "maxdir_maxvar")
-				    (t "altdir_maxvar"))))
-	(maxdepth  (if (null ia-vars) 0 maxdepth))
-	(ia-eval   (format nil "numerical(~a,~a,~a,~a)(~a,~a)"
-			   maxdepth accuracy ia-dirvar m_or_m name ia-box))
-	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
-	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
-    (if msg
-	(printf msg)
-      (spread
-       (name-label* namexprs :hide? t)
-       ((try-branch
-	 (eval-expr ia-eval :safe? nil)
-	 ((let ((output (args2 (extra-get-formula -1)))
-		(depth  (extra-get-number-from-expr (get-expr-from-obj output 'depth)))
-		(splits (get-expr-from-obj output 'splits))
-		(lbacc  (ratio2decimal (- (extra-get-number-from-expr 
-					   (get-expr-from-obj output 'ans 'lb_max))
-					  (extra-get-number-from-expr 
-					   (get-expr-from-obj output 'ans 'mm 'lb)))
-				       true precision))
-		(ubacc  (ratio2decimal (- (extra-get-number-from-expr 
-					   (get-expr-from-obj output 'ans 'mm 'ub))
-					  (extra-get-number-from-expr 
-					   (get-expr-from-obj output 'ans 'ub_min)))
-				       true precision))
-		(eqs    (extra-evalexprs))
-		(maxd   (and ia-vars (= depth maxdepth))))
-	    (with-fresh-labels 
-	     (!iax)
-	     (relabel label -1)
-	     (lemma "numerical_soundness")
-	     (inst? -1)
-	     (replaces label)
-	     (beta -1)
-	     (expand "sound?" -1)
-	     (apply (repeat (expand "length" -1)))
-	     (extra-evalexprs$ eqs !iax)
-	     (branch
-	      (split -1)
-	      ((then
-		(flatten)
-		(relabel label (-2 -3 -4 -5))
-		(hide label)
-		(spread
-		 (inst -1 ia-lvars)
-		 ((branch
-		   (invoke (case "%1 = %2") (! -1 1) ia-estr)
-		   ((then 
-		     (when verbose?
-		       (printf "~%----")
-		       (when maxd
-			 (printf "Maximum depth has been reached."))
-		       (printf "Lower bound accuracy <= ~a" lbacc) 
-		       (printf "Upper bound accuracy <= ~a" ubacc)
-		       (printf "Splits: ~a. Depth: ~a~%----~%" splits depth)
-		       (printf "See hidden formulas labeled \"~a\" for more information"
-			       label))
-		     (replaces -1)
-		     (decimalize -1 precision))
-		    (then (hide -1) (when equiv? (interval-eq__$ names 1 subs)))
-		    (then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$))))
-		  (if (null ia-vars)
-		      (eval-formula)
-		    (then 
-		     (reveal !iax)
-		     (replaces !iax :hide? nil) 
-		     (vars-in-box__$))))))
-	       (eval-formula)))))
-	  (skip))
-	 (skip))))))
-  "[Interval] Computes lower and upper bounds of the minimum and
-maximum values of EXPR using a branch and bound algorithm based on
-interval arithmetic.  PRECISION is the number of decimals in the
-output interval. PRECISION also indicates an accuracy of 10^-PRECISION
-in every atomic computation. However, this accuracy is not guaranteed
-in the final result. MAXDEPTH is a maximum recursion depth for the
-branch and bound algorithm. For efficiency, the MIN? and MAX? options
-can be used to restrict the precision of the computations to either
-the lower or upper bound, respectively.
+(defmacro req-ths-names (req-ths)
+  `(if (or (not ,req-ths)
+	   (stringp (first ,req-ths)))
+       ,req-ths
+     (let ((fst (first ,req-ths)))
+       (if (listp fst) fst (list fst)))))
 
-VARS is a list of the form (<v1> ... <vn>), where each <vi> is either a
-variable name, e.g., \"x\", or a list consisting of a variable name and
-an interval, e.g., (\"x\" \"[|-1/3,1/3|]\"). This list is used to specify
-the variables in EXPR and to provide their ranges. If this list is not
-provided, this information is extracted from the sequent.
+(defmacro req-ths-errormsg (req-ths)
+  `(if (all-strings ,req-ths)
+       (format nil "At least one of the following theories are required by the strategy: ~{~a~^,~}" (first ,req-ths))
+     (second ,req-ths)))
 
-SUBS is a list of substitutions for translating user-defined
-real-valued functions into interval ones. Each substitution has the
-form (<f> <F>), where <f> is the name of a real-valued function and
-<F> is the name of its interval counterpart. It is assumed that <F>
-satisfies the Inclusion and the Fundamental theorems of interval
-arithmetic for <f>. Standard substitutions for basic arithmetic
-operators, abs, sq, sqrt, trigonometric functions, exp, and ln are
-already provided. This parameter can be used to change the precision
-for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
-(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
-PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
+(defmacro all-strings (req-ths)
+  `(every #'stringp ,req-ths))
 
-DIRVAR is the name of a direction and variable selection method for
-the branch an bound algorithm. Theory numerical_bandb includes some
-pre-defined methods. If none is provided, a choice is made base on the
-problem.
-
-If VERBOSE? is set to t, the strategy prints information about number of
-splits, depth, etc. 
-
-LABEL is used to label formulas containing additional information computed
-by the branch and bound algorithm. These formulas are hidden, but they can
-be brought to the sequent using the proof command REVEAL.
-
-If EQUIV? is set to nil, the strategy doesn't try to prove that the
-deep embedding of the original expression is correct. The proof of
-this fact is trivial from a logical point of view, but requires
-unfolding of several definitions which is time consuming in PVS."
-  "Computing minmax values of expression ~a,~%via interval arithmetic")
+(defmacro validate-required-theories (req-ths)
+  `(and (listp ,req-ths)
+       (or (all-strings ,req-ths)
+	   (and (all-strings (first ,req-ths))
+		(cond ((= (length ,req-ths) 2)
+		       (stringp (second ,req-ths)))
+		      ((> (length ,req-ths) 2)
+		       nil)
+		      (t t))))))
 
 (defun ia-is-true-output (ans)
   (and (is-function-expr ans "Some")
@@ -491,21 +358,33 @@ unfolding of several definitions which is time consuming in PVS."
   (and (is-function-expr ans "Some")
        (extra-is-false (argument ans))))
 
-(defstep interval (&optional (fnums 1) (precision 3) maxdepth sat?
-			     vars 
-			     subs 
-			     dirvar
-			     verbose?
-			     label
-			     (equiv? t)
-			     (tccs? t))
+;; *** Generic branch and bound strategies (interval and numerical) by Mariano Moscato
+(defhelper gbandb_interval__ (&optional 
+			      (fnums 1) (precision 3) maxdepth sat?
+			      vars 
+			      subs 
+			      dirvar
+			      verbose?
+			      label
+			      (equiv? t)
+			      (tccs? t)
+			      ;; specific parameters
+			      required-theories   ; ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)
+			      pvsexpr-to-strobj   ; function to translate a pvs expression to a string representation of a ObjType
+			      bandb-function-name
+			      soundness-lemma-name
+			      rewrite-decls       ; Declaration names to be used as rewriting
+					; rules to simplify the evaluation expression.
+			      beval-solver             ; strategy to prove that the pvs expression
+					; corresponds with the beval of the interval expr
+			      )
   (let ((name     (freshname "iar"))
 	(label    (or label (freshlabel name)))
 	(fns      (extra-get-fnums fnums))
 	(fn       (if (= (length fns) 1) (car fns) 0))
 	(expr     (when fns
 		    (if (equal fn 0)
-			 (mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))
+			(mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))
 			(extra-get-formula-from-fnum fn))))
 	(quant    (cond ((forall-expr? expr) 1)
 			((exists-expr? expr) -1)
@@ -553,9 +432,13 @@ unfolding of several definitions which is time consuming in PVS."
 			(format nil "Formula ~a not found" fnums))
 		       ((and sat? (null ia-vars))
 			(format nil "Formula ~a doesn't seem to have variables. It cannot be checked for satisfiability" fnums))
-		       ((not (check-name "IntervalStrategies4Q__"))
-			(format nil "This strategy requires importing either interval_arith@strategies4Q (for rational expressions)
-or interval_arith@strategies (for real-valued expressions) for its proper operation"))
+		       ((not (validate-required-theories required-theories))
+			(format nil 
+				"Error in param: required-theories should have the form ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)"))
+		       ((and
+			 (req-ths-names required-theories)
+			 (notany (lambda (thname) (check-name thname)) (req-ths-names required-theories)))
+			  (req-ths-errormsg required-theories))
 		       (unvars
 			(format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
 				(cdr unvars) unvars (cdr unvars))))))
@@ -565,7 +448,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 	    (neg       (if sat? (<= quant 0) (or (< quant 0) (and (= quant 0) (< fn 0)))))
 	    (nname     (if neg (format nil "BNOT(~a)" name) name))
 	    (ia-box    (ia-box ia-vars))
-	    (ia-iexpr  (ia-interval-expr ia-expr precision ia-vars subs))
+	    (ia-iexpr  (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs))
 	    (names     (append (mapcar #'car *ia-let-names*) (list name)))
 	    (exprs     (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr)))
 	    (namexprs  (merge-lists names exprs))
@@ -574,7 +457,8 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 			     (maxdepth maxdepth)
 			     (findcex 10)
 			     (t 100)))
-	    (ia-eval   (format nil "interval(~a,~a,~:[TRUE~;FALSE~])(~a,~a)"
+	    (ia-eval   (format nil "~a(~a,~a,~:[TRUE~;FALSE~])(~a,~a)"
+			       bandb-function-name
 			       maxdepth ia-dirvar findcex nname ia-box))
 	    (msg       (when (listp ia-iexpr) (car ia-iexpr))))
 	(if msg
@@ -622,7 +506,8 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 		       (if (or prfex prfall) ;; Proof needs to be done
 			   (then
 			    (when verbose? (printf "~a~%Splits: ~a. Depth: ~a~%----~%" msg splits depth))
-			    (lemma "interval_soundness")
+			    (let ((name soundness-lemma-name)(dummy (format t "~a" name)))
+			      (lemma name))
 			    (with-fresh-labels 
 			     ((!ia-inst -1) (!ia-eqs))
 			     (inst? !ia-inst)
@@ -648,7 +533,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 					     (when equiv? 
 					       (reveal !ia-eqs) 
 					       (replaces !ia-eqs :hide? nil)
-					       (interval-eq__$ names 1 subs))
+					       (beval-solver names 1 subs))
 					     (eval-formula !ia)))
 					;; Universal proof
 					(let ((nqvars   (freshnames "x" (length qvars)))
@@ -665,7 +550,7 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 						   ((when equiv? 
 						      (reveal !ia-eqs) 
 						      (replaces !ia-eqs :hide? nil)
-						      (interval-eq__$ names !ia-inst 
+						      (beval-solver   names !ia-inst 
 								      subs *!ia-tccs*))
 						    (if (null ia-vars)
 							(eval-formula)
@@ -681,6 +566,223 @@ or interval_arith@strategies (for real-valued expressions) for its proper operat
 		     (printf "See hidden formulas labeled ~a for more information~%----~%" label)))))
 	       (hide !ia))
 	      (skip)))))))))
+  "[Interval] Internal strategy." "")
+
+(defhelper gbandb_simple-numerical__ (expr 
+				      &optional (precision 3) (maxdepth 5)
+				      ;; specific parameters
+				      pvsexpr-to-strobj   ; function to translate a pvs
+				      ;; expression to a string represen-
+				      ;; tation of a ObjType.
+				      bandb-function-name
+				      soundness-lemma-name)
+  (let ((name    (freshname "sia"))
+	(ia-expr (extra-get-expr expr))
+	(ia-estr (expr2str ia-expr))
+	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
+	(vars    (ia-get-vars-from-expr ia-expr))
+	(ia-vars (extra-get-var-ranges fms vars))
+	(unvars  (ia-find-unbound-vars ia-vars))
+	(msg     (cond (unvars
+			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
+				(cdr unvars) unvars (cdr unvars)))
+		       ((null ia-expr)
+			(format nil "Do not understand argument ~a." expr))
+		       ((not (is-number-expr ia-expr))
+			(format nil "Expresion ~a is not a real number expression." ia-expr))))
+	(ia-box    (unless msg (ia-box ia-vars)))
+	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars)))
+	(maxdepth  (if (null ia-vars) 0 maxdepth))
+	(ia-eval   (format nil "~a(~a,~a,~a)" bandb-function-name maxdepth name ia-box))
+	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
+	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
+    (if msg
+	(printf msg)
+      (spread
+       (name-label name ia-iexpr :hide? t)
+       ((try-branch
+	 (eval-expr ia-eval :safe? nil)
+	 ((then (lemma soundness-lemma-name)
+		(inst? -1)
+		(replaces -2)
+		(beta -1)
+		(expand "sound?" -1)
+		(branch (split -1)
+			((spread (inst -1 ia-lvars)
+				 ((branch (invoke (case "%1 = %2") (! -1 1) ia-estr)
+					  ((then (replaces -1)
+						 (decimalize -1 precision))
+					   (interval-eq__ name 1)
+					   (then (hide -1)(vars-sharp__))))
+				  (if (null ia-vars)
+				      (eval-formula)
+				    (vars-in-box__))))
+			 (eval-formula))))
+	  (skip))
+	 (skip))))))
+  "[Interval] Internal strategy." "")
+
+(defhelper gbandb_numerical__ (expr 
+			       &optional (precision 3) (maxdepth 10)
+			       min? max?
+			       vars 
+			       subs
+			       dirvar
+			       verbose?
+			       label
+			       (equiv? t)
+			       ;; specific parameters
+			       required-theories   ; ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)
+			       pvsexpr-to-strobj   ; function to translate a pvs expression to a string representation of a ObjType
+			       bandb-function-name
+			       soundness-lemma-name)
+  (let ((name      (freshname "nml"))
+	(label     (or label (freshlabel name)))
+	(accuracy  (ratio2decimal (expt 10 (- precision)) nil precision))
+	(ia-expr   (typecheck (extra-get-expr expr)))
+	(ia-estr   (expr2str ia-expr))
+	(fms       (append (mapcar #'(lambda (f) (extra-get-formula-from-fnum f))
+				   (extra-get-fnums '-))
+			   (mapcar #'(lambda (f) 
+				       (make-negation
+					(extra-get-formula-from-fnum f)))
+				   (extra-get-fnums '+))))
+	(vars      (ia-complete-vars (enlist-it vars) (ia-get-vars-from-expr ia-expr subs)))
+	(initeqs   (extra-reset-evalexprs))
+	(ia-vars   (extra-get-var-ranges fms vars))
+	(unvars    (ia-find-unbound-vars ia-vars))
+	(msg       (cond ((not (validate-required-theories required-theories))
+			  (format nil "Error in param: required-theories should have the form ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)"))
+		         ((and
+			   (req-ths-names required-theories)
+			   (notany (lambda (thname) (check-name thname)) (req-ths-names required-theories)))
+			  (req-ths-errormsg required-theories))
+			 (unvars
+			  (format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
+				  (cdr unvars) unvars (cdr unvars)))
+			 ((null ia-expr)
+			  (format nil "Do not understand argument ~a." expr))
+			 ((not (is-number-type (type ia-expr)))
+			  (format nil "Expresion ~a is not a real number expression." ia-expr))))
+	(ia-box    (unless msg (ia-box ia-vars)))
+	(m_or_m    (+ (if min? -1 0) (if max? 1 0)))
+	
+	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs)))
+	(names     (unless msg (append (mapcar #'car *ia-let-names*) (list name))))
+	(exprs     (unless msg (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr))))
+	
+	(namexprs  (merge-lists names exprs))
+	(ia-dirvar (or dirvar (cond ((< m_or_m 0) "mindir_maxvar")
+				    ((> m_or_m 0) "maxdir_maxvar")
+				    (t "altdir_maxvar"))))
+	(maxdepth  (if (null ia-vars) 0 maxdepth))
+	(ia-eval   (format nil "~a(~a,~a,~a,~a)(~a,~a)"
+			   bandb-function-name maxdepth accuracy ia-dirvar m_or_m name ia-box))
+	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
+	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
+    (if msg
+	(printf msg)
+      (spread
+       (name-label* namexprs :hide? t)
+       ((try-branch
+	 (eval-expr ia-eval :safe? nil)
+	 ((let ((output (args2 (extra-get-formula -1)))
+		(depth  (extra-get-number-from-expr (get-expr-from-obj output 'depth)))
+		(splits (get-expr-from-obj output 'splits))
+		(ans    (get-expr-from-obj output 'ans)))
+	    (if (and (name-expr? ans) (eq (id ans) 'None))
+		(then (printf "Error evaluating the expression. ~%HINT: Check if all the operations in the expression are supported by the strategy.") (fail))
+	      (let ((ans    (if (record-expr? ans) ans (args1 ans)))
+		    (lbacc  (ratio2decimal (- (extra-get-number-from-expr 
+					       (get-expr-from-obj ans 'lb_max))
+					      (extra-get-number-from-expr 
+					       (get-expr-from-obj ans 'mm 'lb)))
+					   true precision))
+		    (ubacc  (ratio2decimal (- (extra-get-number-from-expr 
+					       (get-expr-from-obj ans 'mm 'ub))
+					      (extra-get-number-from-expr 
+					       (get-expr-from-obj ans 'ub_min)))
+					   true precision))
+		    (eqs    (extra-evalexprs))
+		    (maxd   (and ia-vars (= depth maxdepth))))
+		(with-fresh-labels 
+		 (!iax)
+		 (relabel label -1)
+		 (lemma soundness-lemma-name)
+		 (inst? -1)
+		 (replaces label)
+		 (beta -1)
+		 (expand "sound?" -1)
+		 (apply (repeat (expand "length" -1)))
+		 (extra-evalexprs$ eqs !iax)
+		 (branch
+		  (split -1)
+		  ((then
+		    (flatten)
+		    (relabel label (-2 -3 -4 -5))
+		    (hide label)
+		    (spread
+		     (inst -1 ia-lvars)
+		     ((branch
+		       (invoke (case "%1 = %2") (! -1 1) ia-estr)
+		       ((then 
+			 (when verbose?
+			   (printf "~%----")
+			   (when maxd
+			     (printf "Maximum depth has been reached."))
+			   (printf "Lower bound accuracy <= ~a" lbacc) 
+			   (printf "Upper bound accuracy <= ~a" ubacc)
+			   (printf "Splits: ~a. Depth: ~a~%----~%" splits depth)
+			   (printf "See hidden formulas labeled \"~a\" for more information"
+				   label))
+			 (replaces -1)
+			 (decimalize -1 precision))
+			(then (hide -1) (when equiv? (interval-eq__$ names 1 subs)))
+			(then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$))))
+		      (if (null ia-vars)
+			  (eval-formula)
+			(then 
+			 (reveal !iax)
+			 (replaces !iax :hide? nil) 
+			 (vars-in-box__$))))))
+		   (eval-formula)))))))
+	  (skip))
+	 (skip))))))
+  "[Interval] Internal strategy." "")
+
+;; *** Concrete instantiations of branch and bound strategies (interval and numerical) 
+;; *** for interval arithmetic by Mariano Moscato
+
+(defstep interval (&optional 
+		   (fnums 1) (precision 3) maxdepth sat?
+		   vars 
+		   subs 
+		   dirvar
+		   verbose?
+		   label
+		   (equiv? t)
+		   (tccs? t))
+  (gbandb_interval__$ fnums precision maxdepth sat?
+		      vars 
+		      subs 
+		      dirvar
+		      verbose?
+		      label
+		      equiv?
+		      tccs? 
+		      ;; required-theories:
+		      (("IntervalStrategies4Q__") 
+		       "This strategy requires importing either interval_arith@strategies4Q (for rational expressions) or interval_arith@strategies (for real-valued expressions) for its proper operation")
+		      ;; pvsexpr-to-strobj
+		      ia-interval-expr
+		      ;; bandb-function-name
+		      "interval"
+		      ;; bandb soundness theorem name
+		      "interval_soundness"
+		      ;;
+		      nil
+		      ;;
+		      interval-eq__$)
   "[Interval] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on interval
 arithmetic.  The parameter PRECISION indicates an accuracy of
@@ -732,71 +834,11 @@ If TCCs? is set to nil, the strategy doesn't try to prove possible
 TCCs generated during its execution."
   "Checking formula ~a using interval arithmetic")
 
-(defstrat interval-about ()
-  (let ((version (format nil "Interval -- NASA PVS Library ~a" *nasalib-version*))
-	(strategies *interval-strategies*)) 
-    (printf "%--
-% ~a
-% http://shemesh.larc.nasa.gov/people/cam/Interval
-% Strategies in Interval:~a
-%
-% Interval strategies require importing either
-%   interval_arith@strategies4Q (for rational expressions) or
-%   interval_arith@strategies (for real-valued expressions)
-% for its proper operation.
-%--~%" version strategies))
-  "[Interval] Prints Interval's about information.")
-
-;;****
-;; The following strategy is here for pedagological reasons.
-;; In real proofs, the most ellaborated strategies numerical and interval should be used.
-;;****
-
 (defstep simple-numerical (expr &optional (precision 3) (maxdepth 5))
-  (let ((name    (freshname "sia"))
-	(ia-expr (extra-get-expr expr))
-	(ia-estr (expr2str ia-expr))
-	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
-	(vars    (ia-get-vars-from-expr ia-expr))
-	(ia-vars (extra-get-var-ranges fms vars))
-	(unvars  (ia-find-unbound-vars ia-vars))
-	(msg     (cond (unvars
-			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
-				(cdr unvars) unvars (cdr unvars)))
-		       ((null ia-expr)
-			(format nil "Do not understand argument ~a." expr))
-		       ((not (is-number-expr ia-expr))
-			(format nil "Expresion ~a is not a real number expression." ia-expr))))
-	(ia-box    (unless msg (ia-box ia-vars)))
-	(ia-iexpr  (unless msg (ia-interval-expr ia-expr precision ia-vars)))
-	(maxdepth  (if (null ia-vars) 0 maxdepth))
-	(ia-eval   (format nil "simple_interval(~a,~a,~a)" maxdepth name ia-box))
-	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
-	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
-    (if msg
-	(printf msg)
-      (spread
-       (name-label name ia-iexpr :hide? t)
-       ((try-branch
-	 (eval-expr ia-eval :safe? nil)
-	 ((then (lemma "simple_interval_soundness")
-		(inst? -1)
-		(replaces -2)
-		(beta -1)
-		(expand "sound?" -1)
-		(branch (split -1)
-			((spread (inst -1 ia-lvars)
-				 ((branch (invoke (case "%1 = %2") (! -1 1) ia-estr)
-					  ((then (replaces -1)
-						 (decimalize -1 precision))
-					   (interval-eq__ name 1)
-					   (then (hide -1)(vars-sharp__))))
-				  (if (null ia-vars)
-				      (eval-formula)
-				    (vars-in-box__))))
-			 (eval-formula))))
-	  (skip))
-	 (skip))))))
+  (gbandb_simple-numerical__$ expr precision maxdepth
+			      ia-interval-expr
+			      "simple_interval"
+			      "simple_interval_soundness")
   "[Interval] Computes a simple estimation of the minimum and maximum
 values of EXPR using a branch and bound algorithm based on interval
 arithmetic.  PRECISION is the number of decimals in the output
@@ -810,4 +852,70 @@ algorithm.
 This strategy is a simplified version of the more elaborated strategy
 NUMERICAL."
   "Computing estimates to the minmax of expression ~a,~%using interval arithmetic")
+
+(defstep numerical (expr 
+		    &optional (precision 3) (maxdepth 10)
+		    min? max?
+		    vars 
+		    subs
+		    dirvar
+		    verbose?
+		    label
+		    (equiv? t))
+  (gbandb_numerical__$ expr precision maxdepth min? max? vars subs dirvar verbose?
+		       label equiv?
+		       ;; required-theories:
+		       (("IntervalStrategies4Q__") "This strategy requires importing either interval_arith@strategies4Q (for rational expressions) or interval_arith@strategies (for real-valued expressions) for its proper operation")
+		       ;; pvsexpr-to-strobj
+		       ia-interval-expr
+		       ;; bandb-function-name
+		       "numerical"
+		       ;; bandb soundness theorem name
+		       "numerical_soundness"
+		       )
+  "[Interval] Computes lower and upper bounds of the minimum and
+maximum values of EXPR using a branch and bound algorithm based on
+interval arithmetic.  PRECISION is the number of decimals in the
+output interval. PRECISION also indicates an accuracy of 10^-PRECISION
+in every atomic computation. However, this accuracy is not guaranteed
+in the final result. MAXDEPTH is a maximum recursion depth for the
+branch and bound algorithm. For efficiency, the MIN? and MAX? options
+can be used to restrict the precision of the computations to either
+the lower or upper bound, respectively.
+
+VARS is a list of the form (<v1> ... <vn>), where each <vi> is either a
+variable name, e.g., \"x\", or a list consisting of a variable name and
+an interval, e.g., (\"x\" \"[|-1/3,1/3|]\"). This list is used to specify
+the variables in EXPR and to provide their ranges. If this list is not
+provided, this information is extracted from the sequent.
+
+SUBS is a list of substitutions for translating user-defined
+real-valued functions into interval ones. Each substitution has the
+form (<f> <F>), where <f> is the name of a real-valued function and
+<F> is the name of its interval counterpart. It is assumed that <F>
+satisfies the Inclusion and the Fundamental theorems of interval
+arithmetic for <f>. Standard substitutions for basic arithmetic
+operators, abs, sq, sqrt, trigonometric functions, exp, and ln are
+already provided. This parameter can be used to change the precision
+for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
+(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
+PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
+
+DIRVAR is the name of a direction and variable selection method for
+the branch an bound algorithm. Theory numerical_bandb includes some
+pre-defined methods. If none is provided, a choice is made base on the
+problem.
+
+If VERBOSE? is set to t, the strategy prints information about number of
+splits, depth, etc. 
+
+LABEL is used to label formulas containing additional information computed
+by the branch and bound algorithm. These formulas are hidden, but they can
+be brought to the sequent using the proof command REVEAL.
+
+If EQUIV? is set to nil, the strategy doesn't try to prove that the
+deep embedding of the original expression is correct. The proof of
+this fact is trivial from a logical point of view, but requires
+unfolding of several definitions which is time consuming in PVS."
+  "Computing minmax values of expression ~a,~%via interval arithmetic")
 
