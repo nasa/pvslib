@@ -1,0 +1,124 @@
+simple_motion : THEORY
+BEGIN
+
+  IMPORTING util
+
+% Simple constant acceleration
+
+accel_comp(a:real)(t:nnreal):
+  real = 
+  a
+
+vel_comp(v:real, a:real)(t:nnreal):
+  real = 
+  v+a*t
+
+pos_comp(s:real, v:real, a:real)(t:nnreal):
+  real = 
+  s+v*t+0.5*a*t*t
+
+% Accelerate until time t1, then zero acceleration
+
+accelUntil_comp(a:real, t1:nnreal)(t:nnreal):
+  real = 
+  IF t<=t1 THEN 
+    a 
+  ELSE 
+    0 
+  ENDIF
+
+velUntil_comp(v:real, a:real, t1:nnreal)(t:nnreal):
+  real =
+  IF t<=t1 THEN
+    v+a*t
+  ELSE 
+    v+a*t1
+  ENDIF
+
+posUntil_comp(s:real, v:real, a: real, t1:nnreal)(t:nnreal):
+  real = 
+  IF t<=t1 THEN
+    s+v*t+0.5*a*t*t
+  ELSE 
+    s+v*t+0.5*a*t1*t1 +(a*t1)*(t-t1)
+  ENDIF
+
+% Given a goal velocity, determine the sign and time for acceleration
+% needed to reach the goal. 
+
+accelUntil_param(v:real, goalV:real, accel:posreal):
+  [real, nnreal] = 
+  LET sgn = IF goalV>=v THEN 1 ELSE -1 ENDIF IN
+  (sgn*accel, (goalV-v)/(sgn*accel))
+
+% Until functions and parameters packaged together. 
+% Calculates acceleration parameters, 
+% and returns the position and velocity after time t. 
+
+accelUntil(s:real, v:real, goalV:real, accel:posreal)(t:nnreal):
+  [real, real] = 
+  LET AP = accelUntil_param(v, goalV, accel) IN
+  (posUntil_comp(s, v, AP`1, AP`2)(t), 
+   velUntil_comp(v, AP`1, AP`2)(t)) 
+
+% Acceleration with ramp up. Takes an acceleration, linearly accelerates
+% until time t1, constant acceleration at a*t1 until t2, then zero acceleration. 
+
+accelUntilRamp_comp(a:real, t1:nnreal, t2:nnreal)(t:nnreal):
+  real = 
+  IF t<=t1 THEN 
+    a*t
+  ELSIF t<=t2 THEN 
+    a*t1
+  ELSE 
+    0
+  ENDIF 
+
+velUntilRamp_comp(v:real, a:real, t1:nnreal, t2:nnreal)(t:nnreal):
+  real = 
+  IF t<=t1 THEN 
+    v+0.5*a*t*t
+  ELSIF t<=t2 THEN 
+    v+0.5*a*t1*t1+a*t1*(t-t1)
+  ELSE 
+    v+0.5*a*t1*t1+a*t1*(t2-t1)
+  ENDIF  
+
+posUntilRamp_comp(s:real, v:real, a:real, t1:nnreal, t2:nnreal)(t:nnreal):
+  real = 
+       IF t <= t1 THEN 1 / 6 * (a * t^3) + v * t + s
+       ELSIF t <= t2
+         THEN 1 / 2 * (a * t1 * t^2) - 1 / 2 * (a * t1^2 * t) +
+               1 / 6 * (a * t1^3)
+               + t * v + s
+       ELSE -1 / 2 * (a * t1^2 * t) - 1 / 2 * (a * t1 * t2^2) +
+             1 / 6 * (a * t1^3)
+             + a * t1 * t2 * t
+             + v * t + s
+       ENDIF    
+
+% Calculates parameters to use accelUntilRamp to reach a given
+% goal velocity. The parameter accel is the maximum allowed acceleration, 
+% and rt is the time needed to achieve this acceleration.  
+
+accelUntilRamp_param(v:real, goalV:real, accel:posreal, rt:posreal):
+  [real, real, real] = 
+  LET (sgn:int) = IF goalV>=v THEN 1 ELSE -1 ENDIF, 
+      (deltaV:nnreal) = abs(goalV-v) IN
+  IF deltaV<= 0.5*accel*rt THEN
+     (sgn*accel/rt, sqrt(2*rt*deltaV/accel), sqrt(2*rt*deltaV/accel)) 
+  ELSE 
+     (sgn*accel/rt, rt, (deltaV + 0.5*accel*rt)/accel)  
+  ENDIF
+
+% UntilRamp functions and parameters packaged together.
+% Calculates acceleration parameters, 
+% and returns the position and velocity after time t. 
+
+accelUntilRamp(s:real, v:real, goalV:real, accel:posreal, rampTime:posreal)(t:nnreal):
+  [real, real] = 
+  LET RP = accelUntilRamp_param(v, goalV, accel, rampTime) IN 
+  (posUntilRamp_comp(s, v, RP`1, RP`2, RP`3)(t), 
+   velUntilRamp_comp(v, RP`1, RP`2, RP`3)(t))
+
+END simple_motion

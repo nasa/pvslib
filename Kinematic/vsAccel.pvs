@@ -1,0 +1,251 @@
+vsAccel: THEORY
+BEGIN
+
+  IMPORTING interface_analysis, integral_split_fun, reals@real_fun_ops[real], 
+            vectors@vectors_3D, vectors@vectors_2D, vectors@vect_3D_2D
+
+  %  not_one_elem_real: LEMMA not_one_element?[real]
+
+  AUTO_REWRITE+ deriv_domain.not_one_element_real
+  
+  a, TargVel, tsplit, v0, s0 : VAR  real
+
+  t : VAR real
+
+  %aye : [ real -> real ] = LAMBDA(t): IF (t<=tsplit) THEN a ELSE 0 ENDIF
+  %vee : [ real -> real ] = LAMBDA(t): IF (t<=tsplit) THEN v0 + a*t ELSE TargVel ENDIF 
+  %ess : [ real -> real ] = LAMBDA(t): IF (t<=tsplit) THEN s0+v0*t +a*t^2/2 
+  %                                    ELSE s0+v0*tsplit + a*tsplit^2/2 + (t-tsplit)*TargVel ENDIF
+
+  %is_vee
+
+
+  accel( tStar: nnreal,  a: real) : [real-> real] = 
+     split_fun( tStar, const_fun(a), const_fun(0))
+
+  L1_prep: LEMMA FORALL (tStar, t: nnreal, a: real): Integrable?[real](0, t, accel(tStar, a)) 
+
+  velo( v0: real, tStar: nnreal, a: real )(t: nnreal) : real =
+     v0+ Integral(0, t, accel(tStar, a))
+
+%  velo_fun(v0:real, tStar:nnreal, a:real): [nnreal->real] = 
+%       LAMBDA (t:nnreal): velo( v0, tStar, t, a )
+
+  L1: LEMMA FORALL (v0, tStar, t, tmax, a : real): (0<=t AND 0<=tStar AND tStar<=tmax and t<=tmax) 
+               IMPLIES velo(v0, tStar, a)(t) =  
+                          IF (t<=tStar) THEN v0 + a*t ELSE v0+a*tStar ENDIF
+
+  vsAccelUntil_Vel( v0: Vect3, vStar: real, accel: posreal)(t:nnreal): Vect3 = 
+    LET newz=
+      IF (vStar-v0`z)/accel >=0 THEN
+         velo(v0`z, (vStar-v0`z)/accel, accel)(t)
+      ELSE 
+         velo(v0`z, -(vStar-v0`z)/accel, -accel)(t)
+      ENDIF
+      IN
+      v0 WITH [`z:=newz]
+
+
+
+  L2_prep: LEMMA
+  FORALL (v0: real, tStar, t: nnreal, a: real):
+    Integrable?[nnreal](0, t, velo(v0, tStar, a))
+
+  posit(v0: real, s0:real, tStar: nnreal, t: nnreal, a: real) : real = 
+     s0 + Integral(0, t, velo(v0, tStar  , a ))
+
+  
+
+  L2: LEMMA FORALL (v0, s0, tStar, t, tmax, a : real): (0<=t AND 0<=tStar AND tStar<=tmax and t<=tmax) 
+               IMPLIES posit(v0, s0, tStar, t, a) =  
+                          IF (t<=tStar) THEN s0 + v0*t + (a/2)*t^2 ELSE s0 + v0*t - (a/2)*tStar^2 + a*tStar*t ENDIF
+
+ 
+ vsAccelUntil_Pos(s0: Vect3, v0: Vect3, vStar: real, accel: posreal)(t:nnreal): Vect3 = 
+       LET newPos = 
+        IF (vStar-v0`z)/accel >0 THEN
+           posit(v0`z, s0`z, (vStar-v0`z)/accel, t, accel)
+        ELSE 
+           posit(v0`z, s0`z, -(vStar-v0`z)/accel, t, -accel)
+        ENDIF
+        IN
+       ( s0`x+v0`x*t, 
+          s0`y+v0`y*t, 
+           newPos )
+
+
+%% -- ramp-up to constant acceleration. 
+
+
+vsAccelRamp(a:nzreal,  tRamp:posreal)(t:real): real = 
+     (a/tRamp)*t 
+
+vsAccelRamp_Vel(a:nzreal, tRamp:posreal)(t:nnreal): real = 
+     Integral(0, t, vsAccelRamp(a, tRamp))
+
+Int_ramp_vel: LEMMA FORALL (a: nzreal, tRamp: posreal):
+              vsAccelRamp_Vel(a, tRamp) = LAMBDA (t:nnreal): a*t^2/(2*tRamp)
+
+Int_ramp_vel2: LEMMA FORALL (a:nzreal, tRamp: posreal, t:nnreal):
+              Integrable?(0, t, LAMBDA(s:nnreal):vsAccelRamp(a, tRamp)(s)) AND 
+              Integral(0, t, LAMBDA(s:nnreal):vsAccelRamp(a, tRamp)(s)) = a*t^2/(2*tRamp)
+
+vsAccelRamp_Pos(v0z:real, a: nzreal, tRamp:posreal)(t:nnreal): real = 
+     Integral(0, t, LAMBDA (x:nnreal): v0z+ vsAccelRamp_Vel(a, tRamp)(x))
+
+Int_ramp_pos: LEMMA FORALL (v0z: real, a: nzreal, tRamp: posreal):
+              vsAccelRamp_Pos(v0z, a, tRamp) = LAMBDA (t:nnreal): v0z*t+ a*t^3/(6*tRamp) 
+
+vsAccelConst(a:real)(t:real): real = 
+     a
+
+vsAccelConst_Vel(a: real, t0:nnreal)(t:real): real = 
+     Integral(t0, t, vsAccelConst(a)) 
+
+Int_const_vel: LEMMA FORALL (a:real, t0:nnreal):
+               vsAccelConst_Vel(a, t0) = LAMBDA(t:real): a*(t-t0)
+
+Int_const_vel2: LEMMA FORALL (a:real, t0:nnreal, t:nnreal):
+              Integrable?(t0, t, LAMBDA(s:nnreal):vsAccelConst(a)(s)) AND 
+              Integral(t0, t, LAMBDA(s:nnreal):vsAccelConst(a)(s)) = a*(t-t0)
+
+vsAccelConst_Pos(v0z:real, a:real, t0:nnreal)(t:nnreal): real = 
+     Integral(t0, t, LAMBDA(x:nnreal): v0z+vsAccelConst_Vel(a, t0)(x))
+
+Int_const_pos: LEMMA FORALL (v0z:real, a:real, t0:nnreal): 
+               vsAccelConst_Pos(v0z,a, t0) = LAMBDA (t:nnreal): v0z*(t-t0)+a/2*(t^2+t0^2) -a*t0*t
+
+Sign(v0z: real, goalVs:real): real= IF v0z<=goalVs THEN 1 ELSE -1 ENDIF
+
+
+sign_not_zero: JUDGEMENT Sign(a:real, b:real) HAS_TYPE nzreal
+
+%  --ramp-up Case 1: 
+
+vsAUWRU_case1_acc(v0z:real, goalVs:real, accel: posreal, tRamp: posreal)(t:nnreal): real = 
+           IF v0z=goalVs THEN vsAccelConst(0)(t)
+           ELSE
+           LET deltaV = abs(goalVs-v0z) IN
+           LET tMax = sqrt(2*tRamp*deltaV/accel) IN
+           split_fun[nnreal]( tMax, vsAccelRamp(Sign(v0z, goalVs)*accel, tRamp), vsAccelConst(0))(t)
+           ENDIF
+
+case1_vel_prep: LEMMA FORALL (v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+           LET deltaV = abs(goalVs-v0z) IN
+           LET tMax = IF v0z=goalVs THEN 1 ELSE sqrt(2*tRamp*deltaV/accel) ENDIF IN
+           Integrable?(0, t, vsAUWRU_case1_acc(v0z, goalVs, accel, tRamp))
+           
+vsAUWRU_case1_vel(v0z:real, goalVs:real, accel: posreal, tRamp: posreal)(t:nnreal): real = 
+           LET deltaV = abs(goalVs-v0z) IN
+           LET tMax = IF v0z=goalVs THEN 1 ELSE sqrt(2*tRamp*deltaV/accel) ENDIF IN
+           Integral(0, t, vsAUWRU_case1_acc(v0z, goalVs, accel, tRamp))+v0z
+
+Integral_case1_vel: LEMMA FORALL (v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+            LET deltaV = abs(goalVs-v0z) IN
+            vsAUWRU_case1_vel(v0z, goalVs, accel, tRamp)(t) = 
+            IF t< sqrt(2*tRamp*deltaV/accel) THEN
+               v0z + (Sign(v0z, goalVs)*accel/2)*t^2/tRamp
+            ELSE 
+               goalVs
+	    ENDIF
+
+case1_pos_prep: LEMMA FORALL (s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal): 
+           LET deltaV = abs(goalVs-v0z) IN
+           LET tMax = IF v0z=goalVs THEN 1 ELSE sqrt(2*tRamp*deltaV/accel) ENDIF IN
+	   Integrable?(0, t, vsAUWRU_case1_vel(v0z, goalVs, accel, tRamp)) 
+
+
+vsAUWRU_case1_pos(s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp: posreal)(t:nnreal): real = 
+           LET deltaV = abs(goalVs-v0z) IN
+           LET tMax = IF v0z=goalVs THEN 1 ELSE sqrt(2*tRamp*deltaV/accel) ENDIF IN
+	   Integral(0, t, vsAUWRU_case1_vel(v0z, goalVs, accel, tRamp)) +s0z
+	   
+Integral_case1_pos: LEMMA FORALL (s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+            LET deltaV = abs(goalVs-v0z) IN
+            vsAUWRU_case1_pos(s0z, v0z, goalVs, accel, tRamp)(t) = 
+            IF t< sqrt(2*tRamp*deltaV/accel) THEN
+               s0z+ v0z*t + (Sign(v0z, goalVs)*accel/6)*t^3/tRamp
+            ELSE 
+               s0z+ v0z*sqrt(2*tRamp*deltaV/accel) + 
+               (Sign(v0z, goalVs)*accel/6)*sqrt(2*tRamp*deltaV/accel)^3/tRamp + 
+               goalVs*(t-sqrt(2*tRamp*deltaV/accel))
+	    ENDIF  
+
+% -- Now include Case 2.
+
+vsAUWRU_acc(v0z:real, goalVs:real, accel: posreal, tRamp: posreal)(t:nnreal): real = 
+           LET deltaV = abs(goalVs-v0z) IN
+           IF deltaV<=accel*tRamp/2 THEN
+              vsAUWRU_case1_acc(v0z, goalVs, accel, tRamp)(t)
+           ELSE 
+           LET tMax = (deltaV +(accel/2)*tRamp)/accel IN
+           split_fun2[nnreal]( tRamp, tMax, vsAccelRamp(Sign(v0z, goalVs)*accel, tRamp), vsAccelConst(Sign(v0z, goalVs)*accel), vsAccelConst(0) )(t)
+           ENDIF
+
+case2_vel_prep: LEMMA FORALL (v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+           Integrable?(0, t, vsAUWRU_acc(v0z, goalVs, accel, tRamp))
+
+vsAUWRU_vel(v0z:real, goalVs:real, accel: posreal, tRamp: posreal)(t:nnreal): real =
+           Integral(0,t, vsAUWRU_acc(v0z, goalVs, accel, tRamp)) + v0z
+
+Integral_AUWRU_vel: LEMMA FORALL (v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+        vsAUWRU_vel(v0z, goalVs, accel, tRamp)(t) = 
+        IF abs(goalVs-v0z)<=accel*tRamp/2 THEN
+              vsAUWRU_case1_vel(v0z, goalVs, accel, tRamp)(t)
+        ELSE split_fun2[nnreal](tRamp, (abs(goalVs-v0z) +(accel/2)*tRamp)/accel, 
+             LAMBDA(s:nnreal): v0z+(Sign(v0z, goalVs)*accel/(2*tRamp))*s^2,
+             LAMBDA(s:nnreal): v0z+Sign(v0z, goalVs)*accel*(s-tRamp/2), 
+             LAMBDA(s:nnreal): goalVs)(t) 
+	ENDIF
+
+
+
+case2_pos_prep: LEMMA FORALL  (s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+                Integrable?(0, t, vsAUWRU_vel(v0z, goalVs, accel, tRamp))
+
+vsAUWRU_pos(s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp:posreal)(t:nnreal):real = 
+           Integral(0, t, vsAUWRU_vel(v0z, goalVs, accel, tRamp))+s0z
+
+Integral_AUWRU_pos: LEMMA FORALL (s0z:real, v0z:real, goalVs:real, accel: posreal, tRamp: posreal, t:nnreal):
+         vsAUWRU_pos(s0z, v0z, goalVs, accel, tRamp)(t) = 
+         IF abs(goalVs-v0z)<=accel*tRamp/2 THEN
+              vsAUWRU_case1_pos(s0z, v0z, goalVs, accel, tRamp)(t)
+         ELSE split_fun2[nnreal](tRamp, (abs(goalVs-v0z) +(accel/2)*tRamp)/accel, 
+ 	      LAMBDA (s:nnreal):s0z+ v0z*s + ((Sign(v0z, goalVs)*accel/(2*tRamp))/3)*s^3,
+	      LAMBDA (s:nnreal):s0z+ v0z*s + ((Sign(v0z, goalVs)*accel/(2*tRamp))/3)*tRamp^3 + Sign(v0z, goalVs)*accel*((s^2)/2-tRamp*s/2), 
+	      LAMBDA (s:nnreal):s0z+ v0z*(abs(goalVs-v0z) +(accel/2)*tRamp)/accel +
+                     ((Sign(v0z, goalVs)*accel/(2*tRamp))/3)*tRamp^3 + 
+                      Sign(v0z, goalVs)*accel*((((abs(goalVs-v0z) +(accel/2)*tRamp)/accel)^2)/2-tRamp*((abs(goalVs-v0z) +(accel/2)*tRamp)/accel)/2)
+                      + goalVs*(t-(abs(goalVs-v0z) +(accel/2)*tRamp)/accel)
+              )(t)
+	 ENDIF   
+
+vsAUWRU( s0: Vect3, v0: Vect3, goalVs: real, vsAccel: posreal, tRamp: posreal)(t:nnreal): [Vect3, Vect3] =  
+        ( (s0`x+ v0`x*t, s0`y+v0`y*t, vsAUWRU_pos(s0`z, v0`z, goalVs, vsAccel, tRamp)(t)), 
+          (v0`x ,  v0`y,  vsAUWRU_vel(v0`z, goalVs, vsAccel, tRamp)(t)))
+
+
+%% testing: LEMMA FORALL (a,b,c:real): Sign(a,b)*Sign(b,c) /= 0        
+
+%% -- Show that the case split for the ramp-up function is correct, i.e., if time goes past
+%%    tMax, then the change in velocity from ramp-up is more than the desired change in velocity, deltaV. 
+
+same_tMax: LEMMA FORALL(v0z, goalVs:real, accel, tRamp:posreal):
+          (abs(goalVs-v0z) + (accel/2)*tRamp)/accel = 
+          (goalVs-v0z + Sign(v0z, goalVs)*(accel/2)*tRamp)/(Sign(v0z, goalVs)*accel)
+
+exceeds_deltav: LEMMA FORALL (v0z:real, goalVs:real, a:nzreal, tRamp:posreal, t:nnreal):
+            LET deltaV = abs(goalVs-v0z) IN
+            LET tMax = sqrt(2*tRamp*deltaV/abs(a)) IN
+               t>tMax IFF
+                deltaV <abs(vsAccelRamp_Vel(a, tRamp)(t))
+
+%% -- Show that at the end of the ramp-up phase, we have the desired constant acceleration. 
+               
+finish_ramp: LEMMA FORALL (a: nzreal, tRamp: posreal):
+             vsAccelRamp(a,tRamp)(tRamp) = a
+
+%% -- Show that 
+
+
+END vsAccel

@@ -1,0 +1,263 @@
+kinematics_turn: THEORY
+%------------------------------------------------------------------------------
+%
+%   Kinematics Library v0.1            
+%
+%    Provides: support for modeling circular XY-turns
+%              
+%    Restrictions/Assumptions: 
+%      - no roll
+%          i.e., instantaneous change to target bank angle (from 0)
+%      - constant ground speed
+%          i.e., constant track rate
+%      - constant vertical speed
+%
+%    Notes:
+%      - turn dynamics are determined by the bank angle and ground speed
+%      - turn elements: speed, bank angle, radius, track rate
+%      - bank angles can be signed (positive:right) or unsigned
+% 
+%    Authors: Radu Siminiceanu    National Institute of Aerospace
+%             Rick Butler         NASA Langley
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+
+    IMPORTING util, motion, 
+              interface_trig, %Velocity,
+	      reals@abs_lems,
+              vectors@vectors_3D, vectors@vectors_2D, vectors@vect_3D_2D, vectors@distance_2D, vectors@vect_3D_2D
+
+    %% --- variables
+
+    bank, speed, radius: VAR posreal
+    sbank, alpha, beta: VAR real
+    t, tt: VAR posreal
+    so, vo: VAR Vect3
+
+   linear_traj(sv0: svpair, t: real): svpair =
+      (# pos:=linear_pos(sv0, t),
+         vel:=sv0`vel #)
+
+    linear_preserves_gs: LEMMA
+      FORALL(t1, t2: posreal, sv0: svpair): 
+        groundSpeed(linear_traj(sv0, t1)`vel) = groundSpeed(linear_traj(sv0, t2)`vel)
+
+    linear_preserves_vs: LEMMA
+      FORALL(t1, t2: posreal, sv0: svpair): 
+        linear_traj(sv0, t1)`vel`z = linear_traj(sv0, t2)`vel`z
+
+    linear_preserves_track: LEMMA
+      FORALL(t1, t2: posreal, sv0: nzh_svpair): 
+        track(linear_traj(sv0, t1)`vel) = track(linear_traj(sv0, t2)`vel)
+
+    % ------------------------- Turn Equations ---------------------------------
+
+    turnRadius(speed: posreal, bank: nzreal, g:posreal): posreal  =
+      IF (abs(bank) >= pi/2) THEN NaN
+      ELSE sq(speed)/(g*tan(abs(bank)))
+      ENDIF
+
+    turnRadius(speed: posreal, bank: nzreal): posreal = 
+      IF (abs(bank) >= pi/2) THEN NaN
+      ELSE sq(speed)/(gn*tan(abs(bank)))
+      ENDIF
+
+    speedOfTurn(R: posreal, bank: real): nnreal =
+      IF (abs(bank) >= pi/2) THEN NaN
+      ELSE sqrt(gn*tan(abs(bank))*R)
+      ENDIF      
+
+    turnRate(speed: posreal, bank: real): real =
+      IF (bank=0) THEN 0
+      ELSE sign(bank)*speed/turnRadius(speed, bank, gn)
+      ENDIF
+
+    bankAngle(R: posreal, speed: posreal): posreal_lt_pi2 =
+      atan(sq(speed)/(R*gn))
+
+    signedBankAngle(speed: posreal, turnRate: real): real_abs_lt_pi2 =
+      atan(turnRate*speed/gn)
+
+    %% putative lemmas
+
+     bank_radius: LEMMA 
+      abs(bank) < pi/2 IMPLIES
+      LET R = turnRadius(speed,bank,gn) IN
+        bankAngle(R,speed) = atan(sq(speed)/(R*gn)) 
+
+     bank_speed: LEMMA
+       abs(bank) < pi/2 IMPLIES
+       LET s = speedOfTurn(radius, bank) IN
+         bankAngle(radius, s) = atan(sq(s)/(radius*gn))
+
+    %% 
+   
+    turnDone(currentTrk: real, targetTrk: real, turnRight: bool): bool =
+      IF (currentTrk=targetTrk) THEN true
+      ELSIF (turnRight) THEN NOT util_clockwise(currentTrk, targetTrk)
+      ELSE util_clockwise(currentTrk, targetTrk)
+      ENDIF
+
+    delta_clockwise: LEMMA
+      (alpha < beta AND alpha + pi > beta) IMPLIES
+      util_turnDelta(alpha, beta) = util_turnDelta(alpha, beta, TURN_RIGHT)
+ 
+    turnTime(v0: nzhVect3, goalTrack: real, bankAng: real, turnRight: bool): nnreal =
+      LET omega = turnRate(groundSpeed(v0), bankAng) IN
+      LET deltaAng = util_turnDelta(track(v0), goalTrack, turnRight) IN
+      IF (omega=0) THEN NaN
+      ELSE abs(deltaAng/omega)
+      ENDIF
+
+    turnTime(v0: nzhVect3, goalTrack: real, bankAng: real): nnreal =
+      LET omega = turnRate(groundSpeed(v0), bankAng) IN
+      LET deltaAng = util_turnDelta(track(v0), goalTrack) IN
+      IF (omega=0) THEN NaN
+      ELSE abs(deltaAng/omega)
+      ENDIF
+
+    turnTimeAlt(gs:posreal,origTrack:real,goalTrack:real,bankAng:real): nnreal =
+      LET omega = turnRate(gs, bankAng),
+          deltaAng = util_turnDelta(origTrack, goalTrack)
+      IN
+        IF omega=0 THEN NaN
+        ELSE abs(deltaAng/omega)
+        ENDIF
+
+    turnTimeAlt_def: LEMMA FORALL (v0:nzhVect3,goalTrack:real,bankAng:real):
+      turnTime(v0,goalTrack,bankAng) =
+      turnTimeAlt(groundSpeed(v0),track(v0),goalTrack,bankAng)
+
+    turnRight(v0: nzhVect3, goalTrack: real): bool =
+      util_clockwise(track(v0), goalTrack)
+
+    turnDir(turnRight: bool): int =
+      IF (turnRight) THEN 1 ELSE -1 ENDIF
+
+    % turnPos(s0: Vect3, v0: nzhVect3, t: nnreal, R: nzreal, turnRight: bool): Vect3 =
+    %   LET dir = turnDir(turnRight) IN
+    %   LET theta = compassAngle(v0) IN
+    %   LET omega = dir*groundSpeed(v0)/R IN
+    %   (# x:=s0`x + dir*R*(cos(theta) - cos(omega*t+theta)),
+    %      y:=s0`y - dir*R*(sin(theta) - sin(omega*t+theta)),
+    % 	 z:=s0`z + v0`z*t #)
+	 
+    % turnVel(v0: nzhVect3, t: nnreal, R: nzreal, turnRight: bool): Vect3 = 
+    %   LET dir = turnDir(turnRight) IN
+    %   LET omega = dir*groundSpeed(v0)/R IN
+    %   LET trk = track(v0) + dir*omega*t IN
+    %   (# x:=groundSpeed(v0)*sin(trk), 
+    %      y:=groundSpeed(v0)*cos(trk),
+    % 	 z:=v0`z #)
+
+
+    turnOmega(s0: Vect3, v0: Vect3, t: real, omega: real): [Vect3, Vect3] =
+      IF omega=0 THEN
+        (s0+t*v0,v0)
+      ELSE
+        LET v = groundSpeed(v0) IN
+        LET theta = trk(v0) IN
+        LET trk = theta + omega*t IN
+           (      (# x:=s0`x + (v/omega)*(cos(theta) - cos(omega*t+theta)),
+                   y:=s0`y - (v/omega)*(sin(theta) - sin(omega*t+theta)),
+	           z:=s0`z + v0`z*t #),
+               (# x:=v*sin(trk), 
+                  y:=v*cos(trk),
+	          z:=v0`z #))
+      ENDIF
+
+     turnOmega_start: LEMMA FORALL (s0: Vect3, (v0: Vect3 | vect2(v0)/=zero), omega: real):
+       turnOmega(s0, v0, 0, omega) = (s0,v0)
+
+   turnOmegaAT(s0:Vect3, v0: nzhVect3, t:real, omega:real): [Vect3, Vect3] = 
+      IF omega = 0 THEN 
+         (s0+t*v0, v0)
+      ELSE 
+       LET nv = add_track(vect2(v0), omega*t) IN
+         ( (# x:=s0`x + (v0`y - nv`y)/omega,
+              y:=s0`y + (-v0`x +nv`x)/omega,
+	      z:=s0`z + v0`z*t #),
+           (# x:=nv`x, 
+              y:=nv`y,
+	      z:=v0`z #))
+      ENDIF
+
+   turnOmega_equal: LEMMA FORALL(s0:Vect3, v0:nzhVect3, t:real, omega:real):
+      turnOmega(s0, v0, t, omega) =  turnOmegaAT(s0, v0, t, omega)
+
+
+    turn(s0: Vect3, v0: nzhVect3, t: real, R: nzreal, turnRight: bool): [Vect3, Vect3] = 
+         LET dir = IF turnRight THEN 1 ELSE -1 ENDIF,
+             omega = dir*groundSpeed(v0)/R
+         IN   
+             turnOmega(s0,v0,t,omega)
+
+    center(s0: Vect2, theta: real, R: real, turnRight: bool): Vect2 = 
+      LET epsi:Sign = IF turnRight THEN 1 ELSE -1 ENDIF
+      IN    (# x := s0`x + epsi*R*cos(theta),
+               y := s0`y - epsi*R*sin(theta)
+             #)
+
+    center_test_3: LEMMA center(zero,pi/4,1,true) = (1/sqrt(2),-1/sqrt(2))
+
+    center_test_4: LEMMA center(zero,pi/4,1,false) = (-1/sqrt(2),1/sqrt(2))
+
+    center(s0: Vect3, v0: nzhVect3, omega: nzreal): Vect2 = 
+      LET theta = trk(v0),
+          v:posreal = groundSpeed(v0),
+          R = v/omega 
+      IN
+            (# x := s0`x + R*cos(theta),
+               y := s0`y - R*sin(theta)
+             #)
+
+    center_test: LEMMA
+      center((0,0,0),(0,1,0),pi) = (1/pi,0)
+
+    center_test2: LEMMA
+      center((0,0,0),(0,1,0),-pi) = (-1/pi,0)
+
+ 
+    s0: VAR Vect3
+    v0: VAR nzhVect3
+    turnOmega_thm: THEOREM FORALL (t:real, omega:nzreal):
+                             dist(vect2(turnOmega(s0,v0,t,omega)`1),center(s0,v0,omega)) = abs(groundSpeed(v0)/omega)
+
+    turnOmega_vel: LEMMA FORALL (t:real,omega:nzreal):
+      groundSpeed(turnOmega(s0,v0,t,omega)`2)=groundSpeed(v0) AND
+      (vect2(turnOmega(s0,v0,t,omega)`1)-center(s0,v0,omega))*vect2(turnOmega(s0,v0,t,omega)`2)=0
+                       
+
+    %% --------------------- 2D Version ------------------------
+    turnOmega(s0: Vect2, v0: Vect2, t: real, omega: real): [Vect2, Vect2] =
+      IF omega=0 THEN 
+        (s0+t*v0,v0)
+      ELSE
+        LET v = groundSpeed(v0) IN
+        LET theta = trk(v0) IN
+        LET trk = trk(v0) + omega*t IN
+           (      (# x:=s0`x + (v/omega)*(cos(theta) - cos(omega*t+theta)),
+                   y:=s0`y - (v/omega)*(sin(theta) - sin(omega*t+theta)) 
+                #),
+                (# x:=groundSpeed(v0)*sin(trk), 
+                  y:=groundSpeed(v0)*cos(trk)
+                #) )
+      ENDIF
+
+   turnOmega_test: LEMMA
+     turnOmega((0,0),(0,1),1,pi)`1 = (2/pi,0)
+
+   turnOmega_test2: LEMMA
+     turnOmega((0,0),(0,1),1,-pi)`1 = (-2/pi,0)
+
+   turnOmega_test3: LEMMA
+     turnOmega((0,0),(0,1),1/2,pi)`1 = (1/pi,1/pi)
+
+   turnOmega_test4: LEMMA
+     turnOmega((0,0),(0,1),1/2,-pi)`1 = (-1/pi,1/pi)
+
+
+
+END kinematics_turn

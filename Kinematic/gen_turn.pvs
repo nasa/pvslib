@@ -1,0 +1,164 @@
+gen_turn: THEORY
+BEGIN
+
+   IMPORTING vectors@vectors_2D, reals@sqrt, 
+             vectors@lines_2D, vectors@basis_2D,
+	     vectors@det_2D,
+	     to2pi
+
+   pt1: VAR Vect2
+   pt2: VAR Vect2
+   pt3: VAR Vect2
+   R:   VAR posreal
+
+   notEqual(v: Vect2)(x: Vect2): MACRO bool =  v /= x
+
+   notEqual(v1, v2: Vect2)(x: Vect2): MACRO bool =  v1 /= x AND v2 /= x
+
+%  sub_eq_zero: LEMMA FORALL (a: Vect2, b: Vect2): a - b = zero IMPLIES a = b
+
+%   genLine(a: Vect2, b: (notEqual(a))): Line = 
+%       (# p := a, v := a-b #)
+
+   not_collinear(pt1: Vect2, pt2: (notEqual(pt1)))(pt3: Vect2): bool = 
+ %        on_line?(pt3,line_from(pt1,pt2)) 
+    pt3 /= pt2 AND
+    LET ahat = ^(pt3 - pt2),
+           bhat = ^(pt1 - pt2),
+           v = ahat + bhat,
+           d = sqv(v) - sq(v*ahat)
+    IN d /= 0
+
+   not_collinear_not_equal: LEMMA notEqual(pt1)(pt2) AND not_collinear(pt1,pt2)(pt3) IMPLIES
+                                  notEqual(pt2)(pt3)
+
+
+   hat_on_line: LEMMA FORALL (c: real, pt1: Vect2, pt2: (notEqual(pt1))):
+             LET bhat = ^(pt2 - pt1)
+             IN
+               on_line?(pt1 + c*bhat,line_from(pt2,pt1))
+
+   normalize_sqv: LEMMA FORALL (a:Nz_vect2): sqv(^(a)) = 1
+
+   dot_normalize_ge: LEMMA FORALL (v:Vect2, a:Nz_vect2):
+                            LET ahat = ^(a) IN 
+                               sqv(v) >= sq(v * ahat)
+
+   sqv_hat_hat: LEMMA FORALL (v:Vect2, a:Nz_vect2):
+                 LET ahat = ^(a) IN
+                         sqv(v*ahat*ahat) = sq(v*ahat)
+
+
+   pythagorean_dot_hat: LEMMA FORALL (v:Vect2, a:Nz_vect2):
+                 LET ahat = ^(a) IN
+                 sqv(v) = sqv(v*ahat*ahat - v) + sqv(v*ahat*ahat)
+
+
+   turn_gen_sides: LEMMA FORALL (a,b:Nz_vect2):
+                 LET ahat = ^(a) IN
+                 LET bhat = ^(b) IN
+                 LET v = ahat + bhat IN
+                 sq(v*ahat) = sq(v*bhat)
+
+   genPt(pt1: Vect2, pt2: (notEqual(pt1)), c: real): Vect2 = 
+           LET bhat = ^(pt2 - pt1) IN
+              pt1 + c*bhat
+ 
+   turnGenerator(pt1: Vect2, pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): [Vect2,Vect2,Vect2] = 
+      LET ahat = ^(pt3 - pt2),
+          bhat = ^(pt1 - pt2),
+          v = ahat + bhat,
+          d = sqv(v) - sq(v*ahat),
+          k = R/sqrt(d),
+          w = k*v,
+          BOT = genPt(pt2,pt1,w*bhat),
+          EOT = genPt(pt2,pt3,w*ahat),
+          Center = pt2 + w
+      IN
+          (BOT,Center,EOT)
+
+    turnGenerator_test: LEMMA
+      turnGenerator((0,-1),(0,0),(-1,0),1)`3 = (-1,0)
+
+    turnGenerator_test_2: LEMMA
+      turnGenerator((0,-1),(0,0),(1,0),1)`3 = (1,0)
+
+    right_turn(pt1,pt2,pt3:Vect2): bool = (det(pt3-pt2,pt2-pt1)>=0)
+
+    right_turn_test: LEMMA right_turn((0,-1),(0,0),(1,0))
+
+
+    % getTurn(pt1: Vect2, pt2: (notEqual(pt1)), pt3: (notEqual(pt1,pt2)), R: posreal): [Vect2,Vect2] = 
+    %    LET ahat = ^(pt3 - pt2),
+    %        bhat = ^(pt1 - pt2),
+    %        v = ahat + bhat,
+    %        k = sqrt(sq(R)/(sqv(v) - sq(v*ahat))),
+    %        w = k*v,
+    %        wdota = (w*ahat)*ahat,
+    %        wdotb = (w*bhat)*bhat,
+    %        center = pt2 + w,
+    %        BOT = pt2 + wdotb,
+    %        EOT = pt2 + wdota
+    %    IN
+    %       (BOT,EOT)
+
+    % test: LEMMA turnGenerator(pt1,pt2,pt3,R)`1 = getTurn(pt1,pt2,pt3,R)`1
+
+   bot: VAR Vect2
+   eot: VAR Vect2
+   BOT_onLine: LEMMA  FORALL (pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): 
+                             on_line?(turnGenerator(pt1,pt2,pt3,R)`1,line_from(pt1,pt2))
+
+   EOT_onLine: LEMMA  FORALL (pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): 
+                             on_line?(turnGenerator(pt1,pt2,pt3,R)`3,line_from(pt2,pt3))
+
+   BOT_Center: LEMMA  FORALL (pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): 
+                          LET BOT = turnGenerator(pt1,pt2,pt3,R)`1,
+                              Center = turnGenerator(pt1,pt2,pt3,R)`2
+                          IN 
+                              norm(BOT-Center) = R
+
+   EOT_Center: LEMMA  FORALL (pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): 
+                          LET EOT = turnGenerator(pt1,pt2,pt3,R)`3,
+                              Center = turnGenerator(pt1,pt2,pt3,R)`2
+                          IN
+                              norm(EOT-Center) = R
+
+   IMPORTING kinematics_turn, track
+
+   centers_match: LEMMA FORALL (pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal): 
+                          LET BOT = turnGenerator(pt1,pt2,pt3,R)`1,
+                              Center = turnGenerator(pt1,pt2,pt3,R)`2,
+                              trk = track(pt2 - pt1)
+                          IN
+                              Center = center(BOT,trk,R,right_turn(pt1,pt2,pt3))
+
+   turnGenerator_correct: LEMMA FORALL (pt1: Vect2, pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)),
+                                        R: posreal, groundSpeed: posreal):
+                          LET BOT = turnGenerator(pt1,pt2,pt3,R)`1,
+                              Center = turnGenerator(pt1,pt2,pt3,R)`2,
+                              EOT = turnGenerator(pt1,pt2,pt3,R)`3,
+			      turndir = IF right_turn(pt1,pt2,pt3) THEN 1 ELSE -1 ENDIF,
+                              omega = turndir*groundSpeed/R,
+                              trk = track(pt2 - pt1),
+                              vInit = mkTrkGs(trk,groundSpeed),
+                              newtrk = track(pt3 - pt2),
+                              deltaTrack = util_turnDelta(trk,newtrk),
+                              turnTime = turndir*deltaTrack/omega
+                          IN
+                              turnOmega(BOT,vInit,turnTime,omega)`1 = EOT
+
+   % turn_generator_prep: LEMMA FORALL (pt1: Vect2, pt2: (notEqual(pt1)), pt3: (not_collinear(pt1,pt2)), R: posreal):
+   %                       LET BOT = turnGenerator(pt1,pt2,pt3,R)`1,
+   %                           EOT = turnGenerator(pt1,pt2,pt3,R)`2,
+   %                            distAB = norm(BOT-EOT),
+   %                            d = distAB/(2*R) IN
+   %                            -1 <= d AND d <= 1
+
+
+
+
+
+
+END gen_turn
+

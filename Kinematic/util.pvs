@@ -1,0 +1,204 @@
+util: THEORY
+%------------------------------------------------------------------------------
+%
+%   Kinematics utility functions v0.1            
+%
+%    Provides: support for modeling circular turns
+%              
+%    Restrictions/Assumptions: 
+%      - no roll
+%          i.e., instantaneous change to target bank angle (from 0)
+%      - constant ground speed
+%          i.e., constant track rate
+%      - constant vertical speed
+%
+%    Notes:
+%      - turn dynamics are determined by the bank angle and ground speed
+%      - turn elements: speed, bank angle, radius, track rate
+%      - bank angles can be signed (positive:right) or unsigned
+% 
+%    Authors: Radu Siminiceanu    National Institute of Aerospace
+%             Rick Butler         NASA Langley
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+
+    IMPORTING reals@abs_lems, reals@prelude_aux,
+              interface_trig,
+              vectors@vectors_3D, vectors@vectors_2D, vectors@vect_3D_2D,
+              to2pi, track_3D
+
+    nnreal_lt_pi   : NONEMPTY_TYPE = {x:nnreal  | x < pi}   CONTAINING 0
+    posreal_lt_pi  : NONEMPTY_TYPE = {x:posreal | x < pi}   CONTAINING pi/2
+    nnreal_lt_pi2  : NONEMPTY_TYPE = {x:nnreal  | x < pi/2} CONTAINING 0
+    posreal_lt_pi2 : NONEMPTY_TYPE = {x:posreal | x < pi/2} CONTAINING pi/4
+
+    nnreal_le_pi   : NONEMPTY_TYPE = {x:nnreal  | x <= pi}   CONTAINING 0
+    posreal_le_pi  : NONEMPTY_TYPE = {x:posreal | x <= pi}   CONTAINING pi
+    nnreal_le_pi2  : NONEMPTY_TYPE = {x:nnreal  | x <= pi/2} CONTAINING 0
+    posreal_le_pi2 : NONEMPTY_TYPE = {x:posreal | x <= pi/2} CONTAINING pi/2
+
+    nnreal_le_2pi  : NONEMPTY_TYPE = {x:nnreal  | x <= 2*pi} CONTAINING 0
+    nnreal_lt_2pi  : NONEMPTY_TYPE = {x:nnreal  | x < 2*pi} CONTAINING 0
+
+ 
+     %% --- constants
+
+    NaN: posreal	%% not a number
+    INF: posreal	%% infinity
+    gn : posreal	%% gravitational constant
+    TURN_RIGHT: boolean = TRUE
+
+    %% --- variables
+
+    bank, speed: VAR posreal
+    sbank, alpha, beta: VAR real
+    k: VAR int
+    gsp: VAR posreal
+    trk,vs: VAR real
+
+    %% --- to2pi functions
+
+    to2pi_near_sep : LEMMA
+      alpha < beta AND beta < alpha + 2*pi AND 
+      alpha < 2*pi*floor(beta/(2*pi))
+        IMPLIES 
+      to2pi(beta)-to2pi(alpha) = (beta-alpha) - 2*pi
+
+    to2pi_near_same : LEMMA
+      alpha < beta AND beta < alpha + 2*pi AND
+      2*pi*floor(beta/(2*pi)) <= alpha
+        IMPLIES 
+      to2pi(beta)-to2pi(alpha) = beta - alpha
+
+    %% --- velocity components, angles
+
+    groundSpeed(v: Vect2): nnreal = 
+       norm(v)
+
+    gs(v:Vect3): nnreal = norm(vect2(v))
+
+    vs(v:Vect3): real = v`z
+
+    groundSpeed_nzv : JUDGEMENT
+       groundSpeed(v: Nz_vect2) HAS_TYPE posreal
+
+
+    groundSpeed(v: Vect3): MACRO nnreal = 
+       ground_speed(v)
+
+    compassAngle(v: nzhVect3): nnreal_lt_2pi =
+      to2pi(track(v))
+
+    atan2_scal_lt2pi: LEMMA
+      FORALL (k: posreal, a: nnreal_lt_2pi):
+      atan2(k*cos(a), k*sin(a)) = a
+
+    atan2_scal: LEMMA
+      FORALL (k: posreal):
+      atan2(k*cos(alpha), k*sin(alpha)) = to2pi(alpha)
+
+
+    mkTrkGs(trk: real, gs: nnreal): MACRO Vect2 = 
+          trkgs2vect(trk,gs)
+
+    mkTrkGs_nonzero: JUDGEMENT
+      mkTrkGs(trk,gsp) HAS_TYPE Nz_vect2
+
+    mkTrkGsVs(trk: real, gs: real, vs: real): Vect3 =
+      (# x:=gs*sin(trk),
+         y:=gs*cos(trk),
+         z:=vs #)
+
+    mkTrkGsVs_nonzero: JUDGEMENT
+      mkTrkGsVs(trk,gsp,vs) HAS_TYPE nzhVect3
+
+    MkVxyz(x,y,z:real): {w:Vect3 | w`x=x AND w`y=y AND w`z=z} =
+      (# x:=x,y:=y,z:=z #)
+
+    track_mktrk: LEMMA
+      FORALL (trk:real, gs: posreal, vs: real):
+        track(mkTrkGsVs(trk,gs,vs)) = to2pi(trk)
+
+    mkTrkGsVs_def: LEMMA FORALL (v:Vect3): gs(v)>0 IMPLIES
+      mkTrkGsVs(trk(vect2(v)),gs(v),vs(v))=v
+
+    %% --- horizontal turns
+
+    util_clockwise(alpha: real, beta: real): bool =
+      LET a = to2pi(alpha) IN
+      LET b = to2pi(beta) IN
+      IF (abs(a-b) <= pi) THEN (b>=a)
+      ELSE (a>b)
+      ENDIF
+
+    util_turnDelta(alpha: real, beta: real): nnreal_le_pi =
+      LET a = to2pi(alpha) IN
+      LET b = to2pi(beta) IN
+      LET delta = abs(a-b) IN
+      IF (delta<=pi) THEN delta 
+      ELSE 2*pi-delta
+      ENDIF
+
+    cos_util_turnDelta: LEMMA
+      cos(util_turnDelta(alpha,beta)) = cos(alpha-beta)
+
+    sin_util_turnDelta: LEMMA
+      LET V:Vect2 = (sin(alpha),cos(alpha)),
+      	  W:Vect2 = (sin(beta),cos(beta)) IN
+      sin(util_turnDelta(alpha,beta)) = abs(det(V,W))
+
+    util_turnDelta(alpha: real, beta: real, turnRight: bool): nnreal_le_2pi =
+      LET a  = to2pi(alpha) IN
+      LET b  = to2pi(beta) IN
+      LET td = util_turnDelta(alpha, beta) IN
+      LET clkwise = util_clockwise(alpha, beta) IN
+      IF (alpha=beta) THEN 0
+      ELSIF (turnRight=clkwise) THEN td
+      ELSE 2*pi - td
+      ENDIF
+
+
+
+    %% --- linear projections
+
+   svpair : TYPE = [# pos : Vect3, vel : Vect3 #]
+
+   nzh_svpair : TYPE = [# pos: Vect3, vel: nzhVect3 #]
+
+ 
+   linear_pos(s: Vect3, v: Vect3, t: real): Vect3 =
+      (# x:=s`x + v`x*t,
+         y:=s`y + v`y*t,
+         z:=s`z + v`z*t #)
+
+    linear_pos(p: svpair, t: real): Vect3 = 
+      (# x:=p`pos`x + p`vel`x*t,
+         y:=p`pos`y + p`vel`y*t,
+         z:=p`pos`z + p`vel`z*t #)
+
+    mkAlt(s:Vect3,z:real): {vv:Vect3 | vect2(vv)=vect2(s) AND vv`z=z} =
+      s WITH [z:=z]
+
+    mkVs(v:Vect3,z:real): {vv:Vect3 | vect2(vv)=vect2(v) AND vv`z=z} =
+      v WITH [z:=z]
+
+    Vect3(w:Vect2,z:real): {vv:Vect3 | vect2(vv)=w AND vv`z=z} =
+      (# x:= w`x,y:=w`y,z:=z #)
+
+    Vect2(x,y:real): {vv:Vect2 | vv`x=x AND vv`y=y} =
+      (# x:=x,y:=y #)
+
+    % The ^() function in PVS requires a nonzero vector, while the hat
+    % function in J does not. So to make this consistent the following hat
+    % function is defined.
+
+    Hat(w:Vect2): {v:Vect2 | (v=zero IFF w=zero) AND
+    		  (w/=zero IFF (norm(v)=1 AND v=(1/norm(w))*w))} =
+		  LET n = norm(w) IN
+		  IF (n=0) THEN
+		     zero
+		  ELSE Vect2(w`x/n,w`y/n) ENDIF
+    
+END util

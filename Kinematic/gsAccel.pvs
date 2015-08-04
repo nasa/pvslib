@@ -1,0 +1,100 @@
+gsAccel : THEORY
+
+  BEGIN
+
+IMPORTING  
+         util, 
+	 interface_analysis, 
+	 integral_split_fun, 
+	 reals@real_fun_ops[real], 
+         vectors@vectors_3D, 
+	 vectors@vectors_2D, 
+	 vectors@vect_3D_2D
+
+% Given a real ground speed acceleration and a velocity vector, split the acceleration into its component parts.
+
+gsAccelSplit( vo3:Vect3, a:real): Vect3 = Vect3( a*Hat(vect2(vo3)), 0)
+
+% Velocity is the integral of acceleration...
+
+gsAccel_Vel_prep: LEMMA FORALL (vo3:Vect3, a:real, t:real):
+      LET gsAS = gsAccelSplit(vo3, a) IN
+      Integrable?[real](0,t,const_fun[real](gsAS`x)) AND
+      Integrable?[real](0,t,const_fun[real](gsAS`y)) AND
+      Integrable?[real](0,t,const_fun[real](gsAS`z))
+
+
+gsAccel_Vel_Int(vo3:Vect3, a: real, t: real): Vect3 = 
+  LET gsAS = gsAccelSplit(vo3, a),
+      X:real = vo3`x+Integral(0, t, const_fun[real](gsAS`x)),
+      Y:real = vo3`y+Integral(0, t, const_fun[real](gsAS`y)), 
+      Z:real = vo3`z+Integral(0, t, const_fun[real](gsAS`z)) IN
+  (#x:=X, y:=Y, z:=Z #)
+
+gsAccel_Vel_Calc(vo3: Vect3, a: real, t:real): Vect3 = 
+  LET gsAS = gsAccelSplit(vo3, a) IN
+    (#x:=vo3`x+ gsAS`x*t, y:=vo3`y+ gsAS`y*t, z:= vo3`z #)
+
+% This lemma proves that we're calculating it correctly.
+
+Integral_gsAccel_Vel: LEMMA FORALL (vo3:Vect3, a:real, t:real):
+ gsAccel_Vel_Int(vo3, a, t) = gsAccel_Vel_Calc(vo3, a, t)
+
+
+%Position is the integral of velocity...
+
+gsAccel_Pos_prep: LEMMA FORALL (so3, vo3:Vect3, a:real, t:real):
+        Integrable?[real](0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`x) AND
+        Integrable?[real](0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`y) AND
+        Integrable?[real](0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`z)
+
+gsAccel_Pos_Int(so3, vo3:Vect3, a:real, t:real): Vect3 = 
+  LET    X:real = so3`x+Integral(0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`x),
+         Y:real = so3`y+Integral(0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`y), 
+         Z:real = so3`z+Integral(0, t, LAMBDA(s:real): gsAccel_Vel_Calc(vo3, a, s)`z) IN
+  (#x:=X, y:=Y, z:=Z #)
+
+gsAccel_Pos_Calc(so3, vo3:Vect3, a:real, t:real): Vect3 =
+  LET gsAS = gsAccelSplit(vo3, a) IN 
+    	(#x:=so3`x + vo3`x*t+ (gsAS`x/2)*t^2, 
+ 	  y:=so3`y+vo3`y*t+ (gsAS`y/2)*t^2, 
+          z:=so3`z+vo3`z*t #)
+
+% This lemma proves we're calculating it correctly.
+
+Integral_gsAccel_Pos: LEMMA FORALL(so3, vo3:Vect3, a:real, t:real): 
+   gsAccel_Pos_Int(so3, vo3, a, t) = gsAccel_Pos_Calc(so3, vo3, a, t)     
+
+ 
+% This function pairs the two proven functions for use in kinematics_gs_accel. 
+
+gsAccel_fnd(so3, vo3:Vect3, t:real, a:real): [Vect3,  Vect3] = 
+  (gsAccel_Pos_Calc(so3, vo3, a, t), gsAccel_Vel_Calc(vo3, a, t))
+  
+
+% Determines if we can accelerate/decelerate fast enough to cover the desired distance in the time allowed.
+% If "a" is positive, determines if accelerating for the entire time covers more ground than "dist."
+% If "a" is negative, determines if decelerating for either the entire time, or to zero ground speed,
+% doesn't overshoot the goal   
+ 
+ gsAccelToRTA_possible(gsIn, t, dist:nnreal,  a:nzreal):  [bool, nnreal]  = 
+           IF a>0 THEN (gsIn*t + (a/2)*t^2>=dist, t) 
+           ELSE LET T = min(t, -gsIn/a) IN (gsIn*t+(a/2)*t^2<=dist, T)  ENDIF
+
+% Lemma showing the "min" in the time calculated above is needed.  
+ 
+ neg_groundspeed: LEMMA FORALL (gsIn, t:nnreal, a:nzreal):
+        gsIn+a*t<0 IFF (a<0 AND t>-gsIn/a)
+
+           
+
+  % mostAccel_eq_Pos_change: LEMMA FORALL(vo3:Vect3, t:nnreal, a:real):
+  %               gs(vo3)/=0 AND gsPos(gs(vo3), t, a) IMPLIES  
+  % 		norm(vect2(gsAccel_Pos_Calc(zero, vo3, a,t))) = gsAccelMostPositionChange(gs(vo3), t, a)
+
+  
+
+
+  
+
+  END gsAccel

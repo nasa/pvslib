@@ -1,0 +1,147 @@
+motion[T: TYPE+ FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%    Provides:	general framework to define motion laws by integration/derivation:
+%		- given an acceleration function over time [real -> real]
+%		- the velocity fn is obtained by integrating the acceleration fn
+%		- position is obtained by integrating the velocity function
+%		or, dually:
+%		- given a position function over time [T -> real/Vect3]
+%		- the velocity is obtained by derivation of the position fn
+%		- the acceleration is obtained by derivation of the velocity fn
+%		
+%    Assumptions: motion functions are in the "best-behaved" category: (higher-order) derivable
+%
+%    Notation: Type T symbolically stands for time
+%              
+%    Authors: Radu Siminiceanu	National Institute of Aerospace
+%             Rick Butler	NASA Langley
+%	      Cesar Munoz	NASA Langley
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+      IMPORTING interface_analysis
+
+      connected_domain : ASSUMPTION connected?[T]
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+      zero_in         : ASSUMPTION T_pred[T](0)
+
+   ENDASSUMING
+
+    deriv_domain: LEMMA deriv_domain?[T]
+
+    IMPORTING vectors@vectors_3D,
+              interface_analysis
+
+    AUTO_REWRITE+ zero_in
+
+    Rate_fun	       : TYPE = {f : [T -> real] | derivable?(f)}
+    Rate3D_fun	       : TYPE = [# x, y, z: Rate_fun #]
+
+    Acceleration_fun   : TYPE = Rate_fun
+    Acceleration3D_fun : TYPE = Rate3D_fun
+    Velocity3D_fun     : TYPE = Rate3D_fun
+
+    Integration	       : TYPE = [Rate_fun, real -> Rate_fun]
+    Integration2       : TYPE = [Rate_fun, real, real -> Rate_fun]
+
+    ComputeRate_fun      : TYPE = [Acceleration_fun, real -> Rate_fun]
+    ComputePositionV_fun  : TYPE = [Rate_fun, real -> Rate_fun]
+    ComputePositionA_fun  : TYPE = [Acceleration_fun, real, real -> Rate_fun]
+
+    ComputeVelocity3D_fun   : TYPE = [Acceleration3D_fun, Vect3 -> Rate3D_fun]
+    ComputeLocationV3D_fun  : TYPE = [Velocity3D_fun, Vect3 -> Rate3D_fun]
+    ComputeLocationA3D_fun  : TYPE = [Acceleration3D_fun, Vect3, Vect3 -> Rate3D_fun]
+
+    %% --- variables
+
+    a, b, c : VAR real
+    v, x0   : VAR real
+    t0, t   : VAR T
+    v0, s0  : VAR Vect3
+    r	    : VAR Rate_fun
+
+    %% -- general template to integrate / derive rates of motion
+
+    integrable_Rate_fun: LEMMA
+      FORALL (rate: Rate_fun, t0: T, t: T): Integrable?[T](t0, t, rate);
+
+    derivable_integral_Rate_fun: LEMMA
+      FORALL (rate: Rate_fun, x0: real, t0: T):
+          derivable?[T](LAMBDA (t: T): x0 + Integral[T](t0, t, rate));
+
+    integrate(rate: Rate_fun, x0: real, t0: T): Rate_fun =
+      LAMBDA(t: T): x0 + Integral(t0, t, rate)
+
+    derive(rate: Rate_fun, x0: real, t0: T): [T -> real] =
+      LAMBDA(t: T): x0 + (t-t0)*(deriv(rate)(t))
+
+    integrate2(rate: Rate_fun, x0: real, v0: real, t0: T): Rate_fun =
+      LAMBDA(t: T): x0 + Integral(t0, t, integrate(rate, v0, t0))
+
+    derive2(rate: {f : Rate_fun | derivable?(deriv(f))}, x0: real, t0: T): [T -> real] =
+      LAMBDA(t: T): x0 + (t-t0)*(deriv(rate)(t)) + (t-t0)*(t-t0)/2*deriv(deriv(rate))(t)
+
+    %% -- speed value (single axis) given an initial value v0 at time t0 and an acceleration profile
+    %% -- function of time
+    speed(a: Acceleration_fun, v0: real) : Rate_fun =
+      LAMBDA(t: T): v0 + Integral(0, t, a)
+
+    %% -- position (single axis) given an initial value s0 at time t0 and a speed function
+    %% -- function of time
+    position(v: Rate_fun, s0: real) : Rate_fun =
+      LAMBDA(t: T): s0 + Integral(0, t, v)
+
+    %% -- position (single coordinate) given an initial point s0 at time t0 and an acceleration profile
+    %% -- function of time 
+    position(a: Acceleration_fun, s0: real, v0: real): Rate_fun =
+      LAMBDA(t: T): s0 + Integral(0, t, speed(a, v0))
+
+    %% -- three-dimensional version of speed
+    %% -- function of time, returns three projections
+    velocity3d(a3: Acceleration3D_fun, v0: Vect3) : Rate3D_fun =  
+      (# x := speed(a3`x, v0`x),
+         y := speed(a3`y, v0`y),
+	 z := speed(a3`z, v0`z) #)
+    
+    %% -- three-dimensional version of position
+    %% -- function of time, returns three projections
+    location3d(v3: Velocity3D_fun, s0: Vect3) : Rate3D_fun =  
+      (# x := position(v3`x, s0`x),
+         y := position(v3`y, s0`y),
+	 z := position(v3`z, s0`z)  #)
+    
+    %% -- three-dimensional version of position
+    %% -- function of time, returns three coordinates
+    location3d(a3: Acceleration3D_fun, s0: Vect3, v0: Vect3) : Rate3D_fun =
+      (# x := position(speed(a3`x, v0`x), s0`x),
+         y := position(speed(a3`y, v0`y), s0`y),
+	 z := position(speed(a3`z, v0`z), s0`z)  #)
+
+
+    %% --- Basic cases
+
+    no_accel		 : Acceleration_fun = (LAMBDA(t: T): 0)
+    const_accel(a)	 : Acceleration_fun = (LAMBDA(t: T): a)	
+    linear_accel(a, b)   : Acceleration_fun = (LAMBDA(t: T): a*t + b)
+    const_speed(v)  	 : Rate_fun = (LAMBDA(t: T): v)
+    linear_speed(a, b)	 : Rate_fun = (LAMBDA(t: T): a*t + b)
+
+    const_accel_speed: LEMMA 
+      speed(const_accel(a), v) = LAMBDA(t: T): v + t*a
+
+    zero_accel_speed: LEMMA
+      speed(no_accel, v) = LAMBDA(t: T): v
+
+    zero_accel_pos: LEMMA
+      position(no_accel, x0, v) = LAMBDA(t: T): x0 + t*v
+      
+    const_accel_pos: LEMMA
+      position(const_accel(a), x0, v) = LAMBDA(t: T): x0 + t*v + t*t*a/2
+    
+
+END motion

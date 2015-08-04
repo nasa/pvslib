@@ -1,0 +1,105 @@
+NavPoint: THEORY
+BEGIN
+
+   IMPORTING vectors@vectors_3D, vectors@vect_3D_2D, Velocity
+
+   TCPType: TYPE = {NONE, BOT, TMID, EOT, BGSC, EGSC, BVSC, EVSC}
+
+   NavPoint: TYPE = [#
+                    position: Vect3,
+                    t: nnreal,
+                    tcp: TCPType,      % The following fields are indeterminate if tcp = NONE
+                    accel: real,       % For turns, this is omega (turn rate+direction), 
+                                       % for gs or vs this is a signed acceleration value
+                    velocityIn: Vect3
+                    #]
+   np,np1,np2: VAR NavPoint
+
+   TCP_NavPoint: TYPE = {np: NavPoint | np`tcp /= NONE}
+
+   mk_navpoint(pos1: Vect3,t1: nnreal,tcp1: TCPType,
+                    a1: real,v1: Vect3): NavPoint =
+     (# position:=pos1,t:=t1,tcp:=tcp1,accel:=a1,velocityIn:=v1 #)
+
+   mk_v3(x1,y1,z1:real): Vect3 = (# x:=x1,y:=y1,z:=z1 #)
+
+   np_lin_ex1: NavPoint = mk_navpoint(mk_v3(0,0,20000),0,NONE,0,zero)
+
+   np_lin_ex2: NavPoint = mk_navpoint(mk_v3(7,0,20000),84,NONE,0,zero)
+
+   np_lin_ex3: NavPoint = mk_navpoint(mk_v3(7,3,20000),120,NONE,0,zero)
+
+   np_lin_ex4: NavPoint = mk_navpoint(mk_v3(14,3,21000),204,NONE,0,zero)
+
+
+
+   isTurn(np: NavPoint): bool = (np`tcp = BOT OR np`tcp = EOT OR np`tcp = TMID)
+
+   isTCP(np): bool = np`tcp=NONE
+
+   isTurnBegin(np): bool = np`tcp=BOT
+
+   isTurnMid(np): bool = np`tcp=TMID
+
+   isTurnEnd(np): bool = np`tcp=EOT
+
+   isGSC(np: NavPoint): bool = (np`tcp = BGSC OR np`tcp = EGSC)
+
+   isGSCBegin(np): bool = np`tcp=BGSC
+
+   isGSCEnd(np): bool = np`tcp=EGSC
+
+   isVSC(np: NavPoint): bool = (np`tcp = BVSC OR np`tcp = EVSC)
+
+   isVSCBegin(np): bool = np`tcp=BVSC
+
+   isVSCEnd(np): bool = np`tcp=EVSC
+
+   turnRadius(np: NavPoint): nnreal = 
+      IF isTurn(np) AND np`accel /= 0 THEN
+         abs(gs(np`velocityIn)/np`accel)
+      ELSE
+	   0.0
+      ENDIF
+
+   distanceH(v1: Vect3, v2: Vect3): nnreal =
+      norm(vect2(v1) - vect2(v2))
+
+   velocityIn(np:NavPoint|np`tcp/=NONE): Vect3 = np`velocityIn % java also has an invalid flag
+   			    	    		  % in this function
+
+    groundSpeed(n1: NavPoint, n2: NavPoint): nnreal = 
+      LET v1 = vect2(n1`position),
+          v2 = vect2(n2`position)
+      IN
+        IF n2`t = n1`t THEN 0
+        ELSE
+           norm(v2-v1)/abs(n2`t - n1`t)
+        ENDIF
+
+     nz_gs_navPoint(n1: NavPoint)(n2: NavPoint): bool = 
+      LET v1 = vect2(n1`position),
+          v2 = vect2(n2`position)
+      IN
+          v1 /= v2 AND n1`t /= n2`t
+
+     gs_nz: JUDGEMENT 
+        groundSpeed(v1:NavPoint, v2: (nz_gs_navPoint(v1))) HAS_TYPE posreal
+
+    initialVelocity(n1:NavPoint)(s:NavPoint): Vect3 =
+      LET pp = n1`position,
+      	  tt = n1`t
+      IN
+      LET dt=s`t-tt IN
+      IF dt = 0
+        THEN zero
+      ELSIF dt>0
+        THEN (1/dt)*(s`position-n1`position)
+      ELSE
+        (1/-dt)*(s`position-n1`position)
+      ENDIF
+
+
+END NavPoint
+
+

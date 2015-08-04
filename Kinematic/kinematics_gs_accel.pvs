@@ -1,0 +1,125 @@
+kinematics_gs_accel: THEORY
+%------------------------------------------------------------------------------
+%
+%   Kinematics
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+
+    IMPORTING util,
+    	      gsAccel, 
+              interface_trig,
+	      reals@abs_lems, reals@quadratic,
+              vectors@vectors_3D, vectors@vectors_2D, vectors@vect_3D_2D, vectors@distance_2D, vectors@vect_3D_2D
+
+
+
+
+    
+  gsAccelPos(so3,vo3: Vect3, t,a:real): Vect3 =
+    LET so:Vect2 = vect2(so3),
+    	vo:Vect2 = vect2(vo3),
+	sK:Vect2 = so+(norm(vo)*t+0.5*a*t*t)*(Hat(vo)),
+	nz:real  = so3`z+vo3`z*t,
+	rtn:Vect3= Vect3(sK,nz)
+    IN rtn
+
+% Note: In the following, the Java function doesn't include the case "IF gs(vo) = 0 THEN..." This is 
+%       because the Java doesn't allow a velocity vectors with zero ground speed. Setting it to zero in this 
+%       case is only to make the superfluous PVS case true. This could also be remedied by changing the type of 
+%       vo3 to nzhVect3...    
+
+  gsAccel(so3,vo3:Vect3, t,a:real): [Vect3,Vect3] =
+    LET nvoGs = IF gs(vo3)=0 THEN 0 ELSE gs(vo3)+a*t ENDIF, 
+    pres:Vect3 = gsAccelPos(so3,vo3,t,a),
+    vres:Vect3 = mkTrkGsVs(trk(vo3),nvoGs,vs(vo3))
+    IN
+      (pres,vres)
+
+ %  Lemma showing that the foundational calculation in gsAccel is the same as this calculation. 
+
+  gsAccel_equals_fnd: LEMMA FORALL (so3, vo3:Vect3, t, a:real): 
+    gsAccel(so3, vo3, t, a) = gsAccel_fnd(so3, vo3, t, a)
+
+
+  gsAccelTime(vo3:Vect3, goalGs: posreal, gsAccel: posreal): real =
+                abs(gs(vo3) - goalGs)/gsAccel
+
+ % Lemma showing that the time calculated is correct. That is, accelerating (or decellerating) for
+ % gsAccelTime time units achieves the goal ground speed. 
+
+  reach_goal: LEMMA FORALL(so3, vo3:Vect3, goalGs:posreal, gsAccel:posreal):
+ 	     LET sgn = IF goalGs>= gs(vo3) THEN 1 ELSE -1 ENDIF IN
+ 	     gs(vo3)/=0 IMPLIES gs(gsAccel(so3, vo3, gsAccelTime(vo3, goalGs, gsAccel), sgn*gsAccel)`2) = goalGs 
+  
+
+  gsAccelGoal(so3, vo3:Vect3, goalGs: posreal, gsAccel:posreal): [Vect3, Vect3, real] = 
+  		   LET sgn = IF goalGs>= gs(vo3) THEN 1 ELSE -1 ENDIF, 
+		       accelTime:real = gsAccelTime(vo3, goalGs, gsAccel), 
+		       nso:Vect3 = gsAccelPos(so3, vo3, accelTime, sgn*gsAccel), 
+		       nvo:Vect3 = mkTrkGsVs(trk(vo3), goalGs, vs(vo3)) IN
+		   (nso, nvo, accelTime) 
+
+ % The following function uses gsAccel to return position and velocity at any time t during an acceleration to a 
+ % given goal ground speed, followed by constant velocity (zero acceleration).  
+
+
+  gsAccelUntil(so3, vo3:Vect3, t:real, goalGs: posreal, gsAccel: posreal): [Vect3, Vect3] = 
+  		    LET sgn = IF goalGs>= gs(vo3) THEN 1 ELSE -1 ENDIF, 
+		       accelTime:real = gsAccelTime(vo3, goalGs, gsAccel),
+		       a:real = sgn*gsAccel, 
+		       nsv = gsAccel(so3, vo3, accelTime, a) IN
+  		    IF t<=accelTime THEN 
+   		       gsAccel(so3, vo3, t, a) 
+		    ELSE  gsAccel(nsv`1, nsv`2, t-accelTime, 0)
+		    ENDIF
+
+
+ % Lemma showing that the function above is continuous at its breakpoint, goalGs is maintained afterward, and vertical velocity never changes.   
+
+ gsAccelUntil_checks: LEMMA FORALL (so3, vo3:Vect3, t:real, goalGs: posreal, gsAccel: posreal):
+           LET sgn = IF goalGs>= gs(vo3) THEN 1 ELSE -1 ENDIF, 
+           accelTime:real = gsAccelTime(vo3, goalGs, gsAccel),
+	   a:real = sgn*gsAccel, 
+	   nsv = gsAccel(so3, vo3, accelTime, a) IN
+	   gs(vo3)/= 0 IMPLIES
+	   gsAccel(so3, vo3, accelTime, a) = gsAccel(nsv`1, nsv`2, 0, 0) AND
+           (t>accelTime IMPLIES gs(gsAccelUntil(so3, vo3, t, goalGs, gsAccel)`2) = goalGs) AND
+           gsAccelUntil(so3, vo3, t, goalGs, gsAccel)`2`z = vo3`z
+ 	   
+ % Same as the gsAccelUntil function, but with a position/velocity pair as the first input. 
+
+  gsAccelUntil2( svo:[Vect3, Vect3], t:real, goalGs: posreal, gsAccel: posreal): 
+                 [Vect3, Vect3] = gsAccelUntil(svo`1, svo`2, t, goalGs, gsAccel) 
+
+
+ 
+  
+
+   gsAccelToRTA(gsIn, dist, rta, gsAccel:posreal): [real, real] = 
+            LET avgGs:posreal = dist/rta, 
+                sgn = IF avgGs>=gsIn THEN 1 ELSE -1 ENDIF, 
+  		a:nzreal = sgn*gsAccel, 
+		  
+		ToRTAPoss = gsAccelToRTA_possible(gsIn, rta, dist, a) IN
+	   IF  ToRTAPoss`1 THEN
+             LET A:nzreal = a/2, 
+ 		 B:nzreal = -a*rta, 
+	 	 C:real = dist-gsIn*rta,
+		 t = root(A, B, C, -sgn) IN 
+ 	     	 
+ 		 IF t<ToRTAPoss`2 THEN (gsIn+a*t, t) 
+		 ELSE (-1, -1) ENDIF
+  	   ELSE (-1,-1) ENDIF 
+
+
+  % Lemma showing that gsAccelToRTA does as it should...
+
+ gsAccelToRTA_checks: LEMMA FORALL ( vo3: nzhVect3, dist, rta, gsAccel: posreal):
+           LET gsTor = gsAccelToRTA( gs(vo3), dist, rta, gsAccel) IN
+	   gsTor/= (-1, -1) IMPLIES
+           norm(vect2(gsAccelUntil(zero, vo3, rta, gsTor`1, gsAccel)`1)) = dist
+
+
+END kinematics_gs_accel

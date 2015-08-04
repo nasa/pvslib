@@ -1,0 +1,97 @@
+% repulsive iterative for vs_only maneuvers (vect2
+% components stay the same for these maneuvers
+
+repulsive_vertical_it: THEORY                        
+BEGIN
+
+  IMPORTING vertical,
+  	    space_3D
+
+  s,so,si,v,vo,vi,
+  nv,nw   : VAR Vect3
+  eps	  : VAR Sign
+  cc	  : VAR posreal
+  t	  : VAR posreal
+  i	  : VAR posnat
+  n,m	  : VAR nat
+  Nsteps,
+  Nsteps1,
+  Nsteps2  : VAR posnat % Number of maneuver segments
+  	    	       % before turning straight
+
+
+  VelSeq: TYPE = [posnat->Vect3]
+  timestep: VAR posreal
+
+  velseqo,velseqi,velseq: VAR VelSeq
+
+
+  vs_only?(vo)(velseqo): bool =
+    FORALL (jp:posnat): vs_only?(vo)(velseqo(jp))
+
+  vertical_repulsive_crit(s,v,eps)(nv): bool =
+    eps*nv`z>=eps*v`z
+
+  % Sequence of positions so
+
+  man_pos_seq_v3(so,timestep,velseqo)(i): RECURSIVE Vect3 =
+    IF    i = 1 THEN so
+    ELSE LET soprev = man_pos_seq_v3(so,timestep,velseqo)(i-1),
+    	     voprev = velseqo(i-1)
+	 IN soprev + timestep*voprev
+    ENDIF MEASURE i
+
+  man_pos_seq_v3_test: LEMMA
+    man_pos_seq_v3(so,timestep,velseqo)(1) = so AND
+    man_pos_seq_v3(so,timestep,velseqo)(2) = so+timestep*velseqo(1) AND
+    man_pos_seq_v3(so,timestep,velseqo)(3) = so+timestep*velseqo(1)
+    			+ timestep*velseqo(2) AND
+    man_pos_seq_v3(so,timestep,velseqo)(4) = so+timestep*velseqo(1)
+    			+ timestep*velseqo(2) +timestep*velseqo(3)
+
+  maneuver_position_v3_at(so,timestep,velseqo,Nsteps)(t:nnreal): Vect3 =
+    LET numsteps = min(floor(t/timestep)+1,Nsteps),
+    	lastso    = man_pos_seq_v3(so,timestep,velseqo)(numsteps),
+	lastvo	  = velseqo(numsteps)
+    IN  lastso + (t-timestep*(numsteps-1))*lastvo
+
+  manuever_position_at_def: LEMMA m+1<=Nsteps IMPLIES
+    maneuver_position_v3_at(so,timestep,velseqo,Nsteps)(m*timestep) =
+    man_pos_seq_v3(so,timestep,velseqo)(m+1)
+
+   vertical_repulsive_crit_iterative(s,v,timestep,velseq,Nsteps,eps): bool =
+     vertical_repulsive_crit(s,v,eps)(velseq(1)) AND
+    FORALL (m:subrange(1,Nsteps-1)):  vertical_repulsive_crit(man_pos_seq_v3(s,timestep,velseq)(m+1),velseq(m),eps)(velseq(m+1))
+
+   vertical_repulsive_crit_iterative_reduces_seq: LEMMA vs_only?(v)(velseq) AND
+     vertical_repulsive_crit_iterative(s,v,timestep,velseq,Nsteps,eps)
+    IMPLIES
+    FORALL (m:subrange(1,Nsteps)):
+       vertical_repulsive_crit(s,v,eps)(velseq(m))
+      AND (m<Nsteps IMPLIES  
+        vertical_repulsive_crit(s,v,eps)((1/(m*timestep))*(man_pos_seq_v3(s,timestep,velseq)(m+1)-s)))
+  
+  % Relative sequence of velocities
+
+  relative_velseq_vel(velseqo,vi)(i): Vect3 =
+    velseqo(i)-vi
+
+  relative_velseq(velseqo,velseqi)(i): Vect3 =
+    velseqo(i)-velseqi(i)
+
+   vertical_repulsive_crit_iterative_coordinated: LEMMA
+     vs_only?(vo)(velseqo) AND vs_only?(vi)(velseqi) AND
+     vertical_repulsive_crit_iterative(so-si,vo-vi,timestep,
+	      relative_velseq_vel(velseqo,vi),Nsteps,eps) AND
+     vertical_repulsive_crit_iterative(si-so,vi-vo,timestep,
+	      relative_velseq_vel(velseqi,vo),Nsteps,-eps)
+    IMPLIES
+    (FORALL (m:subrange(1,Nsteps)):
+       vertical_repulsive_crit(so-si,vo-vi,eps)
+         (relative_velseq(velseqo,velseqi)(m))
+      AND (m<Nsteps IMPLIES  
+        vertical_repulsive_crit(so-si,vo-vi,eps)((1/(m*timestep))*
+	(man_pos_seq_v3(so-si,timestep,relative_velseq(velseqo,velseqi))
+	  (m+1)-(so-si)))))
+
+END repulsive_vertical_it

@@ -1,0 +1,200 @@
+vsLevelOut  : THEORY
+
+  BEGIN
+
+
+IMPORTING  vsAccel, util, reals@quadratic
+
+% -- A few functions for calculating changes in position (S) and current velocities (V)
+
+S1(v:real, a:nzreal)( t:real): real = v*t+(a/2)*t^2
+
+V1(v:real, a: nzreal)( t:real): real = v+a*t
+
+S3(v:real, a: nzreal): real = S1(v, a)( -v/a)
+
+tee3(v:real, a: nzreal): real = -v/a
+
+% -- Things about roots of a quadratic. lem2 is (probably) useful with vsLevelOutTimes1
+
+quadRoots(a:real, b, c:real): [real, real] = 
+          IF a/=0 AND b^2-4*a*c>=0 THEN  ((-b+sqrt(b^2-4*a*c))/(2*a), (-b-sqrt(b^2-4*a*c))/(2*a))
+          ELSE (0,0) ENDIF 
+
+quad_contrapos: LEMMA FORALL(a:nzreal, b, c :real): b^2-4*a*c<0 IMPLIES 
+                FORALL(x:real): a^2*x^2+b*a*x +a*c >0 
+
+quad_lem: LEMMA FORALL(a:nzreal, b, c, x, y :real): (a*x^2+b*x+c>=0 AND a*y^2+b*y+c<=0) 
+               IMPLIES b^2 -4*a*c >=0
+
+quad_lem2: LEMMA  FORALL(a:nzreal, b, c, x, y :real): (a*x^2+b*x+c>=0 AND a*y^2+b*y+c<=0) IMPLIES
+             LET r1 = (-b+sqrt(b^2-4*a*c))/(2*a), 
+                   r2 = (-b-sqrt(b^2-4*a*c))/(2*a) IN
+               a*r1^2+b*r1+c=0 AND a*r2^2+b*r2+c=0 
+   
+
+minpos(a,b:real): real = IF a<0 THEN max(0,b) ELSIF b<0 THEN max(0,a) ELSE min(a,b) ENDIF
+ 
+% -- Calculates breakpoints and accelerations for the acceleration profile in the case where starting vertical velocity is 
+%    zero or moving toward the target position  
+
+vsLevelOutTimes1(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?: bool): 
+[real, real, real, real, real, real] = 
+LET altDir = IF targetAlt>= s0z THEN 1 ELSE -1 ENDIF, 
+    cRate = altDir*(IF alterCR? THEN max(climbRate, abs(v0z)) ELSE climbRate ENDIF), 
+    S = (targetAlt - s0z),
+    a1 = IF cRate>= v0z THEN accelup ELSE acceldown ENDIF,
+    a2 = IF targetAlt>=s0z THEN acceldown ELSE accelup ENDIF, 
+    t1 = (cRate -v0z)/a1  IN
+   IF abs(S)>= abs( S1(v0z, a1)( t1) + S3(V1(v0z, a1)( t1), a2)) THEN
+ 
+     LET t2 = (S-S1(v0z, a1)( t1) - S3(V1(v0z, a1)( t1), a2))/cRate IN
+    (t1, t1+t2, t1+t2+tee3(cRate, a2), cRate, a1, a2) 
+
+   ELSE  
+    LET qr= quadRoots( a1/2-a1^2/(2*a2), v0z*(1-a1/a2), -v0z^2/(2*a2) -S), 
+    t1 = minpos(qr) IN
+    (t1, t1, t1+tee3(V1(v0z, a1)( t1), a2), cRate, a1, a2)
+   ENDIF
+
+
+% -- Calculates breakpoints and accelerations for the acceleration profile. 
+
+vsLevelOutTimes(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool): 
+[real, real, real, real, real, real] = 
+LET sgnv = IF v0z>=0 THEN 1 ELSE -1 ENDIF, 
+S = targetAlt-s0z, 
+altDir = IF S>=0 THEN 1 ELSE -1 ENDIF, 
+a1 = IF S>=0 THEN accelup ELSE acceldown ENDIF, 
+a2 = IF S>=0 THEN acceldown ELSE accelup ENDIF
+IN
+
+IF sgnv = altDir OR v0z=0 THEN
+    IF  abs(S)>= abs( S3(v0z, a2)) THEN 
+        vsLevelOutTimes1(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)
+    
+    ELSE 
+    	 LET nt=vsLevelOutTimes1(s0z+S3(v0z, a2), 0, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+            ( -v0z/a2+nt`1, -v0z/a2+nt`2, -v0z/a2+nt`3, nt`4, nt`5, nt`6)
+    ENDIF
+ELSE 
+     LET nt=vsLevelOutTimes1(s0z+S3(v0z, a1), 0, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+            ( -v0z/a1+nt`1, -v0z/a1+nt`2, -v0z/a1+nt`3, nt`4, nt`5, nt`6)
+ENDIF
+
+%% -- The times computed by vsLevelOutTimes are always in order and >= 0.  
+
+times_increase: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool):
+ LET nt = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+      0<= nt`1 AND nt`1<= nt`2 AND nt`2<= nt`3
+
+%%  -- Acceleration profile based on the level-out times and accelerations calculated
+
+vsLevelOut_acc(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool)(t:nnreal): real = 
+LET vsLOT = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+split_fun3(vsLOT`1, vsLOT`2, vsLOT`3, const_fun(vsLOT`5), const_fun(0), const_fun(vsLOT`6), const_fun(0))(t)
+
+%% -- Velocity: First as the integral of acceleration, then as an algebraic expression.
+
+vel_prep: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+  Integrable?(0,t,vsLevelOut_acc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?))
+
+vsLevelOut_velInt(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool)(t:nnreal): real =
+v0z+Integral(0, t, vsLevelOut_acc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?))
+
+vsLevelOut_velCalc(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool)(t:nnreal): real =
+LET vsLOT = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+ split_fun3(vsLOT`1, vsLOT`2, vsLOT`3, 
+V1( v0z, vsLOT`5), 
+const_fun(v0z+vsLOT`5*vsLOT`1), 
+LAMBDA(s:real): v0z+vsLOT`5*vsLOT`1 + vsLOT`6*(s-vsLOT`2), 
+LAMBDA(s:real): v0z+vsLOT`5*vsLOT`1 + vsLOT`6*(vsLOT`3-vsLOT`2)
+)(t)
+
+%% -- A lemma proving that the two velocity functions are the same. 
+
+Integral_vsLO_vel: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+   vsLevelOut_velInt(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) = 
+   vsLevelOut_velCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t)
+
+%% -- Position: First as the integral of velocity, then as an algebraic expression. 
+
+pos_prep: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+  Integrable?(0,t,vsLevelOut_velCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?))
+
+vsLevelOut_posInt(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool)(t:nnreal): real =
+s0z+Integral(0, t, vsLevelOut_velCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?))
+
+vsLevelOut_posCalc(s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool)(t:nnreal): real =
+LET vsLOT = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+ split_fun3(vsLOT`1, vsLOT`2, vsLOT`3, 
+LAMBDA(s:real): s0z+S1(v0z, vsLOT`5)(s), 
+LAMBDA(s:real): s0z+S1(v0z, vsLOT`5)(vsLOT`1) + V1(v0z, vsLOT`5)(vsLOT`1)*(s-vsLOT`1), 
+LAMBDA(s:real): s0z+S1(v0z, vsLOT`5)(vsLOT`1) + V1(v0z, vsLOT`5)(vsLOT`1)*(vsLOT`2-vsLOT`1) +S1(V1(v0z, vsLOT`5)(vsLOT`1), vsLOT`6)(s-vsLOT`2),
+LAMBDA(s:real): s0z+S1(v0z, vsLOT`5)(vsLOT`1) + V1(v0z, vsLOT`5)(vsLOT`1)*(vsLOT`2-vsLOT`1) +S1(V1(v0z, vsLOT`5)(vsLOT`1), vsLOT`6)(vsLOT`3-vsLOT`2)+ (v0z+vsLOT`5*vsLOT`1 + vsLOT`6*(vsLOT`3-vsLOT`2))*(s-vsLOT`3)
+)(t)
+
+%% -- A lemma showing that the two position functions are the same. 
+
+
+Integral_vsLO_pos: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+  vsLevelOut_posInt(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) = 
+  vsLevelOut_posCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t)
+
+
+%% -- Lemmas showing that the functions do what they should...
+%% 
+
+Velocity_after_level: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+    LET vsLOT = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+    t> vsLOT`3 IMPLIES vsLevelOut_velCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) = 0
+
+Position_after_level: LEMMA FORALL (s0z:real, v0z:real, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?:bool, t:nnreal):
+    LET vsLOT = vsLevelOutTimes(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+    t> vsLOT`3 IMPLIES vsLevelOut_posCalc(s0z, v0z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) = targetAlt
+
+%%  A function that returns position and velocity vectors throughout the level-out maneuver.  
+
+% vsLevelOut(s0, v0:Vect3, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?: bool)(t:nnreal): [Vect3, Vect3]=
+%           LET newsz = vsLevelOut_posCalc(s0`z, v0`z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t), 
+%               newvz = vsLevelOut_velCalc(s0`z, v0`z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) IN
+% 	  (linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+
+%% This matches the Java formulation of the vsLevelOutCalculation function.  
+
+ vsLevelOutCalculation(sv0: [Vect3, Vect3], targetAlt:nnreal,  a1, a2:nzreal, t1,t2,t3,t:nnreal):[Vect3, Vect3] = 
+                 LET   s0 = sv0`1, 
+                       v0 = sv0`2, 
+    		      soz = s0`z,
+ 		      voz = v0`z IN
+ 		IF t <= t1 THEN 
+ 			LET nv= v0 WITH [`z:=voz + a1*t], 
+ 			    ns = linear_pos(s0,v0,t) WITH [`z:= soz + S1(voz,a1)(t)] IN
+			(ns,nv) 
+                ELSIF t <= t2 THEN
+ 			LET nv = v0 WITH [`z:=voz + a1*t1], 
+ 			    ns = linear_pos(s0,v0,t) WITH [`z:= soz + S1(voz,a1)(t1)+ V1(voz, a1)( t1)*(t-t1)] IN 
+ 			(ns,nv)
+ 		ELSIF t <= t3 THEN 
+ 		        LET nv = v0 WITH [`z:= voz+a1*t1+a2*(t-t2)], 
+ 		    	    ns = linear_pos(s0,v0,t) WITH [`z:= soz + S1(voz,a1)(t1)+ V1(voz, a1)(t1)*(t2-t1) + S1(V1(voz, a1)(t1),a2)(t-t2)] IN
+ 			(ns,nv)
+ 		ELSE 
+ 		     	LET nv = v0 WITH [`z:=0], 
+ 			    ns = linear_pos(s0,v0,t) WITH [`z:=targetAlt] IN
+ 			(ns,nv)
+ 		ENDIF
+
+  vsLevelOut(sv0:[Vect3,Vect3], t:nnreal, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?: bool): [Vect3, Vect3]=
+            LET LevelParams = vsLevelOutTimes(sv0`1`z, sv0`2`z, climbRate, targetAlt, accelup, acceldown, alterCR?) IN
+	    vsLevelOutCalculation(sv0,targetAlt, LevelParams`5, LevelParams`6, LevelParams`1, LevelParams`2, LevelParams`3, t) 
+
+  vsLevelOutEquals: LEMMA FORALL (sv0:[Vect3,Vect3], t:nnreal, climbRate: posreal, targetAlt: nnreal, accelup:posreal, acceldown:negreal, alterCR?: bool):
+            LET VSLO = vsLevelOut(sv0,t,climbRate, targetAlt, accelup, acceldown, alterCR?) IN 
+ 	    VSLO`1`z = vsLevelOut_posCalc(sv0`1`z, sv0`2`z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t) AND
+	    VSLO`2`z = vsLevelOut_velCalc(sv0`1`z, sv0`2`z, climbRate, targetAlt, accelup, acceldown, alterCR?)(t)
+
+
+		     
+  END vsLevelOut
+

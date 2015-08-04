@@ -1,0 +1,108 @@
+kinematics_vs_accel_checker  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+  % ASSUMING
+   % assuming declarations
+  % ENDASSUMING
+
+IMPORTING PVSioChecker@pvsio_checker, kinematics_vs_accel, util
+
+fprint_XYZ(fout:OStream, s:Vect3,id:string) : void =
+    fprintf(fout, "(# x := ~,8f, y := ~,8f, z := ~,8f #) % ~a ",
+          (s`x,s`y,s`z,id))
+
+vsau(s0:Vect3,  v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal): [[real, real, real], [real, real, real]]=
+	 LET pvs = vsAccelUntil(s0, v0, goalVs, accel, t) IN
+           ((pvs`1`x, pvs`1`y, pvs`1`z), (pvs`2`x, pvs`2`y, pvs`2`z))
+
+vsauwru(s0:Vect3,  v0: nzhVect3, goalVs: real, accel: posreal, tRamp, t: nnreal): [[real, real, real], [real, real, real]]=
+	 LET pvs = vsAccelUntilWithRampUp(s0, v0, goalVs, accel, tRamp)(t) IN
+           ((pvs`1`x, pvs`1`y, pvs`1`z), (pvs`2`x, pvs`2`y, pvs`2`z))
+
+check_equal_vect( io, pvs:[real, real, real]): bool = 
+      almost_equal?(io`1, pvs`1) AND almost_equal?(io`2, pvs`2) AND almost_equal?(io`3, pvs`3) 
+
+check_vsauPos(fout:OStream, s0, v0: Vect3, goalVs, accel, t: real, io, pvs:[real, real, real]): bool = 
+        IF   check_equal_vect( io, pvs)  THEN TRUE
+        ELSE
+               fprintf(fout, "Line ~a: FAILED vsAccelUntil Position~%",val(CurrentLine)) &
+	       fprint_XYZ(fout, s0, "s0") & fprintf(fout, "~%") &
+               fprint_XYZ(fout, v0, "v0") & fprintf(fout, "~%") &
+               fprintf(fout, "~,8f  % goalVs ~%~,8f  % accel ~%~,8f  % t ~%", (goalVs, accel, t))&
+               fprintf(fout, "io =(~,8f, ~,8f, ~,8f) vs. pvs = (~,8f, ~,8f, ~,8f) ~2%", 
+                              (io`1, io`2, io`3,pvs`1, pvs`2, pvs`3 ))& FALSE
+        ENDIF
+
+check_vsauVel(fout:OStream, v0: Vect3, goalVs, accel, t: real, io, pvs:[real, real, real]): bool = 
+        IF check_equal_vect( io, pvs) THEN TRUE
+        ELSE
+               fprintf(fout, "Line ~a: FAILED vsAccelUntil Velocity~%",val(CurrentLine)) &
+               fprint_XYZ(fout, v0, "v0") & fprintf(fout, "~%") &
+               fprintf(fout, "~,8f  % goalVs ~%~,8f  % accel ~%~,8f  % t ~%", (goalVs, accel, t))&
+               fprintf(fout, "io =(~,8f, ~,8f, ~,8f) vs. pvs = (~,8f, ~,8f, ~,8f) ~2%", 
+                              (io`1, io`2, io`3,pvs`1, pvs`2, pvs`3 )) & FALSE
+        ENDIF
+         
+check_vsauwruPos(fout:OStream, s0, v0: Vect3, goalVs, accel, tRamp, t: real, io, pvs:[real, real, real]): bool =  
+        IF check_equal_vect( io, pvs) THEN TRUE
+        ELSE
+               fprintf(fout, "Line ~a: FAILED vsAccelUntilWithRampUp Position~%",val(CurrentLine)) &
+	       fprint_XYZ(fout, s0, "s0") & fprintf(fout, "~%") &
+               fprint_XYZ(fout, v0, "v0") & fprintf(fout, "~%") &
+               fprintf(fout, "~,8f  % goalVs ~%~,8f  % accel ~%~,8f  % tRamp ~%~,8f  % t ~%", (goalVs, accel, tRamp, t))&
+               fprintf(fout, "io =(~,8f, ~,8f, ~,8f) vs. pvs = (~,8f, ~,8f, ~,8f) ~2%", 
+                              (io`1, io`2, io`3,pvs`1, pvs`2, pvs`3 )) & FALSE
+        ENDIF
+
+check_vsauwruVel(fout:OStream, v0: Vect3, goalVs, accel, tRamp, t: real, io, pvs:[real, real, real]): bool = 
+        IF check_equal_vect( io, pvs) THEN TRUE
+        ELSE
+               fprintf(fout, "Line ~a: FAILED vsAccelUntilWithRampUp Velocity~%",val(CurrentLine)) &
+               fprint_XYZ(fout, v0, "v0") & fprintf(fout, "~%") &
+               fprintf(fout, "~,8f  % goalVs ~%~,8f  % accel ~%~,8f  % tRamp ~%~,8f  % t ~%", (goalVs, accel, tRamp, t))&
+               fprintf(fout, "io =(~,8f, ~,8f, ~,8f) vs. pvs = (~,8f, ~,8f, ~,8f) ~2%", 
+                              (io`1, io`2, io`3,pvs`1, pvs`2, pvs`3 )) & FALSE
+        ENDIF
+
+check_gamma(fout:OStream, v0: Vect3, accel, tRamp, t: real, io, pvs:real): bool = 
+        IF almost_equal?( io, pvs) THEN TRUE
+        ELSE
+               fprintf(fout, "Line ~a: FAILED gamma~%",val(CurrentLine)) &
+               fprint_XYZ(fout, v0, "v0") & fprintf(fout, "~%") &
+               fprintf(fout, "~,8f  % accel ~%~,8f  % tRamp ~%~,8f  % t ~%", (accel, tRamp, t))&
+               fprintf(fout, "io = ~,8f vs. pvs = ~,8f ~2%", 
+                              (io, pvs)) & FALSE
+        ENDIF
+         
+                
+
+check_inputs(fin:IStream, fout:OStream): bool = 
+          LET
+	  s0 = str2pvs[Vect3](readln_checker(fin)),
+	  v0 = str2pvs[Vect3](readln_checker(fin)), 
+	  goalVs = str2pvs[real](readln_checker(fin)),  
+	  accel = str2pvs[real](readln_checker(fin)),
+          tRamp = str2pvs[real](readln_checker(fin)),
+	  t = str2pvs[real](readln_checker(fin)), 
+	  io_comp_vsauPos = str2pvs[[real, real, real]](readln_checker(fin)),
+	  io_comp_vsauVel = str2pvs[[real, real, real]](readln_checker(fin)), 
+	  io_comp_vsauwruPos = str2pvs[[real, real, real]](readln_checker(fin)),
+	  io_comp_vsauwruVel = str2pvs[[real, real, real]](readln_checker(fin)), 
+	  pvs_comp_vsau = vsau(s0, v0, goalVs, accel, t), 
+	  pvs_comp_vsauwru = vsauwru(s0, v0, goalVs, accel, tRamp, t),
+	  io1 = check_vsauPos(fout, s0, v0, goalVs, accel, t, io_comp_vsauPos, pvs_comp_vsau`1),
+          io2 = check_vsauVel(fout, v0, goalVs, accel, t, io_comp_vsauVel, pvs_comp_vsau`2),
+	  io3 = check_vsauwruPos(fout, s0, v0, goalVs, accel, tRamp, t, io_comp_vsauwruPos, pvs_comp_vsauwru`1),
+          io4 = check_vsauwruVel(fout, v0, goalVs, accel, tRamp, t, io_comp_vsauwruVel, pvs_comp_vsauwru`2) IN
+            io1 & io2 & io3 & io4
+
+main(file:string, max:nat): void = 
+        checker(file, check_inputs, max)
+
+
+
+  END kinematics_vs_accel_checker
+
+
