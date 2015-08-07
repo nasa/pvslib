@@ -1,0 +1,251 @@
+eval_props[T:TYPE+] : THEORY
+BEGIN
+  IMPORTING conditions[T], structures@set_as_list
+
+  IMPORTING lang[T],
+             BoolPVS0[T],
+	     structures@more_list_props[nat], structures@more_list_props[BoolPVS0[T]]
+
+  eval_bool : VAR [Val -> bool] 
+  eval_op1 : VAR [nat->[Val->Val]]
+  eval_op2 : VAR [nat->[[Val,Val]->Val]]
+
+
+  subterm_transitive : LEMMA  FORALL(exa,exb,exc : Expr) : 
+  subterm(exa,exb) AND subterm(exb,exc) IMPLIES subterm(exa,exc)
+
+  rdc((l: list[nat] | NOT null?(l))):  list[nat]
+  = reverse(cdr(reverse(l)))
+
+  rac((l: list[nat] | NOT null?(l))):  nat
+  = nth(l, length(l)-1)
+
+rac_append: LEMMA 
+  FORALL (l1: list[nat], (l2: list[nat] | NOT null?(l2))) : 
+    rac(append(l1, l2)) = rac(l2)
+
+rdc_append: LEMMA  % Appears as "incomplete", but this doesn't depend on our theory
+  FORALL (l1: list[nat], (l2: list[nat] | NOT null?(l2))) : 
+     rdc(append(l1, l2)) = append(l1, rdc(l2))
+
+rdc_rac: COROLLARY
+  FORALL (l1 : list[nat] | NOT null?(l1)) :
+     append(rdc(l1),(:rac(l1):)) = l1
+
+  valid_path(expr: Expr)(path: list[nat]): RECURSIVE bool
+  = CASES expr OF
+      vr         : null?(path),
+      cnst(cval) : null?(path),
+      op1(o,a)   : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
+      op2(o,a1,a2) : null?(path) 
+      		     OR (rac(path) = 0 AND valid_path(a1)(rdc(path)))
+		     OR (rac(path) = 1 AND valid_path(a2)(rdc(path))),
+      rec(a)       : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
+      ite(c,t,e)   : null?(path) 
+      		     OR (rac(path) = 0 AND valid_path(c)(rdc(path)))
+		     OR (rac(path) = 1 AND valid_path(t)(rdc(path)))
+		     OR (rac(path) = 2 AND valid_path(e)(rdc(path)))
+    ENDCASES
+  MEASURE expr by <<
+
+  null_path: LEMMA
+    FORALL(expr: Expr): valid_path(expr)(null)
+
+  subterm_at(expr: Expr, path: (valid_path(expr))): RECURSIVE ({res: Expr | subterm(res,expr)})
+  = IF null?(path) THEN expr
+    ELSE CASES expr OF
+          op1(o,a)  : subterm_at(a, rdc(path)),
+	  op2(o,a,b): IF rac(path) = 0 THEN subterm_at(a, rdc(path))
+	  	      ELSE subterm_at(b, rdc(path)) ENDIF,
+          rec(a)    : subterm_at(a, rdc(path)),
+	  ite(c,t,e): subterm_at( IF rac(path) = 0 THEN c ELSIF rac(path) = 1 THEN t ELSE e ENDIF , rdc(path))
+	  ELSE expr
+        ENDCASES ENDIF
+    MEASURE expr BY <<
+
+  path_conditions(expr: Expr, path: (valid_path(expr))): RECURSIVE Conditions
+  = IF null?(path) THEN null
+    ELSE CASES expr OF
+    	   op1(o,a)  : path_conditions(a, rdc(path)),
+	   op2(o,a,b): IF rac(path) = 0 THEN path_conditions(a, rdc(path))
+	  	       ELSE path_conditions(b, rdc(path)) ENDIF,
+    	   rec(a)    : path_conditions(a, rdc(path)),
+	   ite(c,tr,el): IF rac(path) = 0 THEN path_conditions(c, rdc(path))
+	   	       ELSIF rac(path) = 1 THEN add_sl(pvsbool(c), path_conditions(tr, rdc(path)))
+	      	       ELSE add_sl(pvsnot(c), path_conditions(el, rdc(path))) ENDIF
+    	   ELSE null
+    	 ENDCASES ENDIF
+    MEASURE expr BY << 
+
+  valid_paths_subexpr : LEMMA
+  FORALL (expr : Expr, path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+    FORALL (path2 :  (valid_path(sterm))) : 
+      valid_path(expr)(append(path2, path) )
+
+  subterm_append: LEMMA 
+  FORALL (expr : Expr, path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   FORALL (path2: (valid_path(sterm))):
+     subterm_at(expr, append(path2,path)) = subterm_at(sterm, path2)
+
+  valid_0_path_ext: LEMMA
+  FORALL (expr : Expr, path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   (op1?(sterm) OR op2?(sterm) OR rec?(sterm) OR ite?(sterm))
+   IMPLIES valid_path(expr)(cons(0,path))
+  
+  valid_1_path_ext: LEMMA
+  FORALL (expr : Expr, path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   (op2?(sterm) OR ite?(sterm))
+   IMPLIES valid_path(expr)(cons(1,path))
+  
+  valid_2_path_ext: LEMMA
+  FORALL (expr : Expr, path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   ite?(sterm)
+   IMPLIES valid_path(expr)(cons(2,path))
+
+ app_prefix_of_path_ext: LEMMA
+  FORALL (expr : Expr, path : (valid_path(expr)), path_ext : (valid_path(expr)) | suffix?(path,path_ext) ):
+   LET sterm = subterm_at(expr, path) IN 
+     EXISTS (p: (valid_path(sterm))): append(p, path) = path_ext
+
+  cnst_vr_path_ext: LEMMA  % Depends on the previoius new Conjecture
+  FORALL (expr : Expr, path_ext,path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   (cnst?(sterm) OR vr?(sterm)) AND 
+   suffix?(path, path_ext)
+   IMPLIES path=path_ext
+  
+  op1_rec_path_ext: LEMMA
+  FORALL (expr : Expr, path_ext,path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   (op1?(sterm) OR rec?(sterm)) AND 
+   suffix?[nat](path, path_ext) AND
+   path /= path_ext
+   IMPLIES suffix?[nat](cons(0, path), path_ext)
+  
+  op2_path_ext: LEMMA
+  FORALL (expr : Expr, path_ext,path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   op2?(sterm) AND 
+   suffix?(path, path_ext) AND
+   path /= path_ext
+   IMPLIES suffix?(cons(0, path), path_ext) OR suffix?(cons(1, path), path_ext)
+ 
+  ite_path_ext: LEMMA
+  FORALL (expr : Expr, path_ext,path : (valid_path(expr))):
+   LET sterm = subterm_at(expr, path) IN
+   ite?(sterm) AND 
+   suffix?(path, path_ext) AND
+   path /= path_ext
+   IMPLIES suffix?(cons(0, path), path_ext) OR suffix?(cons(1, path), path_ext) OR suffix?(cons(2, path), path_ext)
+
+valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] | 
+  		    FORALL(p: (valid_path(expr))): member(p, res) }
+  = 
+    CASES expr OF
+      op1(o,a)   : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
+      op2(o,a,b) : cons(null, append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) 
+      		              	 , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))(valid_paths(b)) ) ),
+      rec(a)     : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
+      ite(a,b,c) : cons(null, append[list[nat]]( append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) 
+      		   	         , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))(valid_paths(b)) )
+			 , map(LAMBDA(l:list[nat]): append[nat](l, (: 2 :)))(valid_paths(c)) ) )
+      ELSE (: null :)
+    ENDCASES 
+  MEASURE expr By <<
+  
+  suffix_conds_valid : CONJECTURE
+  FORALL(env:Environment)(body: Expr)(path,path_ext: (valid_path(body))):
+  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path_ext),env) AND
+  suffix?(path, path_ext) 
+  IMPLIES eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path),env)   
+
+  path_conditions_cons: CONJECTURE
+  FORALL(body: Expr)(path: (valid_path(body)))(n: nat):
+  LET expr = subterm_at(body, path) IN
+  ite?(expr) AND (n>=0 AND n<=2)
+  IMPLIES
+  path_conditions(body, cons(n, path)) 
+  = cons(IF n=1 
+  	 THEN pvsbool(get_cond(expr))
+	 ELSE pvsnot(get_cond(expr))
+	 ENDIF
+	, path_conditions(body, path))
+
+%
+% M3: CONJECTURE used in measure_termination
+%
+  path_conditions_unmodified: CONJECTURE
+  FORALL(body: Expr)(path: (valid_path(body)))(n: nat):
+  LET expr = subterm_at(body, path) IN
+  (ite?(expr) IMPLIES n=0)
+  IMPLIES
+  path_conditions(body, cons(n, path)) 
+  = path_conditions(body, path)
+
+  suffix_path_cnds : CONJECTURE
+  FORALL(expr: Expr)(path,path_ext: (valid_path(expr))):
+  suffix?(path, path_ext) IMPLIES
+  suffix?(path_conditions(expr, path), path_conditions(expr, path_ext))
+
+  suffix_conds_rec : CONJECTURE
+  FORALL(env:Environment)(expr: Expr)(suffcnds, cnds: Conditions):
+  suffix?(suffcnds, cnds) AND
+  eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                (expr, cnds, env)
+  IMPLIES eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                        (expr, suffcnds, env)
+
+  rec_decreasing : LEMMA
+  FORALL(env:Environment)(n: posnat)(expr, body: Expr)(path,path_ext: (valid_path(body))):
+  LET conds = path_conditions(body, path_ext),
+      subexpr = subterm_at(body, path_ext) IN
+  expr  = subterm_at(body,path) AND
+  some?(eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env)) AND
+  suffix?(path, path_ext) AND
+  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,conds,env) AND
+  rec?(subexpr) 
+  IMPLIES LET valarg = eval_expr(eval_bool,eval_op1,eval_op2)(n,get_arg(subexpr),body,env) IN
+  	  some?(valarg) AND 
+  	  some?(eval_expr(eval_bool,eval_op1,eval_op2)(n-1,body,body,val2env(val(valarg))))
+
+  rec_mu_decreasing : LEMMA
+  FORALL(env:Environment)
+	(n: posnat)
+	(def: Terminating(eval_bool,eval_op1,eval_op2))
+  	(path_ext: (valid_path(get_body(def)))):
+  LET body    = get_body(def),
+      conds   = path_conditions(body, path_ext),
+      subexpr = subterm_at(body, path_ext) IN
+  mu(eval_bool,eval_op1,eval_op2)(def)(env(vr)) = n AND
+  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,conds,env) AND
+  rec?(subexpr) 
+  IMPLIES FORALL(vact: Val):
+          semantic_rel_expr (eval_bool,eval_op1,eval_op2)
+	  		    (get_arg(subexpr),body,env,vact) 
+	  IMPLIES mu(eval_bool,eval_op1,eval_op2)(def)(vact) < n 
+
+  decreasing_rec : CONJECTURE
+  FORALL(body:Expr)
+	(n:posnat, expr:Expr)(path:(valid_path(body)))(env:Environment) :
+    expr = subterm_at(body,path) IMPLIES
+      (FORALL(path_ext: (valid_path(body))):
+        LET conds   = path_conditions(body, path_ext),
+            subexpr = subterm_at(body, path_ext) IN
+        suffix?(path, path_ext) AND
+        eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,conds,env) AND
+        (NOT rec?(subexpr) IMPLIES 
+	    some?(eval_expr(eval_bool,eval_op1,eval_op2)(n,subexpr,body,env))) AND
+        (rec?(subexpr) IMPLIES 
+            LET vact = eval_expr(eval_bool,eval_op1,eval_op2)(n,get_arg(subexpr),body,env) IN
+	    some?(vact) AND
+	    some?(eval_expr(eval_bool,eval_op1,eval_op2)(n-1,body,body
+		, val2env(val(vact))))))
+        IMPLIES 
+      some?(eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env))
+  
+END eval_props

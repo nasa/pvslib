@@ -1,0 +1,70 @@
+gcd : THEORY
+BEGIN
+
+  gcd(m,n:nat) : RECURSIVE nat = 
+    IF m=0 OR n=0 THEN m+n
+    ELSIF m >= n THEN
+      gcd(m-n,n)
+    ELSE gcd(n,m)
+    ENDIF
+  MEASURE lex2(n,m)
+
+  IMPORTING lang[[nat,nat]]
+
+  ebool(m,n:nat) : bool = m /= 0
+
+  boole(b:bool) : Val = (IF NOT b THEN 0 ELSE 1 ENDIF,0)
+
+  eop1(op:nat)(m,n:nat) : Val = 
+    COND op = 0 -> boole(m=0 OR n=0),
+         op = 1 -> boole(m >= n),
+         op = 2 -> (m+n,0),
+         op = 3 -> IF m >= n THEN (m-n,n) ELSE (m,n) ENDIF,
+	 op = 4 -> (n,m),
+         ELSE -> (m,n)
+    ENDCOND
+
+  eop2(op:nat)(v1,v2:Val) : Val = v1
+
+  pvs0_gcd : PVS0 =
+    def(ite(op1(0,vr),op1(2,vr),ite(op1(1,vr),rec(op1(3,vr)),rec(op1(4,vr)))))
+
+% Interpretation:
+%   vr        : (m,n)
+%   bool(m,n) : n /= 0
+%   op1 0     : (m,n) -> bool(m=0 OR n=0)
+%   op1 1     : (m,n) -> bool(m >= n)
+%   op1 2     : (m,n) -> (m+n,0)
+%   op1 3     : (m,n) -> (m-n,n)
+%   op1 4     : (m,n) -> (n,m)
+
+  eval_gcd(m,n:nat) : nat =
+    LET v = eval(ebool,eop1,eop2)(m+n,pvs0_gcd)(val2env(m,n)) IN
+    IF some?(v) THEN val(v)`1
+    ELSE 0
+    ENDIF
+
+  pvs0_gcd : LEMMA
+    gcd(12,21) = eval_gcd(12,21)
+
+  IMPORTING pvs0_to_ccg[[nat,nat],nat,<,2]
+
+  verts : list[CallingContext] = pvs0_to_ccg_verts_sl(pvs0_gcd)
+
+  cc1 : CallingContext = nth(verts,1)
+
+  cc2 : CallingContext = nth(verts,0)
+
+  remove_cc1_cc1 : LEMMA 
+    remove_edge(ebool,eop1,eop2)(pvs0_gcd,cc1,cc1)
+
+  remove_cc2_cc2 : LEMMA 
+    remove_edge(ebool,eop1,eop2)(pvs0_gcd,cc2,cc2)
+
+  remove_cc1_cc2 : LEMMA 
+    remove_edge(ebool,eop1,eop2)(pvs0_gcd,cc1,cc2)
+
+  remove_cc2_cc1 : LEMMA 
+    remove_edge(ebool,eop1,eop2)(pvs0_gcd,cc2,cc1)
+
+END gcd

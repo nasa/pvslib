@@ -1,0 +1,71 @@
+wfm[T:TYPE, lt : (well_founded?[T])] : THEORY
+BEGIN
+ ASSUMING
+   lt_no_desc_inf_branch: ASSUMPTION
+     FORALL(x:T): is_finite({y: T | lt(y,x)})
+ ENDASSUMING
+
+ a,b,c : VAR T
+ n,m   : VAR nat
+ p     : VAR pred[T]
+
+ gt_n(lt:pred[[T,T]])(n)(a,b) : INDUCTIVE bool =
+   (n = 1 AND lt(b, a)) OR
+   (n > 1 AND EXISTS (c): lt(c, a) AND gt_n(lt)(n-1)(c,b))
+
+ gt_n_decomp: LEMMA
+  FORALL(lt:pred[[T,T]],n:above(1)):
+   gt_n(lt)(n)(a,b) IMPLIES EXISTS(c): gt_n(lt)(n-1)(a,c) AND lt(b, c)
+
+ gt_n_extension: LEMMA
+  FORALL(lt:pred[[T,T]],n,m:above(0)):
+   (EXISTS(b): gt_n(lt)(m)(a,b)) AND
+   n < m
+   IMPLIES (EXISTS(c): gt_n(lt)(n)(a,c))   
+
+ IMPORTING orders@well_foundedness[T]
+
+ IMPORTING fset_props
+
+ finite_branching?(lt:pred[[T,T]]): bool = FORALL(x:T): is_finite({y: T | lt(y, x)})
+
+ % This lemma states that if gt_n has an infinite branch starting from an 
+ % element "a", then one of the direct predecesors of "a" must be root of
+ % an infinite brach.
+ infinite_branch: LEMMA
+  FORALL(a:T)(lt:(finite_branching?) | FORALL(n:above(0)): EXISTS(b): gt_n(lt)(n)(a,b) ):
+    EXISTS(a_:T): lt(a_, a) AND FORALL(n:above(0)): EXISTS(b): gt_n(lt)(n)(a_,b)
+
+ % The previous lemma allows to define the following (infinite) sequence
+ % which is descending on "lt".
+ seq_gt(a:T)(lt:(finite_branching?) | FORALL(n:above(0)): EXISTS(b): gt_n(lt)(n)(a,b) )(n):
+  RECURSIVE {b:T|FORALL(n:above(0)): EXISTS(b_:T): gt_n(lt)(n)(b,b_)} =
+    IF n = 0 THEN a
+    ELSE epsilon({b:T| lt(b,seq_gt(a)(lt)(n-1)) AND 
+                  FORALL(n:above(0)): EXISTS(b_:T): gt_n(lt)(n)(b,b_)}) ENDIF
+  MEASURE n
+
+ % This lemma states that the sequence is in fact descending on the order
+ % on which it is based.
+ seq_gt_dec: LEMMA
+  FORALL(a:T)(lt:(finite_branching?) | FORALL(n:above(0)):EXISTS(b): gt_n(lt)(n)(a,b) )(n):
+    lt(seq_gt(a)(lt)(1 + n), seq_gt(a)(lt)(n))
+
+ % The aforementioned sequence is used to prove the following lemma.
+ % It states that gt_n(lt) does not have infinite branches.
+ bottom : LEMMA
+  EXISTS (n:above(0)) : FORALL (b): NOT gt_n(lt)(n)(a,b)
+
+ % Using the previous lemma, it is possible to define the Omega function.
+ Omega(a) : nat = min({n:above(0)| FORALL (b): NOT gt_n(lt)(n)(a,b)})
+
+ omega_prev: LEMMA
+   FORALL(y: T | Omega(y) > 1): EXISTS(z: T): gt_n(lt)(Omega(y) - 1)(y,z)
+
+ gt_n_omega: LEMMA
+   FORALL(n: above(0), y: T | n<Omega(y)): EXISTS(z: T): gt_n(lt)(n)(y,z)
+
+ omega_increasing: LEMMA
+   FORALL(x:T, y: T | lt(y,x)): Omega(y) < Omega(x)
+
+END wfm

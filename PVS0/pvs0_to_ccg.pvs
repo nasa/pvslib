@@ -1,0 +1,183 @@
+%********************************************************************************%
+%										 %
+%   Authors:									 %
+%   										 %
+%       Andréia Borges Avelar -- Universidade  de  Brasília  - Brasil  		 %
+%       Mauricio Ayala-Rincon -- Universidade  de  Brasília  - Brasil  		 %
+%                 Cesar Muñoz -- NASA  Langley  Research  Center - US		 %
+%	   Mariano M. Moscato -- National Institute of Aerospace - US            %
+%		  	      	      	      	       	      			 %
+%********************************************************************************%
+%                    last modified: Jul - 30 - 2015                              %
+%********************************************************************************%
+pvs0_to_ccg[T:TYPE+,MT:TYPE, < : (well_founded?[MT]), N:posnat] : THEORY
+BEGIN
+  CCG : LIBRARY "../CCG"
+
+  IMPORTING lang[T],
+            BoolPVS0[T],
+            structures@set_as_list,
+	    conditions[T]
+
+  IMPORTING CCG@ccg_def[Val,Expr,Conditions,(vr?),MT,<,N]
+
+
+                      n : VAR nat
+               cc1, cc2 : VAR CallingContext
+                    def : VAR Def
+              eval_bool : VAR [T -> bool]
+               eval_op1 : VAR [nat->[T->T]]
+               eval_op2 : VAR [nat->[[T,T]->T]]
+	           expr : VAR Expr
+
+%dd : LEMMA  well_founded?(orders[nat]@<) 
+
+% ------------------------------------------------------------------------------- %
+% functions to build the list and then the set of vertices
+
+  IMPORTING eval_props[T]
+
+  pvs0_to_ccg_verts_(def)(cc: CallingContext): bool =
+    subterm(rec(cc`actuals), def) AND
+    EXISTS(path: (valid_path(get_body(def))) | subterm_at(get_body(def),path) = rec(cc`actuals)):
+      path_conditions(get_body(def), path) = cc`conds
+
+  pvs0_to_ccg_verts_rec(pvs:Expr,cnds:Conditions) : 
+  RECURSIVE list[CallingContext] =
+    CASES pvs OF
+       op1(n,t) : pvs0_to_ccg_verts_rec(t,cnds),
+       op2(n,t1,t2) : union_sl(pvs0_to_ccg_verts_rec(t1,cnds), 
+                               pvs0_to_ccg_verts_rec(t2,cnds)),
+       ite(c,t1,t2) : union_sl(pvs0_to_ccg_verts_rec(t1,add_sl(pvsbool(c),cnds)),
+                               pvs0_to_ccg_verts_rec(t2,add_sl(pvsnot(c),cnds))),
+       rec(t) :  LET cc = (# formals := vr[T], actuals := t, conds := cnds #)
+                 IN add_sl(cc,pvs0_to_ccg_verts_rec(t,cnds))
+       ELSE emptyset_sl[CallingContext]
+    ENDCASES
+  MEASURE pvs BY <<
+
+  pvs0_to_ccg_verts_sl(def): list[CallingContext] =
+    pvs0_to_ccg_verts_rec(get_body(def),emptyset_sl)
+
+  pvs0_to_ccg_verts(def): finite_set[CallingContext] =
+    list2set(pvs0_to_ccg_verts_sl(def))
+
+  pvs0_to_ccg_verts_completeness: CONJECTURE
+    FORALL(def: Def, cc: (pvs0_to_ccg_verts_(def))): pvs0_to_ccg_verts(def)(cc)
+
+% ------------------------------------------------------------------------------- %
+% function to remove edges
+
+  remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2) : bool =
+    FORALL(env:Environment,val:Val): 
+      eval_conds(eval_bool,eval_op1,eval_op2)(def,cc1`conds,env) AND
+      semantic_rel_expr(eval_bool,eval_op1,eval_op2)
+                       (cc1`actuals,get_body(def),env,val) IMPLIES
+        NOT eval_conds(eval_bool,eval_op1,eval_op2)(def,cc2`conds,val2env(val))
+
+
+% ------------------------------------------------------------------------------- %
+% function to built the set of edges
+
+  pvs0_to_ccg_edges(eval_bool,eval_op1,eval_op2)(def):
+  finite_set[[CallingContext,CallingContext]] =
+    {(cc1,cc2) | member(cc1,pvs0_to_ccg_verts(def)) AND
+     member(cc2,pvs0_to_ccg_verts(def)) AND
+     NOT remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2)}
+
+
+% ------------------------------------------------------------------------------- %
+% function to built the ccg given a PVS0 definition
+
+  pvs0_to_ccg_dg(eval_bool,eval_op1,eval_op2)(def): digraph =
+    (# vert  := pvs0_to_ccg_verts(def),
+       edges := pvs0_to_ccg_edges(eval_bool,eval_op1,eval_op2)(def)
+     #)
+
+  measures: VAR FunMeasures
+
+  pvs0_to_ccg(eval_bool,eval_op1,eval_op2)(def,measures): CCG =
+    (# dg := pvs0_to_ccg_dg(eval_bool,eval_op1,eval_op2)(def),
+       ms := measures #)
+
+
+% ------------------------------------------------------------------------------- %
+%
+
+  IMPORTING CCG@scp
+
+  scp_termination_pvs0(eval_bool,eval_op1,eval_op2)(def) : bool =
+    scp_termination?[Val,Expr,Conditions,(vr?),[nat->(pvs0_to_ccg_verts_(def))]](
+      LAMBDA(expr:Expr[Val[T]],env:[(vr?)->Val[T]],val:Val[T]):
+        semantic_rel_expr (eval_bool,eval_op1,eval_op2) (expr,get_body(def),env,val),
+      LAMBDA(conds:Conditions,env:[(vr?)->Val]):
+        eval_conds(eval_bool,eval_op1,eval_op2)(def,conds,env))
+
+  IMPORTING measure_termination_defs
+
+  x,y: VAR Val 
+
+  R(eval_bool,eval_op1,eval_op2)(def)(x,y): bool = 
+    EXISTS(cc: (pvs0_to_ccg_verts_(def))):
+      eval_conds(eval_bool,eval_op1,eval_op2)(def,cc`conds,val2env(y)) AND
+      semantic_rel_expr(eval_bool,eval_op1,eval_op2) (cc`actuals,get_body(def),val2env(y),x)
+
+  IMPORTING orders@well_foundedness[Val]
+
+  R_wf: LEMMA
+    scp_termination_pvs0(eval_bool,eval_op1,eval_op2)(def)
+    IMPLIES well_founded?(R(eval_bool, eval_op1, eval_op2)(def))
+
+  R_no_desc_inf_branch: LEMMA
+    FORALL (x: Val[T]):
+      is_finite({y: Val[T] | R(eval_bool, eval_op1, eval_op2)(def)(y, x)})    
+
+  IMPORTING wfm AS OmegaTh
+
+  scp_tcc_termination_lr : THEOREM
+    scp_termination_pvs0(eval_bool,eval_op1,eval_op2)(def) 
+    IMPLIES pvs0_tcc_termination[T,nat,<](eval_bool,eval_op1,eval_op2)(def)
+
+  IMPORTING measure_termination
+
+  scp_termination_terminates_lr : COROLLARY
+    scp_termination_pvs0(eval_bool,eval_op1,eval_op2)(def) 
+    IMPLIES terminates(eval_bool,eval_op1,eval_op2)(def)
+
+
+%  ccg_termination_pvs0(def) : bool =
+%    FORALL (eval_bool,eval_op1,eval_op2):
+%    EXISTS (measures):
+%      LET G = pvs0_to_ccg(eval_bool,eval_op1,eval_op2)(def,measures) IN
+%        ccg_termination?[Val,Expr,Conditions,Environment,(vr?),
+%                         LAMBDA(expr:Expr,env:Environment,val:Val): 
+%                         semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,get_body(def),env,val),
+%                         LAMBDA(conds:Conditions,env:Environment):
+%                         eval_conds(eval_bool,eval_op1,eval_op2)(def,conds,env),
+%                         MT,<,N](G)
+
+%%%%%%%%%% TO BE PROVEN %%%%%%%%%%%%%%%%
+
+ % ccg_termination_measure_termination: CONJECTURE
+ %   ccg_termination_pvs0(def) IFF measure_termination(def)
+
+ % terminates_ccg_termination : THEOREM
+ %   ccg_termination_pvs0(def) IFF terminates(def)
+
+%%%%%%%%%% TO BE PROVEN %%%%%%%%%%%%%%%%
+
+%  terminates_ccg_criterion_one : THEOREM
+%    FORALL (eval_bool,eval_op1,eval_op2,measures)(pvs:Def):
+%       LET ccg = pvs0_to_ccg(eval_bool,eval_op1,eval_op2)(pvs,measures) IN
+%         criterion_one?(....)
+%         IMPLIES
+%         terminates(pvs)
+
+%  terminates_ccg_criterion_two : THEOREM
+%    FORALL (eval_bool,eval_op1,eval_op2,measures)(pvs:Def):
+%       LET ccg = pvs0_to_ccg(eval_bool,eval_op1,eval_op2)(pvs,measures) IN
+%         criterion_two?(....)
+%         IMPLIES
+%         terminates(pvs)
+
+END pvs0_to_ccg

@@ -1,0 +1,65 @@
+measure_termination[T: TYPE+, MT: TYPE, lt : (well_founded?[MT])] : THEORY
+BEGIN
+  IMPORTING BoolPVS0[T],
+            structures@set_as_list,
+	    structures@more_list_props[nat],
+	    lang[T],
+	    measure_termination_defs
+
+  eval_bool : VAR [Val -> bool] 
+  eval_op1  : VAR [nat->[Val->Val]]
+  eval_op2  : VAR [nat->[[Val,Val]->Val]]
+  
+  def: VAR Def
+
+  mu_soundness: LEMMA
+  FORALL(def: Def):
+    LET body = get_body(def) IN
+    terminates(eval_bool,eval_op1,eval_op2)(def)
+    IMPLIES FORALL(cc: (pvs0_tcc_valid_cc[T,nat,<](def))):
+    	    FORALL(env: Environment):
+	    FORALL(actual: Val): 
+              semantic_rel_expr(eval_bool,eval_op1,eval_op2)
+		               (get_arg(cc`rec_expr),body,env,actual) AND 
+              eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,cc`cnds,env)  
+	      IMPLIES mu(eval_bool,eval_op1,eval_op2)(def)(actual) < 
+                      mu(eval_bool,eval_op1,eval_op2)(def)(env(vr))
+
+  terminates_implies_pvs0_termination : THEOREM
+    FORALL (def) : 
+      terminates(eval_bool,eval_op1,eval_op2)(def) 
+      IMPLIES pvs0_tcc_termination[T,nat,<](eval_bool,eval_op1,eval_op2)(def)
+
+  IMPORTING measure_termination_defs[T,MT,lt]
+
+  wfm: VAR WFM
+
+  % Using lt it is possible to define a relation on values (Val)
+  % that is well founded and has no descendent infinite branching.
+  lt_val(eval_bool, eval_op1, eval_op2)
+        (def:Def)(wfm)(v1,v2: Val): bool =
+    EXISTS(cc: (pvs0_tcc_valid_cc[T,MT,lt](def))):
+      semantic_rel_expr(eval_bool, eval_op1, eval_op2)
+                       (get_arg(cc`rec_expr), get_body(def), val2env(v2), v1)
+      AND eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                        (get_body(def), cc`cnds, val2env(v2))
+      AND lt(wfm(v1), wfm(v2))
+  
+  lt_val_wf: LEMMA
+    well_founded?(lt_val(eval_bool, eval_op1, eval_op2)(def)(wfm))
+
+  IMPORTING structures@more_list_props
+
+  lt_val_no_desc_inf_branch: LEMMA
+    FORALL(x:Val): is_finite({y: Val | lt_val(eval_bool, eval_op1, eval_op2)(def)(wfm) (y,x)})
+
+  IMPORTING lex2_generic
+
+  IMPORTING wfm AS OmegaTh
+  
+  pvs0_termination_terminates : THEOREM
+    FORALL (def : Def) : 
+      pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def) 
+      IMPLIES terminates(eval_bool,eval_op1,eval_op2)(def)
+  
+END measure_termination
