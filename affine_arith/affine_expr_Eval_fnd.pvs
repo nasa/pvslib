@@ -1,28 +1,34 @@
 affine_expr_Eval_fnd: THEORY
 BEGIN
-  IMPORTING affine_expr, structures@Maybe
+  IMPORTING affine_expr
+  	  , structures@Maybe
+	  , affine
+	  , interval_arith@IntervalExpr
+          , more_list_props
 
-  re   : VAR RealExpr
-  box  : VAR Box
-  vs   : VAR Env
-
+  re             : VAR RealExpr
+  box,box1,box2  : VAR Box
+  vs             : VAR Env
 
   CacheData: TYPE = [RealExpr            % A RealExpr (re)
   	     	    ,AffineCombination   % the AffineCombination (ac) s.t. 
 		    			 %   FORALL vs: EXISTS N: ac[N] = re[vs]
 		    ,ordered_list[nat,<]]% the list of new noises used in ac.
 
-
   CacheData_correct?(box)(cd: CacheData): bool
   = LET re   = cd`1, ac   = cd`2, idxs = cd`3 IN
     powvar?(re) 
-    IMPLIES ( varidx(re) < length(box) AND
-    	      LET varac = nth_ac(box,varidx(re)), 
+    IMPLIES ( varidx_powvar(re) < length(box) AND
+    	      LET varac = nth_ac(box,varidx_powvar(re)), 
     	      	  power = opn(re) IN
     	      ((length(idxs) > power-2 AND 
 	       (NOT null?(idxs) IMPLIES car(idxs) >= next_idx(pd(varac))))
 	      OR length(pd(varac)) = 0)
     	      AND ac = pow_var_ac(varac,power,idxs) )
+
+  CacheData_correct?_inclusion: LEMMA FORALL(cd: CacheData):
+  CacheData_correct?(box)(cd) 
+  IMPLIES CacheData_correct?(append(box,box1))(cd)
 
   correct_cache?(box)(cache: list[CacheData]) : RECURSIVE bool
   = CASES cache OF 
@@ -31,24 +37,23 @@ BEGIN
     ENDCASES
   MEASURE cache BY <<
 
+  correct_cache?_alt_def: LEMMA FORALL (cache: list[CacheData]):
+  correct_cache?(box)(cache) = every(CacheData_correct?(box))(cache)
 
   cache_powvar_correct: LEMMA
   FORALL(cache: (correct_cache?(box)), i: below(length(cache))):
   CacheData_correct?(box)(nth(cache,i))
 
-
-
   compatible_pairs_on?(box,vs)(N:Noise)(l: (correct_cache?(box))) : bool
-  = FORALL(i: below(length(l))):
+  = FORALL(i: below(length(l)))(n: upfrom(length(box))):
     LET re = nth(l, i)`1, ac = nth(l, i)`2 IN
-    eval_ac_noise(ac,N) = eval_ACExpr_Env(re,vs) AND
-    (powvar?(re) AND varidx(re) < length(box) IMPLIES pow_var_compatible?(nth_ac(box,varidx(re)),opn(re),nth(l, i)`3)(N))
-
+    eval_ac_noise(ac,N) = eval_ACExpr_Env(re,vs, n) AND
+    ( powvar?(re) AND varidx_powvar(re) < length(box)
+      IMPLIES pow_var_compatible?(nth_ac(box,varidx_powvar(re)),opn(re),nth(l, i)`3)(N))
 
   compatible_pairs?(box,vs)(l: (correct_cache?(box))) : bool
   = EXISTS(N: Noise): vars_in_box_compatible?(N)(box)(vs) AND
     compatible_pairs_on?(box,vs)(N)(l) 
-
 
   cache_get(cache: list[CacheData])(re)
   : RECURSIVE { res: Maybe[AffineCombination] | 
@@ -65,35 +70,29 @@ BEGIN
   {res: Maybe[CacheData] | 
   	some?(res) IMPLIES 
 		     powvar?(val(res)`1) AND
-		     varidx(val(res)`1) = varidx(re) AND
+		     varidx_powvar(val(res)`1) = varidx_powvar(re) AND
     	      	     EXISTS(i:below(length(cache))): 
 		      	  nth(cache,i) = val(res)}
   = CASES cache OF
      	  null: None,
   	  cons(h,t): IF NOT powvar?(h`1) THEN cache_get_powvar(t)(re)
-   	  	     ELSIF varidx(h`1) /= varidx(re) THEN cache_get_powvar(t)(re)
+   	  	     ELSIF varidx_powvar(h`1) /= varidx_powvar(re) THEN cache_get_powvar(t)(re)
    		     ELSIF opn(h`1) >= opn(re) THEN Some(h)
  		     ELSE LET nextresult = cache_get_powvar(t)(re) IN
   		     	  IF none?(nextresult) OR opn(val(nextresult)`1) < opn(h`1) THEN Some(h)
    			  ELSE nextresult ENDIF ENDIF
      ENDCASES
   MEASURE cache BY <<
-
   
   cache_powvar_correct_result: LEMMA
   FORALL(cache: list[CacheData], re: (powvar?)):
   correct_cache?(box)(cache) 
   IMPLIES LET cached = cache_get_powvar(cache)(re) IN
   	  some?(cached) IMPLIES CacheData_correct?(box)(val(cached))
-
-
-
  
   idxs_bounded(nextfreeidx: nat) (cache: list[CacheData]): bool
   = FORALL(i: below(length(cache))): 
 	     nextfreeidx >= next_idx(pd(nth(cache,i)`2))
-
-
 
   RE2AC(re,box,vs,
 	(nextfreeidx: nat | nextfreeidx>last_idx_in_box(box)),
@@ -113,12 +112,18 @@ BEGIN
 			   AND idxs_bounded(newnidx)(res)
 			   AND correct_cache?(box)(res)} 
   = CASES re OF
-      CONST(opc, opC): LET result = (nextfreeidx, cons((re, opC, null)::CacheData, cache)) 
+      CONST(opc, opC): LET result = (nextfreeidx, cons((re, const_ac(opc(unit)), null)::CacheData, cache)) 
       		       IN Some(result),
-      VARIDX(varidx) : IF varidx >= length(box) THEN None
-       		       ELSE LET ac     = nth_ac(box, varidx),
-  		       	    	result = (nextfreeidx, cons((re,ac, null)::CacheData, cache)) IN
-			    Some(result) ENDIF,
+      VARIDX(varidx) : LET cached = cache_get(cache)(re) IN
+      		       IF some?(cached) THEN
+		       	  LET result = (nextfreeidx, cons((re,val(cached), null)::CacheData, cache)) IN Some(result)
+		       ELSE
+		          IF varidx >= length(box) THEN None
+       		          ELSE LET ac     = nth_ac(box, varidx),
+  		          	    	result = (nextfreeidx, cons((re,ac, null)::CacheData, cache)) IN
+		          	    Some(result) 
+		          ENDIF 
+		       ENDIF,
       ADD(re1,re2)   : LET res1 = RE2AC(re1, box, vs, nextfreeidx, cache) IN
       		       IF none?(res1) THEN None
      		       ELSE LET newid1 = val(res1)`1,
@@ -149,7 +154,9 @@ BEGIN
 					       	   cons( (re, mult_ac_ac(ac1,ac2,newid2), null)::CacheData
 						       , cache2)) IN 
 				    Some(result) ENDIF ENDIF ENDIF,
-      POWVAR(idx,pow): IF idx >= length(box) THEN None ELSE
+      POW(re1, pow)   : IF varidx?(re1) THEN
+      	      	       LET idx = varidx(re1) IN
+                       IF idx >= length(box) THEN None ELSE
        		       LET varac  = nth_ac(box, idx) IN
   		       % When pow<=1 or the range of the variable is a single va-
 		       % lue, there is no need of new noise indexes.
@@ -187,7 +194,8 @@ BEGIN
 			      LET newoff = nextfreeidx+(pow-2)+1,
   			       	  nwidxs = nats(nextfreeidx, newoff-1),
 			      	  acRes  = pow_var_ac(varac, pow, nwidxs),
-			      	  result = (newoff, cons((re, acRes,nwidxs), cache)) IN Some(result) ENDIF ENDIF ENDIF,
+			      	  result = (newoff, cons((re, acRes,nwidxs), cache)) IN Some(result) ENDIF ENDIF ENDIF
+		       ELSE None ENDIF,
       SUB(re1,re2)   : LET res1 = RE2AC(re1, box, vs, nextfreeidx, cache) IN
       		       IF none?(res1) THEN None
      		       ELSE LET newid1 = val(res1)`1,
@@ -206,11 +214,96 @@ BEGIN
 		       	    	cache1 = val(res1)`2,
 		       	    	ac1    = car(cache1)`2,
 				result = (newid1, cons((re,neg_ac(ac1), null)::CacheData, cache1)) 
-		 	    IN Some(result) ENDIF 
+		 	    IN Some(result) ENDIF
+      ELSE            None
     ENDCASES
   MEASURE re BY <<
 
+  idxs_ac_cache_not_in_idx_gap(cache: list[CacheData], box: Box, first_added_idx: upfrom(last_idx_in_box(box)+1)): bool
+  = ( FORALL(i: below(length(cache)))(j: nat): 
+      member(j, idxs_ac(nth(cache, i)`2)) 
+      IMPLIES (j < length(box) OR j >= first_added_idx) ) 
 
+  iacniig_RE2AC_preservation: LEMMA
+  FORALL (box: Box, vs: Env, re: RealExpr)
+	 (first_added_idx: upfrom(last_idx_in_box(box)+1))
+	 (nextfreeidx: upfrom(first_added_idx))
+  	 (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache)):
+  LET RE2AC_ = RE2AC(re, box, vs, nextfreeidx, cache) IN
+  idxs_ac_cache_not_in_idx_gap(cache, box, first_added_idx) AND
+  some?(RE2AC_) 
+  IMPLIES idxs_ac_cache_not_in_idx_gap(val(RE2AC_)`2, box, first_added_idx)
   
+  iacniig_box_growing_preservation: LEMMA
+  FORALL(cache: list[CacheData], box: Box, first_added_idx: above(last_idx_in_box(box)+1), I: Interval):
+  idxs_ac_cache_not_in_idx_gap(cache, box, first_added_idx) 
+  IMPLIES idxs_ac_cache_not_in_idx_gap(cache, append(box,(: I :)), first_added_idx)
+
+  new_idxs_cache_not_in_idx_gap(cache: list[CacheData], box: Box, first_added_idx: upfrom(last_idx_in_box(box)+1)): bool
+  = ( FORALL(i: below(length(cache)))(j: nat): 
+      j < length(nth(cache, i)`3) 
+      IMPLIES nth(nth(cache, i)`3, j) >= first_added_idx )
+
+  nicniig_RE2AC_preservation: LEMMA
+  FORALL (box: Box, vs: Env, re: RealExpr)
+	 (first_added_idx: upfrom(last_idx_in_box(box)+1))
+	 (nextfreeidx: upfrom(first_added_idx))
+  	 (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache)):
+  LET RE2AC_ = RE2AC(re, box, vs, nextfreeidx, cache) IN
+  new_idxs_cache_not_in_idx_gap(cache, box, first_added_idx) AND
+  some?(RE2AC_) 
+  IMPLIES new_idxs_cache_not_in_idx_gap(val(RE2AC_)`2, box, first_added_idx)
+
+  nicniig_box_growing_preservation: LEMMA
+  FORALL(cache: list[CacheData], box: Box, first_added_idx: above(last_idx_in_box(box)+1), I: Interval):
+  new_idxs_cache_not_in_idx_gap(cache, box, first_added_idx) 
+  IMPLIES new_idxs_cache_not_in_idx_gap(cache, append(box,(: I :)), first_added_idx) 
+
+  varidxs_re_cache_in_box(cache: list[CacheData], box: Box): bool
+  = ( FORALL(i: below(length(cache)))(subexpr: (varidx?)): subterm(subexpr, nth(cache,i)`1) IMPLIES varidx(subexpr) < length(box) )
+
+  vrcib_RE2AC_preservation: LEMMA
+  FORALL (box: Box, vs: Env, re: RealExpr)
+  	 ((nextfreeidx: nat | nextfreeidx>last_idx_in_box(box)),
+	  (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache))):
+  LET RE2AC_ = RE2AC(re, box, vs, nextfreeidx, cache) IN
+  varidxs_re_cache_in_box(cache, box) AND
+  some?(RE2AC_) 
+  IMPLIES varidxs_re_cache_in_box(val(RE2AC_)`2, box)
+
+  vrcib_box_growing_preservation: LEMMA
+  FORALL(cache: list[CacheData], box: Box, I: Interval):
+  varidxs_re_cache_in_box(cache, box) 
+  IMPLIES varidxs_re_cache_in_box(cache, append(box,(: I :))) 
+
+  RE2AC_box_vs_expansion: LEMMA
+  FORALL (box: Box, vs: Env, re: RealExpr)
+  	 ((nextfreeidx: nat | nextfreeidx>last_idx_in_box(box)),
+	  (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache)))
+	  (I: Interval)
+	  (x: real | EXISTS (e: Epsilon): (lb(I) + ub(I)) / 2  + e * ((ub(I) - lb(I)) / 2) = x )
+	  (added_idx: above(last_idx_in_box(box)+1)): 
+  nextfreeidx>=added_idx AND
+  idxs_ac_cache_not_in_idx_gap(cache, box, added_idx) AND
+  new_idxs_cache_not_in_idx_gap(cache, box, added_idx) AND
+  varidxs_re_cache_in_box(cache, box)
+  IMPLIES LET R1 = RE2AC(re, box, vs, nextfreeidx, cache),
+      	      R2 = RE2AC( re
+	      	   	, append(box,(: I :)) 
+			, vs WITH [(length(box)) := x ]
+			, nextfreeidx, cache ) 
+  	  IN some?(R1) IMPLIES some?(R2) AND val(R1) = val(R2)
+
+  cp_box_vs_expansion: LEMMA
+  FORALL (box: Box, vs: Env)
+	 (added_idx: above(last_idx_in_box(box)+1))
+	 (nextfreeidx: upfrom(added_idx))
+  	 (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache))
+	 (I: Interval)
+	 (x: real | EXISTS (e: Epsilon): (lb(I) + ub(I)) / 2  + e * ((ub(I) - lb(I)) / 2) = x ):
+  idxs_ac_cache_not_in_idx_gap(cache, box, added_idx)  AND
+  varidxs_re_cache_in_box(cache, box) AND
+  new_idxs_cache_not_in_idx_gap(cache, box, added_idx) 
+  IMPLIES compatible_pairs?(append(box, (:I:)), vs WITH [(length(box)) := x])(cache)
 
 END affine_expr_Eval_fnd

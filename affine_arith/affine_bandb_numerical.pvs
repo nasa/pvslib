@@ -5,7 +5,8 @@ BEGIN
             affine_expr_Eval,
             structures@array2list[real],
             structures@Maybe,
-            reals@real_orders
+            reals@real_orders,
+	    interval_arith@interval_expr
 
   IntervalMinMax : TYPE = Maybe[[#
     mm     : ProperInterval,
@@ -32,13 +33,13 @@ BEGIN
   acc       : VAR IntervalMinMax
 
   evaluate(box,expr) : IntervalMinMax = 
-    IF none?(Eval(expr,box)) OR none?(Eval(expr,Lbbox(box)::ProperBox)) 
+    IF none?(Eval(expr,box)) OR none?(affine_expr_Eval.Eval(expr,Lbbox(box)::ProperBox)) 
        OR none?(Eval(expr,Ubbox(box)::ProperBox)) THEN None
-    ELSE LET X   = Eval(expr,box),
+    ELSE LET X   = affine_expr_Eval.Eval(expr,box),
              Lb  = Lbbox(box)::ProperBox,
              Ub  = Ubbox(box)::ProperBox,
-    	     P1  = Eval(expr,Lb),
-             P2  = Eval(expr,Ub),
+    	     P1  = affine_expr_Eval.Eval(expr,Lb),
+             P2  = affine_expr_Eval.Eval(expr,Ub),
 	     (lb_max,lb_box) = IF ub_aff(val(P1)) < ub_aff(val(P2)) 
 	      	  		    THEN (ub_aff(val(P1)),Lb) 
 				    ELSE (ub_aff(val(P2)),Ub) ENDIF,
@@ -96,11 +97,11 @@ BEGIN
              Mb:listn[Interval](length(box)))
             (v:below(length(box))) : VarSel =
     LET X    = nth(box,v),
-    	lbub = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval):X)) IN
+    	lbub = affine_expr_Eval.Eval(expr,setnth(Mb,v,LAMBDA(x:Interval):X)) IN
     IF none?(lbub) THEN None ELSE
     IF both 
-    THEN LET lb_eval = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| lb(X) |])),
-    	     ub_eval = Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| ub(X) |])) IN
+    THEN LET lb_eval = affine_expr_Eval.Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| lb(X) |])),
+    	     ub_eval = affine_expr_Eval.Eval(expr,setnth(Mb,v,LAMBDA(x:Interval): [| ub(X) |])) IN
   	 IF some?(lb_eval) AND some?(ub_eval) 
   	 THEN Some((# thisvar  := v,
        	 	      lb       := lb_aff(val(lb_eval)),
@@ -194,11 +195,11 @@ BEGIN
 
   sound?(box,expr,M) : bool = 
     some?(M) IMPLIES LET M = val(M) IN
-      (FORALL (vs:(vars_in_box?(box))): eval_ACExpr_Env(expr,vs) ## M`mm) AND
+      (FORALL (vs:(vars_in_box?(box))): eval_ACExpr_Env(expr,vs,length(box)) ## M`mm) AND
       Inclusion?(M`lb_box,box) AND
       Inclusion?(M`ub_box,box) AND
-      (FORALL (vs:(vars_in_box?(M`lb_box))): eval_ACExpr_Env(expr,vs) <= M`lb_max) AND
-      (FORALL (vs:(vars_in_box?(M`ub_box))): eval_ACExpr_Env(expr,vs) >= M`ub_min) 
+      (FORALL (vs:(vars_in_box?(M`lb_box))): eval_ACExpr_Env(expr,vs,length(box)) <= M`lb_max) AND
+      (FORALL (vs:(vars_in_box?(M`ub_box))): eval_ACExpr_Env(expr,vs,length(box)) >= M`ub_min) 
 
   interval_minmax_soundness : THEOREM
     sound?(box,expr,interval_minmax(maxdepth,select,le,ge,prune)(expr,box)`ans)

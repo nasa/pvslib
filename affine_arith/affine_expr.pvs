@@ -1,7 +1,10 @@
 affine_expr: THEORY
 BEGIN
 
-  IMPORTING AffineExpr, affine_box, affine_pow
+  IMPORTING interval_arith@IntervalExpr, 
+  	    affine_box, 
+	    affine_pow, 
+	    interval_arith@interval_expr
 
   m,n  : VAR nat
   box  : VAR Box
@@ -10,58 +13,11 @@ BEGIN
   Xa   : VAR AffineCombination
   pox  : VAR ProperBox
  
+  eval_ACExpr_Env(expr,vs, n): BaseType
+  = eval(expr,vs,n)  
 
-  X(v:nat): RealExpr = VARIDX(v)
+  powvar?(expr): bool = pow?(expr) AND varidx?(op(expr))
 
-  r2E(r: BaseType) : RealExpr =
-    CONST(LAMBDA(u:Unit):r,{| r |})
-  CONVERSION r2E
-
-  % Evaluation of AffienExpr on Enviroments.
-  eval_ACExpr_Env(expr,vs): RECURSIVE BaseType
-  = CASES expr OF
-      CONST(opc,opC)   : opc(unit),
-      VARIDX(varidx)   : vs(varidx),
-      ADD(op1,op2)     : eval_ACExpr_Env(op1,vs) + eval_ACExpr_Env(op2,vs),
-      SUB(op1,op2)     : eval_ACExpr_Env(op1,vs) - eval_ACExpr_Env(op2,vs),
-      MULT(op1,op2)    : eval_ACExpr_Env(op1,vs) * eval_ACExpr_Env(op2,vs),
-      NEG(op)          : -eval_ACExpr_Env(op,vs),
-      POWVAR(varidx,n) : vs(varidx)^n
-    ENDCASES
-  MEASURE expr BY <<
+  varidx_powvar(expr:(powvar?)): nat = varidx(op(expr))
   
-
-  split(v:nat,box:Box) 
-  : RECURSIVE {lrb:[Box,Box] | 
-      LET (lb,rb) = lrb IN 
-      length(lb) = length(box) AND 
-      length(rb) = length(box) AND
-      FORALL (i:below(length(box))) : IF i=v THEN nth(lb,i) = HalfLeft(nth(box,i)) AND
-                                                  nth(rb,i) = HalfRight(nth(box,i)) 
-                                      ELSE nth(lb,i) = nth(box,i) AND
-                                           nth(rb,i) = nth(box,i) ENDIF} =
-    IF null?(box) THEN (null,null)
-    ELSIF v = 0 THEN (cons(HalfLeft(car(box)),cdr(box)),
-                      cons(HalfRight(car(box)),cdr(box)))
-    ELSE LET (lb,rb) = split(v-1,cdr(box)) IN
-             (cons(car(box),lb),cons(car(box),rb))
-    ENDIF
-  MEASURE box BY <<
-
-  i,v: VAR nat
-
-  split_eq : RECURSIVE JUDGEMENT 
-  split(v,(box:Box|length(box) <= v)) 
-  HAS_TYPE {lrb:[Box,Box] | LET (lb,rb)=lrb IN lb = box AND rb=box}
-
-  split_vars_in_box : LEMMA            
-    FORALL (box:Box,vs:(vars_in_box?(box)),v:nat) :
-      LET (bl,br) = split(v,box) IN
-        vars_in_box?(bl)(vs) OR vars_in_box?(br)(vs)
-
-  split_Inclusion : LEMMA
-    FORALL (pox,v):
-      LET (bl,br) = split(v,pox) IN
-      Inclusion?(bl,pox) AND Inclusion?(br,pox)
-
 END affine_expr

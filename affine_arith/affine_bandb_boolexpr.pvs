@@ -1,0 +1,54 @@
+affine_bandb_boolexpr: THEORY
+BEGIN
+
+  IMPORTING interval_arith@gbandb_boolexpr
+  
+  maxdepth  : VAR nat
+  dir,
+  eamd      : VAR bool
+  expr      : VAR BoolExpr
+  box       : VAR ProperBox
+  dirvar    : VAR DirVar
+  dirvars   : VAR DirVarStack
+  M,M1,M2   : VAR IntervalOutput
+  out       : VAR Output
+  select    : VAR DirVarSelector
+  acc       : VAR IntervalOutput
+
+  IMPORTING affine_boolexpr,
+            structures@array2list[real] % because of sound? definition.
+
+  evaluate(box,expr) : IntervalOutput = 
+    LET bev  = BEval_(expr,box),
+    	err  = none?(bev),
+    	bet  = IF some?(bev) THEN val(bev) ELSE None ENDIF,
+        bef  = IF none?(bet) THEN
+                 LET bm = BEval_(expr,Midbox(box)) IN
+                 IF some?(bm) AND some?(val(bm)) AND NOT val(val(bm)) THEN val(bm)
+                 ELSE bet
+                 ENDIF
+               ELSE bet
+               ENDIF IN
+    (#
+      answer    := bef,
+      counterex := IF some?(bef) AND NOT val(bef) THEN 
+                     map(LAMBDA(i:Interval):midpoint(i))(box) 
+                   ELSE null ENDIF,
+      error     := err
+     #)
+
+  bandb_boolexpr(maxdepth,select,eamd)(expr,box) : Output =
+    b_and_b_id(evaluate,branch,subdivide,denorm,combine,prune_chk,le_chk,ge_chk(eamd,maxdepth),
+               select,accumulate,maxdepth,expr,box)
+
+  sound?(box,expr,M) : bool = 
+    some?(M`answer)  IMPLIES
+      ((val(M`answer) = FORALL (vs:(vars_in_box?(box))): val(beval__(expr,vs,length(box)))) AND
+       (cons?(counterex(M)) IMPLIES 
+          LET vs = list2array(0)(counterex(M)) IN
+           vars_in_box?(box)(vs) AND NOT val(beval__(expr,vs,length(box)))))
+
+  bandb_boolexpr_soundness : THEOREM
+    sound?(box,expr,bandb_boolexpr(maxdepth,select,eamd)(expr,box)`ans)
+
+END affine_bandb_boolexpr

@@ -1,7 +1,7 @@
 affine: THEORY
 BEGIN
 
-  IMPORTING indexed_list,
+  IMPORTING structures@indexed_list,
             interval_arith@interval
 
   Xi, Xi1, Xi2: VAR Interval
@@ -21,7 +21,11 @@ BEGIN
   nzx: VAR nzBaseType
 
   ErrorTerms: TYPE  = ordered_list[[nat,nzBaseType],lt_idx[nzBaseType]]
+
   pds, pds1, pds2: VAR ErrorTerms
+
+  null_is_ErrorTerms: JUDGEMENT
+    null HAS_TYPE ErrorTerms
 
   empty_ErrorTerms: ErrorTerms = null::list[[nat,nzBaseType]]
 
@@ -51,10 +55,8 @@ BEGIN
   = nth(pds, length(pds)-1)`2
 
   AffineCombination: TYPE 
-  = [# cv: BaseType                     % Stands for central value.
-     , pd: ErrorTerms                   % Stands for partial deviations.
-     #]
-
+  = [# cv: BaseType,                    % Stands for central value.
+       pd: ErrorTerms #]                % Stands for partial deviations.
 
   represents_var?(Xa: AffineCombination): bool 
   = length(pd(Xa)) <= 1
@@ -123,7 +125,7 @@ BEGIN
   %-- Noises ------------------------------------------------------------------%
   e, e2: VAR Epsilon
   nze: VAR nzEpsilon
-
+  
   noise, N, N1, N2: VAR Noise
 
   idxs_noise(N: Noise): RECURSIVE list[nat]
@@ -285,6 +287,14 @@ BEGIN
   NOT null_ol?(N) AND
   car_ol(N)`1 < car_ol(pds)`1
   IMPLIES  eval_pd_noise(pds, N) = eval_pd_noise(pds, cdr_ol(N))
+
+  neNoise: TYPE = {N_: Noise | NOT null_ol?(N_)}
+
+  cdr_Noise_jdg: JUDGEMENT
+  cdr_ol(N: neNoise) HAS_TYPE Noise 
+% ordered_list[[nat,nzEpsilon],lt_idx[nzEpsilon]]
+
+  
 
   eval_pd_noise_rec_pds_def: LEMMA
   eval_pd_noise(pds, N) = IF null_ol?(pds) THEN 0
@@ -493,15 +503,16 @@ BEGIN
   % Interval -> Affine
   %
   const_ac(x) : AffineCombination 
-    = {| x , null |} 
+    = {| x , empty_ErrorTerms |} 
 
   next_idx_const_ac: LEMMA
   next_idx(pd(const_ac(x))) = 0
 
   var_ac(Xi,n): AffineCombination
   = {| (lb(Xi) + ub(Xi)) / 2 , 
-       IF (ub(Xi) - lb(Xi)) / 2 /= 0 THEN cons((n, (ub(Xi) - lb(Xi)) / 2), null) 
-       	  	    	      	     ELSE null ENDIF |}
+       IF (ub(Xi) - lb(Xi)) / 2 /= 0 THEN cons_ol[[nat, nzBaseType], lt_idx[nzBaseType]]
+       	  	    	      	     	   ((n, (ub(Xi) - lb(Xi)) / 2), empty_ErrorTerms) 
+       	  	    	      	     ELSE empty_ErrorTerms ENDIF |}
   eval_var_ac: LEMMA
   eval_ac_noise(var_ac(Xi,n), N) 
   = (lb(Xi) + ub(Xi)) / 2
@@ -552,7 +563,7 @@ BEGIN
   (start <= i AND i <= start+n )
   IMPLIES eval_ac_noise(var_ac(Xi, i), upd_noise_range(N, start, n, upd_fun)) 
   	  = eval_ac_noise(var_ac(Xi, i), extend_N(i, upd_fun(i-start), empty_noise))
-  
+
   ub_aff(Xa): real = ub(eval_by_intervals(Xa))
 
   lb_aff(Xa): real = lb(eval_by_intervals(Xa))
@@ -567,7 +578,6 @@ BEGIN
   containment_var : LEMMA
   x ## Xi IMPLIES EXISTS e: 
      	     	  eval_ac_noise(var_ac(Xi,n), extend_N(n,e,empty_noise)) = x
-
 
   SingInterval?(Xi: Interval): bool = lb(Xi) = ub(Xi)
   
@@ -587,6 +597,9 @@ BEGIN
 
   containment_interval: LEMMA  
   containment(x, Xa1) IMPLIES x ## eval_by_intervals(Xa1)
+
+  ean_in_ebi: LEMMA
+  eval_ac_noise(Xa1, N) ## eval_by_intervals(Xa1)
 
   %----------------------------------------------------------------------------%
   % Addition
@@ -611,7 +624,6 @@ BEGIN
   idxs_ac_add_ac_ac: LEMMA 
   FORALL(i: nat): member(i, idxs_ac(add_ac_ac(Xa1,Xa2))) 
   IMPLIES  member(i, idxs_ac(Xa1)) OR member(i, idxs_ac(Xa2))
-
 
   %----------------------------------------------------------------------------%
   % Subtraction
@@ -651,11 +663,9 @@ BEGIN
   mul_s_ac(x, Xa1): AffineCombination
   = {| x * cv(Xa1) , mul_s_pd(x, pd(Xa1)) |}
 
-
   car_mul_s_ac: LEMMA
   x2 /= 0 AND NOT null_ol?(pds) 
   IMPLIES car(mul_s_pd(x2, pds))`1 = car(pds)`1
-
 
   containment_mul_s: LEMMA
   FORALL N: eval_ac_noise(Xa, N) = x1
@@ -684,7 +694,6 @@ BEGIN
   %
   neg_ac(Xa): AffineCombination
   = {| -cv(Xa), neg_pd(pd(Xa)) |}
-
 
   containment_neg: LEMMA
     FORALL N: eval_ac_noise(Xa, N) = x1
@@ -729,19 +738,20 @@ BEGIN
           car_ol(pds)`1 
     	    < car(mult_pd_pd(cv1, cv2, cdr_ol(pds), null))`1
 
-
   mult_pd_pd_preserves_order_2: LEMMA
   NOT null_ol?(pds2) 
   IMPLIES null_ol?(mult_pd_pd(cv1, cv2, null, cdr_ol(pds2))) OR
           car_ol(pds2)`1 
     	    < car(mult_pd_pd(cv1, cv2, null, cdr_ol(pds2)))`1
   
+
   mult_pd_pd_preserves_order_3: LEMMA
   NOT null_ol?(pds1) AND NOT null_ol?(pds2)
   IMPLIES null_ol?(mult_pd_pd(cv1, cv2, cdr_ol(pds1), cdr_ol(pds2))) OR
           min(car_ol(pds1)`1, car_ol(pds2)`1)
     	    < car(mult_pd_pd(cv1, cv2, cdr_ol(pds1), cdr_ol(pds2)))`1
  
+
   mult_pd_pd_last_bound__null_nnull: LEMMA  
   NOT null_ol?(pds) AND 
   NOT null_ol?(mult_pd_pd(x1, x2, empty_ErrorTerms, pds))
@@ -795,14 +805,11 @@ BEGIN
   FORALL(l1,l2: list[[nat,nzBaseType]]):
   sum_of_modules(append(l1,l2)) = sum_of_modules(l1) + sum_of_modules(l2)
   
-  %
   first_noises(N,n) : Noise = first[nzEpsilon](N,n)
 
   first_noises_upd: LEMMA
   first_noises(upd_noise(N,n,e),n) = first_noises(N,n)
-
-  %
-  %
+  
   first_ET(pds, n) : ErrorTerms = first[nzBaseType](pds, n)
   AUTO_REWRITE+ first_ET
 
@@ -869,7 +876,6 @@ BEGIN
   sum_of_modules(first(pds, n+1))
   = sum_of_modules(first(pds, n)) + abs(search_error_term_by_idx(pds, n))
 
-
   eval_pd_noise_inc: LEMMA
     eval_pd_noise(mult_pd_pd(cv(Xa1), cv(Xa2), pd(Xa1), pd(Xa2)), first(N, n + 1)) =
     eval_pd_noise(mult_pd_pd(cv(Xa1), cv(Xa2), pd(Xa1), pd(Xa2)), first(N, n)) +
@@ -926,8 +932,7 @@ BEGIN
   IMPLIES eval_pd_noise(pds, cons_ol((n, nze), empty_noise)) = 0
 
   epn_up_to_last_idx_pd_is_zero: LEMMA
-  eval_pd_noise(pds, first_noises(N, 1 + last_idx(pds))) 
-  = eval_pd_noise(pds, N)
+    eval_pd_noise(pds, first_noises(N, 1 + last_idx(pds))) = eval_pd_noise(pds, N)
 
   epn_trim_noise: LEMMA
   last_idx(pds) < n
@@ -961,12 +966,10 @@ BEGIN
   FORALL(n:upfrom(next_idx_2(Xa1`pd, Xa2`pd)) ,i: nat): 
   member(i, idxs_ac(mult_ac_ac(Xa1,Xa2, n))) 
   IMPLIES  member(i, idxs_ac(Xa1)) OR member(i, idxs_ac(Xa2)) OR i=n
-
   %
   %----------------------------------------------------------------------------%
   %-- Interval Evaluation -----------------------------------------------------%
   %----------------------------------------------------------------------------%
-
   null_ol?_empty_noise: LEMMA null_ol?(empty_noise)
   AUTO_REWRITE+ null_ol?_empty_noise
 
@@ -1007,4 +1010,5 @@ BEGIN
   AC_HalfRight(Xa): AffineCombination 
   = LET Xi = eval_by_intervals(Xa) IN
     {| (midpoint(Xi) + ub(Xi)) / 2 , Half_pd(pd(Xa)) |}
+
 END affine

@@ -1,0 +1,799 @@
+affine_boolexpr : THEORY
+BEGIN
+  IMPORTING interval_arith@interval_expr
+  	    , structures@Maybe
+	    , affine_expr_Eval
+            , more_list_props
+            , interval_arith@interval_bexpr
+
+  % Context = Extra arguments (beside bexpr) + result
+  
+  ContextData_beval_vs: TYPE = [# result: Maybe[bool], 
+  			       	  vs: Env,
+				  n: nat #]
+
+  ctxt0, ctxt, ctxt1, ctxt2 : VAR ContextData_beval_vs
+  bexpr, initial_bexpr      : VAR BoolExpr
+
+  % evaluation of BoolExpr using Environments  
+  %
+  beval_vs_post(bexpr,ctxt0)(ctxt): bool
+  = some?(ctxt`result) AND (FORALL(n:below(ctxt0`n)): ctxt`vs(n) = ctxt0`vs(n)) AND ctxt`n >= ctxt0`n
+
+  beval_vs_BCONST(bexpr: (bconst?), ctxt): (beval_vs_post(bexpr, ctxt))
+  = ctxt WITH [ `result := Some(opb(bexpr)) ]
+
+  beval_vs_BNOT(bexpr: (bnot?), ctxt0)(ctxt: (beval_vs_post(bop(bexpr), ctxt0)))
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt WITH [ `result := IF some?(ctxt`result) THEN Some(NOT val(ctxt`result)) ELSE None ENDIF ]
+
+  beval_vs_BAND(bexpr: (band?), ctxt0)
+  	       ( ctxt1: (beval_vs_post(bop1(bexpr), ctxt0))
+	       , ctxt2: (beval_vs_post(bop2(bexpr), ctxt1)) )
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt2 WITH [ `result := IF some?(ctxt1`result) AND some?(ctxt2`result) 
+    	       		    THEN Some(val(ctxt1`result) AND val(ctxt2`result)) 
+			    ELSE None ENDIF ]
+
+  beval_vs_BOR(bexpr: (bor?), ctxt0)
+  	      ( ctxt1: (beval_vs_post(bop1(bexpr), ctxt0))
+	      , ctxt2: (beval_vs_post(bop2(bexpr), ctxt1)) )
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt2 WITH [ `result := IF some?(ctxt1`result) AND some?(ctxt2`result) 
+    	       		    THEN Some(val(ctxt1`result) OR val(ctxt2`result)) 
+			    ELSE None ENDIF ]
+
+  beval_vs_BIMPLIES( bexpr: (bimplies?), ctxt0 )
+  		   ( ctxt1: (beval_vs_post(bop1(bexpr), ctxt0))
+		   , ctxt2: (beval_vs_post(bop2(bexpr), ctxt1)) )
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt2 WITH [ `result := IF some?(ctxt1`result) AND some?(ctxt2`result) 
+    	       		    THEN Some(val(ctxt1`result) IMPLIES val(ctxt2`result)) 
+			    ELSE None ENDIF ]
+
+  beval_vs_BINCLUDES(bexpr: (bincludes?), ctxt): (beval_vs_post(bexpr, ctxt))
+  = ctxt WITH [ `result := Some(eval(op(bexpr),ctxt`vs,ctxt`n) ## opi(bexpr)) ]
+
+  beval_vs_BREL(bexpr: (brel?), ctxt): (beval_vs_post(bexpr, ctxt))
+  = ctxt 
+    WITH [ `result := Some( rel (bexpr)
+    	      		   	( eval(op1(bexpr),ctxt`vs,ctxt`n) 
+				, eval(op2(bexpr),ctxt`vs,ctxt`n) )) ]
+
+  beval_vs_BLETIN_RealExpr_ini(rexpr: (realexpr?), ctxt): ContextData_beval_vs
+  = LET eval_blet = eval(rexpr,ctxt`vs,ctxt`n) IN
+    ctxt WITH [ `vs := ctxt`vs WITH [ (ctxt`n) := eval_blet ] ,
+    	      	`n  := ctxt`n + 1 ]
+
+  beval_vs_BLETIN_RealExpr
+  ( bexpr: {b_ : (bletin?) | realexpr?(blet(b_))} , ctxt0 )
+  ( ctxt : (beval_vs_post(bin(bexpr), beval_vs_BLETIN_RealExpr_ini(blet(bexpr), ctxt0))) )
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt
+
+  beval_vs_BLETIN_BoolExpr_merge1(ctxt1,ctxt2): ContextData_beval_vs
+  = ctxt1 WITH [ `vs := ctxt1`vs WITH [ (ctxt1`n) := IF some?(ctxt2`result) AND 
+    	       	     		      		     	val(ctxt2`result) 
+						     THEN 1 ELSE -1 ENDIF ],
+    	       	 `n  := ctxt1`n + 1 ]
+
+  beval_vs_BLETIN_BoolExpr
+  ( bexpr: {b_ : (bletin?) | boolexpr?(blet(b_))}, ctxt0 )
+  ( ctxt1: (beval_vs_post(blet(bexpr), ctxt0))
+  , ctxt2: (beval_vs_post(bin(bexpr), beval_vs_BLETIN_BoolExpr_merge1(ctxt0,ctxt1))) )
+  : (beval_vs_post(bexpr, ctxt0))
+  = ctxt0 WITH [ `result := ctxt2`result ]
+
+  beval_vs_BITE_merge1(ctxt0,ctxt1): ContextData_beval_vs
+  = ctxt1
+
+  beval_vs_BITE_merge2(ctxt0,ctxt1,ctxt2): ContextData_beval_vs
+  = ctxt2 WITH [ result := ctxt1`result ] 
+
+  beval_vs_BITE
+   ( bexpr: (bite?), ctxt0 )
+   ( ctxt1: (beval_vs_post(bif(bexpr)  , ctxt0))
+   , ctxt2: (beval_vs_post(bthen(bexpr), beval_vs_BITE_merge1(ctxt0,ctxt1)))
+   , ctxt3: (beval_vs_post(belse(bexpr), beval_vs_BITE_merge2(ctxt0,ctxt1,ctxt2))))
+  : (beval_vs_post(bexpr, ctxt0))
+  = IF some?(ctxt1`result)
+    THEN IF val(ctxt1`result) 
+   	 THEN ctxt3 WITH [ result := ctxt2`result ] 
+	 ELSE ctxt3 ENDIF
+    ELSE ctxt1 ENDIF
+
+  IMPORTING boolexpr_lfcs
+
+  beval_vs(ctxt)(bexpr): (beval_vs_post(bexpr,ctxt))
+  = boolexpr_lfcs[ ContextData_beval_vs
+    	         , beval_vs_post
+	         , beval_vs_BCONST
+	         , beval_vs_BNOT
+		 , beval_vs_BAND
+		 , beval_vs_BOR
+		 , beval_vs_BIMPLIES
+		 , beval_vs_BREL
+		 , beval_vs_BINCLUDES
+		 , beval_vs_BITE_merge1
+		 , beval_vs_BITE_merge2
+		 , beval_vs_BITE
+		 , beval_vs_BLETIN_RealExpr_ini
+		 , beval_vs_BLETIN_RealExpr
+		 , beval_vs_BLETIN_BoolExpr_merge1
+                 , beval_vs_BLETIN_BoolExpr
+    ].F(bexpr)(ctxt)
+
+  %
+  % BEval: function to evaluate BoolExpr using Affine Forms.
+  %
+  ContextData_BEval_Box: TYPE = 
+    Maybe[  % "None" means that the BoolExpr cannot 
+  	    %   be evaluated using Affine Forms -- 
+  	    %   for example because it contains an 
+  	    %   unsupported operation, or a var in-
+  	    %   dex not present in the given box.
+  	  [# result: Maybe[bool]  % "None" means either that 
+	     	      		  % there is no conclusive
+	   			  % response or
+  	       	    		  % the result was not
+  	   			  % computed yet.
+  	   , box    : Box
+  	   , nextid : {n_: nat | n_ > last_idx_in_box(box)}
+  	   , cache  : {c_: (correct_cache?(box)) | idxs_bounded(nextid)(c_)} 
+	   , nxtlcl : % "next local": the next local variable id 
+	     	      % (to be used in let constructions)
+	     	      above(last_idx_in_box(box)) #] ]
+
+  vs  : VAR Env
+  n   : VAR nat
+  box,initial_box : VAR Box
+
+  first_noise_idx_available_box(bexpr, box): nat = 
+    max_local_vars_count(bexpr) + last_idx_in_box(box) + 1
+
+  CDBB ( initial_bexpr
+       , initial_box
+       , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) ): TYPE 
+  = { c : ContextData_BEval_Box | some?(c) IMPLIES last_idx_in_box(val(c)`box) < first_added_idx }
+
+  % CDBB constructor
+  mk_CDBB ( initial_bexpr
+  	  , initial_box
+	  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+          ( result: Maybe[bool]
+  	  , box: { b_: Box | 
+	    	   last_idx_in_box(b_) < first_noise_idx_available_box(initial_bexpr,initial_box) }
+          , nextid: {n_: nat | n_ > last_idx_in_box(box)}
+	  , cache: {c_: (correct_cache?(box)) | idxs_bounded(nextid)(c_)} )
+  : CDBB(initial_bexpr, initial_box, first_added_idx)
+  = Some( (# `result := result, `box := box, `nextid := nextid, `cache := cache 
+    	   , nxtlcl := last_idx_in_box(box)+1 #) )
+
+  BEval_Box_post
+    ( initial_bexpr
+    , initial_box
+    , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+    ( bexpr , (ctxt0_: CDBB(initial_bexpr, initial_box, first_added_idx)) )
+    ( ctxt_: CDBB(initial_bexpr, initial_box, first_added_idx) ) 
+  : bool
+  = some?(ctxt_) 
+    IMPLIES some?(ctxt0_)  % If the resulting context is not an error context, 
+    AND                    % the original context must be non-error too.
+    LET ctxt_ = val(ctxt_), ctxt0_ = val(ctxt0_), 
+    	result  = ctxt_`result,
+    	cache_0 = ctxt0_`cache,	
+	cache_r = ctxt_`cache, 
+  	nextfreeidx = ctxt0_`nextid, 
+	newnidx = ctxt_`nextid 
+    IN correct_cache?(ctxt_`box)(cache_r) 
+       AND (EXISTS(l: list[CacheData]): cache_r = append(l, cache_0))
+       AND newnidx >= nextfreeidx
+       AND idxs_bounded(newnidx)(cache_r) 
+
+  BEval_Box_BCONST
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( bexpr: (bconst?)
+  , ctxt_: CDBB(initial_bexpr, initial_box, first_added_idx))
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx)(bexpr,ctxt_))
+  = IF some?(ctxt_) 
+    THEN Some(val(ctxt_) WITH [ `result := Some(opb(bexpr)) ])
+    ELSE None ENDIF
+
+  BEval_Box_BNOT
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( bexpr: (bnot?) 
+  , ctxt0_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  ( ctxt_: (BEval_Box_post(initial_bexpr, initial_box, first_added_idx)(bop(bexpr),ctxt0_)) )
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx)(bexpr,ctxt0_))
+  = IF some?(ctxt_) 
+    THEN LET ctxt_ = val(ctxt_) 
+    	 IN IF some?(ctxt_`result) 
+	    THEN Some(ctxt_ WITH [ `result := Some(NOT val(ctxt_`result)) ])
+	    ELSE ctxt_ ENDIF
+    ELSE None ENDIF
+
+  mk_result(c1,c2: ContextData_BEval_Box)(res: bool): MACRO ContextData_BEval_Box
+  = IF none?(c2) AND none?(c1) 
+    THEN None
+    ELSE LET cres = IF some?(c2) THEN val(c2) ELSE val(c1) ENDIF
+    	 IN Some(cres WITH [ `result := Some(res) ]) ENDIF
+
+  BEval_Box_BAND
+    ( initial_bexpr
+    , initial_box
+    , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+    ( bexpr: (band?) 
+    , ctxt0_ : CDBB(initial_bexpr, initial_box, first_added_idx) )
+    ( ctxt1_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop1(bexpr), ctxt0_)) 
+    , ctxt2_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop2(bexpr), ctxt1_)) )
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bexpr, ctxt0_))
+  = IF none?(ctxt1_) OR none?(ctxt2_) THEN None ELSE
+      IF none?(val(ctxt1_)`result) OR val(val(ctxt1_)`result) 
+      THEN IF some?(val(ctxt2_)`result) AND val(val(ctxt2_)`result)
+      	 THEN IF some?(val(ctxt1_)`result) THEN mk_result(ctxt1_,ctxt2_)(val(val(ctxt1_)`result)) 
+	      	 			   ELSE Some(val(ctxt2_) WITH [result := None]) ENDIF
+      	 ELSE ctxt2_ ENDIF
+      ELSE mk_result(ctxt1_,ctxt2_)(FALSE) ENDIF
+    ENDIF
+
+  BEval_Box_BOR
+    ( initial_bexpr
+    , initial_box
+    , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+    ( bexpr: (bor?) 
+    , ctxt0_ : CDBB(initial_bexpr, initial_box, first_added_idx) )
+    ( ctxt1_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop1(bexpr), ctxt0_)) 
+    , ctxt2_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop2(bexpr), ctxt1_)) )
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bexpr, ctxt0_))
+  = IF none?(ctxt1_) OR none?(ctxt2_) THEN None ELSE
+      IF none?(val(ctxt1_)`result) OR NOT val(val(ctxt1_)`result) 
+      THEN IF some?(val(ctxt2_)`result) AND (val(val(ctxt2_)`result) OR some?(val(ctxt1_)`result))
+      	 THEN mk_result(ctxt1_,ctxt2_)(val(val(ctxt2_)`result))
+      	 ELSE Some(val(ctxt2_) WITH [result := None]) ENDIF
+      ELSE mk_result(ctxt1_,ctxt2_)(TRUE) ENDIF
+    ENDIF
+
+  BEval_Box_BIMPLIES
+    ( initial_bexpr
+    , initial_box
+    , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+    ( bexpr: (bimplies?)
+    , ctxt0_ : CDBB(initial_bexpr, initial_box, first_added_idx) )
+    ( ctxt1_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop1(bexpr), ctxt0_)) 
+    , ctxt2_ : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bop2(bexpr), ctxt1_)) )
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bexpr, ctxt0_)) =
+   IF none?(ctxt1_) OR none?(ctxt2_) THEN None ELSE
+    IF none?(val(ctxt1_)`result) OR val(val(ctxt1_)`result) 
+    THEN IF some?(val(ctxt2_)`result) AND (val(val(ctxt2_)`result) OR some?(val(ctxt1_)`result))
+    	 THEN mk_result(ctxt1_,ctxt2_)(val(val(ctxt2_)`result))
+         ELSE Some(val(ctxt2_) WITH [result := None]) ENDIF
+    ELSE mk_result(ctxt1_,ctxt2_)(TRUE) ENDIF
+  ENDIF
+
+  BEval_Box_BINCLUDES
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( bexpr: (bincludes?)
+  , ctxt_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  : (BEval_Box_post(initial_bexpr, initial_box, first_added_idx) (bexpr, ctxt_))
+  = IF some?(ctxt_) 
+    THEN LET ctxt_  = val(ctxt_) ,
+    	     evalop = Eval_wCache(op(bexpr))(ctxt_`box, ctxt_`nextid, ctxt_`cache) 
+	 IN IF some?(evalop) 
+    	    THEN LET opi = opi(bexpr) 
+	 	 IN IF Proper?(opi) 
+  	            THEN LET res_eval = eval_by_intervals(car(val(evalop)`2)`2) IN
+  	 		 IF res_eval << opi 
+			 THEN Some(ctxt_ WITH [ `result := Some(TRUE)
+                                              , `cache := val(evalop)`2
+  	 	                              , `nextid := val(evalop)`1 ])
+  	 		 ELSIF opi`ub < res_eval`lb OR res_eval`ub < opi`lb 
+			 THEN Some(ctxt_ WITH [ `result := Some(FALSE)
+                                              , `cache := val(evalop)`2
+  	 	                              , `nextid := val(evalop)`1 ])
+			 ELSE Some(ctxt_ WITH [ `result := None
+                                              , `cache := val(evalop)`2
+  	 	                              , `nextid := val(evalop)`1 ]) ENDIF
+  	            ELSE None ENDIF
+            ELSE None ENDIF
+    ELSE None ENDIF
+
+  BEval_Box_BREL
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+  ( bexpr: (brel?) ,
+    ctxt_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  : (BEval_Box_post (initial_bexpr, initial_box, first_added_idx) (bexpr,ctxt_))
+  = IF some?(ctxt_) 
+    THEN LET ctxt__ = val(ctxt_),
+    	     evalop1 = Eval_wCache(op1(bexpr))(ctxt__`box, ctxt__`nextid, ctxt__`cache) IN
+    	 IF some?(evalop1) 
+         THEN LET evalop2 = Eval_wCache(op2(bexpr))(ctxt__`box, val(evalop1)`1, val(evalop1)`2) IN
+              IF some?(evalop2) 
+	      THEN LET op1_ = car(val(evalop1)`2)`2,
+         	       op2_ = car(val(evalop2)`2)`2
+         	   IN IF rel(bexpr)(0,1) % Case <= or <
+	 	      THEN IF rel(bexpr)(ub_aff(op1_),lb_aff(op2_)) 
+		      	   THEN Some(ctxt__ WITH [ `result := Some(TRUE)
+			                         , `cache  := val(evalop2)`2
+         		  			 , `nextid := val(evalop2)`1 ])
+         	           ELSIF neg_rel(rel(bexpr))(lb_aff(op1_),ub_aff(op2_)) 
+			   THEN Some(ctxt__ WITH [ `result := Some(FALSE)
+			                         , `cache  := val(evalop2)`2
+         		  			 , `nextid := val(evalop2)`1 ])
+         		   ELSE Some(ctxt__ WITH [ `result := None
+			                         , `cache  := val(evalop2)`2
+         		  			 , `nextid := val(evalop2)`1 ]) ENDIF
+        	      ELSIF rel(bexpr)(lb_aff(op1_),ub_aff(op2_)) % Case >, >=
+		      THEN  Some(ctxt__ WITH [ `result := Some(TRUE)
+			                     , `cache  := val(evalop2)`2
+         		  		     , `nextid := val(evalop2)`1 ])
+                      ELSIF neg_rel(rel(bexpr))(ub_aff(op1_),lb_aff(op2_)) 
+		      THEN Some(ctxt__ WITH [ `result := Some(FALSE)
+			                     , `cache  := val(evalop2)`2
+         		  		     , `nextid := val(evalop2)`1 ])
+		      ELSE Some(ctxt__ WITH [ `result := None
+			                         , `cache  := val(evalop2)`2
+         		  			 , `nextid := val(evalop2)`1 ]) ENDIF
+              ELSE None ENDIF
+         ELSE None ENDIF
+    ELSE None ENDIF
+
+  BEval_Box_BLETIN_RealExpr_ini
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( rexpr: (realexpr?), ctxt_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  : CDBB(initial_bexpr, initial_box, first_added_idx)
+  = IF some?(ctxt_) THEN 
+       LET ctxt_     = val(ctxt_),
+    	   eval_blet = Eval_wCache(rexpr)(ctxt_`box, ctxt_`nextid, ctxt_`cache)
+       IN IF some?(eval_blet) AND 
+	     last_idx_in_box(ctxt_`box) + 1 < first_added_idx 
+	     % ie, there is room for a variable in the gap between
+	     % last_idx_in_box(ctxt_`box) + 1 and first_added_idx
+       	  THEN Some(ctxt_ 
+	         WITH [ box := append(ctxt_`box,(: eval_by_intervals(car(val(eval_blet)`2)`2) :)),
+       	    	        nextid := val(eval_blet)`1+1,
+  		        % cache  := cons( ( VARIDX(ctxt_`nxtlcl) 
+		       	%       	       , car(val(eval_blet)`2)`2 
+			% 	       , car(val(eval_blet)`2)`3 ) 
+			% 	     ,  val(eval_blet)`2 ),
+  		        cache  := cons( ( VARIDX(last_idx_in_box(ctxt_`box) + 1) 
+		       	      	       , car(val(eval_blet)`2)`2 
+				       , car(val(eval_blet)`2)`3 ) 
+				     ,  val(eval_blet)`2 ),
+		       nxtlcl := ctxt_`nxtlcl+1 ])
+       	  ELSE None ENDIF
+    ELSE None ENDIF
+
+  BEval_Box_BLETIN_RealExpr
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( bexpr: {b_ : (bletin?) | realexpr?(blet(b_))} 
+  , ctxt0_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  ( ctxt_: (BEval_Box_post ( initial_bexpr, initial_box, first_added_idx ) 
+    	   		   ( bin(bexpr)
+			   , BEval_Box_BLETIN_RealExpr_ini( initial_bexpr
+			     				  , initial_box
+							  , first_added_idx ) 
+			     				  ( blet(bexpr), ctxt0_ ) )) ) 
+  : (BEval_Box_post ( initial_bexpr, initial_box, first_added_idx ) (bexpr,ctxt0_))
+  % = IF some?(ctxt_)
+  %   THEN % Conservatively, we discard the new cache in case the additions are
+  % 	 % related to the local variable defined in the BLETIN construction.
+  % 	 Some( val(ctxt0_) % some?(ctxt0_) is assured by the typepred of ctxt_ 
+  % 	       WITH [ `result := val(ctxt_)`result ] )
+  %   ELSE None ENDIF
+  = ctxt_
+
+  BEval_Box_BLETIN_BoolExpr_merge1
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+  (ctxt1_,ctxt2_: CDBB(initial_bexpr, initial_box, first_added_idx))
+  : CDBB(initial_bexpr, initial_box, first_added_idx)
+  = IF some?(ctxt1_) AND 
+       some?(ctxt2_) AND 
+       last_idx_in_box(val(ctxt1_)`box) + 1 < first_added_idx % ie, there is room 
+    THEN LET ctxt1_ = val(ctxt1_),                            % for a variable in 
+    	     ctxt2_ = val(ctxt2_)                             % the gap between
+    	 IN Some(ctxt1_ WITH [                                % last_idx_in_box(ctxt_`box) + 1 
+    	   	  `box := append( ctxt1_`box                  % and first_added_idx
+		       	  	, (: IF none?(ctxt2_`result) THEN [|-1,1|] 
+                            	     ELSIF val(ctxt2_`result) THEN [|1/2,1|]
+                            	     ELSE [|-1,-1/2|] ENDIF  :) ),
+  		  nextid := ctxt1_`nextid + 1,
+		  nxtlcl := ctxt1_`nxtlcl + 1 ])
+    ELSE None ENDIF
+
+  BEval_Box_BLETIN_BoolExpr
+  ( initial_bexpr
+  , initial_box
+  , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  ( bexpr : {b_ : (bletin?) | boolexpr?(blet(b_))} 
+  , ctxt0_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+  ( ctxt1_: (BEval_Box_post( initial_bexpr, initial_box, first_added_idx )  
+     	     		   ( blet(bexpr), ctxt0_ ))
+  , ctxt2_: (BEval_Box_post( initial_bexpr, initial_box, first_added_idx )  
+     	     		   ( bin(bexpr)
+			   , BEval_Box_BLETIN_BoolExpr_merge1 ( initial_bexpr
+			     				      , initial_box
+							      , first_added_idx ) 
+							      ( ctxt0_, ctxt1_ ) )) )
+  : (BEval_Box_post (initial_bexpr, initial_box, first_added_idx)  (bexpr, ctxt0_))
+  = IF some?(ctxt2_) 
+    THEN % Conservatively, we discard the new cache in case the additions are
+	 % related to the local variable defined in the BLETIN construction.
+	 Some( val(ctxt0_) % some?(ctxt0_) is assured by the typepred of ctxt1_ and ctxt2_
+	       WITH [ `result := val(ctxt2_)`result ] )
+    ELSE None ENDIF
+
+  BEval_Box_BITE_merge1
+		( initial_bexpr
+                , initial_box
+  		, (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+  		(ctxt0_,ctxt1_: CDBB(initial_bexpr, initial_box, first_added_idx))
+  : CDBB(initial_bexpr, initial_box, first_added_idx)
+  = ctxt1_
+
+  BEval_Box_BITE_merge2
+		( initial_bexpr
+                , initial_box
+  		, (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+  		(ctxt0_,ctxt1_,ctxt2_: CDBB(initial_bexpr, initial_box, first_added_idx))
+  : CDBB(initial_bexpr, initial_box, first_added_idx)
+  = IF none?(ctxt1_) THEN None ELSE
+    IF some?(ctxt2_) 
+    THEN Some(val(ctxt2_) WITH [result := val(ctxt1_)`result])
+    ELSE None ENDIF ENDIF
+
+  BEval_Box_BITE
+   ( initial_bexpr
+   , initial_box
+   , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+   ( bexpr: (bite?) 
+   , ctxt0_: CDBB(initial_bexpr, initial_box, first_added_idx) )
+   ( ctxt1_: (BEval_Box_post( initial_bexpr, initial_box, first_added_idx )  
+     	     		    ( bif(bexpr), ctxt0_ ))
+   , ctxt2_: (BEval_Box_post
+     	       ( initial_bexpr, initial_box, first_added_idx )  
+     	       ( bthen(bexpr), BEval_Box_BITE_merge1( initial_bexpr
+	       	                                    , initial_box
+  	       	                                    , first_added_idx )
+						    ( ctxt0_, ctxt1_ ) ))
+   , ctxt3_: (BEval_Box_post
+     	       ( initial_bexpr, initial_box, first_added_idx )  
+     	       ( belse(bexpr), BEval_Box_BITE_merge2( initial_bexpr
+	       	                                    , initial_box
+  	       	                                    , first_added_idx )
+						    ( ctxt0_, ctxt1_, ctxt2_ ) )) )
+  : (BEval_Box_post( initial_bexpr, initial_box, first_added_idx )( bexpr, ctxt0_ ))
+  = IF some?(ctxt1_) AND some?(ctxt2_) AND some?(ctxt3_)
+    THEN IF some?(val(ctxt1_)`result) THEN 
+    	   IF val(val(ctxt1_)`result)
+    	   THEN Some(val(ctxt3_) WITH [result := val(ctxt2_)`result])
+	   ELSE ctxt3_ ENDIF
+         ELSE IF some?(val(ctxt2_)`result) AND some?(val(ctxt3_)`result) AND
+	       	 val(val(ctxt2_)`result) = val(val(ctxt3_)`result) AND
+		 length(val(ctxt2_)`box) = length(val(ctxt3_)`box)
+	      THEN mk_result (ctxt2_,ctxt3_) (val(val(ctxt2_)`result))
+	      ELSE Some(val(ctxt3_) WITH [result := None]) ENDIF ENDIF
+    ELSE None ENDIF
+
+  BEval_Box( initial_bexpr, 
+  	     initial_box, 
+	     (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))) )
+  : CDBB(initial_bexpr, initial_box, first_added_idx) = 
+   boolexpr_lfcs[ CDBB(initial_bexpr, initial_box, first_added_idx)
+    	         , BEval_Box_post(initial_bexpr, initial_box, first_added_idx)
+  	         , BEval_Box_BCONST(initial_bexpr, initial_box, first_added_idx)
+  	         , BEval_Box_BNOT(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BAND(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BOR(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BIMPLIES(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BREL(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BINCLUDES(initial_bexpr, initial_box, first_added_idx)
+
+  		 , BEval_Box_BITE_merge1(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BITE_merge2(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BITE(initial_bexpr, initial_box, first_added_idx)
+
+  		 , BEval_Box_BLETIN_RealExpr_ini(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BLETIN_RealExpr(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BLETIN_BoolExpr_merge1(initial_bexpr, initial_box, first_added_idx)
+  		 , BEval_Box_BLETIN_BoolExpr(initial_bexpr, initial_box, first_added_idx)
+    ].F(initial_bexpr)(mk_CDBB(initial_bexpr,initial_box,first_added_idx)
+			      ( None[bool]
+			      , initial_box
+			      , first_added_idx
+			      , null[CacheData]))
+
+  % Inclusion 
+
+  p_inclusion_pre( initial_bexpr
+	         , initial_box
+		 , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+		 (ctxt,(ctxt_:CDBB(initial_bexpr, initial_box, first_added_idx))): bool = 
+   some?(ctxt_)
+    IMPLIES 
+     LET ctxt_  = val(ctxt_),
+      	 box    = ctxt_`box,
+     	 cache  = ctxt_`cache,
+     	 nxtidx = ctxt_`nextid 
+      IN vars_in_box?(ctxt_`box)(ctxt`vs) AND 
+         ctxt`n = length(ctxt_`box) AND 
+         compatible_pairs?(ctxt_`box, ctxt`vs)(ctxt_`cache) AND
+         nxtidx>=first_added_idx AND
+         idxs_ac_cache_not_in_idx_gap(cache, box, first_added_idx) AND
+         new_idxs_cache_not_in_idx_gap(cache, box, first_added_idx) AND
+         varidxs_re_cache_in_box(cache, box) 
+         AND (some?(ctxt_`result) % This condition is needed because of the 
+         	   		  % BREL construction. While it is always
+     			       	  % possible to decide if a number is lower
+     			      	  % equal or greater than another, it is not
+     			      	  % always the case for intervals (overlaping
+     			      	  % intervals are incomparable).
+              IMPLIES ctxt`result = ctxt_`result)
+
+  p_inclusion( initial_bexpr
+  	     , initial_box
+	     , (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr,initial_box))))
+	     ( ctxt, (ctxt_:CDBB(initial_bexpr, initial_box, first_added_idx)) ) : bool = 
+    some?(ctxt_) AND 
+    some?(val(ctxt_)`result)
+      IMPLIES ctxt`result = val(ctxt_)`result 
+
+  %
+  % Non-trivial TCCs obligations from importing of theory boolexpr_lfcmrs.
+  %
+  BEval_Box_BAND_preservation: LEMMA 
+  FORALL (f_ctxt0, f_ctxt1, f_ctxt2: ContextData_beval_vs):
+  FORALL (g_ctxt0, g_ctxt1, g_ctxt2: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box))):
+  FORALL (bop1, bop2: BoolExpr):
+    beval_vs_post(bop1, f_ctxt0)(f_ctxt1)
+    AND BEval_Box_post(bexpr, box,
+                       first_noise_idx_available_box(bexpr, box))
+                      (bop1, g_ctxt0)(g_ctxt1)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr, box)))
+                       (f_ctxt1, g_ctxt1)
+    AND beval_vs_post(bop2, f_ctxt1)(f_ctxt2)
+    AND BEval_Box_post(bexpr, box,
+                       first_noise_idx_available_box(bexpr, box))
+                      (bop2, g_ctxt1)(g_ctxt2)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr, box)))
+                       (f_ctxt2, g_ctxt2)
+    IMPLIES
+    p_inclusion_pre(bexpr, box,
+                             (first_noise_idx_available_box(bexpr, box)))
+                            (beval_vs_BAND(BAND(bop1, bop2), f_ctxt0)
+                                              (f_ctxt1, f_ctxt2),
+                             BEval_Box_BAND(bexpr,
+                                                box,
+                                                first_noise_idx_available_box
+                                                (bexpr, box))
+                                               (BAND(bop1, bop2), g_ctxt0)
+                                               (g_ctxt1, g_ctxt2))
+
+  BEval_Box_BOR_preservation: LEMMA 
+  FORALL (f_ctxt0, f_ctxt1, f_ctxt2: ContextData_beval_vs):
+  FORALL (g_ctxt0, g_ctxt1, g_ctxt2: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box))):
+  FORALL (bop1, bop2: BoolExpr):
+    beval_vs_post(bop1, f_ctxt0)(f_ctxt1)
+    AND BEval_Box_post(bexpr, box,
+                       first_noise_idx_available_box(bexpr, box))
+                      (bop1, g_ctxt0)(g_ctxt1)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr, box)))
+                       (f_ctxt1, g_ctxt1)
+    AND beval_vs_post(bop2, f_ctxt1)(f_ctxt2)
+    AND BEval_Box_post(bexpr, box,
+                       first_noise_idx_available_box(bexpr, box))
+                      (bop2, g_ctxt1)(g_ctxt2)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr, box)))
+                       (f_ctxt2, g_ctxt2)
+    IMPLIES
+    p_inclusion_pre(bexpr, box,
+                             (first_noise_idx_available_box(bexpr, box)))
+                            (beval_vs_BOR(BOR(bop1, bop2), f_ctxt0)
+                                              (f_ctxt1, f_ctxt2),
+                             BEval_Box_BOR(bexpr,
+                                                box,
+                                                first_noise_idx_available_box
+                                                (bexpr, box))
+                                               (BOR(bop1, bop2), g_ctxt0)
+                                               (g_ctxt1, g_ctxt2))
+
+  BEval_Box_BIMPLIES_preservation: LEMMA 
+  FORALL (f_ctxt0, f_ctxt1, f_ctxt2: ContextData_beval_vs):
+  FORALL (g_ctxt0, g_ctxt1, g_ctxt2: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box))):
+  FORALL (bop1, bop2: BoolExpr):
+    beval_vs_post(bop1, f_ctxt0)(f_ctxt1)
+    AND BEval_Box_post(bexpr, box, first_noise_idx_available_box(bexpr, box)) (bop1, g_ctxt0) (g_ctxt1)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr, box)))
+                       (f_ctxt1, g_ctxt1)
+    AND beval_vs_post(bop2, f_ctxt1)(f_ctxt2)
+    AND BEval_Box_post(bexpr, box,
+                       first_noise_idx_available_box(bexpr, box))
+                      (bop2, g_ctxt1)(g_ctxt2)
+    AND p_inclusion_pre(bexpr, box,
+                        (first_noise_idx_available_box(bexpr,
+                                                       box)))
+                       (f_ctxt2, g_ctxt2)
+    IMPLIES
+    p_inclusion_pre(bexpr, box,
+                             (first_noise_idx_available_box(bexpr, box)))
+                            (beval_vs_BIMPLIES(BIMPLIES(bop1, bop2),f_ctxt0)
+                                              (f_ctxt1, f_ctxt2),
+                             BEval_Box_BIMPLIES(bexpr,
+                                                box,
+                                                first_noise_idx_available_box
+                                                (bexpr, box))
+                                               (BIMPLIES(bop1, bop2), g_ctxt0)
+                                               (g_ctxt1, g_ctxt2))
+
+  BINCLUDES_pre_preservation: LEMMA
+  FORALL (f_ctxt0: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(bexpr, box)))
+         (g_ctxt0: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+	 (op: RealExpr, opi: Interval):
+  p_inclusion_pre(bexpr, box, first_added_idx)(f_ctxt0, g_ctxt0)
+  IMPLIES p_inclusion_pre( bexpr, box, first_added_idx)
+                  	 ( beval_vs_BINCLUDES(BINCLUDES(op, opi), f_ctxt0),
+                           BEval_Box_BINCLUDES( bexpr,
+                                        	box,
+                                        	first_noise_idx_available_box(bexpr, box))
+                                       	      ( BINCLUDES(op, opi) , g_ctxt0 ) )
+
+  BREL_pre_preservation: LEMMA
+  FORALL (f_ctxt0: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(bexpr, box)))
+         (g_ctxt0: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (rel: RealOrder, op1, op2: RealExpr):
+  p_inclusion_pre(bexpr, box,
+                  (first_added_idx))
+                 (f_ctxt0, g_ctxt0)
+  IMPLIES p_inclusion_pre(bexpr, box, first_added_idx)
+                         ( beval_vs_BREL(BREL(rel, op1, op2), f_ctxt0),
+                           BEval_Box_BREL(bexpr, box, first_added_idx)
+                                         (BREL(rel, op1, op2), g_ctxt0) )
+
+  IMPORTING affine_expr_Eval_fnd_props
+
+  BLETIN_RealExpr_ini_pre_preservation: LEMMA
+  FORALL (fct0: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(initial_bexpr, initial_box)))
+  	 (gct0: CDBB(initial_bexpr, initial_box, first_added_idx))
+	 (blet: RealExpr):
+  p_inclusion_pre(initial_bexpr, initial_box, first_added_idx)(fct0, gct0) 
+  IMPLIES p_inclusion_pre(initial_bexpr, initial_box, first_added_idx)
+			 ( beval_vs_BLETIN_RealExpr_ini(blet, fct0)
+                         , BEval_Box_BLETIN_RealExpr_ini (initial_bexpr, initial_box, first_added_idx)
+			   				 (blet, gct0));
+
+  BLETIN_RealExpr_pre_preservation: LEMMA
+  FORALL (fclet: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(bexpr, box)))
+	 (gclet: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (blet: RealExpr, bin: BoolExpr)
+	 (f_ctxtbin: (beval_vs_post(bin, beval_vs_BLETIN_RealExpr_ini(blet, fclet))))
+	 (g_ctxtbin: (BEval_Box_post(bexpr, box, first_added_idx)
+                           (bin, BEval_Box_BLETIN_RealExpr_ini(bexpr, box, first_added_idx)(blet, gclet)))):
+  p_inclusion_pre(bexpr, box, first_added_idx)(fclet, gclet) AND
+  p_inclusion_pre(bexpr, box, first_added_idx)(f_ctxtbin, g_ctxtbin)
+     IMPLIES p_inclusion_pre(bexpr, box, first_added_idx)
+                            ( beval_vs_BLETIN_RealExpr(BLETIN(blet, bin), fclet)(f_ctxtbin),
+                              BEval_Box_BLETIN_RealExpr(bexpr, box, first_added_idx)
+                                                       (BLETIN(blet, bin), gclet)
+                                                       (g_ctxtbin) )
+
+  BLETIN_BoolExpr_pre_preservation: LEMMA
+  FORALL (f_ctxt0: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(bexpr, box)))
+  	 (g_ctxt0, g_ctxt1, g_ctxt2: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (blet: BoolExpr, bin: BoolExpr)
+	 (f_ctxt1: (beval_vs_post(blet, f_ctxt0)))
+	 (f_ctxt2: (beval_vs_post(bin, beval_vs_BLETIN_BoolExpr_merge1(f_ctxt0, f_ctxt1)))):
+  p_inclusion_pre(bexpr, box, first_added_idx)(f_ctxt0, g_ctxt0) AND
+  BEval_Box_post(bexpr, box, first_added_idx)(blet, g_ctxt0)(g_ctxt1) AND
+  p_inclusion_pre(bexpr, box, first_added_idx)(f_ctxt1, g_ctxt1) AND
+  BEval_Box_post(bexpr, box, first_added_idx)
+                (bin, BEval_Box_BLETIN_BoolExpr_merge1(bexpr, box, first_added_idx)
+                                                      (g_ctxt0,g_ctxt1))
+                (g_ctxt2) AND
+  p_inclusion_pre(bexpr, box, first_added_idx)(f_ctxt2, g_ctxt2)
+  IMPLIES p_inclusion_pre(bexpr, box, first_added_idx)
+                         ( beval_vs_BLETIN_BoolExpr(BLETIN(blet, bin),f_ctxt0)(f_ctxt1, f_ctxt2),
+                           BEval_Box_BLETIN_BoolExpr(bexpr, box, first_added_idx)
+                                                    (BLETIN(blet, bin),g_ctxt0)
+                                                    (g_ctxt1, g_ctxt2) )
+
+  BLETIN_BoolExpr_merge1_pre_preservation: LEMMA
+  FORALL (fct0, fct1: ContextData_beval_vs)
+	 (first_added_idx: upfrom(first_noise_idx_available_box(bexpr, box)))
+  	 (gct0, gct1: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box))):
+  p_inclusion_pre(bexpr, box, first_added_idx)(fct0, gct0) AND
+  p_inclusion_pre(bexpr, box, first_added_idx)(fct1, gct1)
+  IMPLIES p_inclusion_pre(bexpr, box, first_added_idx)
+                         (beval_vs_BLETIN_BoolExpr_merge1(fct0, fct1),
+                          BEval_Box_BLETIN_BoolExpr_merge1(bexpr,box,first_added_idx)
+                                                          (gct0, gct1))
+
+  BITE_preservation: LEMMA
+  FORALL (f_ctxt0: ContextData_beval_vs)
+         (g_ctxt0: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (f_ctxt1: ContextData_beval_vs)
+         (g_ctxt1: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (f_ctxt2, f_ctxt3: ContextData_beval_vs)
+         (g_ctxt2, g_ctxt3: CDBB(bexpr, box, first_noise_idx_available_box(bexpr, box)))
+         (bop1, bop2, bop3: BoolExpr):
+       p_inclusion_pre(bexpr, box, (first_noise_idx_available_box(bexpr, box)))
+                      (f_ctxt1, g_ctxt1)
+   AND p_inclusion_pre(bexpr, box, (first_noise_idx_available_box(bexpr, box)))
+                      (f_ctxt2, g_ctxt2)
+   AND p_inclusion_pre(bexpr, box, (first_noise_idx_available_box(bexpr, box)))
+                      (f_ctxt3, g_ctxt3)
+   AND beval_vs_post(bop1, f_ctxt0)(f_ctxt1)
+   AND BEval_Box_post(bexpr, box, first_noise_idx_available_box(bexpr, box))
+                     (bop1, g_ctxt0)(g_ctxt1)
+   AND beval_vs_post(bop2, beval_vs_BITE_merge1(f_ctxt0, f_ctxt1))(f_ctxt2)
+   AND BEval_Box_post(bexpr, box, first_noise_idx_available_box(bexpr, box))
+                     (bop2,
+                      BEval_Box_BITE_merge1(bexpr, box,
+                                            first_noise_idx_available_box(bexpr, box))
+                                           (g_ctxt0, g_ctxt1))
+                     (g_ctxt2)
+   AND beval_vs_post(bop3, beval_vs_BITE_merge2(f_ctxt0, f_ctxt1, f_ctxt2))(f_ctxt3)
+   AND BEval_Box_post(bexpr, box, first_noise_idx_available_box(bexpr, box))
+                     (bop3,
+                      BEval_Box_BITE_merge2(bexpr, box,
+                                            first_noise_idx_available_box(bexpr, box))
+                                           (g_ctxt0, g_ctxt1, g_ctxt2))
+                     (g_ctxt3)
+   IMPLIES
+   p_inclusion_pre(bexpr, box, (first_noise_idx_available_box(bexpr, box)))
+                  (beval_vs_BITE(BITE(bop1, bop2, bop3), f_ctxt0)
+                                (f_ctxt1, f_ctxt2, f_ctxt3),
+                   BEval_Box_BITE(bexpr, box,
+                                  first_noise_idx_available_box(bexpr, box))
+                                 (BITE(bop1, bop2, bop3), g_ctxt0)
+                                 (g_ctxt1, g_ctxt2, g_ctxt3))
+
+  beval_(bexpr,vs,n) : Maybe[bool] 
+  = beval_vs((# `result := None[bool], `vs := vs, `n := n #))(bexpr)`result 
+
+  beval__(bexpr,vs,n) : bool 
+  = val(beval_vs((# `result := None[bool], `vs := vs, `n := n #))(bexpr)`result)
+
+  BEval_(bexpr,box) : Maybe[Maybe[bool]] 
+  = LET BEBox = BEval_Box(bexpr,box,first_noise_idx_available_box(bexpr, box))
+    IN IF some?(BEBox) THEN Some(val(BEBox)`result)
+       ELSE None ENDIF
+
+  IMPORTING boolexpr_lfcmrs
+
+  BEval_inclusion____ : THEOREM
+   FORALL (box:Box,vs:(vars_in_box?(box)),bexpr) :
+      LET be1 = BEval_(bexpr,box), 
+      	  be2 = beval__(bexpr,vs,length(box)) 
+      IN some?(be1) AND some?(val(be1)) IMPLIES val(val(be1)) = be2
+
+  pox   : VAR ProperBox 
+
+  BEval_inclusion_Proper____ : THEOREM
+    LET be = BEval_(bexpr,pox) IN
+    some?(be) AND some?(val(be)) IMPLIES 
+      val(val(be)) = FORALL(vs:(vars_in_box?(pox))): beval__(bexpr,vs,length(pox))
+
+END affine_boolexpr

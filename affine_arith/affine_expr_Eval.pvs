@@ -20,12 +20,17 @@ BEGIN
    			   AND newnidx >= nextfreeidx
    			   AND idxs_bounded(newnidx)(res)}
   = CASES re OF
-      CONST(opc, opC): LET result = (nextfreeidx, cons((re, opC, null)::CacheData, cache)) 
+      CONST(opc, opC): LET result = (nextfreeidx, cons((re, const_ac(opc(unit)), null)::CacheData, cache)) 
       		       IN Some(result),
-      VARIDX(varidx) : IF varidx >= length(box) THEN None
-       		       ELSE LET ac     = nth_ac(box, varidx),
-  		       	    	result = (nextfreeidx, cons((re,ac, null)::CacheData, cache)) IN
-  			    Some(result) ENDIF,
+      VARIDX(varidx) : LET cached = cache_get(cache)(re) IN
+      		       IF some?(cached) THEN
+  		       	  LET result = (nextfreeidx, cons((re,val(cached), null)::CacheData, cache)) 
+			  IN Some(result)
+  		       ELSE
+		         IF varidx >= length(box) THEN None
+       		         ELSE LET ac     = nth_ac(box, varidx),
+  		         	  result = (nextfreeidx, cons((re,ac, null)::CacheData, cache)) IN
+  		              Some(result) ENDIF ENDIF,
       ADD(re1,re2)   : LET res1 = Eval_wCache(re1)(box, nextfreeidx, cache) IN
       		       IF none?(res1) THEN None
      		       ELSE LET newid1 = val(res1)`1,
@@ -56,7 +61,9 @@ BEGIN
   					       	   cons( (re, mult_ac_ac(ac1,ac2,newid2), null)::CacheData
   						       , cache2)) IN 
   				    Some(result) ENDIF ENDIF ENDIF,
-      POWVAR(idx,pow): IF idx >= length(box) THEN None ELSE
+      POW(re1,pow)   : IF varidx?(re1) THEN 
+      	      	       LET idx = varidx(re1) IN
+      		       IF idx >= length(box) THEN None ELSE
        		       LET varac  = nth_ac(box, idx) IN
   		       % When pow<=1 or the range of the variable is a single va-
   		       % lue, there is no need of new noise indexes.
@@ -94,7 +101,9 @@ BEGIN
   			      LET newoff = nextfreeidx+(pow-2)+1,
   			       	  nwidxs = nats(nextfreeidx, newoff-1),
   			      	  acRes  = pow_var_ac(varac, pow, nwidxs),
-  			      	  result = (newoff, cons((re, acRes,nwidxs), cache)) IN Some(result) ENDIF ENDIF ENDIF,
+  			      	  result = (newoff, cons((re, acRes,nwidxs), cache)) IN Some(result) 
+			    ENDIF ENDIF ENDIF
+		       ELSE None ENDIF,
       SUB(re1,re2)   : LET res1 = Eval_wCache(re1)(box, nextfreeidx, cache) IN
       		       IF none?(res1) THEN None
      		       ELSE LET newid1 = val(res1)`1,
@@ -114,6 +123,7 @@ BEGIN
   		       	    	ac1    = car(cache1)`2,
   				result = (newid1, cons((re,neg_ac(ac1), null)::CacheData, cache1)) 
   		 	    IN Some(result) ENDIF 
+      ELSE None
     ENDCASES
 
   MEASURE re BY <<
@@ -129,6 +139,15 @@ BEGIN
 	  (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache))):
   Eval_wCache(re)(box, nextfreeidx, cache) = RE2AC(re, box, vs, nextfreeidx, cache)
 
+  EvalwCache_inclusion_ : THEOREM
+    FORALL (box:Box,vs:(vars_in_box?(box)))(re)((nextfreeidx: nat | nextfreeidx>last_idx_in_box(box)),
+	  (cache: (compatible_pairs?(box,vs)) | idxs_bounded(nextfreeidx)(cache)))
+	  (n: upfrom(length(box))) :
+      LET E = Eval_wCache(re)(box, nextfreeidx, cache) IN
+      some?(E) 
+      IMPLIES LET ac = car(val(E)`2)`2 IN
+	      (EXISTS (N: Noise):
+	      eval_ac_noise(ac,N) = eval_ACExpr_Env(re,vs, n))
 
   EvalwCache_inclusion : THEOREM
     FORALL (box:Box,vs:(vars_in_box?(box)))(re) :
@@ -136,10 +155,6 @@ BEGIN
       some?(E) 
       IMPLIES LET ac = car(val(E)`2)`2 IN
 	      (EXISTS (N: Noise):
-	      eval_ac_noise(ac,N) = eval_ACExpr_Env(re,vs))
+	      eval_ac_noise(ac,N) = eval_ACExpr_Env(re,vs, length(box)))
 
 END affine_expr_Eval
-
-
-
-  

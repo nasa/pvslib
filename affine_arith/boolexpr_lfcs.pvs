@@ -1,0 +1,122 @@
+boolexpr_lfcs
+[   (IMPORTING interval_arith@interval_expr) 
+
+  Ctxt : TYPE % Contextualized Data
+
+, post: [BoolExpr,Ctxt -> [Ctxt -> bool]]
+%
+%  BCONST(opb:bool) : bconst?                                  : BoolExpr       .
+%
+, f_BCONST: 
+    [ bcon: (bconst?), c0: Ctxt -> (post(bcon,c0)) ]
+%
+%  BNOT(bop:BoolExpr) : bnot?                                  : BoolExpr       .
+%
+, f_BNOT         : 
+    [ bnot: (bnot?), c0: Ctxt 
+      -> [ c1: (post(bop(bnot),c0)) 
+      	   -> (post(bnot,c0))]]
+%
+%  BAND(bop1,bop2:BoolExpr) : band?                            : BoolExpr       .
+%
+, f_BAND:
+    [ band: (band?), c0: Ctxt 
+      -> [c1: (post(bop1(band),c0)), (post(bop2(band),c1)) 
+          -> (post(band,c0))] ]
+%
+%  BOR(bop1,bop2:BoolExpr) : bor?                              : BoolExpr       .
+%
+, f_BOR:
+    [ bor: (bor?), c0: Ctxt 
+      -> [c1: (post(bop1(bor),c0)), (post(bop2(bor),c1)) 
+          -> (post(bor,c0))] ]
+%
+%  BIMPLIES(bop1,bop2:BoolExpr) : bimplies?                    : BoolExpr       .
+%
+, f_BIMPLIES    : 
+    [ bimp: (bimplies?), c0: Ctxt 
+      -> [c1: (post(bop1(bimp),c0)), (post(bop2(bimp),c1)) 
+          -> (post(bimp,c0))] ]
+%
+%  BREL(rel:RealOrder,op1,op2:RealExpr) : brel?                : BoolExpr       .
+%
+, f_BREL: 
+    [ brel: (brel?)     , c0: Ctxt -> (post(brel,c0)) ]
+%
+%  BINCLUDES(op:RealExpr,opi:Interval) : bincludes?            : BoolExpr
+%
+, f_BINCLUDES: 
+    [binc: (bincludes?) , c0: Ctxt -> (post(binc,c0)) ]
+%
+%  BITE(bif,bthen,belse:BoolExpr) : bite?                      : BoolExpr       .
+%
+, f_BITE_merge1:                        % first merge function for BITE
+    [ Ctxt, Ctxt -> Ctxt]    
+, f_BITE_merge2:                        % second merge function for BITE
+    [Ctxt,Ctxt,Ctxt-> Ctxt] 
+, f_BITE: 
+    [ bite: (bite?), c0: Ctxt 
+      -> [ c1: (post(bif(bite),c0))
+         , c2: (post(bthen(bite),f_BITE_merge1(c0,c1)))
+         , (post(belse(bite),f_BITE_merge2(c0,c1,c2))) 
+           -> (post(bite,c0))]]
+%
+%  BLETIN(blet:IntervalExpr,bin:BoolExpr) : bletin?            : BoolExpr
+%
+, f_BLETIN_RealExpr_ini: [(realexpr?),Ctxt -> Ctxt] % Preprocessing of the initial
+  			 		      	    % context (intializing function)
+, f_BLETIN_RealExpr: 
+    [ bli: {b_ : (bletin?) | realexpr?(blet(b_))}, c0: Ctxt 
+      -> [ (post(bin(bli),f_BLETIN_RealExpr_ini(blet(bli),c0))) 
+         	 -> (post(bli,c0)) ]]
+, f_BLETIN_BoolExpr_merge1:             % first merge function for BLETIN_BoolExpr
+    [Ctxt,Ctxt -> Ctxt] 
+, f_BLETIN_BoolExpr: 
+    [ bli: {b_ : (bletin?) | boolexpr?(blet(b_))}, c0: Ctxt 
+      -> [ c1: (post(blet(bli), c0))
+         , (post(bin(bli), f_BLETIN_BoolExpr_merge1(c0,c1))) 
+           -> (post(bli,c0))]]
+] : THEORY
+BEGIN
+
+  F(bexpr: BoolExpr)(ctxt0: Ctxt): RECURSIVE (post(bexpr,ctxt0))
+  = CASES bexpr OF
+
+      BCONST(opb)      : f_BCONST(bexpr, ctxt0),
+
+      BNOT  (bop)      : LET res_ctxt = F(bop)(ctxt0) 
+      	    	       	 IN f_BNOT (bexpr,ctxt0) (res_ctxt),
+
+      BAND  (bop1,bop2): LET ctxt1 = F(bop1)(ctxt0),
+      	    		     ctxt2 = F(bop2)(ctxt1)
+			 IN f_BAND(BAND(bop1,bop2), ctxt0)(ctxt1, ctxt2),
+
+      BINCLUDES(op,opi): f_BINCLUDES(BINCLUDES(op,opi), ctxt0),
+
+      BREL(rel,op1,op2): f_BREL(BREL(rel,op1,op2), ctxt0),
+
+      BLETIN(blet,bin) : IF realexpr?(blet(bexpr)) 
+      		       	 THEN LET initialized_ctxt0 = f_BLETIN_RealExpr_ini(blet, ctxt0),
+			      	  ctxt1 = F(bin)(initialized_ctxt0)
+			      IN f_BLETIN_RealExpr(bexpr,ctxt0)(ctxt1)
+			 ELSE LET ctxt1 = F(blet)(ctxt0),
+			      	  ctxt2 = F(bin)(f_BLETIN_BoolExpr_merge1(ctxt0, ctxt1)) 
+			      IN f_BLETIN_BoolExpr(bexpr,ctxt0)(ctxt1, ctxt2) ENDIF,
+
+      BITE(bif,bt,be)  : LET ctxt1 = F(bif)(ctxt0),
+			     ctxt2 = F(bt)(f_BITE_merge1(ctxt0,ctxt1)),
+			     ctxt3 = F(be)(f_BITE_merge2(ctxt0,ctxt1,ctxt2))
+			 IN f_BITE(bexpr,ctxt0)(ctxt1,ctxt2,ctxt3),
+
+      BOR(bop1,bop2)   : LET ctxt1 = F(bop1)(ctxt0),
+      	    		     ctxt2 = F(bop2)(ctxt1)
+			 IN f_BOR(BOR(bop1,bop2),ctxt0)(ctxt1, ctxt2),
+
+      BIMPLIES(bop1,bop2) : LET ctxt1 = F(bop1)(ctxt0),
+      	    		        ctxt2 = F(bop2)(ctxt1)
+			    IN f_BIMPLIES (BIMPLIES(bop1,bop2),ctxt0) (ctxt1, ctxt2)
+
+    ENDCASES
+  MEASURE bexpr BY <<
+
+END boolexpr_lfcs
