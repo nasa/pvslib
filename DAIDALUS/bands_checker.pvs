@@ -1,0 +1,164 @@
+bands_checker : THEORY
+
+  BEGIN
+
+  IMPORTING PVSioChecker@pvsio_checker,
+            test_bands, structures@set_as_list
+
+  BandPP: TYPE = [list[RealBand],list[Region], real]
+  GCore: Global[Core, defcore]
+  NumSamp: Global[nat, 400]
+  FailRate: Global[rat, 0.01]
+  
+  pp_rb(rb:RealBand) : string = 
+    format("(# lb := ~f, ub := ~f #)",(lb(rb),ub(rb)))
+
+  pp_lrb(lrb:list[RealBand]) : string = 
+    format("(: ~{~a~^, ~} :)",{|map(pp_rb,lrb)|})
+
+  pp_bands(bpp:BandPP) : string =
+    LET (b,a,r) = bpp IN 
+    format("( ~a, ~a, ~f )",(pp_lrb(b),a,r))
+
+  check_samples(fout:OStream, io,pvs:BandPP, band:string, lb,ub:real, sample,fails:nat): 
+   RECURSIVE nat = 
+   IF sample = 0 THEN fails
+   ELSE LET test_point = lb+(ub-lb)*RANDOM,
+   	    io_index = first_band_contains(test_point, io`1),
+	    pvs_index = first_band_contains(test_point, pvs`1), 
+	    io_valid:bool = IF io_index<length(io`2) THEN TRUE
+	    		    ELSE fprintf(fout, band+": point ~f out of range for io~%", test_point) & FALSE
+			    ENDIF, 
+	    pvs_valid:bool = IF pvs_index<length(pvs`2) THEN TRUE
+	    		    ELSE fprintf(fout, band+": point ~f out of range for pvs~%", test_point) & FALSE
+			    ENDIF IN
+	IF io_valid AND pvs_valid THEN
+	   LET io_region = nth(io`2, io_index), 
+	       pvs_region = nth(pvs`2, pvs_index) IN
+	   IF io_region = pvs_region THEN 
+	      check_samples(fout, io, pvs, band, lb, ub, sample-1, fails)
+	   ELSE LET write = fprintf(fout, band+": point ~f is ~a for io, and ~a for pvs~%",(test_point, io_region, pvs_region)) IN
+	      check_samples(fout, io, pvs, band, lb, ub, sample-1, fails+1)
+	   ENDIF
+	ELSE check_samples(fout, io, pvs, band, lb, ub, sample-1, fails+1)
+	ENDIF
+    ENDIF
+    MEASURE sample  
+   
+  header?(fin:IStream, fout:OStream):void = 
+   LET param = str2pvs[Parameters](readln_checker(fin)) IN
+   set[Core](GCore, update_from_param_all(defcore, param))
+
+ read_add_traffic(fin:IStream, core:Core, n:nat): RECURSIVE Core = 
+   IF n=0 THEN core
+   ELSE LET idi:string = readln_checker(fin),
+       	    si:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      	    vi:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      	    intruder:Aircraft = (#s:=si,v:=vi, id:=idi#), 
+      	    recore:Core = update_add_to_traffic(core, intruder) IN
+   read_add_traffic(fin, recore, n-1) 
+   ENDIF
+   MEASURE n
+
+ check?(fin:IStream,fout:OStream) : bool = 
+  LET scenario:string = readln_checker(fin), 
+      time:real = str2pvs[real](readln_checker(fin)), 
+      ido:string = readln_checker(fin),
+      so:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      vo:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      own:Aircraft = (#s:=so,v:=vo, id:=ido#),
+      Core0:Core = update_ownship(val(GCore), own),
+      traf_size:nat = str2pvs[nat](readln_checker(fin)), 
+      Core1:Core = read_add_traffic(fin, Core0, traf_size), 
+      Core2:Core = update_delay(Core1),
+      		   %Core1 WITH [`delay_ownship:=Core1`ownship, `delay_traffic:=Core1`traffic], 
+      Core3:Core = update_RA_thr(Core2),
+      Core4:Core = update_omega(Core3),
+      Ucore:UpdatedCore = Core4 WITH [`outdated:=FALSE],
+      % Delayed? = IF Ucore`ownship /= Ucore`delay_ownship 
+      % 	         THEN TRUE & fprintf(fout, "time ~a: delayed Own ~a~%", (time, Ucore`delay_ownship))
+      % 		 ELSE FALSE ENDIF, 
+      ktb_pvs = get_kinematic_track_bands(Ucore, 1),
+      tb_pvs:BandPP = (ktb_pvs`1, ktb_pvs`2, ktb_pvs`3),
+      kgsb_pvs = get_kinematic_gs_bands(Ucore, 1),
+      gsb_pvs:BandPP = (kgsb_pvs`1, kgsb_pvs`2, kgsb_pvs`3),
+      kvsb_pvs = get_kinematic_vs_bands(Ucore, 1),
+      vsb_pvs:BandPP = (kvsb_pvs`1, kvsb_pvs`2, kvsb_pvs`3),
+      tb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      tb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)),
+      tb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)), 
+      gsb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      gsb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)), 
+      gsb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)), 
+      vsb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      vsb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)), 
+      vsb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)), 
+      track_fails:nat = check_samples(fout, tb_jav, tb_pvs, "track", 0, 2*pi, val(NumSamp), 0),
+      gs_fails:nat = check_samples(fout, gsb_jav, gsb_pvs, "ground", Ucore`mings, Ucore`maxgs, val(NumSamp), 0),
+      vs_fails:nat = check_samples(fout, vsb_jav, vsb_pvs, "vertical", Ucore`minvs, Ucore`maxvs, val(NumSamp), 0),
+      numfails = track_fails+gs_fails+vs_fails,
+      tr_failwrite = IF track_fails = 0 THEN TRUE
+      		     ELSE fprintf(fout, "Track failed ~a points.~%IO track is ~a~%PVS track is ~a~%",(track_fails, pp_bands(tb_jav), pp_bands(tb_pvs))) & FALSE
+    	     	     ENDIF,
+      gs_failwrite = IF gs_fails = 0 THEN TRUE
+      		     ELSE fprintf(fout, "Ground failed ~a points.~%IO ground is ~a~%PVS ground is ~a~%",(gs_fails, pp_bands(gsb_jav), pp_bands(gsb_pvs))) & FALSE
+    	     	     ENDIF,
+      vs_failwrite = IF vs_fails = 0 THEN TRUE
+      		     ELSE fprintf(fout, "Vertical failed ~a points.~%IO vertical is ~a~%PVS vertical is ~a~%",(vs_fails, pp_bands(vsb_jav), pp_bands(vsb_pvs))) & FALSE
+    	     	     ENDIF,
+      failwrite = IF numfails = 0 THEN TRUE
+      		  ELSE fprintf(fout, "Data above for scenario ~a at time ~a. Number of failures is ~a, out of ~a samples.~%",(scenario, time, numfails, 3*val(NumSamp))) & FALSE
+		  ENDIF, 
+      allowed = FailRate*val(NumSamp) IN
+     % printf("~a~&", numfails) &
+      track_fails<=allowed & gs_fails<=allowed & vs_fails<=allowed
+
+  check_print_bands(fin:IStream,fout:OStream) : bool = 
+  LET scenario:string = readln_checker(fin),
+      time:real = str2pvs[real](readln_checker(fin)), 
+      ido:string = readln_checker(fin),
+      so:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      vo:Vect3 = str2pvs[Vect3](readln_checker(fin)),
+      own:Aircraft = (#s:=so,v:=vo, id:=ido#),
+      Core0:Core = update_ownship(val(GCore), own),
+      traf_size:nat = str2pvs[nat](readln_checker(fin)), 
+      Core1:Core = read_add_traffic(fin, Core0, traf_size), 
+      Core2:Core = update_delay(Core1),
+      Core3:Core = update_RA_thr(Core2),
+      Core4:Core = update_omega(Core3),
+      Ucore:UpdatedCore = Core4 WITH [`outdated:=FALSE],
+      ktb_pvs = get_kinematic_track_bands(Ucore, 1),
+      tb_pvs:BandPP = (ktb_pvs`1, ktb_pvs`2, ktb_pvs`3),
+      kgsb_pvs = get_kinematic_gs_bands(Ucore, 1),
+      gsb_pvs:BandPP = (kgsb_pvs`1, kgsb_pvs`2, kgsb_pvs`3),
+      kvsb_pvs = get_kinematic_vs_bands(Ucore, 1),
+      vsb_pvs:BandPP = (kvsb_pvs`1, kvsb_pvs`2, kvsb_pvs`3),
+      tb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      tb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)), %string = readln_checker(fin), %
+      tb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)), %string = readln_checker(fin), %
+      gsb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      gsb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)), %string = readln_checker(fin), %
+      gsb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)), %string = readln_checker(fin), %
+      vsb_jav:BandPP = str2pvs[BandPP](readln_checker(fin)),
+      vsb_prev:list[string] = str2pvs[list[string]](readln_checker(fin)), %string = readln_checker(fin), %
+      vsb_corr:list[string] = str2pvs[list[string]](readln_checker(fin)),  %string = readln_checker(fin), %
+      bandswriter = fprintf(fout, "time ~a~% track: ~%  io = ~a~%   pvs = ~a~% vs:~%  io = ~a~%   pvs = ~a~% gs:~%  io = ~a~%   pvs = ~a~%",
+                           (time, pp_bands(tb_jav), pp_bands(tb_pvs), pp_bands(vsb_jav), pp_bands(vsb_pvs), pp_bands(gsb_jav), pp_bands(gsb_pvs))) IN
+       TRUE
+
+  main(file:string,records:nat): void =
+    checker_with_header(file,check?,header?,records)
+  
+  bands_printer(file:string, records:nat):void  =
+    checker_with_header(file,check_print_bands, header?,records)
+
+  multi_file_check(fin:IStream, fout:OStream): void = 
+    LET file:string = readln_checker(fin), 
+        run:void = main(file, 0) IN
+ 	TRUE
+  
+  multi_main(file:string): void = 
+    checker(file, multi_file_check, 0)
+    
+
+  END bands_checker

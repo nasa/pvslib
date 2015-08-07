@@ -1,0 +1,191 @@
+combine_bands: THEORY                        
+BEGIN
+
+
+  IMPORTING kinematic_bands,kinematic_bands_exist
+
+  s,v  : VAR Vect3  
+  B,B2    : VAR nnreal
+  T,T2    : VAR nnreal
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  tsl,tsr: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN,MaxL,MaxR: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit,Usedir,useLOS2: VAR bool
+  epsH,epsV,dir: VAR Sign
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+  
+  
+  LOS,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+
+  CD,CD2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+  traj,trajr,trajl: VAR Traj
+
+  AL: VAR AircraftList
+
+  % We only check criteria against most urgent aircraft
+  most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+
+
+  % THIS IS THE MAIN GENERIC FUNCTION %
+  kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+    MaxL,MaxR,tsl,tsr,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),
+      epsH,epsV,UseHCrit,UseVCrit): list[IntBand] =
+      LET LeftB= kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,MaxL,
+      	  	 tsl,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+	  LIB=neg(LeftB),
+	  RIB= kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajr,MaxR,
+      	  	 tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),	 						  
+	  FinalBand: list[IntBand] = % These are not yet translated by track(vo)
+	      append_intband_spec(LIB,RIB)
+      IN FinalBand
+
+  kinematic_bands_combine_connected: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      FORALL (i,j:nat): i<j AND j<length(kb) IMPLIES
+        nth(kb,j)`lb-nth(kb,i)`ub>1
+
+  kinematic_bands_combine_increasing: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      strictly_increasing_int?(kb)
+
+
+  kinematic_bands_combine_def: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      FORALL (p:int): (-MaxL<=p AND p<=MaxR) IMPLIES
+        ((EXISTS (i:below(length(kb))): in?(nth(kb,i),p))
+  	IFF
+  	((p<=0 AND NOT conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,trajl,tsl,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(-p)) OR
+         (p>=0 AND NOT conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,trajr,tsr,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(p))))
+
+  kinematic_bands_combine_range: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      FORALL (i:below(length(kb))): -MaxL<=nth(kb,i)`lb AND nth(kb,i)`ub<=MaxR
+
+  first_green_dir(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,B,T,B2,T2,so,vo,
+    (trajl|trajl(0)=(so,vo)),(trajr|trajr(0)=(so,vo)),
+    MaxL,MaxR,tsl,tsr,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),
+      epsH,epsV,UseHCrit,UseVCrit,dir):  (first_green?(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+      	  (IF dir>0 THEN trajr ELSE trajl ENDIF),(IF dir>0 THEN MaxR ELSE MaxL ENDIF),
+	  (IF dir>0 THEN tsr ELSE tsl ENDIF),AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,0)) =
+    IF dir>0 THEN 
+      first_green(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajr,MaxR,tsr,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    ELSE first_green(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,MaxL,tsl,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    ENDIF
+
+  conflict_steps_eq: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      (conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,trajl,tsl,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(0) IFF
+      conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,trajr,tsr,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(0))
+
+  % This function is the main all red function %
+  all_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,B,T,B2,T2,so,vo,
+    (trajl|trajl(0)=(so,vo)),(trajr|trajr(0)=(so,vo)),
+    MaxL,MaxR,tsl,tsr,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),
+      epsH,epsV,UseHCrit,UseVCrit,dir,Usedir):bool =
+    LET leftans = first_green_dir(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,-1)<0,
+        rightans = first_green_dir(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,1)<0,
+	leftallred = (dir=1 AND Usedir) OR leftans,
+        rightallred = (dir=-1 AND Usedir) OR rightans
+    IN leftallred AND rightallred
+
+  all_red_def: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET allred = all_red(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir),
+        kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+	leftred = (length(kb)>0 IMPLIES nth(kb,0)`lb>0),
+        rightred = (length(kb)>0 IMPLIES nth(kb,length(kb)-1)`ub<0)
+    IN (dir=-1 AND Usedir IMPLIES (allred IFF leftred))
+       AND
+       (dir=1 AND Usedir IMPLIES (allred IFF rightred))
+       AND
+       ((NOT Usedir) IMPLIES (allred IFF (leftred and rightred)))
+
+  red_exist_dir(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,B,T,B2,T2,so,vo,
+    (trajl|trajl(0)=(so,vo)),(trajr|trajr(0)=(so,vo)),
+    MaxL,MaxR,tsl,tsr,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,dir): bool =
+    IF dir>0 THEN 
+      red_band_exist(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajr,MaxR,tsr,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    ELSE red_band_exist(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,MaxL,tsl,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+    ENDIF
+
+
+  % This is the main any red function %
+  any_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,B,T,B2,T2,so,vo,
+    (trajl|trajl(0)=(so,vo)),(trajr|trajr(0)=(so,vo)),
+    MaxL,MaxR,tsl,tsr,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,dir,Usedir):bool =
+    LET leftred = red_exist_dir(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,-1),
+        rightred = red_exist_dir(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,1),
+	leftans  = dir=-1 AND leftred,
+	rightans = dir=1 AND rightred
+    IN (dir=1 AND Usedir AND rightred) OR
+       (dir=-1 AND Usedir AND leftred) OR
+       ((NOT Usedir) AND (rightred OR leftred))
+
+  any_red_def: LEMMA trajl(0)=(so,vo) AND trajr(0)=(so,vo) 
+      AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET anyred = any_red(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir),
+        kb = kinematic_bands_combine(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,trajl,trajr,
+			MaxL,MaxR,tsl,tsr,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+	leftconf = (EXISTS (i:subrange(-MaxL,0)): FORALL (j:below(length(kb))):
+		  	  NOT in?(nth(kb,j),i)),
+        rightconf = (EXISTS (i:subrange(0,MaxR)): FORALL (j:below(length(kb))):
+		  	  NOT in?(nth(kb,j),i))
+    IN (dir=-1 AND Usedir IMPLIES (anyred IFF leftconf))
+       AND
+       (dir=1 AND Usedir IMPLIES (anyred IFF rightconf))
+       AND
+       ((NOT Usedir) IMPLIES (anyred IFF (leftconf OR rightconf)))
+
+
+END combine_bands

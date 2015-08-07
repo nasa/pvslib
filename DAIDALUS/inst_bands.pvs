@@ -1,0 +1,215 @@
+inst_bands: THEORY
+
+ % Generic bands for a sequence of trajectories
+ % These are less efficient than int_bands
+ % because there is no assumption that they
+ % share positions and velocities with others
+ % in the sequence. This algorithm is therefore
+ % simpler, however.
+
+BEGIN
+
+
+  IMPORTING kinematic_trk_bands,
+  	    kinematic_gs_bands,
+	    kinematic_vs_bands
+
+
+  AL   : VAR AircraftList
+  s,v  : VAR Vect3  
+  B,B1,B2    : VAR nnreal
+  T,T1,T2    : VAR nnreal
+  aco, aci: VAR Aircraft
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step: VAR posreal
+  p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  dir: VAR Sign
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN: VAR posnat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit,useLOS2: VAR bool
+  epsH,epsV: VAR Sign
+
+
+  most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+
+  LOS,LOS1,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool] %(B,T,so,vo,si,vi)
+
+  CD,CD1,CD2:  VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool] %(B,T,so,vo,si,vi)
+
+  traj: VAR Traj
+
+  TrajSeq: TYPE = [int->Traj] % Sequence of trajectories
+  TimeSeq: TYPE = [int->real] % Sequence of times to jump off each trajectory
+  StateSeq: TYPE = [int->[Vect3,Vect3]] % Sequence of states at which aircraft will
+  	    	   			% start linearly once it jumps off the trajectory
+
+  round_real(r:real): {j:int | r-1/2<j AND j<=r+1/2} =
+      floor(r+1/2)
+  
+  %%% trkgs2vect(trk,gsp)
+
+  %%% Track %%%
+
+  trackstep: VAR real
+
+  %%% A function to determine if a particular track step is not in conflict %%%
+
+  conflict_free_track_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,(vo|sqv(vect2(vo))>0),
+    trackstep,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit)(i): bool =
+    LET newvo2= trkgs2vect(track(vo)+i*trackstep,gs(vo)),
+    	newvo:Vect3 = (# x:= newvo2`x, y:= newvo2`y, z:=vo`z #),
+    	MI = nth(AL,most_urgent(so,vo,AL))  IN
+      ((NOT UseHCrit) OR repulsive_criteria(so-MI`s,vo-MI`v,epsH)(newvo-MI`v))
+      AND
+        (FORALL (air:below(length(AL))):
+	  (NOT CD(B,T,so,newvo,nth(AL,air)`s,nth(AL,air)`v)) AND
+	  ((NOT useLOS2) OR CD2(B2,T2,so,newvo,nth(AL,air)`s,nth(AL,air)`v)))
+
+  track_steps(step:posreal|step<pi): posnat =
+    (IF round_real(pi/step)=pi/step THEN round_real(pi/step) ELSE ceiling(pi/step) ENDIF)
+
+  instant_track_bands(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,so,(vo|sqv(vect2(vo))>0),
+      AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit)
+        (B,T,B2,T2:nnreal,(step:posreal|step<pi)): list[RealBand] = % This returns a list[IntBand]
+       LET MaxN = track_steps(step),
+       	  LeftB= nat_bands(MaxN,conflict_free_track_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            -pi/MaxN,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),
+	  LIB=neg(LeftB),
+	  RIB= nat_bands(MaxN,conflict_free_track_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            pi/MaxN,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),	 						  
+	  FinalIBand: list[IntBand] = % These are not yet translated by track(vo)
+	      append_intband_spec(LIB,RIB),
+	  FinalRBand = scal(pi/MaxN,FinalIBand),
+	  FinalBand  = add(track(vo),FinalRBand)
+      IN band_mod_2pi(FinalBand)
+
+  instant_track_bands_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND step<pi IMPLIES
+      LET ktb = instant_track_bands(LOS,CD,LOS2,CD2,useLOS2,so,vo,
+        AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)(B,T,B2,T2,step),
+	MaxN = track_steps(step)
+      IN FORALL (j:nat): j<=MaxN IMPLIES
+        LET newtrk = to2pi(track(vo)+j*(dir*pi/MaxN)) IN
+	  (NOT conflict_free_track_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+    	    dir*pi/MaxN,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)(j))
+          IMPLIES
+	  (NOT EXISTS (i:below(length(ktb))): in?(nth(ktb,i),newtrk))
+
+
+
+
+  %%% Gs %%%
+
+  gsstep: VAR real
+  mings,maxgs: VAR posreal
+
+  %%% A function to determine if a particular gs step is not in conflict %%%
+
+  conflict_free_gs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,(vo|sqv(vect2(vo))>0),
+    gsstep,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit)(i): bool =
+    gs(vo)+i*gsstep>0 AND
+    LET newvo2= trkgs2vect(track(vo),gs(vo)+i*gsstep),
+    	newvo:Vect3 = (# x:= newvo2`x, y:= newvo2`y, z:=vo`z #),
+    	MI = nth(AL,most_urgent(so,vo,AL))  IN
+      ((NOT UseHCrit) OR repulsive_criteria(so-MI`s,vo-MI`v,epsH)(newvo-MI`v))
+      AND
+        (FORALL (air:below(length(AL))):
+  	  (NOT CD(B,T,so,newvo,nth(AL,air)`s,nth(AL,air)`v)) AND
+  	  ((NOT useLOS2) OR CD2(B2,T2,so,newvo,nth(AL,air)`s,nth(AL,air)`v)))
+
+  instant_gs_bands(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,so,
+    (vo|sqv(vect2(vo))>0),AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+    most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,
+    mings,maxgs)(B,T,B2,T2:nnreal,step:posreal): list[RealBand] = % This returns a list[IntBand]
+       LET 
+          MaxDown:posnat = max(ceiling((gs(vo)-mings)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxgs-gs(vo))/step),0)+1,
+	  LeftB= nat_bands(MaxDown,conflict_free_gs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            -step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),
+  	  LIB=neg(LeftB),
+  	  RIB= nat_bands(MaxUp,conflict_free_gs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),	 						  
+  	  FinalIBand: list[IntBand] = % These are not yet translated by gs(vo)
+  	      append_intband_spec(LIB,RIB),
+  	  FinalRBand = scal(step,FinalIBand),
+  	  FinalBand  = add(gs(vo),FinalRBand)
+      IN FinalBand
+
+  instant_gs_bands_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      LET kgb = instant_gs_bands(LOS,CD,LOS2,CD2,useLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,
+      UseVCrit,mings,maxgs)(B,T,B2,T2,step)
+      IN FORALL (j:nat): 
+        LET newgs = gs(vo)+j*dir*step IN
+	  mings<=newgs AND newgs<=maxgs AND
+  	  (NOT conflict_free_gs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+    	    dir*step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)(j))
+          IMPLIES
+  	  (NOT EXISTS (i:below(length(kgb))): in?(nth(kgb,i),newgs))
+
+
+
+  %%% Vs %%%
+
+  vsstep: VAR real
+  minvs,maxvs: VAR posreal
+
+  %%% A function to determine if a particular vs step is not in conflict %%%
+
+  conflict_free_vs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,(vo|sqv(vect2(vo))>0),
+    vsstep,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit)(i): bool =
+    Kinematic@util.vs(vo)+i*vsstep>0 AND
+    LET newvo:Vect3 = vo WITH [z:=Kinematic@util.vs(vo)+i*vsstep],
+    	MI = nth(AL,most_urgent(so,vo,AL))  IN
+      ((NOT UseVCrit) OR vertical_repulsive_crit(so-MI`s,vo-MI`v,epsV)(newvo-MI`v))
+      AND
+        (FORALL (air:below(length(AL))):
+  	  (NOT CD(B,T,so,newvo,nth(AL,air)`s,nth(AL,air)`v)) AND
+  	  ((NOT useLOS2) OR CD2(B2,T2,so,newvo,nth(AL,air)`s,nth(AL,air)`v)))
+
+  instant_vs_bands(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),useLOS2,so,
+    (vo|sqv(vect2(vo))>0),AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+    most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,
+    minvs,maxvs)(B,T,B2,T2:nnreal,step:posreal): list[RealBand] = % This returns a list[IntBand]
+       LET 
+          MaxDown:posnat = max(ceiling((Kinematic@util.vs(vo)-minvs)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxvs-Kinematic@util.vs(vo))/step),0)+1,
+	  LeftB= nat_bands(MaxDown,conflict_free_vs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            -step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),
+  	  LIB=neg(LeftB),
+  	  RIB= nat_bands(MaxUp,conflict_free_vs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+       	            step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)),	 						  
+  	  FinalIBand: list[IntBand] = % These are not yet translated by Kinematic@util.vs(vo)
+  	      append_intband_spec(LIB,RIB),
+  	  FinalRBand = scal(step,FinalIBand),
+  	  FinalBand  = add(Kinematic@util.vs(vo),FinalRBand)
+      IN FinalBand
+
+  instant_vs_bands_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      LET kgb = instant_vs_bands(LOS,CD,LOS2,CD2,useLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,
+      UseVCrit,minvs,maxvs)(B,T,B2,T2,step)
+      IN FORALL (j:nat): 
+        LET newvs = Kinematic@util.vs(vo)+j*dir*step IN
+	  minvs<=newvs AND newvs<=maxvs AND
+  	  (NOT conflict_free_vs_step(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+    	    dir*step,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit)(j))
+          IMPLIES
+  	  (NOT EXISTS (i:below(length(kgb))): in?(nth(kgb,i),newvs))
+
+END inst_bands

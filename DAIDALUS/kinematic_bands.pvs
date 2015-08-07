@@ -1,0 +1,171 @@
+kinematic_bands: THEORY                        
+BEGIN
+
+
+  IMPORTING mod_bands
+
+  s,v  : VAR Vect3  
+  B,B1,B2    : VAR nnreal
+  T,T1,T2    : VAR nnreal
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  k: VAR nat
+  i,maxi,j :VAR nat
+  MaxN: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit,useLOS2: VAR bool
+  epsH,epsV: VAR Sign
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+  
+  
+  LOS,LOS1,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+
+  CD,CD1,CD2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+  traj: VAR Traj
+
+  AL: VAR AircraftList
+
+  % We only check criteria against most urgent aircraft
+  most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+
+  first_los_search_index(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,traj,
+    MaxN,ts,(AL|length(AL)>0)): subrange(0,MaxN+1) =
+      LET FirstLosK: nat = ceiling(B/ts), % first k such that k*ts>=B
+      	  FirstLosN: nat = min(floor(T/ts),MaxN), % last k<=MaxN such that k*ts<=T
+	  FirstLosK2: nat = ceiling(B2/ts), 
+      	  FirstLosN2: nat = min(floor(T2/ts),MaxN),
+	  FirstLosInit: int = IF useLOS2 THEN first_los_step(LOS2,traj,FirstLosK2,ts,FirstLosN2,AL)
+	  		      ELSE -1 ENDIF,
+          FirstLos:int = first_los_step(LOS,traj,FirstLosK,ts,FirstLosN,AL),
+	  LosInitIndex: int = IF FirstLosInit<0 THEN MaxN+1 ELSE FirstLosInit ENDIF,
+	  LosIndex: int = IF FirstLos<0 THEN MaxN+1 ELSE FirstLos ENDIF,
+          FirstLosInd: int = min(LosInitIndex,LosIndex)
+      IN FirstLosInd
+
+  first_los_search_index_def: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND
+      (si,vi) = (nth(AL,most_urgent(so,vo,AL))`s,nth(AL,most_urgent(so,vo,AL))`v) IMPLIES
+    LET ind = first_los_search_index(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,traj,MaxN,ts,AL)
+    IN  FORALL (j:subrange(0,MaxN)):
+    	j>=ind IFF
+	  (first_los_step(LOS,traj,ceiling(B/ts),ts,min(floor(T/ts),j),AL)>=0 OR
+	   (useLOS2 AND first_los_step(LOS2,traj,ceiling(B2/ts),ts,min(floor(T2/ts),j),AL)>=0))
+
+
+  % Next, the search index for calling traj_conflict_only_bands. 
+  % First, this finds the first
+  % index k (time k*ts) along the trajectory traj where LOS occurs.
+  % Next, if the UseHCrit flag is true, it looks only in the range 0,...,k-1 for the
+  % first point which doesn't satisfy repulsive (horizontal). Similarly
+  % for UseVCrit. Call that index d
+  % (d is k if UseHCrit and UseVCrit are set to false). It returns d
+
+  bands_search_index(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,
+    MaxN,ts,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),
+      epsH,epsV,UseHCrit,UseVCrit): subrange(0,MaxN+1) = % This returns a list[IntBand]
+      LET MI = nth(AL,most_urgent(so,vo,AL)),
+      	  (si,vi) = (MI`s,MI`v),
+	  FirstLos: int = first_los_search_index(LOS,CD,LOS2,CD2,useLOS2,
+						B,T,B2,T2,traj,MaxN,ts,AL),
+    	  FirstNonHRep: int = (IF (NOT UseHCrit) OR FirstLos=0 THEN FirstLos
+  	  		    	  ELSE first_nonrepulsive_step(traj,
+  				    0,ts,FirstLos-1,si,vi,epsH) ENDIF),
+	  FirstProbHcrit: nat = IF FirstNonHRep<0 THEN MaxN+1 ELSE FirstNonHRep ENDIF,
+	  FirstProbHL: nat = min(FirstLos,FirstProbHcrit),
+	  FirstNonVRep: int = (IF (NOT UseVCrit) OR FirstProbHL=0 THEN FirstProbHL
+  	  		    	  ELSE first_nonvert_repul_step(traj,
+  				    0,ts,FirstProbHL-1,si,vi,epsV) ENDIF),
+	  FirstProbVcrit: nat = IF FirstNonVRep<0 THEN MaxN+1 ELSE FirstNonVRep ENDIF,
+	  FirstProbVHL: nat = min(FirstProbHL,FirstProbVcrit)
+      IN FirstProbVHL
+
+
+
+  bands_search_index_def: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND
+      (si,vi) = (nth(AL,most_urgent(so,vo,AL))`s,nth(AL,most_urgent(so,vo,AL))`v) IMPLIES
+    LET ind = bands_search_index(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+				epsH,epsV,UseHCrit,UseVCrit)
+    IN  FORALL (j:subrange(0,MaxN)):
+    	j>=ind IFF
+	  ((first_los_step(LOS,traj,ceiling(B/ts),ts,min(floor(T/ts),j),AL)>=0) OR
+	   (useLOS2 AND first_los_step(LOS2,traj,ceiling(B2/ts),
+					ts,min(floor(T2/ts),j),AL)>=0) OR
+	  (UseHCrit AND first_nonrepulsive_step(traj,0,ts,j,si,vi,epsH)>=0) OR
+	  (UseVCrit AND first_nonvert_repul_step(traj,0,ts,j,si,vi,epsV)>=0))
+
+
+  % Next, the generic bands function. It searches for conflicts
+  % using CD for 0,...,d-1, d given by bands_search_index,
+  % and returns that set of bands. This function
+  % computes RED bands.
+
+  % CHANGED NEXT FUNCTION TO SEARCH TO A DIFFERENT INDEX; The Logic is Simpler Now
+
+  kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,
+    MaxN,ts,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),
+      epsH,epsV,UseHCrit,UseVCrit): (proper?(MaxN)) = % This returns a list[IntBand]
+      LET bsi = bands_search_index(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+				epsH,epsV,UseHCrit,UseVCrit)
+      IN  IF bsi=0 THEN (:  :)
+      	  ELSE traj_conflict_only_bands(CD,CD2,useLOS2,B,T,B2,T2,traj,bsi-1,ts,AL) ENDIF
+
+
+  kinematic_bands_def: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+				epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      bands_sound?(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit,MaxN)(kb)
+
+  kinematic_bands_connected: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+				epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      i<j AND j<length(kb) IMPLIES
+      nth(kb,j)`lb-nth(kb,i)`ub>1
+
+  kinematic_bands_increasing: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+    LET kb = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+				epsH,epsV,UseHCrit,UseVCrit)
+    IN
+      strictly_increasing_int?(kb)
+
+
+
+  % kinematic_bands_at_0: LEMMA traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+  %     most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+  %   LET kb = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,most_urgent,
+  % 				epsH,epsV,UseHCrit,UseVCrit)
+  %   IN
+  %     (length(kb)>0 AND nth(kb,0)`lb=0) IFF 
+  %       ((EXISTS (p:below(length(AL))): B=0 AND
+  % 	  LOS(traj(0)`1,traj(0)`2,nth(AL,p)`s,nth(AL,p)`v)) OR
+  % 	  (useLOS2 AND EXISTS (p:below(length(AL))): B2=0 AND
+  % 	  LOS2(traj(0)`1,traj(0)`2,nth(AL,p)`s,nth(AL,p)`v)) OR
+  % 	  (EXISTS (p:below(length(AL)),t):
+  % 	   B<=t AND t<=T AND LOS(so+t*vo,vo,position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v)) OR
+  % 	  (useLOS2 AND EXISTS (p:below(length(AL)),t):
+  % 	   B2<=t AND t<=T2 AND LOS2(so+t*vo,vo,position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v)))
+
+
+  
+ 
+
+
+
+END kinematic_bands

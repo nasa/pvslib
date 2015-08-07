@@ -1,0 +1,506 @@
+int_bands: THEORY                        
+BEGIN
+
+  IMPORTING Kinematic@interface_trig,
+  	    ACCoRD@Lookahead,
+	    ACCoRD@cd3d,
+	    ACCoRD@repulsive_iterative,
+	    ACCoRD@repulsive_vertical_it
+
+  Aircraft: TYPE = [# s:Vect3,v:Vect3, id:string #]
+
+  Traffic: TYPE = list[Aircraft]
+
+  AircraftList: TYPE = list[Aircraft]
+
+  AL   : VAR AircraftList
+  s,v  : VAR Vect3  
+  B,B1,B2    : VAR nnreal
+  T,T1,T2    : VAR nnreal
+  aco, aci: VAR Aircraft
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  tsn: VAR nnreal
+  t:VAR nnreal
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit,useLOS2: VAR bool
+  epsH,epsV: VAR Sign
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+
+  LOS,LOS1,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool] %(B,T,so,vo,si,vi)
+
+  CD,CD1,CD2:  VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool] %(B,T,so,vo,si,vi)
+
+  % Make sure implemented version of CD returns false when B>T
+
+  detector?(LOS)(CD): bool = (FORALL (B,T,so,vo,si,vi): (CD(B,T,so,vo,si,vi) IFF (EXISTS (t:Lookahead[B,T]): 
+      LOS( so+t*vo, vo, si+t*vi,vi))))
+
+  Traj: TYPE = [nnreal->[Vect3,Vect3]] % A turn, ground speed change, vertical, etc.
+
+  traj: VAR Traj
+
+  traj_position(traj,tjump,t): Vect3 =
+    IF t<=tjump THEN traj(t)`1
+    ELSE traj(tjump)`1 + (t-tjump)*traj(tjump)`2 ENDIF
+
+  traj_velocity(traj,tjump,t): Vect3 =
+    IF t<=tjump THEN traj(t)`2
+    ELSE traj(tjump)`2 ENDIF
+
+  position(si,vi,t): Vect3 = si+t*vi
+
+  conflict(LOS,B,T,tjump,traj,si,vi): bool =
+    (EXISTS t: B<=t AND t<=T AND LOS(traj_position(traj,
+                             tjump,t),traj_velocity(traj,tjump,t),position(si,vi,t),vi))
+
+  restricted_conflict(LOS,B,T,njump,ts,traj,si,vi): bool =
+    (EXISTS t: B<=t AND t<=T AND (t>=njump*ts OR (EXISTS k: k<=njump AND t=k*ts)) 
+       AND LOS(traj_position(traj,njump*ts,t),traj_velocity(traj,njump*ts,t),position(si,vi,t),vi))
+
+  % Track Bands - Iterate by one degree starting
+  % at current velocity - step is number of degrees
+
+  
+
+  aircraft_at(AL:AircraftList,i:below(length(AL)))(r:real): Aircraft =
+    (# s:=nth(AL,i)`s+r*nth(AL,i)`v, v:=nth(AL,i)`v, id:= nth(AL,i)`id #)
+
+  % We only check criteria against most urgent aircraft
+  most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+
+  % A function that returns the first index of an aircraft which
+  % is in LOS at time k*ts (ts is the time step and k is the number of them)
+  % returns -1 otherwise
+
+  first_los_aircraft(LOS,traj,k,ts,i,AL): RECURSIVE {j:int |
+    (j>=0 IFF (i<=j AND j<length(AL) AND LOS(traj(k*ts)`1,traj(k*ts)`2,nth(AL,j)`s+(k*ts)*nth(AL,j)`v,nth(AL,j)`v) AND
+    	      (FORALL (q:int): q>=i AND q<j IMPLIES 
+	        NOT LOS(traj(k*ts)`1,traj(k*ts)`2,nth(AL,q)`s+(k*ts)*nth(AL,q)`v,nth(AL,q)`v))))
+    AND (j<0 IFF (FORALL (q:int): q>=i AND q<length(AL) IMPLIES 
+	        NOT LOS(traj(k*ts)`1,traj(k*ts)`2,nth(AL,q)`s+(k*ts)*nth(AL,q)`v,nth(AL,q)`v)))} =
+    IF i>=length(AL) THEN -1
+    ELSIF LOS(traj(k*ts)`1,traj(k*ts)`2,nth(AL,i)`s+(k*ts)*nth(AL,i)`v,nth(AL,i)`v) THEN i
+    ELSE first_los_aircraft(LOS,traj,k,ts,i+1,AL) ENDIF MEASURE max(length(AL)-i+2,0)
+
+  % A function that computes whether we are in loss during the complete
+  % turn, between time steps k and MaxN (times k*ts and MaxN*ts). 
+  % It finds the index of the first time
+  % where los occurs with some aircraft, or it returns -1
+
+  first_los_step(LOS,traj,k,ts,MaxN,AL): RECURSIVE {i:int |
+    (i>=0 IFF (k<=i AND i<=MaxN AND (EXISTS (p:nat): p<length(AL) 
+    	      AND LOS(traj(i*ts)`1,traj(i*ts)`2,nth(AL,p)`s+(i*ts)*nth(AL,p)`v,nth(AL,p)`v)) AND
+	      (FORALL (j:nat): k<=j AND j<i IMPLIES 
+	        (FORALL (p:nat): p<length(AL) 
+    	        IMPLIES NOT LOS(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v)))))
+    AND (i<0 IFF (FORALL (p,j:nat): p<length(AL) AND k<=j AND j<=MaxN
+    	     	   IMPLIES NOT LOS(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v)))} =
+    IF k>MaxN THEN -1
+    ELSIF first_los_aircraft(LOS,traj,k,ts,0,AL)>=0 THEN k
+    ELSE first_los_step(LOS,traj,k+1,ts,MaxN,AL)
+    ENDIF MEASURE max(MaxN-k+1,0)
+
+  first_los_step_range: LEMMA
+    first_los_step(LOS,traj,k,ts,MaxN,AL)>=-1 AND
+    first_los_step(LOS,traj,k,ts,MaxN,AL)<=MaxN
+
+  % A function that computes conflict on the linear part after
+  % jumping off of the traj.
+
+  CD_future_traj(CD,B,T,traj,tjump,AL,(i|i<length(AL))): bool =
+    LET ACat = aircraft_at(AL,i)(tjump) IN
+      IF tjump>T OR B>T THEN FALSE
+      ELSIF B>tjump THEN CD(B-tjump,T-tjump,traj(tjump)`1,traj(tjump)`2,ACat`s,ACat`v)
+      ELSE CD(0,T-tjump,traj(tjump)`1,traj(tjump)`2,ACat`s,ACat`v) ENDIF
+
+  CD_future_traj_def: LEMMA detector?(LOS)(CD) AND i<length(AL) IMPLIES 
+    (CD_future_traj(CD,B,T,traj,tjump,AL,i) IFF
+         (EXISTS t: B<=t AND t<=T AND tjump<=t AND LOS(traj_position(traj,
+                             tjump,t),traj_velocity(traj,
+                             tjump,t),position(nth(AL,i)`s,nth(AL,i)`v,t),nth(AL,i)`v)))
+
+  % A function that computes index of the first aircraft for which
+  % there is a conflict on the linear segment starting at k*ts, where
+  % ts is the timestep as above. It returns -1 if none is found.
+
+  first_conflict_aircraft(CD,B,T,traj,k,tsn,i,AL): RECURSIVE {j:int |
+    (j>=0 IFF (i<=j AND j<length(AL) AND CD_future_traj(CD,B,T,traj,k*tsn,AL,j) AND
+    	      (FORALL (q:int): q>=i AND q<j IMPLIES 
+	        NOT CD_future_traj(CD,B,T,traj,k*tsn,AL,q))))
+    AND (j<0 IFF (FORALL (q:int): q>=i AND q<length(AL) IMPLIES 
+	        NOT CD_future_traj(CD,B,T,traj,k*tsn,AL,q)))} =
+    IF i>=length(AL) THEN -1
+    ELSIF CD_future_traj(CD,B,T,traj,k*tsn,AL,i) THEN i
+    ELSE first_conflict_aircraft(CD,B,T,traj,k,tsn,i+1,AL) ENDIF MEASURE max(length(AL)-i+2,0)
+
+  % A generic bands algorithm for natural number predicates
+
+  IntBand: TYPE = [# lb:int,ub:int #]
+
+  IMPORTING structures@more_list_props[IntBand],structures@listn
+
+  ib: VAR IntBand
+
+  L: VAR list[IntBand]
+
+  strictly_increasing_int?(L): bool = 
+    (FORALL (i:below(length(L))):nth(L,i)`lb<=nth(L,i)`ub) AND
+    (FORALL (i,j:below(length(L))): i<j IMPLIES nth(L,i)`ub<nth(L,j)`lb)
+
+  in?(ib,p): bool = ib`lb<=p AND p<=ib`ub
+
+  negib(ib): IntBand =
+    (# lb:=-ib`ub,ub:=-ib`lb #)
+
+  neg(L): listn[IntBand](length[IntBand](L)) = 
+    reverse(map(negib)(L))
+
+  neg_intband_def: LEMMA
+      (EXISTS (i:below(length(L))): in?(nth(L,i),p)) IFF
+      (EXISTS (i:below(length(neg(L)))): in?(nth(neg(L),i),-p))
+
+  neg_intband_def2: LEMMA
+    FORALL (i:below(length(L))): nth(neg(L),i) = negib(nth(L,length(L)-1-i))
+
+  proper?(MaxN)(L): bool = (FORALL (i:below(length(L))): 0<=nth(L,i)`lb AND 
+  		    nth(L,i)`lb<=nth(L,i)`ub AND nth(L,i)`ub<=MaxN)
+
+  Bands?(maxi,p,q,IP,d)(L): bool =
+    LET numbands = length(L) IN
+    (d>=0 IMPLIES (p<=d AND d<=q)) AND
+    (FORALL (j:below(numbands)): 
+      p<=nth(L,j)`lb AND nth(L,j)`lb<=nth(L,j)`ub
+      AND nth(L,j)`ub<=q AND (d>=0 IMPLIES nth(L,j)`ub<d-1)) AND
+    (FORALL (z,j:below(numbands)): z<j
+      IMPLIES nth(L,j)`lb-nth(L,z)`ub>1) AND
+    (FORALL (z:nat): p<=z AND z<=q IMPLIES
+      (IP(z) IFF ((d>=0 AND z>=d) OR (numbands>0
+                   AND (EXISTS (j:below(numbands)): in?(nth(L,j),z)))))) AND
+    ((EXISTS (j:below(length(L))): nth(L,j)`ub>=q) IMPLIES (d>=0 OR (d<0 AND q=maxi)))
+    
+  nat_bands_rec(i,(maxi|i-1<=maxi),IP,d,(L|Bands?(maxi,0,i-1,IP,d)(L))): RECURSIVE (Bands?(maxi,0,maxi,IP,-1)) =
+    IF i>maxi AND d>=0 THEN append(L,(: (# lb:=d,ub:=i-1 #) :))
+    ELSIF i>maxi THEN L
+    ELSIF d>=0 AND IP(i) THEN nat_bands_rec(i+1,maxi,IP,d,L)
+    ELSIF d>=0 THEN nat_bands_rec(i+1,maxi,IP,-1,append(L,(: (# lb:=d,ub:=i-1 #) :)))
+    ELSIF IP(i) THEN nat_bands_rec(i+1,maxi,IP,i,L)
+    ELSE nat_bands_rec(i+1,maxi,IP,-1,L) ENDIF MEASURE max(maxi-i+2,0)
+
+  nat_bands(maxi,IP): (Bands?(maxi,0,maxi,IP,-1)) =
+    nat_bands_rec(0,maxi,IP,-1,null[IntBand])
+
+  nat_bands_connected: LEMMA FORALL (z,j:nat): z<j AND j<length(nat_bands(maxi,IP))
+    IMPLIES nth(nat_bands(maxi,IP),j)`lb-nth(nat_bands(maxi,IP),z)`ub>1
+
+  % Next is the function that computes the bands for linear conflict detection
+  % only. So the kinematic, iterative trajectory is used, but these bands only
+  % check which of those maneuvers give a conflict AFTER leaving the trajectory and
+  % going straight
+
+  % CHANGED NEXT FUN TO PUT IN "NOT" IN SEVERAL PLACES and replace the OR with AND
+
+  traj_conflict_only_bands(CD,CD2,useLOS2,B,T,B2,T2,traj,maxi,ts,AL):
+    (Bands?(maxi,0,maxi,(LAMBDA (j:nat): (NOT first_conflict_aircraft(CD,B,T,traj,j,ts,0,AL)>=0)
+    			  AND (NOT (useLOS2 AND first_conflict_aircraft(CD2,B2,T2,traj,
+			     	  j,ts,0,AL)>=0))),-1)) =
+    nat_bands(maxi,(LAMBDA (j:nat): (NOT first_conflict_aircraft(CD,B,T,traj,j,ts,0,AL)>=0)
+    			  AND (NOT (useLOS2 AND first_conflict_aircraft(CD2,B2,T2,traj,j,ts,0,AL)>=0))))
+
+  % Next, a function that computes a velocity sequence, which using time step ts,
+  % follows the trajectory traj. This gives the linear velocity between traj(k*ts)
+  % and traj((k+1)*ts), assuming that it takes ts-time to get between them
+
+  linvel(traj,ts,k): Vect3 = (1/ts)*(traj((k+1)*ts)`1-traj(k*ts)`1)
+
+  linvel_def_vect2: LEMMA MaxN>0 AND k+1<=MaxN IMPLIES
+    maneuver_position_at(vect2(traj(0)`1),ts,
+         LAMBDA (z:posnat): vect2(linvel(traj,ts,z-1)),MaxN)(k*ts) =
+    vect2(traj(k*ts)`1)
+
+  linvel_def_vect2_2: LEMMA MaxN>0 AND k+1<=MaxN IMPLIES
+    maneuver_position_at(vect2(traj(0)`1 - si),ts,
+         LAMBDA (z:posnat): vect2(linvel(traj,ts,z-1) - vi),MaxN)(k*ts) =
+    vect2(traj(k*ts)`1 - si - (k*ts)*vi)
+
+
+  linvel_def_vect2_3: LEMMA FORALL (j:nat): MaxN>0 AND k<=MaxN AND j<=k IMPLIES
+    maneuver_position_at(vect2(traj(0)`1 - si),ts,
+         LAMBDA (i:posnat): IF i-1 /= k
+                         THEN vect2(linvel(traj,ts,i-1))
+                         ELSE vect2(traj(k*ts)`2) ENDIF -
+                         vect2(vi),MaxN+1)(j*ts) =
+    vect2(traj(j*ts)`1 - si - (j*ts)*vi)
+
+  linevel_def_2: LEMMA traj(k*ts)`1+ts*linvel(traj,ts,k) = traj((k+1)*ts)`1
+
+  linvel_def_vect3: LEMMA FORALL (j:nat): MaxN>0 AND k<=MaxN AND j<=k IMPLIES
+    maneuver_position_v3_at(traj(0)`1 - si,ts,
+         LAMBDA (i:posnat): IF i-1 /= k
+                         THEN linvel(traj,ts,i-1)
+                         ELSE traj(k*ts)`2 ENDIF -
+                         vi,MaxN+1)(j*ts) =
+    traj(j*ts)`1 - si - (j*ts)*vi
+
+  % Next is a function that computes, given only one intruder, which later will be
+  % specified to the most urgent intruder, the first step at which iterative repulsive
+  % can fail. At the first step, it only checks the first linear velocity
+  % against the first tangent. 
+
+  repulsive_at(traj,k,ts,si,vi,eps): bool =
+    IF k=0 THEN TRUE
+    ELSE
+      (k>1 OR 
+      	   (k=1 AND 
+	    repulsive_criteria(traj(0)`1-si,traj(0)`2-vi,eps)
+	    (linvel(traj,ts,0)-vi)))
+      AND
+	 repulsive_criteria(traj(k*ts)`1-(si+(k*ts)*vi),
+    	           linvel(traj,ts,k-1)-vi,eps)(traj(k*ts)`2-vi)
+    	 AND
+	 repulsive_criteria(traj(k*ts)`1-(si+(k*ts)*vi),
+	           traj(k*ts)`2-vi,eps)(linvel(traj,ts,k)-vi)
+         AND
+	 repulsive_criteria(traj(k*ts)`1-(si+(k*ts)*vi),
+	           linvel(traj,ts,k-1)-vi,eps)(linvel(traj,ts,k)-vi)
+    ENDIF
+
+  % A function that computes the index of the first time step,
+  %  between time steps k and MaxN (times k*ts and MaxN*ts),
+  % at which repulsivity fails.
+  % It finds the first index of the time
+  % where it fails with one intruder (si,vi), or it returns -1 if
+  % there is none
+
+  first_nonrepulsive_step(traj,k,ts,MaxN,si,vi,eps): RECURSIVE {i:int |
+    (i>=0 IFF ((k<=i AND i<=MaxN AND NOT repulsive_at(traj,i,ts,si,vi,eps)) AND
+	      (FORALL (j:nat): k<=j AND j<i IMPLIES
+	      	      	          repulsive_at(traj,j,ts,si,vi,eps))))
+    AND (i<0 IFF (FORALL (j:nat): k<=j AND j<=MaxN
+    	     	   IMPLIES repulsive_at(traj,j,ts,si,vi,eps)))} =
+    IF k>MaxN THEN -1
+    ELSIF NOT repulsive_at(traj,k,ts,si,vi,eps) THEN k
+    ELSE first_nonrepulsive_step(traj,k+1,ts,MaxN,si,vi,eps)
+    ENDIF MEASURE max(MaxN-k+1,0)
+
+  % all maneuvers up with jump off times k*ts with k less
+  % than the returned type of first_nonrepulsive_step have positions
+  % at i*ts (i<=k) and any times >=k*ts that satisfy repulsive
+  % criteria from original so.
+
+  first_nonrepulsive_step_repulsive: LEMMA k>0 AND k<=MaxN
+    AND (k+1<=first_nonrepulsive_step(traj,0,ts,MaxN,si,vi,eps)
+    	 OR first_nonrepulsive_step(traj,0,ts,MaxN,si,vi,eps)<0)
+    IMPLIES
+      LET origs = traj(0)`1-si,	
+      	  origv = traj(0)`2-vi,
+	  intrt = si + t*vi
+      IN
+        repulsive_criteria_iterative(origs,origv,ts,
+	      relative_velseq_vel(
+	        LAMBDA (j:posnat): IF j-1/=k THEN linvel(traj,ts,j-1)
+		       		   ELSE traj(k*ts)`2 ENDIF,vi),k+1,eps)
+
+  %%%%% Vertical Criterion %%%%%
+
+  % Next is a function that computes, given only one intruder, which later will be
+  % specified to the most urgent intruder, the first step at which iterative vert_repul
+  % can fail. At the first step, it only checks the first linear velocity
+  % against the first vertical tangent velocity. 
+
+  vert_repul_at(traj,k,ts,si,vi,eps): bool =
+    IF k=0 THEN TRUE
+    ELSE (k>1 OR (k=1 AND vertical_repulsive_crit(traj(0)`1-si,
+    	      	      	    traj(0)`2-vi,eps)(linvel(traj,ts,0)-vi)))
+	 AND
+	 vertical_repulsive_crit(traj(k*ts)`1-(si+(k*ts)*vi),
+    	           linvel(traj,ts,k-1)-vi,eps)(traj(k*ts)`2-vi)
+    	 AND
+	 vertical_repulsive_crit(traj(k*ts)`1-(si+(k*ts)*vi),
+	           traj(k*ts)`2-vi,eps)(linvel(traj,ts,k)-vi)
+         AND
+	 vertical_repulsive_crit(traj(k*ts)`1-(si+(k*ts)*vi),
+	           linvel(traj,ts,k-1)-vi,eps)(linvel(traj,ts,k)-vi)
+    ENDIF
+
+  % A function that computes the index of the first time step,
+  %  between time steps k and MaxN (times k*ts and MaxN*ts),
+  % at which vertical repulsivity criterion fails.
+  % It finds the first index of the time
+  % where it fails with one intruder (si,vi), or it returns -1 if
+  % there is none. Keep in mind that this depends entirely on the epsilon.
+  % This can be computed for either epsilon.
+
+  first_nonvert_repul_step(traj,k,ts,MaxN,si,vi,eps): RECURSIVE {i:int |
+    (i>=0 IFF ((k<=i AND i<=MaxN AND NOT vert_repul_at(traj,i,ts,si,vi,eps)) AND
+	      (FORALL (j:nat): k<=j AND j<i IMPLIES
+	      	      	          vert_repul_at(traj,j,ts,si,vi,eps))))
+    AND (i<0 IFF (FORALL (j:nat): k<=j AND j<=MaxN
+    	     	   IMPLIES vert_repul_at(traj,j,ts,si,vi,eps)))} =
+    IF k>MaxN THEN -1
+    ELSIF NOT vert_repul_at(traj,k,ts,si,vi,eps) THEN k
+    ELSE first_nonvert_repul_step(traj,k+1,ts,MaxN,si,vi,eps)
+    ENDIF MEASURE max(MaxN-k+1,0)
+
+  % all maneuvers up with jump off times k*ts with k less
+  % than the returned type of first_nonvert_repul_step have positions
+  % at i*ts (i<=k) and any times >=k*ts that satisfy vert_repul
+  % criteria from original so. Again, this can be computed for either epsilon.
+
+  first_nonvert_repul_step_vert_repul: LEMMA k>0 AND k<=MaxN AND
+    (traj(0)`1-si)*(traj(0)`2-vi)<0
+    AND (k+1<=first_nonvert_repul_step(traj,0,ts,MaxN,si,vi,eps)
+    	 OR first_nonvert_repul_step(traj,0,ts,MaxN,si,vi,eps)<0)
+    IMPLIES
+      LET origs = traj(0)`1-si,	
+      	  origv = traj(0)`2-vi,
+	  intrt = si + t*vi
+      IN
+        vertical_repulsive_crit_iterative(origs,origv,ts,
+	      relative_velseq_vel(
+	        LAMBDA (j:posnat): IF j-1/=k THEN linvel(traj,ts,j-1)
+		       		   ELSE traj(k*ts)`2 ENDIF,vi),k+1,eps)
+
+  %%%%% End Vertical Criterion %%%%%
+
+  %%%%% Correctness for Generic Bands %%%%%
+
+  conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(k):bool =
+         most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL) AND
+	 LET MI = nth(AL,most_urgent(so,vo,AL)) IN
+	 ((EXISTS (j:upto(k),p:below(length(AL))): B<=j*ts AND j*ts<=T AND
+  	  LOS(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v))
+	 OR
+	 (useLOS2 AND EXISTS (j:upto(k),p:below(length(AL))): B2<=j*ts AND j*ts<=T2 AND
+  	  LOS2(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v))
+         OR
+  	 (UseHCrit AND (EXISTS (j:upto(k)): 
+	           (NOT repulsive_at(traj,j,ts,MI`s,MI`v,epsH))))
+         OR
+	 (UseVCrit AND (EXISTS (j:upto(k)): 
+	           (NOT vert_repul_at(traj,j,ts,MI`s,MI`v,epsV))))
+         OR
+	 (EXISTS (p:below(length(AL)),t):
+	   B<=t AND t<=T AND k*ts<=t AND LOS(traj_position(traj,
+                             k*ts,t),traj_velocity(traj,
+                             k*ts,t),position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v))
+         OR
+	 (useLOS2 AND EXISTS (p:below(length(AL)),t):
+	   B2<=t AND t<=T2 AND k*ts<=t AND LOS2(traj_position(traj,
+                             k*ts,t),traj_velocity(traj,
+                             k*ts,t),position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v)))
+
+  % CHANGED NEXT FUN TO PUT IN "NOT"
+
+  bands_sound?(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit,MaxN)(kb:(proper?(MaxN))): bool =
+    FORALL (k:upto(MaxN)):
+        (EXISTS (i:below(length(kb))): in?(nth(kb,i),k))
+  	IFF
+  	(NOT conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(k))
+
+  remove_last_int(L): list[IntBand] = % Removes last band
+    IF length(L)=0 THEN L
+    ELSE reverse(cdr(reverse(L))) ENDIF
+
+  length_remove_last_int: LEMMA
+    length(remove_last_int(L)) = max(0,length(L)-1)
+
+  remove_last_int_def: LEMMA length(L)>0 IMPLIES
+   FORALL (j:nat): j<length(L)-1 IMPLIES
+     nth(remove_last_int(L),j) = nth(L,j)
+
+  append_intband_spec(L1,L2:list[IntBand]): list[IntBand] =
+    IF length[IntBand](L1)>0 AND length[IntBand](L2)>0
+       AND nth(L2,0)`lb-nth(L1,length(L1)-1)`ub<=1 % integers so no float issues
+    THEN append(append(remove_last_int(L1),
+       (: (# lb:=nth(L1,length(L1)-1)`lb,
+  	  ub:=nth(L2,0)`ub #) :)),cdr(L2))
+    ELSE append(L1,L2) ENDIF
+
+  append_intband_spec_length: LEMMA FORALL (L1,L2:list[IntBand]):
+    length(append_intband_spec(L1,L2)) =
+      IF length[IntBand](L1)>0 AND length[IntBand](L2)>0
+         AND nth(L2,0)`lb-nth(L1,length(L1)-1)`ub<=1 % integers so no float issues
+      THEN length(L1)+length(L2)-1
+      ELSE length(L1)+length(L2) ENDIF
+
+  append_intband_spec_def: LEMMA FORALL (L1,L2:list[IntBand]):
+    strictly_increasing_int?(L1) AND strictly_increasing_int?(L2) AND
+    (length(L1)>0 AND length(L2)>0 IMPLIES nth(L1,length(L1)-1)`ub<=nth(L2,0)`lb)
+    IMPLIES
+      LET AIS = append_intband_spec(L1,L2) IN
+      (strictly_increasing_int?(AIS) AND
+       (FORALL (k:int): 
+         (EXISTS (j:nat): j<length(AIS) AND in?(nth(AIS,j),k)) IFF
+	 ((EXISTS (j:nat): j<length(L1) AND in?(nth(L1,j),k)) OR
+	  (EXISTS (j:nat): j<length(L2) AND in?(nth(L2,j),k)))))
+
+  append_intband_spec_connected: LEMMA FORALL (L1,L2:list[IntBand]):
+    (FORALL (j,k:nat): j<k AND k<length(L1) IMPLIES nth(L1,k)`lb-nth(L1,j)`ub>=2) AND
+    (FORALL (j,k:nat): j<k AND k<length(L2) IMPLIES nth(L2,k)`lb-nth(L2,j)`ub>=2) AND
+    (length(L1)>0 AND length(L2)>0 IMPLIES nth(L1,length(L1)-1)`ub<=nth(L2,0)`lb) AND
+    strictly_increasing_int?(L1) AND strictly_increasing_int?(L2)
+    IMPLIES
+      LET AIS = append_intband_spec(L1,L2) IN
+      (FORALL (j,k:nat): j<k AND k<length(AIS) IMPLIES nth(AIS,k)`lb-nth(AIS,j)`ub>=2)
+
+
+  append_intband_spec_nth: LEMMA FORALL (L1,L2:list[IntBand]):
+    strictly_increasing_int?(L1) AND strictly_increasing_int?(L2) AND
+    (length(L1)>0 AND length(L2)>0 IMPLIES nth(L1,length(L1)-1)`ub<=nth(L2,0)`lb)
+    IMPLIES
+      LET AIS = append_intband_spec(L1,L2) IN
+      (FORALL (j:nat): j<length(AIS) IMPLIES
+        nth(AIS,j) =
+	    IF length[IntBand](L1)>0 AND length[IntBand](L2)>0
+       	       AND nth(L2,0)`lb-nth(L1,length(L1)-1)`ub<=1 
+    	    THEN (IF j<length(L1)-1 THEN nth(L1,j)
+	    	  ELSIF j=length(L1)-1 THEN 
+		  	(# lb:=nth(L1,length(L1)-1)`lb,
+  	  		  ub:=nth(L2,0)`ub #)
+		  ELSE nth(L2,j-length(L1)+1) ENDIF)
+    	     ELSE (IF j<=length(L1)-1 THEN nth(L1,j)
+		  ELSE nth(L2,j-length(L1)) ENDIF)
+             ENDIF)
+
+ conflict_step_rew: LEMMA
+         most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL) AND
+	 detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND k<=MaxN IMPLIES
+	 LET 
+	   MI = nth(AL,most_urgent(so,vo,AL)),
+	   (si,vi)=(MI`s,MI`v),
+	   FirstLosK: nat = ceiling(B/ts), 
+      	   FirstLosN: nat = min(floor(T/ts),k), 
+	   SecLosK: nat = ceiling(B2/ts), 
+      	   SecLosN: nat = min(floor(T2/ts),k)
+         IN
+ 	   conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(k)
+           IFF
+	   (first_los_step(LOS,traj,FirstLosK,ts,FirstLosN,AL)>=0
+	   OR
+	   (useLOS2 AND first_los_step(LOS2,traj,SecLosK,ts,SecLosN,AL)>=0)
+           OR
+  	   (UseHCrit AND first_nonrepulsive_step(traj,0,ts,k,si,vi,epsH)>=0)
+           OR
+	   (UseVCrit AND first_nonvert_repul_step(traj,0,ts,k,si,vi,epsV)>=0)
+           OR
+	   first_conflict_aircraft(CD,B,T,traj,k,ts,0,AL)>=0
+           OR
+	   (useLOS2 AND first_conflict_aircraft(CD2,B2,T2,traj,k,ts,0,AL)>=0))
+
+
+END int_bands

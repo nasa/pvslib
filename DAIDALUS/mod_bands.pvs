@@ -1,0 +1,135 @@
+mod_bands: THEORY                        
+BEGIN
+
+  IMPORTING real_bands
+
+  s,v  : VAR Vect3  
+  B    : VAR nnreal
+  T    : VAR nnreal
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  x:VAR real
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit: VAR bool
+  epsH,epsV: VAR Sign
+
+
+  ib: VAR IntBand
+
+  L: VAR list[IntBand]
+
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+  
+
+
+  rb: VAR RealBand
+
+  r,g: VAR real
+ 
+  RL,RL1,RL2,rl1,rl2,rl,TB: VAR list[RealBand]
+  
+  first_gt_2pi(RL): RECURSIVE {i:int|
+    i>=0 AND i<=length(RL) AND (i<length(RL) IMPLIES nth(RL,i)`ub>2*pi) AND
+    ((EXISTS (j:nat): j<length(RL) AND nth(RL,j)`ub>2*pi) IMPLIES i<length(RL)) AND
+    (FORALL (j:nat): j<i 
+      IMPLIES nth(RL,j)`ub<=2*pi)} =
+        IF length(RL)=0 THEN 0
+	ELSIF first_gt_2pi(remove_last(RL))<length(RL)-1 
+	  THEN first_gt_2pi(remove_last(RL))
+        ELSIF nth(RL,length(RL)-1)`ub>2*pi 
+	  THEN length(RL)-1
+	ELSE length(RL) ENDIF MEASURE length(RL)
+
+  last_lt_0(RL): RECURSIVE {i:int|
+    i>=-1 AND (i>=0 IMPLIES (i<length(RL) AND  nth(RL,i)`lb<0)) AND
+    ((EXISTS (j:nat): j<length(RL) AND nth(RL,j)`lb<0) IMPLIES i>=0) AND
+    (i>=0 IMPLIES FORALL (j:nat): j<length(RL) AND j>i
+      IMPLIES nth(RL,j)`lb>=0)} =
+        IF length(RL)=0 THEN -1
+	ELSIF last_lt_0(cdr(RL))>=0 
+	  THEN last_lt_0(cdr(RL))+1
+        ELSIF nth(RL,0)`lb<0 
+	  THEN 0
+	ELSE -1 ENDIF MEASURE length(RL)
+
+  bands_mod_meas(RL): nat =
+    length(RL)-first_gt_2pi(RL)+last_lt_0(RL)+1
+
+  band_to_mod?(RL) : bool = (strictly_increasing_real?(RL) AND
+  	(FORALL (j:below(length(RL))): -pi<=nth(RL,j)`lb AND nth(RL,j)`ub<=3*pi) AND
+	(length(RL)>0 IMPLIES nth(RL,length(RL)-1)`ub-nth(RL,0)`lb<=2*pi))
+
+  band_to_mod_width: LEMMA band_to_mod?(RL) IMPLIES
+    FORALL (i,j:below(length(RL))):i<=j IMPLIES
+      nth(RL,i)`lb<=nth(RL,i)`ub AND nth(RL,i)`lb<=nth(RL,j)`ub
+      AND nth(RL,j)`lb<=nth(RL,j)`ub AND nth(RL,j)`ub-nth(RL,i)`lb<=2*pi
+
+  bands_below(x,RL): RECURSIVE {TB | strictly_increasing_real?(RL) IMPLIES
+    (strictly_increasing_real?(TB) AND length(TB)<=length(RL) AND (FORALL (j:nat): j<length(RL) AND
+      nth(RL,j)`lb<=x IMPLIES (j<length(TB) AND nth(TB,j)`lb = nth(RL,j)`lb AND
+        nth(TB,j)`ub = (IF nth(RL,j)`ub<=x THEN nth(RL,j)`ub ELSE x ENDIF)))
+	AND (length(TB)>0 IMPLIES nth(TB,length(TB)-1)`ub<=x) AND
+	(FORALL (j:nat): j<length(RL) AND nth(RL,j)`lb>x IMPLIES j>=length(TB)))} =
+    IF length(RL)=0 OR nth(RL,0)`lb>x THEN (: :)
+    ELSIF nth(RL,0)`ub>x THEN (: (# lb:=nth(RL,0)`lb,ub:=x #) :)
+    ELSE cons(nth(RL,0),bands_below(x,cdr(RL))) ENDIF
+    MEASURE length(RL)
+
+  bands_above(x,RL): RECURSIVE {TB | strictly_increasing_real?(RL) IMPLIES
+    (strictly_increasing_real?(TB) AND length(TB)<=length(RL) AND (FORALL (j:nat): j<length(RL) AND
+      nth(RL,length(RL)-1-j)`ub>=x IMPLIES (j<length(TB) AND nth(TB,length(TB)-1-j)`ub = nth(RL,length(RL)-1-j)`ub AND
+        nth(TB,length(TB)-1-j)`lb = (IF nth(RL,length(RL)-1-j)`lb>=x THEN nth(RL,length(RL)-1-j)`lb ELSE x ENDIF)))
+	AND (length(TB)>0 IMPLIES nth(TB,0)`lb>=x) AND
+	(FORALL (j:nat): j<length(RL) AND nth(RL,length(RL)-1-j)`ub<x IMPLIES j>=length(TB)))} =
+    IF length(RL)=0 OR nth(RL,length(RL)-1)`ub<x THEN (: :)
+    ELSIF nth(RL,length(RL)-1)`lb<x THEN (: (# lb:=x,ub:=nth(RL,length(RL)-1)`ub #) :)
+    ELSE append(bands_above(x,remove_last(RL)),(: nth(RL,length(RL)-1) :)) ENDIF
+    MEASURE length(RL)
+
+  bands_below_range: LEMMA strictly_increasing_real?(RL) IMPLIES
+    FORALL (j:nat): j<length(bands_below(x,RL)) IMPLIES
+      (nth(bands_below(x,RL),j)`lb<=x AND nth(bands_below(x,RL),j)`ub<=x)
+
+  bands_above_range: LEMMA strictly_increasing_real?(RL) IMPLIES
+    FORALL (j:nat): j<length(bands_above(x,RL)) IMPLIES
+      (nth(bands_above(x,RL),j)`lb>=x AND nth(bands_above(x,RL),j)`ub>=x)
+
+  bands_below_length: LEMMA length(bands_below(x,RL))<=length(RL)
+
+  bands_above_length: LEMMA length(bands_above(x,RL))<=length(RL)
+
+  track_band?(RL)(TB): bool = (strictly_increasing_real?(TB) AND
+  	(FORALL (j:below(length(TB))): 0<=nth(TB,j)`lb AND nth(TB,j)`ub<=2*pi) AND
+	(FORALL (z:real): (EXISTS (j:below(length(RL))): in?(nth(RL,j),z)) IMPLIES
+			  (EXISTS (j:below(length(TB))): in?(nth(TB,j),to2pi(z)))) AND
+        (FORALL (z:real): (EXISTS (j:below(length(TB))): in?(nth(TB,j),z)) AND z<2*pi IMPLIES
+			  (EXISTS (j:below(length(RL)),r:real): 
+			    in?(nth(RL,j),r) AND to2pi(r)=z)))
+
+  band_mod_2pi(RL:(band_to_mod?)): (track_band?(RL)) =
+    IF length(RL)=0 THEN RL
+    ELSIF nth(RL,length(RL)-1)`ub=2*pi AND nth(RL,0)`lb=0 THEN RL % almost equal for floats
+    ELSIF nth(RL,length(RL)-1)`ub=2*pi THEN cons((# lb:=0,ub:=0 #),RL) % almost equal for floats
+    ELSIF nth(RL,length(RL)-1)`ub>=2*pi THEN 
+      append_realband_spec(add(-2*pi,bands_above(2*pi,RL)),bands_below(2*pi,RL))
+    ELSE
+      append_realband_spec(bands_above(0,RL),add(2*pi,bands_below(0,RL)))
+    ENDIF
+
+    band_mod_2pi_lb: LEMMA
+      band_to_mod?(RL) IMPLIES LET bm = band_mod_2pi(RL)
+        IN NOT (length(bm)>0 AND nth(bm,0)`lb=2*pi)
+
+
+
+END mod_bands

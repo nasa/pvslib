@@ -1,0 +1,80 @@
+test_bands  % [ parameters ]
+		: THEORY
+
+ 
+
+  BEGIN
+
+  
+
+ IMPORTING los_and_cd, get_kinematic_bands 
+
+ AllBands: TYPE = [# track: [list[RealBand],list[Region], real, list[string], list[string] ], 
+ 	   	     gs   : [list[RealBand],list[Region], real, list[string], list[string] ], 
+		     vs   : [list[RealBand],list[Region], real, list[string], list[string] ] #]
+
+
+
+
+ 
+ encounter_core(so, vo, si, vi:Vect3): UpdatedCore = 
+ 	 LET own : Aircraft = (# s:=so, v:=vo, id:="ownship"#),
+	     intruder: Aircraft = (# s:=si, v:=vi, id:="intruder"#),
+	     C1 = update_ownship(defcore, own), 
+	     C2 = update_add_to_traffic(C1, intruder),
+	     C3 = update_delay(C2), 
+	     C4 = C3 WITH [`omega := 0.0523598776],
+	     C5 = update_RA_thr(C4),
+	     Ucore : UpdatedCore = C5 WITH [`outdated:=FALSE] IN
+ 	 Ucore
+
+ 
+ encounter_bands(so,vo,si,vi:Vect3)(t:real): AllBands = 
+     LET EncounterCore = encounter_core(so+t*vo,vo,si+t*vi,vi) IN
+     	 (# track := get_kinematic_track_bands(EncounterCore, deg), 
+	    gs    := get_kinematic_gs_bands(EncounterCore, kts),
+	    vs    := get_kinematic_vs_bands(EncounterCore, fpm) #) 
+
+ encounter_test(t:real): AllBands = 
+    LET so:Vect3 = ( 0, 0.5*nmi, 0), 
+        vo:Vect3 = mkTrkGsVs(0.00000000, 200.00000000*kts ,0.00000000),
+        si:Vect3 = (-2.34542462*nmi, 6.65782897*nmi, 0),
+        vi:Vect3 = mkTrkGsVs(165.85420451*deg, 200.00000000*kts, 0.00000000) IN
+      encounter_bands(so,vo,si,vi)(t)
+
+ %% Generates initial positions and velocities for a two-aircraft encounter
+ %% where at 'T' seconds, the both will be on circle of radius 'R' centered at 
+ %% the origin. Parameters: 
+ %% ---'thet' is the angle (clockwise from north 0) where the aircraft enters the circle
+ %% ---'alt' is the altitude entering the circle
+ %% ---'trk,gs,vs' are track, ground speed and vertical speed. 
+
+ encounter_generator(R,T:posreal, theto,alto,trko,gso,vso, theti,alti,trki,gsi,vsi:real):
+   [Vect3,Vect3,Vect3,Vect3] = 
+   LET so:Vect3 = (R*trig_basic.sin(theto), R*trig_basic.cos(theto), alto), 
+       vo:Vect3 = mkTrkGsVs(trko,gso,vso),
+       si:Vect3 = (R*trig_basic.sin(theti), R*trig_basic.cos(theti), alti), 
+       vi:Vect3 = mkTrkGsVs(trki,gsi,vsi) IN
+       (so-T*vo, vo, si-T*vi, vi)
+
+
+
+ batch_writer(so, vo, si, vi: Vect3, n:nat, name:string): void = 
+     LET f= fopenout(create, "batch/"+name) IN
+     fprintf(f,"NAME, sx, sy, sz, vx, vy, vz, time~%") AND 
+     fprintf(f,"unitless, [m], [m], [m], [m/s], [m/s], [m/s], [s]~%") AND 
+     (forall(i:below(n+1)):
+	LET sO = so+i*vo, sI = si+i*vi IN
+	fprintf(f,"Ownship, ~f, ~f, ~f, ~f, ~f, ~f, ~f~%",(sO`x, sO`y, sO`z, vo`x, vo`y, vo`z,i))
+        AND fprintf(f,"Intruder, ~f, ~f, ~f, ~f, ~f, ~f, ~f~%",(sI`x, sI`y, sI`z, vi`x, vi`y, vi`z,i))) AND fclose(f) AND print(" Check the contents of ./batch/"+name) 
+     
+ batch_bands(so, vo, si, vi: Vect3, n:nat, name:string): void = 
+     LET f= fopenout(create, "batch/"+name) IN
+     fprintf(f,"Bands output from PVS for so = ~a, vo = ~a, si = ~a, vi=~a~%", (so,vo,si,vi)) AND 
+     (forall(i:below(n+1)):
+	fprintf(f," ~a, at time ~a~%",(encounter_bands(so,vo,si,vi)(i),i)))
+        AND fclose(f) AND print(" Check the contents of ./batch/"+name) 
+     
+      
+
+  END test_bands

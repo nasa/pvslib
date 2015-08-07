@@ -1,0 +1,66 @@
+format_bands  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+  % ASSUMING
+   % assuming declarations
+  % ENDASSUMING
+
+  IMPORTING real_bands
+
+  Region: TYPE = {NONE, NEAR, RECOVERY}
+
+  red(indic:below(2)): Region = NEAR
+   % IF indic  =  0 THEN NEAR
+   % ELSE RECOVERY
+   % ENDIF
+
+  green(indic:below(2)): Region = 
+   IF indic = 0 THEN NONE
+   ELSE RECOVERY
+   ENDIF
+
+
+  format_gen_it(lower,upper: real, (bands: [list[RealBand], below(2)] |length(bands`1)>0), 
+    formatted:[list[RealBand], list[Region]]): 
+    RECURSIVE [list[RealBand], list[Region]] = 
+    LET next_band = car(bands`1), 
+        rest_bands = cdr(bands`1) IN
+    IF length(rest_bands)=0 THEN
+      IF next_band`ub>= upper THEN 
+         (cons(next_band WITH [`ub:= upper], formatted`1), 
+          cons(green(bands`2), formatted`2))
+      ELSE (cons( (#lb:=next_band`ub, ub:=upper#),cons(next_band,formatted`1)),
+            cons(red(bands`2),cons(green(bands`2),formatted`2)))  
+      ENDIF
+    ELSE LET red_up = car(rest_bands)`lb,  
+         next_formatted = 
+         (cons( (#lb:=next_band`ub, ub:=red_up#),cons(next_band,formatted`1)),
+   	   cons(red(bands`2),cons(green(bands`2),formatted`2))) IN
+         format_gen_it(lower, upper, (rest_bands, bands`2), next_formatted)
+    ENDIF
+    MEASURE length(bands`1)
+
+   format_gen(lower, upper: real, bands: [list[RealBand], below(2)] ): 
+      [list[RealBand], list[Region]] = 
+      IF length(bands`1) = 0 THEN
+       ((:(#lb:=lower, ub:=upper#):), (: red(bands`2):))
+      ELSE LET  preformatted = 
+           format_gen_it(lower, upper, bands, (null[RealBand], null[Region])),
+	   formatted = (reverse(preformatted`1), reverse(preformatted`2)),
+	   first = car(formatted`1) IN    %%%% CHECK THIS: WAS car(bands`1). UPDATE: this fixed the problem. 
+	   IF first`lb= lower THEN formatted
+	   ELSE (cons((#lb:=lower, ub:=first`lb#), formatted`1), 
+		 cons(red(bands`2), formatted`2)) 
+		
+	   ENDIF
+      ENDIF
+
+
+	      
+       
+    
+  
+
+  END format_bands

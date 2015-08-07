@@ -1,0 +1,172 @@
+kinematic_bands_exist: THEORY                        
+BEGIN
+
+
+  IMPORTING kinematic_bands
+
+  s,v  : VAR Vect3  
+  B,B2    : VAR nnreal
+  T,T2    : VAR nnreal
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit,useLOS2: VAR bool
+  epsH,epsV: VAR Sign
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+  
+  
+  LOS,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+
+  CD,CD2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+  traj: VAR Traj
+
+  AL: VAR AircraftList
+
+  % We only check criteria against most urgent aircraft
+  most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+
+
+  %%% NEXT, DETECTING WHETHER ANY RED BAND EXISTS %%%
+
+  first_conf_step?(CD,B,T,traj,k,ts,MaxN,AL)(i:int): bool =
+    (i>=0 IFF (k<=i AND i<=MaxN AND (EXISTS (p:nat): p<length(AL) 
+    	      AND CD_future_traj(CD,B,T,traj,i*ts,AL,p)) AND
+	      (FORALL (j:nat): k<=j AND j<i IMPLIES 
+	        (FORALL (p:nat): p<length(AL) 
+    	        IMPLIES NOT CD_future_traj(CD,B,T,traj,j*ts,AL,p)))))
+    AND (i<0 IFF (FORALL (p,j:nat): p<length(AL) AND k<=j AND j<=MaxN
+    	     	   IMPLIES NOT CD_future_traj(CD,B,T,traj,j*ts,AL,p)))
+
+  first_conflict_step(CD,B,T,traj,k,ts,MaxN,AL): RECURSIVE (first_conf_step?(CD,B,T,traj,k,ts,MaxN,AL)) =
+    IF k>MaxN THEN -1
+    ELSIF first_conflict_aircraft(CD,B,T,traj,k,ts,0,AL)>=0 THEN k
+    ELSE first_conflict_step(CD,B,T,traj,k+1,ts,MaxN,AL)
+    ENDIF MEASURE max(MaxN-k+1,0)
+
+  % The next function detects whether there is any red band for the list AL of aircraft %
+
+  red_band_exist(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,(AL|length(AL)>0),
+	(most_urgent|most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL)),
+				epsH,epsV,UseHCrit,UseVCrit): bool =
+        LET MI = nth(AL,most_urgent(so,vo,AL)),
+      	    (si,vi) = (MI`s,MI`v)
+	IN
+          (UseHCrit AND first_nonrepulsive_step(traj,0,ts,MaxN,si,vi,epsH)>=0)
+  	  OR
+  	  (UseVCrit AND first_nonvert_repul_step(traj,0,ts,MaxN,si,vi,epsV)>=0)
+  	  OR
+	  first_conflict_step(CD,B,T,traj,0,ts,MaxN,AL)>=0
+	  OR
+	  (useLOS2 AND first_conflict_step(CD2,B2,T2,traj,0,ts,MaxN,AL)>=0)
+
+  red_band_exist_def: LEMMA
+    traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      LET rbe:bool = red_band_exist(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	  		   most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+          kb:list[IntBand] = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	  		   most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+      IN (rbe IFF (EXISTS (i:subrange(0,MaxN)): 
+      	 FORALL (j:below(length[IntBand](kb))): NOT in?(nth(kb,j),i)))
+
+
+
+  all_conflict_steps_before(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,(AL|length(AL)>0),
+	(most_urgent|most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL)),
+				epsH,epsV,UseHCrit,UseVCrit)(k): bool =
+    LET MI = nth(AL,most_urgent(so,vo,AL)), (si,vi)=(MI`s,MI`v) IN
+    FORALL (j:nat): j<k IMPLIES
+	 ((FORALL (p:below(length(AL))): B<=j*ts AND j*ts<=T IMPLIES
+  	  NOT LOS(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v)) AND
+	 (useLOS2 IMPLIES FORALL (p:below(length(AL))): B2<=j*ts AND j*ts<=T2 IMPLIES
+  	  NOT LOS2(traj(j*ts)`1,traj(j*ts)`2,nth(AL,p)`s+(j*ts)*nth(AL,p)`v,nth(AL,p)`v)) AND
+  	 (UseHCrit IMPLIES repulsive_at(traj,j,ts,MI`s,MI`v,epsH)) AND
+	 (UseVCrit IMPLIES vert_repul_at(traj,j,ts,MI`s,MI`v,epsV)) AND
+	 ((EXISTS (p:below(length(AL)),t):
+	   B<=t AND t<=T AND j*ts<=t AND LOS(traj_position(traj,
+                             j*ts,t),traj_velocity(traj,
+                             j*ts,t),position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v)) OR
+	 (useLOS2 AND EXISTS (p:below(length(AL)),t):
+	   B2<=t AND t<=T2 AND j*ts<=t AND LOS2(traj_position(traj,
+                             j*ts,t),traj_velocity(traj,
+                             j*ts,t),position(nth(AL,p)`s,nth(AL,p)`v,t),nth(AL,p)`v))))
+
+  first_green?(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,(AL|length(AL)>0),
+	(most_urgent|most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL)),
+				epsH,epsV,UseHCrit,UseVCrit,
+      k)(j:subrange(-1,MaxN)): bool =
+      (j>=0 IFF (j>=k AND all_conflict_steps_before(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	  		   most_urgent,epsH,epsV,UseHCrit,UseVCrit)(j) AND
+		NOT conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,
+	  		   most_urgent,epsH,epsV,UseHCrit,UseVCrit)(j))) AND
+        ((EXISTS (i): i<=MaxN AND (NOT conflict_step(LOS,LOS2,useLOS2,B,T,B2,T2,so,vo,traj,ts,AL,
+	  		   most_urgent,epsH,epsV,UseHCrit,UseVCrit)(i))) IMPLIES j>=0)
+
+  % The next function determines whether a green band exists %
+  % set k = 0 when you call it %
+
+  first_green_rec(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,
+    traj,MaxN,ts,(AL|length(AL)>0),(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,k): 
+      RECURSIVE   subrange(-1,MaxN) =
+    LET MI = nth(AL,most_urgent(so,vo,AL)),
+      	    (si,vi) = (MI`s,MI`v)
+    IN
+      IF k>MaxN THEN -1
+      ELSIF k*ts>=B AND k*ts<=T AND first_los_aircraft(LOS,traj,k,ts,0,AL)>=0 THEN -1
+      ELSIF useLOS2 AND k*ts>=B2 AND k*ts<=T2 AND first_los_aircraft(LOS2,traj,k,ts,0,AL)>=0 THEN -1
+      ELSIF (UseHCrit AND NOT repulsive_at(traj,k,ts,si,vi,epsH)) THEN -1
+      ELSIF (UseVCrit AND NOT vert_repul_at(traj,k,ts,si,vi,epsV)) THEN -1
+      ELSIF (NOT first_conflict_aircraft(CD,B,T,traj,k,ts,0,AL)>=0) AND
+      	    (NOT (useLOS2 AND first_conflict_aircraft(CD2,B2,T2,traj,k,ts,0,AL)>=0)) THEN k
+      ELSE first_green_rec(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit,k+1)
+      ENDIF MEASURE max(MaxN-k+1,0)
+
+  first_green(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,(AL|length(AL)>0),
+	(most_urgent|most_urgent(so,vo,AL)>=0 AND most_urgent(so,vo,AL)<length(AL)),
+				epsH,epsV,UseHCrit,UseVCrit): 
+        subrange(-1,MaxN) =
+    first_green_rec(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit,0)
+
+  first_green_types: LEMMA
+    traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      LET gbe:subrange(-1,MaxN) = first_green(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+      IN 
+    first_green?(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit,0)(gbe) 
+
+
+  first_green_def: LEMMA
+    traj(0)=(so,vo) AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) IMPLIES
+      LET gbe:subrange(-1,MaxN) = first_green(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+          kb:list[IntBand] = kinematic_bands(LOS,CD,LOS2,CD2,useLOS2,B,T,B2,T2,so,vo,traj,MaxN,ts,AL,
+	most_urgent,epsH,epsV,UseHCrit,UseVCrit)
+      IN 
+	(gbe>=0 IMPLIES (EXISTS (j:below(length[IntBand](kb))): in?(nth(kb,j),gbe))) AND
+         ((EXISTS (i:subrange(0,MaxN),j:below(length[IntBand](kb))): in?(nth(kb,j),i))
+	 IMPLIES gbe>=0)
+
+  
+ 
+
+
+
+END kinematic_bands_exist

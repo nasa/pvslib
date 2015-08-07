@@ -1,0 +1,183 @@
+kinematic_trk_bands: THEORY
+%------------------------------------------------------------------------------
+%
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   IMPORTING Kinematic@kinematics_turn,
+    	     combine_bands,
+	     ACCoRD@cd3d
+
+    %% --- variables
+
+    bank, speed, radius, omega: VAR posreal
+    sbank, alpha, beta: VAR real
+    t, tt: VAR posreal
+    so, vo: VAR Vect3
+    AL: VAR AircraftList
+    % We only check criteria against most urgent aircraft
+    most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+    UseHCrit,UseVCrit,Usedir,UseLOS2: VAR bool
+    epsH,epsV,dir: VAR Sign
+    B,T,B2,T2:VAR nnreal
+    step: VAR posreal
+    
+
+
+    % this uses turnOmega %
+
+    % omega is the max turn rate - note that here it is
+    % positive, while in turnOmega, it is real. It is negated
+    % here when it searches in then. 
+
+    % These algorithms have to be for generic los and detection definitions:
+
+    LOS,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+
+    CD,CD2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+
+    % kinematic track bands:
+
+    round(r:real): {j:int | r-1/2<j AND j<=r+1/2} =
+      floor(r+1/2)
+
+    % The next function computes the bands relative to track(vo). Some of these may 
+    % go negative or greater than 2*pi
+    % The final bands function translates these bands to [0,2*pi]
+    % Important point: The following algorithm breaks up the intervals [-pi,0] AND
+    % [0,pi] into an even number of pieces. If the step size evenly divides pi,
+    % then the number of pieces is pi/step. Otherwise,  it is ceiling(pi/step). To
+    % check whether it does evenly divide pi, an "almost equals" should be used
+    % since these will be doubles. The formula for the number of segments is
+    % (IF round(pi/step)=pi/step THEN round(p/step) ELSE ceiling(pi/step) ENDIF)
+    % - almost equals should be in the equality (between the int round(pi/step) and
+    % the double pi/step)
+
+    kinematic_track_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,omega)
+        (B,T,B2,T2:nnreal,(step:posreal|step<pi)):
+       	      list[RealBand] =  
+      LET MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal =  anglestep/omega,
+          Lfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,-omega)),
+          Rfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,omega)),		 						  
+	  TrackInt: list[IntBand] = % These are not yet translated by track(vo)
+	       kinematic_bands_combine(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Lfun,Rfun,MaxN,MaxN,timestep,timestep,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+	  UnAdjB: list[RealBand] = scal(anglestep,TrackInt),
+          UnModB: list[RealBand] = add(track(vo),UnAdjB)
+      IN UnModB
+
+    kinematic_track_bands_init_b2m: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND turnOmega(so,vo,0,-omega)=(so,vo) AND
+      turnOmega(so,vo,0,omega)=(so,vo) AND step<pi IMPLIES
+      LET kb = kinematic_track_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,omega)(B,T,B2,T2,step)
+      IN  band_to_mod?(kb)
+
+  % shifting to [0,2*pi]
+
+    kinematic_track_bands(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),
+      AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,omega)
+        (B,T,B2,T2:nnreal,(step:posreal|step<pi)):
+       	      list[RealBand] =
+      LET kb = kinematic_track_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,omega)(B,T,B2,T2,step)
+      IN  band_mod_2pi(kb)
+
+    kinematic_track_bands_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND turnOmega(so,vo,0,-omega)=(so,vo) AND
+      turnOmega(so,vo,0,omega)=(so,vo) AND step<pi IMPLIES
+      LET ktb = kinematic_track_bands(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,omega)(B,T,B2,T2,step),
+      	  MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal = anglestep/omega
+      IN FORALL (j:nat): j<MaxN IMPLIES
+        LET newtrk = to2pi(track(vo)+j*(dir*anglestep)) IN
+	  conflict_step(LOS,LOS2,UseLOS2,B,T,B2,T2,so,vo,LAMBDA (tt:nnreal): turnOmega(so,vo,tt,dir*omega),timestep,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(j)
+          IMPLIES
+	  (NOT EXISTS (i:below(length(ktb))): in?(nth(ktb,i),newtrk))
+
+    kinematic_track_bands_increasing: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND turnOmega(so,vo,0,-omega)=(so,vo) AND
+      turnOmega(so,vo,0,omega)=(so,vo) AND step<pi IMPLIES
+      LET ktb = kinematic_track_bands(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,omega)(B,T,B2,T2,step)
+      IN strictly_increasing_real?(ktb)
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%% Do bands exist? %%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  any_kinematic_track_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,
+      (most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,omega,dir,Usedir)
+        (B,T,B2,T2:nnreal,(step:posreal|step<pi)):
+       	      bool =
+      LET MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal = anglestep/omega,
+          Lfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,-omega)),
+          Rfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,omega)),
+	  isred: bool = % These are not yet translated by track(vo)
+	       any_red(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Lfun,Rfun,MaxN,MaxN,timestep,timestep,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir)
+      IN isred
+
+  any_kinematic_track_red_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND turnOmega(so,vo,0,-omega)=(so,vo) AND
+      turnOmega(so,vo,0,omega)=(so,vo) AND step<pi IMPLIES
+      LET ktb = kinematic_track_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+        omega)(B,T,B2,T2,step),
+      	  rbe = any_kinematic_track_red(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+	    omega,dir,Usedir)(B,T,B2,T2,step),
+	  MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal = anglestep/omega,
+	  leftred = (EXISTS (i:subrange(-MaxN,0)): FORALL (j:below(length(ktb))):
+		  	  NOT in?(nth(ktb,j),track(vo)+i*anglestep)),
+          rightred = (EXISTS (i:subrange(0,MaxN)): FORALL (j:below(length(ktb))):
+		  	  NOT in?(nth(ktb,j),track(vo)+i*anglestep))
+      IN  (dir=-1 AND Usedir IMPLIES (rbe IFF leftred)) AND
+      	  (dir=1 AND Usedir IMPLIES (rbe IFF rightred)) AND
+	  ((NOT Usedir) IMPLIES (rbe IFF (rightred OR leftred)))
+
+
+  all_kinematic_track_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,
+      (most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,omega,dir,Usedir)
+        (B,T,B2,T2:nnreal,(step:posreal|step<pi)):
+       	      bool =
+      LET MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal = anglestep/omega,
+          Lfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,-omega)),
+          Rfun=(LAMBDA (t:nnreal): turnOmega(so,vo,t,omega)),
+	  isred: bool = % These are not yet translated by track(vo)
+	       all_red(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Lfun,Rfun,MaxN,MaxN,timestep,timestep,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir)
+      IN isred
+
+
+  all_kinematic_track_red_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND turnOmega(so,vo,0,-omega)=(so,vo) AND
+      turnOmega(so,vo,0,omega)=(so,vo) AND step<pi IMPLIES
+      LET ktb = kinematic_track_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+        omega)(B,T,B2,T2,step),
+      	  allred = all_kinematic_track_red(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+	    omega,dir,Usedir)(B,T,B2,T2,step),
+	  MaxN:posnat = (IF round(pi/step)=pi/step THEN round(pi/step) ELSE ceiling(pi/step) ENDIF),
+      	  anglestep:posreal = pi/MaxN,
+	  timestep:posreal = anglestep/omega,
+	  leftred = (length(ktb)>0 IMPLIES nth(ktb,0)`lb>track(vo)),
+          rightred = (length(ktb)>0 IMPLIES nth(ktb,length(ktb)-1)`ub<track(vo))
+    IN (dir=-1 AND Usedir IMPLIES (allred IFF leftred))
+       AND
+       (dir=1 AND Usedir IMPLIES (allred IFF rightred))
+       AND
+       ((NOT Usedir) IMPLIES (allred IFF (leftred AND rightred)))
+
+END kinematic_trk_bands

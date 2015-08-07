@@ -1,0 +1,65 @@
+bands_out  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+  % ASSUMING
+   % assuming declarations
+  % ENDASSUMING
+
+  IMPORTING test_bands, PVSioChecker@pvsio_checker
+
+  GCore: Global[Core, defcore]
+  GParam: Global[Parameters, defparam]
+
+  load_parameters(param:Parameters): void = 
+  set[Parameters](GParam, param) AND 
+  set[Core](GCore, update_from_param_all(val(GCore), param))
+
+  xml_band_init(bands:list[RealBand], (regions:list[Region]|length(bands) = length(regions)), acc:string): 
+    RECURSIVE string = 
+    IF null?(bands) THEN acc 
+    ELSE LET band = car(bands), 
+    	     region = car(regions),
+	     remain_bands = cdr(bands), 
+	     remain_regions = cdr(regions), 
+	     newstring = acc+"    <band region='"+pvs2str(region)+"'>
+      <lower> "+to_str(band`lb)+
+	     " </lower>
+      <upper> "+to_str(band`ub)+ 
+	     " </upper>
+    </band>
+" IN
+    xml_band_init(remain_bands, remain_regions, newstring)
+    ENDIF
+    MEASURE length(bands) 
+
+  xml_band(bands:list[RealBand], (regions:list[Region]|length(bands) = length(regions))): 
+    string = xml_band_init(bands, regions, "")
+
+  xml_bands(ucore:UpdatedCore): string =
+  LET ktb = get_kinematic_track_bands(ucore, 1), 
+      kvsb = get_kinematic_vs_bands(ucore, 1), 
+      kgsb = get_kinematic_gs_bands(ucore, 1) IN 
+  "<kinematic_out>
+  <bands type='track' recovery_time='"+to_str(ktb`3)+"'>
+"+xml_band(ktb`1, ktb`2)+"  </bands>
+  <bands type='ground' recovery_time='"+to_str(kgsb`3)+"'>
+"+xml_band(kgsb`1, kgsb`2)+"  </bands>
+  <bands type='vertical' recovery_time='"+to_str(kvsb`3)+"'>
+"+xml_band(kvsb`1, kvsb`2)+"  </bands>
+</kinematic_out>"
+
+  kinematic((scenario:list[[Vect3, Vect3]] | NOT null?(scenario) )): string = 
+  LET acl = map(LAMBDA(sv:[Vect3, Vect3]): (#s:=sv`1, v:=sv`2, id:=""#), scenario), 
+      ownship = car(acl), 
+      Core0:Core = update_ownship(val(GCore), ownship),
+      Core1:Core = update_add_traffic(Core0, cdr(acl)), 
+      Core2:Core = update_delay(Core1),
+      Core3:Core = update_RA_thr(Core2),
+      Core4:Core = update_omega(Core3),
+      Ucore:UpdatedCore = Core4 WITH [`outdated:=FALSE] IN
+      xml_bands(Ucore)
+ 
+
+  END bands_out

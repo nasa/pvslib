@@ -1,0 +1,166 @@
+kinematic_gs_bands: THEORY
+%------------------------------------------------------------------------------
+%
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+    IMPORTING Kinematic@kinematics_gs_accel,
+    	      combine_bands,
+	      ACCoRD@cd3d
+
+
+    %% --- variables
+
+    bank, speed, radius, omega: VAR posreal
+    sbank, alpha, beta: VAR real
+    t, tt: VAR posreal
+    so, vo: VAR Vect3
+    AL: VAR AircraftList
+    % We only check criteria against most urgent aircraft
+    most_urgent: VAR [[Vect3,Vect3,AircraftList]->int]
+    % This should have signature most_urgent(so,vo,AL)
+    UseHCrit,UseVCrit,Usedir,UseLOS2: VAR bool
+    epsH,epsV,dir: VAR Sign
+    B,T,B2,T2:VAR nnreal
+    step: VAR posreal
+    mings,maxgs:VAR posreal
+    a : VAR posreal
+    
+
+
+    % this uses gsAccel %
+
+    % omega is the max turn rate - note that here it is
+    % positive, while in gsAccel, it is real. It is negated
+    % here when it searches in then. 
+
+    % These algorithms have to be for generic los and detection definitions:
+
+    LOS,LOS2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+
+    CD,CD2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+    % kinematic gs bands:
+
+    round(r:real): {j:int | r-1/2<j AND j<=r+1/2} =
+      floor(r+1/2)
+
+    % The next function computes the bands relative to gs(vo). 
+
+    kinematic_gs_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)
+        (B,T,B2,T2:nnreal,step:posreal):
+       	      list[RealBand] =
+      LET MaxDown:posnat = max(ceiling((gs(vo)-mings)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxgs-gs(vo))/step),0)+1,
+	  Downfun=(LAMBDA (t:nnreal): gsAccel(so,vo,t,-a)),
+          Upfun  =(LAMBDA (t:nnreal): gsAccel(so,vo,t,a)),
+	  timestep = step/a,	 						  
+	  GsInt: list[IntBand] = % These are not yet translated by gs(vo)
+	       kinematic_bands_combine(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Downfun,Upfun,MaxDown,MaxUp,timestep,timestep,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit),
+	  UnAdjB: list[RealBand] = scal(step,GsInt),
+          InitB : list[RealBand] = add(gs(vo),UnAdjB)
+      IN InitB
+
+    kinematic_gs_bands_init_increasing: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND gsAccel(so,vo,0,-a)=(so,vo) AND
+      gsAccel(so,vo,0,a)=(so,vo) IMPLIES
+      LET ktb = kinematic_gs_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)(B,T,B2,T2,step)
+      IN strictly_increasing_real?(ktb)
+
+    kinematic_gs_bands(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,(most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)
+        (B,T,B2,T2:nnreal,step:posreal): list[RealBand] =
+	  LET kvb = kinematic_gs_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)(B,T,B2,T2,step)
+	  IN intersect(kvb,mings,maxgs)
+
+    kinematic_gs_bands_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND gsAccel(so,vo,0,-a)=(so,vo) AND
+      gsAccel(so,vo,0,a)=(so,vo) AND mings<=gs(vo) AND gs(vo)<=maxgs IMPLIES
+      LET ktb = kinematic_gs_bands(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)(B,T,B2,T2,step)
+      IN FORALL (j:nat):
+        LET newgs = gs(vo)+dir*j*step IN
+	  mings<=newgs AND newgs<=maxgs AND
+	  conflict_step(LOS,LOS2,UseLOS2,B,T,B2,T2,so,vo,LAMBDA (tt:nnreal): gsAccel(so,vo,tt,dir*a),step/a,AL,most_urgent,
+		epsH,epsV,UseHCrit,UseVCrit)(j)
+          IMPLIES
+	  (NOT EXISTS (i:below(length(ktb))): in?(nth(ktb,i),newgs))
+
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%% Do bands exist? %%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  any_kinematic_gs_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,
+      (most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,a,dir,Usedir,mings,maxgs)
+        (B,T,B2,T2:nnreal,step:posreal):
+       	      bool =
+      LET MaxDown:posnat = max(ceiling((gs(vo)-mings)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxgs-gs(vo))/step),0)+1,
+	  Downfun=(LAMBDA (t:nnreal): gsAccel(so,vo,t,-a)),
+          Upfun  =(LAMBDA (t:nnreal): gsAccel(so,vo,t,a)),
+	  isred: bool = % These are not yet translated by gs(vo)
+	       any_red(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Downfun,Upfun,MaxDown,MaxUp,step/a,step/a,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir)
+      IN isred
+
+  any_kinematic_gs_red_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND gsAccel(so,vo,0,-a)=(so,vo) AND
+      gsAccel(so,vo,0,a)=(so,vo) IMPLIES
+      LET ktb = kinematic_gs_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,a,mings,maxgs)(B,T,B2,T2,step),
+      	  rbe = any_kinematic_gs_red(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+	    a,dir,Usedir,mings,maxgs)(B,T,B2,T2,step),
+	  MaxDown:posnat = max(ceiling((gs(vo)-mings)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxgs-gs(vo))/step),0)+1,
+	  Downfun=(LAMBDA (t:nnreal): gsAccel(so,vo,t,-a)),
+          Upfun  =(LAMBDA (t:nnreal): gsAccel(so,vo,t,a)),
+	  downred = (EXISTS (i:subrange(-MaxDown,0)): FORALL (j:below(length(ktb))):
+		  	  NOT in?(nth(ktb,j),gs(vo)+i*step)),
+          upred = (EXISTS (i:subrange(0,MaxUp)): FORALL (j:below(length(ktb))):
+		  	  NOT in?(nth(ktb,j),gs(vo)+i*step))
+    IN (dir=-1 AND Usedir IMPLIES (rbe IFF downred))
+       AND
+       (dir=1 AND Usedir IMPLIES (rbe IFF upred))
+       AND
+       ((NOT Usedir) IMPLIES (rbe IFF (downred OR upred)))
+
+
+
+
+  all_kinematic_gs_red(LOS,(CD|detector?(LOS)(CD)),LOS2,(CD2|detector?(LOS2)(CD2)),UseLOS2,so,(vo|sqv(vect2(vo))>0),AL,
+      (most_urgent|most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL)),epsH,epsV,UseHCrit,UseVCrit,a,dir,Usedir,mings,maxgs)
+        (B,T,B2,T2:nnreal,step:posreal):
+       	      bool =
+      LET MaxDown:posnat = max(ceiling((gs(vo)-mings)/step),0)+1,
+      	  MaxUp  :posnat = max(ceiling((maxgs-gs(vo))/step),0)+1,
+	  Downfun=(LAMBDA (t:nnreal): gsAccel(so,vo,t,-a)),
+          Upfun  =(LAMBDA (t:nnreal): gsAccel(so,vo,t,a)),
+	  isred: bool = % These are not yet translated by gs(vo)
+	       all_red(LOS,CD,LOS2,CD2,UseLOS2,B,T,B2,T2,so,vo,Downfun,Upfun,MaxDown,MaxUp,step/a,step/a,
+	       AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,dir,Usedir)
+      IN isred
+
+
+  all_kinematic_gs_red_def: LEMMA sqv(vect2(vo))>0 AND most_urgent(so,vo,AL)>=0 AND 
+      most_urgent(so,vo,AL)<length(AL) AND detector?(LOS)(CD) AND detector?(LOS2)(CD2) AND gsAccel(so,vo,0,-a)=(so,vo) AND
+      gsAccel(so,vo,0,a)=(so,vo) IMPLIES
+      LET ktb = kinematic_gs_bands_init(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+        a,mings,maxgs)(B,T,B2,T2,step),
+      	  allred = all_kinematic_gs_red(LOS,CD,LOS2,CD2,UseLOS2,so,vo,AL,most_urgent,epsH,epsV,UseHCrit,UseVCrit,
+	    a,dir,Usedir,mings,maxgs)(B,T,B2,T2,step),
+	  downred = (length(ktb)>0 IMPLIES nth(ktb,0)`lb>gs(vo)),
+          upred = (length(ktb)>0 IMPLIES nth(ktb,length(ktb)-1)`ub<gs(vo))
+    IN (dir=-1 AND Usedir IMPLIES (allred IFF downred))
+       AND
+       (dir=1 AND Usedir IMPLIES (allred IFF upred))
+       AND
+       ((NOT Usedir) IMPLIES (allred IFF (downred AND upred)))
+
+
+
+END kinematic_gs_bands

@@ -1,0 +1,269 @@
+get_kinematic_bands  % [ parameters ]
+		: THEORY
+
+  BEGIN
+
+ IMPORTING kinematic_core, 
+           kinematic_trk_bands, 
+           kinematic_vs_bands, 
+           kinematic_gs_bands, 
+           los_and_cd, 
+           format_bands, 
+           reals@log_int
+
+ ucore: VAR UpdatedCore
+ unit: VAR posreal
+ B,T: VAR nnreal
+ traffic: VAR Traffic
+
+ los,los2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+ cd,cd2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
+
+
+ %% function to filter an aircraft list, returning just the id's 
+  traf_id(traffic): list[string] = 
+    map((LAMBDA(ac:Aircraft): ac`id), traffic)
+ 
+
+ %% function for scaling by a unit, with early exit for scaling by 1.
+ scale_band_unit(unit)(band: RealBand):
+   RealBand = (#lb:= band`lb/unit, ub:= band`ub/unit #)
+ 
+ scale_bands_unit(bands:list[RealBand], unit):  list[RealBand] = 
+   IF unit=1 THEN bands 
+   ELSE map(scale_band_unit(unit))(bands)
+   ENDIF
+
+%% function for splitting an aircraft list based on a predicate.
+ 
+ split_list(p:[Aircraft->bool])(traffic): RECURSIVE [Traffic, Traffic] =
+    IF length(traffic) = 0 THEN (null[Aircraft], null[Aircraft])
+    ELSE LET ac = car(traffic), split = split_list(p)(cdr(traffic)) IN
+    	 IF p(ac) THEN (cons(ac, split`1), split`2)
+      	      	  ELSE (split`1, cons(ac, split`2)) 
+		  ENDIF
+    ENDIF
+    MEASURE length(traffic)
+
+ %% functions for computing recovery
+
+ first_time_it((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<T AND F(T) = TRUE), n:nat): 
+    RECURSIVE {Z:nnreal|Z<=T AND F(Z) = TRUE} = 
+    IF n=0 THEN T
+    ELSE LET mid=(T+B)/2, ind = F(mid) IN
+     IF ind THEN first_time_it(F,B,mid, n-1)
+     ELSE first_time_it(F,mid,T,n-1)
+     ENDIF
+    ENDIF
+    MEASURE n
+
+ first_time((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<=T AND F(T) = TRUE)): 
+   {Z:nnreal|Z<=T AND F(Z) = TRUE} =  
+   LET iter = log_nat(max(1,T-B), 2)`1+1 IN
+   first_time_it(F, B, T, iter)
+
+ cyl_and_time(D,H,T:nnreal,ca:bool, anygreen:[[ConfDetector, bool]->[nnreal->bool]]): 
+  %% this function needs some conditions added to the type of 'anygreen' so that it can always use 'first_time'
+  RECURSIVE [nnreal, nnreal, real] = 
+    IF NOT ca THEN
+      (D,H, first_time(anygreen(cylinder_cd(D,H), ca),0,T))
+    ELSIF D<=NMAC_D OR H<=NMAC_H THEN 
+      (D,H, first_time(anygreen(cylinder_cd(NMAC_D, NMAC_H),ca), 0, T))
+    ELSIF anygreen(cylinder_cd(D,H), ca)(T) THEN 
+      (D,H,first_time(anygreen(cylinder_cd(D,H), ca),0,T))
+    ELSE cyl_and_time(0.8*D, 0.8*H, T, ca, anygreen)
+    ENDIF
+    MEASURE H
+
+
+ %% functions for bands... 
+
+ corrective_split(ucore): [Traffic, Traffic] = 
+   LET CD(ac:Aircraft): bool =  
+       	LET EEint = ucore`cd(0, ucore`alerting_time, ucore`delay_ownship, ac) IN
+        EEint`1<=EEint`2 IN
+   split_list(CD)(ucore`delay_traffic)
+
+ track_preventive_list(ucore,los, cd, los2, cd2,traffic): Traffic = 
+   filter( (LAMBDA(ac:Aircraft): 
+   any_kinematic_track_red(los,cd,los2,cd2,FALSE,ucore`delay_ownship`s,
+   ucore`delay_ownship`v,traffic,
+   ucore`most_urgent,1,1,FALSE,FALSE,ucore`omega,1,FALSE)
+   (0,ucore`alerting_time,0,0,ucore`track_step)))(traffic) 
+ 
+ vs_preventive_list(ucore,los, cd, los2, cd2, traffic): Traffic = 
+  filter( (LAMBDA(ac:Aircraft): 
+  any_kinematic_vs_red(los,cd,los2,cd2, FALSE,ucore`delay_ownship`s,
+  ucore`delay_ownship`v,traffic,
+  ucore`most_urgent,1,1,FALSE,FALSE,ucore`vs_accel,1,FALSE, 
+  ucore`minvs, ucore`maxvs)
+  (0,ucore`alerting_time,0,0,ucore`vs_step)))(traffic)
+
+ gs_preventive_list(ucore,los, cd, los2, cd2, traffic): Traffic = 
+   filter( (LAMBDA(ac:Aircraft): 
+   any_kinematic_gs_red(los,cd,los2,cd2,FALSE,ucore`delay_ownship`s,
+   ucore`delay_ownship`v,traffic,
+   ucore`most_urgent,1,1,FALSE,FALSE,ucore`gs_accel,1,FALSE, 
+   ucore`mings, ucore`maxgs)
+   (0,ucore`alerting_time,0,0,ucore`gs_step)))(traffic)
+
+  
+  
+
+  get_kinematic_track_bands_init(ucore, los, cd)(los2, cd2)(traffic,B,T,(rec?:bool)): 
+    list[RealBand] =
+    IF length(traffic) = 0 THEN (:(# lb:=0, ub:=2*pi #):)
+    ELSE kinematic_track_bands(los,cd,los2,cd2,rec?,ucore`delay_ownship`s,
+  	 ucore`delay_ownship`v,traffic,ucore`most_urgent,
+  	 ucore`epsH,ucore`epsV,ucore`useHCrit,ucore`useVCrit,ucore`omega)
+         (B,T,0,B,ucore`track_step) 
+    ENDIF
+ 
+ get_kinematic_track_bands(ucore, unit): 
+   [list[RealBand],list[Region],real, list[string], list[string]] = 
+   LET los = cd2LOS(ucore`cd),
+       cd  = cd2CD(ucore`cd),
+       conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),
+       los2 = cd2LOS(conf_det2),
+       cd2 = cd2CD(conf_det2),
+       gkb_pre = get_kinematic_track_bands_init(ucore,los,cd), 
+       gkb = gkb_pre(los2,cd2),
+       split = corrective_split(ucore), 
+       corr_traffic = split`1, 
+       corr_traf_id = traf_id(corr_traffic),
+       prev_traffic = track_preventive_list(ucore,los,cd,los2,cd2,split`2), 
+       prev_traf_id = traf_id(prev_traffic),
+       corr_bands = gkb(corr_traffic,0, ucore`lookahead_time, FALSE), 
+       prev_bands = gkb(prev_traffic,0, ucore`alerting_time, FALSE), 
+       conf_bands = intersect_inc(corr_bands, prev_bands) IN
+       IF conf_bands /= null[RealBand] THEN 
+       	  LET formatted = format_gen(0,2*pi, (conf_bands, 0)) IN
+	  (scale_bands_unit(formatted`1,unit), formatted`2, 0, prev_traf_id, corr_traf_id)
+       ELSIF (NOT ucore`recovery_trk) THEN
+         % let printer = printf("Elsif branch") in
+       	  (scale_bands_unit((:(# lb:=0, ub:=2*pi #):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id)
+       ELSE LET T = ucore`max_recovery_time,
+       	    	traffic = append(corr_traffic, prev_traffic),
+       	    	any_green(conf_det: ConfDetector, ca?:bool)(t:nnreal): bool = 
+                  LET CD = IF ca? THEN cd2CD(conf_det) ELSE cd2 ENDIF, 
+	              LOS = IF ca? THEN cd2LOS(conf_det) ELSE los2 ENDIF IN  			    
+                  NOT all_kinematic_track_red(los,cd,LOS,CD,TRUE,ucore`delay_ownship`s,
+  	          ucore`delay_ownship`v,traffic,ucore`most_urgent,ucore`epsH,ucore`epsV,
+		  ucore`useHCrit,ucore`useVCrit,ucore`omega,1,FALSE)(t,T,0,t,ucore`track_step) IN
+	     IF (NOT any_green(cylinder_cd(NMAC_D, NMAC_H), ucore`ca_bands)(T)) THEN 
+                (scale_bands_unit((:(# lb:=0, ub:=2*pi #):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id) 
+             ELSE LET CandT = cyl_and_time(ucore`min_horizontal_recovery, ucore`min_vertical_recovery,T,ucore`ca_bands, any_green),
+	     	      recovery_time = min(CandT`3+ucore`stability_time, T), 
+		      rec_cd = cylinder_cd(CandT`1, CandT`2),
+                      rec_bands = gkb_pre(cd2LOS(rec_cd), cd2CD(rec_cd))(traffic,recovery_time,T,TRUE),
+		      formatted = format_gen(0,2*pi, (rec_bands, 1)) IN
+	           (scale_bands_unit(formatted`1, unit), formatted`2, recovery_time, prev_traf_id, corr_traf_id)
+	     ENDIF
+	ENDIF
+
+  get_kinematic_vs_bands_init(ucore, los, cd)(los2, cd2)(traffic,B,T,(rec?:bool)): 
+    list[RealBand] =
+   IF length(traffic) = 0 THEN (:(#lb:=ucore`minvs,ub:=ucore`maxvs#):) 
+   ELSE kinematic_vs_bands(los,cd,los2,cd2,rec?,ucore`delay_ownship`s,
+  	ucore`delay_ownship`v,traffic,ucore`most_urgent,
+  	ucore`epsH,ucore`epsV,ucore`useHCrit,ucore`useVCrit,ucore`vs_accel, 
+  	ucore`minvs, ucore`maxvs)
+        (B,T,0,B,ucore`vs_step)
+   ENDIF 
+
+  get_kinematic_vs_bands(ucore, unit): 
+    [list[RealBand],list[Region],real, list[string], list[string]]  =
+    LET los = cd2LOS(ucore`cd),
+        cd  = cd2CD(ucore`cd),
+	conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),
+        los2 = cd2LOS(conf_det2),
+        cd2 = cd2CD(conf_det2),
+	gkb_pre = get_kinematic_vs_bands_init(ucore,los,cd),
+        gkb = gkb_pre(los2,cd2),
+        split = corrective_split(ucore), 
+        corr_traffic = split`1, 
+	corr_traf_id = traf_id(corr_traffic),
+        prev_traffic = vs_preventive_list(ucore,los,cd,los2,cd2, split`2), 
+	prev_traf_id = traf_id(prev_traffic),
+        corr_bands = gkb(corr_traffic,0, ucore`lookahead_time,FALSE), 
+        prev_bands = gkb(prev_traffic,0, ucore`alerting_time,FALSE), 
+        conf_bands = intersect_inc(corr_bands, prev_bands) IN
+        IF (conf_bands/= null[RealBand])  THEN
+ 	  LET formatted = format_gen(ucore`minvs,ucore`maxvs, (conf_bands, 0)) IN
+	  (scale_bands_unit(formatted`1,unit), formatted`2, 0, prev_traf_id, corr_traf_id)
+       ELSIF (NOT ucore`recovery_vs) THEN
+       	  (scale_bands_unit((:(#lb:=ucore`minvs,ub:=ucore`maxvs#):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id)
+       ELSE LET T = ucore`max_recovery_time,
+       	    	traffic = append(corr_traffic, prev_traffic),
+		any_green(conf_det: ConfDetector, ca?:bool)(t:nnreal): bool = 
+                  LET CD = IF ca? THEN cd2CD(conf_det) ELSE cd2 ENDIF, 
+	              LOS = IF ca? THEN cd2LOS(conf_det) ELSE los2 ENDIF IN 
+		  NOT all_kinematic_vs_red(los,cd,LOS,CD, TRUE,ucore`delay_ownship`s,
+  		  ucore`delay_ownship`v,traffic,ucore`most_urgent, ucore`epsH,ucore`epsV,
+		  ucore`useHCrit,ucore`useVCrit,ucore`vs_accel,1,FALSE,ucore`minvs, ucore`maxvs)
+                  (t,T,0,t,ucore`vs_step)  IN
+	     IF (NOT any_green(cylinder_cd(NMAC_D, NMAC_H), ucore`ca_bands)(T)) THEN 
+                (scale_bands_unit((:(#lb:=ucore`minvs,ub:=ucore`maxvs#):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id) 
+             ELSE LET CandT = cyl_and_time(ucore`min_horizontal_recovery, ucore`min_vertical_recovery,T,ucore`ca_bands, any_green),
+	     	      recovery_time = min(CandT`3+ucore`stability_time, T), 
+		      rec_cd = cylinder_cd(CandT`1, CandT`2),
+                      rec_bands = gkb_pre(cd2LOS(rec_cd), cd2CD(rec_cd))(traffic,recovery_time,T,TRUE),
+		      formatted = format_gen(ucore`minvs,ucore`maxvs, (rec_bands, 1)) IN
+	           (scale_bands_unit(formatted`1, unit), formatted`2, recovery_time, prev_traf_id, corr_traf_id)
+	     ENDIF
+	ENDIF
+ 
+	      
+  get_kinematic_gs_bands_init(ucore, los, cd)(los2, cd2)(traffic,B,T,(rec?:bool)): 
+    list[RealBand] =
+    IF length(traffic) = 0 THEN (:(#lb:=ucore`mings,ub:=ucore`maxgs#):) 
+    ELSE kinematic_gs_bands(los,cd,los2,cd2,FALSE,ucore`delay_ownship`s,
+         ucore`delay_ownship`v,traffic,ucore`most_urgent,
+  	 ucore`epsH,ucore`epsV,ucore`useHCrit,ucore`useVCrit,ucore`gs_accel, 
+  	 ucore`mings, ucore`maxgs)
+         (B,T,0,B,ucore`gs_step)
+    ENDIF 
+
+  get_kinematic_gs_bands(ucore, unit): 
+    [list[RealBand],list[Region],real, list[string], list[string]]  =
+    LET los = cd2LOS(ucore`cd),
+        cd  = cd2CD(ucore`cd),
+	conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),
+        los2 = cd2LOS(conf_det2),
+        cd2 = cd2CD(conf_det2),
+	gkb_pre = get_kinematic_gs_bands_init(ucore,los,cd),
+        gkb = gkb_pre(los2,cd2),
+        split = corrective_split(ucore), 
+        corr_traffic = split`1, 
+	corr_traf_id = traf_id(corr_traffic),
+        prev_traffic = gs_preventive_list(ucore,los,cd,los2,cd2, split`2), 
+	prev_traf_id = traf_id(prev_traffic),
+        corr_bands = gkb(corr_traffic,0, ucore`lookahead_time,FALSE), 
+        prev_bands = gkb(prev_traffic,0, ucore`alerting_time,FALSE), 
+        conf_bands = intersect_inc(corr_bands, prev_bands) IN
+        IF (conf_bands/= null[RealBand])  THEN
+ 	  LET formatted = format_gen(ucore`mings,ucore`maxgs, (conf_bands, 0)) IN
+	  (scale_bands_unit(formatted`1,unit), formatted`2, 0, prev_traf_id, corr_traf_id)
+       ELSIF (NOT ucore`recovery_gs) THEN
+       	  (scale_bands_unit((:(#lb:=ucore`mings,ub:=ucore`maxgs#):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id)
+       ELSE LET T = ucore`max_recovery_time,
+       	    	traffic = append(corr_traffic, prev_traffic),
+		any_green(conf_det: ConfDetector, ca?:bool)(t:nnreal): bool = 
+                  LET CD = IF ca? THEN cd2CD(conf_det) ELSE cd2 ENDIF, 
+	              LOS = IF ca? THEN cd2LOS(conf_det) ELSE los2 ENDIF IN 
+		  NOT all_kinematic_gs_red(los,cd,LOS,CD,TRUE,ucore`delay_ownship`s,
+  		  ucore`delay_ownship`v,traffic,ucore`most_urgent,ucore`epsH,ucore`epsV,
+		  ucore`useHCrit,ucore`useVCrit,ucore`gs_accel,1,FALSE,ucore`mings, ucore`maxgs)
+                  (t,T,0,t,ucore`gs_step) IN 
+	    IF (NOT any_green(cylinder_cd(NMAC_D, NMAC_H), ucore`ca_bands)(T)) THEN 
+                (scale_bands_unit((:(#lb:=ucore`mings,ub:=ucore`maxgs#):), unit), (: NEAR :), -1, prev_traf_id, corr_traf_id) 
+            ELSE LET CandT = cyl_and_time(ucore`min_horizontal_recovery, ucore`min_vertical_recovery,T,ucore`ca_bands, any_green),
+	     	      recovery_time = min(CandT`3+ucore`stability_time, T), 
+		      rec_cd = cylinder_cd(CandT`1, CandT`2),
+                      rec_bands = gkb_pre(cd2LOS(rec_cd), cd2CD(rec_cd))(traffic,recovery_time,T,TRUE),
+		      formatted = format_gen(ucore`mings,ucore`maxgs,(rec_bands, 1)) IN
+	           (scale_bands_unit(formatted`1, unit), formatted`2, recovery_time, prev_traf_id, corr_traf_id)
+	    ENDIF
+	ENDIF
+
+  END get_kinematic_bands

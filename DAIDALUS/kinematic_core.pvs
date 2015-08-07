@@ -1,0 +1,317 @@
+kinematic_core : THEORY
+
+  BEGIN
+
+  IMPORTING structures@listn, vectors@vectors_3D, Kinematic@to2pi, los_and_cd, TCASII@TCAS_tables
+
+  
+  Parameters: TYPE = [# DTHR : real, 
+  	      	        ZTHR : real, 
+			TTHR : real, 
+			TCOA : real, 
+			D : real, 
+			H : real, 
+			alerting_time : real, 
+			lookahead_time : real, 
+			min_gs : real, 
+			max_gs : real, 
+			min_vs : real, 
+			max_vs : real, 
+			min_alt : real, 
+			max_alt : real, 
+			conflict_only : bool,
+			trk_step : posreal, 
+			gs_step : posreal, 
+			vs_step : posreal, 
+			alt_step : posreal, 
+			horizontal_accel : nnreal, 
+			vertical_accel : nnreal, 
+			turn_rate : nnreal, 
+			bank_angle : nnreal, 
+			vertical_rate : nnreal, 
+			recovery_stability_time : real, 
+			max_recovery_time : real, 
+			min_horizontal_recovery : real, 
+			min_vertical_recovery : real, 
+			recovery_trk : bool, 
+			recovery_gs : bool, 
+			recovery_vs : bool, 
+			bands_alerting : bool, 
+			trk_alerting : bool, 
+			gs_alerting : bool, 
+			vs_alerting : bool, 
+			preventive_alt : real,  
+			preventive_trk : real, 
+			preventive_gs : real, 
+			preventive_vs : real, 
+			time_to_warning : real, 
+			warning_when_recovery : bool,
+			time_delay : real, 
+			ca_bands : bool,
+			recovery_vs_iff_ca_bands : bool #]
+
+  defparam: Parameters = 
+  	    (# DTHR := 1219.2000000000, 
+	    ZTHR := 137.1600000000, 
+	    TTHR := 35.0000000000, 
+	    TCOA := 0.0000000000, 
+	    D := 9260.0000000000, 
+	    H := 304.8000000000, 
+	    alerting_time := 60.0000000000, 
+	    lookahead_time := 180.0000000000, 
+	    min_gs := 0.0000000000, 
+	    max_gs := 360.1111111111, 
+	    min_vs := -25.4000000000, 
+	    max_vs := 25.4000000000, 
+	    min_alt := 152.4000000000, 
+	    max_alt := 15240.0000000000, 
+	    conflict_only := false, 
+	    trk_step := 0.0174532925, 
+	    gs_step := 0.5144444444, 
+	    vs_step := 0.0508000000, 
+	    alt_step := 152.4000000000, 
+	    horizontal_accel := 2.0000000000, 
+	    vertical_accel := 2.0000000000, 
+	    turn_rate := 0.0523598776, 
+	    bank_angle := 0.5235987756, 
+	    vertical_rate := 0.0000000000, 
+	    recovery_stability_time := 5.0000000000, 
+	    max_recovery_time := 0.0000000000, 
+	    min_horizontal_recovery := 0.0000000000, 
+	    min_vertical_recovery := 0.0000000000, 
+	    recovery_trk := false, 
+	    recovery_gs := false, 
+	    recovery_vs := false, 
+	    bands_alerting := true, 
+	    trk_alerting := true, 
+	    gs_alerting := false, 
+	    vs_alerting := true, 
+	    preventive_alt := 213.3600000000,	
+	    preventive_trk := 0.1745329252, 
+	    preventive_gs := 51.4444444444, 
+	    preventive_vs := 2.5400000000, 
+	    time_to_warning := 15.0000000000, 
+            warning_when_recovery := false,
+	    time_delay := 2.0000000000, 
+	    ca_bands := false, 
+	    recovery_vs_iff_ca_bands := false #)
+
+  Core: TYPE = [# outdated:bool, 
+		  cd: ConfDetector,
+		  cd2: ConfDetector,
+		  ownship: Aircraft,
+		  delay_ownship: Aircraft,
+		  traffic: Traffic,
+		  delay_traffic: Traffic,
+		  lookahead_time: nnreal, 
+		  alerting_time: nnreal,
+ 		  delay_time: nnreal,
+   		  stability_time:nnreal,
+		  max_recovery_time : real, 
+		  min_horizontal_recovery : nnreal, 
+		  min_vertical_recovery : nnreal, 
+		  most_urgent: MostUrgent,
+		  bank_angle:{x:posreal| x<pi/2},
+		  omega: posreal,
+		  vs_accel: posreal,
+		  gs_accel: posreal, 
+		  track_step: {x:posreal| x<pi}, 
+		  vs_step: posreal,
+		  gs_step: posreal,
+		  minvs: real, 
+		  maxvs: posreal,
+		  mings: posreal,
+		  maxgs: posreal,
+ 		  epsH: Sign, 
+		  epsV: Sign,
+		  useHCrit: bool, 
+		  useVCrit: bool,
+		  recovery_trk: bool,
+		  recovery_vs: bool,
+		  recovery_gs: bool, 
+		  ca_bands: bool#]
+
+  defcore: Core = (# outdated:=TRUE, 
+                  cd:=  wcv_taumod_cd(35, 0,4000*ft, 450*ft),%cylinder_cd(5*nmi, 1000*ft),%
+		  cd2:= cylinder_cd(NMAC_D, NMAC_H),
+		  ownship:= (#s:=zero, v:=zero, id:="0"#),
+		  delay_ownship:= (#s:=zero, v:=zero, id:="0"#),
+		  traffic:= null[Aircraft],
+		  delay_traffic:= null[Aircraft],
+		  lookahead_time:= 180, 
+		  alerting_time:= 60,
+ 		  delay_time:= 2,
+   		  stability_time:= 5,
+		  max_recovery_time:= 180,
+		  min_horizontal_recovery:= 0, 
+		  min_vertical_recovery:= 0, 
+ 		  most_urgent:= gen_most_urg,
+		  bank_angle:=30*deg,
+		  omega:= 0.0523598776,
+		  vs_accel:= 2,
+		  gs_accel:= 2, 
+		  track_step:= deg, 
+		  vs_step:= 50*fpm,
+		  gs_step:= 1*kts,
+		  minvs:= -5000*fpm, % ??? Ask Anthony about this... -minvs the actual min vertical?
+		  maxvs:= 5000*fpm,
+		  mings:= 0,
+		  maxgs:= 700*kts,
+ 		  epsH:= 1, 
+		  epsV:= 1,
+		  useHCrit:= FALSE, 
+		  useVCrit:= FALSE,
+		  recovery_trk:= FALSE,
+		  recovery_vs:= FALSE,
+		  recovery_gs:= FALSE, 
+		  ca_bands:= FALSE#)
+
+  core: VAR Core 
+  param: VAR Parameters
+  ownship, intruder: VAR Aircraft
+  traffic: VAR Traffic
+  
+%  los: VAR LoSDetector
+%  cd: VAR ConfDetector
+  
+  updated?(core) : bool = NOT core`outdated
+  UpdatedCore : TYPE = (updated?)
+
+  % s,v  : VAR Vect3  
+  %B    : VAR nnreal
+  %A    : VAR nnreal %Alerting time.
+  %T    : VAR nnreal %lookahead time
+  %so,si,vo,vi: VAR Vect3
+  %nvo,nvi: VAR Vect3
+  %step,p,q,d: VAR int
+  %tjump: VAR nnreal % time at which jump off and go linear
+  %jump: VAR nat
+  %ts, tsl, tsr: VAR posreal % timestep value (e.g. 1 second)
+  %t:VAR nnreal
+  %k: VAR nat
+  %i,maxi :VAR nat
+  %MaxN, MaxL, MaxR: VAR nat % Max number of timesteps
+  %IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  %eps: VAR Sign
+  %UseHCrit,UseVCrit,Usedir,Recovery: VAR bool
+  %epsH,epsV,dir: VAR Sign
+  %delay,tstab: VAR nnreal % delay, stability time. 
+  %n,m: VAR nat
+
+  update_from_param_all(core, param): Core = 
+    core WITH [   `cd:= wcv_taumod_cd(param`TTHR, param`TCOA,param`DTHR, param`ZTHR),
+    	      	  `lookahead_time:= param`lookahead_time, 
+		  `alerting_time:= LET at=param`alerting_time IN 
+		                   IF at=0 THEN param`lookahead_time ELSE at ENDIF,
+		  `max_recovery_time:= LET mrt=param`max_recovery_time IN 
+		  		       IF mrt=0 THEN param`lookahead_time ELSE mrt ENDIF,
+		  `min_horizontal_recovery := param`min_horizontal_recovery, 
+		  `min_vertical_recovery := param`min_vertical_recovery, 
+ 		  `delay_time:= param`time_delay,
+		  `bank_angle:= param`bank_angle,
+		  `omega:= param`turn_rate,
+		  `vs_accel:= param`vertical_accel,
+		  `gs_accel:= param`horizontal_accel, 
+		  `track_step:= param`trk_step, 
+		  `vs_step:= param`vs_step,
+		  `gs_step:= param`gs_step,
+		  `minvs:= param`min_vs, 
+		  `maxvs:= param`max_vs,
+		  `mings:= param`min_gs,
+		  `maxgs:= param`max_gs,
+		  `recovery_trk:= param`recovery_trk, 
+		  `recovery_vs:= IF param`recovery_vs_iff_ca_bands THEN
+		  		    IF param`ca_bands THEN TRUE ELSE FALSE ENDIF
+				 ELSE param`recovery_vs ENDIF,
+		  `recovery_gs:= param`recovery_gs,
+		  `ca_bands:= param`ca_bands, 
+		  `stability_time:= param`recovery_stability_time ]
+
+  delay?(cd:ConfDetector,delay:nnreal,ownship:Aircraft,n:nat,traffic:listn[Aircraft](n)): 
+    RECURSIVE bool = 
+    IF n=0 THEN TRUE 
+    ELSE LET ac:Aircraft = car(traffic),
+       	     acl:listn[Aircraft](n-1) = cdr(traffic) IN
+      IF cd(0,delay,ownship,ac)`1 >= 0 AND cd(delay,delay,ownship,ac)`1 < 0 THEN FALSE
+      ELSE delay?(cd,delay,ownship,n-1,acl)
+      ENDIF
+    ENDIF
+  MEASURE n 
+
+  delay?(cd:ConfDetector, delay:nnreal, ownship:Aircraft, traffic:Traffic):
+    bool = every( LAMBDA(ac:Aircraft): (NOT cd2bool(cd)(0,delay,ownship,ac)) OR cd2bool(cd)(delay,delay,ownship,ac))(traffic)
+
+  delay_ac(delay:nnreal)(ac:Aircraft): Aircraft = ac WITH [`s := ac`s+delay*ac`v]
+
+  delay_traf(delay:nnreal)(traffic:Traffic): 
+    Traffic = 
+    IF delay=0 THEN traffic
+    ELSE map(delay_ac(delay))(traffic)
+    ENDIF 
+
+  update_delay(core): Core = 
+    LET indic = delay?(core`cd, core`delay_time, core`ownship, core`traffic),
+        delay = IF indic THEN core`delay_time ELSE 0 ENDIF  IN
+    core WITH [`outdated := TRUE,
+               `delay_ownship := delay_ac(delay)(core`ownship), 
+	       `delay_traffic := delay_traf(delay)(core`traffic)
+ 	        ]
+
+  update_ownship(core, ownship): Core = 
+    core WITH [`outdated := TRUE, 
+    	       `ownship := ownship
+	       	]
+
+  update_add_to_traffic(core, intruder): Core = 
+    LET traffic = cons(intruder, core`traffic) IN
+    core WITH [`outdated := TRUE, 
+    	       `traffic := traffic
+	        ]
+
+  update_add_traffic(core, traffic): RECURSIVE Core = 
+    IF null?(traffic) THEN core
+    ELSE update_add_traffic(update_add_to_traffic(core, car(traffic)), cdr(traffic))
+    ENDIF
+    MEASURE length(traffic)
+    
+
+%%%%%%%  FIX THIS
+%%%%%%%  Gravitational Constant
+
+  update_omega((core|gs(core`ownship`v)/=0)): 
+    Core = 
+    IF core`omega /=0 THEN core 
+    ELSE 
+      LET omega:posreal = 9.80665*trig_basic.tan(core`bank_angle)/gs(core`ownship`v) IN
+      core WITH [`outdated := TRUE, 
+    	       `omega := omega ]
+    ENDIF
+
+  update_RA_thr(core): Core = 
+    LET mhr = core`min_horizontal_recovery, 
+	mvr = core`min_vertical_recovery IN
+	IF mhr /=0  THEN 
+	   IF mvr/=0 THEN 
+	      	    core WITH [`outdated:=TRUE, 
+		    	       `cd2:=cylinder_cd(mhr,mvr), 
+			       `min_horizontal_recovery := mhr,
+			       `min_vertical_recovery := mvr] 
+	   ELSE LET sl = IF core`delay_ownship`s`z<0 THEN 2 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
+	   	    D = RA_thr(sl, DMOD) IN
+		    core WITH [`outdated:=TRUE, 
+		    	       `cd2:=cylinder_cd(D,mvr), 
+			       `min_horizontal_recovery := D,
+			       `min_vertical_recovery := mvr]  
+   	   ENDIF
+  	ELSE LET sl = IF core`delay_ownship`s`z<0 THEN 2 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
+	   	    D = RA_thr(sl, DMOD),
+	            Z = IF mvr = 0 THEN RA_thr(sl, ZTHR) ELSE mvr ENDIF IN
+		    core WITH [`outdated:=TRUE, 
+		    	       `cd2:=cylinder_cd(D,Z), 
+			       `min_horizontal_recovery := D,
+			       `min_vertical_recovery := Z]  
+        ENDIF
+	     
+       	       
+
+  END kinematic_core

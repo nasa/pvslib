@@ -1,0 +1,259 @@
+real_bands: THEORY                        
+BEGIN
+
+  IMPORTING int_bands,
+  	    Kinematic@to2pi
+
+  s,v  : VAR Vect3  
+  B    : VAR nnreal
+  T    : VAR nnreal
+  so,si,vo,vi: VAR Vect3
+  nvo,nvi: VAR Vect3
+  step,p,q,d: VAR int
+  tjump: VAR nnreal % time at which jump off and go linear
+  njump: VAR nat
+  ts: VAR posreal % timestep value (e.g. 1 second)
+  t:VAR nnreal
+  k: VAR nat
+  i,maxi :VAR nat
+  MaxN: VAR nat % Max number of timesteps
+  IP: VAR [nat->bool] % a predicate on naturals to make bands with
+  eps: VAR Sign
+  UseHCrit,UseVCrit: VAR bool
+  epsH,epsV: VAR Sign
+
+
+  ib: VAR IntBand
+
+  L: VAR list[IntBand]
+
+
+  %%%%% NOTE: make sure CD works with B=T and B>T %%%%%
+  
+
+
+  % Multiply a proper list[IntBand] by a scalar. Note that if the
+  % scalar is negative (going with negative track angles), then
+  % each member must have its lb and ub swapped as well.
+
+  RealBand: TYPE = [# lb:real,ub:real #]
+
+  IMPORTING structures@more_list_props[RealBand],
+	    structures@listn
+
+  rb: VAR RealBand
+
+  r,g: VAR real
+  in?(rb,r): bool = (rb`lb<=r AND r<=rb`ub)
+
+
+
+  scalrb(r:nzreal)(ib): RealBand =
+    IF r>0 THEN (# lb:= r*ib`lb,ub:= r*ib`ub #)
+    ELSE (# lb:=r*ib`ub,ub:=r*ib`lb #) ENDIF
+
+  scal(r:nzreal,L): listn[RealBand](length[IntBand](L)) = 
+    IF r>0 THEN map(scalrb(r))(L)
+    ELSE reverse(map(scalrb(r))(L)) ENDIF
+
+  scal_intband_def: LEMMA
+    FORALL (r:nzreal):
+      (EXISTS (i:below(length(L))): in?(nth(L,i),g))
+      IFF
+      (EXISTS (i:below(length(scal(r,L)))): in?(nth(scal(r,L),i),r*g))
+
+  scal_intband_def2: LEMMA
+    FORALL (r:nzreal,i:below(length(L))):
+      nth(scal(r,L),i) = (IF r>0 THEN scalrb(r)(nth(L,i))
+      		       	  ELSE scalrb(r)(nth(L,length(L)-1-i)) ENDIF)
+
+  % Negating an IntBand
+
+
+
+  % Adding a scalar to a real band (e.g. the original value for the ownship)
+
+  RL,RL1,RL2,rl1,rl2,rl,TB: VAR list[RealBand]
+
+  addrb(r)(rb): RealBand = (# lb:=r+rb`lb,ub:=r+rb`ub #)
+
+  add(r,RL): listn[RealBand](length[RealBand](RL)) =
+    map(addrb(r))(RL)
+
+  add_realband_def: LEMMA FORALL (i:below(length(RL))):
+    in?(nth(RL,i),g) IFF in?(nth(add(r,RL),i),r+g)
+
+  strictly_increasing_real?(RL): bool =
+    (FORALL (i:below(length(RL))):nth(RL,i)`lb<=nth(RL,i)`ub) AND
+    (FORALL (i,j:below(length(RL))): i<j IMPLIES nth(RL,i)`ub<nth(RL,j)`lb)
+
+  strictly_increasing_scal: LEMMA r/=0 IMPLIES
+    (strictly_increasing_int?(L) IFF strictly_increasing_real?(scal(r,L)))
+
+  strictly_increasing_add_real: LEMMA
+    strictly_increasing_real?(RL) IFF strictly_increasing_real?(add(r,RL))
+    
+  % Projecting an strictly_increasing band onto [0,2pi]
+  % original band list must have width <=2pi AND
+  % all entries in [-pi,3*pi].
+
+  remove_last(RL): list[RealBand] = % Removes last band
+    IF length(RL)=0 THEN RL
+    ELSE reverse(cdr(reverse(RL))) ENDIF
+
+  remove_last_def: LEMMA length(RL)>0 IMPLIES
+   FORALL (j:nat): j<length(RL)-1 IMPLIES
+     nth(remove_last(RL),j) = nth(RL,j)
+
+  length_remove_last: LEMMA
+    length(remove_last(RL)) = max(0,length(RL)-1)
+  
+  min,max: VAR real
+
+  cdr_strictly_increasing_real: LEMMA strictly_increasing_real?(RL) AND length(RL)>0 IMPLIES
+    strictly_increasing_real?(cdr(RL))
+
+  remove_last_strictly_increasing_real: LEMMA strictly_increasing_real?(RL) AND length(RL)>0 IMPLIES
+    strictly_increasing_real?(remove_last(RL))
+
+  intersect((RL|strictly_increasing_real?(RL)),min,max): RECURSIVE {rl:list[RealBand]|
+    (length(rl)>0 IMPLIES (min<=nth(rl,0)`lb AND nth(rl,length(rl)-1)`ub<=max)) AND
+    FORALL (r:real): (min<=r AND r<=max) IMPLIES
+      ((EXISTS (j:below(length(RL))): in?(nth(RL,j),r)) IFF
+      (EXISTS (j:below(length(rl))): in?(nth(rl,j),r)))} =
+    IF length(RL)=0 THEN null[RealBand]
+    ELSIF nth(RL,0)`ub<min THEN intersect(cdr(RL),min,max)
+    ELSIF nth(RL,length(RL)-1)`lb>max THEN intersect(remove_last(RL),min,max)
+    ELSIF nth(RL,0)`lb<min AND nth(RL,length(RL)-1)`ub>max AND length(RL)=1
+    	  	    THEN (: (# lb:=min,ub:=max #) :)
+    ELSIF nth(RL,0)`lb<min AND nth(RL,length(RL)-1)`ub>max THEN
+                    LET newfrst = (# lb:=min,ub:=nth(RL,0)`ub #),
+		    	newlast = (# lb:=nth(RL,length(RL)-1)`lb,ub:=max #)
+		    IN append(cons(newfrst,cdr(remove_last(RL))),(: newlast :))
+    ELSIF nth(RL,0)`lb<min THEN
+    	  	    LET newfrst = (# lb:=min,ub:=nth(RL,0)`ub #)
+		    IN cons(newfrst,cdr(RL))
+    ELSIF nth(RL,length(RL)-1)`ub>max THEN
+    	  	    LET newlast = (# lb:=nth(RL,length(RL)-1)`lb,ub:=max #)
+		    IN append(remove_last(RL),(: newlast :))
+    ELSE RL ENDIF MEASURE length(RL)
+
+
+%%%%% Appending two lists of real bands together   %%%%%
+%%%%% when the first is no greater than the second %%%%%
+
+  append_realband_spec(RL1,RL2:list[RealBand]): list[RealBand] =
+    IF length[RealBand](RL1)>0 AND length[RealBand](RL2)>0
+       AND nth(RL2,0)`lb=nth(RL1,length(RL1)-1)`ub %<<< FLOATS <<< THIS NEEDS TO BE ALMOST EQUAL >>> FLOATS >>>%
+    THEN append(append(remove_last(RL1),
+       (: (# lb:=nth(RL1,length(RL1)-1)`lb,
+  	  ub:=nth(RL2,0)`ub #) :)),cdr(RL2))
+    ELSE append(RL1,RL2) ENDIF
+
+  append_realband_spec_length: LEMMA FORALL (RL1,RL2:list[RealBand]):
+    length(append_realband_spec(RL1,RL2)) =
+      IF length[RealBand](RL1)>0 AND length[RealBand](RL2)>0
+         AND nth(RL2,0)`lb=nth(RL1,length(RL1)-1)`ub %%% FLOATS <<< THIS NEEDS TO BE ALMOST EQUAL >>> FLOATS %%%
+      THEN length(RL1)+length(RL2)-1
+      ELSE length(RL1)+length(RL2) ENDIF
+
+  append_realband_spec_def: LEMMA FORALL (RL1,RL2:list[RealBand]):
+    strictly_increasing_real?(RL1) AND strictly_increasing_real?(RL2) AND
+    (length(RL1)>0 AND length(RL2)>0 IMPLIES nth(RL1,length(RL1)-1)`ub<=nth(RL2,0)`lb)
+    IMPLIES
+      LET AIS = append_realband_spec(RL1,RL2) IN
+      (strictly_increasing_real?(AIS) AND
+       (FORALL (r:real): 
+         (EXISTS (j:nat): j<length(AIS) AND in?(nth(AIS,j),r)) IFF
+	 ((EXISTS (j:nat): j<length(RL1) AND in?(nth(RL1,j),r)) OR
+	  (EXISTS (j:nat): j<length(RL2) AND in?(nth(RL2,j),r)))))
+
+  append_realband_spec_connected: LEMMA FORALL (RL1,RL2:list[RealBand]):
+    (FORALL (j,k:nat): j<k AND k<length(RL1) IMPLIES nth(RL1,k)`lb-nth(RL1,j)`ub>0) AND
+    (FORALL (j,k:nat): j<k AND k<length(RL2) IMPLIES nth(RL2,k)`lb-nth(RL2,j)`ub>0) AND
+    (length(RL1)>0 AND length(RL2)>0 IMPLIES nth(RL1,length(RL1)-1)`ub<=nth(RL2,0)`lb) AND
+    strictly_increasing_real?(RL1) AND strictly_increasing_real?(RL2)
+    IMPLIES
+      LET AIS = append_realband_spec(RL1,RL2) IN
+      (FORALL (j,k:nat): j<k AND k<length(AIS) IMPLIES nth(AIS,k)`lb-nth(AIS,j)`ub>0)
+
+  append_realband_spec_nth: LEMMA FORALL (RL1,RL2:list[RealBand]):
+    strictly_increasing_real?(RL1) AND strictly_increasing_real?(RL2) AND
+    (length(RL1)>0 AND length(RL2)>0 IMPLIES nth(RL1,length(RL1)-1)`ub<=nth(RL2,0)`lb)
+    IMPLIES
+      LET AIS = append_realband_spec(RL1,RL2) IN
+      (FORALL (j:nat): j<length(AIS) IMPLIES
+        nth(AIS,j) =
+	    IF length[RealBand](RL1)>0 AND length[RealBand](RL2)>0
+       	       AND nth(RL2,0)`lb=nth(RL1,length(RL1)-1)`ub 
+    	    THEN (IF j<length(RL1)-1 THEN nth(RL1,j)
+	    	  ELSIF j=length(RL1)-1 THEN 
+		  	(# lb:=nth(RL1,length(RL1)-1)`lb,
+  	  		  ub:=nth(RL2,0)`ub #)
+		  ELSE nth(RL2,j-length(RL1)+1) ENDIF)
+    	     ELSE (IF j<=length(RL1)-1 THEN nth(RL1,j)
+		  ELSE nth(RL2,j-length(RL1)) ENDIF)
+             ENDIF)
+
+  % The following merge works for increasing bands
+
+  merge_inc(RL1,RL2:list[RealBand]): RECURSIVE {rl:list[RealBand]|
+    strictly_increasing_real?(RL1) AND strictly_increasing_real?(RL2)
+      IMPLIES strictly_increasing_real?(rl) AND
+        FORALL (r:real): (((EXISTS (j:nat): j<length(RL1) AND in?(nth(RL1,j),r)) OR
+		     (EXISTS (j:nat): j<length(RL2) AND in?(nth(RL2,j),r)))
+		     IFF
+		     (EXISTS (j:nat): j<length(rl) AND in?(nth(rl,j),r)))} =
+    IF length(RL2)=0 THEN RL1
+    ELSIF length(RL1)=0 THEN RL2      
+    ELSIF nth(RL1,0)`ub = nth(RL2,0)`lb OR % test this equality as 
+    	  		  		   % almost equal, which is why OR is used
+    	  nth(RL1,0)`ub < nth(RL2,0)`lb THEN
+	        append_realband_spec( (: nth(RL1,0) :),merge_inc(cdr(RL1),RL2))
+    ELSIF nth(RL2,0)`ub = nth(RL1,0)`lb OR % test this equality as 
+    	  		  		   % almost equal, which is why OR is used
+    	  nth(RL2,0)`ub < nth(RL1,0)`lb THEN 
+	  	append_realband_spec( (: nth(RL2,0) :),merge_inc(RL1,cdr(RL2)))
+    ELSIF nth(RL1,0)`ub>=nth(RL2,0)`ub THEN
+    	  	merge_inc(cons((# lb:=min(nth(RL1,0)`lb,nth(RL2,0)`lb),
+				  ub:=nth(RL1,0)`ub #),cdr(RL1)),cdr(RL2))
+    ELSE merge_inc(cons((# lb:=min(nth(RL2,0)`lb,nth(RL1,0)`lb),
+				  ub:=nth(RL2,0)`ub #),cdr(RL2)),cdr(RL1))
+    ENDIF MEASURE length(RL1)+length(RL2)
+
+  % find the first index of containment
+
+  first_band_contains(r:real,RL:list[RealBand]): RECURSIVE {i:int |
+    i<=length(RL) AND i>=0 AND
+    (i<length(RL) IFF (EXISTS (j:nat): j<length(RL) AND in?(nth(RL,j),r))) AND
+    (i<length(RL) IMPLIES in?(nth(RL,i),r))} =
+    IF length(RL) = 0 THEN 0
+    ELSIF in?(car(RL),r) THEN 0
+    ELSE 1+first_band_contains(r,cdr(RL)) ENDIF MEASURE length(RL)
+
+  % The following intersection works for increasing bands
+
+  intersect_inc(RL1,RL2:list[RealBand]): RECURSIVE {rl:list[RealBand]|
+    strictly_increasing_real?(RL1) AND strictly_increasing_real?(RL2)
+      IMPLIES strictly_increasing_real?(rl) AND
+        FORALL (r:real): (((EXISTS (j:nat): j<length(RL1) AND in?(nth(RL1,j),r)) AND
+		     (EXISTS (j:nat): j<length(RL2) AND in?(nth(RL2,j),r)))
+		     IFF
+		     (EXISTS (j:nat): j<length(rl) AND in?(nth(rl,j),r)))} =
+    IF length(RL2)=0 THEN null[RealBand]
+    ELSIF length(RL1)=0 THEN null[RealBand]
+    ELSIF nth(RL1,0)`ub < nth(RL2,0)`lb THEN intersect_inc(cdr(RL1),RL2)
+    ELSIF nth(RL2,0)`ub < nth(RL1,0)`lb THEN intersect_inc(RL1,cdr(RL2))
+    ELSIF nth(RL1,0)`ub <= nth(RL2,0)`ub THEN 
+      append_realband_spec( (: (# lb:=max(nth(RL1,0)`lb,nth(RL2,0)`lb),ub:=nth(RL1,0)`ub #) :),
+      					     intersect_inc(cdr(RL1),RL2))
+    ELSE append_realband_spec( (: (# lb:=max(nth(RL1,0)`lb,nth(RL2,0)`lb),ub:=nth(RL2,0)`ub #) :),
+      					     intersect_inc(RL1,cdr(RL2)))
+    ENDIF MEASURE length(RL1)+length(RL2)
+
+
+
+
+
+
+END real_bands
