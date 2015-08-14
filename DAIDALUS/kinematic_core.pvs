@@ -5,34 +5,34 @@ kinematic_core : THEORY
   IMPORTING structures@listn, vectors@vectors_3D, Kinematic@to2pi, los_and_cd, TCASII@TCAS_tables
 
   
-  Parameters: TYPE = [# DTHR : real, 
-  	      	        ZTHR : real, 
-			TTHR : real, 
-			TCOA : real, 
+  Parameters: TYPE = [# DTHR : posreal, 
+  	      	        ZTHR : posreal, 
+			TTHR : nnreal, 
+			TCOA : nnreal, 
 			D : real, 
 			H : real, 
-			alerting_time : real, 
-			lookahead_time : real, 
-			min_gs : real, 
-			max_gs : real, 
+			alerting_time : nnreal, 
+			lookahead_time : nnreal, 
+			min_gs : nnreal, 
+			max_gs : posreal, 
 			min_vs : real, 
-			max_vs : real, 
+			max_vs : posreal, 
 			min_alt : real, 
 			max_alt : real, 
 			conflict_only : bool,
-			trk_step : posreal, 
+			trk_step : {x:posreal| x<pi}, 
 			gs_step : posreal, 
 			vs_step : posreal, 
 			alt_step : posreal, 
-			horizontal_accel : nnreal, 
-			vertical_accel : nnreal, 
+			horizontal_accel : posreal, 
+			vertical_accel : posreal, 
 			turn_rate : nnreal, 
-			bank_angle : nnreal, 
+			bank_angle : {x:posreal| x<pi/2}, 
 			vertical_rate : nnreal, 
-			recovery_stability_time : real, 
+			recovery_stability_time : nnreal, 
 			max_recovery_time : real, 
-			min_horizontal_recovery : real, 
-			min_vertical_recovery : real, 
+			min_horizontal_recovery : nnreal, 
+			min_vertical_recovery : nnreal, 
 			recovery_trk : bool, 
 			recovery_gs : bool, 
 			recovery_vs : bool, 
@@ -46,7 +46,7 @@ kinematic_core : THEORY
 			preventive_vs : real, 
 			time_to_warning : real, 
 			warning_when_recovery : bool,
-			time_delay : real, 
+			time_delay : nnreal, 
 			ca_bands : bool,
 			recovery_vs_iff_ca_bands : bool #]
 
@@ -112,7 +112,7 @@ kinematic_core : THEORY
 		  min_vertical_recovery : nnreal, 
 		  most_urgent: MostUrgent,
 		  bank_angle:{x:posreal| x<pi/2},
-		  omega: posreal,
+		  omega: nnreal,
 		  vs_accel: posreal,
 		  gs_accel: posreal, 
 		  track_step: {x:posreal| x<pi}, 
@@ -120,7 +120,7 @@ kinematic_core : THEORY
 		  gs_step: posreal,
 		  minvs: real, 
 		  maxvs: posreal,
-		  mings: posreal,
+		  mings: nnreal,
 		  maxgs: posreal,
  		  epsH: Sign, 
 		  epsV: Sign,
@@ -155,7 +155,7 @@ kinematic_core : THEORY
 		  gs_step:= 1*kts,
 		  minvs:= -5000*fpm, % ??? Ask Anthony about this... -minvs the actual min vertical?
 		  maxvs:= 5000*fpm,
-		  mings:= 0,
+		  mings:= 0.0001,
 		  maxgs:= 700*kts,
  		  epsH:= 1, 
 		  epsV:= 1,
@@ -278,11 +278,11 @@ kinematic_core : THEORY
 %%%%%%%  FIX THIS
 %%%%%%%  Gravitational Constant
 
-  update_omega((core|gs(core`ownship`v)/=0)): 
+  update_omega(core:{x:Core | gs(x`ownship`v)/=0}): 
     Core = 
     IF core`omega /=0 THEN core 
     ELSE 
-      LET omega:posreal = 9.80665*trig_basic.tan(core`bank_angle)/gs(core`ownship`v) IN
+      LET omega:posreal = 9.80665*tan(core`bank_angle)/gs(core`ownship`v) IN
       core WITH [`outdated := TRUE, 
     	       `omega := omega ]
     ENDIF
@@ -296,14 +296,14 @@ kinematic_core : THEORY
 		    	       `cd2:=cylinder_cd(mhr,mvr), 
 			       `min_horizontal_recovery := mhr,
 			       `min_vertical_recovery := mvr] 
-	   ELSE LET sl = IF core`delay_ownship`s`z<0 THEN 2 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
-	   	    D = RA_thr(sl, DMOD) IN
+	   ELSE LET sl = IF core`delay_ownship`s`z<1000*ft THEN 3 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
+	   	    Z = RA_thr(sl, ZTHR) IN
 		    core WITH [`outdated:=TRUE, 
-		    	       `cd2:=cylinder_cd(D,mvr), 
-			       `min_horizontal_recovery := D,
-			       `min_vertical_recovery := mvr]  
+		    	       `cd2:=cylinder_cd(mhr,Z), 
+			       `min_horizontal_recovery := mhr,
+			       `min_vertical_recovery := Z]  
    	   ENDIF
-  	ELSE LET sl = IF core`delay_ownship`s`z<0 THEN 2 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
+  	ELSE LET sl = IF core`delay_ownship`s`z<1000*ft THEN 3 ELSE  sensitivity_level(core`delay_ownship`s`z) ENDIF, 
 	   	    D = RA_thr(sl, DMOD),
 	            Z = IF mvr = 0 THEN RA_thr(sl, ZTHR) ELSE mvr ENDIF IN
 		    core WITH [`outdated:=TRUE, 
