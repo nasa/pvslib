@@ -85,7 +85,7 @@ sub edgestr {
   }
   if (!$libgraph{$from}{$to}) {
     $libgraph{$from}{$to}=1;
-    push(@libraries,$tolib) if grep(/$tolib/,@nasalib) && !grep(/$tolib/,@libraries);
+    push(@targets,$tolib) if grep(/$tolib/,@nasalib) && !grep(/$tolib/,@targets);
     push(@external,$tolib) if !grep(/$tolib/,@nasalib) && !grep(/$tolib/,@external);
     return qid($fromlib,$fromth)." -> ".qid($tolib,$toth).";\n";
   }
@@ -172,7 +172,7 @@ if ($out) {
   $out .= "-zoom_$zooml" if $zooml;
 }
 
-$go = "ok" if !($from || $after || @dolist || @zoomlist);
+my $all = !($from || $after || @dolist || @zoomlist);
 
 while (<INFILE>) {
   $line = $_;
@@ -183,14 +183,20 @@ while (<INFILE>) {
     $lib = trim($listline[0]);
     if ($lib && -d $lib) {
       push(@nasalib,$lib);
-      $go = "ok" if $from eq $lib;
-      last if $before eq $lib;
-      if (!grep(/$lib/,@butlist) && 
-	  ($go || grep(/$lib/,@dolist) || grep(/$lib/,@zoomlist))) { 
-	push(@libraries,$lib);
+      if ($lib eq $from) {
+	$all = 1;
+      } elsif ($lib eq $before) {
+	$all = 0;
       }
-      $go = "ok" if $after eq $lib;
-      last if $to eq $lib;
+      if (!grep(/$lib/,@butlist) && 
+	  ($all || grep(/$lib/,@dolist) || grep(/$lib/,@zoomlist))) { 
+	push(@targets,$lib);
+      }
+      if ($lib eq $after) {
+	$all = 1;
+      } elsif ($lib eq $to) {
+	$all = 0;
+      }
     } elsif ($lib) {
       die "Directory $lib not found\n";
     } 
@@ -203,9 +209,9 @@ if ($top) {
   $topfile = "top";
 }
 
-die "Nothing to generate\n" if !@libraries;
+die "Nothing to generate\n" if !@targets;
 
-foreach $lib (@libraries) {
+foreach $lib (@targets) {
   push(@nodes,$lib);
   if (-f "$lib/pvsbin/$topfile.dep") {
     open(FILE,"$lib/pvsbin/$topfile.dep");
