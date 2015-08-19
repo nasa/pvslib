@@ -1,42 +1,38 @@
-get_kinematic_bands  % [ parameters ]
-		: THEORY
+get_kinematic_bands : THEORY
+BEGIN
 
-  BEGIN
+  IMPORTING kinematic_core, 
+            kinematic_trk_bands, 
+            kinematic_vs_bands, 
+            kinematic_gs_bands, 
+            los_and_cd, 
+            format_bands, 
+            reals@log_int
 
- IMPORTING kinematic_core, 
-           kinematic_trk_bands, 
-           kinematic_vs_bands, 
-           kinematic_gs_bands, 
-           los_and_cd, 
-           format_bands, 
-           reals@log_int
+  ucore: VAR UpdatedCore
+  unit: VAR posreal
+  B,T: VAR nnreal
+  traffic: VAR Traffic
 
- ucore: VAR UpdatedCore
- unit: VAR posreal
- B,T: VAR nnreal
- traffic: VAR Traffic
+  los,los2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
+  cd,cd2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
 
- los,los2: VAR [[Vect3,Vect3,Vect3,Vect3]->bool]
- cd,cd2: VAR [[nnreal,nnreal,Vect3,Vect3,Vect3,Vect3]->bool]
-
-
- %% function to filter an aircraft list, returning just the id's 
+  %% function to filter an aircraft list, returning just the id's 
   traf_id(traffic): list[string] = 
     map((LAMBDA(ac:Aircraft): ac`id), traffic)
  
-
- %% function for scaling by a unit, with early exit for scaling by 1.
- scale_band_unit(unit)(band: RealBand):
-   RealBand = (#lb:= band`lb/unit, ub:= band`ub/unit #)
+  %% function for scaling by a unit, with early exit for scaling by 1.
+  scale_band_unit(unit)(band: RealBand):
+    RealBand = (#lb:= band`lb/unit, ub:= band`ub/unit #)
  
- scale_bands_unit(bands:list[RealBand], unit):  list[RealBand] = 
-   IF unit=1 THEN bands 
-   ELSE map(scale_band_unit(unit))(bands)
-   ENDIF
+  scale_bands_unit(bands:list[RealBand], unit):  list[RealBand] = 
+    IF unit=1 THEN bands 
+    ELSE map(scale_band_unit(unit))(bands)
+    ENDIF
 
-%% function for splitting an aircraft list based on a predicate.
+  %% function for splitting an aircraft list based on a predicate.
  
- split_list(p:[Aircraft->bool])(traffic): RECURSIVE [Traffic, Traffic] =
+  split_list(p:[Aircraft->bool])(traffic): RECURSIVE [Traffic, Traffic] =
     IF length(traffic) = 0 THEN (null[Aircraft], null[Aircraft])
     ELSE LET ac = car(traffic), split = split_list(p)(cdr(traffic)) IN
     	 IF p(ac) THEN (cons(ac, split`1), split`2)
@@ -45,9 +41,9 @@ get_kinematic_bands  % [ parameters ]
     ENDIF
     MEASURE length(traffic)
 
- %% functions for computing recovery
+  %% functions for computing recovery
 
- first_time_it((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<T AND F(T) = TRUE), n:nat): 
+  first_time_it((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<T AND F(T) = TRUE), n:nat): 
     RECURSIVE {Z:nnreal|Z<=T AND F(Z) = TRUE} = 
     IF n=0 THEN T
     ELSE LET mid=(T+B)/2, ind = F(mid) IN
@@ -57,12 +53,12 @@ get_kinematic_bands  % [ parameters ]
     ENDIF
     MEASURE n
 
- first_time((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<=T AND F(T) = TRUE)): 
-   {Z:nnreal|Z<=T AND F(Z) = TRUE} =  
-   LET iter = log_nat(max(1,T-B), 2)`1+1 IN
-   first_time_it(F, B, T, iter)
+  first_time((F:[nnreal->bool]), (B|F(B) = FALSE), (T|B<=T AND F(T) = TRUE)): 
+    {Z:nnreal|Z<=T AND F(Z) = TRUE} =  
+    LET iter = log_nat(max(1,T-B), 2)`1+1 IN
+    first_time_it(F, B, T, iter)
 
- cyl_and_time(D,H,T:nnreal,ca:bool, anygreen:[[ConfDetector, bool]->[nnreal->bool]]): 
+  cyl_and_time(D,H,T:nnreal,ca:bool, anygreen:[[ConfDetector, bool]->[nnreal->bool]]): 
   %% this function needs some conditions added to the type of 'anygreen' so that it can always use 'first_time'
   RECURSIVE [nnreal, nnreal, real] = 
     IF NOT ca THEN
@@ -75,29 +71,28 @@ get_kinematic_bands  % [ parameters ]
     ENDIF
     MEASURE H
 
+ %% functions for bands ... 
 
- %% functions for bands... 
-
- corrective_split(ucore): [Traffic, Traffic] = 
+  corrective_split(ucore): [Traffic, Traffic] = 
    LET CD(ac:Aircraft): bool =  
        	LET EEint = ucore`cd(0, ucore`alerting_time, ucore`delay_ownship, ac) IN
         EEint`1<=EEint`2 IN
    split_list(CD)(ucore`delay_traffic)
 
- track_preventive_list(ucore,los, cd, los2, cd2,traffic): Traffic = 
-   filter( (LAMBDA(ac:Aircraft): 
-   any_kinematic_trk_red(los,cd,los2,cd2,FALSE,ucore`delay_ownship`s,
-   ucore`delay_ownship`v,traffic,
-   ucore`most_urgent,1,1,FALSE,FALSE,ucore`omega,1,FALSE)
-   (0,ucore`alerting_time,0,0,ucore`track_step)))(traffic) 
+  track_preventive_list(ucore,los, cd, los2, cd2,traffic): Traffic = 
+    filter( (LAMBDA(ac:Aircraft): 
+    any_kinematic_trk_red(los,cd,los2,cd2,FALSE,ucore`delay_ownship`s,
+    ucore`delay_ownship`v,traffic,
+    ucore`most_urgent,1,1,FALSE,FALSE,ucore`omega,1,FALSE)
+    (0,ucore`alerting_time,0,0,ucore`track_step)))(traffic) 
  
- vs_preventive_list(ucore,los, cd, los2, cd2, traffic): Traffic = 
-  filter( (LAMBDA(ac:Aircraft): 
-  any_kinematic_vs_red(los,cd,los2,cd2, FALSE,ucore`delay_ownship`s,
-  ucore`delay_ownship`v,traffic,
-  ucore`most_urgent,1,1,FALSE,FALSE,ucore`vs_accel,1,FALSE, 
-  ucore`minvs, ucore`maxvs)
-  (0,ucore`alerting_time,0,0,ucore`vs_step)))(traffic)
+  vs_preventive_list(ucore,los, cd, los2, cd2, traffic): Traffic = 
+    filter( (LAMBDA(ac:Aircraft): 
+    any_kinematic_vs_red(los,cd,los2,cd2, FALSE,ucore`delay_ownship`s,
+    ucore`delay_ownship`v,traffic,
+    ucore`most_urgent,1,1,FALSE,FALSE,ucore`vs_accel,1,FALSE, 
+    ucore`minvs, ucore`maxvs)
+    (0,ucore`alerting_time,0,0,ucore`vs_step)))(traffic)
 
  gs_preventive_list(ucore,los, cd, los2, cd2, traffic): Traffic = 
    filter( (LAMBDA(ac:Aircraft): 
@@ -107,8 +102,7 @@ get_kinematic_bands  % [ parameters ]
    ucore`mings, ucore`maxgs)
    (0,ucore`alerting_time,0,0,ucore`gs_step)))(traffic)
 
-  
-  
+  KinematicBand : TYPE = [list[RealBand],list[Region],real,list[string],list[string]]
 
   get_kinematic_trk_bands_init(ucore, los, cd)(los2, cd2)(traffic,B,T,(rec?:bool)): 
     list[RealBand] =
@@ -119,8 +113,7 @@ get_kinematic_bands  % [ parameters ]
          (B,T,0,B,ucore`track_step) 
     ENDIF
  
- get_kinematic_trk_bands(ucore, unit): 
-   [list[RealBand],list[Region],real, list[string], list[string]] = 
+ get_kinematic_trk_bands(ucore, unit): KinematicBand = 
    LET los = cd2LOS(ucore`cd),
        cd  = cd2CD(ucore`cd),
        conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),
@@ -171,8 +164,7 @@ get_kinematic_bands  % [ parameters ]
         (B,T,0,B,ucore`vs_step)
    ENDIF 
 
-  get_kinematic_vs_bands(ucore, unit): 
-    [list[RealBand],list[Region],real, list[string], list[string]]  =
+  get_kinematic_vs_bands(ucore, unit): KinematicBand =
     LET los = cd2LOS(ucore`cd),
         cd  = cd2CD(ucore`cd),
 	conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),
@@ -224,8 +216,7 @@ get_kinematic_bands  % [ parameters ]
          (B,T,0,B,ucore`gs_step)
     ENDIF 
 
-  get_kinematic_gs_bands(ucore, unit): 
-    [list[RealBand],list[Region],real, list[string], list[string]]  =
+  get_kinematic_gs_bands(ucore, unit): KinematicBand =
     LET los = cd2LOS(ucore`cd),
         cd  = cd2CD(ucore`cd),
 	conf_det2 = cylinder_cd(ucore`min_horizontal_recovery, ucore`min_vertical_recovery),

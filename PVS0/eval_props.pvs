@@ -1,10 +1,12 @@
 eval_props[T:TYPE+] : THEORY
 BEGIN
-  IMPORTING conditions[T], structures@set_as_list
-
-  IMPORTING lang[T],
-             BoolPVS0[T],
-	     structures@more_list_props[nat], structures@more_list_props[BoolPVS0[T]]
+ IMPORTING conditions[T], 
+ 	   structures@set_as_list, 
+	   structures@set_as_list_props,
+	   lang[T], 
+	   BoolPVS0[T],
+	   structures@more_list_props[nat], 
+	   structures@more_list_props[BoolPVS0[T]]
 
   eval_bool : VAR [Val -> bool] 
   eval_op1 : VAR [nat->[Val->Val]]
@@ -49,7 +51,8 @@ rdc_rac: COROLLARY
   MEASURE expr by <<
 
   null_path: LEMMA
-    FORALL(expr: Expr): valid_path(expr)(null)
+  FORALL(expr: Expr): valid_path(expr)(null)
+
 
   subterm_at(expr: Expr, path: (valid_path(expr))): RECURSIVE ({res: Expr | subterm(res,expr)})
   = IF null?(path) THEN expr
@@ -64,18 +67,28 @@ rdc_rac: COROLLARY
     MEASURE expr BY <<
 
   path_conditions(expr: Expr, path: (valid_path(expr))): RECURSIVE Conditions
-  = IF null?(path) THEN null
-    ELSE CASES expr OF
-    	   op1(o,a)  : path_conditions(a, rdc(path)),
-	   op2(o,a,b): IF rac(path) = 0 THEN path_conditions(a, rdc(path))
-	  	       ELSE path_conditions(b, rdc(path)) ENDIF,
-    	   rec(a)    : path_conditions(a, rdc(path)),
-	   ite(c,tr,el): IF rac(path) = 0 THEN path_conditions(c, rdc(path))
-	   	       ELSIF rac(path) = 1 THEN add_sl(pvsbool(c), path_conditions(tr, rdc(path)))
-	      	       ELSE add_sl(pvsnot(c), path_conditions(el, rdc(path))) ENDIF
-    	   ELSE null
-    	 ENDCASES ENDIF
-    MEASURE expr BY << 
+  % = IF null?(path) THEN null
+  %   ELSE CASES expr OF
+  %   	   op1(o,a)  : path_conditions(a, rdc(path)),
+  % 	   op2(o,a,b): IF rac(path) = 0 THEN path_conditions(a, rdc(path))
+  % 	  	       ELSE path_conditions(b, rdc(path)) ENDIF,
+  %   	   rec(a)    : path_conditions(a, rdc(path)),
+  % 	   ite(c,tr,el): IF rac(path) = 0 THEN path_conditions(c, rdc(path))
+  % 	   	       ELSIF rac(path) = 1 THEN cons(pvsbool(c), path_conditions(tr, rdc(path)))
+  % 	      	       ELSE cons(pvsnot(c), path_conditions(el, rdc(path))) ENDIF
+  %   	   ELSE null
+  %   	 ENDCASES ENDIF
+  %   MEASURE expr BY << 
+  = CASES path OF
+      null: null,
+      cons(n,path_): append( IF NOT ite?(subterm_at(expr,path_)) OR n=0
+   	   	   THEN null
+  		   ELSE IF n=1 
+		   	THEN (: pvsbool(get_cond(subterm_at(expr,path_))) :)
+  		    	ELSE (: pvsnot(get_cond(subterm_at(expr,path_))) :) ENDIF ENDIF,
+  	           path_conditions(expr,path_) )
+     ENDCASES
+  MEASURE path BY <<
 
   valid_paths_subexpr : LEMMA
   FORALL (expr : Expr, path : (valid_path(expr))):
@@ -112,7 +125,7 @@ rdc_rac: COROLLARY
    LET sterm = subterm_at(expr, path) IN 
      EXISTS (p: (valid_path(sterm))): append(p, path) = path_ext
 
-  cnst_vr_path_ext: LEMMA  % Depends on the previoius new Conjecture
+  cnst_vr_path_ext: LEMMA  
   FORALL (expr : Expr, path_ext,path : (valid_path(expr))):
    LET sterm = subterm_at(expr, path) IN
    (cnst?(sterm) OR vr?(sterm)) AND 
@@ -157,48 +170,130 @@ valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] |
       ELSE (: null :)
     ENDCASES 
   MEASURE expr By <<
-  
-  suffix_conds_valid : CONJECTURE
-  FORALL(env:Environment)(body: Expr)(path,path_ext: (valid_path(body))):
-  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path_ext),env) AND
-  suffix?(path, path_ext) 
-  IMPLIES eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path),env)   
 
-  path_conditions_cons: CONJECTURE
+  member_add_sl: LEMMA
+  FORALL(l : Conditions, e: BoolPVS0):
+  member(e, add_sl(e,l))
+
+  member_add_sl2: LEMMA
+  FORALL(l : Conditions, e,a: BoolPVS0):
+  member(a,l) => member(a, add_sl(e,l))
+
+  subset_add_sl1: LEMMA
+  FORALL(l1, l2 :Conditions, e :BoolPVS0):
+  subset_sl?(l1,l2) => subset_sl?(l1,add_sl(e,l2))
+
+  subset_add_sl: LEMMA
+  FORALL(l1, l2 :Conditions, e :BoolPVS0):
+  subset_sl?(l1,l2) => subset_sl?(add_sl(e,l1),add_sl(e,l2))
+
+  subset_member_sl: LEMMA
+  FORALL(l1, l2 :Conditions):
+  subset_sl?(l1,l2) <=>
+  (FORALL(e :BoolPVS0): member(e,l1) => member(e,l2))
+
+  remove_add_sl: LEMMA
+  FORALL(l: Conditions, e: BoolPVS0):
+  remove_sl(e,l) = remove_sl(e,add_sl(e,l))
+
+  remove_add_sl2: LEMMA
+  FORALL(l: Conditions, e1, e2: BoolPVS0):
+  e1 /= e2 =>
+  add_sl(e1, remove_sl(e2, l)) = remove_sl(e2, add_sl(e1,l))
+
+  remove_subset_sl: LEMMA
+  FORALL(l1, l2 :Conditions, e :BoolPVS0):
+  subset_sl?(l1,l2) => subset_sl?(remove_sl(e,l1),l2)
+
+  remove_subset_reflexive_sl: COROLLARY
+  FORALL(l : Conditions, e :BoolPVS0):
+  subset_sl?(remove_sl(e,l),l)
+
+% Auxiliary function used only to simplify next lemma.
+  path_conds_aux((n : posnat | n<=2 ), (expr: Expr | ite?(expr))) : BoolPVS0 =
+  IF n=1 
+  THEN pvsbool(get_cond(expr))
+  ELSE pvsnot(get_cond(expr))
+  ENDIF
+
+% Invariance of conditions in a path when a new ite condition is added
+  path_conditions_cons: LEMMA
   FORALL(body: Expr)(path: (valid_path(body)))(n: nat):
-  LET expr = subterm_at(body, path) IN
-  ite?(expr) AND (n>=0 AND n<=2)
-  IMPLIES
-  path_conditions(body, cons(n, path)) 
-  = cons(IF n=1 
-  	 THEN pvsbool(get_cond(expr))
-	 ELSE pvsnot(get_cond(expr))
-	 ENDIF
-	, path_conditions(body, path))
+   LET expr = subterm_at(body, path) IN
+    ite?(expr) AND (n>=1 AND n<=2)
+     IMPLIES
+      path_conditions(body, cons(n, path)) 
+      = cons(path_conds_aux(n,expr),
+%        remove_sl(path_conds_aux(n,expr), path_conditions(body, path)) )
+         path_conditions(body, path))
 
 %
-% M3: CONJECTURE used in measure_termination
+% M3: LEMMA used in measure_termination
 %
-  path_conditions_unmodified: CONJECTURE
+  path_conditions_unmodified: LEMMA
   FORALL(body: Expr)(path: (valid_path(body)))(n: nat):
   LET expr = subterm_at(body, path) IN
-  (ite?(expr) IMPLIES n=0)
+  (NOT vr?(expr) AND NOT cnst?(expr) AND n=0)
   IMPLIES
   path_conditions(body, cons(n, path)) 
   = path_conditions(body, path)
 
-  suffix_path_cnds : CONJECTURE
+  path_conditions_unmodified2: LEMMA
+  FORALL(body: Expr)(path: (valid_path(body)))(n: nat):
+  LET expr = subterm_at(body, path) IN
+  (op2?(expr) AND n=1)
+  IMPLIES
+  path_conditions(body, cons(n, path)) 
+  = path_conditions(body, path)
+
+% Conditions over a path are preserved in conditions of extensions of the path.
+  suffix_path_cnds : LEMMA
   FORALL(expr: Expr)(path,path_ext: (valid_path(expr))):
   suffix?(path, path_ext) IMPLIES
-  suffix?(path_conditions(expr, path), path_conditions(expr, path_ext))
+  subset_sl?(path_conditions(expr, path), path_conditions(expr, path_ext))
 
-  suffix_conds_rec : CONJECTURE
+% True chains of conditions have conditions that are true.
+  member_conds_rec: LEMMA
+  FORALL(env:Environment)(expr: Expr)(cnds: Conditions, e: BoolPVS0):
+  member(e, cnds) AND
+  eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                (expr, cnds, env)
+  IMPLIES eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                        (expr, (: e :), env)
+
+% All conditions in a chain are true implies the whole chain is true.
+  member_conds_rec2: LEMMA
+  FORALL(env:Environment)(expr: Expr)(cnds: Conditions):
+  (FORALL(e: BoolPVS0| member(e, cnds)):
+  eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                        (expr, (: e :), env))
+  IMPLIES eval_conds_rec(eval_bool, eval_op1, eval_op2)
+                (expr, cnds, env)
+
+% Subsequences of true chains of conditions are also true.
+  suffix_conds_rec : COROLLARY
   FORALL(env:Environment)(expr: Expr)(suffcnds, cnds: Conditions):
-  suffix?(suffcnds, cnds) AND
+  subset_sl?(suffcnds, cnds) AND
   eval_conds_rec(eval_bool, eval_op1, eval_op2)
                 (expr, cnds, env)
   IMPLIES eval_conds_rec(eval_bool, eval_op1, eval_op2)
                         (expr, suffcnds, env)
+
+% True chains of conditions over and extended path of the subterm
+% of a body implies the chain of conditions over the path is also true.
+  suffix_conds_valid_sub : COROLLARY
+  FORALL(env:Environment)(body: Expr, (sub_body: Expr | subterm(sub_body,body)))(path,path_ext: (valid_path(sub_body))):
+  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(sub_body, path_ext),env) AND
+  suffix?(path, path_ext) 
+  IMPLIES eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(sub_body, path),env)
+
+% The same than the previous Corollary, but considering the whole body af
+% subterm of itself.
+  suffix_conds_valid : COROLLARY
+  FORALL(env:Environment)(body: Expr)(path,path_ext: (valid_path(body))):
+  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path_ext),env) AND
+  suffix?(path, path_ext) 
+  IMPLIES eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,path_conditions(body, path),env)
 
   rec_decreasing : LEMMA
   FORALL(env:Environment)(n: posnat)(expr, body: Expr)(path,path_ext: (valid_path(body))):
@@ -214,10 +309,7 @@ valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] |
   	  some?(eval_expr(eval_bool,eval_op1,eval_op2)(n-1,body,body,val2env(val(valarg))))
 
   rec_mu_decreasing : LEMMA
-  FORALL(env:Environment)
-	(n: posnat)
-	(def: Terminating(eval_bool,eval_op1,eval_op2))
-  	(path_ext: (valid_path(get_body(def)))):
+  FORALL(env:Environment)(n: posnat)(def: Terminating(eval_bool,eval_op1,eval_op2))(path_ext: (valid_path(get_body(def)))):
   LET body    = get_body(def),
       conds   = path_conditions(body, path_ext),
       subexpr = subterm_at(body, path_ext) IN
@@ -229,7 +321,7 @@ valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] |
 	  		    (get_arg(subexpr),body,env,vact) 
 	  IMPLIES mu(eval_bool,eval_op1,eval_op2)(def)(vact) < n 
 
-  decreasing_rec : CONJECTURE
+  decreasing_rec : LEMMA
   FORALL(body:Expr)
 	(n:posnat, expr:Expr)(path:(valid_path(body)))(env:Environment) :
     expr = subterm_at(body,path) IMPLIES
