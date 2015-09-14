@@ -8,17 +8,14 @@
 %	   Mariano M. Moscato -- National Institute of Aerospace - US            %
 %		  	      	      	      	       	      			 %
 %********************************************************************************%
-%                    last modified: Jul - 30 - 2015                              %
-%********************************************************************************%
 pvs0_to_ccg[T:TYPE+,MT:TYPE, < : (well_founded?[MT]), N:posnat] : THEORY
 BEGIN
 
   IMPORTING lang[T],
             BoolPVS0[T],
             structures@set_as_list,
-	    conditions[T]
-
-  IMPORTING CCG@ccg_def[Val,Expr,Conditions,(vr?),MT,<,N]
+	    conditions[T],
+            CCG@ccg_def[Val,Expr,Conditions,(vr?),MT,<,N]
 
 
                       n : VAR nat
@@ -29,39 +26,49 @@ BEGIN
                eval_op2 : VAR [nat->[[T,T]->T]]
 	           expr : VAR Expr
 
-%dd : LEMMA  well_founded?(orders[nat]@<) 
-
 % ------------------------------------------------------------------------------- %
 % functions to build the list and then the set of vertices
 
   IMPORTING eval_props[T]
 
+  pvs0_to_ccg_vertex((def), path:(valid_path(get_body(def))))(cc: CallingContext) : bool =
+    subterm_at(get_body(def),path) = rec(cc`actuals) AND
+    path_conditions(get_body(def), path) = cc`conds
+    
   pvs0_to_ccg_verts_(def)(cc: CallingContext): bool =
-    subterm(rec(cc`actuals), def) AND
-    EXISTS(path: (valid_path(get_body(def))) | subterm_at(get_body(def),path) = rec(cc`actuals)):
-      path_conditions(get_body(def), path) = cc`conds
+    EXISTS(path: (valid_path(get_body(def)))): pvs0_to_ccg_vertex(def, path)(cc)
 
-  pvs0_to_ccg_verts_rec(pvs:Expr,cnds:Conditions) : 
-  RECURSIVE list[CallingContext] =
-    CASES pvs OF
-       op1(n,t) : pvs0_to_ccg_verts_rec(t,cnds),
-       op2(n,t1,t2) : union_sl(pvs0_to_ccg_verts_rec(t1,cnds), 
-                               pvs0_to_ccg_verts_rec(t2,cnds)),
-       ite(c,t1,t2) : union_sl(pvs0_to_ccg_verts_rec(t1,add_sl(pvsbool(c),cnds)),
-                               pvs0_to_ccg_verts_rec(t2,add_sl(pvsnot(c),cnds))),
-       rec(t) :  LET cc = (# formals := vr[T], actuals := t, conds := cnds #)
-                 IN add_sl(cc,pvs0_to_ccg_verts_rec(t,cnds))
-       ELSE emptyset_sl[CallingContext]
+  pvs0_to_ccg_make_cc( (def), path: (valid_path(get_body(def))) | 
+				    rec?(subterm_at(get_body(def), path)) ) 
+  : (pvs0_to_ccg_vertex(def, path)) =
+    make_cc(vr::(vr?), get_arg(subterm_at(get_body(def), path)), path_conditions(get_body(def), path))
+
+  % Computable calculation of pvs0 ccg vertices given valid paths of a definition
+  pvs0_to_ccg_paths_vertices(def: Def, paths: list[(valid_path(get_body(def)))]) : RECURSIVE 
+    { res: list[ (pvs0_to_ccg_verts_(def)) ] | 
+      	FORALL(p: (valid_path(get_body(def))) | member(p, paths)):
+	  rec?(subterm_at(get_body(def), p)) 
+	  IMPLIES member(pvs0_to_ccg_make_cc(def, p), res) } = 
+    CASES paths OF
+      null: null,
+      cons(p, ps): LET subexpr = subterm_at(get_body(def), p) 
+                   IN IF rec?(subexpr) 
+  		      THEN cons( pvs0_to_ccg_make_cc(def, p), 
+		                 pvs0_to_ccg_paths_vertices(def, ps) )
+  		      ELSE pvs0_to_ccg_paths_vertices(def, ps) ENDIF
     ENDCASES
-  MEASURE pvs BY <<
+  MEASURE paths BY <<
 
-  pvs0_to_ccg_verts_sl(def): list[CallingContext] =
-    pvs0_to_ccg_verts_rec(get_body(def),emptyset_sl)
+  pvs0_to_ccg_vertices_l(def): list[(pvs0_to_ccg_verts_(def))] =
+    pvs0_to_ccg_paths_vertices(def, valid_paths(get_body(def)))
+  
+  pvs0_to_ccg_vertices_list_completeness: LEMMA
+    FORALL(def: Def, cc: (pvs0_to_ccg_verts_(def))): member[CallingContext](cc, pvs0_to_ccg_vertices_l(def))
 
   pvs0_to_ccg_verts(def): finite_set[CallingContext] =
-    list2set(pvs0_to_ccg_verts_sl(def))
+    list2set[CallingContext](pvs0_to_ccg_vertices_l(def))
 
-  pvs0_to_ccg_verts_completeness: CONJECTURE
+  pvs0_to_ccg_verts_completeness: LEMMA
     FORALL(def: Def, cc: (pvs0_to_ccg_verts_(def))): pvs0_to_ccg_verts(def)(cc)
 
 % ------------------------------------------------------------------------------- %
@@ -77,6 +84,8 @@ BEGIN
 
 % ------------------------------------------------------------------------------- %
 % function to built the set of edges
+
+  IMPORTING finite_sets@finite_cross % to prove TCC of pvs0_to_ccg_edges
 
   pvs0_to_ccg_edges(eval_bool,eval_op1,eval_op2)(def):
   finite_set[[CallingContext,CallingContext]] =
@@ -142,7 +151,6 @@ BEGIN
   scp_termination_terminates_lr : COROLLARY
     scp_termination_pvs0(eval_bool,eval_op1,eval_op2)(def) 
     IMPLIES terminates(eval_bool,eval_op1,eval_op2)(def)
-
 
 %  ccg_termination_pvs0(def) : bool =
 %    FORALL (eval_bool,eval_op1,eval_op2):
