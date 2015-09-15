@@ -1,32 +1,40 @@
-scp[Val, Expr, Conditions: TYPE, 
-    Vr: TYPE FROM Expr,
-    (IMPORTING cc_def[Expr,Conditions,Vr]) CCs : TYPE FROM Seq_cc] : THEORY
+%********************************************************************************%
+% Size-Change Principle [Lee et al]:                                             %
+% "If every infinite computation would give rise to an infinitely                %
+%  decreasing value sequence, then no infinite computation is possible."         %
+%                                                                                %
+%   Authors:                                                                     %
+%                                                                                %
+%                 César Muñoz -- NASA Langley Research Center - US               %
+%             Mariano Moscato -- NIA - US                                        %
+%                                                                                %
+%********************************************************************************%
+
+scp[Val,Expr,Condition: TYPE, Vr: TYPE FROM Expr,
+    (IMPORTING cc_def[Val,Expr,Condition,Vr]) CCs : TYPE FROM Seq_cc] : THEORY
 BEGIN 
 
-  IMPORTING cc_def[Expr,Conditions,Vr]
-
-  seq_val : TYPE = [nat->Val]
-
-  infinite_seq_ccs(semantic_rel:PRED[[Expr,[Vr->Val],Val]],
-                   eval_conds:PRED[[Conditions,[Vr->Val]]])
-		  (ccs:CCs, vals:seq_val): bool =
+  infinite_seq_ccs(semantic_rel:PRED[[Expr,Environment,Val]],
+                   eval_conds:PRED[[Condition,Environment]])
+		  (ccs:CCs, vals:Seq_val): bool =
     FORALL(i:nat): eval_conds(ccs(i)`conds, LAMBDA(v:Vr): vals(i)) AND
       semantic_rel(ccs(i)`actuals, LAMBDA(v:Vr): vals(i), vals(i+1))
 
-  scp_termination?(semantic_rel:PRED[[Expr,[Vr->Val],Val]],
-                   eval_conds:PRED[[Conditions,[Vr->Val]]]) : bool = 
-  FORALL (ccs:CCs,vals:seq_val) : NOT infinite_seq_ccs(semantic_rel,eval_conds)(ccs,vals) 
+  scp_termination?(semantic_rel:PRED[[Expr,Environment,Val]],
+                   eval_conds:PRED[[Condition,Environment]]) : bool = 
+  FORALL (ccs:CCs,vals:Seq_val) : NOT infinite_seq_ccs(semantic_rel,eval_conds)(ccs,vals) 
 
   IMPORTING orders@well_foundedness[Val]
 
-  % Following Lee et. al.: "If every infinite computation would give rise to an
-  % infinitely decreasing value sequence, then no infinite computation is possible".
-  % This lemma shows that scp_termination? is equivalent to the aforementioned
-  % termination criteria.
-  scp_termination : LEMMA
-    FORALL (semantic_rel:PRED[[Expr,[Vr->Val],Val]],eval_conds:PRED[[Conditions,[Vr->Val]]]):
-    scp_termination?(semantic_rel,eval_conds) IFF
-     FORALL (ccs:CCs,vals:seq_val) : infinite_seq_ccs(semantic_rel,eval_conds)(ccs,vals) IMPLIES
+  % Size-change principle
+  SCP(semantic_rel:PRED[[Expr,Environment,Val]],eval_conds:PRED[[Condition,Environment]]) : bool =
+    FORALL (ccs:CCs,vals:Seq_val) : infinite_seq_ccs(semantic_rel,eval_conds)(ccs,vals) IMPLIES
       EXISTS (r: (well_founded?[Val])) : FORALL(i:nat):r(vals(i+1),vals(i))
- 
+
+  % This lemma shows that scp_termination? is equivalent to the size-change principle
+  scp_termination : LEMMA
+    FORALL (semantic_rel:PRED[[Expr,Environment,Val]],eval_conds:PRED[[Condition,Environment]]):
+    scp_termination?(semantic_rel,eval_conds) IFF
+    SCP(semantic_rel,eval_conds)
+
 END scp
