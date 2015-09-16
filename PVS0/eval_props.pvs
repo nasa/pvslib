@@ -1,7 +1,7 @@
 eval_props[T:TYPE+] : THEORY
 BEGIN
- IMPORTING conditions[T], 
- 	   structures@set_as_list, 
+
+ IMPORTING structures@set_as_list, 
 	   structures@set_as_list_props,
 	   lang[T], 
 	   BoolPVS0[T],
@@ -12,83 +12,11 @@ BEGIN
   eval_op1 : VAR [nat->[Val->Val]]
   eval_op2 : VAR [nat->[[Val,Val]->Val]]
 
-
   subterm_transitive : LEMMA  FORALL(exa,exb,exc : Expr) : 
   subterm(exa,exb) AND subterm(exb,exc) IMPLIES subterm(exa,exc)
 
-  rdc((l: list[nat] | NOT null?(l))):  list[nat]
-  = reverse(cdr(reverse(l)))
-
-  rac((l: list[nat] | NOT null?(l))):  nat
-  = nth(l, length(l)-1)
-
-rac_append: LEMMA 
-  FORALL (l1: list[nat], (l2: list[nat] | NOT null?(l2))) : 
-    rac(append(l1, l2)) = rac(l2)
-
-rdc_append: LEMMA  % Appears as "incomplete", but this doesn't depend on our theory
-  FORALL (l1: list[nat], (l2: list[nat] | NOT null?(l2))) : 
-     rdc(append(l1, l2)) = append(l1, rdc(l2))
-
-rdc_rac: COROLLARY
-  FORALL (l1 : list[nat] | NOT null?(l1)) :
-     append(rdc(l1),(:rac(l1):)) = l1
-
-  valid_path(expr: Expr)(path: list[nat]): RECURSIVE bool
-  = CASES expr OF
-      vr         : null?(path),
-      cnst(cval) : null?(path),
-      op1(o,a)   : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
-      op2(o,a1,a2) : null?(path) 
-      		     OR (rac(path) = 0 AND valid_path(a1)(rdc(path)))
-		     OR (rac(path) = 1 AND valid_path(a2)(rdc(path))),
-      rec(a)       : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
-      ite(c,t,e)   : null?(path) 
-      		     OR (rac(path) = 0 AND valid_path(c)(rdc(path)))
-		     OR (rac(path) = 1 AND valid_path(t)(rdc(path)))
-		     OR (rac(path) = 2 AND valid_path(e)(rdc(path)))
-    ENDCASES
-  MEASURE expr by <<
-
   null_path: LEMMA
   FORALL(expr: Expr): valid_path(expr)(null)
-
-
-  subterm_at(expr: Expr, path: (valid_path(expr))): RECURSIVE ({res: Expr | subterm(res,expr)})
-  = IF null?(path) THEN expr
-    ELSE CASES expr OF
-          op1(o,a)  : subterm_at(a, rdc(path)),
-	  op2(o,a,b): IF rac(path) = 0 THEN subterm_at(a, rdc(path))
-	  	      ELSE subterm_at(b, rdc(path)) ENDIF,
-          rec(a)    : subterm_at(a, rdc(path)),
-	  ite(c,t,e): subterm_at( IF rac(path) = 0 THEN c ELSIF rac(path) = 1 THEN t ELSE e ENDIF , rdc(path))
-	  ELSE expr
-        ENDCASES ENDIF
-    MEASURE expr BY <<
-
-  path_conditions(expr: Expr, path: (valid_path(expr))): RECURSIVE Conditions
-  % = IF null?(path) THEN null
-  %   ELSE CASES expr OF
-  %   	   op1(o,a)  : path_conditions(a, rdc(path)),
-  % 	   op2(o,a,b): IF rac(path) = 0 THEN path_conditions(a, rdc(path))
-  % 	  	       ELSE path_conditions(b, rdc(path)) ENDIF,
-  %   	   rec(a)    : path_conditions(a, rdc(path)),
-  % 	   ite(c,tr,el): IF rac(path) = 0 THEN path_conditions(c, rdc(path))
-  % 	   	       ELSIF rac(path) = 1 THEN cons(pvsbool(c), path_conditions(tr, rdc(path)))
-  % 	      	       ELSE cons(pvsnot(c), path_conditions(el, rdc(path))) ENDIF
-  %   	   ELSE null
-  %   	 ENDCASES ENDIF
-  %   MEASURE expr BY << 
-  = CASES path OF
-      null: null,
-      cons(n,path_): append( IF NOT ite?(subterm_at(expr,path_)) OR n=0
-   	   	   THEN null
-  		   ELSE IF n=1 
-		   	THEN (: pvsbool(get_cond(subterm_at(expr,path_))) :)
-  		    	ELSE (: pvsnot(get_cond(subterm_at(expr,path_))) :) ENDIF ENDIF,
-  	           path_conditions(expr,path_) )
-     ENDCASES
-  MEASURE path BY <<
 
   valid_paths_subexpr : LEMMA
   FORALL (expr : Expr, path : (valid_path(expr))):
@@ -156,20 +84,22 @@ rdc_rac: COROLLARY
    path /= path_ext
    IMPLIES suffix?(cons(0, path), path_ext) OR suffix?(cons(1, path), path_ext) OR suffix?(cons(2, path), path_ext)
 
-valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] | 
-  		    FORALL(p: (valid_path(expr))): member(p, res) }
-  = 
-    CASES expr OF
-      op1(o,a)   : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
-      op2(o,a,b) : cons(null, append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) 
-      		              	 , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))(valid_paths(b)) ) ),
-      rec(a)     : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
-      ite(a,b,c) : cons(null, append[list[nat]]( append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) 
-      		   	         , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))(valid_paths(b)) )
-			 , map(LAMBDA(l:list[nat]): append[nat](l, (: 2 :)))(valid_paths(c)) ) )
-      ELSE (: null :)
-    ENDCASES 
-  MEASURE expr By <<
+  valid_paths(expr: Expr): RECURSIVE { res: list[(valid_path(expr))] | 
+    		    FORALL(p: (valid_path(expr))): member(p, res) }
+    = 
+      CASES expr OF
+        op1(o,a)   : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
+        op2(o,a,b) : cons(null, append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))
+		     				      (valid_paths(a)) 
+        		              	         , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))
+                                                      (valid_paths(b)) ) ),
+        rec(a)     : cons(null, map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) ),
+        ite(a,b,c) : cons(null, append[list[nat]]( append[list[nat]]( map(LAMBDA(l:list[nat]): append[nat](l, (: 0 :)))(valid_paths(a)) 
+        		   	         , map(LAMBDA(l:list[nat]): append[nat](l, (: 1 :)))(valid_paths(b)) )
+  			 , map(LAMBDA(l:list[nat]): append[nat](l, (: 2 :)))(valid_paths(c)) ) )
+        ELSE (: null :)
+      ENDCASES 
+    MEASURE expr By <<
 
   subset_member_sl: LEMMA
   FORALL(l1, l2 :Conditions):
