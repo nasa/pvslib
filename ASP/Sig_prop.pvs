@@ -1,0 +1,226 @@
+% -------------------------------------------------------------------
+%  File Name: Sig_prop.pvs
+%  Author Name: Gilberto Pérez
+%  	  	Felicidad Aguado 
+%  	  	Pablo Ascariz
+%		Pedro Cabalar
+%		Concepción Vidal
+% -------------------------------------------------------------------
+%   This theory defines the interpretations and provides
+%   related concepts and properties
+% -------------------------------------------------------------------
+%  This file is a single component of a library of logic theories. 
+%  ------------------------------------------------------------------
+%  For the most part, we follow the treatmet in the following text:
+%
+% F. Aguado, P. Cabalar, D. Pearce, G. Pérez, C. Vidal,
+% "A denotational semantics for equilibrium logic",
+% in Proc. of the  31st Intl. Conf. on Logic Programming, 2015.
+%
+%--------------------------------------------------------------------
+
+
+Sig_prop[T: TYPE+]: THEORY
+
+  BEGIN
+
+
+% Sets of atoms
+ s3?(x:nat):bool = x <= 2
+
+ S3: TYPE = (s3?)
+
+ s2?(x:nat):bool = s3?(x) AND (x=0 OR x=2)
+
+ S2: TYPE = (s2?)
+
+ S3_cont_S2: JUDGEMENT S2 SUBTYPE_OF S3
+
+
+
+% Interpretations
+ I: TYPE+ = [T -> S3]
+
+ IC: TYPE = {i: I | FORALL(t: T): (i(t) = 0 OR i(t) = 2)}
+
+ I_cont_IC: JUDGEMENT IC SUBTYPE_OF I
+
+
+ RH(i: I): IC =
+       LAMBDA(t: T): IF i(t) = 2 THEN 2 ELSE 0 ENDIF
+
+ RT(i: I): IC =
+       LAMBDA(t: T): IF i(t) = 0 THEN 0 ELSE 2 ENDIF
+
+ 
+
+% A product of interpretations
+ product(i,j: I): I =
+ 	      LAMBDA(t: T):
+	      IF (i(t) = 0 AND j(t) = 0) THEN 0
+	      ELSE IF (i(t) = 2 AND j(t) = 2) THEN 2
+	      ELSE 1 ENDIF ENDIF
+
+
+
+ % Ordering relation between interpretations and relationship with RT
+ R_ord(i,j: I): bool = 
+ 	    IF ((FORALL (t: T): (i(t) <= j(t))) AND RT(i) = RT(j)) THEN TRUE 
+	    ELSE FALSE 
+	    ENDIF
+
+
+
+ R_reflexive: LEMMA FORALL (i: I): R_ord(i,i)
+
+ R_antisymmetric: LEMMA FORALL (i,j: I):
+ 		  (R_ord(i,j) AND R_ord(j,i)) IMPLIES
+		  i = j
+
+ R_transitive: LEMMA FORALL (i,j,k: I):
+ 	       (R_ord(i,j) AND R_ord(j,k)) IMPLIES
+	       R_ord(i,k)
+
+
+
+ R_partial_order: LEMMA partial_order?[I](R_ord)
+
+
+
+ RT_ord: LEMMA FORALL (i: I): R_ord(i,RT(i))
+
+ RT_classic: LEMMA FORALL (i: IC): RT(i) = i
+
+ RT_ord_mon: LEMMA FORALL (i,j: I): R_ord(i,j) IMPLIES RT(i) = RT(j)
+
+ RT_ord_uniq: LEMMA FORALL (i: I,j: IC): R_ord(i,j) IMPLIES RT(i) = j
+
+
+
+% Alternative definition of the ordering relation
+ R_ord2(i,j: I): bool = 
+ 	    IF (FORALL (t: T): (i(t) <= j(t)) AND (i(t) = 0 IMPLIES j(t) = 0)) THEN TRUE 
+	    ELSE FALSE 
+	    ENDIF
+
+ R_ord_same: LEMMA FORALL (i,j: I): (R_ord(i,j) IFF R_ord2(i,j))
+
+
+
+% Operations with sets of Interpretations 
+ i: VAR I
+ ic: VAR IC
+
+
+ comp(S: set[I]): set[I] = {i: I | NOT member(i,S)}
+
+ comp_eq_complement: LEMMA FORALL (X: set[I]): comp(X) = complement(X)
+
+
+ classic(S: set[I]): set[IC] = {ic: IC | member(ic,S)}
+
+ bottom(S: set[I]): set[I] = {i: I | EXISTS (j: I): (member(j,S) AND R_ord2(i,j))}
+
+ top(S: set[I]): set[I] = {i: I | EXISTS (j: I): (member(j,S) AND R_ord2(j,i))}
+
+
+
+% Lemmas related to the operations with sets of Interpretations
+% Classic
+ classic_charact: LEMMA FORALL (X: set[I]): classic(X) = intersection(X,fullset[IC])
+
+ subset_comp: LEMMA FORALL (X,Y: set[I]):
+    subset?(comp(X), comp(Y)) IFF subset?(Y, X)
+
+ subset_classic: LEMMA FORALL (X: set[IC]): classic(X) = X
+
+ union_classic: LEMMA FORALL (X,Y: set[I]): classic(union(X,Y)) = union(classic(X),classic(Y))
+
+ intersection_classic: LEMMA FORALL (X,Y: set[I]): classic(intersection(X,Y)) = intersection(classic(X),classic(Y))
+
+
+% Union
+ union_bottom: LEMMA FORALL (X,Y: set[I]): bottom(union(X,Y)) = union(bottom(X),bottom(Y))
+
+ union_top: LEMMA FORALL (X,Y: set[I]): top(union(X,Y)) = union(top(X),top(Y))
+
+ union_bottom_cla: LEMMA FORALL (X,Y: set[IC]): bottom(union(X,Y)) = union(bottom(X),bottom(Y))
+
+ union_bottom_classic: LEMMA FORALL (X,Y: set[I]): bottom(classic(union(X,Y))) = union(bottom(classic(X)),bottom(classic((Y))))
+
+ union_top_classic: LEMMA FORALL (X,Y: set[I]): top(classic(union(X,Y))) = union(top(classic(X)),top(classic((Y))))
+
+
+% Intersection
+intersection_bottom: LEMMA FORALL (X,Y: set[I]): subset? (bottom(intersection(X,Y)), intersection(bottom(X),bottom(Y)))
+
+intersection_top: LEMMA FORALL (X,Y: set[I]): subset? (top(intersection(X,Y)), intersection(top(X),top(Y)))
+
+ 
+% Other properties
+ classic_include: LEMMA FORALL (X: set[I]): subset?(classic(X),X)
+
+ classic_monot: LEMMA FORALL (X,Y: set[I]): subset?(X,Y) IMPLIES subset?(classic(X),classic(Y))
+
+ bottom_include: LEMMA FORALL (X: set[I]): subset?(X,bottom(X))
+
+ bottom_subset: LEMMA FORALL (X, Y: set[I],i: I): subset?(X,Y) IMPLIES subset?(bottom(X),bottom(Y))
+
+ bottom_monot: LEMMA FORALL (X,Y: set[I]): subset?(X,Y) IMPLIES subset?(bottom(classic(X)),bottom(classic(Y)))
+
+ classic_bottom_classic: LEMMA FORALL (X: set[I]): classic(bottom(classic(X))) = classic(X)
+
+ top_include: LEMMA FORALL (X: set[I]): subset?(X,top(X))
+
+ top_subset: LEMMA FORALL (X, Y: set[I],i: I): subset?(X,Y) IMPLIES subset?(top(X),top(Y))
+
+ top_monot: LEMMA FORALL (X,Y: set[I]): subset?(X,Y) IMPLIES subset?(top(classic(X)),top(classic(Y)))
+
+ simplificat: LEMMA FORALL (X,Y: set[I]):  union(X,intersection(Y,X))=X
+
+ union_monot: LEMMA FORALL (X,Y,Z: set[I]):  subset?(X,Y) IMPLIES subset?(union(Z,X),union(Z,Y))
+
+ union_sub_tot: LEMMA FORALL (X,Y: set[I]):  subset?(X,Y) IFF FORALL (i:I): member (i,union(comp(X),Y))
+
+ charact_sub: LEMMA FORALL (X,Y: set[I]): subset?(X,Y) IFF intersection(X,comp(Y)) = emptyset
+
+ intersection_monot2: LEMMA FORALL (A,B,C,D: set[I]):  subset?(A,B) AND subset?(C,D) IMPLIES subset?(intersection(A,C),intersection(B,D))
+
+ classic_top_uni: LEMMA FORALL (i: I): classic(top(singleton(i))) = singleton(RT(i))
+
+ classic_total: LEMMA FORALL (S: set[I],i: I): (member(i,bottom(classic(S)))) IFF (member(RT(i),S))
+
+ classic_top: LEMMA FORALL (S: set[IC],i: I): (member(i,bottom(S))) IFF (member(RT(i),S))
+
+
+
+% Total closed ans related lemmas
+ S: VAR set[I]
+
+ total_closed?(S): bool =  FORALL (i:I): (member(i,S)) IMPLIES (member(RT(i),S))
+
+ total_closed_1: LEMMA FORALL (S: set[I]):  total_closed?(S) IMPLIES subset?(S, bottom(classic(S)))
+
+ total_closed_2: LEMMA FORALL (S: set[I]): subset?(S, bottom(classic(S))) IMPLIES classic(top(S))=classic(S)
+
+ total_closed_3: LEMMA FORALL (S: set[I]): classic(top(S))=classic(S) IMPLIES  total_closed?(S)
+
+
+
+% Characterizations of total closed
+ total_closed_caract1: LEMMA FORALL (S: set[I]):  total_closed?(S) IFF subset?(S, bottom(classic(S)))
+
+ total_closed_caract2: LEMMA FORALL (S: set[I]):  total_closed?(S) IFF classic(top(S))=classic(S)
+
+ total_closed_caract4: LEMMA FORALL (S: set[I],i: I): subset? (classic(top(S)),S) IMPLIES total_closed?(S)
+
+ total_closed_caract5: LEMMA FORALL (S: set[I],i: I): subset? (classic(top(S)),classic(S)) IFF total_closed?(S)
+
+
+% Consequences of the characterizations lemmas
+ bottom_classic_com_1: LEMMA FORALL (S: set[I],i: I): subset?(bottom(classic(comp(S))),comp(bottom(classic(S))))
+
+ bottom_classic_com_2: LEMMA FORALL (S: set[I],i: I):  total_closed?(S) IMPLIES subset?(bottom(classic(comp(S))),comp(S))
+
+
+  END Sig_prop
