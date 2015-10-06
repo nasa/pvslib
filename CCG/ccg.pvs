@@ -5,16 +5,16 @@
 %       Andréia Borges Avelar -- Universidade de Brasília - Brasil               %
 %       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil               %
 %                 Cesar Muñoz -- NASA Langley Research Center - US               %
+%           Anthony Narkawicz -- NASA Langley Research Center - US               %
 %                                                                                %
-%********************************************************************************%
-%                    last modified: Mar - 03 - 2014                              %
 %********************************************************************************%
 
 ccg[Val,Expr,Condition: TYPE, MT: TYPE, lt : (well_founded?[MT]), N: posnat,
     semantic_rel:PRED[[Expr,Val,Val]],eval_conds:PRED[[Condition,Val]]]: THEORY
 BEGIN
 
- IMPORTING ccg_def[Val,Expr,Condition,MT,lt,N]
+ IMPORTING ccg_def[Val,Expr,Condition,MT,lt,N],
+ 	   ints@ramsey_graph
 
 % ------------------------------------------------------------------------------- %
 %                      On sequences of call contexts
@@ -82,19 +82,51 @@ BEGIN
 
   IMPORTING scp
 
-  scp_implies_ccg_termination : CONJECTURE % MM
-    FORALL (dg:digraph):
-      scp_termination?[Val,Expr,Condition,Seq_cc(dg)](semantic_rel,eval_conds) IMPLIES
-      EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))
+  parext: LEMMA LET izzy = (LAMBDA (e:[nat,nat]): e`1/=e`2) IN
+    FORALL (FF:[(izzy)->finseq[below[N]]]): 
+    EXISTS (HH:[[nat,nat]->finseq[below[N]]]):
+      FORALL (i,j:nat): i/=j IMPLIES FF(i,j) = HH(i,j)
 
-  ccg_termination_implies_scp : CONJECTURE % AN
+  ge_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    ge(mt1,mt2) AND ge(mt2,mt3) IMPLIES ge(mt1,mt3)
+
+  ge_gt_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    ge(mt1,mt2) AND gt(mt2,mt3) IMPLIES gt(mt1,mt3)
+
+  gt_ge_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    gt(mt1,mt2) AND ge(mt2,mt3) IMPLIES gt(mt1,mt3)
+
+  extract_infinite_descent: LEMMA 
+    FORALL (J:IncSub,F:[nat->MT],K:nat): 
+    NOT ((FORALL (i:nat): EXISTS (j:nat): J(i)+j<J(i+1) AND gt(F(J(i)+j),F(J(i)+j+1))) AND
+    (FORALL (i:nat): i>=K IMPLIES ge(F(i),F(i+1))))
+
+  build_infinite_descent: LEMMA
+   NOT (EXISTS (J:IncSub,F:[nat->[nat->[Val->MT]]],vals:[nat->Val]):
+     FORALL (j:nat): 
+       (FORALL (i:nat): i<J(j+1)-J(j) IMPLIES ge(F(j)(i)(vals(J(j)+i)),
+       	       F(j)(i+1)(vals(J(j)+i+1)))) AND
+       (EXISTS (i:nat): i<J(j+1)-J(j) AND 
+       	       gt(F(j)(i)(vals(J(j)+i)),F(j)(i+1)(vals(J(j)+i+1)))) AND
+       F(j)(J(j+1)-J(j))=F(j+1)(0))
+
+  ccg_pigeonhole: LEMMA FORALL (dg:digraph,ccs:Seq_cc(dg)):
+    EXISTS (J:[nat->nat]): (FORALL (i,j:nat): i<j IMPLIES J(i)<J(j) AND ccs(J(i)) = ccs(J(j)))
+
+  ccg_termination_and_trans_implies_scp : LEMMA transitive?(lt) IMPLIES
     FORALL (dg:digraph):
       (EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))) IMPLIES
       scp_termination?[Val,Expr,Condition,Seq_cc(dg)](semantic_rel,eval_conds)  
 
-  ccg_termination_iff_scp : THEOREM 
+  ccg_termination_implies_scp : THEOREM
     FORALL (dg:digraph):
-      (EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))) IFF
+      (EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))) IMPLIES
       scp_termination?[Val,Expr,Condition,Seq_cc(dg)](semantic_rel,eval_conds)  
 
- END ccg
+END ccg

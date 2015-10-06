@@ -1,0 +1,110 @@
+ramsey_graph: THEORY
+
+% Infinite version of ramsey's theorem just for graphs.
+
+BEGIN
+
+  IMPORTING pigeonhole
+
+  N: VAR posnat
+
+  n,m,i,j,K,Q,M: VAR nat
+
+  P : VAR pred[nat]
+
+  VertexColoring(N): TYPE = [nat->below[N]]
+
+  EdgeColoring(N): TYPE = {ec:[[nat,nat]->below[N]] |
+    FORALL (i,j): i/=j IMPLIES ec(i,j) = ec(j,i)}
+
+  IncSub: TYPE = {J:[nat->nat] | FORALL (i,j): i<j IMPLIES J(i)<J(j)}
+
+  J,I: VAR IncSub
+
+  SatSet(P,K) : set[upto[K]] = {u:upto[K]|P(u)}
+
+  IncSub_ge: LEMMA J(i)>=i
+
+  BSet(P,K) : TYPE = {c:[# D:nat,F:[nat->nat] #] |
+    c`D<=K+1 AND
+    (FORALL (i:below[c`D]): c`F(i)<=K AND P(c`F(i))) AND
+    (FORALL (i,j:nat): i<j IMPLIES c`F(i)<c`F(j)) AND
+    (FORALL (u:(SatSet(P,K))): EXISTS (i:below[c`D]): c`F(i) = u)}
+
+  BSet_unique: LEMMA FORALL (c,q:BSet(P,K)):
+    c`D = q`D AND FORALL (i:below[c`D]): c`F(i) = q`F(i)
+
+  BSet_nonempty: LEMMA EXISTS (c:BSet(P,K)):TRUE
+
+  BSet_sequence: LEMMA K<=Q IMPLIES FORALL (c:BSet(P,K),q:BSet(P,Q)):
+    c`D <= q`D AND FORALL (i:below[c`D]): c`F(i) = q`F(i)
+
+  enum_natset: LEMMA
+    (EXISTS (K:nat): FORALL (i:nat): i>=K IMPLIES NOT P(i)) OR
+    (EXISTS (J):
+     FORALL (i:nat): P(i) IFF EXISTS (j:nat): J(j) = i)
+
+  VertexRamsey: LEMMA FORALL (vc:VertexColoring(N)): 
+    EXISTS (J): EXISTS (p:below(N)): FORALL (j): vc(J(j)) = p
+
+  e2v_fun(N:posnat,ec:EdgeColoring(N),j)(i): 
+     {J | EXISTS (p:below[N]): FORALL (n): J(n)>j AND J(n)>i AND ec(i,J(n))=p} =
+    LET vc = (LAMBDA (n:nat): ec(i,n)),
+        cf = choose({J | EXISTS (p:below(N)): FORALL (j): vc(J(j))=p})
+    IN (LAMBDA (z:nat): cf(j+i+1+z))
+
+  e2v_color(N:posnat,ec:EdgeColoring(N),j)(i):{p:below(N) | 
+                     FORALL (n): ec(i,e2v_fun(N,ec,j)(i)(n))=p} =
+    choose({p:below(N) | FORALL (n): ec(i,e2v_fun(N,ec,j)(i)(n))=p})
+
+  Ramsey_edge_fun(N:posnat,ec:EdgeColoring(N))(K): RECURSIVE
+    IncSub =
+    IF K=0 THEN (LAMBDA (n): IF n=0 THEN 0 ELSE e2v_fun(N,ec,0)(0)(n) ENDIF)
+    ELSE LET ref = Ramsey_edge_fun(N,ec)(K-1),
+    	     newec = (LAMBDA (i,j): ec(ref(i),ref(j)))
+	 IN
+           (LAMBDA (n): IF n<K THEN ref(n)
+      	      	   	ELSIF n=K THEN ref(K+3)
+		   	ELSE ref(e2v_fun(N,newec,K+4)(K+3)(K+4+n)) ENDIF)
+    ENDIF MEASURE K
+
+  Ramsey_edge_fun_eq: LEMMA FORALL (ec:EdgeColoring(N)):
+    FORALL (K1,K2:nat): K1<=K2 IMPLIES FORALL (i):
+    i<=K1 IMPLIES Ramsey_edge_fun(N,ec)(K1)(i)=Ramsey_edge_fun(N,ec)(K2)(i)
+
+  Ramsey_edge_fun_const: LEMMA FORALL (ec:EdgeColoring(N)):
+    EXISTS (p:below(N)): FORALL (i): i>K IMPLIES ec(Ramsey_edge_fun(N,ec)(K)(K),
+						    Ramsey_edge_fun(N,ec)(K)(i))=p
+
+  Ramsey_edge_fun_values: LEMMA FORALL (ec:EdgeColoring(N)):
+    K<=Q IMPLIES EXISTS (j): j>=i AND
+    Ramsey_edge_fun(N,ec)(K)(j)=Ramsey_edge_fun(N,ec)(Q)(i)
+
+  % Ramsey_edge_fun_const2: LEMMA FORALL (ec:EdgeColoring(N)):
+  %   j<=K IMPLIES
+  %   EXISTS (p:below(N)): FORALL (i): i>j IMPLIES ec(Ramsey_edge_fun(N,ec)(K)(j),
+  % 						    Ramsey_edge_fun(N,ec)(K)(i))=p
+
+  Ramsey_edge_fun_def: LEMMA FORALL (ec:EdgeColoring(N)):
+    LET J = Ramsey_edge_fun(N,ec)(K) IN
+       FORALL (i): i<=K IMPLIES EXISTS (p:below(N)):
+       FORALL (j): j>i IMPLIES ec(J(i),J(j))=p
+
+  Ramsey_edge_color(N:posnat,ec:EdgeColoring(N))(K): {p:below(N) |
+    FORALL (j): j>=K IMPLIES FORALL (i): i>K IMPLIES
+    ec(Ramsey_edge_fun(N,ec)(K)(K),Ramsey_edge_fun(N,ec)(j)(i))=p} =
+    choose({p:below(N) |
+    FORALL (j): j>=K IMPLIES FORALL (i): i>K IMPLIES
+    ec(Ramsey_edge_fun(N,ec)(K)(K),Ramsey_edge_fun(N,ec)(j)(i))=p})
+
+
+  % EdgeRamsey_init: LEMMA FORALL (ec:EdgeColoring(N)):
+  %   EXISTS (J): FORALL (i): EXISTS (p:below(N)):
+  %   FORALL (j): i/=j IMPLIES ec(J(i),J(j))=p
+
+  EdgeRamsey: LEMMA FORALL (ec:EdgeColoring(N)):
+    EXISTS (J): EXISTS (p:below(N)): 
+    FORALL (i,j): i/=j IMPLIES ec(J(i),J(j))=p
+
+
+END ramsey_graph
