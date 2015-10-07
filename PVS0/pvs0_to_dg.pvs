@@ -1,0 +1,137 @@
+%********************************************************************************%
+%   Construction of a digraph of calling context for a PVS0 definition           %
+%										 %
+%   Authors:									 %
+%   										 %
+%       Andréia Borges Avelar -- Universidade  de  Brasília  - Brasil  		 %
+%       Mauricio Ayala-Rincon -- Universidade  de  Brasília  - Brasil  		 %
+%                 Cesar Muñoz -- NASA  Langley  Research  Center - US		 %
+%	   Mariano M. Moscato -- National Institute of Aerospace - US            %
+%		  	      	      	      	       	      			 %
+%********************************************************************************%
+pvs0_to_dg[T:TYPE+] : THEORY
+BEGIN
+
+  IMPORTING lang[T],
+            BoolPVS0[T],
+	    eval_props[T],
+            structures@set_as_list,
+            CCG@cc_def[Val,Expr,Conditions]
+
+
+                      n : VAR nat
+               cc1, cc2 : VAR CallingContext
+                    def : VAR Def
+              eval_bool : VAR [T -> bool]
+               eval_op1 : VAR [nat->[T->T]]
+               eval_op2 : VAR [nat->[[T,T]->T]]
+	           expr : VAR Expr
+
+% ------------------------------------------------------------------------------- %
+% functions to build the list and then the set of vertices
+
+  pvs0_to_dg_vertex((def), path:(valid_path(get_body(def))))(cc: CallingContext) : bool =
+    subterm_at(get_body(def),path) = rec(cc`actuals) AND
+    path_conditions(get_body(def), path) = cc`conds
+    
+  cc_of_pvs0(def)(cc: CallingContext): bool =
+    EXISTS(path: (valid_path(get_body(def)))): pvs0_to_dg_vertex(def, path)(cc)
+
+  pvs0_to_dg_make_cc( (def), path: (valid_path(get_body(def))) | 
+				    rec?(subterm_at(get_body(def), path)) ) 
+  : (pvs0_to_dg_vertex(def, path)) =
+    make_cc(get_arg(subterm_at(get_body(def), path)), path_conditions(get_body(def), path))
+
+  % Computable calculation of pvs0 calling contexts given valid paths of a definition
+  pvs0_to_dg_paths_vertices(def: Def, paths: list[(valid_path(get_body(def)))]) : RECURSIVE 
+    { res: list[ (cc_of_pvs0(def)) ] | 
+      	FORALL(p: (valid_path(get_body(def))) | member(p, paths)):
+	  rec?(subterm_at(get_body(def), p)) 
+	  IMPLIES member(pvs0_to_dg_make_cc(def, p), res) } = 
+    CASES paths OF
+      null: null,
+      cons(p, ps): LET subexpr = subterm_at(get_body(def), p) 
+                   IN IF rec?(subexpr) 
+  		      THEN cons( pvs0_to_dg_make_cc(def, p), 
+		                 pvs0_to_dg_paths_vertices(def, ps) )
+  		      ELSE pvs0_to_dg_paths_vertices(def, ps) ENDIF
+    ENDCASES
+  MEASURE paths BY <<
+
+  pvs0_to_dg_vertices_l(def): list[(cc_of_pvs0(def))] =
+    pvs0_to_dg_paths_vertices(def, valid_paths(get_body(def)))
+  
+  pvs0_to_dg_vertices_completeness: LEMMA
+    FORALL(def: Def, cc: (cc_of_pvs0(def))): member[CallingContext](cc, pvs0_to_dg_vertices_l(def))
+
+  pvs0_to_dg_verts(def): finite_set[CallingContext] =
+    list2set[CallingContext](pvs0_to_dg_vertices_l(def))
+
+  cc_of_pvs0_completeness: LEMMA
+    FORALL(def: Def, cc: (cc_of_pvs0(def))): pvs0_to_dg_verts(def)(cc)
+
+  pvs0_ccs_rec(def: Def)(paths: list[(valid_path(get_body(def)))]) 
+    : RECURSIVE { res: list[ (pvs0_tcc_valid_cc(def)) ] | 
+      	      	FORALL(p: (valid_path(get_body(def)))):
+  		LET subexpr = subterm_at(get_body(def), p) IN
+  		member(p, paths) AND
+  		rec?(subexpr) IMPLIES
+  		LET cc: (pvs0_tcc_valid_cc(def)) = (# `path := p, 
+  		       	    `rec_expr := subexpr, 
+  		   	    `cnds     := path_conditions(get_body(def), p)  #) 
+  	        IN member(cc, res) }
+    = CASES paths OF
+        null: null,
+        cons(p, ps): LET subexpr = subterm_at(get_body(def), p) IN
+        	      	   IF rec?(subexpr) 
+  		   THEN cons( (# `rec_expr := subexpr, 
+  		   	      	 `cnds     := path_conditions(get_body(def), p),
+  				 `path     := p #) , pvs0_ccs_rec(def)(ps) )
+  		   ELSE pvs0_ccs_rec(def)(ps) ENDIF
+      ENDCASES 
+    MEASURE paths BY <<
+
+  pvs0_ccs(def: Def) : list[ (pvs0_tcc_valid_cc(def)) ] =
+    pvs0_ccs_rec(def)(valid_paths(get_body(def)))
+
+  pvs0_ccs_completness: LEMMA
+    FORALL(def: Def, cc: (pvs0_tcc_valid_cc(def))): member(cc, pvs0_ccs(def))
+
+  dg_vert_valid_cc: LEMMA
+   FORALL(dg_vert: (cc_of_pvs0(def))): 
+    EXISTS(cc: (pvs0_tcc_valid_cc(def))): 
+      dg_vert`actuals = get_arg(cc`rec_expr) AND 
+      dg_vert`conds = cc`cnds
+
+% ------------------------------------------------------------------------------- %
+% function to remove edges
+
+  remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2) : bool =
+    FORALL(env:Environment,val:Val): 
+      eval_conds(eval_bool,eval_op1,eval_op2)(def,cc1`conds,env) AND
+      semantic_rel_expr(eval_bool,eval_op1,eval_op2)
+                       (cc1`actuals,get_body(def),env,val) IMPLIES
+        NOT eval_conds(eval_bool,eval_op1,eval_op2)(def,cc2`conds,val2env(val))
+
+% ------------------------------------------------------------------------------- %
+% function to built the set of edges
+
+  IMPORTING finite_sets@finite_cross % to prove TCC of pvs0_to_dg_edges
+
+  pvs0_to_dg_edges(eval_bool,eval_op1,eval_op2)(def):
+  finite_set[[CallingContext,CallingContext]] =
+    {(cc1,cc2) | member(cc1,pvs0_to_dg_verts(def)) AND
+     member(cc2,pvs0_to_dg_verts(def)) AND
+     NOT remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2)}
+
+% ------------------------------------------------------------------------------- %
+% function to built the digraph of calling contexts given a PVS0 definition
+
+  IMPORTING digraphs@digraphs[CallingContext] 
+
+  pvs0_to_dg(eval_bool,eval_op1,eval_op2)(def): digraph =
+    (# vert  := pvs0_to_dg_verts(def),
+       edges := pvs0_to_dg_edges(eval_bool,eval_op1,eval_op2)(def)
+     #)
+
+END pvs0_to_dg

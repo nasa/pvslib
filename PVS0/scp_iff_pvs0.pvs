@@ -1,0 +1,74 @@
+%********************************************************************************%
+%   SCP if and only if PVS0 termination  					 %
+%		  	      	      	      	       	      			 %
+%   Authors:									 %
+%   										 %
+%       Andréia Borges Avelar -- Universidade  de  Brasília  - Brasil  		 %
+%       Mauricio Ayala-Rincon -- Universidade  de  Brasília  - Brasil  		 %
+%                 Cesar Muñoz -- NASA  Langley  Research  Center - US		 %
+%	   Mariano M. Moscato -- National Institute of Aerospace - US            %
+%		  	      	      	      	       	      			 %
+%********************************************************************************%
+scp_iff_pvs0[T:TYPE+,
+             eval_bool:[T->bool],eval_op1:[nat->[T->T]],eval_op2:[nat->[[T,T]->T]]] : THEORY
+BEGIN
+
+  IMPORTING pvs0_to_dg[T]
+
+  def : VAR Def
+
+  semantic_relation(def)(expr:Expr,env:Val,val:Val): MACRO bool =
+    semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,get_body(def),val2env(env),val)
+
+  eval_conditions(def)(conds:Conditions,env:Val): MACRO bool =
+        eval_conds(eval_bool,eval_op1,eval_op2)(def,conds,val2env(env))
+
+  IMPORTING CCG@scp
+
+  scp_termination_pvs0(def) : bool =
+    scp_termination?[Val,Expr,Conditions,[nat->(cc_of_pvs0(def))]]
+                    (semantic_relation(def),eval_conditions(def))
+
+  x,y: VAR Val 
+
+  R(def)(x,y): bool = 
+    EXISTS(cc: (cc_of_pvs0(def))):
+      eval_conditions(def)(cc`conds,y) AND
+      semantic_relation(def)(cc`actuals,y,x)
+
+  IMPORTING orders@well_foundedness[Val]
+
+  R_wf: LEMMA
+    scp_termination_pvs0(def) IMPLIES 
+    well_founded?(R(def))
+
+  IMPORTING structures@more_list_props
+
+  R_no_desc_inf_branch: LEMMA
+    FORALL (x: Val): is_finite({y: Val | R(def)(y, x)})    
+
+  IMPORTING measure_termination[T,nat,<]
+
+% ------------------------------------------------------------------------------- %
+% SCP implies PVS0 measure termination
+
+  scp_implies_pvs0_tcc : LEMMA
+    scp_termination_pvs0(def) 
+    IMPLIES pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def)
+
+% ------------------------------------------------------------------------------- %
+% PVS0 measure termination implies SCP
+
+  pvs0_tcc_implies_scp : LEMMA
+    pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def)
+    IMPLIES scp_termination_pvs0(def) 
+
+% ------------------------------------------------------------------------------- %
+% SCP if and only PVS0 termination
+
+  scp_iff_pvs0_terminates : THEOREM
+    scp_termination_pvs0(def) 
+    IFF 
+    terminates(eval_bool,eval_op1,eval_op2)(def)
+
+END scp_iff_pvs0
