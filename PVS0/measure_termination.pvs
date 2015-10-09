@@ -3,7 +3,6 @@ BEGIN
   IMPORTING BoolPVS0[T],
             structures@set_as_list,
 	    structures@more_list_props[nat],
-	    lang[T],
 	    pvs0_to_dg[T],
 	    measure_termination_defs
 
@@ -54,11 +53,49 @@ BEGIN
   lt_val_no_desc_inf_branch: LEMMA
     FORALL(x:Val): is_finite({y: Val | lt_val(eval_bool, eval_op1, eval_op2)(def)(wfm) (y,x)})
 
-  IMPORTING orders@lex2_generic, orders@omega
+  IMPORTING orders@lex2_generic, 
+            orders@omega
+  
+  % This lemma states that Omega is an upper bound for the nat parameter of eval
+  omega_is_eval_ub: LEMMA
+    pvs0_tcc_termination_pred(eval_bool,eval_op1,eval_op2)(def)(wfm) 
+    IMPLIES
+     FORALL(expr: Expr, env: Environment, path: (valid_path(get_body(def)))):
+      expr = subterm_at(get_body(def), path) AND
+      eval_conds_rec(eval_bool,eval_op1,eval_op2) 
+                    (get_body(def),path_conditions(get_body(def), path),env)
+      IMPLIES
+        EXISTS (n: nat | n <= omega[Val,lt_val(eval_bool, eval_op1, eval_op2)(def)(wfm)].Omega(env(vr))):
+          some?(eval_expr(eval_bool, eval_op1, eval_op2)(n, expr, get_body(def), env)) AND
+          semantic_rel_expr(eval_bool, eval_op1, eval_op2)
+                           (expr, get_body(def), env,
+                            val(eval_expr(eval_bool, eval_op1, eval_op2)
+                                         (n,expr,get_body(def),env)))
 
   pvs0_tcc_implies_terminates : THEOREM
     FORALL (def : Def) : 
       pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def) 
       IMPLIES terminates(eval_bool,eval_op1,eval_op2)(def)
+
+  pvs0_tcc_termination_j : JUDGEMENT
+    (pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)) SUBTYPE_OF Terminating(eval_bool,eval_op1,eval_op2)
+
+  mu_le_omega: LEMMA
+    FORALL((pvs0: Def | pvs0_tcc_termination_pred(eval_bool,eval_op1,eval_op2)(pvs0)(wfm)),
+    	   v:Val): 
+      LET n = omega[Val,lt_val(eval_bool,eval_op1,eval_op2)(pvs0)(wfm)].Omega(v) IN
+        mu(eval_bool,eval_op1,eval_op2)(pvs0)(v) <= n
+
+  %% Uses Omega to evaluate a terminating PVS0 function
+  Omega_eval(eval_bool,eval_op1,eval_op2)(pvs0:(pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)))
+            (arg:Val) : Val =
+    LET m = choose({wfm | pvs0_tcc_termination_pred(eval_bool,eval_op1,eval_op2)(pvs0)(wfm)}),
+        n = omega[Val,lt_val(eval_bool,eval_op1,eval_op2)(pvs0)(m)].Omega(arg) IN
+    val(eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(val2env(arg)))
+
+  Omega_eval_correct : THEOREM
+    FORALL (pvs0:(pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)))(arg,val:Val):
+      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,val2env(arg),val) IFF
+      val = Omega_eval(eval_bool,eval_op1,eval_op2)(pvs0)(arg) 
 
 END measure_termination

@@ -1,4 +1,4 @@
-lang[T:TYPE+]: THEORY
+pvs0_lang[T:TYPE+]: THEORY
 BEGIN
 
   Val : TYPE = T
@@ -8,10 +8,8 @@ BEGIN
   Environment : TYPE = [(vr?)->Val]
 
   eval_bool : VAR [Val -> bool]
- 
-  eval_op1 : VAR [nat->[Val->Val]]
-
-  eval_op2 : VAR [nat->[[Val,Val]->Val]]
+  eval_op1  : VAR [nat->[Val->Val]]
+  eval_op2  : VAR [nat->[[Val,Val]->Val]]
 
   val2env(val:Val) : MACRO Environment =
     LAMBDA(v:(vr?)):val
@@ -181,92 +179,15 @@ BEGIN
            myv = eval(eval_bool,eval_op1,eval_op2)(mun,pvs0)(val2env(val)) IN
        some?(myv)
 
-  %% Conditions 
+  %% Uses mu to evaluate a terminating PVS0 function
+  mu_eval(eval_bool,eval_op1,eval_op2)(pvs0:Terminating(eval_bool,eval_op1,eval_op2))
+         (v:Val) : Val =
+    LET n = mu(eval_bool,eval_op1,eval_op2)(pvs0)(v) IN
+    val(eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(val2env(v)))
 
-  IMPORTING BoolPVS0
-
-  Conditions : TYPE = list[BoolPVS0[T]]
-
-  eval_conds_rec(eval_bool,eval_op1,eval_op2)
-                (body:Expr,cnds:Conditions,env:Environment) : RECURSIVE bool =
-    CASES cnds OF
-      null : TRUE,
-      cons(a,q) : CASES a OF
-                   pvsbool(expr) : EXISTS (val:Val):
-                      semantic_rel_expr(eval_bool,eval_op1,eval_op2)
-                                       (expr,body,env,val)
-                      AND eval_bool(val), 
-                   pvsnot(expr) : EXISTS (val:Val) :
-                      semantic_rel_expr(eval_bool,eval_op1,eval_op2)
-                                       (expr,body,env,val)
-                      AND NOT eval_bool(val)
-                  ENDCASES AND 
-                  eval_conds_rec(eval_bool,eval_op1,eval_op2)(body,q,env)
-    ENDCASES
-  MEASURE cnds BY <<
-    
-  eval_conds(eval_bool,eval_op1,eval_op2)
-            (def:Def,cnds:Conditions,env:Environment) : bool =  
-    eval_conds_rec(eval_bool,eval_op1,eval_op2)(get_body(def),cnds,env)
-
-  %% paths
-  IMPORTING structures@more_list_props[nat]
-
-  valid_path(expr: Expr)(path: list[nat]): RECURSIVE bool
-  = CASES expr OF
-      vr         : null?(path),
-      cnst(cval) : null?(path),
-      op1(o,a)   : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
-      op2(o,a1,a2) : null?(path) 
-      		     OR (rac(path) = 0 AND valid_path(a1)(rdc(path)))
-		     OR (rac(path) = 1 AND valid_path(a2)(rdc(path))),
-      rec(a)       : null?(path) OR (rac(path) = 0 AND valid_path(a)(rdc(path))),
-      ite(c,t,e)   : null?(path) 
-      		     OR (rac(path) = 0 AND valid_path(c)(rdc(path)))
-		     OR (rac(path) = 1 AND valid_path(t)(rdc(path)))
-		     OR (rac(path) = 2 AND valid_path(e)(rdc(path)))
-    ENDCASES
-  MEASURE expr by <<
+  mu_eval_correct : THEOREM
+    FORALL (pvs0:Terminating(eval_bool,eval_op1,eval_op2))(arg,val:Val):
+      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,val2env(arg),val) IFF
+      val = mu_eval(eval_bool,eval_op1,eval_op2)(pvs0)(arg) 
   
-  subterm_at(expr: Expr, path: (valid_path(expr))): RECURSIVE ({res: Expr | subterm(res,expr)})
-  = IF null?(path) THEN expr
-    ELSE CASES expr OF
-          op1(o,a)  : subterm_at(a, rdc(path)),
-	  op2(o,a,b): IF rac(path) = 0 THEN subterm_at(a, rdc(path))
-	  	      ELSE subterm_at(b, rdc(path)) ENDIF,
-          rec(a)    : subterm_at(a, rdc(path)),
-	  ite(c,t,e): subterm_at( IF rac(path) = 0 THEN c 
-	  	      		  ELSIF rac(path) = 1 THEN t 
-				  ELSE e ENDIF , rdc(path))
-	  ELSE expr
-        ENDCASES ENDIF
-    MEASURE expr BY <<
-
-  path_conditions(expr: Expr, path: (valid_path(expr))): RECURSIVE Conditions
-  = CASES path OF
-      null: null,
-      cons(n,path_): append( IF NOT ite?(subterm_at(expr,path_)) OR n=0
-   	   	   THEN null
-  		   ELSE IF n=1 
-		   	THEN (: pvsbool(get_cond(subterm_at(expr,path_))) :)
-  		    	ELSE (: pvsnot(get_cond(subterm_at(expr,path_))) :) ENDIF ENDIF,
-  	           path_conditions(expr,path_) )
-     ENDCASES
-  MEASURE path BY <<
-
-  %% Calling contexts for pvs0
-  % 
-  PVS0_CC: TYPE = [# rec_expr: (rec?)    % PVS0 recursive call: R(...)
-  	   	   , cnds: Conditions    % Path conditions that leads to the recursive call (rec_expr)
-  		   , path: list[nat] #]  % Position of rec_expr (in a wrapping expression)
-
-  %% Given a definition (def: Def) a calling context (cc) is said to be valid 
-  %  when the expression cc`rec_expr appears in def, in the position determined
-  %  by cc`path and the conditions cc`conds need to be true to reach cc`expr 
-  %  during a computation.
-  pvs0_tcc_valid_cc(def: Def)(cc: PVS0_CC): bool =
-    valid_path(get_body(def))(cc`path) AND
-    cc`rec_expr = subterm_at(get_body(def), cc`path) AND 
-    cc`cnds = path_conditions(get_body(def), cc`path)
-  
-END lang
+END pvs0_lang
