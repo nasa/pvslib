@@ -8,51 +8,96 @@
 %                 Aaron Dutle -- NASA Langley Research Center - US               %
 %                                                                                %
 %********************************************************************************%
-
 measures[N: posnat]: THEORY
-
 BEGIN
 
-	IMPORTING reals@sign3, sets_aux@fun_below_props
-    
+  IMPORTING reals@sign3, 
+  	    sets_aux@fun_below_props,
+	    structures@listn
 % ------------------------------------------------------------------------------- %
 %  measures and matrices
 % ------------------------------------------------------------------------------- %
+  Measure_Matrix : TYPE = listn[listn[Sign3](N)](N)
 
- Measure_Matrix : TYPE = [below(N) -> [below(N) -> Sign3]]
+  m,m1,m2: VAR Measure_Matrix
+  i,j,k  : VAR below(N)
 
- Undefined : MACRO Sign3 = -1
+  get(m)(i,j): Sign3 = nth(nth(m,i),j)
 
+  Measure_Mat_Fn : TYPE = [below(N) -> [below(N) -> Sign3]]
+
+  f,f1,f2: VAR Measure_Mat_Fn
+  
+  eq(m,f): bool = FORALL (i,j:below(N)): get(m)(i,j) = f(i)(j)
+
+  Undefined : MACRO Sign3 = -1
+
+  IMPORTING structures@array2list
+
+  form_matrix(f): { m: Measure_Matrix | eq(m,f) } =
+    array2list[listn[Sign3](N)](N)(
+      LAMBDA (k:nat): IF k < N THEN
+      	     	        array2list[Sign3](N)(LAMBDA (p:nat): 
+					       IF p < N THEN f(k)(p) ELSE Undefined ENDIF)
+		      ELSE (:Undefined:)^N ENDIF)
+
+  form_matfun(m): { (f) | eq(m,f) } = LAMBDA(i)(j): get(m)(i,j)
+
+  matrix_fun_idemp: LEMMA
+    form_matrix(form_matfun(m)) = m
+
+  fun_matrix_idemp: LEMMA
+    form_matfun(form_matrix(f)) = f
+
+  get_form_matrix: LEMMA
+    get(form_matrix(f))(i,j) = f(i)(j)
 % ------------------------------------------------------------------------------- %
 %  operations
 % ------------------------------------------------------------------------------- %
+  Plus3(x, y : Sign3) : Sign3 =
+       IF (x = Undefined OR y = Undefined) THEN Undefined
+       ELSIF (x = 1 OR y = 1) THEN 1
+       ELSE 0
+       ENDIF
 
-       IMPORTING structures@max_array[N, Sign3, <=]
+  max_(n:posnat)(f: [below(n) -> Sign3]): RECURSIVE % Sign3 =
+  { t: Sign3 | (FORALL (i:below(n)): f(i) <= t) AND
+                    (EXISTS(j:below(n)): f(j) = t)} =
+    IF n = 1 THEN f(0) ELSE 
+      LET next = max_(n-1)(LAMBDA(i: below(n-1)): f(i)) IN
+      IF f(n-1) <= next THEN next ELSE f(n-1) ENDIF ENDIF
+    MEASURE n
 
- Plus3(x, y : Sign3) : Sign3 =
-      IF (x = Undefined OR y = Undefined) THEN Undefined
-      ELSIF (x = 1 OR y = 1) THEN 1
-      ELSE 0
-      ENDIF
+  max(f: [below(N) -> Sign3]): { t: Sign3 | (FORALL i: f(i) <= t) AND
+                    (EXISTS j: f(j) = t)}
+  = max_(N)(f)
 
- ;*(m1, m2: Measure_Matrix): Measure_Matrix =
-      LAMBDA(i: below(N))(j: below(N)): 
-            max( LAMBDA(k: below(N)): ( Plus3(m1(i)(k) , m2(k)(j)) ) )
+  mult(f1,f2): Measure_Mat_Fn =
+       LAMBDA(i: below(N))(j: below(N)): 
+             max( LAMBDA(k: below(N)): ( Plus3(f1(i)(k) , f2(k)(j)) ) )
 
- ;+(m1, m2: Measure_Matrix): Measure_Matrix =
-      LAMBDA(i: below(N))(j: below(N)): Plus3(m1(i)(j) , m2(i)(j))
+  ;*(m1, m2: Measure_Matrix): Measure_Matrix =
+    form_matrix(mult(form_matfun(m1),form_matfun(m2)))
+ 
+  sum(f1,f2): Measure_Mat_Fn =
+       LAMBDA(i: below(N))(j: below(N)): Plus3(f1(i)(j) , f2(i)(j))
 
- id : Measure_Matrix = 
-      LAMBDA(i : below(N))(j : below(N)) : IF i = j THEN 0 ELSE -1 ENDIF
+  ;+(m1, m2: Measure_Matrix): Measure_Matrix =
+    form_matrix(sum(form_matfun(m1),form_matfun(m2)))
+ 
+  % Identitity
+  id_fun(i)(j): Sign3 = IF i = j THEN 0 ELSE Undefined ENDIF
+  
+  id : Measure_Matrix = form_matrix(id_fun)
 
+  id_def: LEMMA 
+    get(id)(i,j) = IF i = j THEN 0 ELSE Undefined ENDIF
+ 
+  le(f1,f2): bool = FORALL (i,j): f1(i)(j)<=f2(i)(j)
 
-
- ;<=(m1, m2: Measure_Matrix): bool = 
-      FORALL (i,j: below(N)): m1(i)(j)<=m2(i)(j)
-
- ;<(m1, m2: Measure_Matrix): bool = (NOT m1=m2) AND m1<=m2  
-
-
+  ;<=(m1,m2): bool = le(form_matfun(m1),form_matfun(m2))
+ 
+  ;<(m1, m2: Measure_Matrix): bool = (NOT m1=m2) AND m1<=m2  
 % ------------------------------------------------------------------------------- %
 %  Properties
 % ------------------------------------------------------------------------------- %
@@ -70,70 +115,104 @@ BEGIN
  id_on_measures: LEMMA
    Plus3(0 , x) = x AND Plus3(x , 0) = x
 
+ IMPORTING structures@more_list_props
+
  card_prep: LEMMA is_finite[Measure_Matrix](fullset[Measure_Matrix])
 
  card_measure_matrices: LEMMA card(fullset[Measure_Matrix]) = 3^(N^2)
 
+ matrices_fun_order: LEMMA partial_order?(le)
+
  matrices_order: LEMMA partial_order?(<=)
+
+ mult_fun_left_preserves_order: LEMMA
+    le(f1,f2) IMPLIES le(mult(f,f1),mult(f,f2))
 
  mult_left_preserves_order: LEMMA FORALL (n, m1, m2:Measure_Matrix):
     m1<=m2 IMPLIES n*m1<=n*m2  
+
+ mult_fun_right_preserves_order: LEMMA
+    le(f1,f2) IMPLIES le(mult(f1,f),mult(f2,f))
 
  mult_right_preserves_order: LEMMA FORALL (n, m1, m2:Measure_Matrix):
     m1<=m2 IMPLIES m1*n<=m2*n
 
 %---------------------------------------------------
 
+ id_fun_is_identity: LEMMA
+   identity?(mult)(id_fun)
+
  id_is_identity: LEMMA
    identity?(*)(id)
 
  max_add: LEMMA
    FORALL(A: ARRAY[below(N) -> Sign3], a: Sign3):
-       Plus3(max(A) , a) = max(LAMBDA (i: below(N)): Plus3(A(i) , a))
+       Plus3(max(A) , a) = max   (LAMBDA (i: below(N)): Plus3(A(i) , a))
+
+ measure_matrix_fun_assoc: LEMMA
+   associative?(mult)
 
  measure_matrix_assoc: LEMMA
    associative?(*)
-
 
 % ------------------------------------------------------------------------------- %
 %  Positivity and Compatibility
 % ------------------------------------------------------------------------------- %
 
- positive?(m: Measure_Matrix) : bool =
-   EXISTS(j: below(N)) : m(j)(j) = 1
+ positive_fun?(f) : bool = EXISTS(j: below(N)) : f(j)(j) = 1
+
+ positive?(m) : bool = positive_fun?(form_matfun(m))
 
  compatible?(m1, m2: Measure_Matrix): bool =
-   EXISTS(j: below(N)) : Plus3(m1(j)(j) , m2(j)(j)) = 1
+   EXISTS(j: below(N)) : Plus3(get(m1)(j,j) , get(m2)(j,j)) = 1
 
  defined?(m: Measure_Matrix): bool = 
-   EXISTS(j: below(N)) : m(j)(j) /= Undefined
+   EXISTS(j: below(N)) : get(m)(j,j) /= Undefined
 
- defined_pos?(m: Measure_Matrix, i, j: below(N)): bool = m(i)(j) /= Undefined
+ defined_pos_fun?((f),(i),(j)): bool = f(i)(j) /= Undefined
 
- positive_pos?(m: Measure_Matrix, i, j: below(N)): bool = m(i)(j) = 1
+ defined_pos?((m),(i),(j)): bool = defined_pos_fun?(form_matfun(m),i,j)
+
+ defined_pos?_def: LEMMA
+   defined_pos?(m,i,j) = (get(m)(i,j) /= Undefined)
+
+ positive_pos?(m: Measure_Matrix, i, j: below(N)): bool = get(m)(i,j) = 1
 
 
 % ------------------------------------------------------------------------------- %
 %  Properties
 % ------------------------------------------------------------------------------- %
 
+ positive_mult_fun: LEMMA
+   positive_fun?(mult(f1,f2)) IFF
+   EXISTS(j, k: below(N)): Plus3(f1(j)(k) , f2(k)(j)) = 1
+
  positive_multiplication: LEMMA
    FORALL(m1, m2: Measure_Matrix):
      positive?(m1*m2) IFF
-     EXISTS(j, k: below(N)): Plus3(m1(j)(k) , m2(k)(j)) = 1
+     EXISTS(j, k: below(N)): Plus3(get(m1)(j,k) , get(m2)(k,j)) = 1
 
  positive_commute: LEMMA
    FORALL (m1, m2: Measure_Matrix):
      positive?(m1*m2) IMPLIES positive?(m2*m1)
 
+ positive_mult_fun_pos: LEMMA
+   Plus3(f1(k)(k),f2(k)(k)) = 1 IMPLIES mult(f1,f2)(k)(k) = 1
+
  positive_mult_pos: LEMMA
    FORALL(m1, m2: Measure_Matrix, k: below(N)):
-     Plus3(m1(k)(k),m2(k)(k)) = 1 IMPLIES (m1 * m2)(k)(k) = 1
+     Plus3(get(m1)(k,k),get(m2)(k,k)) = 1 IMPLIES get(m1 * m2)(k,k) = 1
+
+ positive_sum_fun: LEMMA
+   positive_fun?(sum(f1,f2)) IMPLIES positive_fun?(f1) OR positive_fun?(f2)
 
  positive_sum: LEMMA
    FORALL (m1, m2: Measure_Matrix):
      positive?(m1 + m2) IMPLIES positive?(m1) OR positive?(m2)
  
+ positive_sum_fun_positive_mult_fun: LEMMA
+    positive_fun?(sum(f1,f2)) IMPLIES positive_fun?(mult(f1,f2))
+
  positive_sum_positive_mult: LEMMA
    FORALL (m1, m2: Measure_Matrix):
       positive?(m1 + m2) IMPLIES positive?(m1*m2)
@@ -146,22 +225,36 @@ BEGIN
    FORALL(m1, m2, m3: Measure_Matrix):
       compatible?(m2, m3*m1) IMPLIES positive?(m1*m2*m3)
 
+ defined_pos_mul_fun: LEMMA
+   defined_pos_fun?(f1, i, j) AND defined_pos_fun?(f2, j, k)
+   IMPLIES defined_pos_fun?(mult(f1,f2), i, k)
+
  defined_pos_mul: LEMMA
    FORALL(m1, m2: Measure_Matrix, i, j, k: below(N)):
      defined_pos?(m1, i, j) AND defined_pos?(m2, j, k)
      IMPLIES defined_pos?(m1*m2, i, k)
+
+ defined_pos_decomp_fun: LEMMA
+   defined_pos_fun?(mult(f1,f2), i, j) IFF
+   EXISTS(k: below(N)): defined_pos_fun?(f1, i, k) AND defined_pos_fun?(f2, k, j)
 
  defined_pos_decomposition: LEMMA
    FORALL(m1, m2: Measure_Matrix, i, j: below(N)):
      defined_pos?(m1*m2, i, j) IFF
      EXISTS(k: below(N)): defined_pos?(m1, i, k) AND defined_pos?(m2, k, j)
 
+ positive_pos_mul_fun: LEMMA
+   Plus3(f1(i)(j),f2(j)(k)) = 1 IMPLIES mult(f1,f2)(i)(k) = 1
+
  positive_pos_mul: LEMMA
    FORALL(m1, m2: Measure_Matrix, i, j, k: below(N)):
-     Plus3(m1(i)(j),m2(j)(k)) = 1 IMPLIES (m1*m2)(i)(k) = 1
+     Plus3(get(m1)(i,j),get(m2)(j,k)) = 1 IMPLIES get(m1*m2)(i,k) = 1
+
+ positive_pos_decomp_fun: LEMMA
+   mult(f1,f2)(i)(j) = 1 IFF EXISTS(k: below(N)): Plus3(f1(i)(k),f2(k)(j)) = 1
 
  positive_pos_decomposition: LEMMA
    FORALL(m1, m2: Measure_Matrix, i, j: below(N)):
-     (m1*m2)(i)(j) = 1 IFF EXISTS(k: below(N)): Plus3(m1(i)(k),m2(k)(j)) = 1
+     get(m1*m2)(i,j) = 1 IFF EXISTS(k: below(N)): Plus3(get(m1)(i,k),get(m2)(k,j)) = 1
 
 END measures
