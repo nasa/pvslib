@@ -22,7 +22,7 @@ more_list_props   [ T : TYPE ]
   X, Y: VAR list[T]
   l, l1, l2, l3, l4: VAR list[T]
   pair: VAR [nat, nat]
-  a, t: VAR T
+  a, b, t: VAR T
 
 %
 % Functions
@@ -309,6 +309,9 @@ more_list_props   [ T : TYPE ]
     length(l1) = length(l2)
     IMPLIES l1 = l2
 
+  suffix_first_elem: LEMMA FORALL(l2|NOT null?(l2)):
+    suffix?(l2,l1) IMPLIES nth(l1,length(l1)-length(l2)) = car(l2)
+
   %% rdc and rac (as opposites to the list functions rdc and rac).
 
   rdc((l: list[T] | NOT null?(l))):  list[T]
@@ -367,9 +370,53 @@ more_list_props   [ T : TYPE ]
   member_reverse: LEMMA
     member(a,l) IFF member(a, reverse(l))
 
-  % 
+  % "no_repetitions?" holds with the list contains only one aparition of each 
+  % of its elements.
   no_repetitions?(l:list[T]):bool =
     FORALL(i,j:below(length(l))): i /= j IMPLIES nth(l,i) /= nth(l,j)
+
+  no_repetitions_append: LEMMA
+    no_repetitions?(l1) AND
+    no_repetitions?(l2) AND 
+    (FORALL(n:T): member(n,l1) IMPLIES NOT member(n,l2))
+    IFF no_repetitions?(append(l1,l2))
+
+  % Complementary function for nth.
+  idx(l,(a:T|member(a,l))): RECURSIVE {i: below(length(l)) | nth(l,i) = a} =
+    IF car(l) = a THEN 0 ELSE 1 + idx(cdr(l),a) ENDIF
+  MEASURE length(l)
+
+  idx_nth_no_rep: LEMMA FORALL(l:(no_repetitions?), i:below(length(l))):
+    idx(l,nth(l,i)) = i
+
+  idx_inj: LEMMA FORALL(l:(no_repetitions?)):
+    member(a,l) AND 
+    member(b,l) AND
+    idx(l,a) = idx(l,b) 
+    IMPLIES a = b
+
+  % filter 
+  filtered_from(l1,
+		(idxs:list[nat]|FORALL(i:below(length(idxs))):
+			          nth(idxs,i)<length(l1)))(l2): bool =
+    length(l2) = length(idxs) AND
+    FORALL(i:below(length(idxs))): nth(l2,i) = nth(l1,nth(idxs,i))
+
+  filter_idxs(l,(idxs:list[nat]|FORALL(i:below(length(idxs))):nth(idxs,i)<length(l))): 
+  RECURSIVE (filtered_from(l,idxs)) =
+     CASES idxs OF
+       null: null,
+       cons(i,is): cons( nth(l,i), filter_idxs(l,cdr(idxs)) )
+     ENDCASES
+  MEASURE length(idxs)
+
+  no_rep_filter: LEMMA
+   FORALL(l1:(no_repetitions?))
+	 (idxs:list[nat]|FORALL(i:below(length(idxs))):nth(idxs,i)<length(l1))
+	 (l2:(filtered_from(l1,idxs))):
+    %% no_repetitions?(idxs)
+    (FORALL(i,j:below(length(idxs))): i /= j IMPLIES nth(idxs,i) /= nth(idxs,j))
+    IMPLIES no_repetitions?(l2)
 
 END more_list_props
 
