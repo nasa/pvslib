@@ -1,0 +1,90 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% Formalization of correctness of maxsort over finite 
+%%%%% sequences.
+%%% Grupo de Teoria da Computacao, Universidade de Brasilia
+%%% A. A. Almeida, M. Ayala-Rincon, Flavio L.C. de Moura
+%%% Last modification:  October 28, 2015
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+maxsort[T : TYPE, <= : (total_order?[T]) ] : THEORY
+
+BEGIN
+
+IMPORTING sorting_seq [T, <=], structures@seq_extras[T]
+
+v : VAR finite_sequence[T]   % This is the Data Structure for arrays
+i,j : VAR nat  
+
+% Moves the maximum key in the interval [i-1,j] to the 
+% position jth. 
+move_max(v)(j:below[length(v)],  (i:posnat | j >= i) ) : RECURSIVE finite_sequence[T] =
+IF i = j THEN IF v(i-1) > v(i) THEN  swap(v)(i-1, i) ELSE v ENDIF
+ELSIF v(i-1) > v(i) THEN move_max(swap(v)(i-1, i))(j, i+1) 
+ELSE move_max(v)(j, i+1) 
+ENDIF
+MEASURE j - i
+
+%%%% Length preservation for move_max
+move_max_length : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i)): 
+      length(move_max(v)(j, i)) =  length(v)
+
+move_max_preserves_out : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i), (k: nat | k < length(v) AND (k < i-1 OR k > j))): 
+     v(k) = move_max(v)(j, i)(k) 
+
+move_max_preserves : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i), (k: nat | k < length(v) AND (k >= i-1 AND k <= j))): 
+     EXISTS (l: nat | l >= i-1 AND l <= j): v(k) = move_max(v)(j, i)(l) 
+
+
+move_max_preserves2 : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i), (k: nat | k < length(v) AND (k >= i-1 AND k <= j))): 
+     EXISTS (l: nat | l >= i-1 AND l <= j): v(l) = move_max(v)(j, i)(k) 
+
+%%%% move_max moves the greater element between i-1 and j to position j
+move_max_works : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i), (k: nat | k >= i-1 AND k <= j)):
+       move_max(v)(j, i)(j) >= move_max(v)(j, i)(k) 
+
+move_max_permutes : LEMMA
+FORALL (v, (i:posnat), (j:nat | j < length(v) AND j >= i)):
+       permutations(v,move_max(v)(j,i))
+
+maxsort_aux(v)(j:below[length(v)]) : RECURSIVE finite_sequence[T] =
+IF j = 0 THEN v
+ELSE maxsort_aux(move_max(v)(j,1))(j - 1)
+ENDIF
+MEASURE j
+
+%%%% Length preservation for max_sort_aux
+maxsort_aux_length : LEMMA
+FORALL (v, (j:below[length(v)])):
+      length(maxsort_aux(v)(j)) =  length(v)
+
+maxsort_aux_psorts : LEMMA 
+ FORALL (v, (j : nat | j < length(v) - 1)) :
+         (psorted(v)(j+1,length(v)-1) AND
+         FORALL (i : below[j+1]) : v(i) <= v(j+1) )
+	 => psorted(maxsort_aux(v)(j))(0,length(v)-1)
+
+maxsort_aux_permutes : LEMMA
+FORALL (v, (j : nat | j < length(v) - 1)):
+       permutations(v,maxsort_aux(v)(j))
+
+maxsort(v)  :  finite_sequence[T] =
+IF length(v) < 2 THEN v ELSE
+maxsort_aux(v)(length(v) - 1) ENDIF
+
+maxsort_sorts : LEMMA
+FORALL (v):
+       sorted(maxsort(v))
+
+maxsort_permutes : LEMMA
+FORALL (v):
+       permutations(v,maxsort(v))
+
+maxsort_works : LEMMA
+FORALL (v):
+       sorted(maxsort(v)) AND permutations(v,maxsort(v))
+END maxsort

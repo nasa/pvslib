@@ -1,0 +1,172 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% Computational Logic A & D / PROJECT SECOND SEMESTER 2015 
+%%%%% Based on the poof techniques applied to formalize 
+%%%%% correctness of sorting algorithms verify correctness
+%%%%% of heap sort.
+%%%%% The data structure used is finite sequences. 
+%%%%% Theorems for finite sequences in the prelude library
+%%%%% as well as in the theory structures@seq_extras might
+%%%%% be useful. 
+%%% Grupo de Teoria da Computacao, Universidade de Brasilia
+%%% M. Ayala-Rincon, A. A. Almeida, Flavio L.C. de Moura
+%%% Last modification:  October 13, 2015
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+sorting_seq [T : TYPE, <= : (total_order?[T]) ] : THEORY
+
+BEGIN
+
+IMPORTING sorting [T, <=], structures@seq_extras[T]
+
+h, h1 : VAR finite_sequence[T]   % This is the Data Structure for heaps
+i,j : VAR nat  
+
+%% Permutations check whether two finite sequences are permutations
+%% preserving occurrences of each key.
+occurrences(h)(x:T): RECURSIVE nat =
+IF  length(h) = 0 THEN 0
+    ELSIF 
+      h(0) = x THEN 1 + occurrences(h^(1,length(h)-1))(x)
+      ELSE
+	occurrences(h^(1,length(h)-1))(x)
+	ENDIF
+MEASURE length(h)
+
+finseq2list_rec_equivalence: LEMMA
+FORALL(i,k: below[length(h)]): 
+     i <= length(h) - k IMPLIES
+     finseq2list_rec(h^(k, h`length - 1), i) =
+     			   finseq2list_rec(h, i) 
+% Not used
+finseq2lists_for_suffixes : COROLLARY 
+FORALL ((h | length(h) > 0), i : below[length(h)]) :
+ finseq2list_rec( h^(i, length(h) - 1), length(h) - i) =  finseq2list_rec(h,length(h)  - i) 
+
+subseq_is_cdr : COROLLARY
+FORALL (h | length(h) > 0):
+finseq2list(h ^ (1, length(h) - 1)) = cdr(finseq2list(h))
+
+same_occ_fseq_list  : LEMMA  
+FORALL(h, (x :T)) : occurrences(h)(x) = occurrences(finseq2list(h))(x) 
+
+%% Permutations check whether two lists are permutations
+%% counting occurrences of their elements.
+permutations(h1,h2:finite_sequence[T]):bool =
+ FORALL (x:T): occurrences(h1)(x) = occurrences(h2)(x)
+
+%% Permutations relation in finite sequences and their 
+%% corresponding lists coincide.
+perm_fsq_iff_perm_list : LEMMA  FORALL(h1,h2:finite_sequence[T]) : 
+   permutations(h1,h2) <=> permutations(finseq2list(h1), finseq2list(h2))  
+
+%% Permutations is an equivalence relation on finite sequences.
+permutations_equiv :  LEMMA 
+reflexive?(permutations)  AND 
+symmetric?(permutations) AND 
+transitive?(permutations)
+
+% Boolean for partially and fully sorted heaps
+psorted(h)(i : below[length(h)] , ( j : below[length(h)] | i <= j)) : bool =
+length(h) = 0 OR 
+(FORALL (k : below[length(h)]) :
+     (i <= k AND k <= j - 1) => (k<i OR h(k) <= h(k+1)))
+
+% Predicate for sorted finite sequences.
+sorted(h) : bool = length(h) = 0 OR psorted(h)(0,length(h) - 1) 
+
+% Indices of the left and right child in heaps
+ind_lc(i) : nat = 2 * i + 1
+ind_rc(i) : nat = 2 * i + 2
+
+% Index of the parent of the kth node (not used)
+ind_parent(k : posnat) : nat = floor((k-1)/2) 
+ 
+% Booleans for testing whether the i-th node in the partial heap 
+% from 0 to n, has or not both a left and a right child or only 
+% a left child.
+% Also, a boolean for checking if a heap node is a parent. 
+both_childs(h)(n:below[length(h)], (i:below[length(h)] | i <= n)) : bool = ind_rc(i) < n + 1 
+one_child(h)(n:below[length(h)], (i:below[length(h)] | i <= n)) : bool = ind_rc(i) = n + 1 
+is_parent(h)(n:below[length(h)], (i:below[length(h)] | i <= n)) : bool = both_childs(h)(n,i) OR one_child(h)(n,i)
+
+% The left and right child of the ith node in the whole heap, from 0 to |h| - 1
+left_child(h)(i : nat | ind_lc(i) < length(h))  : T = h(ind_lc(i))
+right_child(h)(i : nat | ind_rc(i) < length(h)) : T = h(ind_rc(i))
+
+% Boolean for partially and fully "heapified" heaps. A finite sequence
+% is an heap when it holds the ordering heap restriction that all 
+% parents are greater than their children.
+is_p_heap(h)(i : below[length(h)] , ( j : below[length(h)] | i <= j)) : bool = 
+FORALL(k : below[length(h) - 1]) : k < i OR  
+                                   (k<=j => (is_parent(h)(j,k) => 
+                                    ( (both_childs(h)(j,k) AND 
+                                      h(k) >= left_child(h)(k) AND  h(k) >= right_child(h)(k)) OR 
+                                    (one_child(h)(j,k) AND  h(k) >= left_child(h)(k)))))
+
+is_heap(h) : bool = length(h)=0 OR is_p_heap(h)(0, length(h) - 1)  
+
+% The root node is the greatest in a heapified partial heap
+
+root_is_greatest_in_p_heap : LEMMA   
+ FORALL (h, (n : below[length(h)]), (i: below[n+1])) : 
+ 	is_p_heap(h)(0,n) => h(0) >= h(i)
+
+root_is_greatest_in_heap : COROLLARY    
+ FORALL (h, (i : below[length(h)])) : 
+ 	is_heap(h) =>  h(0) >= h(i)
+
+
+% The parent of the kth node. (not used)
+parent(h)(k : posnat | k < length(h)) : T = h(floor((k-1)/2))
+ 
+% The index of the greatest child of the ith node of the partial 
+% heap from 0 to n.
+ind_gc(h)(n:below[length(h)], (i : below[n + 1] | is_parent(h)(n,i))) : nat = 
+ IF (both_childs(h)(n,i) AND left_child(h)(i) < right_child(h)(i)) THEN ind_rc(i)
+ ELSE ind_lc(i) ENDIF   
+
+% Constructioh of the swap of nodes ith and jth in a heap h
+swap(h)(i, j : below[length(h)]) :  finite_sequence[T] =
+ (# length := length(h) ,  
+    seq := (LAMBDA (k : below[length(h)]) : IF k = i THEN h(j) ELSIF k = j THEN h(i) ELSE h(k) ENDIF)  #)
+
+swap_of_p_heap : LEMMA
+FORALL((h | length(h) > 0),  (n : below[length(h)]), (i:below[n+1])) :
+         is_p_heap(h)(0,n) => swap(h)(n,0)(n) >= h(i)
+
+swap_commutes : LEMMA 
+FORALL (h, (i, j : below[length(h)])):
+swap(h)(i,j) = swap (h)(j,i)
+
+occ_replaces_at_j  : LEMMA 
+FORALL (h, (j : below[length(h)]), (x, y : T)):
+LET hp = (# length := length(h), 
+          seq := (LAMBDA (k : below[length(h)]) : 
+                     IF k = j then x ELSE h(k) ENDIF) #) IN
+ occurrences(hp)(y) = 
+  IF x = h(j) THEN  occurrences(h)(y) 
+  ELSE IF y = x  THEN occurrences(h)(y) + 1 
+       ELSE IF y = h(j) THEN occurrences(h)(y) - 1
+            ELSE occurrences(h)(y) ENDIF  
+       ENDIF
+  ENDIF
+ 
+swap_occ_at_0 :  COROLLARY
+FORALL (h, (j : below[length(h)] | j > 0), (x : T)):
+occurrences(swap(h)(0,j)^(1, length(h) - 1))(x) = 
+IF h(j) = x THEN occurrences(h)(x) - 1 
+ELSE  occurrences(h)(x) ENDIF 
+
+swap_permutes : LEMMA 
+FORALL (h, (i, j : below[length(h)])) : permutations(h, swap(h)(i,j))
+ 
+
+% swapping the first element with the last one in a heap
+% places the greater element in last position 
+swap_of_heap : LEMMA
+FORALL((h | length(h) > 0),  (i : below[length(h)])) :
+         is_heap(h) => swap(h)(length(h)-1,0)(length(h)-1) >= h(i)
+
+
+end sorting_seq
+
