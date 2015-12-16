@@ -1,0 +1,165 @@
+%********************************************************************************%
+%										 %
+%   Authors:									 %
+%   										 %
+%       Andréia Borges Avelar -- Universidade de Brasília - Brasil  		 %
+%       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil  		 %
+%                 César Muñoz -- NASA Langley Research Center - US               %
+%                 Aaron Dutle -- NASA Langley Research Center - US               %
+%             Mariano Moscato -- National Institute of Aerospace - US            %
+%                                                                                %
+%********************************************************************************%
+matrix_wdg_[T: TYPE, N: posnat,
+    % Importings needed to work with parametric digraphs
+    ConcreteDigraph: TYPE,
+    vert:  [ConcreteDigraph-> [T -> bool]],
+    edges: [ConcreteDigraph -> [T,T -> bool]],
+    make:  [ v:(is_finite[T]),
+             {e: (is_finite[[T,T]]) | 
+	         FORALL(x,y:T): 
+    	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph],
+    % Importings needed to work with parametric weighted digraphs
+    wdg: TYPE,
+    dg: [wdg -> ConcreteDigraph],
+    (IMPORTING measures[N])   
+    get_wgt: [W: wdg, (edges(dg(W))) -> measures[N].Measure_Matrix],
+    WeightsMap    : TYPE,
+    weighted_edge?: [WeightsMap->[[T,T]->bool]], 
+    get_weight    : [map0:WeightsMap,(weighted_edge?(map0))->measures[N].Measure_Matrix],
+    weight_map?   : [ConcreteDigraph->[WeightsMap-> bool ]],
+    make_wdg: [cd:ConcreteDigraph,map2:(weight_map?(cd))->wdg] 
+ ]: THEORY 
+BEGIN
+  ASSUMING
+    % This theory only makes sense if the parametric type ConcreteDigraph is a 
+    % correct interpretation for (uninterpreted) digraphs. That is checked using 
+    % the predicate defined in digraphs_abs.
+    IMPORTING digraphs@digraphs_abs[T,ConcreteDigraph,vert,edges,make]
+    concretedigraph_implements_abstractdigraph: ASSUMPTION
+      digraphs_abs.correct_implementation
+
+    IMPORTING digraphs@weighted_digraphs_abs[T, measures[N].Measure_Matrix,
+                                        measures[N].*, measures[N].id,
+					ConcreteDigraph,vert,edges,make,
+					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
+					get_weight,weight_map?,make_wdg]
+    concretewd_implements_abstractwd: ASSUMPTION
+      weighted_digraphs_abs.correct_implementation
+  ENDASSUMING
+
+   IMPORTING digraphs@weighted_digraphs_[T, measures[N].Measure_Matrix,
+                                        measures[N].*, measures[N].id,
+					ConcreteDigraph,vert,edges,make,
+					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
+					get_weight,weight_map?,make_wdg],
+             digraphs@cycles_[T,ConcreteDigraph,vert,edges,make]
+
+            G : VAR wdg
+ w, c, cc, cy : VAR prewalk
+      u, v, n : VAR nat
+      i, j, k : VAR below(N)
+            e : VAR edgetype
+            m : VAR Measure_Matrix
+
+% ------------------------------------------------------------------------------- %
+%  Termination for matrix weighted digraphs
+% ------------------------------------------------------------------------------- %
+ 
+ mwg_termination?(G): bool =
+   FORALL (c | circuit?(dg(G), c)): positive?(wgt_walk(G, c))
+
+% ------------------------------------------------------------------------------- %
+%  Definitions
+%  -> A criterion to verify termination based on lexicographic orders
+% ------------------------------------------------------------------------------- %
+
+ double_cycle?(G)(c): bool = 
+   circuit?(dg(G), c) AND 
+   EXISTS(c1, c2: {w: prewalk | cycle?(dg(G), w)}): 
+     eq_circuit?(dg(G), c, c1 o rest(c2))
+
+ positive_double_cycle?(G,k)(c: (double_cycle?(G))): bool =
+   EXISTS(e: (edges_of(c))): get(get_wgt(G,e))(k,k) = 1
+
+ limiting_measure?(G)(k): bool =
+   (FORALL(e: edge(dg(G))): get(get_wgt(G,e))(k,k) >= 0) AND
+   (FORALL(c: (double_cycle?(G))): positive_double_cycle?(G,k)(c))
+
+ criterion_one?(G): bool = 
+   (EXISTS k: limiting_measure?(G)(k)) AND
+   (FORALL cy: cycle?(dg(G),cy) IMPLIES positive?(wgt_walk(G, cy)))
+
+% ------------------------------------------------------------------------------- %
+%  Properties: In the next...
+%     i) "lm" will be used to refer to "limiting_measure"
+%    ii) "pstv" will be used to refer to "positive"
+% ------------------------------------------------------------------------------- %
+
+ positive_eq_circuit: LEMMA
+   FORALL (w1, w2: prewalk):
+      eq_circuit?(dg(G), w1, w2) AND positive?(wgt_walk(G, w1))
+      IMPLIES positive?(wgt_walk(G, w2))
+
+ lm_defined_walks: LEMMA
+   limiting_measure?(G)(k) AND walk?(dg(G), w)
+   IMPLIES get(wgt_walk(G, w))(k,k) >= 0
+
+ lm_positive_edge: LEMMA
+   limiting_measure?(G)(k) AND NOT cycle?(dg(G),c) AND circuit?(dg(G), c)
+   IMPLIES EXISTS(e: (edges_of(c))): get(get_wgt(G,e))(k,k) = 1
+
+ lm_pstv_cycles_pstv_circuits: THEOREM
+   criterion_one?(G) IMPLIES mwg_termination?(G)
+ 
+% ------------------------------------------------------------------------------- %
+%  Definitions
+%   -> A criterion to verify termination based on a fixed labeling on vertexes
+% ------------------------------------------------------------------------------- %
+
+ vertex_labeling(G): TYPE = [vert(dg(G)) -> below[N]]
+
+ limiting_labeling?(G: wdg, F: vertex_labeling(G)): bool =
+   (FORALL(e: edge(dg(G))): get(get_wgt(G,e))(F(e`1),F(e`2)) >= 0) AND
+   (FORALL c: cycle?(dg(G),c) => get(wgt_walk(G, c)) (F(first(c)),F(last(c))) = 1)
+
+ criterion_two?(G): bool =
+   EXISTS (F: vertex_labeling(G)): limiting_labeling?(G, F)
+
+% ------------------------------------------------------------------------------- %
+%  Properties: In the next...
+%     i) "ll" will be used to refer to "limiting_labeling"
+% ------------------------------------------------------------------------------- %
+
+ ll_defined_walks: LEMMA
+   FORALL(G: wdg, F: vertex_labeling(G), w: prewalk):
+     limiting_labeling?(G, F) AND walk?(dg(G), w)
+     IMPLIES get(wgt_walk(G, w)) (F(first(w)),F(last(w))) >= 0
+
+ ll_pstv_pos_circuits: LEMMA
+   FORALL(G: wdg, F: vertex_labeling(G)): limiting_labeling?(G, F) IMPLIES 
+     FORALL(c | circuit?(dg(G), c)): get(wgt_walk(G, c))(F(first(c)),F(last(c))) = 1
+
+ ll_pstv_circuits: THEOREM
+   criterion_two?(G) IMPLIES mwg_termination?(G)
+
+% ------------------------------------------------------------------------------- %
+%  Cycle length based criteria.
+%  
+% ------------------------------------------------------------------------------- %
+ 
+ circuit_length_reduce: LEMMA 
+   FORALL (G, m, c):  (circuit?(dg(G), c) AND wgt_walk(G,c) = m AND 
+           length(c)>card(vert(dg(G)))*3^(N^2) + 1) IMPLIES 
+     (EXISTS (cc): circuit?(dg(G), cc) AND wgt_walk(G,cc) = m AND  length(cc)<length(c))
+
+ circuit_length_bounded: LEMMA 
+   FORALL (G, m, c, n): ( circuit?(dg(G), c) AND wgt_walk(G,c) = m AND length(c) = n AND  
+           length(c)>card(vert(dg(G)))*3^(N^2) + 1) IMPLIES
+     EXISTS (cc): circuit?(dg(G), cc) AND wgt_walk(G,cc) = m AND length(cc)<=card(vert(dg(G)))*3^(N^2) + 1
+
+ bounded_circuits_pstv: LEMMA 
+   (FORALL(c | circuit?(dg(G), c) AND 
+    length(c)<=card(vert(dg(G)))*3^(N^2) + 1): positive?(wgt_walk(G, c))) IMPLIES
+   FORALL(c | circuit?(dg(G), c)): positive?(wgt_walk(G, c))
+
+END matrix_wdg_

@@ -1,0 +1,70 @@
+%==============================================================================%
+%                                                                              %
+% Equivalence between computational digraphs and set-based digraphs.           %
+%                                                                              %
+%   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%                                                                              %
+%==============================================================================%
+c_digraphs_digraphs[T: TYPE]: THEORY 
+BEGIN
+  IMPORTING structures@more_list_props,
+  	    structures@permutations_list,
+            digraphs[T],
+            structures@set_as_list[T],
+            finite_sets@finite_cross,
+            structures@set_as_list_props[T],
+	    c_digraphs_def[T]
+
+  cd,cd1,cd2: VAR (cdigraph)
+
+  G: VAR digraph
+
+  % --------------------------------------------------------------------------- %
+  % Equivalence between computable and non-computable digraphs.                 %
+  % --------------------------------------------------------------------------- %
+
+  % Equivalence predicate
+
+  % Two digraph representations are equivalent if
+  eq(G,cd): bool = 
+    % 1) they have the same collection of vertices
+    set_as_list.list2set(data(cd)) = vert(G) AND
+    % 2) linked in the same way
+    FORALL(i:below(length(data(cd)))):
+     (FORALL(j:below(length(data(cd)))): 
+       member(j, nth(adjs(cd),i)) 
+       IFF LET vi = nth(data(cd),i), vj = nth(data(cd),j) 
+       	   IN member((vi,vj), edges(G)))
+
+  cdigraph_eq(G): TYPE = {C: (cdigraph)|eq(G,C)}
+  digraph_eq(cd): TYPE = {G: digraph | eq(G,cd)}
+
+  % Conversion functions
+  to_digraph(cd): digraph_eq(cd) =
+    (# vert := {v:T|EXISTS(i:below(size(cd))):nth(data(cd),i)=v},
+       edges := {u,v:T|EXISTS(i,j:below(size(cd))):
+	                nth(data(cd),i)=u AND 
+			nth(data(cd),j)=v AND 
+			member(j,nth(adjs(cd),i))}  #)
+
+  vertsl?(G)(l: list[T]): bool = 
+    (FORALL(v:T):member(v,l) IFF member(v,vert(G)))
+    AND length(l) = size(G)
+
+  no_rep_vertsl: LEMMA
+    FORALL(l:(vertsl?(G))): no_repetitions?(l)
+  
+  vertsl(G): (vertsl?(G)) = set2list(vert(G))
+
+  to_cdigraph(G): cdigraph_eq(G) =
+    (# data := vertsl(G),
+       adjs := edges_set_to_list(edges(G),vertsl(G))  #)
+
+  % Completeness of conversion functions
+  eq_digraph: LEMMA
+    eq(G,cd) IMPLIES to_digraph(cd) = G
+
+  eq_cdigraph: LEMMA
+    eq(G,cd) IMPLIES sem_eq(to_cdigraph(G),cd)
+
+END c_digraphs_digraphs

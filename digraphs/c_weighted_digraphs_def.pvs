@@ -1,0 +1,91 @@
+%==============================================================================%
+%                                                                              %
+% Fundamental definitions for computational weighted digraphs.                 %
+%                                                                              %
+%   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%                                                                              %
+%==============================================================================%
+c_weighted_digraphs_def[
+  T      : TYPE,
+  Weight : TYPE,
+  +      : {f : [[Weight, Weight] -> Weight] | associative?(f) },
+  zero_ct      : {zero: Weight | identity?(+)(zero)}]: THEORY
+BEGIN
+
+  % proof of correct interpretation
+  IMPORTING c_digraphs_imp[T]
+
+  map,map1,map2: VAR list[[T,T,Weight]]
+  key,key1: VAR [T,T]
+  cd: VAR digraph_type
+
+  edges_in_map?(cd)(els: list[(edges(cd))],map1): bool =
+    FORALL(e: (edges(cd))): member(e,els) IMPLIES 
+			      	EXISTS(w:Weight): member((e`1,e`2,w),map1)
+
+  all_edges_in_map?(cd)(map2): bool =
+    FORALL(e: (edges(cd))): EXISTS(w:Weight): member((e`1,e`2,w),map2)
+
+  wgd_type : TYPE = [#  dg: digraph_type, 
+  	     	       wgt: (all_edges_in_map?(dg)) #]
+
+  wgd_dg   : [wgd_type->digraph_type] = LAMBDA(w:wgd_type): dg(w)
+  AUTO_REWRITE+ wgd_dg
+
+  weight(dg: digraph_type) 
+  	( e:(edges(dg)),
+         (l:list[[T,T,Weight]]|EXISTS(w:Weight):member((e`1,e`2,w),l)) ) 
+  : RECURSIVE Weight =
+    IF car(l)`1 = e`1 AND car(l)`2 = e`2 THEN car(l)`3
+    ELSE weight(dg)(e,cdr(l)) ENDIF
+  MEASURE length(l)
+
+  has_key?(map1)(key1): bool = EXISTS(w:Weight): member((key1`1,key1`2,w),map1)
+
+  get_value(map1,(key:(has_key?(map1)))): RECURSIVE Weight =
+    IF car(map1)`1 = key`1 AND car(map1)`2 = key`2 
+    THEN car(map1)`3 
+    ELSE get_value(cdr(map1),key) ENDIF
+  MEASURE length(map1)
+
+  IMPORTING structures@set_as_list_props
+
+  keys_no_rep?(map): {b: bool | b IFF NOT EXISTS((k1,k2:T),(v1,v2:Weight)): 
+                 member((k1,k2,v1),map) AND member((k1,k2,v2),map) 
+		 AND (EXISTS(i,j:below(length(map))): i /= j AND 
+		     				      nth(map,i) = (k1,k2,v1) AND
+						      nth(map,j) = (k1,k2,v2)) }
+
+  keys_no_rep?_cdr: LEMMA FORALL(kv: [T,T,Weight]):
+    keys_no_rep?(cons(kv,map)) IMPLIES keys_no_rep?(map)
+
+  keys_no_rep?_cons: LEMMA FORALL(kv:[T,T,Weight]):
+    keys_no_rep?(map) AND
+    NOT has_key?(map)(kv`1,kv`2)
+    IMPLIES keys_no_rep?(cons(kv,map))
+
+  keys_no_rep?_no_rep: LEMMA
+    keys_no_rep?(map) IMPLIES no_repetitions?(map)
+
+  keys_no_rep?_append: LEMMA
+    keys_no_rep?(map1) AND
+    keys_no_rep?(map2) AND 
+    (FORALL(k1,k2:T): (EXISTS(v1:Weight):member((k1,k2,v1),map1)) 
+    		       IMPLIES NOT (EXISTS(v2:Weight): member((k1,k2,v2),map2)))
+    IFF keys_no_rep?(append(map1,map2))
+
+  get_val_no_rep: LEMMA FORALL(value:Weight):
+    keys_no_rep?(map) AND
+    member((key`1,key`2,value),map)
+    IMPLIES get_value(map,key) = value
+
+  get_val_member: LEMMA FORALL(key:(has_key?(map)),value:Weight):
+    get_value(map,key) = value IMPLIES member((key`1,key`2,value),map)
+
+  get_wgt(W:wgd_type,e:(edges(dg(W)))): Weight = % weight(dg(W))(e,wgt(W))
+    get_value(wgt(W),e)
+
+  make_c_wdg(cd,(map:(all_edges_in_map?(cd)))): wgd_type =
+   (# dg := cd, wgt:= map  #)
+
+END c_weighted_digraphs_def

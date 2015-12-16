@@ -1,0 +1,208 @@
+%********************************************************************************%
+%                                                                                %
+%   Authors:                                                                     %
+%                                                                                %
+%       Andréia Borges Avelar -- Universidade de  Brasília  -  Brasil            %
+%       Mauricio Ayala-Rincon -- Universidade de  Brasília  -  Brasil            %
+%                 Cesar Muñoz -- NASA  Langley  Research  Center - US            %
+%             Mariano Moscato -- National Institute of Aerospace - US            %
+%                                                                                %
+%********************************************************************************%
+ccg_to_mwg_[Val,Expr,Condition: TYPE, 
+           MT: TYPE, lt : (well_founded?[MT]), N: posnat,
+           semantic_rel:PRED[[Expr,Val,Val]],eval_conds:PRED[[Condition,Val]],
+    % Importings needed to work with uninterpreted digraphs
+    ConcreteDigraph: TYPE,
+    (IMPORTING cc_def[Val,Expr,Condition]) 
+    vert:  [ConcreteDigraph-> [CallingContext -> bool]],
+    edges: [ConcreteDigraph -> [CallingContext,CallingContext -> bool]],
+    make:  [ v:(is_finite[CallingContext]),
+             {e: (is_finite[[CallingContext,CallingContext]]) | 
+	         FORALL(x,y:CallingContext): 
+    	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph],
+  wdg: TYPE,
+  dg: [wdg -> ConcreteDigraph],
+  (IMPORTING measures[N])   
+  get_wgt: [W: wdg, (edges(dg(W))) -> measures[N].Measure_Matrix],
+
+  WeightsMap    : TYPE,
+  weighted_edge?: [WeightsMap->[[CallingContext,CallingContext]->bool]], 
+  get_weight    : [map0:WeightsMap,(weighted_edge?(map0))->measures[N].Measure_Matrix],
+
+  weight_map?   : [ConcreteDigraph->[WeightsMap-> bool ]],
+
+  make_wdg: [cd:ConcreteDigraph,map2:(weight_map?(cd))->wdg],
+
+  (IMPORTING ccg_[Val,Expr,Condition,MT,lt,N,semantic_rel,eval_conds,
+		ConcreteDigraph,vert,edges,make])
+  make_map: [CCG,
+ ]: THEORY 
+BEGIN
+  ASSUMING
+    % This theory only makes sense if the parametric type ConcreteDigraph is a 
+    % correct interpretation for (uninterpreted) digraphs. That is checked using 
+    % the predicate defined in digraphs_abs.
+    IMPORTING digraphs@digraphs_abs[CallingContext,ConcreteDigraph,vert,edges,make]
+    concretedigraph_implements_abstractdigraph: ASSUMPTION
+      digraphs_abs.correct_implementation
+
+    IMPORTING digraphs@weighted_digraphs_abs[CallingContext,measures[N].Measure_Matrix,
+                                        measures[N].*, measures[N].id,
+					ConcreteDigraph,vert,edges,make,
+					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
+					get_weight,weight_map?,make_wdg]
+    concretewd_implements_abstractwd: ASSUMPTION
+      weighted_digraphs_abs.correct_implementation
+  ENDASSUMING
+% ------------------------------------------------------------------------------- %
+
+ IMPORTING
+           matrix_wdg_[CallingContext,N,
+		       ConcreteDigraph,vert,edges,make,
+					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
+					get_weight,weight_map?,make_wdg]
+   G: VAR CCG
+   w: VAR prewalk
+   e: VAR edgetype
+   v: VAR CallingContext
+ i,j: VAR below(N)
+
+ indi_f(G: CCG): TYPE = [below(N), below(N), vert(dg(G)) -> Sign3]
+
+ % soundness
+ indi_f_sound(G)(f: indi_f(G)): bool = 
+   FORALL(i, j: below(N), c: vert(dg(G))):
+     (f(i,j,c) = 1 IMPLIES gt(ms(G),c,i,j,FALSE)) AND
+     (f(i,j,c) = 0 IMPLIES gt(ms(G),c,i,j,TRUE))
+
+ % completeness
+ indi_f_complete(G)(f: indi_f(G)): bool = 
+   FORALL(i, j: below(N), c: vert(dg(G))):
+     (gt(ms(G),c,i,j,FALSE) IMPLIES f(i,j,c) = 1) AND
+     (NOT gt(ms(G),c,i,j,FALSE) AND gt(ms(G),c,i,j,TRUE)  IMPLIES f(i,j,c) = 0)
+
+ % soundness and completeness
+ indi_f_sc(G)(f: indi_f(G)): bool = indi_f_sound(G)(f) AND indi_f_complete(G)(f)
+
+ indi_f_sc_is_sound: JUDGEMENT (indi_f_sc(G)) SUBTYPE_OF (indi_f_sound(G))
+ indi_f_sc_is_complete: JUDGEMENT (indi_f_sc(G)) SUBTYPE_OF (indi_f_complete(G))
+
+ indi_func(G)(i, j: below(N), c: vert(dg(G))) : Sign3 =
+   IF    gt(ms(G),c,i,j,FALSE) THEN 1
+   ELSIF gt(ms(G),c,i,j,TRUE) THEN 0
+   ELSE -1
+   ENDIF
+
+ indi_func_is_sc: JUDGEMENT indi_func(G) HAS_TYPE (indi_f_sc(G))
+
+ weight(G)(f: indi_f(G))(e: edge(dg(G))): [below(N) -> [below(N) -> Sign3]] =
+   LAMBDA(i: below(N))(j: below(N)): f(i, j, e`1)
+
+ ccg_to_mwg(G)(f: indi_f(G)) : wdg = 
+    make_wdg(dg(G),
+%             LAMBDA(e: edge(dg(G))): form_matrix(weight(G)(f)(e)))
+      make_map(G,f) )
+
+% ------------------------------------------------------------------------------- %
+% Some basic properties between a G: CCG and a G1:= ccg_to_mwg(G: CCG) 
+% ------------------------------------------------------------------------------- %
+
+ same_edges: LEMMA 
+  FORALL(f: indi_f(G)):
+   LET G1 = ccg_to_mwg(G)(f) IN edge?(dg(G))(e) IFF edge?(dg(G1))(e)
+
+ same_verts: LEMMA
+  FORALL(f: indi_f(G)):
+   LET G1 = ccg_to_mwg(G)(f) IN vert?(dg(G))(v) IFF vert?(dg(G1))(v)
+
+ same_walks: LEMMA
+  FORALL(f: indi_f(G)):
+   LET G1 = ccg_to_mwg(G)(f) IN walk?(dg(G), w) IFF walk?(dg(G1), w)
+
+% ------------------------------------------------------------------------------- %
+% Lemmas associating the operators gte_mc? and defined_pos?
+% ------------------------------------------------------------------------------- %
+
+ gte_mc_to_defined_pos: LEMMA
+   FORALL(G: CCG, f: (indi_f_complete(G)),  w: Walk(dg(G))): 
+   FORALL(mc: measures_combination(w)):
+     LET G1 = ccg_to_mwg(G)(f) IN
+       gte_mc?(ms(G), w)(mc) IMPLIES
+       defined_pos?(wgt_walk(G1, w), mc(0), mc(length(w) - 1))
+
+ defined_pos_to_gte_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sound(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN
+     FORALL(i, j: below(N)): 
+       defined_pos?(wgt_walk(G1, w), i, j) IMPLIES 
+       EXISTS(mc: measures_combination(w)): gte_mc?(ms(G), w)(mc)
+       AND first(mc) = i AND last(mc) = j
+
+ no_defined_pos_iff_no_gte_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sc(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN 
+      (FORALL(i, j: below(N)): NOT defined_pos?(wgt_walk(G1, w), i, j))
+     IFF
+      (FORALL(mc: measures_combination(w)): NOT gte_mc?(ms(G), w)(mc))
+
+% ------------------------------------------------------------------------------- %
+% Lemmas associating the operators gt_mc? and positive_pos?
+% ------------------------------------------------------------------------------- %
+
+ gt_mc_to_positive_pos: LEMMA
+   FORALL(G: CCG, f: (indi_f_complete(G)), w: Walk(dg(G))): 
+    FORALL(mc: measures_combination(w)):
+     LET G1 = ccg_to_mwg(G)(f) IN
+       gt_mc?(ms(G), w)(mc) IMPLIES
+       positive_pos?(wgt_walk(G1, w), mc(0), mc(length(w) - 1))
+
+ positive_pos_to_gt_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sound(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN
+     FORALL(i, j: below(N)):
+       positive_pos?(wgt_walk(G1, w), i, j) IMPLIES
+       EXISTS(mc: measures_combination(w)): gt_mc?(ms(G), w)(mc)
+       AND first(mc) = i AND last(mc) = j
+
+ no_positive_pos_no_gt_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sc(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN 
+      (FORALL(i, j: below(N)): NOT positive_pos?(wgt_walk(G1, w), i, j))
+     IFF
+      (FORALL(mc: measures_combination(w)): NOT gt_mc?(ms(G), w)(mc))
+
+% ------------------------------------------------------------------------------- %
+%    Lemma associating positive measure-matrixes 
+%    and greater than measure-combinations
+% ------------------------------------------------------------------------------- %
+
+ positive_to_gt_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sound(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN
+      positive?(wgt_walk(G1, w))
+    IMPLIES
+      (EXISTS(mc: measures_combination(w) | first(mc) = last(mc)):
+       gt_mc?(ms(G), w)(mc))
+
+ gt_mc_to_positive: LEMMA
+   FORALL(G: CCG, f: (indi_f_complete(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN
+      (EXISTS(mc: measures_combination(w) | first(mc) = last(mc)):
+       gt_mc?(ms(G), w)(mc))
+    IMPLIES
+      positive?(wgt_walk(G1, w))
+
+ positive_iff_gt_mc: LEMMA
+   FORALL(G: CCG, f: (indi_f_sc(G)), w: Walk(dg(G))): LET G1 = ccg_to_mwg(G)(f) IN
+      positive?(wgt_walk(G1, w))
+    IFF
+      (EXISTS(mc: measures_combination(w) | first(mc) = last(mc)):
+       gt_mc?(ms(G), w)(mc))
+
+ mwg_termination_to_ccg_termination: LEMMA
+   FORALL(f: (indi_f_sound(G))): LET G1 = ccg_to_mwg(G)(f) IN
+     mwg_termination?(G1) IMPLIES ccg_termination?(G)
+
+ ccg_termination_to_mwg_termination: LEMMA
+   FORALL(f: (indi_f_complete(G))): LET G1 = ccg_to_mwg(G)(f) IN
+     ccg_termination?(G) IMPLIES mwg_termination?(G1) 
+
+ mwg_termination_iff_ccg_termination: THEOREM
+   FORALL(f: (indi_f_sc(G))): LET G1 = ccg_to_mwg(G)(f) IN
+     mwg_termination?(G1) IFF ccg_termination?(G)
+
+ END ccg_to_mwg_

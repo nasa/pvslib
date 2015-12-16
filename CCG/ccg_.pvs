@@ -1,0 +1,150 @@
+%********************************************************************************%
+%                                                                                %
+%   Authors:                                                                     %
+%                                                                                %
+%       Andréia Borges Avelar -- Universidade de Brasília - Brasil               %
+%       Mauricio Ayala-Rincon -- Universidade de Brasília - Brasil               %
+%                 Cesar Muñoz -- NASA Langley Research Center - US               %
+%           Anthony Narkawicz -- NASA Langley Research Center - US               %
+%                                                                                %
+%********************************************************************************%
+
+ccg_[Val,Expr,Condition: TYPE, MT: TYPE, lt : (well_founded?[MT]), N: posnat,
+    semantic_rel:PRED[[Expr,Val,Val]],eval_conds:PRED[[Condition,Val]],
+    % Importings needed to work with uninterpreted digraphs
+    ConcreteDigraph: TYPE,
+    (IMPORTING cc_def[Val,Expr,Condition]) 
+    vert:  [ConcreteDigraph-> [CallingContext -> bool]],
+    edges: [ConcreteDigraph -> [CallingContext,CallingContext -> bool]],
+    make:  [ v:(is_finite[CallingContext]),
+             {e: (is_finite[[CallingContext,CallingContext]]) | 
+	         FORALL(x,y:CallingContext): 
+    	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph] ]: THEORY 
+BEGIN
+  ASSUMING
+    % This theory only makes sense if the parametric type ConcreteDigraph is a 
+    % correct interpretation for (uninterpreted) digraphs. That is checked using 
+    % the predicate defined in digraphs_abs.
+    IMPORTING digraphs@digraphs_abs[CallingContext,ConcreteDigraph,vert,edges,make]
+    concretedigraph_implements_abstractdigraph: ASSUMPTION
+      digraphs_abs.correct_implementation
+  ENDASSUMING
+
+ IMPORTING ccg_def_[Val,Expr,Condition,MT,lt,N,ConcreteDigraph,vert,edges,make],
+ 	   ints@ramsey_graph
+
+% ------------------------------------------------------------------------------- %
+%                      On sequences of call contexts
+% ------------------------------------------------------------------------------- %
+
+ G:   VAR CCG
+ w:   VAR prewalk
+ e:   VAR edgetype
+ m,n: VAR nat
+ i,j: VAR below(N)
+ M:   VAR FunMeasures
+ c:   VAR CallingContext
+ dg:  VAR ConcreteDigraph
+
+ measures_combination(w): TYPE =
+   {seq: finseq[below[N]] | length(seq) = length(w)}
+
+ gt(M,c,i,j,(oreq:bool)): bool = FORALL(val1,val2:Val): 
+     eval_conds(c`conds,val1) AND
+     semantic_rel(c`actuals,val1,val2) 
+   IMPLIES
+     ge(M(i)(val1),M(j)(val2)) AND (M(i)(val1) = M(j)(val2) IMPLIES oreq)
+
+ gte_mc?(M,w)(mc: measures_combination(w)): bool =
+   FORALL(i:below(length(w)-1)): gt(M,w`seq(i),mc(i),mc(i+1),TRUE)  
+
+ gt_mc?(M,w)(mc: measures_combination(w)): bool =
+   gte_mc?(M, w)(mc) AND
+   EXISTS(i:below(length(w)-1)): gt(M,w`seq(i),mc(i),mc(i+1),FALSE)
+  
+ ccg_termination?(G): bool =
+   FORALL(c: prewalk | circuit?(dg(G), c)):
+     EXISTS(mc: measures_combination(c) | first(mc) = last(mc)):
+       gt_mc?(ms(G),c)(mc)
+
+% ------------------------------------------------------------------------------- %
+
+ gt_to_gte: LEMMA
+   FORALL(w: Walk(dg(G)), mc: measures_combination(w)):
+     gt_mc?(ms(G), w)(mc) IMPLIES gte_mc?(ms(G), w)(mc)
+
+ gte_mc_comp: LEMMA
+   FORALL(w1, w2: Walk(dg(G))):
+     FORALL(mc1: measures_combination(w1), mc2: measures_combination(w2)):
+       gte_mc?(ms(G), w1)(mc1) AND gte_mc?(ms(G), w2)(mc2) AND
+       last(w1) = first(w2) AND last(mc1) = first(mc2)
+       IMPLIES gte_mc?(ms(G), w1 o rest(w2))(mc1 o rest(mc2))
+
+ gte_mc_sub_walk: LEMMA
+   FORALL(w: Walk(dg(G)), i,j: below(length(w)), mc: measures_combination(w)):
+     i <= j AND gte_mc?(ms(G), w)(mc) IMPLIES gte_mc?(ms(G), w^(i,j))(mc^(i,j))
+
+ gt_mc_comp: LEMMA
+   FORALL(w1, w2: Walk(dg(G))):
+     FORALL(mc1: measures_combination(w1), mc2: measures_combination(w2)):
+         gte_mc?(ms(G), w1)(mc1) AND gte_mc?(ms(G), w2)(mc2) AND 
+         (gt_mc?(ms(G), w1)(mc1) OR gt_mc?(ms(G), w2)(mc2)) AND
+         last(w1) = first(w2) AND last(mc1) = first(mc2)
+       IMPLIES
+         gt_mc?(ms(G), w1 o rest(w2))(mc1 o rest(mc2))
+
+  IMPORTING cc_def[Val,Expr,Condition]
+
+  Seq_cc(dg:ConcreteDigraph) : TYPE = {scc: [nat->CallingContext] | 
+                               FORALL(i:nat): vert(dg)(scc(i)) AND edges(dg)(scc(i),scc(i+1))}
+
+  IMPORTING scp
+
+  parext: LEMMA LET izzy = (LAMBDA (e:[nat,nat]): e`1/=e`2) IN
+    FORALL (FF:[(izzy)->finseq[below[N]]]): 
+    EXISTS (HH:[[nat,nat]->finseq[below[N]]]):
+      FORALL (i,j:nat): i/=j IMPLIES FF(i,j) = HH(i,j)
+
+  ge_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    ge(mt1,mt2) AND ge(mt2,mt3) IMPLIES ge(mt1,mt3)
+
+  ge_gt_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    ge(mt1,mt2) AND gt(mt2,mt3) IMPLIES gt(mt1,mt3)
+
+  gt_ge_transitive: LEMMA 
+    transitive?(lt) IMPLIES
+    FORALL (mt1,mt2,mt3:MT):
+    gt(mt1,mt2) AND ge(mt2,mt3) IMPLIES gt(mt1,mt3)
+
+  extract_infinite_descent: LEMMA 
+    FORALL (J:IncSub,F:[nat->MT],K:nat): 
+    NOT ((FORALL (i:nat): EXISTS (j:nat): J(i)+j<J(i+1) AND gt(F(J(i)+j),F(J(i)+j+1))) AND
+    (FORALL (i:nat): i>=K IMPLIES ge(F(i),F(i+1))))
+
+  build_infinite_descent: LEMMA
+   NOT (EXISTS (J:IncSub,F:[nat->[nat->[Val->MT]]],vals:[nat->Val]):
+     FORALL (j:nat): 
+       (FORALL (i:nat): i<J(j+1)-J(j) IMPLIES ge(F(j)(i)(vals(J(j)+i)),
+       	       F(j)(i+1)(vals(J(j)+i+1)))) AND
+       (EXISTS (i:nat): i<J(j+1)-J(j) AND 
+       	       gt(F(j)(i)(vals(J(j)+i)),F(j)(i+1)(vals(J(j)+i+1)))) AND
+       F(j)(J(j+1)-J(j))=F(j+1)(0))
+
+  ccg_pigeonhole: LEMMA FORALL (dg,(ccs:Seq_cc(dg))):
+    EXISTS (J:[nat->nat]): (FORALL (i,j:nat): i<j IMPLIES J(i)<J(j) AND ccs(J(i)) = ccs(J(j)))
+
+  ccg_termination_and_trans_implies_scp : LEMMA transitive?(lt) IMPLIES
+    FORALL (dg):
+      (EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))) IMPLIES
+      scp_termination?[Val,Expr,Condition,Seq_cc(dg)](semantic_rel,eval_conds)  
+
+  ccg_termination_implies_scp : THEOREM
+    FORALL (dg):
+      (EXISTS (fms:FunMeasures) : ccg_termination?(make_ccg(dg,fms))) IMPLIES
+      scp_termination?[Val,Expr,Condition,Seq_cc(dg)](semantic_rel,eval_conds)  
+
+END ccg_

@@ -1,0 +1,152 @@
+%==============================================================================%
+%                                                                              %
+% This theory defines an algorithm to get all the cycles of a digraph, given   %
+% its computational representation.                                            %
+%                                                                              %
+%   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%                                                                              %
+%==============================================================================%
+c_digraph_all_cycles[ T:TYPE]: THEORY
+BEGIN
+  IMPORTING c_digraphs_def[T],
+            orders@ordered_nat,
+            structures@more_list_props
+
+  C: VAR (cdigraph)
+  
+  loi_cons: LEMMA FORALL(n:nat,l:list[nat]):
+    list_of_idxs(C)(cons(n,l)) IMPLIES list_of_idxs(C)(l)
+
+  walk?(C)(l:(list_of_idxs(C))): bool =
+    NOT null?(l) AND
+    FORALL(i:below(length(l)-1)): member(nth(l,i+1),nth(adjs(C),nth(l,i)))
+
+  walk_append: LEMMA
+    FORALL(l1,l2:(list_of_idxs(C))):
+      walk?(C)(l1) AND
+      walk?(C)(l2) AND
+      (null?(l1) OR null?(l2) OR member(car(l2), nth(adjs(C), last(l1))))
+      IMPLIES walk?(C)(append(l1,l2))
+
+  circuit?(C)(w:(walk?(C))): bool =
+    car(w) = last(w) AND length(w) > 1
+ 
+  no_repetitions_prefix: LEMMA FORALL(l1,l2:list[nat]):
+    no_repetitions?(l2) AND
+    prefix?(l1,l2) 
+    IMPLIES no_repetitions?(l1)
+
+  norep_loi_length: LEMMA
+    FORALL(l: (list_of_idxs(C))|no_repetitions?(l)):
+      length(l) <= size(C)
+
+  cycle?(C)(c: (circuit?(C))): bool =
+    no_repetitions?(cdr(c))
+
+  cycle_prefix: LEMMA FORALL(c1,c2: (circuit?(C))):
+    cycle?(C)(c1) AND 
+    cycle?(C)(c2) AND
+    prefix?(c1,c2) 
+    IMPLIES c1 = c2
+
+  cycle_construction_loi: LEMMA
+  FORALL (C, (walked: (list_of_idxs[T](C)))):
+    list_of_idxs[T](C)(reverse[nat](walked));
+
+  cycle_construction: LEMMA
+  FORALL(C)(v:below(size(C)))
+  	(walked:(list_of_idxs(C))|NOT null?(walked)):
+    walk?(C)(reverse(walked)) AND
+    no_repetitions?(reverse(walked)) AND
+    last(walked) = v AND
+    member(v,nth(adjs(C),car(walked)))
+    IMPLIES cycle?(C)(reverse[nat](cons[nat](v, walked)))
+
+  cycle_construction_size: LEMMA
+  FORALL (C, (v: below(size[T](C))),
+          (walked: (list_of_idxs(C))
+               | walk?(C)(reverse[nat](walked)) AND
+                  no_repetitions?[nat](reverse[nat](walked)) AND
+                   last[nat](walked) = v)):
+    size[T](C) - length[nat](walked) >= 0
+
+  cycle_construction_grow: LEMMA
+  FORALL (C: (cdigraph[T]), v: below(size[T](C)),
+          (walked: (list_of_idxs(C))
+               | walk?(C)(reverse[nat](walked)) AND
+                  no_repetitions?[nat](reverse[nat](walked)) AND
+                   last[nat](walked) = v),
+          (walking: (list_of_idxs(C))
+               | suffix?[nat]
+                     (walking, nth[list[nat]](C`adjs, car[nat](walked)))),
+          w: nat, ws: list[nat]):
+    NOT member(w, walked) AND NOT w = v AND walking = cons(w, ws) IMPLIES
+     list_of_idxs[T](C)(cons[nat](w, walked)) AND
+      walk?(C)(reverse[nat](cons[nat](w, walked))) AND
+       no_repetitions?[nat](reverse[nat](cons[nat](w, walked))) AND
+        last[nat](cons[nat](w, walked)) = v;
+
+  cycles_from_measure(C)(v:below(size(C)))
+  	     ((walked:(list_of_idxs(C))| walk?(C)(reverse(walked)) AND
+  	     				 no_repetitions?(reverse(walked)) AND
+  					 last(walked) = v),
+  	      (walking:(list_of_idxs(C)) |
+  	                suffix?(walking,nth(adjs(C),car(walked))))) : ordinal
+  = lex2(size(C) - length(walked), length(walking))
+
+  % all cycles containing the path cons(v,reverse(walked))
+  cycles_from(C)(v:below(size(C)))
+  	     ((walked:(list_of_idxs(C))| walk?(C)(reverse(walked)) AND
+	     				 no_repetitions?(reverse(walked)) AND
+					 last(walked) = v),
+  	      (walking:(list_of_idxs(C)) |
+	                suffix?(walking,nth(adjs(C),car(walked))))) 
+  :  RECURSIVE
+    { cs: list[(cycle?(C))] | 
+      FORALL(cycle:(cycle?(C))): member(cycle,cs) 
+      				 IFF EXISTS(w:below(size(C))):
+  				       member(w,walking) AND
+  				       prefix?(reverse(cons(w,walked)),cycle) }
+  = CASES walking OF 
+       null: null,
+       cons(w,ws): IF w=v THEN 
+                     % cycle found!
+       		     cons( reverse(cons(w,walked)),
+		           cycles_from(C)(v)(walked,ws) )
+	           ELSIF member(w,walked) THEN
+		     % no cycle can be constructed using cons(w,walked), since
+		     % no cycle strictly contains another cycle.
+		     cycles_from(C)(v)(walked,ws)
+		   ELSE
+		     % it is necessary to move one step further.
+		     append(
+		       cycles_from(C)(v)(cons(w,walked),nth(adjs(C), w)),
+		       cycles_from(C)(v)(walked,ws))
+		   ENDIF
+    ENDCASES
+  MEASURE cycles_from_measure(C)(v)(walked,walking)
+  
+  cycles_for(C)(v:below(size(C))): {cs: list[(cycle?(C))] | 
+      FORALL(cycle:(cycle?(C))): member(cycle,cs) IFF car(cycle) = v}
+  = cycles_from(C)(v)((:v:),nth(adjs(C),v))
+
+  %-----------------------------------------------------------------------------%
+  % all_cycles
+  %-----------------------------------------------------------------------------%
+  % For every vertex index i, all_cycles returns the list with all the cycles
+  % starting at i. The result is given as list of list of cycles, where the list
+  % containing all cycles for i is in the i-th position of the result.
+
+  all_cycles_rec(C)(n:below(size(C))): 
+  RECURSIVE {cs: list[list[(cycle?(C))]] | length(cs) = n+1 AND
+    FORALL(i: below(n+1)):
+      FORALL(cycle:(cycle?(C))): member(cycle,nth(cs,i)) IFF car(cycle) = i}
+    = append(IF n=0 THEN null ELSE all_cycles_rec(C)(n-1) ENDIF, (:cycles_for(C)(n):)) 
+  MEASURE n
+
+  all_cycles(C): {cs: list[list[(cycle?(C))]] | length(cs) = size(C) AND
+    FORALL(i: below(size(C))):
+      FORALL(cycle:(cycle?(C))): member(cycle,nth(cs,i)) IFF car(cycle) = i}
+  = IF size(C)=0 THEN null ELSE all_cycles_rec(C)(size(C)-1) ENDIF
+
+END c_digraph_all_cycles

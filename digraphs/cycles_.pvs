@@ -1,0 +1,77 @@
+%==============================================================================%
+%                                                                              %
+% Definitions and properties about cycles for uninterpreted digraphs. A cycle  %
+% is a simple circuit; i.e., a walk without repetitions except for the end-    %
+% points.                                                                      %
+%                                                                              %
+% This theory is based on the previous version of the theory "cycles.pvs".     %
+%                                                                              %
+%   Andréia Borges Avelar  Universidade de Brasília (Brasil)      2014         %
+%   Mauricio Ayala-Rincon  Universidade de Brasília (Brasil)      2014         %
+%   Cesar Muñoz            NASA Langley Research Center (US)      2014         %
+%   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%                                                                              %
+%==============================================================================%
+cycles_[T: TYPE, ConcreteDigraph: TYPE,
+       vert: [ConcreteDigraph-> [T -> bool]],
+       edges: [ConcreteDigraph -> [T,T -> bool]],
+       make: [ v:(is_finite[T]),
+              {e: (is_finite[[T,T]]) | FORALL(x,y:T): 
+       	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph]
+]: THEORY 
+BEGIN
+  ASSUMING
+    % This theory only makes sense if the parametric type ConcreteDigraph is a 
+    % correct interpretation for (uninterpreted) digraph. That is checked using 
+    % the predicate defined in digraphs_abs.
+    IMPORTING digraphs_abs[T,ConcreteDigraph,vert,edges,make]
+    concretedigraph_implements_abstractdigraph: ASSUMPTION
+      digraphs_abs.correct_implementation
+  ENDASSUMING
+
+  AUTO_REWRITE+ concretedigraph_implements_abstractdigraph
+
+  IMPORTING circuits_[T, ConcreteDigraph,vert,edges,make]
+
+  G: VAR ConcreteDigraph
+  w: VAR prewalk
+
+% --------------------------------------------------------------------------------
+%     Definitions
+% --------------------------------------------------------------------------------
+
+  cycle?(G, w): bool = 
+       circuit?(G,w) AND 
+       (FORALL (i,j: below(length(w)-1)): i /= j IMPLIES w(i) /= w(j))
+
+% --------------------------------------------------------------------------------
+%     Properties
+% --------------------------------------------------------------------------------
+
+  cycle_is_circuit : LEMMA
+     FORALL (G, w) : cycle?(G,w) IMPLIES circuit?(G,w)
+
+  circuit_subwalk_cycle: LEMMA
+    circuit?(G, w) IMPLIES
+    EXISTS (w1: prewalk): sub_walk?(G, w, w1) AND cycle?(G,w1)
+
+  cycle_prefix: LEMMA
+    circuit?(G,w) IMPLIES 
+    (cycle?(G,w) OR EXISTS (w1, w2 : prewalk): eq_circuit?(G, w, w1 o w2) 
+    AND cycle?(G,w1))
+   
+  cycle_o_circuit: LEMMA
+    circuit?(G,w) IMPLIES 
+    (cycle?(G,w) OR EXISTS (w1, w2 : prewalk): eq_circuit?(G, w, w1 o rest(w2))
+    AND cycle?(G,w1) AND circuit?(G,w2))
+
+%--------------------------------------------------------------------------------
+
+   IMPORTING finite_sets@finite_sets_card_eq, structures@seq_pigeon
+
+   GF: VAR Digraph
+
+   Pigeon_hole: THEOREM FORALL (w: Walk(GF)): length(w) > card(vert(GF)) IMPLIES 
+                  (EXISTS (i,j: below(length(w))): i /= j AND w(i) = w(j))
+
+END cycles_
