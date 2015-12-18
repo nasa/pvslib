@@ -1,0 +1,134 @@
+%==============================================================================%
+%                                                                              %
+% In this theory, the function "digraph_all_cycles" is defined. It maps a      %
+% (non-computational) digraph with a collection containing all the cycles in   %
+% the graph. It is based on the function "c_digraph_all_cycles.all_cycles",    %
+% which states a similar mapping but on computational digraphs.                % 
+%                                                                              %
+%   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%                                                                              %
+%==============================================================================%
+digraphs_all_cycles[T:TYPE]: THEORY
+BEGIN
+
+  IMPORTING cycles[T]
+
+  G: VAR digraph
+
+  VertList(G) : TYPE = {L : list[vert(G)] | 
+     FORALL (v: vert(G)): 
+       EXISTS (i:below(length[T](L))): nth[T](L, i) = v AND 
+       FORALL (j:below(length[T](L))): nth[T](L, j) = nth[T](L, i) IMPLIES j=i } 
+
+  CyclesAt(G, (v:vert(G))) : TYPE = {L : list[Walk(G)] | 
+     FORALL (walk: Walk(G)): member(walk, L) IFF cycle_at?(G, walk, v)} 
+ 
+  VertCycles(G): TYPE = [# vert  : vert(G), 
+                           cycles: CyclesAt(G, vert) #]
+
+  VCList(G, (VL:VertList(G))): TYPE = {L : list[VertCycles(G)] | 
+     length(L) = length[T](VL) AND 
+     FORALL (n:below(length(L))): nth[T](VL, n) = nth(L, n)`vert  }     
+
+  IMPORTING c_digraphs_digraphs[T]
+
+  vertsl?_is_vertlist: JUDGEMENT
+    (vertsl?(G)) SUBTYPE_OF VertList(G)
+
+  IMPORTING c_digraph_all_cycles[T]
+
+  C: VAR (cdigraph)
+
+%------------------------------------------------------------------------------%
+% Conversions between walks, circuits and cycles.                              %
+%------------------------------------------------------------------------------%
+  walk_eq (G,(C:cdigraph_eq(G)))
+          (w1: Walk(G), w2: (walk?(C))): bool = 
+    length(w1) = length(w2) AND
+    FORALL(i:below(length(w1))): w1(i) = nth(data(C),nth(w2,i))
+
+  walki2walk(C,(G:digraph_eq(C)))(cw:(walk?(C))):{w:Walk(G)|walk_eq(G,C)(w,cw)}=
+    (# length := length(cw),
+       seq := (LAMBDA(i:below(length(cw))): nth(data(C),nth(cw,i))) #)
+
+  walk2walki_rec(G, (C:cdigraph_eq(G)))(w:Walk(G),offset:below(length(w))):
+  RECURSIVE { wi : (walk?(C)) | length(wi) + offset = length(w) AND
+           FORALL(i:below(length(wi))): w(i+offset) = nth(data(C),nth(wi,i)) } =
+    cons( idx(data(C),w(offset)) , 
+       	  IF offset = length(w)-1 THEN null ELSE walk2walki_rec(G,C)(w,offset+1) ENDIF )
+  MEASURE length(w) - offset 
+
+  walk2walki(G, (C:cdigraph_eq(G)))(w:Walk(G)):{wi:(walk?(C))|walk_eq(G,C)(w,wi)}=
+    walk2walki_rec(G,C)(w,0)
+
+  w2wi_circuit: LEMMA
+   FORALL(C:cdigraph_eq(G), w: Walk(G)):
+    circuit?(G,w) IMPLIES circuit?(C)(walk2walki(G,C)(w))
+
+  w2wi_cycle: LEMMA
+   FORALL(C:cdigraph_eq(G), w: Walk(G)):
+    cycle?(G,w) IMPLIES cycle?(C)(walk2walki(G,C)(w))
+    
+  circuit_walk_eq: LEMMA
+    FORALL(C:cdigraph_eq(G), ci: (circuit?(C)), w: Walk(G)): 
+      walk_eq(G,C)(w,ci) 
+      IMPLIES circuit?(G,w)
+
+  cycle_walk_eq: LEMMA
+    FORALL(C:cdigraph_eq(G), ci: (cycle?(C)), w: Walk(G)): 
+      walk_eq(G,C)(w,ci) 
+      IMPLIES cycle?(G,w)
+
+  walk_eq_inj_1: LEMMA
+   FORALL(C:cdigraph_eq(G), wi: (walk?(C)), w1,w2: Walk(G)):
+    walk_eq(G,C)(w1,wi) AND
+    walk_eq(G,C)(w2,wi) 
+    IMPLIES w1 = w2
+
+  cyclesi2cycles (G,(C:cdigraph_eq(G)))
+  		 ( v_idx: below(size(C)),
+		  cycles: list[(cycle?(C))] | FORALL(i:below(length(cycles))): 
+		 	  	      nth(nth(cycles,i),0) = v_idx )
+  : RECURSIVE {cs: list[Walk(G)] | length(cs) = length(cycles) AND
+      FORALL(i:below(length(cs))): walk_eq(G,C)(nth(cs,i),nth(cycles,i))} =
+    CASES cycles OF
+      null: null,
+      cons(cycle,cycles_): cons( walki2walk(C,G)(cycle) ,
+                                 cyclesi2cycles(G,C)(v_idx,cycles_) )
+    ENDCASES
+  MEASURE length(cycles)
+
+%------------------------------------------------------------------------------%
+% Definition of the function digraph_all_cycles                                %
+%------------------------------------------------------------------------------%
+  cac2dac_rec (G, (vl:VertList(G)), (C:cdigraph_eq(G)|data(C)=vl))
+  	      ( offset: nat,
+	        (cs: list[list[(cycle?(C))]] | length(cs)+offset = size(C) AND
+                    FORALL(i: below(length(cs))):
+                       FORALL(cycle:(cycle?(C))): 
+                         member(cycle,nth(cs,i)) IFF car(cycle) = i+offset) ):
+              RECURSIVE {l: list[VertCycles(G)] | length(l) = length(cs) AND
+              FORALL(n:below(length(l))): nth[T](vl, n+offset) = vert(nth(l, n))} =
+    CASES cs OF
+      null: null,
+      cons(cycles, cs_): cons( (# vert := nth(data(C),offset),
+      		   	       	  cycles := cyclesi2cycles(G,C)( offset, 
+				  	    			 cycles ) #), 
+      		   	       cac2dac_rec(G,vl,C)(offset+1,cs_))
+    ENDCASES
+  MEASURE length(cs) 
+
+  cac2dac(G, (vl:VertList(G)), (C:cdigraph_eq(G)|data(C)=vl))
+	 (cs: list[list[(cycle?(C))]] | length(cs) = size(C) AND
+    	   FORALL(i: below(size(C))):
+      	     FORALL(cycle:(cycle?(C))): 
+	       member(cycle,nth(cs,i)) IFF car(cycle) = i): VCList(G,vl) =
+    cac2dac_rec(G,vl,C)(0,all_cycles(C))
+
+  digraph_all_cycles_vl(G,(vl:(vertsl?[T](G)))): VCList(G,vl) =
+    LET cd = to_cdigraph_vl(G,vl) IN cac2dac(G,vl,cd)(all_cycles(cd))
+
+  digraph_all_cycles(G): [# vl: VertList(G), vc: VCList(G, vl) #] =
+    (# vl := vertsl(G), vc := digraph_all_cycles_vl(G,vertsl(G)) #)
+
+END digraphs_all_cycles
