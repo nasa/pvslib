@@ -111,7 +111,7 @@
 	  (t (list expr)))))
 
 (defun sturm-expr-wrt0 (expr1 expr2 &optional sign)
-  (let ((num (number-from-expr expr2)))
+  (let ((num (extra-get-number-from-expr expr2)))
     (if (or (null num) (/= 0 num))
 	(mk-application (if sign '+ '-) expr1 expr2)
       expr1)))
