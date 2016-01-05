@@ -14,6 +14,7 @@ matrix_wdg_[T: TYPE, N: posnat,
     ConcreteDigraph: TYPE,
     vert:  [ConcreteDigraph-> [T -> bool]],
     edges: [ConcreteDigraph -> [T,T -> bool]],
+    size:  [ConcreteDigraph-> nat],
     make:  [ v:(is_finite[T]),
              {e: (is_finite[[T,T]]) | 
 	         FORALL(x,y:T): 
@@ -34,26 +35,28 @@ BEGIN
     % This theory only makes sense if the parametric type ConcreteDigraph is a 
     % correct interpretation for (uninterpreted) digraphs. That is checked using 
     % the predicate defined in digraphs_abs.
-    IMPORTING digraphs@digraphs_abs[T,ConcreteDigraph,vert,edges,make]
+    IMPORTING digraphs@digraphs_abs[T,ConcreteDigraph,vert,edges,size,make]
     concretedigraph_implements_abstractdigraph: ASSUMPTION
       digraphs_abs.correct_implementation
 
-    IMPORTING digraphs@weighted_digraphs_abs[T, measures[N].Measure_Matrix,
-                                        measures[N].*, measures[N].id,
-					ConcreteDigraph,vert,edges,make,
-					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
-					get_weight,weight_map?,make_wdg]
+    IMPORTING digraphs@weighted_digraphs_abs[
+                T, measures[N].Measure_Matrix,
+                measures[N].*, measures[N].id,
+		ConcreteDigraph,vert,edges,size,make,
+		wdg,dg,get_wgt,WeightsMap,weighted_edge?,
+		get_weight,weight_map?,make_wdg]
     concretewd_implements_abstractwd: ASSUMPTION
       weighted_digraphs_abs.correct_implementation
   ENDASSUMING
 
    IMPORTING digraphs@weighted_digraphs_[T, measures[N].Measure_Matrix,
                                         measures[N].*, measures[N].id,
-					ConcreteDigraph,vert,edges,make,
+					ConcreteDigraph,vert,edges,size,make,
 					wdg,dg,get_wgt,WeightsMap,weighted_edge?,
 					get_weight,weight_map?,make_wdg],
-             digraphs@cycles_[T,ConcreteDigraph,vert,edges,make]
-
+             digraphs@cycles_[T,ConcreteDigraph,vert,edges,size,make],
+             digraphs@circuit_decomp_[T,ConcreteDigraph,vert,edges,size,make]
+	     
             G : VAR wdg
  w, c, cc, cy : VAR prewalk
       u, v, n : VAR nat
@@ -136,16 +139,15 @@ BEGIN
      IMPLIES get(wgt_walk(G, w)) (F(first(w)),F(last(w))) >= 0
 
  ll_pstv_pos_circuits: LEMMA
-   FORALL(G: wdg, F: vertex_labeling(G)): limiting_labeling?(G, F) IMPLIES 
-     FORALL(c | circuit?(dg(G), c)): get(wgt_walk(G, c))(F(first(c)),F(last(c))) = 1
+  FORALL(G: wdg, F: vertex_labeling(G)): limiting_labeling?(G, F) IMPLIES 
+   FORALL(c|circuit?(dg(G),c)): get(wgt_walk(G, c))(F(first(c)),F(last(c))) = 1
 
  ll_pstv_circuits: THEOREM
    criterion_two?(G) IMPLIES mwg_termination?(G)
 
-% ------------------------------------------------------------------------------- %
+%------------------------------------------------------------------------------%
 %  Cycle length based criteria.
-%  
-% ------------------------------------------------------------------------------- %
+%------------------------------------------------------------------------------%
  
  circuit_length_reduce: LEMMA 
    FORALL (G, m, c):  (circuit?(dg(G), c) AND wgt_walk(G,c) = m AND 
@@ -160,6 +162,49 @@ BEGIN
  bounded_circuits_pstv: LEMMA 
    (FORALL(c | circuit?(dg(G), c) AND 
     length(c)<=card(vert(dg(G)))*3^(N^2) + 1): positive?(wgt_walk(G, c))) IMPLIES
-   FORALL(c | circuit?(dg(G), c)): positive?(wgt_walk(G, c))
+%   FORALL(c | circuit?(dg(G), c)): positive?(wgt_walk(G, c))
+    mwg_termination?(G)
+
+%------------------------------------------------------------------------------%
+% Toward the algorithm for circuits. 
+% Some of this can likely be relocated to the digraphs library 
+%------------------------------------------------------------------------------%
+
+  H : VAR ConcreteDigraph
+
+  lower_bounding_sets: LEMMA
+    (EXISTS (F: [vert(dg(G))->list[Measure_Matrix]]): FORALL (v:vert(dg(G))): 
+      FORALL (c| circuit_at?(dg(G), c, v)
+      	     	 AND length(c)<= card[T](vert(dg(G)))*3^(N^2) + 1):
+       EXISTS (M:Measure_Matrix):
+         member(M, F(v)) AND positive?(M) AND M<=wgt_walk(G, c) )
+    IMPLIES mwg_termination?(G)
+     
+ CircBound(G:wdg): posnat = size(dg(G))*3^(N^2) + 1 
+
+ BoundingSets(G:wdg): TYPE =
+  {F2:[upto(CircBound(G)), bool,[vert(dg(G))->list[Measure_Matrix]]] | F2`2
+    IMPLIES FORALL (v2:vert(dg(G))): 
+            FORALL (cc| (circuit_at?(dg(G), cc, v2) AND length(cc)<= F2`1)
+	    	   	OR cycle_at?(dg(G), cc, v2)):
+	     EXISTS (M2:Measure_Matrix):
+	       member(M2, F2`3(v2)) AND positive?(M2) AND M2<=wgt_walk(G, cc) }
+
+ BoundingStepsFun(G:wdg): TYPE =
+  { F: [BoundingSets(G) -> BoundingSets(G)] |
+       FORALL (n:upto(CircBound(G)), (BS:BoundingSets(G)|BS`1=n)):
+         F(BS)`1 = CircBound(G) OR F(BS)`1 > n  }
+
+ bounding_steps_iter(G:wdg, S: BoundingSets(G), F: BoundingStepsFun(G) ):
+ RECURSIVE bool = 
+   IF NOT S`2 THEN FALSE
+   ELSIF S`1 >= CircBound(G) THEN TRUE
+   ELSE bounding_steps_iter(G, F(S), F)
+   ENDIF
+ MEASURE CircBound(G) - S`1
+  	  
+ bounding_steps_iter_def: LEMMA
+  FORALL (G:wdg, S: BoundingSets(G), F: BoundingStepsFun(G)):
+   bounding_steps_iter(G, S, F) IMPLIES mwg_termination?(G)
 
 END matrix_wdg_

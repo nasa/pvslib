@@ -1,0 +1,219 @@
+circuit_decomp_[T: TYPE, ConcreteDigraph: TYPE,
+       vert: [ConcreteDigraph-> [T -> bool]],
+       edges: [ConcreteDigraph -> [T,T -> bool]],
+       size : [ConcreteDigraph -> nat],
+       make: [ v:(is_finite[T]),
+              {e: (is_finite[[T,T]]) | FORALL(x,y:T): 
+       	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph]
+]: THEORY 
+BEGIN
+  ASSUMING
+    % This theory only makes sense if the parametric type ConcreteDigraph is a 
+    % correct interpretation for (uninterpreted) digraph. That is checked using 
+    % the predicate defined in digraphs_abs.
+    IMPORTING digraphs_abs[T,ConcreteDigraph,vert,edges,size,make]
+    concretedigraph_implements_abstractdigraph: ASSUMPTION
+      digraphs_abs.correct_implementation
+  ENDASSUMING
+
+  AUTO_REWRITE+ concretedigraph_implements_abstractdigraph
+
+  IMPORTING cycles_[T,ConcreteDigraph,vert,edges,size,make], 
+   	    structures@more_list_props
+
+  G: VAR ConcreteDigraph
+
+  vert_circ(G) : TYPE  = 
+    {vc : [# v: vert(G) , c: Walk(G) #] |
+       vc`c = gen_seq1(G, vc`v) OR circuit_at?(G, vc`c, vc`v)}
+
+  walk_decomp(G) : TYPE = 
+   {cd: list[vert_circ(G)] |
+     length(cd)>0 AND
+     walk?(G, list2finseq(map(LAMBDA (vc:vert_circ(G)): vc`v)(cd)))} 
+ 
+ drop_circuits(G, (cd:walk_decomp(G))): {W: Walk(G) | length(W)=length(cd)} = 
+   list2finseq(map(LAMBDA (vc:vert_circ(G)): vc`v)(cd)) 
+
+ cdr_decomp: LEMMA 
+  FORALL( cd: walk_decomp(G)): 
+   (length(cd) > 0 AND NOT length(cd) = 1)
+   IMPLIES length(cdr(cd))>0 AND
+   	   walk?(G, list2finseq(map(LAMBDA (vc:vert_circ(G)): vc`v)(cdr(cd)))) 
+ 
+ decomp_to_walk(G, (cd:walk_decomp(G))): RECURSIVE {ww: Walk(G) |
+ LET W = drop_circuits(G,cd) IN  first(ww)=first(W) AND last(ww)=last(W)} = 
+   IF length(cd) = 1 THEN car(cd)`c
+   ELSE car(cd)`c o decomp_to_walk(G, cdr(cd))
+   ENDIF
+ MEASURE length(cd) 
+
+ decomp_to_walk_length(G, (cd: walk_decomp(G))): 
+  RECURSIVE {n:posnat| n=length(decomp_to_walk(G, cd))} = 
+  IF length(cd) =1 THEN car(cd)`c`length 
+  ELSE car(cd)`c`length  + decomp_to_walk_length(G, cdr(cd))
+  ENDIF
+ MEASURE length(cd)
+
+ decomp_to_walk_rw: LEMMA FORALL( cd:walk_decomp(G)):
+  length(decomp_to_walk(G, cd)) = decomp_to_walk_length(G,cd)
+
+ decomp_to_walk_length_bnd: 
+   LEMMA 
+   FORALL( (cd:walk_decomp(G)), (n:below(length(cd)))):
+   decomp_to_walk_length(G, cd) >= nth(cd, n)`c`length
+
+ caret_decomp: LEMMA FORALL (cd: walk_decomp(G), i, j: nat):
+   i <= j AND j < length(cd) IMPLIES
+   length(^(cd,(i, j))) > 0 AND
+   walk?(G, list2finseq(map(LAMBDA (vc: vert_circ(G)): vc`v)(^(cd, (i, j))))) 
+
+ walk_index(G, (cd:walk_decomp(G)), (i: below(length(cd)))):
+  RECURSIVE {n:nat | n = length(decomp_to_walk(G, cd^(0, i)))} = 
+  IF i=0 THEN length(car(cd)`c)
+  ELSE length(car(cd)`c) + walk_index(G, cdr(cd), i-1)
+  ENDIF
+  MEASURE i
+
+ walk_index_ub: LEMMA 
+   FORALL( cd: walk_decomp(G), j: below(length(cd))):
+   walk_index(G, cd, j)<= decomp_to_walk(G, cd)`length 
+
+ walk_index_incr: 
+   LEMMA 
+   FORALL( cd: walk_decomp(G), i,j: below(length(cd))):
+   i<=j IMPLIES walk_index(G, cd, i)<=  walk_index(G, cd, j)
+
+ walk_index_sincr:
+  LEMMA 
+   FORALL( cd: walk_decomp(G), i,j: below(length(cd))):
+   i<j IMPLIES walk_index(G, cd, i)<  walk_index(G, cd, j)
+
+ walk_index_last:
+   LEMMA 
+   FORALL( cd: walk_decomp(G), i: below(length(cd)-1)):
+   walk_index(G, cd, i+1) =  walk_index(G, cd,i) +nth(cd,1+i)`c`length 
+
+ walk_index_bound: 
+   LEMMA 
+   FORALL( cd: walk_decomp(G), i, j: nat):
+   i <= j AND j < length(cd) IMPLIES
+   walk_index(G, cd, i) - nth[vert_circ(G)](cd, i)`c`length >= 0
+
+ walk_index_pos:
+   LEMMA
+   FORALL( cd: walk_decomp(G), i, j: nat):
+   i <= j AND j < length(cd) IMPLIES 
+   walk_index(G, cd, j) - 1 >= 0
+
+ decomp_walk_index: LEMMA 
+  FORALL(cd:walk_decomp(G),i:below(length(cd)),x:below(nth(cd, i)`c`length)):
+   nth(cd, i)`c`seq(x) =
+       decomp_to_walk(G, cd)`seq
+           (walk_index(G, cd, i) - nth(cd, i)`c`length + x)
+
+ caret_commute: LEMMA FORALL( (cd: walk_decomp(G)), (i,j:nat)): 
+   i<=j AND
+   j<length(cd)
+   IMPLIES decomp_to_walk(G, cd^(i,j)) =
+   	   decomp_to_walk(G, cd)^( walk_index(G,cd,i)-nth(cd,i)`c`length,
+	   		     	   walk_index(G,cd,j)-1 )
+
+ append_decomp:
+   LEMMA 
+   FORALL (cd1, cd2:walk_decomp(G)):
+   edge?(G)(nth(cd1, length(cd1) - 1)`v, nth(cd2, 0)`v)
+   IMPLIES
+   length[vert_circ(G)](append[vert_circ(G)](cd1, cd2)) > 0 AND
+   walk?
+        (G, list2finseq[vert(G)]
+        (map[vert_circ(G), vert(G)]
+        (LAMBDA (vc: vert_circ(G)): vc`v)
+        (append[vert_circ(G)](cd1, cd2))))
+
+ append_commute: LEMMA 
+   FORALL (cd1, cd2:walk_decomp(G)):
+   edge?(G)(nth(cd1, length(cd1)-1)`v ,nth(cd2, 0)`v)
+   IMPLIES decomp_to_walk(G, append[vert_circ(G)](cd1, cd2)) =
+   	   decomp_to_walk(G, cd1) o decomp_to_walk(G, cd2)
+
+ circuit_vertex:
+  LEMMA 
+  FORALL( cd:walk_decomp(G), i:below(length(cd))): 
+  nth(cd, i)`c`seq(0) = nth(cd, i)`v
+
+ circuit_first_last: 
+  LEMMA 
+  FORALL( cd:walk_decomp(G), i:below(length(cd))): 
+  nth(cd, i)`c`seq(0) = nth(cd, i)`c`seq(nth(cd, i)`c`length - 1)
+
+ shrink_repeat: LEMMA 
+   FORALL( cd:walk_decomp(G), (W: Walk(G) | W = decomp_to_walk(G, cd))):
+   LET ww = drop_circuits(G, cd) IN
+   (EXISTS (i,j:below(length(ww))): i<j AND ww(i) = ww(j)) 
+   IMPLIES (EXISTS (scd:walk_decomp(G)):
+   	     W = decomp_to_walk(G, scd) AND
+	     length(drop_circuits(G, scd))<length(ww))
+  
+ circuit_decomp_prep: LEMMA 
+  FORALL( v:vert(G), w: Walk(G) , cd: walk_decomp(G), n:posnat ):
+  n = length(cd) AND decomp_to_walk(G, cd) = w IMPLIES 
+  EXISTS (scd: walk_decomp(G)):
+   ( decomp_to_walk(G, scd)  = w AND
+     LET path =  drop_circuits(G, scd) IN
+      FORALL(i,j:below(length(path))): i<j IMPLIES path(i) /= path(j) )
+
+ vert2vc(G, (v:vert(G))): vert_circ(G) = (# v:= v, c:=gen_seq1(G, v) #)
+ 
+ trivial_decomp(G,(w:Walk(G))): RECURSIVE
+ {cd: walk_decomp(G) | decomp_to_walk(G, cd)=w AND drop_circuits(G, cd)=w} = 
+   IF length(w) = 1 THEN (: vert2vc(G, w(0)) :) 
+   ELSE cons[vert_circ(G)]( vert2vc(G, w(0)),
+   			    trivial_decomp(G, w^(1, length(w)-1)))
+   ENDIF 
+ MEASURE length(w)
+
+ trivial_decomp_idemp: LEMMA
+   FORALL( w:Walk(G)): w = decomp_to_walk(G, trivial_decomp(G, w))
+
+ trivial_decomp_length: LEMMA
+   FORALL( w:Walk(G)):
+    length(trivial_decomp(G, w)) = length(w)
+
+ trivial_decomp_circuit_length: LEMMA 
+  FORALL( w:Walk(G), i: below(length(w))):
+   nth(trivial_decomp(G, w), i)`c`length =1
+
+ trunk_decomp:LEMMA 
+   FORALL( w: Walk(G), cd: walk_decomp(G)):
+        w`length > 1 AND decomp_to_walk(G, cd) = trunc1(w) IMPLIES
+         length[vert_circ(G)]
+             (append[vert_circ(G)](cd, (: vert2vc(G, last(w)) :)))
+          > 0
+          AND
+          walk?
+              (G,
+               list2finseq[vert(G)]
+                   (map[vert_circ(G), vert(G)]
+                        (LAMBDA (vc: vert_circ(G)): vc`v)
+                        (append[vert_circ(G)]
+                             (cd, (: vert2vc(G, last(w)) :)))))
+
+ trunc_decomp_def: LEMMA 
+  FORALL( w:Walk(G), cd:walk_decomp(G) ):
+   w`length>1 AND decomp_to_walk(G, cd)  = trunc1(w) 
+   IMPLIES decomp_to_walk(
+	     G,
+	     append[vert_circ(G)](cd,(:vert2vc(G,last(w)):))) = w
+
+  circuit_decomposition: 
+   LEMMA 
+   FORALL( v:vert(G), (circ: prewalk | circuit_at?(G, circ, v))):
+   EXISTS (cd:walk_decomp(G)): 
+    (decomp_to_walk(G, cd) = circ 
+     AND 
+     cycle_at?(G, drop_circuits(G, cd), v)
+     AND FORALL (i:below(length(cd))): 
+     nth(cd, i)`c`length< length(circ))
+
+END circuit_decomp_

@@ -9,29 +9,33 @@
 %   Mauricio Ayala-Rincon  Universidade de Brasília (Brasil)      2014         %
 %   Cesar Muñoz            NASA Langley Research Center (US)      2014         %
 %   Mariano Moscato        National Institute of Aerospace (US)   2015         %
+%   Aaron Dutle            NASA Langley Research Center (US)      2015         %
 %   (Among others)                                                             %
 %                                                                              %
 %==============================================================================%
-walks_[T: TYPE,  
-       ConcreteDigraph: TYPE,
-       vert: [ConcreteDigraph-> [T -> bool]],
-       edges: [ConcreteDigraph -> [T,T -> bool]],
-       make: [ v:(is_finite[T]),
-              {e: (is_finite[[T,T]]) | FORALL(x,y:T): 
-       	          e(x,y) IMPLIES v(x) AND v(y) } -> ConcreteDigraph] ]: THEORY 
+walks_[
+ T              : TYPE,  
+ ConcreteDigraph: TYPE,
+ vert           : [ConcreteDigraph-> [T -> bool]],
+ edges          : [ConcreteDigraph -> [T,T -> bool]],
+ size           : [ConcreteDigraph -> nat],
+ make           : [ v:(is_finite[T]),
+                   {e: (is_finite[[T,T]]) |
+		     FORALL(x,y:T): e(x,y) IMPLIES v(x) AND v(y) }
+		   -> ConcreteDigraph] ]: THEORY 
 BEGIN
   ASSUMING
     % This theory only makes sense if the parametric type ConcreteDigraph is a 
     % correct interpretation for (uninterpreted) digraphs. That is checked using 
     % the predicate defined in digraphs_abs.
-    IMPORTING digraphs_abs[T,ConcreteDigraph,vert,edges,make]
+    IMPORTING digraphs_abs[T,ConcreteDigraph,vert,edges,size,make]
     concretedigraph_implements_abstractdigraph: ASSUMPTION
       digraphs_abs.correct_implementation
   ENDASSUMING
 
   AUTO_REWRITE+ concretedigraph_implements_abstractdigraph
 
-  IMPORTING digraphs_[T, ConcreteDigraph,vert,edges,make],
+  IMPORTING digraphs_[T, ConcreteDigraph,vert,edges,size,make],
              structures@seq_extras[T]
 
   G,GG: VAR ConcreteDigraph
@@ -40,9 +44,9 @@ BEGIN
   e: VAR edgetype
   i,j: VAR nat
 
-% -------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 %     Definitions
-% -------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 
    prewalk: TYPE = {w: finseq[T] | length(w) > 0}
 
@@ -75,7 +79,7 @@ BEGIN
 
 %  ----------------------- Properties -----------------------
 
-   walk_from_l     : LEMMA walk_from?(G,ps,u,v) AND u /= v IMPLIES length(ps) >= 2
+   walk_from_l     : LEMMA walk_from?(G,ps,u,v) AND u/=v IMPLIES length(ps)>=2
 
    verts_in?_concat: LEMMA FORALL (s1,s2: Seq(G)): verts_in?(G,s1 o s2)
 
@@ -83,7 +87,7 @@ BEGIN
                                    verts_in?(G,ps) IMPLIES verts_in?(G,ps^(i,j))
 
   
-   vert_seq_lem    : LEMMA FORALL (w: Seq(G)): n < length(w) IMPLIES vert(G)(w(n))
+   vert_seq_lem    : LEMMA FORALL (w: Seq(G)): n<length(w) IMPLIES vert(G)(w(n))
 
    verts_of_subset : LEMMA FORALL (w: Seq(G)):
                                    subset?(verts_of(w),vert(G))
@@ -125,9 +129,9 @@ BEGIN
 
    add1(ww,x): prewalk = (# length := length(ww) + 1,
                            seq := (LAMBDA (ii: below(length(ww) + 1)):
-                                    IF ii < length(ww) THEN seq(ww)(ii) ELSE x ENDIF)
-                         #)
-
+                                    IF ii < length(ww)
+				    THEN seq(ww)(ii)
+				    ELSE x ENDIF) #)
 
    gen_seq1_is_walk: LEMMA vert(G)(x) IMPLIES walk?(G,gen_seq1(G,x))
 
@@ -140,7 +144,7 @@ BEGIN
                                IMPLIES walk?(G,ps^(i,j))
 
 
-   l_trunc1        : LEMMA length(ww) > 1 IMPLIES length(trunc1(ww)) = length(ww)-1
+   l_trunc1        : LEMMA length(ww)>1 IMPLIES length(trunc1(ww))=length(ww)-1
 
    
    walk?_add1      : LEMMA walk?(G,ww) AND vert(G)(x)
@@ -160,11 +164,11 @@ BEGIN
       		 IMPLIES
       		     walk_from?(G, w1 ^ (0, length(w1) - 2) o w2,u1,u2)
 
-   walk?_cut  : LEMMA FORALL (i,j: below(length(ps))): i < j AND
-                                  seq(ps)(i) = seq(ps)(j) AND
-                                  walk_from?(G, ps, u, v)
-                               IMPLIES
-                                  walk_from?(G, ps^(0,i) o ps^(j+1,length(ps)-1),u,v)
+   walk?_cut  : LEMMA FORALL (i,j: below(length(ps))):
+     i < j AND
+     seq(ps)(i) = seq(ps)(j) AND
+     walk_from?(G, ps, u, v)
+     IMPLIES walk_from?(G, ps^(0,i) o ps^(j+1,length(ps)-1),u,v)
 
    yt: VAR T
    p1,p2: VAR prewalk
@@ -173,9 +177,9 @@ BEGIN
                            IMPLIES
       	                (EXISTS (p: prewalk): walk_from?(G, p, u, v))
 
-% --------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 %  Reachability definition
-% --------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 
  sub_walk?((G), w: Walk(G), ww): bool =  
     EXISTS (i, j: below(length(w))): w^(i,j) = ww
@@ -189,9 +193,9 @@ BEGIN
  eq_prewalk?(w1, w2: prewalk): bool =
     w1 = w2 OR EXISTS (i: posnat): w2 = reord_prewalk(w1, i)
 
-% --------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 %     Properties
-% --------------------------------------------------------------------------------
+% ------------------------------------------------------------------------------
 
  eq_relation_eq_prewalk: LEMMA
     equivalence?(eq_prewalk?)
@@ -209,6 +213,10 @@ BEGIN
  edges_o_walk: LEMMA
     walk?(G, w1) AND walk?(G, w2) AND last(w1) = first(w2)
     IMPLIES edges_of(w1 o rest(w2)) = union(edges_of(w1), edges_of(w2))
+
+ walk_o_edge: LEMMA FORALL (ww1, ww2:prewalk):
+     walk?(G, ww1) AND walk?(G, ww2) AND edge?(G)(ww1(length(ww1) - 1), ww2(0))
+    IMPLIES walk?(G, ww1 o ww2)
 
  reachable_is_transitive: LEMMA FORALL(v1,v2,v3: (vert(G))):
    reachable?(G)(v1,v2) AND reachable?(G)(v2,v3) IMPLIES reachable?(G)(v1,v3)
