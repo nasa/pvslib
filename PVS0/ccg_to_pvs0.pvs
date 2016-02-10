@@ -1,5 +1,5 @@
 %********************************************************************************%
-%   CCG termination implies PVS0 measure termination  					         %
+%   CCG termination implies PVS0 measure termination  	                         %
 %										 %
 %   Authors:									 %
 %   										 %
@@ -24,17 +24,37 @@ BEGIN
 
   IMPORTING CCG@ccg
 
-  ccg_termination_pvs0(def) : bool =
+  sound_ccg_digraph(def)(dg:(cdigraph)): bool =
+    (FORALL(cc: (cc_of_pvs0(def))): vert(dg)(cc)) AND
+    (FORALL(cc1,cc2: (cc_of_pvs0(def)))(v1,v2: Val):
+      eval_conditions(def)(cc1`conds,v1) AND
+      semantic_relation(def)(cc1`actuals,v1,v2) AND
+      eval_conditions(def)(cc1`conds,v1)
+      IMPLIES edges(dg)(cc1,cc2))
+
+  SoundCCGDigraph(def) : TYPE = (sound_ccg_digraph(def))
+
+  ccg_termination_pvs0_old(def) : bool =
     EXISTS (measures:FunMeasures):
-      LET ccg = make_ccg(pvs0_to_dg(eval_bool,eval_op1,eval_op2)(def),measures) IN
-        ccg_termination?[Val,Expr,Conditions,MT,lt,N,semantic_relation(def),eval_conditions(def)](ccg)
+      LET ccg = make_ccg(pvs0_to_cd(eval_bool,eval_op1,eval_op2)(def),measures) IN
+        ccg_termination?[Val,Expr,Conditions,MT,lt,N,
+			 semantic_relation(def),eval_conditions(def)]
+			 (ccg)
+			 
+  ccg_termination_pvs0(def,(dg:SoundCCGDigraph(def))) : bool =
+    EXISTS (measures:FunMeasures):
+      LET ccg = make_ccg(dg,measures) IN
+        ccg_termination?[Val,Expr,Conditions,MT,lt,N,
+			 semantic_relation(def),eval_conditions(def)]
+			 (ccg)
 
   ccg_implies_scp_pvs0 : LEMMA
-    ccg_termination_pvs0(def) IMPLIES
-    scp_termination_pvs0(def)
+   FORALL(dg:SoundCCGDigraph(def)):
+    ccg_termination_pvs0(def,dg)
+    IMPLIES scp_termination_pvs0(def)
 
   ccg_implies_pvs0_tcc : THEOREM
-    ccg_termination_pvs0(def) IMPLIES
-    pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def) 
+    ccg_termination_pvs0(def,pvs0_to_cd(eval_bool,eval_op1,eval_op2)(def))
+    IMPLIES pvs0_tcc_termination(eval_bool,eval_op1,eval_op2)(def) 
 
 END ccg_to_pvs0

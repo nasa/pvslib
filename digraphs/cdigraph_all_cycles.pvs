@@ -1,15 +1,21 @@
 cdigraph_all_cycles[ T:TYPE]: THEORY
 BEGIN
-  IMPORTING cdigraphs[T]
+  IMPORTING c_cycles[T]
 
   C: VAR (cdigraph)
   
   loi_cons: LEMMA FORALL(n:nat,l:list[nat]):
     list_of_idxs(C)(cons(n,l)) IMPLIES list_of_idxs(C)(l)
 
+  % index walks.
   walk?(C)(l:(list_of_idxs(C))): bool =
     NOT null?(l) AND
     FORALL(i:below(length(l)-1)): member(nth(l,i+1),nth(adjs(C),nth(l,i)))
+
+  % equivalence between index walks and vertex  walks.
+  walk_eq (C)(w1: Walk(C), w2: (walk?(C))): bool = 
+    length(w1) = length(w2) AND
+    FORALL(i:below(length(w1))): w1(i) = nth(data(C),nth(w2,i))
 
   walk_append: LEMMA
     FORALL(l1,l2:(list_of_idxs(C))):
@@ -18,6 +24,12 @@ BEGIN
       (null?(l1) OR null?(l2) OR member(car(l2), nth(adjs(C), last(l1))))
       IMPLIES walk?(C)(append(l1,l2))
 
+  walk_eq_inj_1: LEMMA
+   FORALL(wi: (walk?(C)), w1,w2: Walk(C)):
+    walk_eq(C)(w1,wi) AND
+    walk_eq(C)(w2,wi) 
+    IMPLIES w1 = w2
+    
   circuit?(C)(w:(walk?(C))): bool =
     car(w) = last(w) AND length(w) > 1
  
@@ -55,6 +67,16 @@ BEGIN
     last(walked) = v AND
     member(v,nth(adjs(C),car(walked)))
     IMPLIES cycle?(C)(reverse[nat](cons[nat](v, walked)))
+
+  circuit_walk_eq: LEMMA
+    FORALL(ci: (circuit?(C)), w: Walk(C)): 
+      walk_eq(C)(w,ci) 
+      IMPLIES circuit?(C,w)
+
+  cycle_walk_eq: LEMMA
+    FORALL(ci: (cycle?(C)), w: Walk(C)): 
+      walk_eq(C)(w,ci) 
+      IMPLIES cycle?(C,w)
 
   cycles_from_measure(C)(v:below(size(C)))
   	     ((walked:(list_of_idxs(C))| walk?(C)(reverse(walked)) AND
@@ -120,4 +142,71 @@ BEGIN
       FORALL(cycle:(cycle?(C))): member(cycle,nth(cs,i)) IFF car(cycle) = i}
   = IF size(C)=0 THEN null ELSE all_cycles_rec(C)(size(C)-1) ENDIF
 
+  %-----------------------------------------------------------------------------%
+  % VertList version
+  %-----------------------------------------------------------------------------%
+  % conversion from index walk to vertex walk.
+  w?2w(C)(cw:(walk?(C))):{w:Walk(C)|walk_eq(C)(w,cw)}=
+    (# length := length(cw),
+       seq := (LAMBDA(i:below(length(cw))): nth(data(C),nth(cw,i))) #)
+
+  w2w?_rec(C)(w:Walk(C),offset:below(length(w))): RECURSIVE { wi : (walk?(C)) |
+	                                    length(wi) + offset = length(w) AND
+            FORALL(i:below(length(wi))): w(i+offset) = nth(data(C),nth(wi,i)) } =
+    cons( idx(data(C),w(offset)) , 
+       	  IF offset = length(w)-1 THEN null ELSE w2w?_rec(C)(w,offset+1) ENDIF )
+  MEASURE length(w) - offset 
+
+  w2w?(C)(w:Walk(C)):{wi:(walk?(C))|walk_eq(C)(w,wi)} = w2w?_rec(C)(w,0)
+    
+  w2w?_circuit: LEMMA
+   FORALL(w: Walk(C)):
+    circuit?(C, w) IMPLIES circuit?(C)(w2w?(C)(w))
+
+  w2w?_cycle: LEMMA
+   FORALL(w: Walk(C)):
+    cycle?(C,w) IMPLIES cycle?(C)(w2w?(C)(w))
+
+  % conversion from lists of index cycle to lists of vertex walk.
+  lc?2lw (C)
+         ( v_idx: below(size(C)),
+          cycles: list[(cycle?(C))] | FORALL(i:below(length(cycles))): 
+  	                                          nth(nth(cycles,i),0) = v_idx )
+  : RECURSIVE {cs: list[Walk(C)] | length(cs) = length(cycles) AND
+      FORALL(i:below(length(cs))): walk_eq(C)(nth(cs,i),nth(cycles,i))} =
+    CASES cycles OF
+      null: null,
+      cons(cycle,cycles_): cons( w?2w(C)(cycle) , lc?2lw(C)(v_idx,cycles_) )
+    ENDCASES
+  MEASURE length(cycles)
+
+  % conversion from all_cycles outputs to lists of VertCycle.
+  ac2vl_rec (C)
+  	    ( offset: nat,
+  	     (cs: list[list[(cycle?(C))]] | length(cs)+offset = size(C) AND
+                    FORALL (i:     below(length(cs)))
+  		    	   (cycle: (cycle?(C))): 
+                         member(cycle,nth(cs,i)) IFF car(cycle) = i+offset) ):
+                RECURSIVE {l: list[VertCycles(C)] | length(l) = length(cs) AND
+           FORALL(n:below(length(l))): nth[T](data(C), n+offset) = vert(nth(l, n))} =
+    CASES cs OF
+      null: null,
+      cons(cycles, cs_): cons( (# vert := nth(data(C),offset),
+      		   	       	  cycles := lc?2lw(C)( offset, cycles ) #), 
+      		   	       ac2vl_rec(C)(offset+1,cs_))
+    ENDCASES
+  MEASURE length(cs) 
+
+  % cac2dac(G, (vl:VertList(G)), (C:cdigraph_eq(G)|data(C)=vl))
+  % 	 (cs: list[list[(cycle?(C))]] | length(cs) = size(C) AND
+  %   	   FORALL(i: below(size(C))):
+  %     	     FORALL(cycle:(cycle?(C))): 
+  % 	       member(cycle,nth(cs,i)) IFF car(cycle) = i): VCList(G,vl) =
+  %   cac2dac_rec(G,vl,C)(0,all_cycles(C))
+
+  IMPORTING c_digraphs[T]
+
+  all_cycles_vl(C): [# vl: VertList(C), vc: VCList(C, vl) #] =
+    (# vl := data(C), vc := ac2vl_rec(C)(0,all_cycles(C)) #)
+    
 END cdigraph_all_cycles

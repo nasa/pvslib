@@ -1,0 +1,245 @@
+bounding_circuits_defs[
+  T: TYPE, N: posnat,
+  (IMPORTING matrix_wdg[T,N])
+  G: wdg
+]: THEORY
+BEGIN
+
+  is_less_MM_list(M: Measure_Matrix, LM: list[Measure_Matrix]): 
+    RECURSIVE {b: bool | b IMPLIES EXISTS (MM:Measure_Matrix): member(MM, LM) AND MM<=M}  =
+    IF null?(LM) THEN FALSE 
+    ELSIF car(LM) <= M THEN TRUE
+    ELSE is_less_MM_list(M, cdr(LM))
+    ENDIF
+    MEASURE length(LM)
+ 
+  minimalize_iter( LM:list[Measure_Matrix], ret:list[Measure_Matrix]): 
+    RECURSIVE {L: list[Measure_Matrix] | ( FORALL ((M: Measure_Matrix | member(M, LM) OR member(M, ret))): EXISTS (MM:Measure_Matrix): member(MM, L) AND MM<=M) AND (FORALL (m:Measure_Matrix): member(m, L) IMPLIES (member(m, ret) OR member(m, LM)))  } = 
+    IF null?(LM) THEN ret
+    ELSE LET fr = car(LM) IN 
+      IF is_less_MM_list(fr, ret) THEN minimalize_iter(cdr(LM), ret)
+      ELSE minimalize_iter(cdr(LM), cons(fr, ret))
+      ENDIF
+    ENDIF
+    MEASURE length(LM)
+
+  minimalize( LM:list[Measure_Matrix] ): { L: list[Measure_Matrix] |
+     (FORALL ((M: Measure_Matrix | member(M, LM))):
+        EXISTS (MM:Measure_Matrix): member(MM, L) AND MM<=M) AND
+     (FORALL(m:Measure_Matrix): member(m, L) IMPLIES member(m, LM)) } = 
+   minimalize_iter(minimalize_iter(LM, null[Measure_Matrix]), null[Measure_Matrix]) 
+
+  list_prod_pre(l1, l2: list[Measure_Matrix]): RECURSIVE
+   { L : list[Measure_Matrix] | FORALL (m1, m2: Measure_Matrix): 
+     member(m1, l1) AND member(m2, l2) IMPLIES 
+     member(m1*m2, L) } = 
+   IF null?(l1) THEN null[Measure_Matrix] 
+   ELSE append(map(LAMBDA (M:Measure_Matrix): car(l1)*M)(l2), list_prod_pre(cdr(l1), l2))
+   ENDIF
+   MEASURE length(l1)
+
+  list_prod(l1, l2: list[Measure_Matrix]): 
+   { L : list[Measure_Matrix] | FORALL (m1, m2: Measure_Matrix): 
+     member(m1, l1) AND member(m2, l2) IMPLIES 
+     EXISTS (M: Measure_Matrix): member(M, L) AND M<=m1*m2 } =
+   minimalize(list_prod_pre(l1, l2))
+
+ decomp_weight(cd: walk_decomp(dg(G))): RECURSIVE Measure_Matrix = 
+   IF length(cd) = 1 THEN wgt_walk(G, nth(cd, 0)`c) 
+   ELSE wgt_walk(G, nth(cd, 0)`c)*
+        wgt_walk(G, gen_seq2(dg(G), nth(cd,0)`v, nth(cd,1)`v))*
+        decomp_weight(cdr(cd))
+   ENDIF
+   MEASURE length(cd)
+
+ decomp_weight_def: LEMMA 
+  FORALL (cd: walk_decomp(dg(G))): 
+   decomp_weight(cd) = wgt_walk(G, decomp_to_walk(dg(G), cd))
+
+ walk_bounding(walk:Walk(dg(G)),bs:[vert(dg(G))->list[Measure_Matrix]]):
+ RECURSIVE list[Measure_Matrix] = 
+   LET meas_list = cons(id, bs(walk(0))) IN
+   IF length(walk) = 1 THEN meas_list
+   ELSE list_prod(
+          map(LAMBDA (m1: Measure_Matrix): m1 * wgt_walk(G, walk^(0,1)))(meas_list), 
+          walk_bounding(
+	  %G,
+	  walk^(1, length(walk)-1), bs))
+   ENDIF
+ MEASURE length(walk)
+
+  walk_bounding_def: LEMMA 
+    FORALL(n:nat,walk:Walk(dg(G)),bs:[vert(dg(G))->list[Measure_Matrix]]):
+      (FORALL (v2:vert(dg(G)))
+      	      (cc: prewalk | (circuit_at?(dg(G), cc, v2) AND length(cc)<= n)): 
+        EXISTS (M2:Measure_Matrix): member(M2, bs(v2)) AND M2<=wgt_walk(G, cc))
+      IMPLIES (FORALL((cd : walk_decomp(dg(G)) |
+                        FORALL (j:below(length(cd))): nth(cd, j)`c`length<=n)): 
+                 drop_circuits(dg(G), cd) = walk
+		 IMPLIES EXISTS (M: Measure_Matrix):
+		 	   member(M, walk_bounding(walk, bs) ) AND
+			   M<= decomp_weight(cd))
+
+  walk_bounding_has_walk_wgt: LEMMA 
+    FORALL (walk: Walk(dg(G)),bs: [vert(dg(G))->list[Measure_Matrix]]): 
+     EXISTS (M: Measure_Matrix):
+       member(M, walk_bounding(walk, bs)) AND M<=wgt_walk(G, walk)
+
+ walk_list_bounding(wlist:list[Walk(dg(G))],bs:[vert(dg(G))->list[Measure_Matrix]]):
+   RECURSIVE list[Measure_Matrix] = 
+    IF null?(wlist) THEN null[Measure_Matrix] 
+    ELSE append(walk_bounding(car(wlist), bs), walk_list_bounding(cdr(wlist), bs))
+    ENDIF
+    MEASURE length(wlist) 
+
+ walk_list_bounding_def: LEMMA 
+   FORALL (n:nat, wlist: list[Walk(dg(G))], bs: [vert(dg(G))->list[Measure_Matrix]]):
+   (FORALL (v2:vert(dg(G))):
+    FORALL (cc: prewalk | (circuit_at?(dg(G), cc, v2) AND length(cc)<= n)): 
+    EXISTS (M2:Measure_Matrix): member(M2, bs(v2)) AND M2<=wgt_walk(G, cc)) 
+   IMPLIES
+   (FORALL (walk:Walk(dg(G)), (cd:walk_decomp(dg(G)) |
+               FORALL (j:below(length(cd))): nth(cd, j)`c`length<=n)):
+    member(walk, wlist) AND drop_circuits(dg(G), cd) = walk 
+     IMPLIES
+    EXISTS (M: Measure_Matrix): 
+       member(M, walk_list_bounding(wlist, bs)) 
+       AND M<= decomp_weight(cd))
+
+ walk_list_bounding_has_walk_wgt: LEMMA 
+   FORALL( wlist: list[Walk(dg(G))],
+   	   bs   : [vert(dg(G))->list[Measure_Matrix]],
+	   walk : Walk(dg(G))):
+    member(walk, wlist)
+    IMPLIES EXISTS(M: Measure_Matrix):
+    	      member(M,walk_list_bounding(wlist, bs)) AND M<=wgt_walk(G, walk)
+
+ bound_circuits_at(vc:VertCycles(dg(G)), bs:[vert(dg(G))->list[Measure_Matrix]]): 
+   list[Measure_Matrix] = minimalize(walk_list_bounding(vc`cycles, bs))
+
+ bound_circuits_at_def: LEMMA 
+   FORALL (n:nat, vc:VertCycles(dg(G)), bs:[vert(dg(G))->list[Measure_Matrix]]):
+    (FORALL (v2:vert(dg(G))):
+    FORALL (cc: prewalk | (circuit_at?(dg(G), cc, v2) AND length(cc)<= n)): 
+    EXISTS (M2:Measure_Matrix): member(M2, bs(v2)) AND M2<=wgt_walk(G, cc)) 
+   IMPLIES 
+   (FORALL (circ: prewalk):
+      ((circuit_at?(dg(G), circ, vc`vert) AND length(circ)<=n+1) OR cycle_at?(dg(G), circ, vc`vert))
+      IMPLIES 
+      (EXISTS (M: Measure_Matrix): member(M, bound_circuits_at(vc, bs)) AND M<=wgt_walk(G, circ)))
+
+ mm_list_bool(mm_list: list[Measure_Matrix]): bool = every(positive?)(mm_list)
+
+ index_of_vert(v:vert(dg(G)),
+		(VL:list[vert(dg(G))] |
+		  EXISTS(i:below(length(VL))):
+		   nth(VL, i) = v AND
+		   FORALL(j:below(length(VL))):nth(VL,j)=nth(VL,i) IMPLIES j=i) ): 
+  RECURSIVE {i : below(length(VL)) |
+              nth(VL, i) = v AND
+	      FORALL (j:below(length(VL))): nth(VL, j) = v IMPLIES i=j} =
+    IF car(VL) = v THEN 0 
+    ELSE 1+index_of_vert(v, cdr(VL))
+    ENDIF
+  MEASURE length(VL)
+
+ bound_circuits_list( vl     : VertList(dg(G)),
+   		      vc_list: VCList(dg(G), vl),
+   		      bs     : [vert(dg(G))->list[Measure_Matrix]])
+ : list[list[Measure_Matrix]] =
+   map(LAMBDA (vc: VertCycles(dg(G))): bound_circuits_at(vc, bs))(vc_list)
+
+ bound_circuits_list_def: LEMMA 
+  FORALL (n      : nat,
+  	  v      : vert(dg(G)),
+	  vl     : VertList(dg(G)),
+	  vc_list: VCList(dg(G), vl),
+	  bs     : [vert(dg(G))->list[Measure_Matrix]]):
+   (FORALL (v2:vert(dg(G)))
+     	    (cc: prewalk | (circuit_at?(dg(G), cc, v2) AND length(cc)<= n)): 
+      EXISTS (M2:Measure_Matrix):
+        member(M2, bs(v2)) AND M2<=wgt_walk(G, cc)) 
+   IMPLIES ( FORALL (circ: prewalk):
+               ((circuit_at?(dg(G), circ, v) AND length(circ)<=n+1)
+	        OR cycle_at?(dg(G), circ, v))
+               IMPLIES 
+               (EXISTS (M: Measure_Matrix):
+	       	  member(M, nth(bound_circuits_list(vl, vc_list, bs),
+		                index_of_vert(v, vl))) AND
+		  M<=wgt_walk(G, circ)) )
+
+   MM_list_bool( mm_list: list[list[Measure_Matrix]] ): bool =
+     every(LAMBDA(b:bool): b)( map(mm_list_bool)(mm_list))
+
+  bound_circuits_iter( vl: VertList(dg(G)),
+  		       vc_list: VCList(dg(G), vl),
+  		       bs: [vert(dg(G))-> list[Measure_Matrix]], i:nat):
+  RECURSIVE
+  [vert(dg(G))-> list[Measure_Matrix]]
+  = 
+    IF i=0 THEN
+    bs 
+    ELSE LET bcl = bound_circuits_list(vl, vc_list, bs), 
+             nbs(v:vert(dg(G))) = nth(bcl, index_of_vert(v, vl)) IN
+   	 bound_circuits_iter(vl, vc_list, nbs, i-1)
+    ENDIF 
+  MEASURE i
+
+ bound_circuits_iter_def: LEMMA 
+  FORALL( n:nat,
+  	  v:vert(dg(G)),
+	  vl: VertList(dg(G)),
+	  vc_list: VCList(dg(G), vl),
+	  bs:[vert(dg(G))->list[Measure_Matrix]],
+	  i:posnat):
+    (FORALL (v2:vert(dg(G)))
+    	    (cc: prewalk | (circuit_at?(dg(G), cc, v2) AND length(cc)<= n)):
+      EXISTS (M2:Measure_Matrix):
+        member(M2, bs(v2)) AND M2<=wgt_walk(G, cc))
+    IMPLIES (FORALL (circ: prewalk):
+              ((circuit_at?(dg(G), circ, v) AND length(circ)<=n+i)
+	       OR cycle_at?(dg(G), circ, v))
+	      IMPLIES (EXISTS (M: Measure_Matrix):
+	       	        member(M, bound_circuits_iter(vl, vc_list, bs, i)(v))
+			AND M <= wgt_walk(G, circ)))
+
+ bound_circuits_iter_stable: LEMMA 
+  FORALL( vl      : VertList(dg(G)),
+	  vc_list : VCList(dg(G), vl),
+	  bs      : [vert(dg(G))->list[Measure_Matrix]],
+	  i       : posnat):
+    map(bs)(vl) = bound_circuits_list(vl, vc_list, bs)
+    IMPLIES bs = bound_circuits_iter(vl, vc_list, bs, i) 
+
+  bound_circuits(vl:VertList(dg(G)), vc_list:VCList(dg(G), vl))(bs:BoundingSets(G)):
+    BoundingSets(G) = 
+    IF NOT bs`2 
+       THEN (CircBound(G), FALSE, bs`3)
+    ELSE LET bound_circ_list = bound_circuits_list(vl, vc_list, bs`3) IN
+      IF NOT MM_list_bool(bound_circ_list) 
+         THEN (CircBound(G), FALSE, bs`3)
+      ELSIF map(bs`3)(vl) = bound_circ_list THEN 
+          (CircBound(G), TRUE, bs`3)
+      ELSE LET nbs(v:vert(dg(G))) = nth(bound_circ_list, index_of_vert(v, vl)) IN
+          (min(bs`1+1, CircBound(G)), TRUE, nbs)  
+      ENDIF
+    ENDIF
+
+  bs0(v:vert(dg(G))): list[Measure_Matrix] = null[Measure_Matrix] 
+
+  start_bounding_list(vl: VertList(dg(G)), vc_list: VCList(dg(G), vl)): 
+   list[list[Measure_Matrix]] = bound_circuits_list(vl, vc_list, bs0)
+
+  start_bounding(vl: VertList(dg(G)), vc_list: VCList(dg(G), vl)): 
+   BoundingSets(G) = 
+    LET bc1 = start_bounding_list(%G,
+    vl, vc_list), 
+    	nbs(v:vert(dg(G))) = nth(bc1, index_of_vert(%G,
+	v, vl)) IN
+     (1, MM_list_bool(bc1), nbs)
+
+  bounding_from_graph_lists(vl:VertList(dg(G)),vc_list:VCList(dg(G), vl)):bool =
+    bounding_steps_iter(G,start_bounding(vl,vc_list),bound_circuits(vl,vc_list))
+
+END bounding_circuits_defs
+ 

@@ -10,13 +10,13 @@
 %********************************************************************************%
 ccg_to_mwg[Val,Expr,Condition: TYPE, 
            MT: TYPE, lt : (well_founded?[MT]), N: posnat,
-           semantic_rel:PRED[[Expr,Val,Val]],eval_conds:PRED[[Condition,Val]]]: THEORY
- BEGIN
-
-% ------------------------------------------------------------------------------- %
-
- IMPORTING ccg[Val,Expr,Condition,MT,lt,N,semantic_rel,eval_conds],
-	   matrix_wdg[CallingContext,N]
+           semantic_rel:PRED[[Expr,Val,Val]],eval_conds:PRED[[Condition,Val]]] : THEORY
+BEGIN
+  % concrete digraphs and weigthed digraphs
+  IMPORTING cc_def[Val,Expr,Condition],
+    	    measures[N],
+            ccg[Val,Expr,Condition,MT,lt,N,semantic_rel,eval_conds],
+            matrix_wdg[CallingContext,N]
 
    G: VAR CCG
    w: VAR prewalk
@@ -24,19 +24,19 @@ ccg_to_mwg[Val,Expr,Condition: TYPE,
    v: VAR CallingContext
  i,j: VAR below(N)
 
- indi_f(G: CCG): TYPE = [below(N), below(N), vert(dg(G)) -> Sign3]
+ indi_f(G: CCG): TYPE = [vert(dg(G)) -> Measure_Matrix[N]]
 
  % soundness
  indi_f_sound(G)(f: indi_f(G)): bool = 
    FORALL(i, j: below(N), c: vert(dg(G))):
-     (f(i,j,c) = 1 IMPLIES gt(ms(G),c,i,j,FALSE)) AND
-     (f(i,j,c) = 0 IMPLIES gt(ms(G),c,i,j,TRUE))
+     (get(f(c))(i,j) = 1 IMPLIES gt(ms(G),c,i,j,FALSE)) AND
+     (get(f(c))(i,j) = 0 IMPLIES gt(ms(G),c,i,j,TRUE))
 
  % completeness
  indi_f_complete(G)(f: indi_f(G)): bool = 
    FORALL(i, j: below(N), c: vert(dg(G))):
-     (gt(ms(G),c,i,j,FALSE) IMPLIES f(i,j,c) = 1) AND
-     (NOT gt(ms(G),c,i,j,FALSE) AND gt(ms(G),c,i,j,TRUE)  IMPLIES f(i,j,c) = 0)
+     (gt(ms(G),c,i,j,FALSE) IMPLIES get(f(c))(i,j) = 1) AND
+     (NOT gt(ms(G),c,i,j,FALSE) AND gt(ms(G),c,i,j,TRUE)  IMPLIES get(f(c))(i,j) = 0)
 
  % soundness and completeness
  indi_f_sc(G)(f: indi_f(G)): bool = indi_f_sound(G)(f) AND indi_f_complete(G)(f)
@@ -44,20 +44,52 @@ ccg_to_mwg[Val,Expr,Condition: TYPE,
  indi_f_sc_is_sound: JUDGEMENT (indi_f_sc(G)) SUBTYPE_OF (indi_f_sound(G))
  indi_f_sc_is_complete: JUDGEMENT (indi_f_sc(G)) SUBTYPE_OF (indi_f_complete(G))
 
- indi_func(G)(i, j: below(N), c: vert(dg(G))) : Sign3 =
-   IF    gt(ms(G),c,i,j,FALSE) THEN 1
-   ELSIF gt(ms(G),c,i,j,TRUE) THEN 0
-   ELSE -1
-   ENDIF
+ indi_func(G): indi_f(G) =
+  LAMBDA(c: vert(dg(G))): form_matrix(
+   LAMBDA(i: below(N)): LAMBDA(j: below(N)):
+     IF    gt(ms(G),c,i,j,FALSE) THEN 1
+     ELSIF gt(ms(G),c,i,j,TRUE) THEN 0
+     ELSE -1
+     ENDIF )
 
  indi_func_is_sc: JUDGEMENT indi_func(G) HAS_TYPE (indi_f_sc(G))
 
- weight(G)(f: indi_f(G))(e: edge(dg(G))): [below(N) -> [below(N) -> Sign3]] =
-   LAMBDA(i: below(N))(j: below(N)): f(i, j, e`1)
+ weight(G)(f: indi_f(G))(e: edge(dg(G))): Measure_Matrix[N] = f(e`1)
 
- ccg_to_mwg(G)(f: indi_f(G)) : wdg = 
-    (# dg := dg(G),
-      wgt := LAMBDA(e: edge(dg(G))): form_matrix(weight(G)(f)(e)) #)
+ IMPORTING structures@more_list_props[[CallingContext,CallingContext,Measure_Matrix[N]]]
+
+ wlist_from_edges(G,(f:indi_f(G)))
+		 (es: list[(edges(dg(G)))] | 
+ 		      no_repetitions?[[CallingContext,CallingContext]](es)): 
+ RECURSIVE {l: list[[CallingContext,CallingContext,Measure_Matrix]] | 
+              (FORALL(e:(edges(dg(G)))): member[[CallingContext,CallingContext]](e,es) IFF
+                 member( (e`1,e`2,weight(G)(f)(e)) , l)) AND
+	      no_repetitions?(l) AND
+	      keys_no_rep?(l) 
+   AND (FORALL(k1,k2:CallingContext,v:Measure_Matrix): 
+              edges(dg(G))(k1,k2) AND
+              member((k1,k2,v),l) 
+	      IMPLIES v = weight(G)(f)((k1,k2)))  } =
+   CASES es OF 
+     null: null,
+     cons(e,es_): cons( (e`1,e`2,weight(G)(f)(e)) , 
+     		  	wlist_from_edges(G,f)(es_) )
+   ENDCASES
+ MEASURE length(es)
+
+ build_weights_list(G)(f: indi_f(G)): {l: list[[CallingContext,
+					        CallingContext,
+					        Measure_Matrix]] | 
+				      all_edges_in_map?(dg(G))(l) AND
+				      FORALL(e:(edges(dg(G)))):
+					get_value(l,e) = weight(G)(f)(e) } =
+  wlist_from_edges(G,f)(edges_list(dg(G)))
+
+ ccg_to_mwg(G)(f: indi_f(G)) : {W: wgd_type | dg(W) = dg(G) AND
+ 		  	         FORALL(e:(edges(dg(G)))): 
+				   get_wgt(W,e) = weight(G)(f)(e) } = 
+    make_c_wdg(dg(G),build_weights_list(G)(f))
+
 
 % ------------------------------------------------------------------------------- %
 % Some basic properties between a G: CCG and a G1:= ccg_to_mwg(G: CCG) 

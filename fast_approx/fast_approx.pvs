@@ -1,0 +1,243 @@
+fast_approx : THEORY
+%----------------------------------------------------------------------
+%    fast_approx
+%    _________________
+%    
+%     The functions provided here are approximations of standard functions
+%     which can't be computed exactly. They are given in this file as pure
+%     functions, with as few imports as possible, to enable fast loading 
+%     for use in PVSio. The main functions are 
+%       - sqrt_approx(x,eps)
+%	- sin_app(x,eps)
+%	- cos_app(x,eps)
+%	- tan_app(x,eps)
+%	- pi_app(eps) and pi_app_br(eps)
+%	- pihalf_app(eps) and pihalf_app_br(eps)
+%	- atan_app(x,eps, p2)  (p2 should be an approximation of pi/2)
+%     The file fast_approx_props.pvs holds lemmas verifying that the 
+%     approximations are accurate to within eps, for specified ranges 
+%     for the inputs x and eps.
+%
+%     -Aaron Dutle NASA Langley (Mar 2015)
+%----------------------------------------------------------------------
+
+BEGIN
+
+IMPORTING reals@best_rational, reals@log_int
+
+  a,b : VAR real
+  x,y,c: VAR nnreal
+  X,Y,A,eps: VAR posreal
+  n,m, nn: VAR nat
+  pihalf: VAR posreal
+
+  sqrt_newton_step_app(X, Y, eps ):
+    posreal = 
+      LET sqrtnewt = (Y+X/Y)/2, 
+      brnewt = best_rational(sqrtnewt-eps, sqrtnewt) IN
+     IF brnewt*brnewt>=X THEN brnewt
+     ELSE sqrtnewt
+     ENDIF 
+  
+  sqrt_newton_step(X, Y, eps):
+    posreal = 
+      (Y+X/Y)/2 
+      
+  sqrt_newton_app(X, (Y|Y*Y>=X), eps):
+    RECURSIVE {z:posreal | z*z>=X AND z*z-X<=eps}   = 
+    IF Y*Y-X<=eps THEN Y
+    ELSE 
+      sqrt_newton_app(X, sqrt_newton_step_app(X,Y, eps/2), eps)
+    ENDIF
+    MEASURE IF Y*Y- X<= eps THEN 0 ELSE 1+log_nat((Y*Y-X)/eps,4)`1 ENDIF
+ 
+  sqrt_appr_gen(x, X, eps): nnreal = 
+     IF x=0 THEN 0
+     ELSE    LET delta= eps*2^(log_int(x,4)`1+1) IN 
+              sqrt_newton_app(x,sqrt_newton_step_app(x,X,delta), delta)
+     ENDIF
+
+  sqrt_approx(x, eps): nnreal = 
+     LET X = max(SQRT(x), eps) IN
+         sqrt_appr_gen(x, X ,eps)
+
+  sqrt_approx_det(x, eps): nnreal = 
+     IF x=0 THEN 0
+     ELSE    LET M = 2^(log_int(x,4)`1+1),
+                 delta= eps*M IN 
+              sqrt_newton_app(x,sqrt_newton_step_app(x,M,delta), delta)
+     ENDIF
+     
+
+  facto_it(n,m): RECURSIVE nat = IF n=0 THEN m 
+  		ELSE facto_it(n-1,n*m)
+		ENDIF
+		MEASURE n
+  
+  facto(n): nat = facto_it(n,1)
+
+  pm1(n): RECURSIVE int = IF n=0 THEN 1 
+  	  	    	  ELSIF n=1 THEN -1
+			  ELSE pm1(n-2)
+			  ENDIF
+			  MEASURE n
+
+  
+  
+
+  sin_approx_iter(a,n,b): RECURSIVE real = IF n=0 THEN a*b 
+               ELSE   sin_approx_iter(a, n-1, 1-a*a*b/((2*n+1)*2*n))
+               ENDIF 
+               MEASURE n
+
+  sin_approx_iter_alt((x|x<7), eps,n, b,c): RECURSIVE real = 
+               IF c<=eps THEN b 
+	       ELSE LET C = c*x*x/((2*n+3)*2*(n+1)), 
+	       	        B = b-pm1(n+1)*c IN
+  		  sin_approx_iter_alt(x, eps, n+1, B, C)
+	       ENDIF
+	       MEASURE lex2(IF c<=eps THEN 0 
+	       	       	    ELSIF n<7 THEN 8-n
+			    ELSE 0 ENDIF, 
+			    IF c<=eps THEN 0 
+			    ELSE 1+log_nat(c/eps, 4)`1
+		       	    ENDIF) 
+ 		       
+
+
+  sin_app((a|abs(a)<7), eps): real = 
+    IF a =0 THEN 0
+    ELSIF a>0 THEN 
+    %LET A = best_rational(a,a+eps/2) IN sin_approx_iter_alt(A, eps/2, 0, 0, A)
+    sin_approx_iter_alt(a, eps, 0, 0, a)
+    ELSE 
+    %LET A = best_rational(-a, -a+eps/2) IN -sin_approx_iter_alt(A, eps, 0, 0, A)
+    -sin_approx_iter_alt(-a, eps, 0, 0, -a)
+    ENDIF
+           
+
+  cos_approx_iter_alt((X|X<7), eps,n, b,(c|c/=0)): RECURSIVE nzreal = 
+               IF c<=eps THEN (IF b/=0 THEN b ELSE b+pm1(n)*c ENDIF) 
+	       ELSE LET C = c*X*X/((2*n+1)*2*(n+1)), 
+	       	        B = b+pm1(n)*c IN
+  		  cos_approx_iter_alt(X, eps, n+1, B, C)
+	       ENDIF
+	       MEASURE lex2(IF c<=eps THEN 0 
+	       	       	    ELSIF n<7 THEN 8-n
+			    ELSE 0 ENDIF, 
+			    IF c<=eps THEN 0 
+			    ELSE 1+log_nat(c/eps, 4)`1
+		       	    ENDIF)
+
+  cos_app((a|abs(a)<7), eps): real = 
+    IF a =0 THEN 1
+    ELSE 
+    %LET A = best_rational(abs(a), abs(a)+eps/2) IN cos_approx_iter_alt(A, eps/2, 0, 0, 1)
+    cos_approx_iter_alt(abs(a), eps, 0, 0, 1)
+    ENDIF 
+ 		        
+  
+ cos_approx_iter(a,n,b): RECURSIVE real = IF n=0 THEN b
+               ELSE cos_approx_iter(a,n-1, 1-a*a*b/(2*n*(2*n-1)))
+	       ENDIF 
+	       MEASURE n
+ 
+  cos_app_det(a,n): real = cos_approx_iter(a,n,1)
+
+  tan_pos_app((X|X<7),eps, (CosLow:posreal| CosLow-eps>0), (CosUp:posreal)): real = 
+    LET top:posreal = eps*CosLow*(CosLow-eps)/2, 
+	d1:posreal = top/CosUp, 
+	d2:posreal = min(top/X,eps) IN
+       sin_app(X,d1)/cos_app(X,d2) 
+
+  tan_pos_inst1((X|X<7), (eps | 1-X*X/2-eps>0) ): real = 
+     LET CL = 1-X*X/2 IN
+       tan_pos_app(X, eps, CL, CL+X*X*X*X/24)
+     
+      
+  tan_pos_inst2((X|X<7), (eps | 1-X*X/2*(1-X*X/12*(1-X*X/30)) - eps>0)): real = 
+     LET CL = 1-X*X/2*(1-X*X/12*(1-X*X/30)) IN
+       tan_pos_app(X, eps, CL, CL+X^8/40320)
+      
+  tan_pos((X|X<7), eps): real = 
+    IF X<=1.3 AND eps<=1/10 THEN 
+       tan_pos_inst1(X, eps)
+    ELSIF X<=1.5695 AND eps<=1/10000 THEN 
+       tan_pos_inst2(X, eps)
+    ELSE sin_app(X, eps)/cos_app(X, eps)
+    ENDIF
+  
+  tan_app((a| abs(a)<7), eps): real =
+    IF a=0 THEN 0
+    ELSIF a>0 THEN tan_pos(a, eps)
+    ELSE -tan_pos(-a, eps)
+    ENDIF 
+     
+  
+
+  reduce_approx(x, eps): real = x/(1+sqrt_approx(1+x*x, eps))
+
+
+
+  atan_approx_iter_alt((x|x<=1), eps, n, b,(c|c<=1)): RECURSIVE real = 
+      LET err =c/(2*n+1) IN
+        IF err<=eps THEN b 
+	ELSE LET B = b+pm1(n)*err,
+	     	 BB = best_rational(B, B+eps/2^(n+1)), 
+	     	 C = c*x*x IN
+ 	  atan_approx_iter_alt(x, eps, n+1, BB, C)
+	ENDIF
+	MEASURE IF c/(2*n+1)<=eps THEN 0 ELSE ceiling(1/eps-(2*n+1)/c) ENDIF 
+
+  atan_alt((x|x<=1), eps): real = LET X = IF x=1 THEN 1 ELSE best_rational(x,min(x+eps/3,1)) ENDIF IN 
+         atan_approx_iter_alt(X, eps/3, 0, 0, X)  
+
+  pi_app(eps): real = 4*(4*atan_alt(1/5,eps/20) - atan_alt(1/239,eps/20))
+
+
+  pi_app_br(eps): real = LET e= eps/2, piclose = pi_app(e) IN 
+        best_rational(piclose-e, piclose+e)
+
+  pihalf_app(eps): real = pi_app(eps)/2
+
+  pihalf_app_br(eps): real = pi_app_br(eps)/2	
+   
+  atan_approx_pos_le1_alt((X|X<=1),eps): real = 
+       IF X<5/12 THEN 
+          atan_alt(X, eps) 
+       ELSE  
+          2*atan_alt(reduce_approx(X,eps/X),eps/4)
+       ENDIF  
+  
+  atan_approx_pos(X, eps, pihalf): real = 
+       IF X <= 1 THEN atan_approx_pos_le1_alt(X, eps) 
+       ELSE pihalf - atan_approx_pos_le1_alt(1/X, eps/2) 
+       ENDIF
+ 
+  atan_app(x:real ,eps, pihalf): real = 
+       IF    x > 0 THEN atan_approx_pos(x,eps, pihalf)
+       ELSIF x = 0 THEN 0
+       ELSE -atan_approx_pos(-x,eps, pihalf) 
+       ENDIF
+
+
+  % cossin_iter((x:nnreal|x<7), (eps:posreal),(n:nat| n>2), (cosacc:real), (sinacc:real), (sgn:int | sgn = pm1(n)) , (term:real | term = x^(2*n)/(facto(2*n)))): 
+  %    RECURSIVE [posreal,real] = IF term <=eps THEN (IF cosacc=0 THEN cosacc+sgn*term ELSE cosacc ENDIF, sinacc)
+  %    	       		        ELSE LET denom = 2*n+1,
+  % 				     	 sinterm = term*(x/(denom)), 
+  % 					 newterm = sinterm*(x/(denom+1)) IN 
+  % 			        cossin_iter(x,eps, n+1, cosacc+sgn*term, sinacc+sgn*sinterm, IF sgn =-1 THEN 1 ELSE -1 ENDIF, newterm)
+  % 				ENDIF 
+  % 				MEASURE
+  % 				IF term<=eps THEN 0 
+  % 			    ELSE 1+log_nat(term/eps, 4)`1
+  % 		       	    ENDIF 
+
+  % cossin_start(x): [real, real] = (1-x*x/2*(1-x*x/12), x*(1-x*x/6*(1-x*x/20)))
+
+  % cossin_pos((x:nnreal | x<7), eps):[posreal, real] = 
+  %   LET (cosapp, sinapp) = cossin_start(x) IN 
+  %   	cossin_iter(x, eps, 3, cosapp, sinapp, -1, x*x*x*x*x*x/720)
+
+ 
+  END fast_approx
