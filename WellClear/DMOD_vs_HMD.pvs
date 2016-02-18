@@ -1,0 +1,68 @@
+DMOD_vs_HMD: THEORY
+
+BEGIN
+
+  IMPORTING vertical_WCV,
+  	    ACCoRD@cd3d,
+	    TCASII@tcas_tau
+
+  s,v     : VAR Vect3
+  DTHRs,ZTHRs: VAR posreal
+  TAUMOD,TAUMODs: VAR nnreal
+  TTHR: VAR nnreal
+  TCOA: VAR nnreal
+  DMOD,ZTHR,HMOD: VAR posreal
+  TTHRs: VAR nnreal
+  TCOAs: VAR nnreal
+  DMODs,HMODs: VAR posreal
+
+  tau_mod_def(DMOD)(s,(v|vect2(s)*vect2(v)/=0)): {rr:real | vect2(s)*vect2(v)<0 AND norm(vect2(s))>=DMOD IMPLIES rr>=0} =
+    (sq(DMOD)-sqv(vect2(s)))/(vect2(s)*vect2(v))
+
+  taumod(DMOD)(s,v) : real =
+    IF vect2(s)*vect2(v) < 0 THEN tau_mod_def(DMOD)(s,v)
+    ELSE -1
+    ENDIF
+
+  horizontal_WCV(TAUMOD,DMOD,HMOD)(s,v): bool =
+    sqv(vect2(s)) <= sq(DMOD) OR
+    (sqv(vect2(s)+tcpa(s,v)*vect2(v)) <= sq(HMOD) AND 
+     0 <= taumod(DMOD)(s,v) AND taumod(DMOD)(s,v) <= TAUMOD)
+
+  WCV(TCOA,ZTHR,TAUMOD,DMOD,HMOD)(s,v): bool =
+    horizontal_WCV(TAUMOD,DMOD,HMOD)(s,v) AND vertical_WCV[TCOA,ZTHR](s`z,v`z)
+
+  extension: THEOREM 
+    DMODs>=DMOD AND HMODs>=HMOD AND ZTHRs>=ZTHR AND
+    TAUMODs>=TAUMOD AND TCOAs>=TCOA AND WCV(TCOA,ZTHR,TAUMOD,DMOD,HMOD)(s,v)
+    IMPLIES
+    WCV(TCOAs,ZTHRs,TAUMODs,DMODs,HMODs)(s,v)
+
+  tmod(DMOD)(s,v)(t:real): real = taumod(DMOD)(s+t*v,v)
+
+  taumod_decreasing: LEMMA zero /= vect2(v) AND tcpa(s,v)>0 IMPLIES
+    ((FORALL (t1,t2:real): t1<=t2 AND t2<tcpa(s,v) IMPLIES tmod(DMODs)(s,v)(t1)>=tmod(DMODs)(s,v)(t2)) IFF
+    (EXISTS (t:real): norm(vect2(s)+t*vect2(v))<=DMODs))
+
+  convergence: THEOREM 
+            HMODs<=DMODs AND 
+  	    vect2(s)*vect2(v)<=0 AND s`z*v`z<=0 AND
+	    (s`z=0 IMPLIES v`z=0) IMPLIES
+    FORALL (t:nnreal):
+    LET ts = (IF v`z=0 THEN tcpa(s,v)
+    	      ELSIF vect2(v)=zero THEN tcoa(s`z,v`z)
+	      ELSE min(tcpa(s,v),tcoa(s`z,v`z)) ENDIF)
+    IN WCV(TCOAs,ZTHRs,TAUMODs,DMODs,HMODs)(s,v) AND t<=ts IMPLIES
+       WCV(TCOAs,ZTHRs,TAUMODs,DMODs,HMODs)(s+t*v,v)
+
+  when_HMOD_gt_DMOD: LEMMA 
+    HMODs>DMODs IMPLIES
+    (EXISTS (s,v): vect2(s)*vect2(v)<0 AND
+      sq(DMODs)<sqv(vect2(s+tcpa(s,v)*v)) AND sqv(vect2(s+tcpa(s,v)*v))<sq(HMODs)) AND 
+     (FORALL (s,v): vect2(s)*vect2(v)<0 AND
+      sq(DMODs)<sqv(vect2(s+tcpa(s,v)*v)) AND sqv(vect2(s+tcpa(s,v)*v))<sq(HMODs) IMPLIES
+      FORALL (M:posreal): EXISTS (epsil:posreal): FORALL (t:nnreal): tcpa(s,v)-epsil<=t AND t<tcpa(s,v) IMPLIES
+      tmod(DMODs)(s,v)(t)>=M)
+
+
+END DMOD_vs_HMD
