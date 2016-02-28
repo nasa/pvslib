@@ -2,31 +2,32 @@ pvs0_cc[T:TYPE+] : THEORY
 BEGIN
 
   IMPORTING pvs0_lang[T],
-            BoolPVS0[T]
+            PVS0Bool[T]
 
   eval_bool : VAR [Val -> bool]
   eval_op1  : VAR [nat->[Val->Val]]
   eval_op2  : VAR [nat->[[Val,Val]->Val]]
 
-  %% Conditions 
-  Conditions : TYPE = list[BoolPVS0[T]]
+  % Conditions 
+  Conditions : TYPE = list[PVS0Bool[T]]
 
-  %% Calling contexts for pvs0
-  % 
-  PVS0_CC: TYPE = [# rec_expr: (rec?)    % PVS0 recursive call: R(...)
-  	   	   , cnds: Conditions    % Path conditions that leads to the recursive call (rec_expr)
-  		   , path: list[nat] #]  % Position of rec_expr (in a wrapping expression)
+  % Calling contexts for pvs0
+  PVS0Expr_CC: TYPE = [# rec_expr: (rec?)    % PVS0 recursive call: R(...)
+  	   	       , cnds: Conditions    % Path conditions that leads to the
+		                             %  recursive call (rec_expr)
+  		       , path: list[nat] #]  % Position of rec_expr (in a wrapping
+		                             %  expression)
 
   eval_conds_rec(eval_bool,eval_op1,eval_op2)
-                (body:Expr,cnds:Conditions,env:Environment) : RECURSIVE bool =
+                (body:PVS0Expr,cnds:Conditions,env:Val) : RECURSIVE bool =
     CASES cnds OF
       null : TRUE,
       cons(a,q) : CASES a OF
-                   pvsbool(expr) : EXISTS (val:Val):
+                   pvs0bool(expr) : EXISTS (val:Val):
                       semantic_rel_expr(eval_bool,eval_op1,eval_op2)
                                        (expr,body,env,val)
                       AND eval_bool(val), 
-                   pvsnot(expr) : EXISTS (val:Val) :
+                   pvs0not(expr) : EXISTS (val:Val) :
                       semantic_rel_expr(eval_bool,eval_op1,eval_op2)
                                        (expr,body,env,val)
                       AND NOT eval_bool(val)
@@ -35,14 +36,13 @@ BEGIN
     ENDCASES
   MEASURE cnds BY <<
     
-  eval_conds(eval_bool,eval_op1,eval_op2)
-            (def:Def,cnds:Conditions,env:Environment) : bool =  
-    eval_conds_rec(eval_bool,eval_op1,eval_op2)(get_body(def),cnds,env)
+  eval_conds(def:PVS0,cnds:Conditions,env:Val) : bool =  
+    eval_conds_rec(def`1,def`2,def`3)(def`4,cnds,env)
 
-  %% paths
+  % Paths
   IMPORTING structures@more_list_props[nat]
 
-  valid_path(expr: Expr)(path: list[nat]): RECURSIVE bool
+  valid_path(expr: PVS0Expr)(path: list[nat]): RECURSIVE bool
   = CASES expr OF
       vr         : null?(path),
       cnst(cval) : null?(path),
@@ -58,7 +58,7 @@ BEGIN
     ENDCASES
   MEASURE expr by <<
   
-  subterm_at(expr: Expr, path: (valid_path(expr))): RECURSIVE ({res: Expr | subterm(res,expr)})
+  subterm_at(expr: PVS0Expr, path: (valid_path(expr))): RECURSIVE ({res: PVS0Expr | subterm(res,expr)})
   = IF null?(path) THEN expr
     ELSE CASES expr OF
           op1(o,a)  : subterm_at(a, rdc(path)),
@@ -72,25 +72,25 @@ BEGIN
         ENDCASES ENDIF
     MEASURE expr BY <<
 
-  path_conditions(expr: Expr, path: (valid_path(expr))): RECURSIVE Conditions
+  path_conditions(expr: PVS0Expr, path: (valid_path(expr))): RECURSIVE Conditions
   = CASES path OF
       null: null,
       cons(n,path_): append( IF NOT ite?(subterm_at(expr,path_)) OR n=0
    	   	   THEN null
   		   ELSE IF n=1 
-		   	THEN (: pvsbool(get_cond(subterm_at(expr,path_))) :)
-  		    	ELSE (: pvsnot(get_cond(subterm_at(expr,path_))) :) ENDIF ENDIF,
+		   	THEN (: pvs0bool(get_cond(subterm_at(expr,path_))) :)
+  		    	ELSE (: pvs0not(get_cond(subterm_at(expr,path_))) :) ENDIF ENDIF,
   	           path_conditions(expr,path_) )
      ENDCASES
   MEASURE path BY <<
 
-  %% Given a definition (def: Def) a calling context (cc) is said to be valid 
+  %% Given a definition (def: PVS0) a calling context (cc) is said to be valid 
   %  when the expression cc`rec_expr appears in def, in the position determined
   %  by cc`path and the conditions cc`conds need to be true to reach cc`expr 
   %  during a computation.
-  pvs0_tcc_valid_cc(def: Def)(cc: PVS0_CC): bool =
-    valid_path(get_body(def))(cc`path) AND
-    cc`rec_expr = subterm_at(get_body(def), cc`path) AND 
-    cc`cnds = path_conditions(get_body(def), cc`path)
+  pvs0_tcc_valid_cc(def: PVS0Expr)(cc: PVS0Expr_CC): bool =
+    valid_path(def)(cc`path) AND
+    cc`rec_expr = subterm_at(def, cc`path) AND 
+    cc`cnds = path_conditions(def, cc`path)
 
 END pvs0_cc

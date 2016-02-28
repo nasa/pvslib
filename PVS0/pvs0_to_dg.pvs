@@ -12,43 +12,43 @@
 pvs0_to_dg[T:TYPE+] : THEORY
 BEGIN
   IMPORTING pvs0_props[T],
-            CCG@cc_def[Val,Expr,Conditions]
+            CCG@cc_def[Val,PVS0Expr,Conditions]
 
   IMPORTING structures@set_as_list,
 	    structures@more_list_props
 
                       n : VAR nat
                cc1, cc2 : VAR CallingContext
-                    def : VAR Def
+                    def : VAR PVS0Expr
               eval_bool : VAR [T -> bool]
                eval_op1 : VAR [nat->[T->T]]
                eval_op2 : VAR [nat->[[T,T]->T]]
-	           expr : VAR Expr
+	           expr : VAR PVS0Expr
 
 % ------------------------------------------------------------------------------- %
 % functions to build the list and then the set of vertices
 
-  pvs0_to_dg_vertex((def), path:(valid_path(get_body(def))))(cc: CallingContext) : bool =
-    subterm_at(get_body(def),path) = rec(cc`actuals) AND
-    path_conditions(get_body(def), path) = cc`conds
+  pvs0_to_dg_vertex((def), path:(valid_path(def)))(cc: CallingContext) : bool =
+    subterm_at(def,path) = rec(cc`actuals) AND
+    path_conditions(def, path) = cc`conds
     
   cc_of_pvs0(def)(cc: CallingContext): bool =
-    EXISTS(path: (valid_path(get_body(def)))): pvs0_to_dg_vertex(def, path)(cc)
+    EXISTS(path: (valid_path(def))): pvs0_to_dg_vertex(def, path)(cc)
 
-  pvs0_to_dg_make_cc( (def), path: (valid_path(get_body(def))) | 
-				    rec?(subterm_at(get_body(def), path)) ) 
+  pvs0_to_dg_make_cc( (def), path: (valid_path(def)) | 
+				    rec?(subterm_at(def, path)) ) 
   : (pvs0_to_dg_vertex(def, path)) =
-    make_cc(get_arg(subterm_at(get_body(def), path)), path_conditions(get_body(def), path))
+    make_cc(get_arg(subterm_at(def, path)), path_conditions(def, path))
 
   % Computable calculation of pvs0 calling contexts given valid paths of a definition
-  pvs0_to_dg_paths_vertices(def: Def, paths: list[(valid_path(get_body(def)))]) : RECURSIVE 
+  pvs0_to_dg_paths_vertices(def: PVS0Expr, paths: list[(valid_path(def))]) : RECURSIVE 
     { res: list[ (cc_of_pvs0(def)) ] | 
-      	FORALL(p: (valid_path(get_body(def))) | member(p, paths)):
-	  rec?(subterm_at(get_body(def), p)) 
+      	FORALL(p: (valid_path(def)) | member(p, paths)):
+	  rec?(subterm_at(def, p)) 
 	  IMPLIES member(pvs0_to_dg_make_cc(def, p), res) } = 
     CASES paths OF
       null: null,
-      cons(p, ps): LET subexpr = subterm_at(get_body(def), p) 
+      cons(p, ps): LET subexpr = subterm_at(def, p) 
                    IN IF rec?(subexpr) 
   		      THEN cons( pvs0_to_dg_make_cc(def, p), 
 		                 pvs0_to_dg_paths_vertices(def, ps) )
@@ -57,47 +57,47 @@ BEGIN
   MEASURE paths BY <<
 
   pvs0_to_dg_vertices_l(def): list[(cc_of_pvs0(def))] =
-    pvs0_to_dg_paths_vertices(def, valid_paths(get_body(def)))
+    pvs0_to_dg_paths_vertices(def, valid_paths(def))
   
   pvs0_to_dg_vertices_completeness: LEMMA
-    FORALL(def: Def, cc: (cc_of_pvs0(def))): 
+    FORALL(def: PVS0Expr, cc: (cc_of_pvs0(def))): 
       member[CallingContext](cc, pvs0_to_dg_vertices_l(def))
 
   pvs0_to_dg_verts(def): finite_set[CallingContext] =
     list2set[CallingContext](pvs0_to_dg_vertices_l(def))
 
   cc_of_pvs0_soundness: LEMMA
-    FORALL(def: Def, cc: (pvs0_to_dg_verts(def))): (cc_of_pvs0(def))(cc)
+    FORALL(def: PVS0Expr, cc: (pvs0_to_dg_verts(def))): (cc_of_pvs0(def))(cc)
 
   cc_of_pvs0_completeness: LEMMA
-    FORALL(def: Def, cc: (cc_of_pvs0(def))): pvs0_to_dg_verts(def)(cc)
+    FORALL(def: PVS0Expr, cc: (cc_of_pvs0(def))): pvs0_to_dg_verts(def)(cc)
 
-  pvs0_ccs_rec(def: Def)(paths: list[(valid_path(get_body(def)))]) 
+  pvs0_ccs_rec(def: PVS0Expr)(paths: list[(valid_path(def))]) 
     : RECURSIVE { res: list[ (pvs0_tcc_valid_cc(def)) ] | 
-      	      	FORALL(p: (valid_path(get_body(def)))):
-  		LET subexpr = subterm_at(get_body(def), p) IN
+      	      	FORALL(p: (valid_path(def))):
+  		LET subexpr = subterm_at(def, p) IN
   		member(p, paths) AND
   		rec?(subexpr) IMPLIES
   		LET cc: (pvs0_tcc_valid_cc(def)) = (# `path := p, 
   		       	    `rec_expr := subexpr, 
-  		   	    `cnds     := path_conditions(get_body(def), p)  #) 
+  		   	    `cnds     := path_conditions(def, p)  #) 
   	        IN member(cc, res) }
     = CASES paths OF
         null: null,
-        cons(p, ps): LET subexpr = subterm_at(get_body(def), p) IN
+        cons(p, ps): LET subexpr = subterm_at(def, p) IN
         	      	   IF rec?(subexpr) 
   		   THEN cons( (# `rec_expr := subexpr, 
-  		   	      	 `cnds     := path_conditions(get_body(def), p),
+  		   	      	 `cnds     := path_conditions(def, p),
   				 `path     := p #) , pvs0_ccs_rec(def)(ps) )
   		   ELSE pvs0_ccs_rec(def)(ps) ENDIF
       ENDCASES 
     MEASURE paths BY <<
 
-  pvs0_ccs(def: Def) : list[ (pvs0_tcc_valid_cc(def)) ] =
-    pvs0_ccs_rec(def)(valid_paths(get_body(def)))
+  pvs0_ccs(def: PVS0Expr) : list[ (pvs0_tcc_valid_cc(def)) ] =
+    pvs0_ccs_rec(def)(valid_paths(def))
 
   pvs0_ccs_completness: LEMMA
-    FORALL(def: Def, cc: (pvs0_tcc_valid_cc(def))): member(cc, pvs0_ccs(def))
+    FORALL(def: PVS0Expr, cc: (pvs0_tcc_valid_cc(def))): member(cc, pvs0_ccs(def))
 
   dg_vert_valid_cc: LEMMA
    FORALL(dg_vert: (cc_of_pvs0(def))): 
@@ -106,40 +106,27 @@ BEGIN
       dg_vert`conds = cc`cnds
 
 % ------------------------------------------------------------------------------- %
-% function to remove edges
-
-  remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2) : bool =
-    FORALL(env:Environment,val:Val): 
-      eval_conds(eval_bool,eval_op1,eval_op2)(def,cc1`conds,env) AND
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)
-                       (cc1`actuals,get_body(def),env,val) IMPLIES
-        NOT eval_conds(eval_bool,eval_op1,eval_op2)(def,cc2`conds,val2env(val))
-
-% ------------------------------------------------------------------------------- %
-% function to built the set of edges
-
-  IMPORTING finite_sets@finite_cross % to prove TCC of pvs0_to_dg_edges
-
-  pvs0_to_dg_edges(eval_bool,eval_op1,eval_op2)(def):
-  finite_set[[CallingContext,CallingContext]] =
-    {(cc1,cc2) | member(cc1,pvs0_to_dg_verts(def)) AND
-     member(cc2,pvs0_to_dg_verts(def)) AND
-     NOT remove_edge(eval_bool,eval_op1,eval_op2)(def,cc1,cc2)}
-
-% ------------------------------------------------------------------------------- %
-% function to built the digraph of calling contexts given a PVS0 definition
-
-  IMPORTING digraphs@digraphs[CallingContext]
-
-  pvs0_to_dg(eval_bool,eval_op1,eval_op2)(def): digraph =
-    (# vert  := pvs0_to_dg_verts(def),
-       edges := pvs0_to_dg_edges(eval_bool,eval_op1,eval_op2)(def)
-     #)
+% function to buid the digraph of calling contexts given a PVS0 definition
 
   IMPORTING digraphs@c_digraphs[CallingContext]
 
-  pvs0_to_cd(eval_bool,eval_op1,eval_op2)
-	    (def): (cdigraph)
-  = make_fully_connected(pvs0_to_dg_vertices_l(def))
+  pvs0: VAR PVS0
+
+  sound_ccg_digraph(pvs0)(dg:(cdigraph)): bool =
+    (FORALL(cc: (cc_of_pvs0(pvs0`4))): vert(dg)(cc)) AND
+    (FORALL(cc1,cc2: (cc_of_pvs0(pvs0`4)))(v1,v2: Val):
+      eval_conds(pvs0,cc1`conds,v1) AND
+      semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)
+		  (cc1`actuals,pvs0`4,v1,v2) AND
+      eval_conds(pvs0,cc2`conds,v2)
+      IMPLIES edges(dg)(cc1,cc2))
+
+  IMPORTING set_as_list
+
+  pvs0_to_dg(pvs0): (cdigraph)
+  = make_fully_connected(reduce_sl[CallingContext](pvs0_to_dg_vertices_l(pvs0`4)))
+
+  pvso_to_dg_sound_ccg: JUDGEMENT
+    pvs0_to_dg(pvs0) HAS_TYPE (sound_ccg_digraph(pvs0))
 
 END pvs0_to_dg

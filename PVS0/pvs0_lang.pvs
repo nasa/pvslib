@@ -1,193 +1,94 @@
-pvs0_lang[T:TYPE+]: THEORY
+pvs0_lang[T:TYPE+] : THEORY
 BEGIN
+  
+  IMPORTING pvs0_expr[T]
 
-  Val : TYPE = T
+  EvalBool : TYPE = [Val -> bool]
+  EvalOp1  : TYPE = [nat->[Val->Val]]
+  EvalOp2  : TYPE = [nat->[[Val,Val]->Val]]
+  PVS0     : TYPE = [EvalBool,EvalOp1,EvalOp2,PVS0Expr]
 
-  IMPORTING PVS0[Val], structures@Maybe
+  pvs0          : VAR PVS0
+  env           : VAR Val
+  val,val1,val2 : VAR Val
 
-  Environment : TYPE = [(vr?)->Val]
+  terminating?(pvs0:PVS0) : bool =
+    terminates_expr(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4)
 
-  eval_bool : VAR [Val -> bool]
-  eval_op1  : VAR [nat->[Val->Val]]
-  eval_op2  : VAR [nat->[[Val,Val]->Val]]
-
-  val2env(val:Val) : MACRO Environment =
-    LAMBDA(v:(vr?)):val
-
-  semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body:Expr,env:Environment,val:Val) : INDUCTIVE bool =
-    (cnst?(expr) AND val = get_val(expr)) OR
-    (vr?(expr) AND val = env(vr)) OR
-    (op1?(expr) AND EXISTS (valarg:Val) : 
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_arg(expr),body,env,valarg) AND
-      val = eval_op1(get_op(expr))(valarg)) OR
-    (op2?(expr) AND EXISTS (valarg1,valarg2:Val) : 
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_arg1(expr),body,env,valarg1) AND
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_arg2(expr),body,env,valarg2) AND
-      val = eval_op2(get_op(expr))(valarg1,valarg2)) OR
-    (ite?(expr) AND EXISTS (valarg:Val) : 
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_cond(expr),body,env,valarg) AND
-      IF eval_bool(valarg) THEN       
-        semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_if(expr),body,env,val) 
-      ELSE semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_else(expr),body,env,val)
-      ENDIF) OR
-    (rec?(expr) AND EXISTS (valarg:Val) : 
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_arg(expr),body,env,valarg) AND
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(body,body,val2env(valarg),val))
-
-  terminates_expr(eval_bool,eval_op1,eval_op2)(expr,body:Expr) : bool = 
-    FORALL (env:Environment): 
-      EXISTS (val:Val) : semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val)
-
-% This builds a measure according to the seven cases in the data structure pvs0.
-% See also use of reduce_nat in the PVS library file ordstruct_adt.
-
-  sizepvs0: [PVS0 -> nat] = 
-    reduce_nat(LAMBDA(v:Val):1, 1, LAMBDA(m,n:nat):2+n, LAMBDA(m,n,l:nat):2+n+l, 
-               LAMBDA(m:nat):1+m, LAMBDA(m,n,l:nat):1+m+n+l, LAMBDA(m:nat):1+m)
-
-  eval_expr(eval_bool,eval_op1,eval_op2)(i:nat,expr,body:Expr,env:Environment) : RECURSIVE Maybe[Val] =
-    IF i = 0 Then None
-    ELSE CASES expr OF
-      cnst(v) : Some(v),
-      vr : Some(env(vr)),
-      op1(op,arg) : LET v = eval_expr(eval_bool,eval_op1,eval_op2)(i,arg,body,env) IN
-        IF some?(v) THEN Some(eval_op1(op)(val(v))) ELSE None ENDIF,
-      op2(op,arg1,arg2) :  LET v1 = eval_expr(eval_bool,eval_op1,eval_op2)(i,arg1,body,env),
-                               v2 = eval_expr(eval_bool,eval_op1,eval_op2)(i,arg2,body,env) IN
-                           IF some?(v1) AND some?(v2) THEN Some(eval_op2(op)(val(v1),val(v2))) 
-                           ELSE None ENDIF,
-      ite(cnd,arg1,arg2) : LET vc = eval_expr(eval_bool,eval_op1,eval_op2)(i,cnd,body,env) IN
-                           IF some?(vc) THEN
-                             IF eval_bool(val(vc)) THEN
-                               eval_expr(eval_bool,eval_op1,eval_op2)(i,arg1,body,env)
-                             ELSE
-                               eval_expr(eval_bool,eval_op1,eval_op2)(i,arg2,body,env)
-                             ENDIF
-                           ELSE None
-                           ENDIF,
-      rec(arg) : LET v = eval_expr(eval_bool,eval_op1,eval_op2)(i,arg,body,env) IN 
-                 IF some?(v) THEN
-                   eval_expr(eval_bool,eval_op1,eval_op2)(i-1,body,body,val2env(val(v)))
-                 ELSE None
-                 ENDIF
-    ENDCASES
-    ENDIF
-  MEASURE lex2(i,sizepvs0(expr))
-
-  eval_expr_ge_n_j : RECURSIVE JUDGEMENT 
-    eval_expr(eval_bool,eval_op1,eval_op2)(n:nat,expr,body:Expr,env:Environment) HAS_TYPE
-      { myv : Maybe[Val] | some?(myv) IMPLIES n > 0 AND 
-        FORALL (m:upfrom(n)): myv = eval_expr(eval_bool,eval_op1,eval_op2)(m,expr,body,env) }
-
-  eval_expr_ge_n : LEMMA
-    FORALL (eval_bool,eval_op1,eval_op2)(n:nat,m:upfrom(n),expr,body:Expr,env:Environment):
-       LET myv = eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env) IN
-        some?(myv) IMPLIES myv = eval_expr(eval_bool,eval_op1,eval_op2)(m,expr,body,env)
-
-  semantic_rel_eval_expr : LEMMA
-    FORALL (eval_bool,eval_op1,eval_op2)(expr,body:Expr,env:Environment,val:Val) :
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val)
-      IMPLIES
-      EXISTS (n:nat): LET myv = eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env) IN
-        some?(myv) AND val = val(myv) 
-
- eval_expr_n_pos: LEMMA
- FORALL (eval_bool,eval_op1,eval_op2)(expr,body:Expr,env:Environment) :
-   FORALL (n:nat): LET myv = eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env) IN
-     some?(myv) IMPLIES n>0 
-
-  deterministic_expr : LEMMA
-    FORALL (eval_bool,eval_op1,eval_op2)
-           (env:Environment,expr,body:Expr,val1,val2:Val): 
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val1) AND
-      semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val2) IMPLIES
-      val1 = val2
-
-  eval_expr_semantic_rel_j : RECURSIVE JUDGEMENT 
-    eval_expr(eval_bool,eval_op1,eval_op2)(n:nat,expr,body:Expr,env:Environment) HAS_TYPE
-      { myv : Maybe[Val] | some?(myv) IMPLIES
-        semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val(myv)) }
-
-  eval_expr_semantic_rel : LEMMA
-    FORALL (eval_bool,eval_op1,eval_op2)(env:Environment,expr,body:Expr,val:Val)(n:nat) :
-      LET myv = eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env) IN
-        some?(myv) AND val = val(myv) IMPLIES 
-        semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val)
-
-  %%% Termination for expr and body 
-
-  eval_expr_termination(eval_bool,eval_op1,eval_op2)(expr,body:Expr) : bool =
-    FORALL (env:Environment):
-      EXISTS (n:nat): LET myv = eval_expr(eval_bool,eval_op1,eval_op2)(n,expr,body,env) IN
-        some?(myv) AND semantic_rel_expr(eval_bool,eval_op1,eval_op2)(expr,body,env,val(myv))
-
-  eval_expr_terminates: LEMMA
-   FORALL (expr,body:Expr): 
-      eval_expr_termination(eval_bool,eval_op1,eval_op2)(expr,body) 
-      IFF terminates_expr(eval_bool,eval_op1,eval_op2)(expr,body)
-
-  %%% Termination for definitions 
-
-  semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0:Def,env:Environment,val:Val) : bool =
-    semantic_rel_expr(eval_bool,eval_op1,eval_op2)(get_body(pvs0),get_body(pvs0),env,val)
+  semantic_rel(pvs0:PVS0,env:Val,val:Val) : bool =
+    semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4,env,val)
 
   deterministic : THEOREM
-    FORALL (eval_bool,eval_op1,eval_op2)(env:Environment,pvs0:Def,val1,val2:Val): 
-      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,env,val1) AND
-      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,env,val2) IMPLIES
-      val1 = val2
+    semantic_rel(pvs0,env,val1) AND
+    semantic_rel(pvs0,env,val2)
+    IMPLIES val1 = val2
 
-  terminates(eval_bool,eval_op1,eval_op2)(pvs0:Def) : bool = 
-    terminates_expr(eval_bool,eval_op1,eval_op2)(get_body(pvs0),get_body(pvs0))
+  eval(pvs0:PVS0)(n:nat)(env:Val) : Maybe[Val] =
+    eval_expr(pvs0`1,pvs0`2,pvs0`3)(n,pvs0`4,pvs0`4,env)
 
-  Terminating(eval_bool,eval_op1,eval_op2) : TYPE = (terminates(eval_bool,eval_op1,eval_op2))
-
-  eval(eval_bool,eval_op1,eval_op2)(n:nat,pvs0:Def)(env:Environment) : Maybe[Val] =
-    eval_expr(eval_bool,eval_op1,eval_op2)(n,get_body(pvs0),get_body(pvs0),env)
+  eval_pvs0_ge_n : COROLLARY
+    FORALL (n:nat,m:upfrom(n),env:Val):
+       LET myv = eval(pvs0)(n)(env) IN
+        some?(myv) IMPLIES myv = eval(pvs0)(m)(env)
 
   semantic_rel_eval : THEOREM
-    FORALL (eval_bool,eval_op1,eval_op2)(pvs0:Def,env:Environment,val:Val) :
-      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,env,val)
-      IMPLIES
-        EXISTS (n:nat): LET myv = eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(env) IN
+    semantic_rel(pvs0,env,val)
+    IMPLIES
+        EXISTS (n:nat): LET myv = eval(pvs0)(n)(env) IN
         some?(myv) AND val = val(myv) 
 
-  eval_termination(eval_bool,eval_op1,eval_op2)(pvs0:Def) : bool =
-    eval_expr_termination(eval_bool,eval_op1,eval_op2)(get_body(pvs0),get_body(pvs0))
+  eval_termination(pvs0) : bool =
+    eval_expr_termination(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4)
 
   eval_terminates: LEMMA
-    FORALL (pvs0:Def): 
-      eval_termination(eval_bool,eval_op1,eval_op2)(pvs0) IFF terminates(eval_bool,eval_op1,eval_op2)(pvs0)
+    eval_termination(pvs0) IFF terminating?(pvs0)
 
-  %%% Concrete measure for terminating functions
-
+  % Concrete counter for terminating functions
+  
   mu_nonempty: LEMMA
-    FORALL (pvs0:Terminating(eval_bool,eval_op1,eval_op2), val:Val):
-      LET S = { n : nat | LET myv = 
-                          eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(val2env(val)) IN
-                          some?(myv) } IN
+    FORALL (pvs0:(terminating?)):
+      LET S = { n : nat | LET myv = eval(pvs0)(n)(val) IN some?(myv) } IN
       nonempty?(S)
 
-  mu(eval_bool,eval_op1,eval_op2)(pvs0:Terminating(eval_bool,eval_op1,eval_op2))(val:Val): posnat =
-    LET  S = { n : nat | LET myv = eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(val2env(val)) IN
-                            some?(myv) } IN
+  mu(pvs0:(terminating?))(val:Val): posnat =
+    LET  S = { n : nat | LET myv = eval(pvs0)(n)(val) IN  some?(myv) } IN
     min(S)
 
   mu_terminates : LEMMA
-    FORALL (pvs0:Terminating(eval_bool,eval_op1,eval_op2),val:Val): 
-       LET mun = mu(eval_bool,eval_op1,eval_op2)(pvs0)(val),
-           myv = eval(eval_bool,eval_op1,eval_op2)(mun,pvs0)(val2env(val)) IN
+    FORALL (pvs0:(terminating?)):
+       LET mun = mu(pvs0)(val),
+           myv = eval(pvs0)(mun)(val) IN
        some?(myv)
 
-  %% Uses mu to evaluate a terminating PVS0 function
-  mu_eval(eval_bool,eval_op1,eval_op2)(pvs0:Terminating(eval_bool,eval_op1,eval_op2))
-         (v:Val) : Val =
-    LET n = mu(eval_bool,eval_op1,eval_op2)(pvs0)(v) IN
-    val(eval(eval_bool,eval_op1,eval_op2)(n,pvs0)(val2env(v)))
+  mu_min : LEMMA
+    FORALL (pvs0:(terminating?),val:Val,n:nat):
+       some?(eval(pvs0)(n)(val)) IMPLIES mu(pvs0)(val) <= n
+
+  % Uses mu to evaluate a terminating PVS0 function
+
+  mu_eval(pvs0:(terminating?))(v:Val) : Val =
+    LET n = mu(pvs0)(v) IN val(eval(pvs0)(n)(v))
+
+  eval_semantic: LEMMA
+   FORALL (pvs0:(terminating?))(arg,val:Val):
+    some?(eval(pvs0)(mu(pvs0)(arg))(arg))
+     IMPLIES semantic_rel(pvs0, arg, val(eval(pvs0)(mu(pvs0)(arg))(arg)))
 
   mu_eval_correct : THEOREM
-    FORALL (pvs0:Terminating(eval_bool,eval_op1,eval_op2))(arg,val:Val):
-      semantic_rel(eval_bool,eval_op1,eval_op2)(pvs0,val2env(arg),val) IFF
-      val = mu_eval(eval_bool,eval_op1,eval_op2)(pvs0)(arg) 
-  
+    FORALL (pvs0:(terminating?))(arg,val:Val):
+      semantic_rel(pvs0,arg,val) IFF val = mu_eval(pvs0)(arg) 
+
+  % Defining a non-terminating function in PVS0
+
+  eval_bool : VAR EvalBool
+  eval_op1  : VAR EvalOp1
+  eval_op2  : VAR EvalOp2
+
+  Delta(eval_bool,eval_op1,eval_op2) : PVS0 = (eval_bool,eval_op1,eval_op2,rec(vr))
+
+  TT : T
+
+  Delta_non_terminating : THEOREM
+    FORALL (eval_bool,eval_op1,eval_op2) : NOT terminating?(Delta(eval_bool,eval_op1,eval_op2))
+
 END pvs0_lang
