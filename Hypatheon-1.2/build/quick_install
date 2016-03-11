@@ -1,0 +1,216 @@
+#! /bin/bash
+
+# Copyright (c) 2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# The software in this package has been released as open-source software
+# under the NASA Open Source Agreement.  See the accompanying file
+# NASA_Open_Source_Agreement.pdf for a full description of the terms.
+
+
+# Create a new Hypatheon installation under user's ownership.
+# This script first checks for suitable versions of required software,
+# then launches the GUI client for the query interface.
+# Default values are used throughout.  If customization is needed,
+# read the file <hypatheon>/INSTALL.txt.
+
+# Assumes current working directory is <...>/Hypatheon
+
+
+echo -e "\nPreparing to install Hypatheon.\n"
+
+
+# ---------------- Check for required software ----------------
+
+echo "Checking for suitable versions of software that Hypatheon requires...
+"
+
+see_install="
+See full installation instructions in file INSTALL.txt.
+"
+
+MISSING=0
+
+# Check for SQLite.
+
+if $(build/check_SQLite); then
+    echo SQLite version $(sqlite3 -version) found.
+else
+    echo "SQLite could not be found."
+    MISSING=1
+fi
+
+# Check for Python and derive its version number.
+
+if $(python -V &> /dev/null); then
+     py_ver=$(python -c "import sys; print sys.version.split()[0]")
+     py_ver2=$(python -c "import sys,re; print re.compile('(\d+\.\d+)').search(sys.version.split()[0]).group(0)")
+     PYTHONBIN=$(which python)
+     echo Python version $py_ver found.
+else
+     echo "Python could not be found."
+     MISSING=1
+fi
+
+# Can't go on if either SQLite or Python is missing.
+
+if [ $MISSING == 1 ]; then
+     echo "$see_install"
+     exit 1
+fi
+
+# Check for Tkinter (Python interface to Tk GUI toolkit).
+
+if $(build/check_Tkinter); then
+     echo "Found Python's Tkinter module : OK"
+else
+     echo "Python's Tkinter module was not found : Missing software."
+     MISSING=1
+fi
+
+# Check for PySQLite (Python database adapter for SQLite).
+
+if $(build/check_PySQLite); then
+     echo "Found Python's sqlite3 module (PySQLite) : OK"
+else
+     echo "Python's sqlite3 module (PySQLite) was not found : Missing software."
+     MISSING=1
+fi
+
+# Abort if any of the preceding checks fails.
+
+if [ $MISSING == 1 ]; then
+     echo "Some of the required software packages are missing."
+     echo "Installation of Hypatheon cannot proceed without them."
+     echo "$see_install"
+     exit 1
+fi
+
+
+# ---------------- Success: create initial database ----------------
+
+echo "
+Fortunately, it appears that all of the software needed for running
+Hypatheon is available.
+"
+
+build/create_empty_db data/base/empty.sdb
+
+
+# ---------------- Prepare default environment ----------------
+
+export HYPATHEON="$(pwd)"
+
+echo -e "\nChecking for Hypatheon startup scripts in ~/bin (hypatheon, hypfind)."
+
+if ! [ -e ~/bin ]; then
+    mkdir ~/bin
+fi
+
+# Check for existence of start-up scripts
+
+suffix=
+if [ -e ~/bin/hypatheon ] || [ -e ~/bin/hypfind ]; then
+    suffix=-$(date +%y%m%d%H%M%S)
+fi
+
+# Assume environment variables have already undergone tilde expansion.
+
+sed "s|<<<---PVSPATH--->>>|$PVSPATH|" build/hypatheon | \
+    sed "s|<<<---PVS_LIBRARY_PATH--->>>|$PVS_LIBRARY_PATH|" | \
+    sed "s|<<<---HYPATHEON--->>>|$HYPATHEON|" > tmp/hypatheon$suffix
+
+if ! [ -e ~/bin/hypatheon ]; then
+    mv tmp/hypatheon ~/bin/hypatheon   # suffix = '' in this case
+    chmod a+x ~/bin/hypatheon
+    echo -e "\nScript file ~/bin/hypatheon has been created."
+elif [[ $(diff ~/bin/hypatheon tmp/hypatheon$suffix) ]]; then
+    mv tmp/hypatheon$suffix ~/bin/hypatheon$suffix
+    chmod a+x ~/bin/hypatheon$suffix
+    echo -e "\nScript file ~/bin/hypatheon already exists, but a new version"
+    echo -e "is needed due to differences in environment variables."
+    echo -e "Created the new file ~/bin/hypatheon$suffix."
+    echo -e "Rename this script file as desired."
+else
+    rm -f tmp/hypatheon$suffix
+    echo -e "\nScript file ~/bin/hypatheon already exists; no changes needed."
+fi
+
+sed "s|<<<---PVS_LIBRARY_PATH--->>>|$PVS_LIBRARY_PATH|" build/hypfind | \
+    sed "s|<<<---HYPATHEON--->>>|$HYPATHEON|" > tmp/hypfind$suffix
+
+findscript=hypfind
+if ! [ -e ~/bin/hypfind ]; then
+    mv tmp/hypfind ~/bin/hypfind   # suffix = '' in this case
+    chmod a+x ~/bin/hypfind
+    echo -e "\nScript file ~/bin/hypfind has been created."
+elif [[ $(diff ~/bin/hypfind tmp/hypfind$suffix) ]]; then
+    mv tmp/hypfind$suffix ~/bin/hypfind$suffix
+    chmod a+x ~/bin/hypfind$suffix
+    findscript=hypfind$suffix
+    echo -e "\nScript file ~/bin/hypfind already exists, but a new version"
+    echo -e "is needed due to differences in environment variables."
+    echo -e "Created the new file ~/bin/hypfind$suffix."
+    echo -e "Rename this script file as desired."
+else
+    rm -f tmp/hypfind$suffix
+    echo -e "\nScript file ~/bin/hypfind already exists; no changes needed."
+fi
+
+if ! [ -e ~/.hypatheon-emacs ]; then
+    cp -p pvs/DOThypatheon-emacs ~/.hypatheon-emacs
+    echo -e "\nCreated bootstrap file ~/.hypatheon-emacs.\n"
+elif [[ $(diff ~/.hypatheon-emacs pvs/DOThypatheon-emacs) ]]; then
+    echo -e "\nFile ~/.hypatheon-emacs already exists, but it differs from the current one."
+    mv ~/.hypatheon-emacs ~/.hypatheon-emacs.bak
+    echo -e "The existing ~/.hypatheon-emacs was renamed to ~/.hypatheon-emacs.bak"
+    cp -p pvs/DOThypatheon-emacs ~/.hypatheon-emacs
+    echo -e "\nCreated bootstrap file ~/.hypatheon-emacs.\n"
+else
+    echo -e "\nFile ~/.hypatheon-emacs already exists; no changes needed.\n"
+fi
+
+if [ -e ~/.pvsemacs ] &&
+   [[ $(grep '^(load-file "~/.hypatheon-emacs")' ~/.pvsemacs) ]]; then
+    echo -e "File ~/.pvsemacs already includes the Hypatheon load sequence.\n"
+else
+    ### add check for user permission:
+    echo -e "Augmenting file ~/.pvsemacs with the Hypatheon load sequence."
+    echo -e "\n;;; Hypatheon load sequence added on" $(date) >> ~/.pvsemacs
+    echo "(load-file \"~/.hypatheon-emacs\")" >> ~/.pvsemacs
+    echo ";(start-hypatheon-client)   ;; uncomment for automatic starting"  >> ~/.pvsemacs
+    echo "
+Several lines were appended to file ~/.pvsemacs.  You might need to edit
+the file manually if there are other actions that should follow the
+startup of Hypatheon.
+"
+fi
+
+echo -e "\nFinding and decompressing available database files...\n"
+
+~/bin/$findscript -s
+
+# Start the client.
+
+echo -e "\nLaunching the GUI client in stand-alone mode...\n"
+
+"$HYPATHEON"/bin/launch_client
+
+echo "
+
+If everything went well, all required items are now in place and the
+GUI client has started in stand-alone mode.  If it runs successfully,
+check the database status in the output above.  If no libraries appear
+in the database, try to index the finite_sets library as a test (about
+10 seconds) using the menu item Databases >> Index Selected Libraries.
+
+If desired, you can now close the stand-alone client, and try to
+restart it in PVS-client mode by invoking the Emacs command
+M-x start-hypatheon-client.
+
+After reading this Emacs buffer, you can safely delete it.
+"
+
+echo -e "Best of luck.  We hope you find Hypatheon useful.\n"

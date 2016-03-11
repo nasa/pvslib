@@ -27,7 +27,12 @@ $ git clone http://github.com/nasa/pvslib nasalib
 ~~~
 
 The command above will put a copy of the library in the directory
-`<pvsdir>/nasalib`. 
+`<pvsdir>/nasalib`.
+
+This version of the NASA PVS Library includes
+[Hypatheon](http://shemesh.larc.nasa.gov/people/bld/hypatheon.html).
+Hypatheon is a database utility that provides a capability for indexing PVS theories and making
+them searchable via a GUI client.
 
 Getting the Most Stable Version 
 -
