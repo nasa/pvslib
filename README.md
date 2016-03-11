@@ -77,10 +77,35 @@ script (the dollar sign represents the prompt of the operating system).
 
 ~~~
 $ ./install-scripts
+$./fetch-hypatheon-db
 ~~~
+
+The former command installs an updated version of `pvsio` and `proveit`.
+The later command fetches an updated version
+of the NASA PVS Library database to be used by Hypatheon.
+
+~~~
+$ ./install-scripts
+~~~
+
 
 For more information visit the [installation](http://shemesh.larc.nasa.gov/fm/ftp/larc/PVS-library/installation.html)
 page.
+
+A Note on Library Terminology
+-
+For various reasons, the term "PVS library" has undergone some
+evolution. The original meaning is a named
+collection of related PVS theories all residing within a single
+directory. Recent usage refers to the "NASA PVS Library"
+as a "collection of formal developments," where each
+"formal development" is realized by a collection of
+theories. This newer usage places "Library" at a higher level.
+Hypatheon, though, was developed with the original library meaning
+and has retained that terminology.
+Please be mindful that two variants of the term exist.
+In the following, we distinguish the newer usage using capitalization.
+Elsewhere, context should suffice to discern which meaning applies.
 
 
 Enjoy it.
