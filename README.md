@@ -84,11 +84,6 @@ The former command installs an updated version of `pvsio` and `proveit`.
 The later command fetches an updated version
 of the NASA PVS Library database to be used by Hypatheon.
 
-~~~
-$ ./install-scripts
-~~~
-
-
 For more information visit the [installation](http://shemesh.larc.nasa.gov/fm/ftp/larc/PVS-library/installation.html)
 page.
 
