@@ -1,0 +1,132 @@
+counting_pvs0_type[T:TYPE+] : THEORY
+BEGIN
+
+  ASSUMING
+    T_bij_nat: ASSUMPTION EXISTS  (FF:[T->nat]): injective?(FF) 
+  ENDASSUMING
+
+  IMPORTING 
+    PVS0Expr[T], 
+    sets_aux@nat_surjection[PVS0Expr[T]],
+    finite_sets@finite_cross,
+    sets_aux@countable_set
+
+  G: {F:[T->nat] | injective?(F)}
+
+  inbase(n:nat)(e:PVS0Expr): 
+    bool = if e = vr then true
+	   elsif cnst?(e) then 
+	     if G(get_val(e))<=n then true
+	     else false
+	     endif
+	   else false
+	   endif
+
+  base(n:nat): 
+    finite_set[PVS0Expr] = inbase(n)
+
+  inop1_at(fexp: finite_set[PVS0Expr], n:nat)(e:PVS0Expr):
+    bool = op1?(e)
+    	   and member(get_arg(e), fexp)
+	   and get_op(e)=n
+
+  inop1_upto(fexp: finite_set[PVS0Expr], n:nat)(e:PVS0Expr): 
+    bool = op1?(e) 
+     	   and member(get_arg(e), fexp) 
+	   and get_op(e)<=n 
+
+  op1_at(fexp: finite_set[PVS0Expr], n:nat): 
+    finite_set[PVS0Expr] = inop1_at(fexp, n)
+   
+  op1_upto(fexp: finite_set[PVS0Expr], n:nat): 
+    finite_set[PVS0Expr] = inop1_upto(fexp, n)
+
+  inop2_at(fexp:finite_set[PVS0Expr], n:nat)(e:PVS0Expr):
+    bool = op2?(e) 
+     	   and member(get_arg1(e), fexp) 
+	   and member(get_arg2(e), fexp) 
+	   and get_op(e)=n
+
+  inop2_upto(fexp: finite_set[PVS0Expr], n:nat)(e:PVS0Expr): 
+    bool = op2?(e) 
+     	   and member(get_arg1(e), fexp) 
+	   and member(get_arg2(e), fexp) 
+	   and get_op(e)<=n 
+
+  infinpair(fexp: finite_set[PVS0Expr])(ee:[PVS0Expr, PVS0Expr]):
+    bool = member(ee`1, fexp) 
+   	   and member(ee`2, fexp)
+
+  finpair(fexp: finite_set[PVS0Expr]):
+    finite_set[[PVS0Expr, PVS0Expr]] = infinpair(fexp)
+
+  op2_at(fexp: finite_set[PVS0Expr], n:nat): 
+    finite_set[PVS0Expr] = inop2_at(fexp, n)
+
+  op2_upto(fexp: finite_set[PVS0Expr], n:nat): 
+    finite_set[PVS0Expr] = inop2_upto(fexp, n)
+
+  infintrip(fexp: finite_set[PVS0Expr])(ee:[PVS0Expr, PVS0Expr, PVS0Expr]):
+    bool = member(ee`1, fexp) 
+   	   and member(ee`2, fexp)
+	   and member(ee`3, fexp)
+
+  fintrip(fexp: finite_set[PVS0Expr]):
+    finite_set[[PVS0Expr, PVS0Expr, PVS0Expr]] = infintrip(fexp)
+
+  inite_set(fexp: finite_set[PVS0Expr])(e:PVS0Expr):
+    bool = ite?(e) 
+    	   and member(get_cond(e), fexp) 
+	   and member(get_if(e), fexp) 
+	   and member(get_else(e), fexp) 
+
+  ite_set(fexp: finite_set[PVS0Expr]):
+    finite_set[PVS0Expr] = inite_set(fexp)
+
+  inrec_set(fexp: finite_set[PVS0Expr])(e:PVS0Expr):
+    bool = rec?(e)
+           and member(get_arg(e), fexp)
+
+  rec_set(fexp:finite_set[PVS0Expr]):
+    finite_set[PVS0Expr] = inrec_set(fexp)
+
+  level_set(fexp:finite_set[PVS0Expr], n:nat):
+    finite_set[PVS0Expr] = union(fexp,
+	  		   union(base(n), 
+                             union(op1_upto(fexp, n),
+			     union(op2_upto(fexp,n),
+				       union(ite_set(fexp), rec_set(fexp))))))
+
+  level_set_member: LEMMA
+    FORALL (fexp:finite_set[PVS0Expr], e:PVS0Expr, n:nat):
+    member(e, fexp) 
+    or member(e, base(n))
+    or member(e, op1_upto(fexp,n))
+    or member(e, op2_upto(fexp,n))
+    or member(e, ite_set(fexp))
+    or member(e, rec_set(fexp))
+    IMPLIES 
+    member(e, level_set(fexp, n))
+
+  level(n:nat): 
+    recursive finite_set[PVS0Expr] = 
+    if n=0 then base(n)
+    else level_set(level(n-1), n)
+    endif
+    measure n
+
+  levels_increase: LEMMA 
+    FORALL (m,n:nat, e:PVS0Expr):
+    member(e, level(m)) and n>=m IMPLIES 
+    member(e, level(n))
+
+  levels_cover: LEMMA
+    FORALL (e:PVS0Expr):
+    EXISTS (n:nat):
+    member(e, level(n))
+
+  nat_onto_PVS0Expr: THEOREM
+    EXISTS (F:[nat->PVS0Expr]):
+    surjective?(F)
+  
+END counting_pvs0_type

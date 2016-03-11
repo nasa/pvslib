@@ -3,10 +3,7 @@ BEGIN
   
   IMPORTING pvs0_expr[T]
 
-  EvalBool : TYPE = [Val -> bool]
-  EvalOp1  : TYPE = [nat->[Val->Val]]
-  EvalOp2  : TYPE = [nat->[[Val,Val]->Val]]
-  PVS0     : TYPE = [EvalBool,EvalOp1,EvalOp2,PVS0Expr]
+  PVS0 : TYPE = [Val,EvalOp1,EvalOp2,PVS0Expr]
 
   pvs0          : VAR PVS0
   env           : VAR Val
@@ -19,6 +16,9 @@ BEGIN
 
   semantic_rel(pvs0:PVS0,env:Val,val:Val) : bool =
     semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4,env,val)
+
+  determined?(pvs0:PVS0,env:Val) : bool =
+    EXISTS (val:Val) : semantic_rel(pvs0,env,val)
 
   deterministic : THEOREM
     semantic_rel(pvs0,env,val1) AND
@@ -46,52 +46,58 @@ BEGIN
     eval_termination(pvs0) IFF terminating?(pvs0)
 
   % Concrete counter for terminating functions
+
+  terminating_determined_all : LEMMA
+    terminating?(pvs0) IFF FORALL (val:Val) : determined?(pvs0,val)
   
   mu_nonempty: LEMMA
-    FORALL (pvs0:(terminating?)):
+    FORALL (pvs0:PVS0,val:Val| determined?(pvs0,val)):
       LET S = { n : nat | LET myv = eval(pvs0)(n)(val) IN some?(myv) } IN
       nonempty?(S)
 
-  mu(pvs0:(terminating?))(val:Val): posnat =
+  mu(pvs0:PVS0)(val:Val|determined?(pvs0,val)): posnat =
     LET  S = { n : nat | LET myv = eval(pvs0)(n)(val) IN  some?(myv) } IN
     min(S)
 
   mu_terminates : LEMMA
-    FORALL (pvs0:(terminating?)):
+    FORALL (pvs0:PVS0,val:Val|determined?(pvs0,val)):
        LET mun = mu(pvs0)(val),
            myv = eval(pvs0)(mun)(val) IN
        some?(myv)
 
   mu_min : LEMMA
-    FORALL (pvs0:(terminating?),val:Val,n:nat):
+    FORALL (pvs0:PVS0,val:Val|determined?(pvs0,val),n:nat):
        some?(eval(pvs0)(n)(val)) IMPLIES mu(pvs0)(val) <= n
 
   % Uses mu to evaluate a terminating PVS0 function
 
-  mu_eval(pvs0:(terminating?))(v:Val) : Val =
+  mu_eval(pvs0:PVS0)(v:Val|determined?(pvs0,v)) : Val =
     LET n = mu(pvs0)(v) IN val(eval(pvs0)(n)(v))
 
   eval_semantic: LEMMA
-   FORALL (pvs0:(terminating?))(arg,val:Val):
+   FORALL (pvs0:PVS0)(arg:Val|determined?(pvs0,arg),val:Val):
     some?(eval(pvs0)(mu(pvs0)(arg))(arg))
      IMPLIES semantic_rel(pvs0, arg, val(eval(pvs0)(mu(pvs0)(arg))(arg)))
 
   mu_eval_correct : THEOREM
-    FORALL (pvs0:(terminating?))(arg,val:Val):
+    FORALL (pvs0:PVS0)(arg:Val|determined?(pvs0,arg),val:Val):
       semantic_rel(pvs0,arg,val) IFF val = mu_eval(pvs0)(arg) 
 
   % Defining a non-terminating function in PVS0
 
-  eval_bool : VAR EvalBool
-  eval_op1  : VAR EvalOp1
-  eval_op2  : VAR EvalOp2
+  true_val : VAR Val
+  eval_op1 : VAR EvalOp1
+  eval_op2 : VAR EvalOp2
+  
+  Delta(true_val,eval_op1,eval_op2) : PVS0 = (true_val,eval_op1,eval_op2,rec(vr))
 
-  Delta(eval_bool,eval_op1,eval_op2) : PVS0 = (eval_bool,eval_op1,eval_op2,rec(vr))
-
-  TT : T
+  Delta_undetermined : THEOREM
+    FORALL (true_val,eval_op1,eval_op2)(val:Val) : 
+      NOT determined?(Delta(true_val,eval_op1,eval_op2),val)
 
   Delta_non_terminating : THEOREM
-    FORALL (eval_bool,eval_op1,eval_op2) : NOT terminating?(Delta(eval_bool,eval_op1,eval_op2))
+    FORALL (true_val,eval_op1,eval_op2) : 
+      NOT terminating?(Delta(true_val,eval_op1,eval_op2))
 
   pvs0_not_in_pvs : THEOREM
     EXISTS (pvs0:PVS0) : NOT EXISTS (f:[T->T]) : FORALL(t:T) : semantic_rel(pvs0,t,f(t))
