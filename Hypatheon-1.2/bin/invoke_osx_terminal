@@ -1,0 +1,80 @@
+#! /usr/bin/env python
+
+# Copyright (c) 2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# The software in this package has been released as open-source software
+# under the NASA Open Source Agreement.  See the accompanying file
+# NASA_Open_Source_Agreement.pdf for a full description of the terms.
+
+
+# Start a new OS X Terminal window and execute a given command.
+
+# Args: command-type command-name args...
+
+# Example:  invoke_osx_terminal shell shell-name [pre-cmd] [args...]
+# Example:  invoke_osx_terminal editor emacs file
+
+import os, sys, time, subprocess
+
+from StringIO import StringIO
+from traceback import print_exc
+
+trace = StringIO()
+
+HYPATHEON = os.environ['HYPATHEON']
+
+err_log_path = os.path.join(HYPATHEON, 'log', 'client_error_log')
+sys.stderr = open(err_log_path, 'a')
+
+#print >> sys.stderr, \
+#      "\n%s  Starting a new Terminal window." % time.asctime()
+
+
+# Start a shell on OS X in a new Terminal window.
+# First copy and substitute the .term template file to create
+# a command-specific .term file.
+
+def osx_shell_terminal(shell, pre_cmds='', args=''):
+    shell_term = '"%s"' % os.path.join(HYPATHEON, 'config', 'shell.term')
+    command_term = '"%s"' % os.path.join(HYPATHEON, 'tmp', 'command.term')
+    shell_cmd = '''sed s!PRE-COMMAND!'%s'! %s > %s''' \
+                % (pre_cmds + '; ' + (shell % args), shell_term, command_term)
+    subprocess.call(shell_cmd, shell=True)
+    return subprocess.call('open %s' % command_term, shell=True)
+
+# On OS X, can invoke a text editor in a new Terminal window.
+# First copy and substitute the .term template file to create
+# a command-specific .term file.
+
+def osx_editor_terminal(editor, file):
+    editor_term = '"%s"' % os.path.join(HYPATHEON, 'config', 'editor.term')
+    command_term = '"%s"' % os.path.join(HYPATHEON, 'tmp', 'command.term')
+    subprocess.call('sed s!EDITOR-COMMAND!"%s %s"! %s > %s' %
+                    (editor, file, editor_term, command_term), shell=True)
+    return subprocess.call('open %s' % command_term, shell=True)
+
+
+try:
+    if sys.argv[1] == 'shell':
+        if len(sys.argv) > 3: pre_cmds = sys.argv[3]
+        else:                 pre_cmds = ''
+        if len(sys.argv) > 4: shell_args = ' '.join(sys.argv[4:])
+        else:                 shell_args = ''
+        code = osx_shell_terminal(sys.argv[2], pre_cmds, shell_args)
+    elif sys.argv[1] == 'editor':
+        code = osx_editor_terminal(*sys.argv[2:4])
+except SystemExit, code:
+    pass
+except Exception, exc_obj:
+    print_exc(20, trace)
+    print >> sys.stderr, \
+          '*** Unhandled exception on Terminal invocation:\n%s' % \
+          ' ; '.join([ str(a) for a in exc_obj.args ])
+    print >> sys.stderr, trace.getvalue()
+    print >> sys.stderr, '\nSee file %s for details.' % err_log_path
+    code = 3
+
+sys.exit(code)

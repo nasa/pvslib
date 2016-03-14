@@ -1,0 +1,234 @@
+#! /usr/bin/env python
+
+# Copyright (c) 2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# The software in this package has been released as open-source software
+# under the NASA Open Source Agreement.  See the accompanying file
+# NASA_Open_Source_Agreement.pdf for a full description of the terms.
+
+
+'''hypfind 1.2 -- shell command for submitting Hypatheon queries
+
+Use hypfind to run queries against Hypatheon databases.
+Results returned on standard output include entity names and
+corresponding library, theory names (where applicable).
+
+Usage: hypfind [-anpqusvh] [term ...]
+
+Options:
+  -a   --all        Don't filter out nonexistent paths from result.
+  -n   --name       Return entity names only.
+  -p   --path       Return non-prelude, absolute paths only.
+  -q   --quote      Add quotes around results returned.
+  -u   --unique     Remove duplicate lines from result.
+  -s   --status     Print database status and exit.
+  -v   --version    Print the version number and exit.
+  -h   --help       Print this message.
+
+Arguments:
+  term ...          Search terms for submission to Hypatheon server.
+  'name ...; refs ...; path ...; decl ...'      Fully qualified form.
+'''
+
+import os, sys, time
+
+HYPATHEON = os.environ.get('HYPATHEON', '')
+if not HYPATHEON:
+        if sys.argv[0]:
+            HYPATHEON = os.path.abspath(sys.argv[0] + '/../..')
+            os.environ['HYPATHEON'] = HYPATHEON
+        else:
+            print 'The Hypatheon base directory was not found.'
+            print 'Try setting the HYPATHEON environment variable.'
+            sys.exit(1)
+
+for dir in ('lib',):
+    sys.path.insert(0, os.path.join(HYPATHEON, dir))
+
+import getopt
+
+from StringIO import StringIO
+from traceback import print_exc
+
+from app_globals import *
+
+app_state['exec_mode'] = 'Shell-script'
+
+
+def usage(code, msg=''):
+    if code == 1: channel = sys.stdout
+    else:         channel = sys.stderr
+    print >> channel, __doc__  # docstring()
+    if msg: print >> channel, msg
+    sys.exit(code)
+
+options = {}
+
+def main():
+    try:
+        opts, args = getopt.getopt(
+            sys.argv[1:],
+            'anpqusvh',
+            ['all', 'name', 'path', 'quote', 'unique',
+             'status', 'help', 'version'])
+    except getopt.GetoptError, msg:
+        usage(2, msg)
+
+    for opt, arg in opts:
+        if opt in ('-h', '--help'):
+            usage(1)
+        elif opt in ('-v', '--version'):
+            print 'hypfind (Hypatheon) %s' % app_version
+            sys.exit(0)
+        elif opt in ('-q', '--quote'):
+            options['quote'] = 1
+        elif opt in ('-u', '--unique'):
+            options['unique'] = 1
+        elif opt in ('-a', '--all'):
+            options['all_paths'] = 1
+        elif opt in ('-p', '--path'):
+            options['abs_paths'] = 1
+        elif opt in ('-n', '--name'):
+            options['name_only'] = 1
+        elif opt in ('-s', '--status'):
+            from db_connect import getCollectionsStatus, open_db_connection
+            try:
+                open_db_connection()           # opens all databases
+            except DatabaseError, e:
+                pass           # old database files found; ignore for now
+            show_status(getCollectionsStatus())
+            sys.exit(0)
+
+    if len(args) == 0:
+        usage(1)
+    query_and_display(args)    # now perform query
+
+def show_status(status):
+    ncols = len(status)
+    if status:
+        col_specs = '    %8s' * ncols
+        row_specs = [ '    %-24s%s\n' % (label, col_specs)
+                      for label in status_display_types ]
+        status_msg = \
+            ('Hypatheon database status for %s\n\n' % time.asctime()) + \
+            ''.join([ spec % row for spec, row
+                      in zip(row_specs, map(tuple, transpose_lists(status))) ])
+    else:
+        status_msg = 'Hypatheon Server is not running on %s.'
+    print status_msg
+
+def query_and_display(args):
+    from db_connect    import query_type, open_db_connection
+    from submit_query  import perform_query, rel_to_abs_paths
+    from db_operations import get_declaration_name, get_proof_name, get_step_name
+    try:
+        open_db_connection()           # opens all databases
+    except DatabaseError, e:
+        pass           # old database files found; ignore for now
+
+    queries = split_and_pad_terms(' '.join(args))
+    q_type = query_type(queries)
+    query_result = perform_query(queries, q_type)[2]
+    if not query_result:            # empty result
+        sys.exit(0)
+    if q_type[0] == 'step':
+        options['name_only'] = 1    # proof steps (cmds) don't have paths
+
+    if 'abs_paths' in options:
+        # absolute lib/thy paths will form the result
+        if not (os.environ.get('PVSPATH') or
+                os.environ.get('PVS_LIBRARY_PATH')):
+            print 'PVSPATH and/or PVS_LIBRARY_PATH ' \
+                  'is needed to find absolute paths.'
+            sys.exit(4)
+        query_result = rel_to_abs_paths(query_result)
+        paths = [ r[1] for r in query_result
+                  if not r[1].startswith('prelude') ]
+        if 'all_paths' not in options:
+            paths = filter(os.path.exists, paths)
+        if not paths:
+            sys.exit(0)
+
+    elif 'name_only' not in options:
+        # lib@thy paths are to be included as prefixes on each output line
+        pairs = [ os.path.split(os.path.splitext(r[1])[0])
+                  for r in query_result ]
+        if q_type[0] == 'library':
+            lib_thy = [ (p[1], '') for p in pairs ]
+        else:
+            lib_thy = [ (p[0], r[2]) for p, r in zip(pairs, query_result) ]
+        max_lib = max([ len(p[0]) for p in lib_thy ])
+        max_thy = max([ len(p[1]) for p in lib_thy ])
+        lib_thy_format = '%%-%ds @ %%-%ds' % (max_lib, max_thy)
+        paths = []
+        for lib, thy in lib_thy:
+            if thy: paths.append(lib_thy_format % (lib, thy))
+            else:   paths.append(lib)
+
+    if 'abs_paths' in options:
+        output = sorted(paths)
+    else:
+        if q_type[0] == 'declaration':  get_fn = get_declaration_name
+        elif q_type[0] == 'proof':      get_fn = get_proof_name
+        elif q_type[0] == 'step':       get_fn = get_step_name
+        else:                           get_fn = lambda n,c: ''
+        if q_type[0] == 'module':
+            entity_names = [ r[2] for r in query_result ]
+        else:
+            entity_names = [ get_fn(r[-1], r[4]) for r in query_result ]
+        if 'name_only' in options:
+            output = sorted(entity_names)
+        else:
+            output = [ '%s  %s' % (path, name)
+                       for name, path in sorted(zip(entity_names, paths)) ]
+    if 'unique' in options:
+        output = list(set(output))
+        output.sort()
+    if 'quote' in options:
+        output = [ '"%s"' % line for line in output ]
+    for line in output:
+        try:
+            print line
+        except UnicodeEncodeError:
+            # need to handle non-ASCII characters
+            print line.encode('utf-8')
+
+
+connect_fail_msg = \
+'''Connection failure: unable to establish a connection to the Hypatheon
+database server.  Check the environment variable settings, then try the
+query again.  If problems persist, try the query with the GUI client.
+'''
+
+database_error_msg = \
+'''Database error: the Hypatheon database server encountered an error
+while processing this query.  Check the environment variable settings,
+then try the query again.  If problems persist, try the query with
+the GUI client.
+'''
+
+try:
+    exit_code = 0
+    main()
+except SystemExit:
+    pass
+except SearchTermError:
+    exit_code = 1
+    pass
+except ConnectionFailure:
+    exit_code = 2
+    print >> sys.stderr, connect_fail_msg
+except DatabaseError:
+    exit_code = 3
+    print >> sys.stderr, database_error_msg
+except:
+    exit_code = 10
+    trace = StringIO()
+    print_exc(10, trace)
+    print >> sys.stderr, 'Unhandled exception:'
+    print >> sys.stderr, trace.getvalue()
+
+sys.exit(exit_code)

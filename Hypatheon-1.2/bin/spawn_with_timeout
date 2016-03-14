@@ -1,0 +1,120 @@
+#! /usr/bin/env python
+
+# Copyright (c) 2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# The software in this package has been released as open-source software
+# under the NASA Open Source Agreement.  See the accompanying file
+# NASA_Open_Source_Agreement.pdf for a full description of the terms.
+
+
+# Spawn a new process to run executable file $1 with left/right args
+# strings $2 and $4.  $3 contains a path name in quotes or ''.  Full
+# args are formed by concatenating $2 $3 $4 into a single arg list.
+# $2 and $4 include args joined into a single string that must be split
+# before invoking file $1.  If, though, $2 or $4 is of the form 'string'
+# (explicit outer quotes), it will be treated as a single arg (splitting
+# suppressed).  Optionally time out process after $5 seconds.
+# Optionally truncate output (and stop process) after $6 bytes of output.
+
+# Return process id as first line of stdout.
+# Return 6-char return code as last part of stdout.
+# This process and all those it spawns become part of a new process group.
+# If SIGINT or SIGTERM received, abort process group with exit code 2.
+# If SIGALRM received, abort process group with exit code 1.
+# If SIGUSR1 received, abort process group with exit code 0.
+
+
+import sys, os, signal
+
+exit_code_fmt = '%06d'
+
+self_pid = os.getpid()
+
+# Establish a new progress group so spawned child processes can be stopped.
+
+os.setpgid(self_pid, self_pid)
+
+print self_pid       # report process id for self
+sys.stdout.flush()
+
+if len(sys.argv) < 5: sys.exit(2)     # insufficient args
+
+cmd = sys.argv[1]
+args = sys.argv[2:5]
+
+if args[0].startswith("'") and args[0].endswith("'"):
+    left_args = [args[0][1:-1]]
+else:
+    left_args = args[0].split()
+
+if len(sys.argv) > 6:
+    # Output truncation requested.  Pipe output through head command,
+    # then kill process group when quota achieved.
+    trunc_option = ' | (head -c %s; kill -s USR1 %s)' % (sys.argv[6], self_pid)
+else:
+    trunc_option = ''
+ 
+if args[2].startswith("'") and args[2].endswith("'"):
+    right_args = [args[2][1:-1] + trunc_option]
+elif trunc_option:
+    right_args = args[2].split() + [trunc_option]
+else:
+    right_args = args[2].split()
+    
+if args[1] == '':
+    cmd_args = left_args + right_args
+else:
+    cmd_args = left_args + [args[1]] + right_args
+
+
+# Return exit code and if termination was forced, kill entire progress
+# group to ensure all spawned descendents are terminated as well.
+
+def close_out(code, term=0):
+    if code > 255:
+        code = 8 + code//256    # shift codes so first 8 are reserved
+    sys.stdout.write(exit_code_fmt % code)
+    sys.stdout.flush()
+    if term or 1 <= code <= 8:
+        # clear out all descendant processes (and self)
+        os.killpg(self_pid, signal.SIGKILL)
+    sys.exit(code)
+
+
+if len(sys.argv) > 5:
+    # timeout case
+    timeout = sys.argv[5]
+
+    # Set up an alarm to signal after timeout seconds.
+
+    signal.signal(signal.SIGALRM, lambda signo, frame: close_out(1))
+    signal.alarm(int(timeout))    # start the timer
+
+
+# Catch user defined signal 1 (truncation by head command).
+# Return normal exit code but stop all subprocesses.
+
+if len(sys.argv) > 6:
+    signal.signal(signal.SIGUSR1, lambda signo, frame: close_out(0, 1))
+
+
+# Set up a handler to catch termination signal.
+
+signal.signal(signal.SIGTERM, lambda signo, frame: close_out(2))
+
+
+# Spawn the process and wait on its PID.
+
+try:
+    cmd_pid = os.spawnlp(os.P_NOWAIT, cmd, cmd, *cmd_args)
+    pid, code = os.waitpid(cmd_pid, 0)
+    close_out(code)
+except KeyboardInterrupt:
+    close_out(2)
+
+
+# Use an invocation similar to this:
+#   os.system('this-script cmd l_args path r_args timeout trunc > out-file')
