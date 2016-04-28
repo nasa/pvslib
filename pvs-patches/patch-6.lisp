@@ -1469,7 +1469,10 @@
 	     (cdr bindings)
 	     (cons id aux))))
       (nreverse aux)))
-	
+
+;; This code disambiguates declarations with the same name on different theories by adding the theory name as
+;; prefix to the lisp function. Contributed by Mariano Moscato (NIA)
+;;
 (defun pvs2cl-lisp-function (decl)
   (let* ((defax (def-axiom decl))
 	 (*external* nil))
@@ -1479,11 +1482,11 @@
 		   (in-name-m decl) undef
 		   (in-name-d decl) undef)
 	     undef))
-	  (t (let* ((id (mk-newfsymb (format nil "~@[~a_~]~a"
-				       (generated-by decl) (pvs2cl-id decl))))
-		    (id-d (mk-newfsymb (format nil "~@[~a_~]~a!"
-					 (generated-by decl)
-					 (pvs2cl-id decl))))
+	  (t (let* ((id (mk-newfsymb (format nil "~a_~@[~a_~]~a" (id(module decl))
+					     (generated-by decl) (pvs2cl-id decl))))
+		    (id-d (mk-newfsymb (format nil "~a_~@[~a_~]~a!" (id(module decl))
+					       (generated-by decl)
+					       (pvs2cl-id decl))))
 		    (defn (args2 (car (last (def-axiom decl)))))
 		    (defn-bindings (when (lambda-expr? defn)
 				     (loop for bnd in
@@ -1495,7 +1498,7 @@
 		    (declarations (pvs2cl-declare-vars defn-binding-ids
 						       defn-bindings)))
 	       (setf (in-name decl) id)
-	       (let ((id2 (mk-newfsymb (format nil "_~@[~a_~]~a"
+	       (let ((id2 (mk-newfsymb (format nil "_~a_~@[~a_~]~a" (id(module decl))
 					 (generated-by decl)
 					 (pvs2cl-id decl)))))
 		 (when *eval-verbose*
@@ -1524,12 +1527,12 @@
 			  ,@(append (when declarations
 				      (list declarations))
 				    (list 
-					     (pvs2cl-till-output-stable
-					      (in-defn-d decl)
-					      defn-body
-					      (pairlis defn-bindings
-						       defn-binding-ids)
-					      nil)))))
+				     (pvs2cl-till-output-stable
+				      (in-defn-d decl)
+				      defn-body
+				      (pairlis defn-bindings
+					       defn-binding-ids)
+				      nil)))))
 		 ;;setf output-vars already in
 		 ;;pvs2cl-till-output-stable
 		 (setf (output-vars (in-defn-d decl))

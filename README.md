@@ -77,7 +77,7 @@ script (the dollar sign represents the prompt of the operating system).
 
 ~~~
 $ ./install-scripts
-$./fetch-hypatheon-db
+$ ./fetch-hypatheon-db
 ~~~
 
 The former command installs an updated version of `pvsio` and `proveit`.

@@ -232,3 +232,37 @@ It cannot be evaluated in a formal proof."
 	   (pvs-message "Loading semantic attachments in theory ~a" theory)
 	   (cons 'progn (reattach theory macros))))))
 
+
+;; Definition of macro "using". Contributed by Mariano Moscato (NIA)
+;; taken from pvs2cl-theory (src/groundeval/pvseval-update.lisp:1617)
+
+(defun make-eval-const (decl)
+  (unless (eval-info decl)
+    (progn
+      (make-eval-info decl)
+      (or (external-lisp-function decl)
+	  (pvs2cl-external-lisp-function decl))
+      (or (lisp-function decl)
+	  (pvs2cl-lisp-function decl)))))
+
+(defun pvs-lisp-decl (string)
+  ;; (let ((decl (car(get-declarations id))))
+  (let*((typed-expr (pc-typecheck (pc-parse string 'expr)))
+	(decl (if (typep typed-expr 'coercion)
+		  (declaration(car(resolutions(argument typed-expr))))
+		;; it's a name-expr
+		(declaration(car(resolutions typed-expr))))))
+    (make-eval-const decl)
+    (definition (in-defn-m decl))))
+
+;; how to filter overloaded ids: requesting a coerced expression
+
+(defmacro using (defs . body)
+  `((lambda ,(mapcar (lambda (x)
+                       (if (listp x)
+                           (car x)
+                           x)) defs)
+      ,@body)
+    ,@(mapcar (lambda (x)
+                (if (listp x)
+                    (pvs-lisp-decl (cadr x)))) defs)))
