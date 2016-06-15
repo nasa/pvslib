@@ -1,0 +1,146 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Ana Cristina Rocha Oliveira, Andre Luiz Galdino and 
+%%                   Mauricio Ayala-Rincon  
+%%                   Universidade de Brasília - Brazil         
+%%
+%% Last Modified On: Jun 3, 2016                                    
+%%                                                                          
+%%--------------------------------------------------------------------------
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Orthogonality_Sets contains the proof of the Theorem of confluence of 
+%% orthogonal TRSs.
+%% The inductive proof of the main theorem uses the Parallel Moves Lemma. 
+%% In this version, sequences (of rules, variables, terms, substitutions) 
+%% involved in one-step parallel rewritings and parallel forks, are translated 
+%% into sets, in order to avoid direct treatment of these sequences, using instead 
+%% simpler set properties. Sequences are translated into sets and vice versa 
+%% using the PVS standard conversion operators (seq2set and set2seq). The  
+%% additional necessary properties for profiting of this seq-set translations 
+%% are specified in the theory predicate_fseq2set.pvs that is imported by 
+%% orthogonality_basis.pvs. The theory orthogonality_basis.pvs specifies the 
+%% required notions of parallel rewriting, orthogonality, etc and concludes 
+%% with the formalization of the Parallel Moves Lemma.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+orthogonality_sets[variable:TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+
+ BEGIN
+
+   ASSUMING
+ 
+     IMPORTING variables_term[variable, symbol, arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+ 
+       var_countable: ASSUMPTION is_countably_infinite(V)
+      
+   ENDASSUMING
+
+
+    IMPORTING orthogonality_basis[variable, symbol, arity]
+                                       
+                               n: VAR nat
+                    s, t, t1, t2: VAR term 
+                           sigma: VAR Sub
+                       p, p1, p2: VAR position
+                               e: VAR rewrite_rule
+                               E: VAR set[rewrite_rule]
+                 fsp, fsp1, fsp2: VAR finseq[position]
+                             fst: VAR finseq[term]
+
+%%%% Some constructors %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Set of dominating positions (to be applied in a parallel fork) 
+% at positions fsp1 and fsp2
+ Pos_Over(fsp1, fsp2): set[position] = set_of_prop_related_nb(<=)(fsp1, fsp2)
+
+% Set of dominated positions (to be applied in a parallel fork) 
+% at positions fsp1 and fsp2
+ Pos_Under(fsp1, fsp2): set[position] = set_of_prop_related_b(<=)(fsp1, fsp2)
+
+% Set of equal positions (to be applied in a parallel fork) 
+% at positions fsp1 and fsp2 
+ Pos_Equal(fsp1, fsp2): set[position] = intersection(fsp1, fsp2)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  Pos_Over_character: LEMMA
+   PP?(fsp2) AND Pos_Over(fsp1, fsp2)(p)
+     IMPLIES
+      PP?(add_first(p, fsp2))
+       OR
+      EXISTS (i: below[fsp2`length]):  p <= fsp2`seq(i) AND p /= fsp2`seq(i)
+
+ pos_up_in_Pos_Over: LEMMA
+     PP?(fsp2) AND
+     p2`length /= 0 AND seq2set(fsp1)(p1) AND seq2set(fsp2)(p1 o p2)
+     IMPLIES Pos_Over(fsp1, fsp2)(p1)
+
+ union_positions: LEMMA 
+     seq2set(fsp1) = union(Pos_Over(fsp1, fsp2),
+                           union(Pos_Equal(fsp1, fsp2), Pos_Under(fsp1, fsp2)))
+
+  Pos_Over_and_Pos_Equal_is_PP: LEMMA
+    PP?(fsp1) AND PP?(fsp2)
+      IMPLIES
+        PP?(set2seq(union(Pos_Over(fsp1, fsp2),
+                          union(Pos_Over(fsp2, fsp1), Pos_Equal(fsp1,fsp2)))))
+
+  Pos_Over_and_Pos_Equal_dominance: LEMMA
+    PP?(fsp1) AND PP?(fsp2) IMPLIES
+     dominates?(<=)(union(Pos_Over(fsp1,fsp2),
+                      union(Pos_Over(fsp2,fsp1),Pos_Equal(fsp1,fsp2))),seq2set(fsp1))
+
+  fork_in_Pos_Over_aux: LEMMA
+   SPP?(t)(fsp2) AND
+   parallel_reduction_fix?(E)(t, t2, fsp2) AND
+   positionsOF(t)(p) AND
+   Pos_Over( #(p), fsp2)(p)
+    IMPLIES parallel_reduction_fix?(E)(subtermOF(t,p), subtermOF(t2,p), complement_pos(p,fsp2))
+
+  fork_in_Pos_Over: LEMMA
+     SPP?(t)(fsp1) AND SPP?(t)(fsp2) AND
+     parallel_reduction_fix?(E)(t, t1, fsp1) AND
+     parallel_reduction_fix?(E)(t, t2, fsp2) AND
+     Pos_Over(fsp1, fsp2)(p)
+            IMPLIES (EXISTS((e | member(e, E)), sigma):
+                     subtermOF(t, p) = ext(sigma)(lhs(e)) AND
+                     subtermOF(t1, p) = ext(sigma)(rhs(e)) AND
+                     parallel_reduction?(E)(subtermOF(t, p),subtermOF(t2,p)))
+
+  subterm_joinability: LEMMA
+    Orthogonal?(E) AND
+    SPP?(t)(fsp1) AND SPP?(t)(fsp2) AND
+         parallel_reduction_fix?(E)(t,t1,fsp1) AND
+         parallel_reduction_fix?(E)(t,t2,fsp2) AND
+         fsp = set2seq(union(Pos_Over(fsp1,fsp2),
+                       union(Pos_Over(fsp2,fsp1), Pos_Equal(fsp1,fsp2))))
+     IMPLIES FORALL(i:below[fsp`length]): 
+         EXISTS s :
+       parallel_reduction?(E)(subtermOF(t1,fsp(i)), s) AND
+       parallel_reduction?(E)(subtermOF(t2,fsp(i)), s)
+
+  subterms_joinability: LEMMA
+    Orthogonal?(E) AND
+    SPP?(t)(fsp1) AND SPP?(t)(fsp2) AND
+         parallel_reduction_fix?(E)(t,t1,fsp1) AND
+         parallel_reduction_fix?(E)(t,t2,fsp2) AND
+         fsp = set2seq(union(Pos_Over(fsp1,fsp2),
+                       union(Pos_Over(fsp2,fsp1), Pos_Equal(fsp1,fsp2))))
+     IMPLIES EXISTS fst : fsp`length = fst`length AND
+     FORALL(i:below[fsp`length]): 
+       parallel_reduction?(E)(subtermOF(t1,fsp(i)), fst(i)) AND
+       parallel_reduction?(E)(subtermOF(t2,fsp(i)), fst(i))
+
+ parallel_reduction_has_DP: LEMMA
+  Orthogonal?(E) IMPLIES diamond_property?(parallel_reduction?(E))
+
+ Orthogonal_implies_confluent: LEMMA 
+  FORALL (E: Orthogonal):  
+    LET RRE = reduction?(E) IN
+    confluent?(RRE)
+
+ END orthogonality_sets
+

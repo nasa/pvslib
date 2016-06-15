@@ -1,0 +1,327 @@
+%%-------------------** Term Rewriting System (TRS) **------------------------
+%%                                                                          
+%% Authors         : Ana Cristina Rocha Oliveira, Andre Luiz Galdino and 
+%%                   Mauricio Ayala-Rincon  
+%%                   Universidade de Brasília - Brazil         
+%%
+%% Last Modified On: Jun 3, 2016                                    
+%%                                                                         
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% This theory states several properties of finite sequences over a non interpreted type T 
+%% converted into sets through the PVS prelude conversions "seq2set" and set2seq".  
+%% The ideia is essentially to simplify proofs over sequences through application of the 
+%% standard properties of sets, that are available in the PVS prelude. This theory is 
+%% applied in order to simplify proofs of the theorem of confluence of orthogonal TRSs 
+%% that was specified using finite sequences. In particular, one step of parallel rewriting 
+%% is specified in the theory orthogonality through sequences of positions, rules and
+%% substitutions, which results in an analysis of parallel forks (used to prove the 
+%% Parallel Moves Lemma) that is based on results related with properties of these 
+%% sequences. Thus, converting these sequences into sets, standard properties of sets
+%% are used, what makes the analysis simpler.                                  
+%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+predicate_fseq2set[T: TYPE] : THEORY
+BEGIN
+       IMPORTING   structures@seq_extras[T],
+                   structures@seq2set[T]
+
+
+                m, n: VAR nat
+          x, y, a, b: VAR T
+	     E, A, B: VAR set[T]
+		  op: VAR [[T, T] -> T]
+                  P1: VAR PRED[T]
+	       P, P2: VAR PRED[[T, T]]
+		  P3: VAR PRED[[nat, T]]
+  fseq, fseq1, fseq2: VAR finseq[T]
+                   S: VAR finite_set[T]
+
+%%%%%
+
+% Predicate for unary properties that hold for all elements in a sequence
+  pSeq?(P1)(fseq): bool = FORALL (i: below[fseq`length]): P1(fseq(i))
+
+
+% Predicate for binary properties that hold for all pairs of elemens at different
+% postions of a sequence.
+  PSeq?(P2)(fseq): bool = IF fseq`length < 2 THEN true
+                           ELSE
+                           FORALL (i, j: below[fseq`length]):
+			     i /= j  => P2(fseq(i), fseq(j))
+                          ENDIF
+
+% Predicate for inclusion of the elements of a sequence fseq in a set E
+  subset?(fseq, E): bool = subset?(seq2set(fseq), E)
+
+% Construction of a sequence where the element x is repeated n times.
+  power(x,n): finseq[T] = (# length := n,
+                                seq := (LAMBDA(i:below[n]): x) #)
+
+ member_seq(x, fseq): bool =
+     EXISTS(i: below[fseq`length]): x = fseq(i)
+
+ subseq(fseq1, fseq2): bool =
+     FORALL(i: below[fseq1`length]): member_seq(fseq1(i), fseq2)
+
+
+% Predicate for binary properties over T such that regarding the property, A dominates B. 
+  dominates?(P)(A, B): bool = FORALL x: B(x) IMPLIES EXISTS y: A(y) AND P(y, x)
+
+%%%%%  From this point a few definitions and properties related with the use of set
+%%%%%  properties for dealing with properties between elements of sequences.  
+%%%%%  This is applied to deal with positions for TRSs, but is presented in a general
+%%%%%  manner. 
+
+% Construction of the set of elements in a sequence that are related with an element x by
+% a binary predicate P:  { y | y in seq2set(fseq) and P(x, y) }.
+  set_of_prop_related(P)(fseq, x): set[T] =
+                                { y | member(y, seq2set(fseq)) AND x /= y AND P(x,y) }
+
+% Notice that set_of_prop_related_b is a more general constructor than the one required for 
+% orthogonality. Indeed, set_of_prop_related_b builds the set of elements in fseq1 such that 
+% there are elements in fseq2 related to through P:  
+% {y | y in seq2set(fseq1) s.t. exists x in fseq2 y \= x and P(x,y) }.
+  set_of_prop_related_b(P)(fseq1, fseq2): set[T] =
+              {y | member(y,seq2set(fseq1)) AND
+                   (EXISTS (x: T): member(x, seq2set(fseq2)) AND x /= y AND P(x,y))}
+
+% Notice that set_of_prop_related_nb is a more general constructor than the one required for 
+% orthogonality. Indeed, set_of_prop_related_nb builds the set of elements in fseq1 such that 
+% there aren't elements in fseq2 related to through P:  
+% {y | y in seq2set(fseq1) s.t. not exists x in fseq2 P(x,y) }.
+  set_of_prop_related_nb(P)(fseq1, fseq2): set[T] =
+              {y | member(y,seq2set(fseq1)) AND
+                   (NOT EXISTS (x: T): member(x, seq2set(fseq2)) AND P(x,y))}
+
+% Construction of the set of elements in fseq1 that are also in fseq2.
+  intersection(fseq1, fseq2): set[T] = intersection(seq2set(fseq1), seq2set(fseq2))
+
+% Construction of the set of elements x in T such that a operated to x
+% results into b. The conditions are that P holds to (a,b) and a and b
+% are different.
+ complement_pos_set(P, op)(a, b): set[T] = 
+         IF P(a, b) AND  a /= b 
+           THEN {x | b = op(a, x)}
+           ELSE emptyset
+         ENDIF
+%%%%%
+
+% seq2set inverts set2seq.  Notice the counterpart does not hold since sequences might
+% have repetitions.
+  set2seq_seq2set_is_set: LEMMA is_finite(E) IMPLIES seq2set(set2seq(E)) = E
+
+% Membership of elements in append of sequences and in the converted sets. 
+  seq2set_comp: LEMMA
+                seq2set(fseq1 o fseq2)(x) IFF seq2set(fseq1)(x) OR seq2set(fseq2)(x)
+
+% Relating seq2set conversion, append of sequences subset? and set union.
+  comp_subset: COROLLARY
+               subset?(seq2set(fseq1 o fseq2), union(seq2set(fseq1), seq2set(fseq2)))
+  
+% Preservation of elements commuting append of sequences.
+  comp_subset_comp: LEMMA subset?(seq2set(fseq1 o fseq2), seq2set(fseq2 o fseq1))
+
+% Exact preservation of elements communting append of sequences. 
+  comp_same_set: COROLLARY seq2set(fseq1 o fseq2) = seq2set(fseq2 o fseq1)
+
+% Inclusion of sets of elements in segment of sequences into the set associated to the sequence. 
+  subseq_subset: LEMMA subset?(seq2set(^(fseq,(m,n))), seq2set(fseq))
+
+% Inclusion of sets of elements of sequences and positions of elements in the sequences.
+  subset_subseq: LEMMA subset?(seq2set(fseq1), seq2set(fseq2))
+                 IMPLIES FORALL (i: below[fseq1`length]):
+		           EXISTS (j: below[fseq2`length]): fseq1(i) = fseq2(j)
+
+% Strict inclusion of strict segments of sequences in sequences with mutually different elements.
+  subseq_strict_subset: LEMMA fseq`length > 0
+                              AND different_elements(fseq)
+		              AND (m > 0 OR n < fseq`length -1)
+		               IMPLIES
+		                strict_subset?(seq2set(^(fseq,(m,n))), seq2set(fseq))
+
+% The set associated with the rest of a sequence is a subset of the set built for the original sequence.
+  rest_subset: LEMMA subset?(seq2set(rest(fseq)), seq2set(fseq))
+
+% For sequences whose sets are included the first into the second, adding an element to
+% the second sequence preserves the inclusion. 
+  subset_rest: LEMMA subset?(seq2set(fseq1), seq2set(rest(fseq2)))
+                      IMPLIES subset?(seq2set(fseq1), seq2set(fseq2))
+
+  subseq_rest: LEMMA subseq(fseq1, rest(fseq2)) IMPLIES subseq(fseq1, fseq2)
+
+  member_seq_in_seq2set: LEMMA member_seq(x, fseq) IFF seq2set(fseq)(x)
+
+% For a non empty sequence with mutually different elements, the set of the rest of the sequence
+% is strictly included into the set of the whole sequence. 
+  rest_strict_subset: LEMMA fseq`length > 0
+                            AND different_elements(fseq)
+                              IMPLIES
+		                strict_subset?(seq2set(rest(fseq)), seq2set(fseq))
+
+% Deleting the nth element of a sequence provides a sequence which set is included in the
+% set of the whole sequence.
+  delete_subset: LEMMA FORALL (n: below[fseq`length]):
+                         subset?(seq2set(delete(fseq,n)), seq2set(fseq))
+
+% Deleting the nth occurrence of a repeated element will mantain the corresponding set.
+  delete_eq_seq2set: LEMMA FORALL (n: below[fseq`length]):
+                      (EXISTS (j: below[fseq`length]): n /= j AND fseq(n) = fseq(j))
+                        IMPLIES
+			  seq2set(delete(fseq,n)) = seq2set(fseq)
+
+% Applying seq2set to a sequence without repetitions produces a set whose cardinality
+% is the length of the sequence.
+  seq_card_set: LEMMA different_elements(fseq) IFF card(seq2set(fseq)) = fseq`length
+
+% If all the elements in fseq1 have the property P1 and the elements in fseq2 form a 
+% subset of fseq1, then all the elements of fseq2 have the property P1.
+  pred_subset: LEMMA pSeq?(P1)(fseq1) AND subset?(seq2set(fseq2), seq2set(fseq1))
+		       IMPLIES pSeq?(P1)(fseq2)
+
+% If all the elements in fseq have the property P1 and the head of the sequence
+% is removed, then P1 keeps holding for all elements of the new sequence.
+  pred_rest: COROLLARY pSeq?(P1)(fseq) IMPLIES pSeq?(P1)(rest(fseq))
+
+% If all the elements in fseq have the property P1 and the nth element is replaced by
+% an element x which has such property, then P1 holds for all elements of the new 
+% sequence. 
+  pred_replace: LEMMA FORALL (n: below[fseq`length]):
+                      pSeq?(P1)(fseq) AND P1(x) IMPLIES pSeq?(P1)(replace(x, fseq, n))
+
+% If all the elements in fseq have the property P1 and an element x which has such property
+% is introduced, then P1 holds for all elements of the new sequence.
+  pred_insert: LEMMA FORALL (n: upto[fseq`length]):
+                       pSeq?(P1)(fseq) AND P1(x) IMPLIES pSeq?(P1)(insert?(x,fseq,n))
+
+% If all the elements in fseq have the property P1 and an element x which has such property
+% is introduced in the first position, then P1 holds for all elements of the new sequence.
+  pred_add_first: COROLLARY
+                  pSeq?(P1)(fseq) AND P1(x) IMPLIES pSeq?(P1)(add_first(x,fseq))
+
+% If all the elements in fseq have the property P1 and an element x which has such property
+% is introduced in the last position, then P1 holds for all elements of the new sequence.
+  pred_add_last: COROLLARY
+                 pSeq?(P1)(fseq) AND P1(x) IMPLIES pSeq?(P1)(add_last(fseq,x))
+
+% If all the elements in fseq have the property P1 and the nth element 
+% is removed, then P1 keeps holding for all elements of the new sequence.
+  pred_delete: LEMMA FORALL (n: below[fseq`length]):
+                       pSeq?(P1)(fseq) IMPLIES pSeq?(P1)(delete(fseq,n))
+
+% If P1 holds for all the elements of fseq1 and fseq2, then it holds also for the
+% sequence that replaces the first elements of fseq2 by fseq1.
+  pred_replace_seq: LEMMA pSeq?(P1)(fseq1) AND pSeq?(P1)(fseq2)
+                            IMPLIES pSeq?(P1)(replace_seq(fseq1, fseq2))
+
+% If P1 holds for all the elements of fseq1 and fseq2, then it holds also for the
+% concatenation of such sequences.
+  pred_comp: LEMMA pSeq?(P1)(fseq1) AND pSeq?(P1)(fseq2)
+                     IMPLIES pSeq?(P1)(fseq1 o fseq2)
+
+% Preservation of binary property for subsequence without repetition.
+  pred_bin_subset: LEMMA PSeq?(P2)(fseq1) AND
+                         subset?(seq2set(fseq2), seq2set(fseq1)) AND
+			 different_elements(fseq2)
+			    IMPLIES PSeq?(P2)(fseq2)
+
+% Preservation of binary property when inserting an element such that P2 holds with respect
+% to this element and any other in the sequence comutatively.
+  pred_bin_insert: LEMMA
+                   FORALL (n: upto[fseq`length]):
+                    PSeq?(P2)(fseq) AND
+	            (FORALL (i: below[fseq`length]): P2(fseq(i),x) AND P2(x,fseq(i)))
+		       IMPLIES PSeq?(P2)(insert?(x,fseq,n))
+
+  pred_bin_add_first: LEMMA
+                     PSeq?(P2)(fseq) AND
+	             (FORALL (i: below[fseq`length]): P2(fseq(i),x) AND P2(x,fseq(i)))
+			IMPLIES PSeq?(P2)(add_first(x,fseq))
+
+  pred_bin_add_last: LEMMA
+                    PSeq?(P2)(fseq) AND
+	            (FORALL (i: below[fseq`length]): P2(fseq(i),x) AND P2(x,fseq(i)))
+		       IMPLIES PSeq?(P2)(add_last(fseq,x))
+
+  pred_bin_rest: LEMMA PSeq?(P2)(fseq) IMPLIES PSeq?(P2)(rest(fseq))
+			     
+  pred_bin_delete: LEMMA FORALL (n: below[fseq`length]):
+                           PSeq?(P2)(fseq) IMPLIES PSeq?(P2)(delete(fseq,n))
+
+  pred_bin_comp: LEMMA PSeq?(P2)(fseq1 o fseq2) IMPLIES PSeq?(P2)(fseq2 o fseq1)
+
+  subset_comp: LEMMA subset?(fseq1 o fseq2, E) IMPLIES subset?(fseq2 o fseq1, E)
+
+  subset_empty_seq: LEMMA subset?(empty_seq, E)
+
+% Construction of a sequence of elements such that the elements of fseq1 and fseq2
+% relate to them through P2 correspondingly.
+  seq_construct1: LEMMA
+    fseq1`length = n AND fseq2`length = n AND
+    (FORALL (i:below[n]):
+      EXISTS x: P2(fseq1`seq(i), x) AND P2(fseq2`seq(i), x))
+      IMPLIES
+        EXISTS fseq: fseq`length = n AND
+         FORALL (i:below[n]): P2(fseq1`seq(i), fseq`seq(i)) AND
+	                      P2(fseq2`seq(i), fseq`seq(i))
+
+  seq_construct2: LEMMA
+    (FORALL (i:below[n]): EXISTS x: P3(i, x))
+      IMPLIES
+         EXISTS fseq: fseq`length = n AND FORALL (i:below[n]): P3(i, fseq`seq(i))
+
+  set_of_prop_related_is_subset: LEMMA
+                         subset?(set_of_prop_related(P)(fseq, x), seq2set(fseq))
+
+% set_of_prop_related applied to its arguments returns a finite set.
+  set_of_prop_related_is_finite: LEMMA
+                                     is_finite(set_of_prop_related(P)(fseq, x))
+
+  set_of_prop_related_fseq: LEMMA set_of_prop_related(P)(fseq, x)(a)
+                                       IMPLIES
+			                 EXISTS (i: below[fseq`length]): fseq(i) = a
+
+  set_of_prop_related_card: LEMMA
+                           card(set_of_prop_related(P)(fseq, x)) <= length(fseq)
+
+  set_of_prop_related_is_bin: LEMMA
+                    PSeq?(P2)(fseq)
+                      IMPLIES PSeq?(P2)(set2seq(set_of_prop_related(P)(fseq, x)))
+				  
+  set_of_prop_related_b_is_subset: LEMMA
+                      subset?(set_of_prop_related_b(P)(fseq1, fseq2), seq2set(fseq1))
+
+% set_of_prop_related applied to its arguments returns a finite set.
+  set_of_prop_related_b_is_finite: LEMMA
+                                   is_finite(set_of_prop_related_b(P)(fseq1, fseq2))
+
+   set_of_prop_related_b_character: LEMMA
+    set_of_prop_related_b(P)(fseq1, fseq2)(a)
+      IMPLIES
+        EXISTS (j: below[fseq2`length]): set_of_prop_related(P)(fseq1,fseq2(j))(a)
+
+  set_of_prop_related_nb_is_subset: LEMMA
+                      subset?(set_of_prop_related_nb(P)(fseq1, fseq2), seq2set(fseq1))
+
+  set_of_prop_related_nb_is_finite: LEMMA
+                                   is_finite(set_of_prop_related_nb(P)(fseq1, fseq2))
+
+  set_of_prop_related_nb_character: LEMMA
+   set_of_prop_related_nb(P)(fseq1, fseq2)(a)
+   IMPLIES
+   (NOT EXISTS (j:below[fseq2`length]): set_of_prop_related(P)(fseq1,fseq2(j))(a))
+
+   set_of_prop_related_nb_in: LEMMA
+                              set_of_prop_related_nb(P)(fseq1, fseq2)(x)
+                                 IMPLIES
+   			           EXISTS (i: below[fseq1`length]): fseq1(i) = x
+
+   set_of_prop_related_nb_card: LEMMA
+           card(set_of_prop_related_nb(P)(fseq1, fseq2)) <= length(fseq1)
+
+  set_of_prop_related_nb_pred: LEMMA
+                PSeq?(P2)(fseq1)
+                  IMPLIES PSeq?(P2)(set2seq(set_of_prop_related_nb(P)(fseq1, fseq2)))
+
+END predicate_fseq2set
