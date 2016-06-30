@@ -5,6 +5,8 @@ BEGIN
             pathname,
             reals@sqrt
 
+  bla: nat = 1
+
   % Rounding Modes
   RoundingMode : TYPE = {TowardsZero,TowardsInfnty,TowardsNegInfnty,TowardsPosInfnty} 
   AwayFromZero : MACRO RoundingMode = TowardsInfnty
@@ -50,18 +52,17 @@ BEGIN
       skip
     ENDIF 
 
-  checker_with_header(file:string,check:[[IStream,OStream]->bool],head:[[IStream,OStream]->void],maxr:nat) : void =
+  checker_with_header_fout(
+   file    : string,
+   check   : [[IStream,OStream]->bool],
+   head    : [[IStream,OStream]->void],
+   maxr    : nat,
+   nameout : string) : void =
     IF file = "" OR fexists(file) THEN
       LET fin     = IF file = "" THEN stdin ELSE fopenin(file) ENDIF,
-          nameout = IF maxr = 0 THEN format("~a~a.~a",
-                                           (pathname_dir(file),pathname_name(file),val(OutExtension))) 
-                    ELSE format("~a~a-~a.~a",
-                               (pathname_dir(file),pathname_name(file),maxr,val(OutExtension))) ENDIF,
           fout    = IF file = "" THEN stdout ELSE fopenout(create,nameout) ENDIF IN
         IF file /= "" THEN 
-          printf("Reading: ~a. Writing: ~a~%",(file,nameout)) &
-          fprintf(fout,"Date: ~a~%",date) &
-          fprintf(fout,"Input file: ~a~%",file) 
+          printf("Reading: ~a. Writing: ~a~%",(file,nameout)) 
         ELSE skip ENDIF &
         set[nat](Records,0) &
         set[nat](Fails,0) &
@@ -82,8 +83,19 @@ BEGIN
       printf("File ~a doesn't exist",file)
     ENDIF
 
+  checker_with_header(file:string,check:[[IStream,OStream]->bool],head:[[IStream,OStream]->void],maxr:nat) : void =
+    LET nameout = IF maxr = 0 THEN format("~a~a.~a",
+                                 (pathname_dir(file),pathname_name(file),val(OutExtension))) 
+          ELSE format("~a~a-~a.~a",
+                     (pathname_dir(file),pathname_name(file),maxr,val(OutExtension))) ENDIF
+    IN checker_with_header_fout(file,check,head,maxr,nameout)
+
   checker(file:string,check:[[IStream,OStream]->bool],maxr:nat) : void =
-    checker_with_header(file,check,LAMBDA(io:[IStream,OStream]):skip,maxr)
+    checker_with_header(file,check,LAMBDA(io:[IStream,OStream]):fprintf(io`2,"Date: ~a~%",date) &
+          fprintf(io`2,"Input file: ~a~%",file),maxr)
+
+  checker(file:string,check:[[IStream,OStream]->bool],maxr:nat,nameout:string) : void =
+    checker_with_header_fout(file,check,LAMBDA(io:[IStream,OStream]):skip,maxr,nameout)
 
   empty_line(line:string) : bool =
     LET trln = trim(line) IN
