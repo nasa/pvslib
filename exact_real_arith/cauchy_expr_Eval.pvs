@@ -1,0 +1,182 @@
+cauchy_expr_Eval : THEORY
+  BEGIN
+
+  IMPORTING structures@Maybe
+  
+  IMPORTING CauchyExpr,
+            cauchy, add, neg, sub, mul, power, div, computable_rat, exp, floor,
+            log, modulo, sqrt, min, max, sincosx, modulo, atanx, acosx, abs
+
+  IMPORTING reals_mod
+
+  re      : VAR CauchyExpr
+  vars    : VAR list[rat]
+  n, prec : VAR nat
+
+  r2E(r: rat): CauchyExpr = CONST(r)
+
+  CONVERSION r2E
+
+  X(v: nat): CauchyExpr = VARIDX(v)
+
+  Eval_real(re, vars): RECURSIVE Maybe[real] =
+    CASES re OF
+      CONST(x): Some(x),
+      VARIDX(varidx):
+        IF varidx >= length(vars) THEN None
+        ELSE Some(nth(vars, varidx)) ENDIF,
+      ADD(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        Some(val(res1) + val(res2)) ENDIF ENDIF,
+      NEG(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        Some(-val(res)) ENDIF,
+      SUB(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        Some(val(res1) - val(res2)) ENDIF ENDIF,
+      MULT(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        Some(val(res1) * val(res2)) ENDIF ENDIF,
+      POW(re1, opn):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        IF opn = 0 THEN Some(1)
+                   ELSE Some(val(res) ^ opn) ENDIF ENDIF,
+      EXP(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        Some(exp(val(res))) ENDIF,
+      MIN(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        Some(min(val(res1), val(res2))) ENDIF ENDIF,
+      MAX(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        Some(max(val(res1), val(res2))) ENDIF ENDIF,
+      SIN(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        LET x = sin(val(res)) IN Some(x) ENDIF,
+      COS(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        LET x = cos(val(res)) IN Some(x) ENDIF,
+      DIV(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        IF val(res2) = 0 THEN None
+        ELSE Some(val(res1) / val(res2)) ENDIF ENDIF ENDIF,
+      FLOOR(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        Some(floor(val(res))) ENDIF,
+      SQRT(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        IF val(res) < 0 THEN None ELSE Some(sqrt(val(res))) ENDIF ENDIF,
+      LN(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        IF val(res) <= 0 THEN None ELSE Some(ln(val(res))) ENDIF ENDIF,
+      PI: Some(pi),
+      ACOS(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        IF abs(val(res)) <= 1 THEN Some(acos(val(res))) ELSE None ENDIF ENDIF,
+      ABS(re1):
+        LET res = Eval_real(re1, vars) IN IF none?(res) THEN None ELSE
+        Some(abs(val(res))) ENDIF,
+      MOD(re1, re2):
+        LET res1 = Eval_real(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval_real(re2, vars) IN IF none?(res2) THEN None ELSE
+        IF val(res2) = 0 THEN None
+        ELSE Some(reals_mod.mod(val(res1), val(res2))) ENDIF ENDIF ENDIF
+    ENDCASES
+  MEASURE re BY <<
+
+  Eval(prec: nat)(re, vars): RECURSIVE Maybe[cauchy_real] =
+    CASES re OF
+      CONST(x): Some(cauchy_rat(x)),
+      VARIDX(varidx):
+        IF varidx >= length(vars) THEN None
+        ELSE Some(cauchy_rat(nth(vars, varidx))) ENDIF,
+      ADD(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+          Some(cauchy_add(val(res1), val(res2))) ENDIF ENDIF,
+      NEG(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+          Some(cauchy_neg(val(res))) ENDIF,
+      SUB(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+          Some(cauchy_sub(val(res1), val(res2))) ENDIF ENDIF,
+      MULT(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+          Some(cauchy_mul(val(res1), val(res2))) ENDIF ENDIF,
+      POW(re1, opn):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+          IF opn = 0 THEN Some(cauchy_int(1))
+                     ELSE Some(cauchy_power(val(res), opn)) ENDIF ENDIF,
+      EXP(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+          Some(cauchy_exp(val(res))) ENDIF,
+      MIN(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+          Some(cauchy_min(val(res1), val(res2))) ENDIF ENDIF,
+      MAX(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+          Some(cauchy_max(val(res1), val(res2))) ENDIF ENDIF,
+      SIN(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+          Some(cauchy_sin(val(res))) ENDIF,
+      COS(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+          Some(cauchy_cos(val(res))) ENDIF,
+      DIV(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+        IF val(res2)(prec) = 0 THEN None
+        ELSE Some(cauchy_div(val(res1), val(res2))) ENDIF ENDIF ENDIF,
+      FLOOR(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+        LET d = val(res)(prec) / 2^prec IN
+        IF floor(d) = d THEN None ELSE Some(cauchy_floor(val(res))) ENDIF ENDIF,
+      SQRT(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+        IF val(res)(prec) <= 0 THEN None
+        ELSE Some(cauchy_sqrt(val(res))) ENDIF ENDIF,
+      LN(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+        IF val(res)(prec) <= 0 THEN None
+        ELSE Some(cauchy_ln(val(res))) ENDIF ENDIF,
+      PI: Some(cauchy_pi),
+      ACOS(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+        IF abs(val(res)(prec)) < 2^prec THEN Some(cauchy_acos(val(res)))
+        ELSE None ENDIF ENDIF,
+      ABS(re1):
+        LET res = Eval(prec)(re1, vars) IN IF none?(res) THEN None ELSE
+        Some(cauchy_abs(val(res))) ENDIF,
+      MOD(re1, re2):
+        LET res1 = Eval(prec)(re1, vars) IN IF none?(res1) THEN None ELSE
+        LET res2 = Eval(prec)(re2, vars) IN IF none?(res2) THEN None ELSE
+        IF val(res2)(prec) = 0 THEN None ELSE
+        LET d = cauchy_div(val(res1), val(res2)) IN
+        IF floor(d(prec) / 2^prec) = d(prec) / 2^prec THEN None
+        ELSE Some(cauchy_mod(val(res1))(val(res2))) ENDIF ENDIF ENDIF ENDIF
+    ENDCASES
+  MEASURE re BY <<
+
+  eval_lemma_aux : LEMMA
+    LET c_res = Eval(prec)(re, vars),
+        r_res = Eval_real(re, vars)
+    IN some?(c_res) AND some?(r_res) IMPLIES cauchy_prop(val(r_res), val(c_res))
+
+  eval_domain_inside_eval_real : LEMMA
+    some?(Eval(prec)(re, vars)) IMPLIES some?(Eval_real(re, vars))
+
+  eval_lemma : LEMMA
+    LET res = Eval(prec)(re, vars) IN
+    some?(res) IMPLIES cauchy_prop(val(Eval_real(re, vars)), val(res))
+
+  END cauchy_expr_Eval
