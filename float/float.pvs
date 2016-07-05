@@ -19,7 +19,7 @@ float_pair(fn:int,fexp:int): float = (# Fnum := fn, Fexp := fexp #)
 Format: TYPE = [# Prec:above(1), dExp:nat #]
           
 vNum(b:Format):posnat = radix^Prec(b)  
-
+		      
 f,g: VAR float
 e1 : VAR int
 b  : VAR Format
@@ -27,16 +27,14 @@ b  : VAR Format
 radix_div_vNum : lemma integer_pred(vNum(b) / radix)
 radix_less_vNum: lemma radix <= vNum(b)
 
-
 % First functions
 
 FtoR(f):real=Fnum(f)*radix^(Fexp(f))
-%CONVERSION FtoR
+CONVERSION FtoR
 
 float_int(j:int): float = (# Fnum := j, Fexp := 0 #)
 
 float_int_def: LEMMA FORALL (j:int): FtoR(float_int(j)) = j
-
 
 Fabs(f):float= (# Fnum:=abs(Fnum(f)), Fexp:=Fexp(f) #)
 Fopp(f):float= (# Fnum:=-(Fnum(f)), Fexp:=Fexp(f) #)
@@ -97,17 +95,13 @@ sigma(ii:nat,jj:nat,FF:[nat->float]): RECURSIVE float =
   ELSE Fplus(FF(jj),sigma(ii,jj-1,FF))
   ENDIF MEASURE jj
 
-
 % Division by an integer that divides the radix
 
 FDivInt(f,(i:nzint | mod(radix,i)=0)) : float =
   (# Fnum:=Fnum(f)*(radix/i), Fexp:=Fexp(f)-1 #)
 
-
 FDivInt_def: LEMMA  FORALL (i:nzint): mod(radix,i)=0 IMPLIES
 	     FtoR(FDivInt(f,i)) = FtoR(f)/i
-
-
 
 % A bounded float
 Fbounded?(b)(f):bool= abs(Fnum(f))<vNum(b) AND -dExp(b) <= Fexp(f)
@@ -158,6 +152,7 @@ Fnormalize(b)(f:(Fbounded?(b))): recursive
 
 Fulp(b)(f:(Fbounded?(b))):real = radix^(Fexp(Fnormalize(b)(f)))
 
+Fulp_posreal_j: JUDGEMENT Fulp(b:Format)(f:(Fbounded?(b))) HAS_TYPE posreal
 
 % Definition of the rounding modes
 
@@ -224,8 +219,9 @@ RND_log_compute: LEMMA FORALL (x:real): x>=radix^(-dExp(b)-1)*vNum(b) IMPLIES fl
 RND_aux(b)(x:nonneg_real): (Fcanonic?(b)) =
   if (x < radix^(-dExp(b)-1)*vNum(b))
      then (# Fnum:=floor(x*radix^(dExp(b))), Fexp:=-dExp(b) #)
-     else let e=log_nat(x * radix ^ (1 + dExp(b) - Prec(b)),radix)`1-dExp(b) in
+     else let e=log_nat(x*radix ^ (1 + dExp(b) - Prec(b)),radix)`1-dExp(b) in
           (# Fnum:=floor(x*radix^(-e)), Fexp:=e #)
+%          (# Fnum:=floor(x/radix^e), Fexp:=e #)
   endif
 
 RND_aux_alt(b)(x:nonneg_real): (Fcanonic?(b)) =
@@ -238,28 +234,32 @@ RND_aux_alt(b)(x:nonneg_real): (Fcanonic?(b)) =
 RND_aux_alt_def: LEMMA RND_aux=RND_aux_alt
 
 RND_Min(b)(x:real): (Fcanonic?(b)) =
-  if (0 <= x) 
-    then RND_aux(b)(x)
-    elsif FtoR(Fopp(RND_aux(b)(-x)))=x then Fopp(RND_aux(b)(-x))
-    else  Fpred(b)(Fopp(RND_aux(b)(-x)))
-  endif
+  IF (0 <= x)
+  THEN RND_aux(b)(x)
+  ELSE LET fmx  = RND_aux(b)(-x),
+           ofmx = Fopp(fmx) IN
+       IF FtoR(ofmx)=x
+       THEN ofmx
+       ELSE Fpred(b)(ofmx) ENDIF ENDIF
 
 RND_Max(b)(x:real): (Fcanonic?(b)) = Fopp(RND_Min(b)(-x))
-
 
 % Computable Rounding Functions
 
 % Function to get the even closest rounding
 
 RND_EClosest(b)(x:real): (Fcanonic?(b)) =
- if     abs(FtoR(RND_Min(b)(x))-x) < abs(FtoR(RND_Max(b)(x))-x) then RND_Min(b)(x)
-  elsif abs(FtoR(RND_Max(b)(x))-x) < abs(FtoR(RND_Min(b)(x))-x) then RND_Max(b)(x)
-  elsif FtoR(RND_Min(b)(x))=FtoR(RND_Max(b)(x))::real then RND_Min(b)(x)
-  elsif even?(Fnum(RND_Min(b)(x))) then RND_Min(b)(x)
-  else  RND_Max(b)(x)
- endif
-
-
+  LET min = RND_Min(b)(x),
+      fmin = FtoR(min),
+      min_err = abs(fmin-x),
+      max = RND_Max(b)(x),
+      fmax = FtoR(max),
+      max_err = abs(fmax-x)
+  IN IF    min_err < max_err THEN min
+     ELSIF max_err < min_err THEN max
+     ELSIF fmin=fmax         THEN min
+     ELSIF even?(Fnum(min))  THEN min
+     ELSE                         max ENDIF
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% End of definitions %%%%%%%%%%%%%%%%%%%%%%%%%%%
 n          : VAR nat
@@ -382,6 +382,9 @@ FcanonicUnique: lemma
 % A few properties on canonical representations
 FnormalizeCorrect: lemma 
     Fbounded?(b)(p) => FtoR(Fnormalize(b)(p))=FtoR(p)::real
+
+FnormalizeCanonicFnum: LEMMA
+    Fcanonic?(b)(p) => Fnum(Fnormalize(b)(p)) = Fnum(p)
 
 FulpCanonic: lemma
    Fcanonic?(b)(p) => Fulp(b)(p)=radix^(Fexp(p))
@@ -508,6 +511,7 @@ OddFsuccEven: lemma
 MinOppMax :  lemma Fbounded?(b)(p) => isMin?(b)(r,p)  => isMax?(b)(-r,Fopp(p))
 MaxOppMin :  lemma Fbounded?(b)(p) => isMax?(b)(r,p)  => isMin?(b)(-r,Fopp(p))
 ClosestFopp: lemma Fbounded?(b)(p) => Closest?(b)(r,p)=> Closest?(b)(-r,Fopp(p))
+EvenClosestFopp: LEMMA Fcanonic?(b)(p) => EvenClosest?(b)(r,p)=> EvenClosest?(b)(-r,Fopp(p))
 
 RleRoundedR0 : lemma Fbounded?(b)(f) =>
   RoundedMode?(b)(P) => P(b)(r,f) => 0 <= r => 0 <= FtoR(f)
@@ -644,8 +648,6 @@ AFZClosest_Monotone    : lemma Monotone?(b)(AFZClosest?)
 AFZClosest_RoundedMode : lemma RoundedMode?(b)(AFZClosest?)
 AFZClosest_Unique      : lemma Unique?(b)(AFZClosest?)
 
-
-
 RoundedProjectorEq : lemma Fbounded?(b)(f) => Fbounded?(b)(p) => 
   RoundedMode?(b)(P) => P(b)(FtoR(f),p) => FtoR(p)=FtoR(f)::real
 
@@ -720,6 +722,5 @@ FulpFpred1 : lemma
 
 FulpFpred2 : lemma
   Fcanonic?(b)(p) => 0 <= FtoR(p) => Fulp(b)(p) <= radix*Fulp(b)(Fpred(b)(p))
-
 
 END float
