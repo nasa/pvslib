@@ -59,6 +59,7 @@
 
 (defstep era-numerical (expr
                         &optional (precision 3) (zero-prec 5)
+                        (safe? t)
                         vars
                         (equiv? t))
   (let ((required-theories '(("CauchyStrategies__")
@@ -109,7 +110,7 @@
     (if msg (printf msg)
       (then
        (name-label* namexprs :hide? t)
-       (eval-expr era-eval :safe? nil)
+       (eval-expr era-eval :safe? safe?)
        (relabel label -1)
        (let ((output  (args2 (extra-get-formula label)))
              (ans     (get-expr-from-obj output 'ans))
@@ -141,47 +142,22 @@
                     (repeat (expand "expt"))
                     (decimalize -1 precision l)
                     (decimalize -2 precision r))
-                   (then (hide -1) (when equiv? (interval-eq__$ names 1 subs)))
-                   (then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$)))))
+                   (then (hide -1) (when equiv? (interval-eq__$ names 1 subs))))))
                 (assert)))))))))
 
   "[Cauchy] Compute the value of EXPR such that PRECISION indicates an accuracy
 of 10^-PRECISION on the output. ZERO-PREC is used internally to determine
 the result of a subexpression is in the domain of its parent expression. For
 example, in the expression \"expr1 / expr2\", if the result of expr2 is within
-10^-ZERO-PREC of zero, then the strategy will fail."
+10^-ZERO-PREC of zero, then the strategy will fail.
+
+If SAFE? is set to nil the strategy will run computations even if they generate
+TCCs. Since TCCs must be valid in order for the expression to be computable,
+setting SAFE? to nil may result in the evaluator failing to terminate or
+breaking.
+
+If EQUIV? is set to nil, the strategy doesn't try to prove that the deep
+embedding of the original expression is correct. The proof of this fact is
+trivial from a logical point of view, but requires unfolding of several
+definitions which is time consuming in PVS."
   "Computing the value of ~a~%using exact real arithmetic")
-
-(defstep step-numerical (exprs
-                         &optional (precision 3) (zero-prec 5)
-                         vars
-                         (equiv? t)
-                         res_lb
-                         res_ub)
-  (if (null exprs)
-      (skip)
-      (then
-       (if res_lb
-           (let ((expr (car exprs))
-                 (vars_lb (cons (list "res" res_lb) vars))
-                 (vars_ub (cons (list "res" res_ub) vars)))
-             (then
-              (era-numerical expr precision zero-prec vars_lb equiv?)
-              (delete -1)
-              (era-numerical expr precision zero-prec vars_ub equiv?)
-              (delete -2)))
-           (let ((expr (car exprs)))
-             (era-numerical expr precision zero-prec vars equiv?)))
-       (let ((upper (args2 (extra-get-formula -1)))
-             (lower (args1 (extra-get-formula -2)))
-             (exs   (cdr exprs)))
-         (step-numerical exs precision zero-prec
-                         vars equiv? lower upper))))
-  "[Cauchy] Compute the value of each expression in EXPRS in order, substituting
-thes result of the previous expression for %res.
-
-(step-numerical (expr_1 ... expr_n)) is equivalent to (era-numerical expr_1)
-followed by (era-numerical expr_(i+1) :vars ((\"%res\" lb_i))) and
-(era-numerical expr_(i+1) :vars ((\"res\" ub_i))) where lb_i and ub_i give the
-lower and upper bounds on expr_i as returned by era-numerical."
-  "Computing expressions using exact real arithmetic")
