@@ -171,12 +171,12 @@ rational number up to the PRECISION-1 decimal."
 ;;   - subs   : list of substitutions of the general form (<f> (<F> <n>) <arity>)
 ;; Output:
 ;;   - Expr such that eval(expr,vars) ## Eval(Expr,box)
-(defun ia-interval-expr (expr n vars &optional subs)
+(defun ia-interval-expr (expr n vars &optional subs th-expr)
   (setq *ia-let-names* nil)
   (catch '*ia-error*
     (ia-interval-expr-rec expr n vars
 			  (append subs *ia-builtin* *ia-extended*)
-			  (check-name "IntervalStrategies__"))))
+			  (check-name "IntervalStrategies__") nil th-expr)))
 
 (defun ia-approx-n (n nn)
   (if nn (max (+ n nn) 0) n))
@@ -190,11 +190,11 @@ rational number up to the PRECISION-1 decimal."
 	(format nil "X(~a)" posvar)
       (format nil "POS?(X(~a))" posvar))))
 
-(defun ia-interval-expr-rec (expr n vars subs extended &optional localvars)
+(defun ia-interval-expr-rec (expr n vars subs extended &optional localvars th-expr)
   (let ((val (when (or (is-number-type (type expr)) (is-bool-type (type expr)))
 	       (typecheck (extra-add-evalexpr expr)))))
     (cond ((and val (is-number-type  (type val)))
-	   (format nil "r2E(~a)" val))
+	   (format nil "~@[~a.~]r2E(~a)" th-expr val))
 	  ((and val (is-bool-type (type val)))
 	   (format nil "b2B(~a)" val))
 	  ((is-const-decl-expr expr (mapcar #'car subs)) ;; Is a constant, but not a rational one
@@ -223,24 +223,24 @@ rational number up to the PRECISION-1 decimal."
 	  ((and (unary-application? expr)
 		(is-function-expr expr "-"))
 	   (format nil "NEG(~a)"
-		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)))
+		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars th-expr)))
 	  ((is-function-expr expr "^")
 	   (format nil "POW(~a,~a)"
-		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)
+		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars th-expr)
 		   (args2 expr)))
 	  ((is-function-expr expr "##")
 	   (let ((val (extra-add-evalexpr (args2 expr))))
 	     (if (record-expr? val)
 		 (format nil "BINCLUDEX(~a,~a)"
-			 (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)
+			 (ia-interval-expr-rec (args1 expr) n vars subs extended localvars th-expr)
 			 val)
 	       (ia-error (format nil "Don't know how to translate expression ~a" (args2 expr))))))
 	  ((if-expr? expr)
 	   (if (is-bool-type (type expr))
 	       (format nil "BITE(~a,~a,~a)"
-		       (ia-interval-expr-rec (nth 0 (arguments expr)) n vars subs extended localvars)
-		       (ia-interval-expr-rec (nth 1 (arguments expr)) n vars subs extended localvars)
-		       (ia-interval-expr-rec (nth 2 (arguments expr)) n vars subs extended localvars))
+		       (ia-interval-expr-rec (nth 0 (arguments expr)) n vars subs extended localvars th-expr)
+		       (ia-interval-expr-rec (nth 1 (arguments expr)) n vars subs extended localvars th-expr)
+		       (ia-interval-expr-rec (nth 2 (arguments expr)) n vars subs extended localvars th-expr))
 	     (ia-error "IF-THEN-ELSE construct ~a is unsupported" expr)))
 	  ((let-expr? expr)
 	   (if (or (is-bool-type (type expr)) (is-number-type (type expr)))
@@ -249,17 +249,17 @@ rational number up to the PRECISION-1 decimal."
 		 (if (or (is-number-type typ) (and (is-bool-type (type expr))
 						   (is-bool-type typ)))
 		     (let* ((vt  (cons (id (car (bindings op))) typ))
-			    (xm  (ia-interval-expr-rec (argument expr) n vars subs extended localvars))
+			    (xm  (ia-interval-expr-rec (argument expr) n vars subs extended localvars th-expr))
 			    (nm  (freshname (format nil "V_~a" (length *ia-let-names*)))))
 		       (setq *ia-let-names* (append *ia-let-names* (list (cons nm xm))))
 		       (format nil "~:[~;B~]LETIN(~a,~a)" (is-bool-type (type expr)) nm
 			       (ia-interval-expr-rec (expression op) n vars subs extended
-						     (cons vt localvars))))
+						     (cons vt localvars) th-expr)))
 		   (ia-error "LET-IN construct ~a is unsupported" expr)))
 	     (ia-error "LET-IN construct ~a is unsupported" expr)))
 	  ((arg-tuple-expr? expr)
 	   (format nil "~{~a~^,~}"
-		   (mapcar #'(lambda(x)(ia-interval-expr-rec x n vars subs extended localvars))
+		   (mapcar #'(lambda(x)(ia-interval-expr-rec x n vars subs extended localvars th-expr))
 			   (exprs expr))))
 	  ((is-function-expr expr)
 	   (let ((opl (ia-idsubs? (id (operator expr)) (cdr *ia-extended*))))
@@ -274,9 +274,9 @@ rational number up to the PRECISION-1 decimal."
 		   (if (listp op)
 		       (format nil "~a(~a)(~a)"
 			       (car op) (ia-approx-n n (nth 1 op))
-			       (ia-interval-expr-rec (args1 expr) n vars subs extended localvars))
+			       (ia-interval-expr-rec (args1 expr) n vars subs extended localvars th-expr))
 		     (format nil "~a(~a)" op
-			     (ia-interval-expr-rec (argument expr) n vars subs extended localvars))))
+			     (ia-interval-expr-rec (argument expr) n vars subs extended localvars th-expr))))
 	       (ia-error (format nil "Don't know how to translate function ~a" (id (operator expr)))))))
 	  (t (ia-error (format nil "Don't know how to translate expression ~a" expr))))))
 
@@ -377,6 +377,7 @@ rational number up to the PRECISION-1 decimal."
 					; rules to simplify the evaluation expression.
 			      beval-solver             ; strategy to prove that the pvs expression
 					; corresponds with the beval of the interval expr
+			      th-expr
 			      )
   (let ((name     (freshname "iar"))
 	(label    (or label (freshlabel name)))
@@ -448,7 +449,7 @@ rational number up to the PRECISION-1 decimal."
 	    (neg       (if sat? (<= quant 0) (or (< quant 0) (and (= quant 0) (< fn 0)))))
 	    (nname     (if neg (format nil "BNOT(~a)" name) name))
 	    (ia-box    (ia-box ia-vars))
-	    (ia-iexpr  (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs))
+	    (ia-iexpr  (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs th-expr))
 	    (names     (append (mapcar #'car *ia-let-names*) (list name)))
 	    (exprs     (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr)))
 	    (namexprs  (merge-lists names exprs))
@@ -575,7 +576,8 @@ rational number up to the PRECISION-1 decimal."
 				      ;; expression to a string represen-
 				      ;; tation of a ObjType.
 				      bandb-function-name
-				      soundness-lemma-name)
+				      soundness-lemma-name
+				      th-expr)
   (let ((name    (freshname "sia"))
 	(ia-expr (extra-get-expr expr))
 	(ia-estr (expr2str ia-expr))
@@ -591,7 +593,7 @@ rational number up to the PRECISION-1 decimal."
 		       ((not (is-number-expr ia-expr))
 			(format nil "Expresion ~a is not a real number expression." ia-expr))))
 	(ia-box    (unless msg (ia-box ia-vars)))
-	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars)))
+	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars nil th-expr)))
 	(maxdepth  (if (null ia-vars) 0 maxdepth))
 	(ia-eval   (format nil "~a(~a,~a,~a)" bandb-function-name maxdepth name ia-box))
 	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
@@ -635,7 +637,8 @@ rational number up to the PRECISION-1 decimal."
 			       required-theories   ; ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)
 			       pvsexpr-to-strobj   ; function to translate a pvs expression to a string representation of a ObjType
 			       bandb-function-name
-			       soundness-lemma-name)
+			       soundness-lemma-name
+			       th-expr)
   (let ((name      (freshname "nml"))
 	(label     (or label (freshlabel name)))
 	(accuracy  (ratio2decimal (expt 10 (- precision)) nil precision))
@@ -666,11 +669,9 @@ rational number up to the PRECISION-1 decimal."
 			  (format nil "Expresion ~a is not a real number expression." ia-expr))))
 	(ia-box    (unless msg (ia-box ia-vars)))
 	(m_or_m    (+ (if min? -1 0) (if max? 1 0)))
-	
-	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs)))
+	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars subs th-expr)))
 	(names     (unless msg (append (mapcar #'car *ia-let-names*) (list name))))
 	(exprs     (unless msg (append (mapcar #'cdr *ia-let-names*) (list ia-iexpr))))
-	
 	(namexprs  (merge-lists names exprs))
 	(ia-dirvar (or dirvar (cond ((< m_or_m 0) "mindir_maxvar")
 				    ((> m_or_m 0) "maxdir_maxvar")
@@ -782,7 +783,9 @@ rational number up to the PRECISION-1 decimal."
 		      ;;
 		      nil
 		      ;;
-		      interval-eq__$)
+		      interval-eq__$
+		      ;; expression theory
+		      "interval_expr")
   "[Interval] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on interval
 arithmetic.  The parameter PRECISION indicates an accuracy of
@@ -838,7 +841,9 @@ TCCs generated during its execution."
   (gbandb_simple-numerical__$ expr precision maxdepth
 			      ia-interval-expr
 			      "simple_interval"
-			      "simple_interval_soundness")
+			      "simple_interval_soundness"
+			      ;; expression theory
+			      "interval_expr")
   "[Interval] Computes a simple estimation of the minimum and maximum
 values of EXPR using a branch and bound algorithm based on interval
 arithmetic.  PRECISION is the number of decimals in the output
@@ -869,9 +874,11 @@ NUMERICAL."
 		       ;; pvsexpr-to-strobj
 		       ia-interval-expr
 		       ;; bandb-function-name
-		       "numerical"
+		       "numerical_bandb.numerical"
 		       ;; bandb soundness theorem name
-		       "numerical_soundness"
+		       "numerical_bandb.numerical_soundness"
+		       ;; expression theory
+		       "interval_expr"
 		       )
   "[Interval] Computes lower and upper bounds of the minimum and
 maximum values of EXPR using a branch and bound algorithm based on
@@ -919,3 +926,11 @@ this fact is trivial from a logical point of view, but requires
 unfolding of several definitions which is time consuming in PVS."
   "Computing minmax values of expression ~a,~%via interval arithmetic")
 
+(defstrat interval-about ()
+  (let ((strategies *interval-strategies*))
+    (printf "%--
+% Interval Arithmetic Strategies
+% http://shemesh.larc.nasa.gov/people/cam/Interval
+% Strategies:~a
+%--~%" strategies))
+  "[Interval] Prints Interval's about information.")
