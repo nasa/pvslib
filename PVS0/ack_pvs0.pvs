@@ -1,9 +1,34 @@
 ack_pvs0 : THEORY
-BEGIN
-  IMPORTING ack_pvs0_defs
-% ------------------------------------------------------------------------------ 
-% Proof of termination via pvs0_tccs
-%    
+
+  BEGIN
+
+  T : TYPE = [nat,nat]
+
+  IMPORTING pvs0_cc[T]
+
+  boole(b:bool) : Val = IF NOT b THEN (0,0) ELSE (1,1) ENDIF
+
+  eop1(op:nat)(m,n:nat) : Val = 
+    COND op = 0 -> boole(m=0),
+         op = 1 -> boole(n=0),
+         op = 2 -> (n+1,0),
+         op = 3 -> IF m /= 0 THEN (m-1,1) ELSE (m,n) ENDIF,
+	 op = 4 -> IF n /= 0 THEN (m,n-1) ELSE (m,n) ENDIF,
+         ELSE -> (m,n)
+    ENDCOND
+
+  eop2(op:nat)(v1,v2:Val) : Val = 
+    IF v1`1 > 0 THEN (v1`1-1,v2`1) ELSE v1 ENDIF
+
+
+  pvs0_ack : PVS0 = ((0,0),eop1,eop2,
+  	             ite(op1(0,vr), op1(2,vr),
+                         ite(op1(1,vr),rec(op1(3,vr)),
+                             rec(op2(0,vr,rec(op1(4,vr)))))))
+
+  MT : TYPE = nat
+  lt : (well_founded?[MT]) = LAMBDA (m,n:nat): m < n
+  N  : posnat = 2
 
   IMPORTING CCG@ccg_to_mwg[Val[T], PVS0Expr[Val[T]], Conditions[T],
              MT,lt,N,
@@ -14,23 +39,32 @@ BEGIN
            LAMBDA (conds: Conditions[T], env: Val[T]):
              eval_conds(pvs0_ack, conds, env)]
 
-  IMPORTING ccg_to_pvs0 [T,pvs0_ack`1,pvs0_ack`2,pvs0_ack`3,
-  	    	         MT,lt,N]	 
+  M1 : FunMeasure = LAMBDA (v:Val) : v`1
+  M2 : FunMeasure = LAMBDA (v:Val) : v`2
 
-  IMPORTING scp_iff_pvs0[T,pvs0_ack`1,pvs0_ack`2,pvs0_ack`3]
+  ack_measures: FunMeasures = 
+     LAMBDA (i:below(2)): 
+       IF i = 0 THEN M1
+       ELSE M2
+       ENDIF 
+
+  IMPORTING ccg_to_pvs0 [T,MT,lt,N]	 
+
+  IMPORTING scp_iff_pvs0[T]
 
   IMPORTING CCG@bounding_circuits[CallingContext,N]
 
   % Matrices taken from Andrea's slides
+  
   A0: Measure_Matrix = (: (:  1 ,  0 :),
       		          (: -1 , -1 :) :)
   
   A1: Measure_Matrix = (: (:  1 , -1 :),
       		          (: -1 , -1 :) :)
-  
-  A2: Measure_Matrix = (: (:  0 , -1 :),
-      		          (: -1 ,  1 :) :)
 
+  A2: Measure_Matrix = (: (:  0 , -1 :),
+      		          (: -1 , -1 :) :)
+ 
   ack_dg : (cdigraph) = pvs0_to_dg(pvs0_ack)
 
   ack_ccg: CCG = make_ccg(ack_dg,ack_measures)
@@ -41,24 +75,18 @@ BEGIN
      ELSIF v`actuals = op2(0, vr, rec(op1(4, vr))) THEN A1 % node 1
      ELSE A2 % node 2
      ENDIF
-    
-  ack_terminates: LEMMA terminating?(pvs0_ack)
 
-  % This judgement states that there exist a measure and a relation that can be used to
-  % prove that measure termination
-  pvs0_ack_tcc_termination_mwg: JUDGEMENT
-    pvs0_ack HAS_TYPE (pvs0_tcc_termination)
-    
+  ack_wgd: wdg = ccg_to_mwg(ack_ccg)(ack_mm)
+
   pvs0_ack_tcc_termination: JUDGEMENT
     pvs0_ack HAS_TYPE (pvs0_tcc_termination)
 
-% ------------------------------------------------------------------------------ 
-% Definition of an arbitrary measure fulfilling measure termination
-%
+  ack_msr : CONJECTURE
+    EXISTS (m:WFM): pvs0_tcc_termination_pred(pvs0_ack)(m)
+    
+  ack_terminates: CONJECTURE terminating?(pvs0_ack)
+    
   ack_wfm  : (pvs0_tcc_termination_pred(pvs0_ack))
-
-% ------------------------------------------------------------------------------ 
-% Definition of a PVS0 function that is extentionally equal to PVS function
 
   ack_pvs0(m,n:nat): nat = Omega_eval(pvs0_ack)(m,n)`1
 
