@@ -2,13 +2,14 @@ ack_pvs0 : THEORY
 
   BEGIN
 
-  T : TYPE = [nat,nat]
+  IMPORTING pvs0_prelude,
+            pvs0_cc[[nat,nat]]
 
-  IMPORTING pvs0_cc[T]
+  false_val : MACRO [nat,nat] = (0,0)
 
-  boole(b:bool) : Val = IF NOT b THEN (0,0) ELSE (1,1) ENDIF
+  boole(b:bool) : MACRO Val = IF NOT b THEN false_val ELSE (1,1) ENDIF
 
-  eop1(op:nat)(m,n:nat) : Val = 
+  ack_op1(op:nat)(m,n:nat) : Val = 
     COND op = 0 -> boole(m=0),
          op = 1 -> boole(n=0),
          op = 2 -> (n+1,0),
@@ -17,42 +18,38 @@ ack_pvs0 : THEORY
          ELSE -> (m,n)
     ENDCOND
 
-  eop2(op:nat)(v1,v2:Val) : Val = 
+  ack_op2(op:nat)(v1,v2:Val) : Val = 
     IF v1`1 > 0 THEN (v1`1-1,v2`1) ELSE v1 ENDIF
 
-
-  pvs0_ack : PVS0 = ((0,0),eop1,eop2,
+  pvs0_ack : PVS0 = (false_val,
+                     ack_op1,ack_op2,
   	             ite(op1(0,vr), op1(2,vr),
                          ite(op1(1,vr),rec(op1(3,vr)),
                              rec(op2(0,vr,rec(op1(4,vr)))))))
 
-  MT : TYPE = nat
-  lt : (well_founded?[MT]) = LAMBDA (m,n:nat): m < n
-  N  : posnat = 2
+  N  : MACRO posnat = 2
 
-  IMPORTING CCG@ccg_to_mwg[Val[T], PVS0Expr[Val[T]], Conditions[T],
+  IMPORTING CCG@ccg_to_mwg[Val, PVS0Expr[Val], Conditions, Path,
              MT,lt,N,
-             LAMBDA (expr: PVS0Expr[Val[T]], env, val: Val[T]):
+             LAMBDA (expr: PVS0Expr[Val], env, val: Val):
              semantic_rel_expr(pvs0_ack`1,pvs0_ack`2,pvs0_ack`3)
                               (expr, pvs0_ack`4,
                                env, val),
-           LAMBDA (conds: Conditions[T], env: Val[T]):
+           LAMBDA (conds: Conditions, env: Val):
              eval_conds(pvs0_ack, conds, env)]
 
   M1 : MACRO FunMeasure = LAMBDA (v:Val) : v`1
   M2 : MACRO FunMeasure = LAMBDA (v:Val) : v`2
 
   ack_measures: FunMeasures = 
-     LAMBDA (i:below(2)): 
+     LAMBDA (i:below(N)): 
        IF i = 0 THEN M1
        ELSE M2
        ENDIF 
 
-  IMPORTING ccg_to_pvs0 [T,MT,lt,N]	 
-
-  IMPORTING scp_iff_pvs0[T]
-
-  IMPORTING CCG@bounding_circuits[CallingContext,N]
+  IMPORTING ccg_to_pvs0 [[nat,nat],MT,lt,N],
+  	    scp_iff_pvs0[[nat,nat]],
+            CCG@bounding_circuits[CallingContext,N]
 
   % Matrices taken from Andrea's slides
   
@@ -71,9 +68,9 @@ ack_pvs0 : THEORY
 
   ack_mm: (indi_f_sound(ack_ccg)) =
    LAMBDA(v: vert(dg(ack_ccg))):
-     IF v`actuals = op1(3, vr)  THEN A0  % node 0
-     ELSIF v`actuals = op2(0, vr, rec(op1(4, vr))) THEN A1 % node 1
-     ELSE A2 % node 2
+     IF v`nid = (: 1, 2 :) THEN A0
+     ELSIF v`nid =  (: 2, 2 :) THEN A1
+     ELSE A2
      ENDIF
 
   ack_wgd: wdg = ccg_to_mwg(ack_ccg)(ack_mm)

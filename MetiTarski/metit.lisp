@@ -30,8 +30,6 @@
 
 (in-package :pvs)
 
-;(defparameter *mtname-hash* (make-pvs-hash-table))
-
 (defparameter *z3-bin* nil)      ;; z3's executable
 (defparameter *metit-bin* nil)   ;; MetiTarski's executable
 (defparameter *metit-lib* nil)   ;; MetiTarski's library
