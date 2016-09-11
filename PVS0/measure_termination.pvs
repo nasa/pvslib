@@ -1,15 +1,10 @@
-measure_termination[T:TYPE+, MT:TYPE, lt:(well_founded?[MT])] : THEORY
+measure_termination[T:TYPE+] : THEORY
 BEGIN
-  IMPORTING PVS0Bool[T],
-            structures@set_as_list,
-	    structures@more_list_props[nat],
-	    pvs0_to_dg[T],
-	    measure_termination_defs
 
-  false_val : VAR [Val -> bool] 
-  eval_op1  : VAR [nat->[Val->Val]]
-  eval_op2  : VAR [nat->[[Val,Val]->Val]]
-  
+ IMPORTING pvs0_prelude,
+           pvs0_to_dg[T],
+           measure_termination_defs[T,MT,lt]
+
   pvs0: VAR PVS0
 
   mu_soundness: LEMMA
@@ -25,89 +20,6 @@ BEGIN
 
   terminates_implies_pvs0_tcc : THEOREM
     terminating?(pvs0) 
-    IMPLIES pvs0_tcc_termination[T,nat,<](pvs0)
-
-  IMPORTING measure_termination_defs[T,MT,lt]
-
-  wfm: VAR WFM
-
-  % Using lt it is possible to define a relation on values (Val)
-  % that is well founded and has no descendent infinite branching.
-  
-  lt_val(pvs0)(wfm)(v1,v2: Val): bool =
-    EXISTS(cc: (pvs0_tcc_valid_cc(pvs0`4))):
-      semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)
-                       (get_arg(cc`rec_expr), pvs0`4, v2, v1)
-      AND eval_conds(pvs0, cc`cnds, v2)
-      AND lt(wfm(v1), wfm(v2))
-  
-  lt_val_wf: LEMMA
-    well_founded?(lt_val(pvs0)(wfm))
-
-  IMPORTING structures@more_list_props
-
-  lt_val_no_desc_inf_branch: LEMMA
-    FORALL(x:Val): is_finite({y: Val | lt_val(pvs0)(wfm) (y,x)})
-
-  IMPORTING orders@lex2_generic, 
-            orders@omega
-  
-  % This lemma states that Omega is an upper bound for the nat parameter of eval
-  
-omega_is_eval_ub: LEMMA
-    pvs0_tcc_termination_pred(pvs0)(wfm) 
-    IMPLIES
-     FORALL(expr: PVS0Expr, env: Val, path: (valid_path(pvs0`4))):
-      expr = subterm_at(pvs0`4, path) AND
-      eval_conds_rec(pvs0`1,pvs0`2,pvs0`3)
-                    (pvs0`4,path_conditions(pvs0`4, path),env)
-      IMPLIES
-        EXISTS (n: nat | n <= Omega[Val,lt_val(pvs0)(wfm)](env)):
-          some?(eval_expr(pvs0`1,pvs0`2,pvs0`3)
-			 (n, expr, pvs0`4, env)) AND
-          semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)
-                           (expr, pvs0`4, env,
-                            val(eval_expr(pvs0`1,pvs0`2,pvs0`3)
-                                         (n,expr,pvs0`4,env)))
-
-  omega_is_eval_ub_bis: COROLLARY
-    pvs0_tcc_termination_pred(pvs0)(wfm) 
-    IMPLIES
-     FORALL(env: Val, path: (valid_path(pvs0`4))):
-      LET expr = subterm_at(pvs0`4, path) IN
-      eval_conds_rec(pvs0`1,pvs0`2,pvs0`3)
-                    (pvs0`4,path_conditions(pvs0`4, path),env)
-      IMPLIES
-        EXISTS (n: nat | n <= Omega[Val,lt_val(pvs0)(wfm)](env)):
-          some?(eval_expr(pvs0`1,pvs0`2,pvs0`3)
-			 (n, expr, pvs0`4, env)) AND
-          semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)
-                           (expr, pvs0`4, env,
-                            val(eval_expr(pvs0`1,pvs0`2,pvs0`3)
-                                         (n,expr,pvs0`4,env)))
-
-  pvs0_tcc_implies_terminates : THEOREM
-   pvs0_tcc_termination(pvs0) IMPLIES terminating?(pvs0)
-
-  pvs0_tcc_termination_j : JUDGEMENT
-    (pvs0_tcc_termination) SUBTYPE_OF (terminating?)
-
-  mu_le_omega: LEMMA
-    FORALL((pvs0|pvs0_tcc_termination_pred(pvs0)(wfm)), v:Val): 
-      LET n = Omega[Val,lt_val(pvs0)(wfm)](v) IN
-        mu(pvs0)(v) <= n
-
-  Omega_preval(pvs0:(pvs0_tcc_termination))(arg:Val) : (some?[Val]) =
-    LET m = choose({wfm | pvs0_tcc_termination_pred(pvs0)(wfm)}),
-        n = Omega[Val,lt_val(pvs0)(m)](arg) IN
-    eval(pvs0)(n)(arg)
-
-  %% Uses Omega to evaluate a terminating PVS0 function
-  Omega_eval(pvs0:(pvs0_tcc_termination))(arg:Val) : Val =
-    val(Omega_preval(pvs0)(arg))
-
-  Omega_eval_correct : THEOREM
-    FORALL (pvs0:(pvs0_tcc_termination))(arg,val:Val):
-      semantic_rel(pvs0,arg,val) IFF val = Omega_eval(pvs0)(arg) 
+    IMPLIES pvs0_tcc_termination(pvs0)
 
 END measure_termination
