@@ -242,7 +242,8 @@
   (gbandb_simple-numerical__$ expr precision maxdepth
 			   aa-affine-expr
 			   "simple_affine"
-			   "simple_affine_soundness")
+			   "simple_affine_soundness"
+			   "interval_expr")
   "[Affine] Computes a simple estimation of the minimum and maximum values
 of EXPR using a branch and bound algorithm based on affine arithmetic.
 PRECISION is the number of decimals in the output interval. The parameter N
@@ -255,10 +256,10 @@ This strategy is a simplified version of the more elaborated strategy NUMERICAL.
 
 ; numerical
 
-(defun aa-affine-expr (expr n vars &optional subs)
+(defun aa-affine-expr (expr n vars &optional subs th-expr)
   (let ((  *ia-builtin* *aa-builtin*)
 	( *ia-extended* *aa-extended*))
-    (ia-interval-expr expr n vars subs)))
+    (ia-interval-expr expr n vars subs th-expr)))
 
 (defstep aa-numerical (expr &optional (precision 3) (maxdepth 10)
 			 min? max?
@@ -269,18 +270,18 @@ This strategy is a simplified version of the more elaborated strategy NUMERICAL.
 			 label
 			 (equiv? t))
   (gbandb_numerical__$ expr precision maxdepth min? max? vars subs dirvar verbose?
-		      label equiv?
-
-		      ;; required-theories:
-		      (("AffineStrategies__")
-		       "This strategy requires importing the theory affine_arith@strategies")
-		      ;; pvsexpr-to-strobj
-		      aa-affine-expr
-		      ;; bandb-function-name
-		      "affine_bandb_numerical.numerical"
-		      ;; bandb soundness theorem name
-		      "affine_bandb_numerical.numerical_soundness"
-		      )
+		       label equiv?
+		       ;; required-theories:
+		       (("AffineStrategies__")
+			"This strategy requires importing the theory affine_arith@strategies")
+		       ;; pvsexpr-to-strobj
+		       aa-affine-expr
+		       ;; bandb-function-name
+		       "affine_bandb_numerical.numerical"
+		       ;; bandb soundness theorem name
+		       "affine_bandb_numerical.numerical_soundness"
+		       ;; expression theory
+		       "interval_expr")
   "[Affine] Computes lower and upper bounds of the minimum and
 maximum values of EXPR using a branch and bound algorithm based on
 affine arithmetic.  PRECISION is the number of decimals in the
@@ -415,8 +416,10 @@ unfolding of several definitions which is time consuming in PVS."
 		       "beval_vs_BLETIN_RealExpr"
 		       "beval_vs_BLETIN_BoolExpr_merge1"
 		       "beval_vs_BLETIN_BoolExpr")
-		       ;;
-		       affine-eq__$)
+		      ;;
+		      affine-eq__$
+		      ;; expression theory
+		      "interval_expr")
   "[Affine] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on affine
 arithmetic.  The parameter PRECISION indicates an accuracy of
