@@ -374,9 +374,9 @@ rational number up to the PRECISION-1 decimal."
 			      bandb-function-name
 			      soundness-lemma-name
 			      rewrite-decls       ; Declaration names to be used as rewriting
-					; rules to simplify the evaluation expression.
+			      ;; rules to simplify the evaluation expression.
 			      beval-solver             ; strategy to prove that the pvs expression
-					; corresponds with the beval of the interval expr
+			      ;; corresponds with the beval of the interval expr
 			      th-expr
 			      )
   (let ((name     (freshname "iar"))
