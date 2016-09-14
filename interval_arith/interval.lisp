@@ -22,7 +22,7 @@
 %  decimalize-expr: Decimalizes rational expressions.
 %  numerical: Computes bounds to minimum and maximum values of real-valued expressions.
 %  interval: Checks whether or not properties on real-valued formulas hold.
-%  Supported operations include: +,-,*,/,^,sq,abs,sqrt,pi,sin,cos,tan,atan,ln,exp,e")
+%  Supported operations: +,-,*,/,^,sq,abs,sqrt,pi,sin,cos,tan,atan,ln,exp,e")
 
 (defparameter *ia-excluded* '("Tan?" "[||]"))
 

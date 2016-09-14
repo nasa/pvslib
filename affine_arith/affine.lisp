@@ -15,9 +15,9 @@
 
 (defparameter *affine-strategies* "
 %  affine: Computes bounds to minimum and maximum values of real-valued expressions.
-%  aff-simple: Computes bounds to minimum and maximum values of real-valued expressions.
-%  aff-numerical: Computes bounds to minimum and maximum values of real-valued expressions.
-%  Supported operations include: +,-,*,^")
+%  aa-simple-numerical: Computes bounds to minimum and maximum values of real-valued expressions.
+%  aa-numerical: Computes bounds to minimum and maximum values of real-valued expressions.
+%  Supported operations: +,-,*,^")
 
 ;;-------------------------------------------------------------------------------
 ;;-- basic affine arithmetic strategy -------------------------------------------
