@@ -1,0 +1,275 @@
+a2l__multi_bernstein : THEORY
+BEGIN
+
+  IMPORTING multi_bernstein AS original,
+            multibernstein_into_polylist,
+            a2l__util,
+            structures@map_with_index,
+            structures@nth_ext,
+            reals@product,
+            reals@product_props,
+            reals@sigma,
+            reals@sigma_props,
+            more_list_props,
+            more_map_props
+
+
+
+  %%%%%%%%%%%%%%%%%%%%%% Variables %%%%%%%%%%%%%%%%%%%%%%
+
+  bsdegmono       : VAR DegreeMono
+  pprod           : VAR PolyproductList
+  a,a1            : VAR real
+  X,Y             : VAR Vars
+  v               : VAR nat
+  nvars,terms     : VAR posnat
+  cf              : VAR Coeff
+  bspoly,bspolz   : VAR PolyList
+  coeffmono,
+  coeffmono1,
+  coeffmono2      : VAR CoeffMono
+  rel             : VAR [[real,real]->bool]
+  intendpts       : VAR IntervalEndpoints
+  relreal         : VAR RealOrder
+
+
+
+  %%%%%%%%%%%%%%%%%%%%%% Evaluating Bernstein Polynomials %%%%%%%%%%%%%%%%%%%%%%
+
+  a2l__bsproduct_eval(pprod,bsdegmono,nvars)(X) : real = 
+    product(0,nvars-1,LAMBDA (i:nat):sigma(0,bsdegmono(i),
+                      LAMBDA (j:nat): IF j > bsdegmono(i) THEN 0 
+                                      ELSE nth_ext(
+                                             nth_ext(pprod,i),
+                                             j
+                                           ) * Bern(j,bsdegmono(i))(X(i))
+                                      ENDIF))
+
+
+  a2l__bsproduct_eval__homomorphism: LEMMA
+    FORALL(nvars: posnat,
+           terms: posnat,
+           dm   : DegreeMono,
+           pp   : Polyproduct,
+           ppl  : PolyproductList | polyproduct__represents[terms,nvars,dm](ppl,pp),
+           env  : Vars
+    ):
+      original.bsproduct_eval(pp,dm,nvars)(env)
+      =
+      a2l__bsproduct_eval(ppl,dm,nvars)(env)
+
+  a2l__multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) : real =
+    sigma(0,terms-1,LAMBDA (i:nat):
+                      cf(i) *
+                      a2l__bsproduct_eval(
+                        nth_ext(bspoly,i),
+                        bsdegmono,
+                        nvars)
+                      (X))
+
+  a2l__multibs_eval__homomorphism: LEMMA
+    FORALL(nvars: posnat,
+           terms: posnat,
+           dm   : DegreeMono,
+           mb   : MultiBernstein,
+           pl   : PolyList |
+                    multipolynomial__represents[terms,nvars,dm](pl,mb),
+           env  : Vars
+    ):
+      original.multibs_eval(mb,dm,cf,nvars,terms)(env)
+      =
+      a2l__multibs_eval(pl,dm,cf,nvars,terms)(env)
+
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Computing Bernstein Coefficients %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono) : real = 
+    sigma(0,terms-1,
+          LAMBDA (i:nat):
+            cf(i)*product(0,nvars-1,
+                          LAMBDA (j:nat):
+                            nth_ext(
+                                nth_ext(
+                                    nth_ext(bspoly,i),
+                                    j
+                                ),
+                                coeffmono(j)
+                            )
+                         )
+    )
+
+  a2l__multibscoeff_homomorphism: LEMMA
+    FORALL(mb: MultiBernstein,
+           pl: PolyList |
+               represents_polylist_multipolynomial[terms,nvars,bsdegmono](pl,mb),
+           cm: CoeffMono | FORALL (var_index:below(nvars)): cm(var_index) <= bsdegmono(var_index)
+    ):
+      original.multibscoeff(mb,bsdegmono,cf,nvars,terms)(cm)
+      =
+      a2l__multibscoeff(pl,bsdegmono,cf,nvars,terms)(cm)
+
+  a2l__multibscoeff_id: LEMMA
+    FORALL(bspoly: PolyList | multipolynomial_represents?[terms,nvars,bsdegmono](bspoly),
+           coeffmono1,coeffmono2: CoeffMono | FORALL (i: below(nvars)):
+                                                coeffmono1(i) <= bsdegmono(i) AND
+                                                coeffmono2(i) <= bsdegmono(i)):
+      eq_below_mono?
+        (nvars)
+        (coeffmono1,coeffmono2)
+      IMPLIES
+      a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono1) =
+        a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(coeffmono2)
+
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Forall X %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  a2l__eval_X_between(amin,amax:real)(bspoly,bsdegmono,cf,nvars,terms)(X) : MACRO bool =
+      amin <= a2l__multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) AND
+      a2l__multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(X) <= amax
+
+  a2l__eval_X_between__homomorphism : LEMMA
+    FORALL(amin : real,
+           amax : real,
+           nvars: posnat,
+           terms: posnat,
+           cf   : Coeff,
+           dm   : DegreeMono,
+           mb   : MultiBernstein,
+           pl   : PolyList | multipolynomial__represents[terms,nvars,dm](pl,mb),
+           env  : Vars
+    ):
+    original.eval_X_between(amin,amax)(mb,dm,cf,nvars,terms)(env) =
+      a2l__eval_X_between(amin,amax)(pl,dm,cf,nvars,terms)(env)
+  
+
+  a2l__forall_X_between(amin,amax:real)(bspoly,bsdegmono,cf,nvars,terms) : bool =
+    FORALL (X): unitbox?(nvars)(X) IMPLIES 
+      a2l__eval_X_between(amin,amax)(bspoly,bsdegmono,cf,nvars,terms)(X)
+
+  a2l__forall_X_between__homorphism : LEMMA
+    FORALL(amin : real,
+           amax : real,
+           nvars: posnat,
+           terms: posnat,
+           cf   : Coeff,
+           dm   : DegreeMono,
+           mb   : MultiBernstein,
+           pl   : PolyList | multipolynomial__represents[terms,nvars,dm](pl,mb)
+    ):
+    original.forall_X_between(amin,amax)(mb,dm,cf,nvars,terms) =
+      a2l__forall_X_between(amin,amax)(pl,dm,cf,nvars,terms)
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Splitting %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  a2l__Bern_split_left_mono(pprod,bsdegmono)(i:nat): PolyproductList =
+     map_with_index[PolynomialList,PolynomialList](
+        LAMBDA (r: nat, p: PolynomialList):
+               IF i/=r THEN nth_ext(pprod,r)
+               ELSE map_with_index[real,real](
+                        LAMBDA (j: nat, c: real):
+                               IF j>bsdegmono(i) THEN 0 
+                               ELSE (1/2^j) *
+                                    sigma(0,j,LAMBDA (k:nat):
+                                                     IF k>j THEN 0
+                                                     ELSE C(j,k) *
+                                                          nth_ext(
+                                                                nth_ext(pprod,i),
+                                                                k
+                                                          )
+                                                     ENDIF
+                                    ) 
+                               ENDIF
+                    )
+                    (p)
+               ENDIF
+     )
+     (pprod)
+
+  a2l__Bern_split_left_mono__homomorphism : LEMMA
+    FORALL(nvars   : posnat,
+           terms   : posnat,
+           dm      : DegreeMono,
+           splitVar: nat | splitVar < nvars,
+           pp      : Polyproduct,
+           ppl     : PolyproductList | polyproduct__represents[terms,nvars,dm](ppl,pp)
+    ):
+    polyproduct__represents[terms,nvars,dm] (
+        a2l__Bern_split_left_mono(ppl,dm)(splitVar),
+        original.Bern_split_left_mono(pp,dm)(splitVar)
+    )
+
+  a2l__Bern_split_right_mono(pprod,bsdegmono)(i:nat): PolyproductList =
+     map_with_index[PolynomialList,PolynomialList](
+        LAMBDA (r: nat, p: PolynomialList):
+               IF i/=r THEN nth_ext(pprod,r)
+               ELSE map_with_index[real,real](
+                        LAMBDA (j: nat, coefficient: real):
+                               IF j>bsdegmono(i) THEN 0
+                               ELSE (1/2^(bsdegmono(i)-j)) *
+                                    sigma(0,bsdegmono(i)-j,LAMBDA (k:nat):
+                                                           IF k>bsdegmono(i)-j THEN 0 
+                                                           ELSE C(bsdegmono(i)-j,k) *
+                                                                nth_ext(
+                                                                    nth_ext(pprod,i),
+                                                                    bsdegmono(i)-k
+                                                                ) 
+                                                           ENDIF
+                                    )
+                               ENDIF
+                    )
+                    (p)
+               ENDIF
+      )
+      (pprod)
+
+  a2l__Bern_split_right_mono__homomorphism : LEMMA
+    FORALL(nvars   : posnat,
+           terms   : posnat,
+           dm      : DegreeMono,
+           splitVar: nat | splitVar < nvars,
+           pp      : Polyproduct,
+           ppl     : PolyproductList | polyproduct__represents[terms,nvars,dm](ppl,pp)
+    ):
+    polyproduct__represents[terms,nvars,dm] (
+        a2l__Bern_split_right_mono(ppl,dm)(splitVar),
+        original.Bern_split_right_mono(pp,dm)(splitVar)
+    )
+
+  a2l__Bern_split_left_mpoly(pl: PolyList, dm: DegreeMono)(i: nat): PolyList =
+    map(LAMBDA (ppl: PolyproductList): a2l__Bern_split_left_mono(ppl,dm)(i))(pl)
+
+  a2l__Bern_split_left_mpoly__homomorphism : LEMMA
+    FORALL(nvars   : posnat,
+           terms   : posnat,
+           dm      : DegreeMono,
+           splitVar: nat | splitVar < nvars,
+           mb      : MultiBernstein,
+           pl      : PolyList | multipolynomial__represents[terms,nvars,dm](pl,mb)
+    ):
+    multipolynomial__represents[terms,nvars,dm] (
+        a2l__Bern_split_left_mpoly(pl,dm)(splitVar),
+        original.Bern_split_left_mpoly(mb,dm)(splitVar)
+    )
+
+
+  a2l__Bern_split_right_mpoly(pl: PolyList, dm: DegreeMono)(i: nat): PolyList =
+    map(LAMBDA (ppl: PolyproductList): a2l__Bern_split_right_mono(ppl,dm)(i))(pl)
+
+  a2l__Bern_split_right_mpoly__homomorphism : LEMMA
+    FORALL(nvars   : posnat,
+           terms   : posnat,
+           dm      : DegreeMono,
+           splitVar: nat | splitVar < nvars,
+           mb      : MultiBernstein,
+           pl      : PolyList | multipolynomial__represents[terms,nvars,dm](pl,mb)
+    ):
+    multipolynomial__represents[terms,nvars,dm] (
+        a2l__Bern_split_right_mpoly(pl,dm)(splitVar),
+        original.Bern_split_right_mpoly(mb,dm)(splitVar)
+    )
+
+
+END a2l__multi_bernstein

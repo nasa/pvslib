@@ -1,0 +1,327 @@
+a2l__bernstein_minmax : THEORY
+BEGIN 
+
+  IMPORTING a2l__vardirselector,
+	    structures@for_iterate,
+            structures@array2list,
+            a2l__multi_bernstein,
+	    minmax,
+	    bernstein_minmax,
+            multibernstein_into_polylist
+ 
+  bspoly,
+  bspolz      : VAR PolyList
+  bsdegmono   : VAR DegreeMono
+  nvars,terms : VAR posnat
+  cf          : VAR Coeff
+  f           : VAR CoeffMono
+  intendpts   : VAR IntervalEndpoints
+  depth,v     : VAR nat
+  e           : VAR posreal
+  a,b         : VAR real
+  rf	      : VAR [real->real]
+  l           : VAR list[real]
+  ep          : VAR bool
+  varselect   : VAR a2l__VarSelector
+  omm,
+  omm1,omm2   : VAR Outminmax
+
+  a2l__unit_box_lb?(bspoly,
+		    bsdegmono,
+		    nvars,
+		    terms,
+                    cf,
+                    % (cf | multipolynomial_represents?[terms,
+		    %     			      nvars,
+		    %     			      bsdegmono]
+		    %     			     (bspoly)),
+		    intendpts)
+		   (omm): bool =
+    cons?(omm`lb_var) IMPLIES
+      (length(omm`lb_var) = nvars AND
+       LET lb_varlam  = list2array(0)(omm`lb_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(0,1,intendpts(iup),(true,true))(lb_varlam(iup)))
+	   AND
+           a2l__multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(lb_varlam) = omm`lb_max)
+
+  a2l__unit_box_ub?(bspoly,
+		    bsdegmono,
+		    nvars,
+		    terms,
+                    cf,
+		    % (cf | multipolynomial_represents?[terms,
+		    %     			      nvars,
+		    %     			      bsdegmono]
+		    %     			     (bspoly)),
+		    intendpts)
+		   (omm): bool =
+    cons?(omm`ub_var) IMPLIES
+      (length(omm`ub_var) = nvars AND
+      LET ub_varlam  = list2array(0)(omm`ub_var) IN
+         (FORALL (iup:below(nvars)): 
+	   interval_between?(0,1,intendpts(iup),(true,true))(ub_varlam(iup))) AND
+           a2l__multibs_eval(bspoly,bsdegmono,cf,nvars,terms)(ub_varlam) = omm`ub_min)
+
+  a2l__sound?(bspoly,
+	      bsdegmono,
+	      nvars,
+	      terms,
+              cf,
+	      % (cf | multipolynomial_represents?[terms,
+	      %   				nvars,
+	      %   				bsdegmono]
+	      %   			       (bspoly)),
+	      intendpts)
+	     (omm) : bool =
+    a2l__forall_X_between(omm`lb_min,omm`ub_max)(bspoly,bsdegmono,cf,nvars,terms) AND
+    a2l__unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+    a2l__unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+    length_eq?(nvars)(omm)
+
+  a2l__Bern_coeffs_minmax_rec(bspoly,
+			      bsdegmono,
+			      cf,
+			      nvars,
+			      (terms | multipolynomial_represents?[terms,
+			        				   nvars,
+			        				   bsdegmono]
+			        				  (bspoly)),
+			      f: CoeffMono | FORALL (var_index:below(nvars)): f(var_index) <= bsdegmono(var_index),
+                              depth,
+			      intendpts,
+			      v,
+			      (ep:(edge_point?(bsdegmono,nvars,f,intendpts,v)))): 
+    RECURSIVE {omm:Outminmax |
+       FORALL(mb: MultiBernstein | represents_polylist_multipolynomial[
+						terms,
+   						nvars,
+   						bsdegmono]
+   						(bspoly,mb)):
+         omm = Bern_coeffs_minmax_rec(mb,bsdegmono,cf,nvars,terms,f,depth,intendpts,v,ep) } =
+
+   % (FORALL (nf:CoeffMono):
+   %      (FORALL (i:below(nvars)): nf(i)<=bsdegmono(i) AND
+   %                                (v <= i IMPLIES f(i)=nf(i))
+   %                                )
+   %    	IMPLIES omm`lb_min <= a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(nf)  AND
+   %              a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms)(nf) <= omm`ub_max) AND
+   %    a2l__unit_box_lb?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+   %    a2l__unit_box_ub?(bspoly,bsdegmono,nvars,terms,cf,intendpts)(omm) AND
+   %    length_eq?(nvars)(omm) AND
+   %    omm`max_depth = depth} =
+    IF v = 0 THEN 
+      LET coefffun      = a2l__multibscoeff(bspoly,bsdegmono,cf,nvars,terms),
+          thiscoeff     = coefffun(f),
+  	  thisvar       = IF ep THEN corner_to_point(f,nvars) ELSE null ENDIF,
+          thisachval    = IF ep THEN thiscoeff ELSE 0 ENDIF IN
+        single_outminmax(thiscoeff,thisachval,thisvar,depth) 
+    ELSE 
+      LET iepts = intendpts(v-1) IN
+        iterate_left(0,bsdegmono(v-1),
+         LAMBDA(d:upto(bsdegmono(v-1))):
+           LET nf    = LAMBDA(i:nat): IF i=v-1 THEN d ELSE f(i) ENDIF,
+               nep   = ep AND (d=0 AND iepts`1 OR 
+                               bsdegmono(v-1)/=0 AND 
+                               d=bsdegmono(v-1) AND iepts`2) IN
+           a2l__Bern_coeffs_minmax_rec(bspoly,bsdegmono,cf,nvars,terms,nf,depth,intendpts,v-1,nep),
+         combine)
+    ENDIF 
+    MEASURE v
+
+  a2l__Bern_coeffs_minmax(bspoly,
+			  bsdegmono,
+			  cf,
+			  nvars,
+			  (terms | multipolynomial_represents?[terms,
+							       nvars,
+							       bsdegmono]
+							      (bspoly)),
+			  depth,
+			  intendpts) : 
+%%    (a2l__sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) =
+   { result: Outminmax |
+       FORALL(mb: MultiBernstein | represents_polylist_multipolynomial[
+						terms,
+   						nvars,
+   						bsdegmono]
+   						(bspoly,mb)):
+         result = Bern_coeffs_minmax(mb,bsdegmono,cf,nvars,terms,depth,intendpts) } =
+    a2l__Bern_coeffs_minmax_rec(bspoly,bsdegmono,cf,nvars,terms,zeroes,depth,intendpts,nvars,true)
+
+  IMPORTING vardirselector_into_a2lvardirselector
+
+  
+  %% TODO move to somewhere else?
+  polylist_represents_translist_polylist: LEMMA
+    FORALL(bspoly,
+           bsdegmono,
+           nvars,
+           terms,
+           cf,
+	   (mb: MultiBernstein | multibernstein_into_polylist[
+	   			terms,
+   	   			nvars,
+   	   			bsdegmono].represents(bspoly,mb))):
+                       multibernstein_into_polylist[
+	   			terms,
+   	   			nvars,
+   	   			bsdegmono].represents(bspoly,
+           translist(polylist(mb, bsdegmono, nvars, terms)))
+
+  a2l__Bern_split_left_mpoly__homomorphic: CONJECTURE
+    FORALL(bspoly,
+           bsdegmono,
+           nvars,
+           terms,
+           cf,
+           (mb: MultiBernstein | represents_polylist_multipolynomial[
+           			terms,
+   	   			nvars,
+   	   			bsdegmono]
+   	   			(bspoly,mb)),
+           i:below(nvars)):
+      represents_polylist_multipolynomial[terms,nvars,bsdegmono]
+        (a2l__Bern_split_left_mpoly(bspoly,bsdegmono)(i),
+          LAMBDA(k:nat): Bern_split_left_mpoly(mb,bsdegmono)(i)(k))
+
+  a2l__Bern_split_right_mpoly__homomorphic: CONJECTURE
+    FORALL(bspoly,
+           bsdegmono,
+           nvars,
+           terms,
+           cf,
+	   (mb: MultiBernstein | represents_polylist_multipolynomial[
+	   			terms,
+   	   			nvars,
+   	   			bsdegmono]
+   	   			(bspoly,mb)),
+	   i:below(nvars)):
+      represents_polylist_multipolynomial[terms,nvars,bsdegmono]
+       (a2l__Bern_split_right_mpoly(bspoly,bsdegmono)(i),
+        LAMBDA(k:nat): Bern_split_right_mpoly(mb,bsdegmono)(i)(k))
+
+  a2l__Bernstein_minmax_rec(bspoly,
+                            bsdegmono,
+                            nvars,
+                            terms,
+                            (cf | multipolynomial_represents?[terms,
+							      nvars,
+							      bsdegmono]
+							     (bspoly)),
+                            depth,
+                            (level        : upto(depth)),
+                            (localexit    : [Outminmax -> bool]),
+			    (globalexit   : [Outminmax->bool]),
+                            intendpts,
+                            varselect,
+                            omm) : 
+    RECURSIVE % Outminmax
+    	      % (a2l__sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) =
+	      { result: Outminmax |
+	          FORALL(mb: MultiBernstein | represents_polylist_multipolynomial[
+						terms,
+   						nvars,
+   						bsdegmono]
+   						(bspoly,mb) ,
+			vs: VarSelector | represents(varselect,vs) ):
+		   result = Bernstein_minmax_rec(mb,
+					  bsdegmono,
+					  nvars,
+					  terms,
+					  cf,
+					  depth,
+					  level,
+					  localexit,
+					  globalexit,
+					  intendpts,
+					  vs,
+					  omm) }
+     =
+    LET bp     = bspoly, %% translist(polylist(bspoly,bsdegmono,nvars,terms)),
+        minmax = a2l__Bern_coeffs_minmax(bspoly,bsdegmono,cf,nvars,terms,level,intendpts)
+    IN
+      IF level = depth OR localexit(minmax) OR between?(omm,minmax) OR globalexit(minmax) THEN
+        minmax
+      ELSE
+        LET
+	  varsel       = varselect(bp,bsdegmono,nvars,terms,cf,level),
+          v            = mod(varsel`2,nvars),
+	  spleft       = a2l__Bern_split_left_mpoly(bp,bsdegmono)(v),
+	  spright      = a2l__Bern_split_right_mpoly(bp,bsdegmono)(v),
+	  ipleft       = LAMBDA(i:nat): ( intendpts(i)`1, i=v OR intendpts(i)`2 ),
+	  ipright      = LAMBDA(i:nat): ( i=v OR intendpts(i)`1, intendpts(i)`2 ),
+	  (LR1,LR2)    = IF varsel`1 THEN (spleft,spright) ELSE (spright,spleft) ENDIF,
+	  LR1intendpts = IF varsel`1 THEN ipleft ELSE ipright ENDIF,
+	  LR2intendpts = IF varsel`1 THEN ipright ELSE ipleft ENDIF,
+	  combine_this = IF varsel`1 THEN combine_l ELSE combine_r ENDIF,
+	  newmm1       = combine(omm,minmax),
+          level        = level + 1,
+          bslr1        = a2l__Bernstein_minmax_rec(LR1,bsdegmono,nvars,terms,cf,depth,level,
+                                              localexit,globalexit,LR1intendpts,varselect,newmm1)
+	IN
+          IF globalexit(bslr1) THEN
+            combine_this(v,bslr1,minmax)
+          ELSE 
+            LET
+	      newmm2   = combine(newmm1,bslr1),
+              bslr2    = a2l__Bernstein_minmax_rec(LR2,bsdegmono,nvars,terms,cf,depth,level,
+                                              localexit,globalexit,LR2intendpts,varselect,newmm2),
+	      bslrleft = IF varsel`1 THEN bslr1 ELSE bslr2 ENDIF,
+	      bslrright= IF varsel`1 THEN bslr2 ELSE bslr1 ENDIF
+            IN
+              combine_lr(v,bslrleft,bslrright)
+	  ENDIF
+      ENDIF
+      MEASURE depth-level
+
+  a2l__Bernstein_minmax(bspoly,
+                        bsdegmono,
+			nvars,
+			terms,
+			(cf | multipolynomial_represents?[terms,
+							  nvars,
+							  bsdegmono]
+							 (bspoly)),
+			depth,
+			(localexit    : [Outminmax -> bool]),
+			(globalexit   : [Outminmax->bool]),
+                        intendpts,varselect) :
+%% 	              (a2l__sound?(bspoly,bsdegmono,nvars,terms,cf,intendpts)) =
+  { omm: Outminmax |
+	          FORALL(mb: MultiBernstein | represents_polylist_multipolynomial[
+						terms,
+   						nvars,
+   						bsdegmono]
+   						(bspoly,mb) ,
+			vs: VarSelector | represents(varselect,vs) ):
+		   omm = Bernstein_minmax(mb,
+					  bsdegmono,
+					  nvars,
+					  terms,
+					  cf,
+					  depth,
+					  localexit,
+					  globalexit,
+					  intendpts,
+					  vs) } =
+    a2l__Bernstein_minmax_rec(bspoly,bsdegmono,nvars,terms,cf,depth,0,
+                         localexit,globalexit,intendpts,varselect,empty_minmax)
+
+  % FORALL(bspoly_pl: PolyList, bspoly_mb: MultiBernstein,
+  %                       bsdegmono,
+  % 			nvars,
+  % 			terms,
+  % 			(cf | represents_polylist_multipolynomial[terms,
+  % 							  nvars,
+  % 							  maximum_degree(bsdegmono,nvars)]
+  % 							 (bspoly_pl,bspoly_mb)),
+  % 			depth,
+  % 			(localexit    : [Outminmax -> bool]),
+  % 			(globalexit   : [Outminmax->bool]),
+  %                       intendpts,varselect) :
+  % a2l__Bernstein_minmax(bspoly_pl,bsdegmono,nvars,terms,cf,depth,localexit,globalexit,intendpts,varselect)
+  % = Bernstein_minmax(bspoly_mb,bsdegmono,nvars,terms,cf,depth,localexit,globalexit,intendpts,varselect)
+
+
+END a2l__bernstein_minmax
