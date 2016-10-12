@@ -23,6 +23,7 @@ vNum(b:Format):posnat = radix^Prec(b)
 f,g: VAR float
 e1 : VAR int
 b  : VAR Format
+x,y: VAR real
 
 radix_div_vNum : lemma integer_pred(vNum(b) / radix)
 radix_less_vNum: lemma radix <= vNum(b)
@@ -31,6 +32,9 @@ radix_less_vNum: lemma radix <= vNum(b)
 
 FtoR(f):real=Fnum(f)*radix^(Fexp(f))
 CONVERSION FtoR
+
+  ftor_zero_fnum : LEMMA
+    FtoR(f) = 0 IMPLIES Fnum(f) = 0
 
 float_int(j:int): float = (# Fnum := j, Fexp := 0 #)
 
@@ -152,13 +156,33 @@ Fnormalize(b)(f:(Fbounded?(b))): recursive
 
 Fulp(b)(f:(Fbounded?(b))):real = radix^(Fexp(Fnormalize(b)(f)))
 
+  min_Fulp(b): nonneg_real = radix^(-dExp(b))
+
 Fulp_posreal_j: JUDGEMENT Fulp(b:Format)(f:(Fbounded?(b))) HAS_TYPE posreal
 
 % Definition of the rounding modes
 
 RND : TYPE = [b:Format -> [[real,(Fbounded?(b))]->bool]]
 
-P : VAR RND
+  Rounding(b:Format): TYPE = [[real,(Fbounded?(b))]->bool]
+
+  P: VAR RND
+
+  RestrictedRounding(b,P): TYPE = { round: Rounding(b) |
+                 FORALL(f:(Fbounded?(b)),x): round(x,f) IMPLIES P(b)(x,f)}
+  
+  % rounding functions
+  RNDF(b:Format,round:Rounding(b)): TYPE =
+    {f: [real->(Fbounded?(b))] | FORALL(x:real): round(x,f(x))}
+
+  CanonicRoundingFun(b:Format,round:Rounding(b)): TYPE =
+    { RtoF: RNDF(b,round) | FORALL(x:real): Fcanonic?(b)(RtoF(x)) }
+
+  ulp(b,(P:Rounding(b)),(r:RNDF(b,P)))(x:real): posreal = Fulp(b)(r(x))
+
+  injective_rounding(b:Format,round:Rounding(b))(RtoF:RNDF(b,round)): bool =
+    (FORALL(f: (Fbounded?(b)) | FtoR(f) /= 0): RtoF(FtoR(f)) = f)
+    AND Fnum(RtoF(0)) = 0
 
 % Common rounding modes
 isMin?(b)(r:real,min:(Fbounded?(b))):bool =  (FtoR(min) <= r) AND
@@ -187,17 +211,41 @@ AFZClosest?(b)(r:real,c:(Fbounded?(b))):bool =  Closest?(b)(r,c) AND
 Total?(b)(P):bool = (forall (r:real): 
         (exists (f:(Fbounded?(b))): P(b)(r,f)))
 
+  total?(b)(P:Rounding(b)):bool =
+    FORALL(r:real): EXISTS(f:(Fbounded?(b))): P(r,f)
+
 Compatible?(b)(P):bool = (forall (r1,r2:real, f1,f2:(Fbounded?(b))): 
    P(b)(r1,f1) => r1=r2 => FtoR(f1)=FtoR(f2)::real => P(b)(r2,f2))
+
+  compatible?(b)(P:Rounding(b)):bool =
+    FORALL(r1,r2:real, f1,f2:(Fbounded?(b))): 
+      P(r1,f1) AND
+      r1=r2 AND
+      FtoR(f1)=FtoR(f2)::real
+      IMPLIES P(r2,f2)
 
 MinOrMax?(b)(P):bool = (forall (r:real,f:(Fbounded?(b))):
     P(b)(r,f) => isMin?(b)(r,f) OR isMax?(b)(r,f))
 
+  min_or_max?(b)(P:Rounding(b)): bool =
+    FORALL(r:real,f:(Fbounded?(b))):
+      P(r,f) => isMin?(b)(r,f) OR isMax?(b)(r,f)
+
 Monotone?(b)(P):bool = (forall (r1,r2:real, f1,f2:(Fbounded?(b))):
    r1 < r2 => P(b)(r1,f1) =>  P(b)(r2,f2) => FtoR(f1) <= FtoR(f2))
 
+  monotone?(b)(P:Rounding(b)):bool =
+    FORALL (r1,r2:real, f1,f2:(Fbounded?(b))):
+      r1 < r2 AND
+      P(r1,f1) AND
+      P(r2,f2)
+      IMPLIES FtoR(f1) <= FtoR(f2)
+
 RoundedMode?(b)(P):bool = 
   Total?(b)(P) AND Compatible?(b)(P) AND MinOrMax?(b)(P) AND Monotone?(b)(P)
+
+  rounded_mode?(b)(P:Rounding(b)):bool = 
+    total?(b)(P) AND compatible?(b)(P) AND min_or_max?(b)(P) AND monotone?(b)(P)
 
 Unique?(b)(P):bool = (forall (r:real,f1,f2:(Fbounded?(b))): 
        P(b)(r,f1) => P(b)(r,f2) => FtoR(f1)=FtoR(f2)::real)
@@ -208,6 +256,9 @@ FcanonicOpp: lemma
 
 FcanonicBounded: lemma
    Fcanonic?(b)(f) => Fbounded?(b)(f)
+
+  canonic_bounded_j: JUDGEMENT
+    (Fcanonic?(b)) SUBTYPE_OF (Fbounded?(b))
 
 FpredCanonic: lemma
    Fcanonic?(b)(f) => Fcanonic?(b)(Fpred(b)(f))
@@ -357,6 +408,10 @@ LeFnumZERO: lemma
 FleCorrect: lemma
    Fle?(p,q) IFF FtoR(p) <= FtoR(q)
 
+  rndf_monotone: LEMMA
+    FORALL(round: (monotone?(b)), RtoF: RNDF(b,round)):
+      x <= y IMPLIES RtoF(x) <= RtoF(y)
+
 FltCorrect: lemma
    Flt?(p,q) IFF FtoR(p) < FtoR(q)
 
@@ -389,6 +444,9 @@ FnormalizeCanonicFnum: LEMMA
 FulpCanonic: lemma
    Fcanonic?(b)(p) => Fulp(b)(p)=radix^(Fexp(p))
 
+   Fulp_min: LEMMA
+    FORALL(f:(Fbounded?(b))): min_Fulp(b) <= Fulp(b)(f)
+
 Lexico: lemma
    Fcanonic?(b)(p) => Fcanonic?(b)(q) => 0 <= FtoR(p) => FtoR(p) <= FtoR(q)
      => Fexp(p) <= Fexp(q)
@@ -408,7 +466,7 @@ FulpAbs: lemma Fbounded?(b)(f) => Fulp(b)(Fabs(f))=Fulp(b)(f)
 
 FulpMonotone: lemma Fbounded?(b)(p) => Fbounded?(b)(q) =>
    0 <= FtoR(p) => FtoR(p) <= FtoR(q) => Fulp(b)(p) <= Fulp(b)(q)
-
+ 
 FulpMonotoneAbs: lemma Fbounded?(b)(p) => Fbounded?(b)(q) =>
    abs(FtoR(p)) <= abs(FtoR(q)) => Fulp(b)(p) <= Fulp(b)(q)
 
@@ -516,8 +574,21 @@ EvenClosestFopp: LEMMA Fcanonic?(b)(p) => EvenClosest?(b)(r,p)=> EvenClosest?(b)
 RleRoundedR0 : lemma Fbounded?(b)(f) =>
   RoundedMode?(b)(P) => P(b)(r,f) => 0 <= r => 0 <= FtoR(f)
 
+  rle_rounded_r0 : LEMMA
+   FORALL(round: Rounding(b)):
+    Fbounded?(b)(f) AND
+    rounded_mode?(b)(round) AND
+    round(r,f) AND
+    0 <= r
+    IMPLIES 0 <= FtoR(f)
+
 RleRoundedLessR0 : lemma Fbounded?(b)(f) => 
   RoundedMode?(b)(P) => P(b)(r,f) => r <= 0 => FtoR(f) <= 0
+
+  ulp_monotone: LEMMA
+   FORALL(round: (rounded_mode?(b)), r:RNDF(b,round)):
+    0 <= x AND x <= y
+    IMPLIES ulp(b,round,r)(x) <= ulp(b,round,r)(y)
 
 RND_aux_le   : lemma (forall (x:nonneg_real): FtoR(RND_aux(b)(x)) <= x)
 RND_aux_ge   : lemma (forall (x:nonneg_real): x < FtoR(Fsucc(b)(RND_aux(b)(x))))
@@ -628,17 +699,57 @@ ToZero_RoundedMode : lemma RoundedMode?(b)(ToZero?)
 ToZero_Unique      : lemma Unique?(b)(ToZero?)
 
 Closest_Total       : lemma Total?(b)(Closest?)
+
+  Closest_total: LEMMA
+    total?(b)(Closest?(b))
+
 Closest_Compatible  : lemma Compatible?(b)(Closest?)
+
+  Closest_compatible: LEMMA
+    compatible?(b)(Closest?(b))
+
 Closest_MinOrMax    : lemma MinOrMax?(b)(Closest?)
+
+  Closest_min_or_max: LEMMA
+    min_or_max?(b)(Closest?(b))
+
 Closest_Monotone    : lemma Monotone?(b)(Closest?)
+
+  Closest_monotone: LEMMA
+    monotone?(b)(Closest?(b))
+
 Closest_RoundedMode : lemma RoundedMode?(b)(Closest?)
 
+  Closest_rounded_mode: LEMMA
+    rounded_mode?(b)(Closest?(b))
+
 RND_EClosest_isEclosest : lemma EvenClosest?(b)(r,RND_EClosest(b)(r))
+
 EvenClosest_Total       : lemma Total?(b)(EvenClosest?)
+
+  EvenClosest_total: LEMMA
+    total?(b)(EvenClosest?(b))
+
 EvenClosest_Compatible  : lemma Compatible?(b)(EvenClosest?)
+
+  EvenClosest_compatible: LEMMA
+    compatible?(b)(EvenClosest?(b))  
+
 EvenClosest_MinOrMax    : lemma MinOrMax?(b)(EvenClosest?)
+
+  EvenClosest_min_or_max: LEMMA
+    min_or_max?(b)(EvenClosest?(b))
+
 EvenClosest_Monotone    : lemma Monotone?(b)(EvenClosest?)
+
+  EvenClosest_monotone: LEMMA
+    monotone?(b)(EvenClosest?(b))
+
 EvenClosest_RoundedMode : lemma RoundedMode?(b)(EvenClosest?)
+
+  EvenClosest_rounded_mode: LEMMA
+    rounded_mode?(b)(EvenClosest?(b))
+
 EvenClosest_Unique      : lemma Unique?(b)(EvenClosest?)
 
 AFZClosest_Total       : lemma Total?(b)(AFZClosest?)
@@ -665,6 +776,14 @@ RoundedModeUlp : lemma Fbounded?(b)(p) =>
 
 ClosestUlp : lemma Fbounded?(b)(p) => 
     Closest?(b)(r,p) => abs(FtoR(p)-r) <= Fulp(b)(p)/2
+
+  closest_ulp : LEMMA
+   FORALL(round: Rounding(b) |
+            FORALL(f:(Fbounded?(b)),x): round(x,f) IMPLIES Closest?(b)(x,f),
+          RtoF: RNDF(b,round)):
+    Fbounded?(b)(p)  AND
+    Closest?(b)(r,p)
+    IMPLIES abs(FtoR(p)-r) <= ulp(b,round,RtoF)(r)/2
 
 RoundedModeNonDecreasing : lemma 
    Fbounded?(b)(p) => Fbounded?(b)(q) =>  RoundedMode?(b)(P) => Unique?(b)(P) 
@@ -722,5 +841,33 @@ FulpFpred1 : lemma
 
 FulpFpred2 : lemma
   Fcanonic?(b)(p) => 0 <= FtoR(p) => Fulp(b)(p) <= radix*Fulp(b)(Fpred(b)(p))
+
+  % RtoF properties
+  
+  Fopp_RtoF: LEMMA
+   FORALL(RtoF: CanonicRoundingFun(b,EvenClosest?(b))):
+    RtoF(-x) = Fopp(RtoF(x))
+
+  ulp_abs: LEMMA
+   FORALL(round : RestrictedRounding(b,EvenClosest?),
+          RtoF: CanonicRoundingFun(b,round)):
+    ulp(b,round,RtoF)(abs(x))=ulp(b,round,RtoF)(x)
+
+  injrnd_ulp: LEMMA
+   FORALL(f     : (Fbounded?(b)),
+          round : (rounded_mode?(b)),
+	  RtoF  : (injective_rounding(b,round))):
+    Fulp(b)(f) = ulp(b,round,RtoF)(FtoR(f))
+
+  Fulp_ulp: LEMMA
+   FORALL(e     : nonneg_real, 
+	  f     : (Fbounded?(b)),
+          round : (rounded_mode?(b)),
+	  RtoF  : (injective_rounding(b,round))):
+    abs( FtoR(f) - x ) <= e
+    IMPLIES Fulp(b)(f) <= ulp(b,round,RtoF)(abs(x) + e)
+
+  rndeclosest_j: JUDGEMENT
+    RND_EClosest(b) HAS_TYPE CanonicRoundingFun(b, EvenClosest?(b))
 
 END float

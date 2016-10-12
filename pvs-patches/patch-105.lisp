@@ -122,3 +122,11 @@ is t, the strategy fails silently."
 %--~%" version strategies))
   "[PVSio] Prints PVSio's about information.")
 
+(defrule eval-formulas (&optional (fnums *) (but nil) safe? quiet?)
+  (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
+			     fnums but))
+	(steps (loop for fnum in fnums
+		     collect `(eval-formula fnum))))
+    (branch-back steps))
+  "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The formulas are evaluated in order until the first TRUE is obtained or the list of fnums is over."
+  "Evaluating formulas in current sequent.")

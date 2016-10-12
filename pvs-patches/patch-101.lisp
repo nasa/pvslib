@@ -222,7 +222,8 @@
 (defun is-var-decl-expr (expr)
   (and (name-expr? expr)
        (let ((decl (declaration (resolution expr))))
-	 (or (bind-decl? decl) (skolem-const-decl? decl) (formal-const-decl? decl)
+	 (or (var-decl? decl)
+	     (bind-decl? decl) (skolem-const-decl? decl) (formal-const-decl? decl)
 	     (and (const-decl? decl) (null (def-axiom decl)))))))
 
 ;; Constants that are uninterpreted are considered to be variables

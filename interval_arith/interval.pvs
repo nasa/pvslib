@@ -26,7 +26,7 @@ BEGIN
                ub : real
              #]
   X,Y,Z : VAR Interval
-  x,y   : VAR real
+  x,y,z : VAR real
   n     : VAR nat
   i     : VAR int
   p     : VAR posnat
@@ -39,6 +39,10 @@ BEGIN
 
   ;##(x,X) : bool =
     lb(X) <= x AND x <= ub(X)
+
+  all_belong(rs:list[real],xs:list[Interval]): bool =
+    length(rs) <= length(xs) AND
+    FORALL(i:subrange(0,length(rs)-1)): nth(rs,i) ## nth(xs,i)
 
   % membership
   Member?(X)(x) : MACRO bool =
@@ -91,6 +95,10 @@ BEGIN
   ;<<(X,Y) : bool =
     lb(Y) <= lb(X) AND ub(X) <= ub(Y)
 
+  all_included(xs,ys:list[Interval]): bool =
+    length(xs) <= length(ys) AND
+    FORALL(i:subrange(0,length(xs)-1)): nth(xs,i) << nth(ys,i)
+
   eq_Incl : LEMMA
     X = Y IFF X << Y AND Y << X
 
@@ -137,27 +145,59 @@ BEGIN
   HalfRight(X) : Interval =
     [| midpoint(X),ub(X) |]
 
+  % Comparison predicates
+  % (Note that the comparison between Intervals only makes sense when the
+  %  intervals are Proper).
   % lt
   Lt(X,x) : bool =
-    lb(X) < x AND ub(X) < x 
+    lb(X) < x AND ub(X) < x
+    
+  lt(X,Y) : bool =
+    ub(X) < lb(Y)
+
+  lt_sound: LEMMA FORALL(X,Y:ProperInterval):
+    lt(X,Y) = (FORALL(x,y): x ## X AND y ## Y IMPLIES x<y) 
+
+  Lt_fundamental: LEMMA
+    Proper?(X) AND Lt(Y,x) AND X << Y IMPLIES Lt(X,x)
 
   % le
   Le(X,x) : bool =
      lb(X) <= x AND ub(X) <= x
+  le(X,Y) : bool =
+    ub(X) <= lb(Y) 
 
   % gt
   Gt(X,x) : bool =
      lb(X) > x AND ub(X) > x 
+  gt(X,Y) : bool =
+    lb(X) > ub(Y) 
+
+  Gt_fundamental: LEMMA
+    Proper?(X) AND
+    Gt(Y,x) AND X << Y IMPLIES Gt(X,x)
 
   % ge
   Ge(X,x) : bool =
      lb(X) >= x AND ub(X) >= x 
+  ge(X,Y) : bool =
+    lb(X) >= ub(Y) 
+
+  Any?(X) : bool = TRUE
+  Any2?(X,Y) : bool = TRUE
+  Any3?(X,Y,Z) : bool = TRUE
 
   Pos?(X) : bool  = Gt(X,0)
 
   Neg?(X) : bool  = Lt(X,0)
 
   NonNeg?(X) : bool = Ge(X,0)
+
+  NonNeg_Incl: LEMMA
+    Proper?(Y) AND
+    NonNeg?(X) AND
+    Y << X
+    IMPLIES NonNeg?(Y)
 
   Lt_Ge : LEMMA
     Lt(X,x) AND Ge(X,x) IMPLIES
@@ -171,9 +211,15 @@ BEGIN
   Zeroin?(X) :  bool =
     lb(X) < 0 AND 0 < ub(X) 
 
+  % Non-strict version of Zeroin?
+  Zeroed?(X:ProperInterval): bool = lb(X) <= 0 AND 0 <= ub(X)
+  
   % 0 is not in X
   Zeroless?(X) : bool =
     lb(X) > 0 OR ub(X) < 0
+
+  Zeroless_fundamental: LEMMA
+    X << Y AND Zeroless?(Y) IMPLIES Zeroless?(X)
 
   Trichotomy : LEMMA
     Proper?(X) IMPLIES
@@ -198,6 +244,13 @@ BEGIN
     else
      [|min(abs(lb(X)),abs(ub(X))),max(abs(lb(X)),abs(ub(X)))|]
     endif
+
+  % Floor
+  Floor(X) : Interval =
+    [| floor(lb(X)) , floor(ub(X)) |]
+
+  Fractional(X): Interval =
+    [| fractional(lb(X)), fractional(ub(X)) |]
 
   % pos * pos
   pXp(X,Y) : Interval = 
@@ -274,6 +327,7 @@ BEGIN
   Union(X,Y) : Interval =
     [|min(lb(X),lb(Y)),max(ub(X),ub(Y))|]
 
+  % Intersection
   Intersection(X,Y): Interval =
     [|max(lb(X),lb(Y)),min(ub(X),ub(Y))|]
 
@@ -289,6 +343,10 @@ BEGIN
     EmptyInterval?(Y) IMPLIES
     EmptyInterval?(Intersection(X,Y))
 
+  % Modulo
+  Mod(X,Y): Interval =
+    Sub(X, Mult(Y,Floor(Div(X,Y))))
+
 %%---------------
 %% Support Lemmas
 %%---------------
@@ -296,9 +354,122 @@ BEGIN
   Add_comm : LEMMA
     Add(X,Y) = Add(Y,X)
 
+  Add_assoc : LEMMA
+    Add(Add(X,Y),Z) = Add(X,Add(Y,Z))
+    
+  Add_inv: LEMMA
+    Proper?(X) AND
+    Proper?(Y) AND
+    z ## Add(X,Y)
+    IMPLIES EXISTS(x,y): x ## X AND y ## Y AND z = x + y
+    
   Mult_comm : LEMMA
     Mult(X,Y) = Mult(Y,X)
 
+  pXp_inv_1: LEMMA
+    Ge(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x ## X AND
+    y < lb(Y) AND
+    x*y ## pXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y 
+
+  pXp_inv_2: LEMMA
+    Ge(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    ub(X) < x AND
+    y < lb(Y) AND
+    x*y ## pXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+    
+  pXp_inv_3: LEMMA
+    Ge(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    ub(X) < x AND
+    y ## Y AND
+    x*y ## pXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  pXp_inv_0: LEMMA
+   FORALL(x,y: posreal):
+    Ge(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## pXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+    
+  pXp_inv: LEMMA
+    Ge(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## pXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  nXp_inv: LEMMA
+    Le(X,0) AND Ge(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## nXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  pXn_inv: LEMMA
+    Ge(X,0) AND Le(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## pXn(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  nXn_inv: LEMMA
+    Le(X,0) AND Le(Y,0) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## nXn(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  pXm_inv: LEMMA
+    Ge(X,0) AND (NOT Ge(Y,0) AND NOT Le(Y,0)) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## pXm(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  nXm_inv: LEMMA
+    Le(X,0) AND (NOT Ge(Y,0) AND NOT Le(Y,0)) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## nXm(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  mXp_inv: LEMMA
+    Ge(Y,0) AND (NOT Ge(X,0) AND NOT Le(X,0)) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## mXp(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  mXn_inv: LEMMA
+    Le(Y,0) AND (NOT Ge(X,0) AND NOT Le(X,0)) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## mXn(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  mXm_inv: LEMMA
+    (NOT Ge(X,0) AND NOT Le(X,0)) AND (NOT Ge(Y,0) AND NOT Le(Y,0)) AND
+    Proper?(X) AND
+    Proper?(Y) AND
+    x*y ## mXm(X,Y)
+    IMPLIES EXISTS(a,b:real): a ## X AND b ## Y AND a*b = x*y
+
+  Mult_inv: LEMMA
+    Proper?(X) AND
+    Proper?(Y) AND
+    z ## Mult(X,Y)
+    IMPLIES EXISTS(x,y): x ## X AND y ## Y AND z = x * y
+    
   Neg_Incl : LEMMA
      X << Y IMPLIES
     Neg(X) << Neg(Y) 
@@ -307,6 +478,21 @@ BEGIN
     x ## X AND
     Zeroless?(X) IMPLIES
     x /= 0
+
+  Proper_Zeroless: LEMMA
+    Proper?(X) AND
+    (FORALL(x): x ## X IMPLIES x/=0)
+    IMPLIES Zeroless?(X)
+
+  Zeroless_Mult: LEMMA
+   FORALL(X,Y:ProperInterval):
+    Zeroless?(Mult(X,Y))
+    IMPLIES Zeroless?(X) AND Zeroless?(Y)
+
+  Mult_Zeroless: LEMMA
+   FORALL(X,Y:ProperInterval):
+    Zeroless?(X) AND Zeroless?(Y)
+    IMPLIES Zeroless?(Mult(X,Y))
 
   Neg_Ge_0 : LEMMA
     Le(X,0) IMPLIES
@@ -362,6 +548,16 @@ BEGIN
 
   Union_Incl_right : LEMMA
     X << Union(Y,X)
+
+  Div_inv: LEMMA
+    Proper?(X) AND
+    Proper?(Y) AND
+    Zeroless?(Y) AND
+    z ## Div(X,Y)
+    IMPLIES EXISTS(x,y): x ## X AND y ## Y AND z = x / y
+
+  Floor_Add: LEMMA
+    Floor(Add(X,Y)) = Add(Floor(X), Add(Floor(Y), Floor(Add(Fractional(X), Fractional(Y)))))
 
 %%---------------
 %% Rewrite Lemmas
@@ -526,6 +722,13 @@ BEGIN
     x ## X IMPLIES
     -x ## Neg(X)
 
+  Floor_inclusion : LEMMA
+    x ## X IMPLIES
+    floor(x) ## Floor(X)
+
+  Floor_fundamental : LEMMA
+    X << Y IMPLIES Floor(X) << Floor(Y)
+
   pXp : LEMMA
     Ge(X,0) AND Ge(Y,0) AND 
     x ## X AND y ## Y IMPLIES
@@ -687,6 +890,13 @@ BEGIN
     (FORALL (k:subrange(n,i)):f(k) ## F(k)) IMPLIES
     sigma(n,i,f) ## Sigma(n,i,F)
 
+  IMPORTING reals@reals_mod
+  Mod_inclusion: LEMMA
+    x ## X AND
+    y ## Y AND
+    Zeroless?(Y)
+    IMPLIES mod(x,y) ## Mod(X,Y)
+
 %%-----------------
 %% Fundamental Lemmas
 %%-----------------
@@ -818,11 +1028,64 @@ BEGIN
   Inclusion?(Pre:PRED[Interval],f:[real->real])(F:[Interval->Interval]):bool =
     FORALL(x:real,X:(Pre)): x ## X IMPLIES f(x) ## F(X) 
 
+  Inclusion2? (Pre1 : PRED[Interval],
+               Pre2 : PRED[[Interval,Interval]],
+               f    : [real,real->real])
+              (F : [Interval,Interval->Interval]):bool =
+    FORALL(x1, x2: real, X1: (Pre1), X2:Interval|Pre2(X1,X2)):
+      x1 ## X1 AND x2 ## X2 IMPLIES f(x1,x2) ## F(X1,X2) 
+
+  Inclusion4? (Pre1 : PRED[Interval],
+               Pre2 : PRED[[Interval,Interval]],
+	       Pre3 : PRED[[Interval,Interval,Interval]],
+	       Pre4 : PRED[[Interval,Interval,Interval,Interval]],
+               f    : [real,real,real,real->real])
+              (F : [Interval,Interval,Interval,Interval->Interval]):bool =
+    FORALL(x1,x2,x3,x4: real,
+	   X1: (Pre1),
+	   X2: Interval| Pre2(X1,X2),
+	   X3: Interval| Pre3(X1,X2,X3),
+	   X4: Interval| Pre4(X1,X2,X3,X4)):
+      x1 ## X1 AND x2 ## X2 AND x3 ## X3 AND x4 ## X4
+      IMPLIES f(x1,x2,x3,x4) ## F(X1,X2,X3,X4) 
+
   Fundamental?(Pre:PRED[Interval])(F:[Interval->Interval]):bool =
     FORALL(X1:ProperInterval,X:(Pre)): X1 << X IMPLIES F(X1) << F(X) 
 
+  Fundamental2? (Pre1:PRED[Interval],Pre2:PRED[[Interval,Interval]])
+  		(F:[Interval,Interval->Interval]):bool=
+    FORALL(X1,Y1:ProperInterval,X:(Pre1),Y:Interval|Pre2(X,Y)):
+      X1 << X AND Y1 << Y IMPLIES F(X1,Y1) << F(X,Y)
+
+  Fundamental4? (Pre1 : PRED[Interval],
+  		 Pre2 : PRED[[Interval,Interval]],
+		 Pre3 : PRED[[Interval,Interval,Interval]],
+		 Pre4 : PRED[[Interval,Interval,Interval,Interval]])
+  		(F:[Interval,Interval,Interval,Interval->Interval]):bool=
+    FORALL( X1,X2,X3,X4:ProperInterval,
+	    Y1: (Pre1),
+	    Y2: Interval| Pre2(Y1,Y2),
+	    Y3: Interval| Pre3(Y1,Y2,Y3),
+	    Y4: Interval| Pre4(Y1,Y2,Y3,Y4)):
+      X1 << Y1 AND X2 << Y2 AND X3 << Y3 AND X4 << Y4
+      IMPLIES F(X1,X2,X3,X4) << F(Y1,Y2,Y3,Y4)
+
   Precondition?(Pre:PRED[Interval]):bool =
-    FORALL (X1:ProperInterval,X:Interval): X1 << X AND Pre(X) IMPLIES Pre(X1)
+    FORALL (X1:ProperInterval,X:Interval):
+      X1 << X AND Pre(X) IMPLIES Pre(X1)
+
+  Precondition2?(p2:PRED[[Interval,Interval]]):bool =
+    FORALL (Xa,Xb:ProperInterval,Ya,Yb:Interval):
+      Xa << Ya AND Xb << Yb AND p2(Ya,Yb) IMPLIES p2(Xa,Xb)
+
+  Precondition3?(p3:PRED[[Interval,Interval,Interval]]):bool =
+    FORALL (Xa,Xb,Xc:ProperInterval,Ya,Yb,Yc:Interval):
+      Xa << Ya AND Xb << Yb AND Xc << Yc AND p3(Ya,Yb,Yc) IMPLIES p3(Xa,Xb,Xc)
+
+  Precondition4?(p4:PRED[[Interval,Interval,Interval,Interval]]):bool =
+    FORALL (Xa,Xb,Xc,Xd:ProperInterval,Ya,Yb,Yc,Yd:Interval):
+      Xa << Ya AND Xb << Yb AND Xc << Yc AND Xd << Yd AND p4(Ya,Yb,Yc,Yd)
+      IMPLIES p4(Xa,Xb,Xc,Xd)
 
   Mult_Strict_r2i : LEMMA
       StrictInterval?(X) AND
@@ -916,26 +1179,34 @@ BEGIN
 
   Proper_Mult    : JUDGEMENT Mult(X,Y:ProperInterval) HAS_TYPE ProperInterval
 
-  Proper_Div     : JUDGEMENT Div(X:ProperInterval,(Y:ProperInterval|Zeroless?(Y))) HAS_TYPE ProperInterval
+  Proper_Div     : JUDGEMENT
+    Div(X:ProperInterval,(Y:ProperInterval|Zeroless?(Y)))
+    HAS_TYPE ProperInterval
 
   Strict_Sq      : JUDGEMENT Sq(X:StrictInterval) 
                              HAS_TYPE StrictInterval
 
-  Proper_Pow     : JUDGEMENT Pow(X:ProperInterval,n:nat) HAS_TYPE ProperInterval
+  Proper_Pow     : JUDGEMENT Pow(X:ProperInterval,n:nat) HAS_TYPE
+  		   	     ProperInterval
 
   Proper_Sq      : JUDGEMENT Sq(X:ProperInterval) HAS_TYPE ProperInterval
+
+  Proper_Floor   : JUDGEMENT Floor(X:ProperInterval) HAS_TYPE ProperInterval
+
+  Proper_Fractional : JUDGEMENT FORALL(X:ProperInterval): Add(Floor(X),Fractional(X)) HAS_TYPE ProperInterval
 
   Proper_size    : JUDGEMENT size(X:ProperInterval) HAS_TYPE nnreal
 
   Strict_size    : JUDGEMENT size(X:StrictInterval) HAS_TYPE posreal
 
-
-  Proper_HalfLeft : JUDGEMENT HalfLeft(X:ProperInterval) HAS_TYPE ProperInterval 
+  Proper_HalfLeft : JUDGEMENT HalfLeft(X:ProperInterval) HAS_TYPE
+  		    	      ProperInterval 
 
   Strict_HalfLeft : JUDGEMENT HalfLeft(X:StrictInterval) HAS_TYPE 
 	                      StrictInterval 
 
-  Proper_HalfRight : JUDGEMENT HalfRight(X:ProperInterval) HAS_TYPE ProperInterval 
+  Proper_HalfRight : JUDGEMENT HalfRight(X:ProperInterval) HAS_TYPE
+  		     	       ProperInterval 
 
   Strict_HalfRightt : JUDGEMENT HalfRight(X:StrictInterval) HAS_TYPE 
 	                        StrictInterval 
@@ -947,5 +1218,48 @@ BEGIN
   Pos_Precondition : JUDGEMENT Pos? HAS_TYPE (Precondition?)
 
   Neg_Precondition : JUDGEMENT Neg? HAS_TYPE (Precondition?)
+
+  Any_Precondition : JUDGEMENT Any? HAS_TYPE (Precondition?)
+
+  Any3_Precondition3 : JUDGEMENT Any3? HAS_TYPE (Precondition3?)
+
+  Proper_Mod     : JUDGEMENT Mod(X:ProperInterval,(Y:ProperInterval|Zeroless?(Y)))
+                             HAS_TYPE ProperInterval
+
+  pre1to2b(P:(Precondition?)): (Precondition2?) =
+    LAMBDA(X1,X2:Interval):P(X2)
+  AUTO_REWRITE+ pre1to2b
+
+  pre1to4d(P:(Precondition?)): (Precondition4?) =
+    LAMBDA(X1,X2,X3,X4:Interval):P(X4)
+  AUTO_REWRITE+ pre1to4d
+
+  %
+
+  interval_as_absdif: LEMMA
+   FORALL(a,b:real, c:nonneg_real):
+    abs(a - b) <= c IFF b ## [| a-c , a+c |]
+
+  lb_mp_s: LEMMA
+    lb(X) = midpoint(X) - size(X)/2
+    
+  ub_mp_s: LEMMA
+    ub(X) = midpoint(X) + size(X)/2
+
+  % Subdistributivity
+  
+  Mult_rsubdist_Add: LEMMA
+    Proper?(X) AND
+    Proper?(Y) AND
+    Proper?(Z)
+    IMPLIES Mult(Add(X,Y),Z) << Add(Mult(X,Z),Mult(Y,Z))
+
+  Mult_lsubdist_Add: LEMMA
+    Proper?(X) AND
+    Proper?(Y) AND
+    Proper?(Z)
+    IMPLIES Mult(X,Add(Y,Z)) << Add(Mult(X,Y),Mult(X,Z))
+
+  % 
 
 END interval

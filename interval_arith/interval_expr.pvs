@@ -32,6 +32,7 @@ BEGIN
     mult?(expr) OR sq?(expr) OR
     pow?(expr) OR div?(expr) OR
     fun?(expr) OR letin?(expr)
+    OR fun2?(expr) OR fun4?(expr)
 
   boolexpr?(expr:IntervalExpr) : bool =
     bconst?(expr) OR bnot?(expr) OR
@@ -40,7 +41,7 @@ BEGIN
     bincludes?(expr) OR bite?(expr) OR
     bletin?(expr)
 
-   real_bool_expr : LEMMA
+  real_bool_expr : LEMMA
      FORALL (expr:IntervalExpr):
        realexpr?(expr) OR boolexpr?(expr) 
 
@@ -72,6 +73,13 @@ BEGIN
       ENDIF
     ELSIF fun?(expr) THEN 
       opf(expr)(eval(op(expr),vs,n))
+    ELSIF fun2?(expr) THEN 
+      opf2(expr) (eval(op1(expr),vs,n), eval(op2(expr),vs,n))
+    ELSIF fun4?(expr) THEN 
+      opf4(expr) ( eval(op1(expr),vs,n),
+      		   eval(op2(expr),vs,n),
+		   eval(op3(expr),vs,n),
+		   eval(op4(expr),vs,n) )
     ELSE
       LET rlet = eval(rlet(expr),vs,n) IN
         eval(rin(expr),vs WITH [`n := rlet],n+1)
@@ -127,6 +135,23 @@ BEGIN
     ELSIF fun?(expr) THEN
       LET op = Eval(op(expr),box) IN
       IF Proper?(op) AND pre(expr)(op) THEN opF(expr)(op) ELSE EmptyInterval ENDIF
+    ELSIF fun2?(expr) THEN
+      LET op1 = Eval(op1(expr),box),
+      	  op2 = Eval(op2(expr),box)
+      IN IF Proper?(op1) AND Proper?(op2) AND
+      	    pre1(expr)(op1) AND pre2(expr)(op1,op2) THEN
+           opF2(expr)(op1,op2)
+         ELSE EmptyInterval ENDIF
+    ELSIF fun4?(expr) THEN
+      LET op1 = Eval(op1(expr),box),
+      	  op2 = Eval(op2(expr),box),
+      	  op3 = Eval(op3(expr),box),
+      	  op4 = Eval(op4(expr),box)
+      IN IF Proper?(op1) AND Proper?(op2) AND Proper?(op3) AND Proper?(op4) AND
+      	    pre1(expr)(op1) AND pre2(expr)(op1,op2) AND pre3(expr)(op1,op2,op3)
+	    AND pre4(expr)(op1,op2,op3,op4) THEN
+           opF4(expr)(op1,op2,op3,op4)
+         ELSE EmptyInterval ENDIF
     ELSE
       LET rlet = Eval(rlet(expr),box) IN
       IF Proper?(rlet) THEN
@@ -151,6 +176,24 @@ BEGIN
      Zeroless?(Eval(op2(expr),box))) OR
     (pow?(expr) AND well_typed?(box)(op(expr))) OR
     (fun?(expr) AND well_typed?(box)(op(expr)) AND pre(expr)(Eval(op(expr),box))) OR
+    (fun2?(expr) AND
+      well_typed?(box)(op1(expr)) AND
+      well_typed?(box)(op2(expr)) AND
+      pre1(expr)(Eval(op1(expr),box)) AND
+      pre2(expr)(Eval(op1(expr),box),Eval(op2(expr),box))) OR
+    (fun4?(expr) AND
+      well_typed?(box)(op1(expr)) AND
+      well_typed?(box)(op2(expr)) AND
+      well_typed?(box)(op3(expr)) AND
+      well_typed?(box)(op4(expr)) AND
+      LET Eval_op1 = Eval(op1(expr),box),
+      	  Eval_op2 = Eval(op2(expr),box),
+	  Eval_op3 = Eval(op3(expr),box),
+	  Eval_op4 = Eval(op4(expr),box) IN
+      pre1(expr)(Eval_op1) AND
+      pre2(expr)(Eval_op1,Eval_op2) AND
+      pre3(expr)(Eval_op1,Eval_op2,Eval_op3) AND
+      pre4(expr)(Eval_op1,Eval_op2,Eval_op3,Eval_op4)) OR
     (letin?(expr) AND well_typed?(box)(rlet(expr)) AND 
       well_typed?(append(box,(: Eval(rlet(expr),box) :)))(rin(expr)))
 

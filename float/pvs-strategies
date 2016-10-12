@@ -1,57 +1,37 @@
-(defun makecases (a terms strict)
-  (when terms
-    (cons (format nil "~a ~a ~a"
-		  a
-		  (if (= strict 1) "<" "<=")
-		  (car terms))
-	  (makecases (car terms) (cdr terms) (- strict 1)))))
+;; BEGIN interval-ia addendum
+(defun add-bb-ia-op (ops)
+  (loop for new-elem in ops
+	do (when (not (member new-elem *ia-extended*)) (setq *ia-extended* (cons new-elem *ia-extended*)))))
 
-(defstep trans-ineq (&optional (fnum 1) terms (strict 0))
-  (let ((expr (extra-get-formula fnum)))
-    (if (is-relation expr t)
-	(let ((a (args1 expr))
-	      (b (args2 expr))
-	      (myt (if (listp terms) terms (list terms)))
-	      (casestr (format nil "~{~a~#[~:; AND ~]~}"
-			       (makecases a
-					  (append myt (list b))
-					  strict))))
-	  (then
-	   (label "TR" fnum)
-	   (spread (case casestr)
-		   ((then (flatten) (assert))
-		    (then (hide "TR")
-			  (split 1))))))
-      (skip-msg "Not a suitable formula")))
+(add-bb-ia-op '(("ulp_sp" "ULP_SP")
+		("aebound_add""AEB_ADD")
+		("aebound_sub""AEB_SUB")
+		("aebound_mul""AEB_MUL")
+		("aebound_div""AEB_DIV")
+		("aebound_flr""AEB_FLR")
+		("aebound_sqt""AEB_SQT")
+		("aebound_neg""AEB_NEG")))
+;; END interval-ia addendum
+
+(defstep rewrite-aerr-expr ()
+  (with-fresh-labels
+   ((label 1))
+   (with-tccs
+    (then (expand "aebound_flr" label)
+	  (expand "aebound_add" label)
+	  (expand "aebound_mul" label)
+	  (expand "aebound_div" label)
+	  (expand "aebound_sub" label)
+	  (expand "flr_aerr_bound" label)
+	  (expand "add_aerr_bound" label)
+	  (expand "mul_aerr_bound" label)
+	  (expand "div_aerr_bound" label)
+	  (expand "sub_aerr_bound" label)
+	  (expand "flr_ulp_bound" label)
+	  (expand "add_ulp_bound" label)
+	  (expand "mul_ulp_bound" label)
+	  (expand "div_ulp_bound" label)
+	  (expand "sub_ulp_bound" label))))
   "" "")
 
-;;; Strategy to prove tcc from use of float_ops definitions.
-(defstep resulting-type-tcc () 
-  (then (skeep*)
-	(invoke (typepred "%1") (! 1 1))
-	(expand* "closest_single?" "closest_double?"))
-  "" "")
-
-
-(defstep var-aerr ()
-  (then
-    (eval-expr (! 1 2))
-    (replace -1 :hide? t)
-    (expand "[||]")) "" "")
-
-(defstep try-here (steplists)
-  (let ((try-steps (reduce (lambda (sl1 sl2) `(try (then ,sl1 (assert) (fail)) (skip) ,sl2))
-			   steplists
-			   :initial-value `(skip)
-			   :from-end t))
-	(dummy (format t "~a~%" try-steps)))
-    (then try-steps))
-  "" "")
-
-(defstep branch-lemmas (lemma-names next-step)
-  (let ((lsteps (loop for lname in lemma-names
-		      collect `(then (lemma ,lname) ,next-step)))
-	(dummy (format t  "~a~%" lsteps)))
-    (try-here$ lsteps))
-  ""
-  "Applying lemmas.")
+ 
