@@ -7,7 +7,7 @@ This directory contains the PVS code of the examples presented in the paper  [_F
 The PVS utility `proveit` can be used to verify the PVS certificates:
 
 ```
-$ proveit -s Fluctuat/cert_fluctuat.pvs
+$ proveit -sc Fluctuat/cert_fluctuat.pvs
 ```
 
 
