@@ -392,7 +392,8 @@
 	 (let ((e (pc-parse expr 'expr)))
 	   (if tc (pc-typecheck e) e)))
 	((and (listp expr) (equal (car expr) '!))
-	 (let ((e (ee-pvs-obj (car (eval-ext-expr expr)))))
+	 (let* ((ecar (car (eval-ext-expr expr)))
+		(e    (when ecar (ee-pvs-obj ecar))))
 	   (when (expr? e) e)))))
 
 (defun extra-get-expstr (expr &optional (tc t))
