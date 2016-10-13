@@ -8,6 +8,13 @@ The PVS utility `proveit` can be used to verify the PVS certificates:
 
 ```
 $ proveit -sc Fluctuat/cert_fluctuat.pvs
+
+Removing Fluctuat/.pvscontext Fluctuat/pvsbin/ Fluctuat/cert_fluctuat.summary Fluctuat/cert_fluctuat.log
+Processing Fluctuat/cert_fluctuat.pvs. Writing output to file Fluctuat/cert_fluctuat.summary
+Saving theory dependencies in directory pvsbin
+ Proof summary for theory cert_fluctuat
+    Theory totals: 3 formulas, 3 attempted, 3 succeeded (7.68 s)
+Grand Totals: 3 proofs, 3 attempted, 3 succeeded (7.68 s)
 ```
 
 
