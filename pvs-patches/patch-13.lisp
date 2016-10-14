@@ -1,22 +1,14 @@
-;On 5/6/15 3:08 AM, "Sam Owre" <owre@csl.sri.com> wrote:
+;;On 5/6/15 3:08 AM, "Sam Owre" <owre@csl.sri.com> wrote:
 
-;Hi Ben,
+;;Hi Ben,
 
-;Both of these problems are bugs.  The infinite loop is due to a bug
-;that was triggered by the subtype-tcc strategy on certain kinds of
-;arithmetic formulas.
+;;Both of these problems are bugs.  The infinite loop is due to a bug
+;;that was triggered by the subtype-tcc strategy on certain kinds of
+;;arithmetic formulas.
 
-;The second bug was due to the code that tries to typecheck only as much of
-;the theory as necessary; I think I've fixed it, but this is harder to
-;test.
-
-;Could you try out the following patch file, and see if it helps?
-;Just create a "pvs-patches" subdirectory in your PVS installation if there
-;isn't one there already, and put it in there.  It should load the next
-;time you start PVS.
-
-;Thanks,
-;Sam
+;;The second bug was due to the code that tries to typecheck only as much of
+;;the theory as necessary; I think I've fixed it, but this is harder to
+;;test.
 
 (in-package :pvs)
 
@@ -119,3 +111,16 @@
 		      (typechecked? decl))
 	    (cleanup-typecheck-decls decl))))
     (put-decl decl)))
+
+;;On 10/10/16, 10:07 PM, "Sam Owre" <owre@csl.sri.com> wrote:
+;;Hi Ben,
+
+;;This is definitely a bug - anytime you see "Error: No methods applicable
+;;for generic function" it is a bug, and you can send it immediately to
+;;pvs-bugs (or open an issue on https://github.com/SRI-CSL/PVS/issues).
+(defmethod copy-untyped* ((ex fieldex))
+  (with-slots (id actuals dactuals) ex
+    (copy ex
+      'type nil
+      'actuals (copy-untyped* actuals)
+      'dactuals (copy-untyped* dactuals))))
