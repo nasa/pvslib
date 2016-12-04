@@ -2,7 +2,8 @@
 
 interval_trig : THEORY
 BEGIN
-  IMPORTING trig_fnd@trig_basic,
+  IMPORTING reals@factorial,
+            trig_fnd@trig_basic,
             trig_fnd@trig_approx,
             trig_fnd@trig_ineq,
             trig_fnd@tan_approx,
@@ -14,12 +15,32 @@ BEGIN
   x   : VAR real
   n   : VAR nat
 
+  % Pi
+  Pi(n) : (Pos?) = [|pi_lbn(n),pi_ubn(n)|]
+
+  % Cos
   cos_error_pi_lbn_bound: LEMMA
     abs(cos_term(pi_lbn(n))(2*n+2)) < 
     3.2^(4+4*n)/factorial(4+4*n)
 
-  % Pi
-  Pi(n) : (Pos?) = [|pi_lbn(n),pi_ubn(n)|]
+  cos_0_pi(n)(X) : Interval =
+    [|cos_lb(ub(X),n),cos_ub(lb(X),n)|]
+
+  cos_npi2_pi2(n)(X) : Interval =
+    [|min(cos_lb(lb(X),n),cos_lb(ub(X),n)),1|]
+
+  Cos(n)(X) : Interval =
+      LET pi_lb = pi_lb_est(n) IN
+      if    X << [|0,pi_lb|] then cos_0_pi(n)(X)
+      elsif X << [|-pi_lb,0|] then cos_0_pi(n)(Neg(X))
+      elsif X << [|-pi_lb/2,pi_lb/2|] then cos_npi2_pi2(n)(X)
+      else  LET k = 4+4*n in [|-1-(3.2^(k)/ffactorial(k)),1|]
+      endif
+
+  Cos_fundamental: LEMMA
+    Proper?(X) AND
+    X << Y IMPLIES
+    Cos(n)(X) << Cos(n)(Y)
 
   % Sin
   sin_npi2_pi2(n)(X) : Interval =
@@ -31,32 +52,13 @@ BEGIN
   sin_0_pi(n)(X) : Interval =
     [|min(sin_lb(lb(X),n),sin_lb(ub(X),n)),1|]
 
-  % Cos
-  cos_0_pi(n)(X) : Interval =
-    [|cos_lb(ub(X),n),cos_ub(lb(X),n)|]
-
-  cos_npi2_pi2(n)(X) : Interval =
-    [|min(cos_lb(lb(X),n),cos_lb(ub(X),n)),1|]
-
-  Cos(n)(X) : Interval =
-      if    X << [|0,pi_lb_est(n)|]             then cos_0_pi(n)(X)
-      elsif X << [|-pi_lb_est(n),0|]            then cos_0_pi(n)(Neg(X))
-      elsif X << [|-pi_lb_est(n)/2,pi_lb_est(n)/2|] then cos_npi2_pi2(n)(X)
-      else  [|-1-(3.2^(4+4*n)/factorial(4+4*n)),1|]
-      endif
-
-  Cos_fundamental: LEMMA
-    Proper?(X) AND
-    X << Y IMPLIES
-    Cos(n)(X) << Cos(n)(Y)
-
-  %%% The next function translates
-
   Sin(n)(X) : Interval =
     LET Xpos    = Intersection(X,[|0,ub(X)|]),
     	Xneg    = Intersection(X,[|lb(X),0|]),
-	CosXpos = Cos(n)(Add(Xpos,[|-pi_ubn(n)/2,-pi_lbn(n)/2|])),
-	CosXneg = Neg(Cos(n)(Add(Neg(Xneg),[|-pi_ubn(n)/2,-pi_lbn(n)/2|])))
+	pi_ub   = pi_ubn(n),
+	pi_lb   = pi_lbn(n),
+	CosXpos = Cos(n)(Add(Xpos,[|-pi_ub/2,-pi_lb/2|])),
+	CosXneg = Neg(Cos(n)(Add(Neg(Xneg),[|-pi_ub/2,-pi_lb/2|])))
     IN  IF Proper?(Xpos) AND Proper?(Xneg) THEN
            		 Union(CosXpos,CosXneg)
 	ELSIF Proper?(Xpos) THEN CosXpos
@@ -69,8 +71,8 @@ BEGIN
     Sin(n)(X) << Sin(n)(Y)
   
   tan_0_pi2(n)(X) : Interval = 
-    let cos_ub_lb = cos_ub(lb(X),n) in
-    let cos_lb_ub = cos_lb(ub(X),n) in
+    LET cos_ub_lb = cos_ub(lb(X),n),
+    	cos_lb_ub = cos_lb(ub(X),n) IN
     if cos_ub_lb > 0 AND cos_lb_ub > 0 then
       [|sin_lb(lb(X),n)/cos_ub_lb,sin_ub(ub(X),n)/cos_lb_ub|]
     else
@@ -78,8 +80,8 @@ BEGIN
     endif
 
   tan_npi2_pi2(n)(X) : Interval = 
-    let cos_lb_lb = cos_lb(lb(X),n) in
-    let cos_lb_ub = cos_lb(ub(X),n) in
+    LET cos_lb_lb = cos_lb(lb(X),n),
+    	cos_lb_ub = cos_lb(ub(X),n) in
     if cos_lb_lb > 0 AND cos_lb_ub > 0 then
       [|sin_lb(lb(X),n)/cos_lb_lb,sin_ub(ub(X),n)/cos_lb_ub|]
     else 
@@ -98,10 +100,11 @@ BEGIN
   Cos_pos_n : MACRO posnat = 5 
 
   Tan(n)(X) : Interval = 
-    let n = n+Cos_pos_n in
-    if    X << [|0,pi_lb_est(n)/2|]        then  tan_0_pi2(n)(X) 
-    elsif X << [|-pi_lb_est(n)/2,0|]       then  Neg(tan_0_pi2(n)(Neg(X)))
-    elsif X << [|-pi_lb_est(n)/2,pi_lb_est(n)/2|] then  tan_npi2_pi2(n)(X)
+    LET n = n+Cos_pos_n,
+        pi_lb = pi_lb_est(n) IN
+    if    X << [|0,pi_lb/2|] then  tan_0_pi2(n)(X) 
+    elsif X << [|-pi_lb/2,0|] then  Neg(tan_0_pi2(n)(Neg(X)))
+    elsif X << [|-pi_lb/2,pi_lb/2|] then  tan_npi2_pi2(n)(X)
     else  EmptyInterval
     endif
 
@@ -228,7 +231,8 @@ BEGIN
     tan(x) ## tan_npi2_pi2(n)(X)
 
   TAN?(n)(X) : bool =
-    X << [| -pi_lb_est(n+Cos_pos_n)/2, pi_lb_est(n+Cos_pos_n)/2 |] 
+    LET pi_lb = pi_lb_est(n+Cos_pos_n) IN
+    X << [| -pi_lb/2, pi_lb/2 |] 
 
   TAN_Tan : LEMMA
     TAN?(n)(X) AND
