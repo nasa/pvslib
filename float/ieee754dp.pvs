@@ -1,0 +1,89 @@
+%
+% IEEE 754 instantiation of the high level specification for double precision numbers.
+%
+ieee754dp: THEORY
+BEGIN
+
+  ieee754radix: MACRO nat = 2
+
+  IMPORTING float[ieee754radix]
+
+  x,x1,x2: VAR real
+
+  double_precision_format: Format = (# Prec := 53, dExp := 1074 #)
+
+  % double precision numbers 
+  unb_double: TYPE = (Fcanonic?(double_precision_format))
+
+  f,f1,f2: VAR unb_double
+  
+  Dulp(f1): posreal = Fulp(double_precision_format)(f1)
+
+  min_Dulp: nonneg_real = min_Fulp(double_precision_format)
+
+  Sminexp: MACRO int = -dExp(double_precision_format)
+
+  dp_closest?(x1,(f1:(Fbounded?(double_precision_format)))): bool =
+    EvenClosest?(double_precision_format)(x1,f1)
+        
+  closest_double?(x1)(f1:(Fbounded?(double_precision_format))): bool =
+    dp_closest?(x1,f1)
+
+  dp_closest?_j: JUDGEMENT
+    dp_closest? HAS_TYPE
+        {round: RestrictedRounding[2](double_precision_format, EvenClosest?) |
+                                 rounded_mode?(double_precision_format)(round) }
+
+  % real to double-precision conversion.
+  RtoD(x1): { f:unb_double |  closest_double?(x1)(f) } =
+    RND_EClosest(double_precision_format)(x1)
+
+  DtoR(f1): real = FtoR(f1)
+  CONVERSION DtoR
+
+  rtos_canonic_rounding_fun_j: JUDGEMENT
+    RtoD HAS_TYPE CanonicRoundingFun[2](double_precision_format,dp_closest?)
+
+  noteq_rew_rl1 : LEMMA FORALL(X,Y: unb_double):
+    X < Y IMPLIES (NOT X = Y)
+
+  noteq_rew_rl2 : LEMMA FORALL(X,Y: unb_double):
+    X > Y IMPLIES (NOT X = Y)
+
+  noteq_rew : LEMMA FORALL(X,Y: unb_double):
+    (NOT X = Y) = (X > Y OR X < Y)	
+
+  neq_rew : LEMMA FORALL(X,Y: unb_double):
+    X /= Y = NOT X = Y
+
+  % Unit in the Last Place (ulp) definition for double precision
+  ulp_dp(x): nonneg_real = ulp(double_precision_format,dp_closest?,RtoD)(x)
+
+  Dabs(f) : unb_double = Fabs(f)
+
+  DtoR_round: LEMMA
+    abs(DtoR(RtoD(x1)) - x1) <= Dulp(RtoD(x1)) / 2
+  AUTO_REWRITE+ DtoR_round
+
+  DtoR_RtoD: LEMMA
+   EXISTS(e1: real):
+    - Dulp(RtoD(x1)) / 2 <= e1 AND
+    e1 <= Dulp(RtoD(x1)) / 2 AND
+    DtoR(RtoD(x1)) = x1 + e1
+
+  % DtoR conversion is an increasing function.
+  DtoR_inc: LEMMA
+    f1 <= f2 IMPLIES DtoR(f1) <= DtoR(f2)
+
+  % RtoD conversion is an increasing function.
+  RtoD_inc: LEMMA
+    x1 <= x2 IMPLIES RtoD(x1) <= RtoD(x2)
+
+  % ULP definition for double precision numbers.
+  Dulp_def: LEMMA
+    Dulp(f1) = 2^Fexp(f1)
+
+  RtoD_opp: LEMMA
+    RtoD(-x) = Fopp(RtoD(x))
+    
+END ieee754dp
