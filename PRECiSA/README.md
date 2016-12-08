@@ -8,7 +8,16 @@ The PVS utility `proveit` can be used to verify the PVS certificates:
 
 ```
 $ proveit -sc CD2D_tau/clgen_cd2d_tau_double.pvs
+```
 
+The output to that command is:
+
+```
+Removing CD2D_tau/.pvscontext CD2D_tau/pvsbin/ CD2D_tau/cert_cd2d_tau_double.summary CD2D_tau/cert_cd2d_tau_double.log
+Processing CD2D_tau/cert_cd2d_tau_double.pvs. Writing output to file CD2D_tau/cert_cd2d_tau_double.summary
+Proof summary for theory cert_cd2d_tau_double
+    Theory totals: 24 formulas, 24 attempted, 24 succeeded (272.69 s)
+Grand Totals: 24 proofs, 24 attempted, 24 succeeded (272.69 s)
 ```
 
 
