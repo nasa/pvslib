@@ -2656,11 +2656,7 @@ name of the quantified variable that encodes the recursive call.")
 			      label
 			      (equiv? t)
 			      (tccs? t))
-  (let (
-
-	(dummy (format t "RT: ~a~%" required-theories))
-
-	(name     (freshname "iar"))
+  (let ((name     (freshname "iar"))
 	(label    (or label (freshlabel name)))
 	(fns      (extra-get-fnums fnums))
 	(fn       (if (= (length fns) 1) (car fns) 0))
