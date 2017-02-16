@@ -34,6 +34,15 @@ This version of the NASA PVS Library includes
 Hypatheon is a database utility that provides a capability for indexing PVS theories and making
 them searchable via a GUI client.
 
+Recent Changes
+-
+The PVS developments `TCASII`, `WellClear`,  and `DAIDALUS` are now
+[available](https://github.com/nasa/WellClear/tree/master/PVS) as part 
+of the
+[GitHub WellClear distribution](https://github.com/nasa/WellClear). The PVS development `PRECiSA`  is now
+[available](https://github.com/nasa/WellClear/tree/master/PVS) as part 
+of the [GitHub PRECiSA distribution](https://github.com/nasa/PRECiSA).
+
 Getting the Most Stable Version 
 -
 The most stable version of the NASA Library is available from the
