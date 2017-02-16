@@ -2407,9 +2407,8 @@ name of the quantified variable that encodes the recursive call.")
 			      ("ln" ("LN_n"))
 			      ("exp" ("EXP_n"))
 			      ("e" ("E_n"))
-            ("floor" "FLOOR")
-			      ("mod" "MOD")
-            ("max" "MAX")))
+			      ("floor" "FLOOR")
+			      ("mod" "MOD")))
 
 (defparameter *ia-excluded* '("Tan?" "[||]"))
 
