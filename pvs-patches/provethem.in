@@ -39,14 +39,13 @@ $PROVETHEMVERSION -- runs proveit on several libraries
 
 $usageln
 <option> is
-  --addpath               consider the current directory as part of 
-                          PVS_LIBRARY_PATH
-  --after=<dir>           prove all libraries after <dir>, exclusive.
-  --before=<dir>          prove all libraries before <dir>, exclusive.
+  --addpath               add current directory to PVS_LIBRARY_PATH (default when --clearpath)
+  --after=<dir>           prove all libraries after <dir>, exclusive
+  --before=<dir>          prove all libraries before <dir>, exclusive
   --but=<dir1>,..,<dirn>  do not process libraries <dir1>,...,<dirn>
   --color                 do not use colors
   --cleanbin              clean binary files but do not prove the libraries
-  --clearpath             consider an empty PVS_LIBRARY_PATH
+  --clearpath             clear PVS_LIBRARY_PATH 
   --dir <dir>             use <dir> as default directory of summary files
   --do=<dir1>,..,<dirn>   process libraries <dir1>,...,<dirn>
   --disable <o1,...on>    disable external oracles o1,...,on.
@@ -67,12 +66,13 @@ $usageln
   --verbose               print summary information for all theories
   --version               print version information and exit
 
-File <file> is an ordered list of libraries to be processed by proveit.  Each
+File <file> is an ordered list of libraries to be processed by proveit. If <file>
+is not provided, the file name all-theories is assumed. Each
 line in <file> has the form <lib> [: <options>], where <lib> is a directory
 name and <options> are paramters to proveit. If <lib> is empty, options apply
 to all libraries thenceforth.  Output is saved in <outfile>,  which can be
 specified using the option -out.  Otherwise, a default name having the
-form <file><postfix>.summaries is used.
+form <file><postfix>.grandtotals is used.
 The <postfix> depends on the options -do,-but,-from,-to,-after,-before
 given to the script.
 Unless the option -out is explictly use, an output file is not created when
@@ -100,7 +100,7 @@ GetOptions('addpath'=>\$addpath,
            'from=s'=>\$from,
 	   'help'=>\$help,
            'lisp=s'=>\$lisp,
-	   'log!' => \$log,
+	   'log' => \$log,
 	   'out=s'=>\$out,
 	   'test'=>\$test,
            'to=s'=>\$to,
@@ -131,7 +131,13 @@ if ($version) {
 usage if $help;
 
 $file = shift;
-die "$usageln\n" if !$file || shift; 
+if (!$file) {
+    $file = 'all-theories';
+} elsif ( ! -f $file ) {
+    die 'File $file not found';
+}
+
+die "$usageln\n" if shift; 
 
 @dolist = split /,/,join(',',@do);
 foreach (@dolist) {
@@ -160,7 +166,7 @@ if (!$out && !$cleanbin && !$execute && !$test) {
   $out .= "-to_$to" if $to;
   $out .= "-after_$after" if $after;
   $out .= "-before_$before" if $before;
-  $out .= ".summaries";
+  $out .= ".grandtotals";
   $out .= "-tc" if $typecheckonly;
 }
 
@@ -176,17 +182,16 @@ $overopts .= " --lisp $lisp" if $lisp;
 $overopts .= " --top $top" if $top;
 $overopts .= " --enable \"$enablelist\"" if $enablelist;
 $overopts .= " --verbose" if $verbose;
-if ($log) {
-  $overopts .= " --log";
-} else {
-  $overopts .= " --no-log";
-}
+$overopts .= " --log" if $log;
 
 print "Processing $file";
 print ". Output in $out" if $out;
 print "\n";
 
-$ENV{'PVS_LIBRARY_PATH'}="" if $clearpath;
+if ($clearpath) {
+  $ENV{'PVS_LIBRARY_PATH'}="";
+  $addpath=1;
+}
 
 if ($addpath) {
     $pwd=getcwd;
@@ -194,7 +199,7 @@ if ($addpath) {
     if ($pvslibrarypath) {
 	$ENV{'PVS_LIBRARY_PATH'}="$pwd:$pvslibrarypath";
     } else {
-	$ENV{'PVS_LIBRARY_PATH'}=$pwd;
+	$ENV{'PVS_LIBRARY_PATH'}="$pwd";
     }
 }
 
@@ -221,6 +226,7 @@ $go = "ok" if !($from || $after || @do);
 my $totalformulas = 0;
 my $totalproofs = 0;
 my @libraries=();
+my $libs = 0;
 
 while (<INFILE>) {
   $line = $_;
@@ -235,6 +241,7 @@ while (<INFILE>) {
       last if $before eq $lib;
       if (($go || grep { "$_" eq $lib } @dolist) && 
           !(grep { "$_" eq $lib } @butlist)) {
+	$libs += 1;
 	$command = "";
 	if ($execute) {
 	  if (-d $lib) {
@@ -332,7 +339,9 @@ while (<INFILE>) {
 		      last if $line =~ /:/;
 		      @list = split /\//,$line;
 		      if ($list[0] &&  !(grep {$_ eq $list[0]} @prelude) &&
-			  !grep {$_ eq $list[0]} @libraries) {
+			  !(grep {$_ eq $list[0]} @libraries) &&
+			  -d $list[0] && -f "$list[0]/$top.pvs") {
+			print `pwd`;
 			print "*** Warning: Library $list[0] is out of order. It should appear before $lib in $file\n";
 		      }
 		    }
@@ -354,13 +363,14 @@ while (<INFILE>) {
     }
   }
 }
-
+ my $mssg = "\n";
 if (!$cleanbin && !$typecheckonly && !$execute) {
   my $missed = $totalformulas-$totalproofs;
-  my $mssg = "\n*** Grand Total: $totalproofs proofs / $totalformulas formulas. Missed: $missed formulas.\n";
-  print $mssg;
-  $summary .= $mssg;
+  $mssg .= "*** Grand Totals: $totalproofs proofs / $totalformulas formulas. Missed: $missed formulas.\n";
 }
+$mssg .= "*** Number of libraries: $libs\n"; 
+print $mssg;
+$summary .= $mssg;
 
 close(INFILE);
 if ($out) {

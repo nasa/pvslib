@@ -41,7 +41,9 @@ The PVS developments `TCASII`, `WellClear`,  and `DAIDALUS` are now
 of the
 [GitHub WellClear distribution](https://github.com/nasa/WellClear). The PVS development `PRECiSA`  is now
 [available](https://github.com/nasa/PRECiSA/tree/master/PVS) as part 
-of the [GitHub PRECiSA distribution](https://github.com/nasa/PRECiSA).
+of the [GitHub PRECiSA distribution](https://github.com/nasa/PRECiSA). The PVS development `PolyCARP`  is now
+[available](https://github.com/nasa/PolyCARP/tree/master/PVS) as part 
+of the [GitHub PolyCARP distribution](https://github.com/nasa/PolyCARP).
 
 Getting the Most Stable Version 
 -
