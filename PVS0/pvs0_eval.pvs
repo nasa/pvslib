@@ -1,0 +1,73 @@
+pvs0_eval[T:TYPE+] : THEORY
+BEGIN
+
+  IMPORTING scp_iff_pvs0[T], lex2
+  	    
+  false_val : VAR Val 
+  eval_op1  : VAR [nat->[Val->Val]]
+  eval_op2  : VAR [nat->[[Val,Val]->Val]]
+  pvs0      : VAR PVS0
+
+  pvs0_eval_expr(false_val,eval_op1,eval_op2)
+		(expr:PVS0Expr,
+		 body:PVS0Expr | terminating?(false_val,eval_op1,eval_op2,body),
+		 val:Val | EXISTS (path: (valid_path(body))):
+		            subterm_at(body,path) = expr AND
+		            eval_conds((false_val,eval_op1,eval_op2,body),path_conditions(body,path),val)) :
+  RECURSIVE { v: Val | semantic_rel_expr(false_val,eval_op1,eval_op2)(expr,body,val,v) } =
+   CASES expr OF
+      cnst(v) : v,
+      vr : val,
+      op1(op,arg) : LET v = pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg,body,val) IN
+                    eval_op1(op)(v),
+      op2(op,arg1,arg2) :  LET v1 = pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg1,body,val),
+                               v2 = pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg2,body,val) IN
+                           eval_op2(op)(v1,v2),
+      ite(cnd,arg1,arg2) : LET vc = pvs0_eval_expr(false_val,eval_op1,eval_op2)(cnd,body,val) IN
+                           IF false_val /= vc THEN
+                             pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg1,body,val)
+                           ELSE
+                             pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg2,body,val)
+                           ENDIF,
+      rec(arg) : LET v = pvs0_eval_expr(false_val,eval_op1,eval_op2)(arg,body,val) IN
+                 pvs0_eval_expr(false_val,eval_op1,eval_op2)(body,body,v)
+    ENDCASES
+  MEASURE lex2(wfm_tcc(false_val,eval_op1,eval_op2,body)(val), sizepvs0(expr))
+
+  pvs0_eval(pvs0:PVS0 | terminating?(pvs0))(val:Val) : {v:Val | semantic_rel_expr(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4,val,v)} =
+    pvs0_eval_expr(pvs0`1,pvs0`2,pvs0`3)(pvs0`4,pvs0`4,val)
+
+  pvs0_eval_correct : THEOREM
+    FORALL (pvs0:PVS0 | terminating?(pvs0))(arg,val:Val):
+      semantic_rel(pvs0,arg,val) IFF val = pvs0_eval(pvs0)(arg)
+
+%  pvs0_eval_conds_rec(false_val,eval_op1,eval_op2)
+%                     (body:PVS0Expr | terminating?(false_val,eval_op1,eval_op2,body),
+%	 	     cnds:Conditions,
+%		     (val:Val | FORALL (i:below(length(cnds))) : EXISTS (path:(valid_path(body))):
+%		     	        LET expr = pvs0_bool_expr(nth(cnds,i)) IN
+%		                subterm_at(body,path) = expr AND
+%		                eval_conds((false_val,eval_op1,eval_op2,body),path_conditions(body,path),val))) :
+%    RECURSIVE { b: bool | b = eval_conds_rec(false_val,eval_op1,eval_op2)(body,cnds,val) } =
+%    CASES cnds OF
+%      null : TRUE,
+%      cons(a,q) : CASES a OF
+%                     pvs0bool(expr) : pvs0_eval_expr(false_val,eval_op1,eval_op2)
+%                                      (expr,body,val) /= false_val,
+%                     pvs0not(expr) :  pvs0_eval_expr(false_val,eval_op1,eval_op2)
+%                                      (expr,body,val) = false_val
+%                  ENDCASES AND 
+%                  pvs0_eval_conds_rec(false_val,eval_op1,eval_op2)(body,q,val)
+%    ENDCASES
+%  MEASURE cnds BY <<
+%
+%
+%  pvs0_tcc_termination_eq : LEMMA
+%    FORALL (wfm:WFM): pvs0_tcc_termination_pred(pvs0)(wfm) = 
+%      (FORALL (env:Val)(cc:(pvs0_tcc_valid_cc(pvs0`4))):
+%       eval_conds(pvs0,cc`cnds,env) IMPLIES 
+%       LET vact = pvs0_eval_expr(pvs0`1,pvs0`2,pvs0`3)
+%                                (get_arg(cc`rec_expr),pvs0`4,env) IN
+%       lt(wfm(vact), wfm(env)))
+
+END pvs0_eval
