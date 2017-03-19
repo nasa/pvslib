@@ -86,7 +86,7 @@ This program is distributed in the hope that it will be useful, but
 WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
-[PGP]: http://koti.kapsi.fi/~dtw/pgp-key.asc
+[PGP]: http://www.iki.fi/tlikonen/pgp-key.asc
 
 
 Interface (API)
