@@ -240,80 +240,17 @@
 
 ;;; END COLLECT-MONOMIALS
 
-(defun check-name (name)
-  (let* ((name (if (stringp name) (intern name) name))
-	 (pc-name (pc-parse name 'expr)))
-    (resolve pc-name 'expr nil)))
-
-(defun get-hash-keys (hash)
-  (loop for k being the hash-key of hash
-	collect k))
-
-(defun get-pvs-expr (expr)
-  (if (stringp expr)
-      (pc-typecheck (pc-parse expr 'expr))
-    (ee-pvs-obj (car (eval-ext-expr expr)))))
-
 (defun get-string-expr (expr)
   (if (stringp expr) expr
-     (format nil "~a" (get-pvs-expr expr))))
-
-(defun enlistme (l)
-  (if (listp l) l (list l)))
-
-(defun iffequiv (a b)
-  (equal (null a) (null b)))
+     (format nil "~a" (extra-get-expr expr))))
 
 (defun is-neq-relation (expr)
   (let ((rel (car (is-relation expr))))
     (when (not (equal rel '=)) rel)))
 
-(defun neg-relation (rel)
-  (cond ((equal rel '<)  '>=)
-	((equal rel '<=) '>)
-	((equal rel '>)  '<=)
-	((equal rel '>=) '<)))
-
 (defun variable-id (expr)
   (if (name-expr? expr) (id expr)
     (format nil "~a" expr)))
-
-(defun is-variable-expr (expr &optional vars)
-  (and (or (name-expr? expr)
-	   (fieldappl? expr))
-       (or (null vars)
-	   (member (variable-id expr) vars :test #'string=))))
-
-(defun is-function-expr (expr name)
-  (and (application? expr)
-       (name-expr? (operator expr))
-       (string= (id (operator expr)) name)))
-
-(defun number-from-expr (expr)
-  (cond ((number-expr? expr) (number expr))
-	((decimal? expr)
-	 (/ (number (args1 expr)) (number (args2 expr))))
-	((is-prefix-operator expr '-)
-	 (let ((num (number-from-expr (args1 expr))))
-	   (when num (- num))))
-	((and (infix-application? expr)
-	      (name-expr? (operator expr)))
-	  (let* ((op  (car (member (id (operator expr)) '(+ - * /))))
-		 (num1 (and op (number-from-expr (args1 expr))))
-		 (num2 (and op num1 (number-from-expr (args2 expr)))))
-	    (when num2 (cond ((equal op '+) (+ num1 num2))
-			     ((equal op '-) (- num1 num2))
-			     ((equal op '*) (* num1 num2))
-			     ((equal op '/) (/ num1 num2))))))))
-
-(defun is-number-type (type)
-  (or (and (type-name? type)
-           (equal type *number*))
-      (and (subtype? type)
-	   (is-number-type (supertype type)))))
-
-(defun is-number-expr (expr)
-  (is-number-type (type expr)))
 
 ;; Get intervals for each variable in vars in relational formulas fms.
 ;; If vars is null get all variables. Return variable list
@@ -326,24 +263,24 @@
 		   (isincl  (or (equal rel '>=) (equal rel '<=))))
 	      (and rel (not (equal rel '=))
 		   (cond ((is-variable-expr (args1 fm) vars)
-			  (let ((num (number-from-expr (args2 fm))))
+			  (let ((num (extra-get-number-from-expr (args2 fm))))
 			    (when num
 			      (insert-interval (variable-id (args1 fm)) num islb isincl))))
 			 ((is-variable-expr (args2 fm) vars)
-			  (let ((num (number-from-expr (args1 fm))))
+			  (let ((num (extra-get-number-from-expr (args1 fm))))
 			    (when num
 			      (insert-interval (variable-id (args2 fm)) num (not islb) isincl))))
 			 ((and (is-function-expr (args1 fm) 'abs)
 			       (is-variable-expr (args1 (args1 fm)) vars)
 			       (not islb))
-			  (let ((num (number-from-expr (args2 fm))))
+			  (let ((num (extra-get-number-from-expr (args2 fm))))
 			    (when num
 			      (insert-interval (variable-id (args1 (args1 fm))) (- num) t isincl)
 			      (insert-interval (variable-id (args1 (args1 fm))) num nil isincl))))
 			 ((and (is-function-expr (args2 fm) 'abs)
 			       (is-variable-expr (args1 (args2 fm)) vars)
 			       islb)
-			  (let ((num (number-from-expr (args1 fm))))
+			  (let ((num (extra-get-number-from-expr (args1 fm))))
 			    (when num
 			      (insert-interval (variable-id (args1 (args2 fm))) (- num) t isincl)
 			      (insert-interval (variable-id (args1 (args2 fm))) num nil isincl))))))))
@@ -473,12 +410,12 @@
 	   (if (not (member name vars :test #'string=))
 	       (cons name vars)
 	     vars)))
-	((number-from-expr expr) vars)
+	((extra-get-number-from-expr expr) vars)
 	((is-prefix-operator expr '-)
 	 (variables-in-poly (args1 expr) vars))
 	((and (or (is-infix-operator expr '^)
 		  (is-infix-operator expr '/))
-	      (number-from-expr (args2 expr)))
+	      (extra-get-number-from-expr (args2 expr)))
 	 (variables-in-poly (args1 expr) vars))
 	((and (infix-application? expr)
 	      (name-expr? (operator expr))
@@ -486,56 +423,6 @@
 	 (variables-in-poly (args2 expr) (variables-in-poly (args1 expr) vars)))))
 
 ;;;; STRATEGIES
-
-(defstrat printf (msg &rest args)
-  (let ((msg (format nil "~%~a" msg))
-	(xxx (apply 'format (cons t (cons msg args)))))
-    (skip))
-  "[Extrategies] Prints the the Lisp formatted string MSG using the format arguments ARGS, but behaves
-like skip. ARGS can only have constant values.")
-
-(defstrat commentf (msg &rest args)
-  (let ((msg (apply 'format (cons nil (cons msg args)))))
-    (comment msg))
-  "[Extrategies] Adds the formatted comment MSG to the sequent using the format arguments ARGS.
-ARGS can only have constant values.")
-
-(defstrat name-label (name expr &optional hide?)
-  (let ((label (format nil "~a:" name))
-	(expr  (get-string-expr expr)))
-    (try-branch
-     (name name expr)
-     ((then
-       (label label -1)
-       (when hide? (hide label)))
-      (skip))
-     (skip)))
-  "[Extrategies] Name a expression and put a label on it")
-
-(defstrat inductionless__ (recvar &optional first)
-  (let ((name (freshname "V"))
-	(pre  (car (eval-ext-expr `(! * (-> ,recvar)))))
-	(term (when pre (format nil "~a" (ee-pvs-obj pre)))))
-    (if term
-	(branch (name-replace name term :hide? t)
-		((inductionless__ name)
-		 (skip)))
-      (when-not
-       first
-       (typepred recvar))))
-  "[Extrategies] Internal strategy")
-
-(defstrat inductionless (&optional (recvar "v"))
-  (if (forall-expr? (extra-get-formula 1))
-      (let ((recvar (format nil "~a!1" recvar)))
-	(then (skosimp* :preds? t)
-	      (repeat (inductionless__ recvar t))
-	      (assert)))
-    (then
-     (repeat (inductionless__ recvar t))
-     (assert)))
-  "[Extrategies] Extracts inductionless principle from definition of recursive function. RECVAR is the
-name of the quantified variable that encodes the recursive call.")
 
 (defstrat multipoly__ (pvspoly rel name vars)
   (let ((poly (get-multivar-polynomial pvspoly vars))
@@ -550,7 +437,7 @@ name of the quantified variable that encodes the recursive call.")
 	    (deg   (lambda-list (car poly)))
 	    (coeff (lambda-list (mapcar #'car (cadr poly))))
 	    (poly  (lambda-poly (mapcar #'cdr (cadr poly))))
-	    (mpoly (format nil "mk_mpoly(~a,~a,~a,~a~@[,~a~])"
+	    (mpoly (format nil "mk_mpoly(~a,~a,~a,~a~@[,reals.~a~])"
 			   poly deg terms coeff rel)))
 	(name-label name mpoly :hide? t))))
   "[Bernstein] Internal strategy")
@@ -559,13 +446,13 @@ name of the quantified variable that encodes the recursive call.")
   (if (check-name name)
       (printf "Name ~a already defined, please provide a fresh name for representing the polynomial"
 	      name)
-    (let ((expr    (get-pvs-expr poly))
+    (let ((expr    (extra-get-expr poly))
 	  (rel     (is-neq-relation expr))
-	  (pvspoly (cond (rel (let ((num (number-from-expr (args2 expr))))
+	  (pvspoly (cond (rel (let ((num (extra-get-number-from-expr (args2 expr))))
 				(if (and num (equal num 0)) (args1 expr)
 				  (mk-application '- (args1 expr) (args2 expr)))))
 			 ((is-number-expr expr) expr)))
-	  (vars    (and pvspoly (or (enlistme vars) (variables-in-poly pvspoly))))
+	  (vars    (and pvspoly (or (enlist-it vars) (variables-in-poly pvspoly))))
 	  (msg     (when (null vars)
 		     (format nil
 			     "Expression doesn't seem to be a polynomial or a polynomial inequality."))))
@@ -616,7 +503,7 @@ representation"
   (if (check-name name)
       (printf "Name ~a already defined, please provide a fresh name for representing the variables"
 	      name)
-    (let ((vars     (enlistme vars))
+    (let ((vars     (enlist-it vars))
 	  (fms      (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
       (try (multivars__ fms name vars)
 	   (let ((vars     (or vars (get-hash-keys *varbpts*)))
@@ -700,26 +587,26 @@ not try to prove the equivalence between the original polynomial and its Bernste
 		(fm      (extra-get-formula fnum))
 		(quant   (cond ((forall-expr? fm) 1)
 			       ((exists-expr? fm) -1))) ;; forall == quant > 0, exists == quant < 0
-		(proof   (or (not quant) (iffequiv (> fnum 0) (> quant 0)))) ;; proof=false : find counterexample
+		(proof   (or (not quant) (iff (> fnum 0) (> quant 0)))) ;; proof=false : find counterexample
 		(exprs   (cond ((exists-expr? fm) (reverse-conjuncts (expression fm)))
 			       ((and (forall-expr? fm) (implication? (expression fm)))
 				(cons (args2 (expression fm))
 				      (reverse-conjuncts (args1 (expression fm)))))))
 		(fms     (if quant (cdr exprs)
-		   (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
+			   (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
 		(expr    (if quant (car exprs) fm))
-		(rel     (if (iffequiv proof (> fnum 0)) (is-neq-relation expr)
+		(rel     (if (iff proof (> fnum 0)) (is-neq-relation expr)
 			   (neg-relation (is-neq-relation expr))))
 		(vardir  (or vardir
 			     (if (member rel '(> >=))
 				 "a2l__MaxVarMinDir"
 			       "a2l__MaxVarMaxDir")))
 		(pvspoly (when rel
-			   (let ((num (number-from-expr (args2 expr))))
+			   (let ((num (extra-get-number-from-expr (args2 expr))))
 			     (if (and num (equal num 0)) (args1 expr)
 			       (mk-application '- (args1 expr) (args2 expr))))))
 		(vars    (when rel
-			   (or (enlistme vars)
+			   (or (enlist-it vars)
 			       (if quant (mapcar #'(lambda (x) (format nil "~a" (id x))) (bindings fm))
 				 (variables-in-poly pvspoly)))))
 		(msg     (when (not vars)
@@ -727,9 +614,7 @@ not try to prove the equivalence between the original polynomial and its Bernste
 	    (when fm
 	      (if msg
 		  (printf msg)
-		(then
-		 (relabel "bp:" fnum)
-		 (bernstein__ quant proof fms vars rel pvspoly depth vardir equiv? name)))))))
+		(bernstein__ fnum quant proof fms vars rel pvspoly depth vardir equiv? name))))))
   "[Bernstein] Proves polynomial inequality FNUM using Bernstein's basis on VARS for DEPTH levels
 of recursion. The option VARDIR is an heuristic for selecting variables and direction when
 subdividing the range of the variables, e.g., a2l__MaxVarMinDir, a2l__MaxVarMaxDir,
@@ -738,69 +623,70 @@ is nil, an appropriate method is automatically selected. If equiv? is nil, the s
 try to prove the equivalence between the original polynomial and its Bernstein representation."
   "[Bernstein] Proving polynomial inequality using Bernstein's basis...")
 
-(defstrat bernstein__ (quant proof fms vars rel pvspoly depth vardir equiv? polyname)
-  (let ((msgvars  (format nil "variables (: ~{~a~^, ~} :)" vars))
-	(varsname (format nil "vs~a" polyname))
-	(sko      (and quant proof))
-	(inst     (and quant (not proof)))
-	(bps      (format nil "a2l__multipoly_strategy(~a,~a,~a,~a,~:[false~;true~])"
-			  polyname varsname depth vardir proof)))
-    (try
-     (multivars__ fms varsname vars)
-     (try (multipoly__ pvspoly rel polyname vars)
-	  (then
-	   (eval-expr bps)
-	   (let ((result    (args2 (extra-get-formula -1)))
-		 (isunknown (and (constructor-name-expr? result) (equal (id result) '|Unknown|)))
-		 (istrue    (and (constructor-name-expr? result) (equal (id result) '|IsTrue|)))
-		 (isfalse   (and (not isunknown) (not istrue))))
-	     (if isunknown
-		 (then
-		  (delabel "bp:")
-		  (printf "Inequality could not be proved or disproved. Try a depth higher than ~a."
-			  depth))
-	       (if (and istrue (not inst))
-		   (let ((newvars   (if sko (mapcar #'(lambda (x) (format nil "~a__" x))
-						    vars) vars))
-			 (lvars     (lambda-list newvars))
-			 (lvarsname (format nil "vars_~a" polyname)))
-		     (then
-		      (lemma "a2l__multipoly_strategy_true")
-		      (inst? -1)
-		      (assert)
-		      (branch (split -1)
-			      ((then
-				(hide -2)
-				(relabel "bp:" -1)
-				(when sko (skolem "bp:" newvars) (flatten))
-				(expand "forall_X_poly_interval")
-				(name-label lvarsname lvars :hide? t)
-				(inst -1 lvarsname)
-				(branch (split -1)
-					((then
-					  (hide-all-but "bp:")
-					  (when equiv? (multipoly-eq__ polyname)))
-					 (then
-					  (hide-all-but "bp:")
-					  (expand lvarsname)
-					  (multivars-bet__ varsname)))))
-			       (eval-formula)))))
-		 (if (and isfalse (not inst))
-		     (then (delabel "bp:")
-			   (commentf "Counterexample has been found with ~a." msgvars))
-		   (if isfalse
+(defstrat bernstein__ (fnum quant proof fms vars rel pvspoly depth vardir equiv? polyname)
+  (with-fresh-labels
+   (bp! fnum)
+   (let ((msgvars  (format nil "variables (: ~{~a~^, ~} :)" vars))
+	 (varsname (format nil "vs~a" polyname))
+	 (sko      (and quant proof))
+	 (inst     (and quant (not proof)))
+	 (bps      (format nil "a2l__multipoly_strategy(~a,~a,~a,~a,~:[false~;true~])"
+			   polyname varsname depth vardir proof)))
+     (try
+      (multivars__ fms varsname vars)
+      (try (multipoly__ pvspoly rel polyname vars)
+	   (spread
+	    (eval-expr bps :auto? nil)
+	    ((let ((result    (args2 (extra-get-formula -1)))
+		   (isunknown (and (constructor-name-expr? result) (equal (id result) '|Unknown|)))
+		   (istrue    (and (constructor-name-expr? result) (equal (id result) '|IsTrue|)))
+		   (isfalse   (and (not isunknown) (not istrue))))
+	       (if isunknown
+		   (printf "Inequality could not be proved or disproved. Try a depth higher than ~a."
+			   depth)
+		 (if (and istrue (not inst))
+		     (let ((newvars   (if sko (mapcar #'(lambda (x) (format nil "~a__" x))
+						      vars) vars))
+			   (lvars     (lambda-list newvars))
+			   (lvarsname (format nil "vars_~a" polyname)))
+		       (then
+			(lemma "a2l__multipoly_strategy_true")
+			(inst? -1)
+			(assert)
+			(branch (split -1)
+				((then
+				  (hide -2)
+				  (relabel bp! -1)
+				  (when sko (skolem bp! newvars) (flatten))
+				  (expand "forall_X_poly_interval")
+				  (name-label lvarsname lvars :hide? t)
+				  (inst -1 lvarsname)
+				  (branch (split -1)
+					  ((then
+					    (hide-all-but bp!)
+					    (when equiv? (multipoly-eq__ polyname)))
+					   (then
+					    (hide-all-but bp!)
+					    (expand lvarsname)
+					    (multivars-bet__ varsname)))))
+				 (eval-formula)))))
+		   (if (and isfalse (not inst))
+		       (commentf "Counterexample has been found with ~a." msgvars)
+		     (when isfalse
 		       (let ((cex    (format nil "cex_~a" polyname))
-			     (lex    (format nil "list2array(0)(~a)" (get-pvs-expr '(! -1 r 1))))
+			     (lex    (format nil "list2array(0)(~a)" (extra-get-expr '(! -1 r 1))))
 			     (inst   (mapcar #'(lambda (x) (format nil "~a(~a)" cex x))
 					     (fromto 0 (- (length vars) 1))))
-			     (stinst (cons 'inst (cons "bp:" inst))))
+			     (stinst (cons 'inst (cons bp! inst))))
 			 (then
 			  (name cex lex)
 			  stinst
-			  (eval-formula "bp:")))
-		     (skip)))))))
-	  (skip))
-     (skip)))
+			  (eval-formula bp!))))))))
+	     (then (hide bp!)
+		   (expand polyname)
+		   (grind))))
+	   (skip))
+      (skip))))
   "[Bernstein] Internal strategy")
 
 

@@ -334,8 +334,9 @@
 
 ;; Check if name has been defined in the proof context
 (defun check-name (name)
-  (let ((pc-name (pc-parse name 'expr)))
-    (resolve pc-name 'expr nil *current-context*)))
+  (let* ((name (if (stringp name) (intern name) name))
+	 (pc-name (pc-parse name 'expr)))
+    (resolve pc-name 'expr nil)))
 
 ;; Check if an identifier is a free variable (and not in but list)
 ;; If a type is provided, check if the given name is a free variable of the given type.
@@ -544,6 +545,9 @@
            (equal (id type) (id *number*)))
       (and (subtype? type)
 	   (is-number-type (supertype type)))))
+
+(defun is-number-expr (expr)
+  (is-number-type (type expr)))
 
 ;; Merges two lists in one string using 
 ;; :empty as the empty-string
