@@ -1,16 +1,28 @@
 accum_err_flr[
   radix : above(1),
-  (IMPORTING cr_flr[radix])
+  (IMPORTING float[radix])
   b     : Format,
-  round : {round: RestrictedRounding(b,EvenClosest?) | rounded_mode?(b)(round)},
-  RtoF  : CanonicRoundingFun(b,round)
+  round: ClosestRoundingPred[radix](b),
+  RtoF : { RtoF: CanonicRoundingFun(b,round) |
+                 exact_rep_conservation[radix](b,round)(RtoF) }
 ]: THEORY
 BEGIN
+  ASSUMING
+
+    round_even_closest: ASSUMPTION
+      FORALL(x:real,f:(Fbounded?(b))): round(x,f) IMPLIES EvenClosest?(b)(x,f)
+
+    round_rounded_mode: ASSUMPTION
+      rounded_mode?(b)(round)
+
+  ENDASSUMING
+
   f1 : VAR (Fbounded?(b))
   e1 : VAR nonneg_real
   r1 : VAR real
 
-  IMPORTING reals@abs_lems,
+  IMPORTING cr_flr[radix,b,round,RtoF],
+  	    reals@abs_lems,
             interval_arith@interval_mps
 
   flr_aerr_bound(r1,e1): real = e1+1
@@ -27,7 +39,7 @@ BEGIN
 
   IMPORTING accum_err_op1sch[
               (Fbounded?(b)), FtoR, RtoF, ulp(b, round, RtoF),
-	      LAMBDA(f1): TRUE, Ffloor(b),
+	      LAMBDA(f1): TRUE, Ffloor,
 	      LAMBDA(r1): TRUE, floor,
 	      LAMBDA(r1,e1): TRUE,
 	      flr_aerr_bound,
@@ -36,7 +48,7 @@ BEGIN
 
   accum_err_bound: LEMMA
     abs(FtoR(f1)-r1) <= e1 
-    IMPLIES abs(FtoR(Ffloor(b)(f1)) - floor(r1))
+    IMPLIES abs(FtoR(Ffloor(f1)) - floor(r1))
             <= flr_aerr_bound(r1,e1)
 	       + ulp(b, round, RtoF)(flr_ulp_bound(r1,e1)) / 2    
 

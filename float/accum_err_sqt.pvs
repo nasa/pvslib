@@ -1,16 +1,28 @@
 accum_err_sqt[
   radix : above(1),
-  (IMPORTING cr_sqt[radix])
+  (IMPORTING float[radix])
   b     : Format,
-  round : {round: RestrictedRounding(b,EvenClosest?) | rounded_mode?(b)(round)},
-  RtoF  : CanonicRoundingFun(b,round)
+  round: ClosestRoundingPred[radix](b),
+  RtoF : { RtoF: CanonicRoundingFun(b,round) |
+                 exact_rep_conservation[radix](b,round)(RtoF) }
 ]: THEORY
 BEGIN
+  ASSUMING
+
+    round_even_closest: ASSUMPTION
+      FORALL(x:real,f:(Fbounded?(b))): round(x,f) IMPLIES EvenClosest?(b)(x,f)
+
+    round_rounded_mode: ASSUMPTION
+      rounded_mode?(b)(round)
+
+  ENDASSUMING
+
   f1 : VAR (Fbounded?(b))
   e1 : VAR nonneg_real
   r1 : VAR real
 
-  IMPORTING reals@abs_lems,
+  IMPORTING cr_sqt[radix,b,round,RtoF],
+  	    reals@abs_lems,
             interval_arith@interval_mps
 
   sqt_aerr_bound(r1,e1): nonneg_real = sqrt(e1)
@@ -31,7 +43,7 @@ BEGIN
 
   IMPORTING accum_err_op1sch[
               (Fbounded?(b)), FtoR, RtoF, ulp(b, round, RtoF),
-	      LAMBDA(f1): FtoR(f1)>=0, Fsqrt(b),
+	      LAMBDA(f1): FtoR(f1)>=0, Fsqrt,
 	      LAMBDA(r1): r1>=0, sqrt,
 	      LAMBDA(r1,e1): TRUE,
 	      sqt_aerr_bound,
@@ -42,7 +54,7 @@ BEGIN
     abs(FtoR(f1)-r1) <= e1 AND
     r1 >= 0 AND
     FtoR(f1) >= 0
-    IMPLIES abs(FtoR(Fsqrt(b)(f1)) - sqrt(r1))
+    IMPLIES abs(FtoR(Fsqrt(f1)) - sqrt(r1))
             <= sqt_aerr_bound(r1,e1)
 	       + ulp(b, round, RtoF)(sqt_ulp_bound(r1,e1)) / 2    
 

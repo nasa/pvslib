@@ -11,7 +11,7 @@ IMPORTING
 	  % Currently links with "lnexp" (non-foundational).
 	  % You change this to "lnexp_fnd" if you wish.
 	  % lnexp@ln_exp,      
-          % lnexp@expt,        
+          % lnexsp@expt,        
 	  % lnexp@ln_approx
 	  lnexp_fnd@ln_exp,  
 	  lnexp_fnd@expt,    
@@ -26,10 +26,11 @@ Format: TYPE = [# Prec:above(1), dExp:nat #]
           
 vNum(b:Format):posnat = radix^Prec(b)  
 		      
-f,g: VAR float
-e1 : VAR int
-b  : VAR Format
-x,y: VAR real
+f,g  : VAR float
+z,e1 : VAR int
+b    : VAR Format
+x,y  : VAR real
+n    : VAR nat
 
 radix_div_vNum : lemma integer_pred(vNum(b) / radix)
 radix_less_vNum: lemma radix <= vNum(b)
@@ -190,6 +191,16 @@ RND : TYPE = [b:Format -> [[real,(Fbounded?(b))]->bool]]
     (FORALL(f: (Fbounded?(b)) | FtoR(f) /= 0): RtoF(FtoR(f)) = f)
     AND Fnum(RtoF(0)) = 0
 
+  exactly_representable(b:Format,round:Rounding(b),RtoF:RNDF(b,round))(x:real): bool =
+    FtoR(RtoF(x)) = x
+
+  exact_rep_conservation(b:Format,round:Rounding(b))(RtoF:RNDF(b,round)): bool =
+    FORALL(f:(Fbounded?(b)),n:below(Prec(b)-Fexp(f))):
+      exactly_representable(b,round,RtoF)(radix^n*FtoR(f))
+
+  FtoR_inverse(b:Format,round:Rounding(b))(RtoF:RNDF(b,round)): bool =
+    FORALL(f:(Fcanonic?(b))): RtoF(FtoR(f)) = f
+
 % Common rounding modes
 isMin?(b)(r:real,min:(Fbounded?(b))):bool =  (FtoR(min) <= r) AND
   (forall (f:(Fbounded?(b))): FtoR(f) <= r => FtoR(f) <= FtoR(min))
@@ -205,9 +216,20 @@ ToZero?(b)(r:real,c:(Fbounded?(b))):bool =
 Closest?(b)(r:real,c:(Fbounded?(b))):bool =  
   (forall (f:(Fbounded?(b))): abs(FtoR(c)-r) <= abs(FtoR(f)-r))
 
+  ClosestRoundingPred(b:Format): TYPE =
+      { round?: Rounding(b) |
+           FORALL(x:real,f:(Fbounded?(b))): round?(x,f) IMPLIES Closest?(b)(x,f) }
+
+  ClosestRoundingFun(b:Format,round:Rounding(b)): TYPE =
+    { RtoF: RNDF(b,round) | FORALL(x:real): Closest?(b)(x,RtoF(x)) }
+
 EvenClosest?(b)(r:real,c:(Fbounded?(b))):bool =  Closest?(b)(r,c) AND
   (even?(Fnum(Fnormalize(b)(c))) OR 
       (forall (f:(Fbounded?(b))): Closest?(b)(r,f) => FtoR(f)=FtoR(c)::real))
+
+  EvenClosestRoundingPred(b:Format): TYPE =
+      { round?: Rounding(b) |
+           FORALL(x:real,f:(Fbounded?(b))): round?(x,f) IMPLIES EvenClosest?(b)(x,f) }
 
 AFZClosest?(b)(r:real,c:(Fbounded?(b))):bool =  Closest?(b)(r,c) AND
   (abs(r) <= abs(FtoR(c)) OR 
@@ -278,7 +300,6 @@ RND_aux(b)(x:nonneg_real): (Fcanonic?(b)) =
      then (# Fnum:=floor(x*radix^(dExp(b))), Fexp:=-dExp(b) #)
      else let e=log_nat(x*radix ^ (1 + dExp(b) - Prec(b)),radix)`1-dExp(b) in
           (# Fnum:=floor(x*radix^(-e)), Fexp:=e #)
-%          (# Fnum:=floor(x/radix^e), Fexp:=e #)
   endif
 
 RND_aux_alt(b)(x:nonneg_real): (Fcanonic?(b)) =
@@ -319,7 +340,6 @@ RND_EClosest(b)(x:real): (Fcanonic?(b)) =
      ELSE                         max ENDIF
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% End of definitions %%%%%%%%%%%%%%%%%%%%%%%%%%%
-n          : VAR nat
 e2         : VAR int
 q,p        : VAR float
 z1,z2,z3,r : VAR real
@@ -731,6 +751,32 @@ Closest_RoundedMode : lemma RoundedMode?(b)(Closest?)
 
 RND_EClosest_isEclosest : lemma EvenClosest?(b)(r,RND_EClosest(b)(r))
 
+  Closest_bounded_exact_rep: LEMMA
+    FORALL(b:Format,round:Rounding(b))
+	  (RtoF:RNDF(b,round) | FORALL(r:real): Closest?(b)(r,RtoF(r)))
+	  (x: real):
+      (EXISTS(num,exp:int): abs(num) < vNum(b) AND
+      			    -dExp(b) <= exp AND
+			    x = num*radix ^ exp)
+        IMPLIES exactly_representable(b,round,RtoF)(x)
+      
+  ClosestRtoF_exact_rep_conv: COROLLARY
+    FORALL(b:Format,round:Rounding(b))
+	  (RtoF:RNDF(b,round) | FORALL(r:real): Closest?(b)(r,RtoF(r))):
+    exact_rep_conservation(b,round)(RtoF)
+
+  Closest_int_exact_rep: COROLLARY
+    FORALL(b:Format,round:Rounding(b))
+	  (RtoF:RNDF(b,round) | FORALL(r:real): Closest?(b)(r,RtoF(r)))
+	  (z: int | abs(z) < vNum(b)):
+      exactly_representable(b,round,RtoF)(z) 
+
+  ClosestRNDF_FtoR_inverse: LEMMA
+    FORALL(b     : Format,
+  	   round : ClosestRoundingPred(b))
+  	  (RtoF  : CanonicRoundingFun(b,round)):
+      FtoR_inverse(b,round)(RtoF)
+
 EvenClosest_Total       : lemma Total?(b)(EvenClosest?)
 
   EvenClosest_total: LEMMA
@@ -872,6 +918,12 @@ FulpFpred2 : lemma
 	  RtoF  : (injective_rounding(b,round))):
     abs( FtoR(f) - x ) <= e
     IMPLIES Fulp(b)(f) <= ulp(b,round,RtoF)(abs(x) + e)
+
+  rndmaxismax_j: JUDGEMENT
+    RND_Max(b) HAS_TYPE CanonicRoundingFun(b, isMax?(b))
+
+  rndminismin_j: JUDGEMENT
+    RND_Min(b) HAS_TYPE CanonicRoundingFun(b, isMin?(b))
 
   rndeclosest_j: JUDGEMENT
     RND_EClosest(b) HAS_TYPE CanonicRoundingFun(b, EvenClosest?(b))

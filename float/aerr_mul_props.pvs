@@ -1,0 +1,54 @@
+aerr_mul_props[
+  radix: above(1),
+  (IMPORTING float[radix])
+  b    : Format[radix],
+  round: ClosestRoundingPred[radix](b),
+  RtoF : { RtoF: CanonicRoundingFun(b,round) |
+                 exact_rep_conservation[radix](b,round)(RtoF) }
+]: THEORY
+BEGIN
+  ASSUMING
+
+    round_even_closest: ASSUMPTION
+      FORALL(x:real,f:(Fbounded?(b))): round(x,f) IMPLIES EvenClosest?(b)(x,f)
+
+    round_rounded_mode: ASSUMPTION
+      rounded_mode?(b)(round)
+
+  ENDASSUMING
+
+  IMPORTING accum_err_mul[radix,b,round,RtoF],
+  	    std_mul_props
+	    
+  % Cases for which the multiplication doesn't produce additional roundoff error
+
+  r,r1,r2: VAR real
+  e,e1,e2: VAR nonneg_real
+  n: VAR nat
+
+  power_of_radix_left_mult_pre_r(r1,r2:real): MACRO bool =
+    EXISTS(n :below(Prec(b))): r1 = radix^n
+
+  power_of_radix_left_mult_pre_f(f1,f2:(Fcanonic?(b))): MACRO bool =
+    EXISTS(n :below(Prec(b)) | n < Prec(b) - Fexp(f2)): f1 = RtoF(radix^n)
+
+  IMPORTING accum_err_exact_op2sch
+   [(Fcanonic?(b)), FtoR, 
+   power_of_radix_left_mult_pre_f,
+   LAMBDA(f1:(Fcanonic?(b)),
+          f2:(Fcanonic?(b))|power_of_radix_left_mult_pre_f(f1,f2)): Fmul(f1,f2),
+   power_of_radix_left_mult_pre_r,
+   LAMBDA(r1:real,r2:real|power_of_radix_left_mult_pre_r(r1,r2)): r1*r2,
+   LAMBDA(r1,e1,r2,e2): TRUE,
+   mul_aerr_bound] AS aelemmath_exact_mul_l
+	      
+  accum_err_bound_exact_l: LEMMA
+   FORALL
+         (   n : nat | n < Prec(b),
+	     r : real,
+	     f : (Fcanonic?[radix](b)) | n < Prec(b) - Fexp(f) ):
+     abs(FtoR(f)-r) <= e
+     IMPLIES abs(FtoR(Fmul(RtoF(radix^n),f)) - (radix^n*r))
+               <= mul_aerr_bound(radix^n,0,r,e)
+
+END aerr_mul_props

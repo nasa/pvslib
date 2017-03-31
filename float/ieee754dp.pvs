@@ -5,12 +5,15 @@ ieee754dp: THEORY
 BEGIN
 
   ieee754radix: MACRO nat = 2
+  ieee754dp_prec: MACRO nat = 53
+  ieee754dp_dexp: MACRO nat = 1074
 
-  IMPORTING float[ieee754radix]
+  IMPORTING float[ieee754radix],
+   	    float_props_rounding[ieee754radix]
 
   x,x1,x2: VAR real
 
-  double_precision_format: Format = (# Prec := 53, dExp := 1074 #)
+  double_precision_format: Format=(#Prec:=ieee754dp_prec,dExp:=ieee754dp_dexp#)
 
   % double precision numbers 
   unb_double: TYPE = (Fcanonic?(double_precision_format))
@@ -34,9 +37,18 @@ BEGIN
         {round: RestrictedRounding[2](double_precision_format, EvenClosest?) |
                                  rounded_mode?(double_precision_format)(round) }
 
+  dp_closest?_closestroundingpred_j: JUDGEMENT
+    dp_closest? HAS_TYPE ClosestRoundingPred[2](double_precision_format)
+
   % real to double-precision conversion.
   RtoD(x1): { f:unb_double |  closest_double?(x1)(f) } =
     RND_EClosest(double_precision_format)(x1)
+
+  rtos_canonicroundfun_exactrepconservation_j: JUDGEMENT
+    RtoD HAS_TYPE {RtoF:
+          CanonicRoundingFun(double_precision_format, dp_closest?) |
+                exact_rep_conservation[2]
+                    (double_precision_format, dp_closest?)(RtoF)}
 
   DtoR(f1): real = FtoR(f1)
   CONVERSION DtoR
@@ -58,8 +70,6 @@ BEGIN
 
   % Unit in the Last Place (ulp) definition for double precision
   ulp_dp(x): nonneg_real = ulp(double_precision_format,dp_closest?,RtoD)(x)
-
-  Dabs(f) : unb_double = Fabs(f)
 
   DtoR_round: LEMMA
     abs(DtoR(RtoD(x1)) - x1) <= Dulp(RtoD(x1)) / 2
@@ -85,5 +95,20 @@ BEGIN
 
   RtoD_opp: LEMMA
     RtoD(-x) = Fopp(RtoD(x))
-    
+
+  % Rounding properties
+
+  unique_zero_RtoD: LEMMA
+    unique_zero(
+      double_precision_format,
+      EvenClosest?(double_precision_format),
+      RtoD)
+
+  dp_rep_exp_bound: LEMMA
+    FORALL(exp   : int | -ieee754dp_dexp <= exp,
+	   x     : real,
+	   err   : nonneg_real | abs(x)+err <= ieee754radix^exp,
+	   f     : unb_double  | abs(DtoR(f) - x) <= err):
+      Fexp(f) <= exp
+
 END ieee754dp

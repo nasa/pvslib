@@ -1,23 +1,34 @@
 accum_err_div[
   radix : above(1),
-  (IMPORTING cr_div[radix])
+  (IMPORTING float[radix])
   b     : Format,
-  round : {round: RestrictedRounding(b,EvenClosest?) | rounded_mode?(b)(round)},
+  round : ClosestRoundingPred(b),
   RtoF  : CanonicRoundingFun(b,round)
 ]: THEORY
 BEGIN
+  ASSUMING
+
+    round_even_closest: ASSUMPTION
+      FORALL(x:real,f:(Fbounded?(b))): round(x,f) IMPLIES EvenClosest?(b)(x,f)
+
+    round_rounded_mode: ASSUMPTION
+      rounded_mode?(b)(round)
+
+  ENDASSUMING
+  
   f,f1,f2 : VAR (Fbounded?(b))
   e,e1,e2 : VAR nonneg_real
   r,r1,r2 : VAR real
 
   IMPORTING reals@abs_lems,
-            interval_arith@interval_mps
+            interval_arith@interval_mps,
+	    cr_div[radix,b,round,RtoF]
   
   div_aerr_bound(r1,e1,r2,(e2|0<r2-e2 OR r2+e2<0)): nonneg_real =
     (abs(r2)*e1 + abs(r1)*e2) / (r2*r2 - e2*abs(r2))
 
-  % Error of the (correctly-rounded) function w.r.t. the real operation on
-  % the (real version of the) floating point numbers. 
+  % Error of the floating point implementation of the operation w.r.t. the real
+  % operation applied on the (real version of the) floating point numbers. 
   div_accum_err: LEMMA
     abs(FtoR(f1)-r1) <= e1 AND
     abs(FtoR(f2)-r2) <= e2 AND
@@ -37,13 +48,13 @@ BEGIN
     FtoR(f2)/=0
 
   div_fp(f1,(f2|div_fp_pre(f1,f2))): MACRO (Fbounded?(b)) =
-    Fdiv(b)(f1,f2)
+    Fdiv(f1,f2)
 
   IMPORTING accum_err_op2sch[
               (Fbounded?(b)), FtoR, RtoF, ulp(b, round, RtoF),
 	      
 %% This line generates unprovable tccs, is it a bug?
-% 	      LAMBDA(f1,f2): FtoR(f2)/=0, Fdiv(b),
+% 	      LAMBDA(f1,f2): FtoR(f2)/=0, Fdiv,
               div_fp_pre, div_fp,
 	      
 	      LAMBDA(r1,r2): r2/=0, /,
@@ -56,7 +67,7 @@ BEGIN
     abs(FtoR(f1)-r1) <= e1 AND
     abs(FtoR(f2)-r2) <= e2 AND
     (0<r2-e2 OR r2+e2<0)
-    IMPLIES abs(FtoR(Fdiv(b)(f1,f2)) - (r1/r2))
+    IMPLIES abs(FtoR(Fdiv(f1,f2)) - (r1/r2))
             <= div_aerr_bound(r1,e1,r2,e2)
 	       + ulp(b, round, RtoF)(div_ulp_bound(r1,e1,r2,e2)) / 2    
 

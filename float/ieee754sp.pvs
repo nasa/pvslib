@@ -5,12 +5,15 @@ ieee754sp: THEORY
 BEGIN
 
   ieee754radix: MACRO nat = 2
+  ieee754sp_prec: MACRO nat = 24
+  ieee754sp_dexp: MACRO nat = 149
 
-  IMPORTING float[ieee754radix]
-
+  IMPORTING float[ieee754radix],
+   	    float_props_rounding[ieee754radix]
+	    
   x,x1,x2: VAR real
 
-  single_precision_format: Format = (# Prec := 24, dExp := 149 #)
+  single_precision_format: Format=(#Prec:=ieee754sp_prec,dExp:=ieee754sp_dexp#)
 
   % single precision numbers 
   unb_single: TYPE = (Fcanonic?(single_precision_format))
@@ -34,10 +37,19 @@ BEGIN
         {round: RestrictedRounding[2](single_precision_format, EvenClosest?) |
                                  rounded_mode?(single_precision_format)(round) }
 
+  sp_closest?_closestroundingpred_j: JUDGEMENT
+    sp_closest? HAS_TYPE ClosestRoundingPred[2](single_precision_format)
+
   % real to single-precision conversion.
   RtoS(x1): { f:unb_single |  closest_single?(x1)(f) } =
     RND_EClosest(single_precision_format)(x1)
 
+  rtos_canonicroundfun_exactrepconservation_j: JUDGEMENT
+    RtoS HAS_TYPE {RtoF:
+          CanonicRoundingFun(single_precision_format, sp_closest?) |
+                exact_rep_conservation[2]
+                    (single_precision_format, sp_closest?)(RtoF)}
+		    
   StoR(f1): real = FtoR(f1)
   CONVERSION StoR
 
@@ -58,8 +70,6 @@ BEGIN
 
   % Unit in the Last Place (ulp) definition for single precision
   ulp_sp(x): nonneg_real = ulp(single_precision_format,sp_closest?,RtoS)(x)
-
-  Sabs(f) : unb_single = Fabs(f)
 
   StoR_round: LEMMA
     abs(StoR(RtoS(x1)) - x1) <= Sulp(RtoS(x1)) / 2
@@ -85,5 +95,20 @@ BEGIN
 
   RtoS_opp: LEMMA
     RtoS(-x) = Fopp(RtoS(x))
-    
+
+  unique_zero_RtoS: LEMMA
+    unique_zero(
+      single_precision_format,
+      EvenClosest?(single_precision_format),
+      RtoS)
+
+  sp_rep_exp_bound: LEMMA
+    FORALL(exp   : int | -ieee754sp_dexp <= exp,
+	   x     : real,
+	   err   : nonneg_real,
+	   f     : unb_single):
+    abs(StoR(f) - x) <= err AND
+    abs(x)+err <= ieee754radix^exp
+    IMPLIES Fexp(f) <= exp
+
 END ieee754sp
