@@ -334,9 +334,8 @@
 
 ;; Check if name has been defined in the proof context
 (defun check-name (name)
-  (let* ((name (if (stringp name) (intern name) name))
-	 (pc-name (pc-parse name 'expr)))
-    (resolve pc-name 'expr nil)))
+  (let ((pc-name (pc-parse name 'expr)))
+    (resolve pc-name 'expr nil *current-context*)))
 
 ;; Check if an identifier is a free variable (and not in but list)
 ;; If a type is provided, check if the given name is a free variable of the given type.
@@ -545,9 +544,6 @@
            (equal (id type) (id *number*)))
       (and (subtype? type)
 	   (is-number-type (supertype type)))))
-
-(defun is-number-expr (expr)
-  (is-number-type (type expr)))
 
 ;; Merges two lists in one string using 
 ;; :empty as the empty-string
@@ -2562,11 +2558,15 @@ name of the quantified variable that encodes the recursive call.")
 	     (if opl 
 		 (let ((op (cadr opl)))
 		   (if (listp op)
-		       (format nil "~a(~a)(~a)"
+		       (format nil "~a(~a)(~{~a~^, ~})"
 			       (car op) (ia-approx-n n (nth 1 op))
-			       (ia-interval-expr-rec (args1 expr) n vars subs extended localvars))
-		     (format nil "~a(~a)" op
-			     (ia-interval-expr-rec (argument expr) n vars subs extended localvars))))
+			       (let ((args (arguments expr)))
+				 (loop for i from 0 to (- (length args) 1)
+				       collect (ia-interval-expr-rec (nth i args) n vars subs extended localvars))))
+		     (format nil "~a(~{~a~^, ~})" op
+			     (let ((args (arguments expr)))
+				 (loop for i from 0 to (- (length args) 1)
+				       collect (ia-interval-expr-rec (nth i args) n vars subs extended localvars))))))
 	       (ia-error (format nil "Don't know how to translate function ~a" (id (operator expr)))))))
 	  (t (ia-error (format nil "Don't know how to translate expression ~a" expr))))))
 
@@ -3172,6 +3172,10 @@ unfolding of several definitions which is time consuming in PVS." "")
 		("aeboundsp_flr""bbiasp_flr.AEB_FLR")
 		("aeboundsp_flr_t""bbiasp_flr_t.AEB_FLR_T")
 		("aeboundsp_sqt""bbiasp_sqt.AEB_SQT")
+		("aeboundsp_sin"("bbiasp_sin.AEB_SIN"))
+		("aeboundsp_cos"("bbiasp_cos.AEB_COS"))
+		("aeboundsp_atn"("bbiasp_atn.AEB_ATN"))
+		("aeboundsp_atn_t"("bbiasp_atn_t.AEB_ATN_T"))
 		("aeboundsp_neg""bbiasp_neg.AEB_NEG")))
 
 (add-bb-ia-op '(("ulp_dp" "ULP_DP")
@@ -3182,4 +3186,8 @@ unfolding of several definitions which is time consuming in PVS." "")
 		("aebounddp_flr""bbiadp_flr.AEB_FLR")
 		("aebounddp_flr_t""bbiadp_flr_t.AEB_FLR_T")
 		("aebounddp_sqt""bbiadp_sqt.AEB_SQT")
+		("aebounddp_sin"("bbiadp_sin.AEB_SIN"))
+		("aebounddp_cos"("bbiadp_cos.AEB_COS"))
+		("aebounddp_atn"("bbiadp_atn.AEB_ATN"))
+		("aebounddp_atn_t"("bbiadp_atn_t.AEB_ATN_T"))
 		("aebounddp_neg""bbiadp_neg.AEB_NEG"))) 
