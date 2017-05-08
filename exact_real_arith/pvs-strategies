@@ -1,20 +1,34 @@
 (defparameter *era-builtin*
-  '(("+" "ADD") ("*" "MULT") ("neg" "NEG") ("^" "POW")
-    ("-" "SUB") ("min" "MIN") ("max" "MAX") ("exp" "EXP")
-    ("/" "DIV") ("sqrt" "SQRT") ("floor" "FLOOR") ("ln" "LN") ("pi" "PI")
-    ("acos" "ACOS") ("mod" "MOD") ("cos" "COS") ("sin" "SIN")))
-
-(defparameter *era-extended* nil)
+  '(;; Special cases
+    ("*real*" "cauchy_expr_Eval.r2E")
+    ("*var*" "cauchy_expr_Eval.X")
+    ("*neg*" "CauchyExpr_atd.NEG")
+    ("*excluded*" ("e"))
+    ;; Standard operations
+    ("+" "CauchyExpr_adt.ADD")
+    ("exp" "CauchyExpr_adt.EXP")
+    ("*" "CauchyExpr_adt.MULT")
+    ("^" "CauchyExpr_adt.POW")
+    ("-" "CauchyExpr_adt.SUB")
+    ("min" "CauchyExpr_adt.MIN")
+    ("max" "CauchyExpr_adt.MAX")
+    ("sin" "CauchyExpr_adt.SIN")
+    ("cos" "CauchyExpr_adt.COS")
+    ("/" "CauchyExpr_adt.DIV")
+    ("sqrt" "CauchyExpr_adt.SQRT")
+    ("floor" "CauchyExpr_adt.FLOOR")
+    ("ln" "CauchyExpr_adt.LN")
+    ("pi" "CauchyExpr_adt.PI")
+    ("acos" "CauchyExpr_adt.ACOS")
+    ("abs" "CauchyExpr_adt.ABS")
+    ("mod" "CauchyExpr_adt.MOD")
+    ("sq" "cauchy_expr_Eval.SQ")
+    ("e" "cauchy_expr_Eval.EE")))
 
 (defparameter *era-var-values* nil)
 
 (defparameter *cauchy-strategies* "
 % era-numerical: Computes a real-valued expression to a specified precision")
-
-(defun era-expr (expr n vars &optional subs)
-  (let ((*ia-builtin* *era-builtin*)
-        (*ia-extended* *era-extended*))
-    (ia-interval-expr expr n vars subs)))
 
 (defun era-make-var-list (vars)
   (let ((varlst
@@ -58,98 +72,91 @@
           collect v))
 
 (defstep era-numerical (expr
-                        &optional (precision 3) (zero-prec 5)
+                        &optional (precision 3) (zero-prec 5) bin-prec?
                         (safe? t)
                         vars
                         (equiv? t))
-  (let ((required-theories '(("CauchyStrategies__")
-                             "This strategy requires importing exact_real_arith@strategies"))
-        (subs        nil)
-        (name        (freshname "nml"))
-        (label       (freshlabel name))
-        (era-expr    (typecheck (extra-get-expr expr)))
-        (era-estr    (expr2str era-expr))
+  (let ((era-subs    *era-builtin*)
+	(era-texpr   (extra-get-expr expr))
+        (era-estr    (expr2str era-texpr))
+	(era-rews    '("sq_expt2"))
         (fms         (append (mapcar #'extra-get-formula-from-fnum
                                      (extra-get-fnums '-))
                              (mapcar #'(lambda (f)
                                          (make-negation
                                           (extra-get-formula-from-fnum f)))
                                      (extra-get-fnums '+))))
-        (vars        (ia-complete-vars (enlist-it vars)
-                                       (ia-get-vars-from-expr era-expr subs)))
+	(vars        (ia-complete-vars (enlist-it vars)
+                                       (ia-get-vars-from-expr era-texpr era-subs)))
         (initeqs     (extra-reset-evalexprs))
         (era-vars    (era-get-vars fms vars))
         (unvars      (era-find-unbound-vars era-vars))
-        (msg         (cond ((not (validate-required-theories required-theories))
-                            (format nil "Error in param: required-theories should have the form ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)"))
-                           ((and (req-ths-names required-theories)
-                                 (notany (lambda (thname) (check-name thname))
-                                         (req-ths-names required-theories)))
-                            (req-ths-errormsg required-theories))
+	(qth         (no-qualified-name "exact_real_arith@strategies.CauchyStrategies__"))
+        (msg         (cond (qth (format nil "This strategy requires theory ~a to be imported in the current context" qth))
                            (unvars
                             (format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbound."
                                     (cdr unvars) unvars (cdr unvars)))
-                           ((null era-expr)
+                           ((null era-texpr)
                             (format nil "Do not understand argument ~a." expr))))
         (era-var-lst (unless msg (era-make-var-list era-vars)))
-        (era-erexpr  (unless msg (era-expr era-expr precision era-vars subs)))
-        (names       (unless msg (append (mapcar #'car *ia-let-names*)
-                                         (list name))))
-        (exprs       (unless msg (append (mapcar #'cdr *ia-let-names*)
-                                         (list era-erexpr))))
-        (namexprs    (merge-lists names exprs))
-        ;; prec/zp need to be in binary digits.
+        (era-erexpr  (unless msg (ia-interval-expr era-texpr precision era-vars era-subs)))
+        ;; prec and zp need to be in binary digits.
         ;; 2^(-n) <= 10^(-p)/2  ==>  2^-(n-1) <= 10^(-p)  ==>
         ;;   -(n-1)ln(2) <= -p ln(10)  ==>  n >= 1 + p(ln(10) / ln(2))
-        (prec        (ceiling (1+ (* precision 3.322))))
-        (zp          (ceiling (1+ (* zero-prec 3.322))))
-        (era-eval    (format nil "cauchy_numerical.numerical(~a, ~a)(~a,~a)"
-                             prec zp name era-var-lst))
+        (prec        (if bin-prec? precision (ceiling (1+ (* precision 3.322)))))
+        (zp          (if bin-prec? zero-prec (ceiling (1+ (* zero-prec 3.322)))))
+	(pprec       (if bin-prec? (ceiling (1+ (/ precision 3.322))) precision))
         (era-lvars   (format nil "list2array(0)((: ~{~a~^, ~} :))" era-vars))
         (msg         (or msg (when (listp era-erexpr) (car era-erexpr)))))
     (if msg (printf msg)
-      (then
-       (name-label* namexprs :hide? t)
-       (eval-expr era-eval :safe? safe?)
-       (relabel label -1)
-       (let ((output  (args2 (extra-get-formula label)))
-             (ans     (get-expr-from-obj output 'ans))
-             (ans-str (format nil "~a" ans))
-             (p-str   (format nil "~a" prec)))
-         (if (string= ans-str "None")
-             (then
-              (printf "Cannot compute ~a" expr)
-              (fail))
-             (then
-              (lemma "cauchy_numerical.numerical_soundness")
-              (inst -1 name prec era-var-lst zp)
-              (beta -1)
-              (spread
-               (split -1)
-               ((then
-                 (flatten)
-                 (decompose-equality label)
-                 (replaces -1)
-                 (replaces -1)
-                 (simplify (-1 -2))
-                 (invoke (div-by -1 "2 ^ %1") p-str)
-                 (invoke (div-by -2 "2 ^ %1") p-str)
-                 (branch
-                  (invoke (case "%1 = %2") (! -1 2) era-estr)
-                  ((then
-                    (replaces -1)
-                    (expand "^")
-                    (repeat (expand "expt"))
-                    (decimalize -1 precision l)
-                    (decimalize -2 precision r))
-                   (then (hide -1) (when equiv? (interval-eq__$ names 1 subs))))))
-                (assert)))))))))
-
+      (with-fresh-names
+       ((nm era-erexpr))
+       (let ((era-eval (format nil "cauchy_numerical.numerical(~a, ~a)(~a,~a)"
+			       prec zp nm era-var-lst)))
+	 (then
+	  (eval-expr era-eval :safe? safe?)
+	  (with-fresh-labels
+	   ((!era -1))
+	   (let ((output  (args2 (extra-get-formula !era)))
+		 (ans     (get-expr-from-obj output 'ans))
+		 (ans-str (format nil "~a" ans))
+		 (p-str   (format nil "~a" prec)))
+	     (if (string= ans-str "None")
+		 (then
+		  (printf "Cannot compute ~a" expr)
+		  (fail))
+	       (then
+		(lemma "cauchy_numerical.numerical_soundness")
+		(inst -1 nm prec era-var-lst zp)
+		(beta -1)
+		(spread
+		 (split -1)
+		 ((then
+		   (flatten)
+		   (decompose-equality !era)
+		   (replaces -1)
+		   (replaces -1)
+		   (simplify (-1 -2))
+		   (invoke (div-by -1 "2 ^ %1") p-str)
+		   (invoke (div-by -2 "2 ^ %1") p-str)
+		   (branch
+		    (invoke (case "%1 = %2") (! -1 2) era-estr)
+		    ((then
+		      (replaces -1)
+		      (eval-expr (! -1 l))
+		      (replaces -1)
+		      (eval-expr (! -2 r))
+		      (replaces -1)
+		      (decimalize -1 pprec l)
+		      (decimalize -2 pprec r))
+		     (then (hide -1) (when equiv? (stop-rewrite "exp_1") (interval-eq__$ nm 1 era-subs era-rews))))))
+		  (assert))))))))))))
   "[Cauchy] Compute the value of EXPR such that PRECISION indicates an accuracy
-of 10^-PRECISION on the output. ZERO-PREC is used internally to determine
-the result of a subexpression is in the domain of its parent expression. For
+of base^-PRECISION on the output, where base is by default 10. ZERO-PREC is used internally
+to determine the result of a subexpression is in the domain of its parent expression. For
 example, in the expression \"expr1 / expr2\", if the result of expr2 is within
-10^-ZERO-PREC of zero, then the strategy will fail.
+base^-ZERO-PREC of zero, then the strategy will fail. If BIN_PREC? is set to t, 
+base is set to 2.
 
 If SAFE? is set to nil the strategy will run computations even if they generate
 TCCs. Since TCCs must be valid in order for the expression to be computable,

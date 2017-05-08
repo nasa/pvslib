@@ -1,18 +1,35 @@
-(defparameter *aa-builtin* '(("+" "ADD") ("-" "SUB") ("*" "MULT") ("^" "POW")
-			     ("TRUE" "BCONST(TRUE)") ("FALSE" "BCONST(FALSE)")
-			     ("NOT" "BNOT") ("AND" "BAND") ("&" "BAND")
-                             ("OR" "BOR") ("IMPLIES" "BIMPLIES") ("=>" "BIMPLIES")
-			     (">" "REL(>)") (">=" "REL(>=)") ("<" "REL(<)") ("<=" "REL(<=)")
-			     ("=" "EQ")
-			     ("##" "BINCLUDES")))
+(defparameter *aa-builtin* '(;; Special cases
+			     ("*real*" "interval_expr.r2E")
+			     ("*bool*" "interval_bexpr.b2B")
+			     ("*var*" "interval_expr.X")
+			     ("*neg*" "IntervalExpr_adt.NEG")
+			     ("*bite*" "IntervalExpr_adt.BITE")
+			     ("*letin*" "IntervalExpr_adt.LETIN")
+			     ("*bletin*" "IntervalExpr_adt.BLETIN")
+			     ("*excluded*" ("[||]"))
+			     ;; Standard operations
+			     ("+" "IntervalExpr_adt.ADD")
+			     ("-" "IntervalExpr_adt.SUB")
+			     ("*" "IntervalExpr_adt.MULT")
+			     ("^" "IntervalExpr_adt.POW")
+			     ("sq" "interval_expr.SQ2POW")
+			     ("TRUE" "IntervalExpr_adt.BCONST(TRUE)")
+			     ("FALSE" "IntervalExpr_adt.BCONST(FALSE)")
+			     ("NOT" "IntervalExpr_adt.BNOT")
+			     ("AND" "IntervalExpr_adt.BAND")
+			     ("&" "BIntervalExpr_adt.AND")
+                             ("OR" "IntervalExpr_adt.BOR")
+			     ("IMPLIES" "IntervalExpr_adt.BIMPLIES")
+			     ("=>" "IntervalExpr_adt.BIMPLIES")
+			     (">" "interval_bexpr.REL(>)")
+			     (">=" "interval_bexpr.REL(>=)")
+			     ("<" "interval_bexpr.REL(<)")
+			     ("<=" "interval_bexpr.REL(<=)")
+			     ("=" "interval_bexpr.EQ")
+			     ("##" "interval_bexpr.BINCLUDEX")))
   
-(defparameter *aa-extended* nil)
-
-(defparameter *aa-let-names* nil)
-
 (defparameter *affine-strategies* "
 %  affine: Computes bounds to minimum and maximum values of real-valued expressions.
-%  aa-simple-numerical: Computes bounds to minimum and maximum values of real-valued expressions.
 %  aa-numerical: Computes bounds to minimum and maximum values of real-valued expressions.
 %  Supported operations: +,-,*,^")
 
@@ -161,7 +178,7 @@
 
 (defparameter *affine-num-count* 0)
 
-(defstep affine (&optional (fnum 1) (default-range "[|0,1|]"))
+(defstep simple-affine (&optional (fnum 1) (default-range "[|0,1|]"))
   (with-fresh-labels
    ((af! fnum))
    (assert af!)
@@ -226,57 +243,68 @@
 		 (let((rws *aa-rws*)) (apply (repeat* (rewrites rws :fnums 1))))
 		 (eval-formula 1)))))))))
 	(eval-formula 1)))))
-  "do affine"
-  "doing affine")
+  "do simple affine"
+  "doing simple affine")
 
 ;--------------------------------------------------------------------------------
 ;-- Branch and bound strategies (based on generic strategy from interval@arith) -
 ;--------------------------------------------------------------------------------
 
-; Simple numerical
+(defparameter *aa-rewrite-decls* 
+  '("real_expr?"
+    "beval__"
+    "beval_vs"
+    "boolexpr_lfcs[ContextData_beval_vs,
+                                      LAMBDA (bexpr:BoolExpr, ctxt0:ContextData_beval_vs):
+                                        LAMBDA (ctxt:ContextData_beval_vs): some?(ctxt`result),
+                                     beval_vs_BCONST, beval_vs_BNOT, beval_vs_BAND, beval_vs_BOR,
+                                     beval_vs_BIMPLIES, beval_vs_BREL, beval_vs_BINCLUDES,
+                                     beval_vs_BITE, beval_vs_BITE_merge1, beval_vs_BITE_merge2,
+                                     beval_vs_BLETIN_RealExpr_ini, beval_vs_BLETIN_RealExpr,
+                                     beval_vs_BLETIN_BoolExpr_merge1, beval_vs_BLETIN_BoolExpr].F"
+    "beval_vs_BCONST"
+    "beval_vs_BNOT"
+    "beval_vs_BAND"
+    "beval_vs_BOR"
+    "beval_vs_BIMPLIES"
+    "beval_vs_BREL"
+    "beval_vs_BINCLUDES"
+    "beval_vs_BITE"
+    "beval_vs_BITE_merge1"
+    "beval_vs_BITE_merge2"
+    "beval_vs_BLETIN_RealExpr_ini"
+    "beval_vs_BLETIN_RealExpr"
+    "beval_vs_BLETIN_BoolExpr_merge1"
+    "beval_vs_BLETIN_BoolExpr"))
+  
+;; numerical
 
-(defstep aa-simple-numerical (expr &optional (precision 3) (maxdepth 5))
-  (gbandb_simple-numerical__$ 
-			   aa-affine-expr
-			   "simple_affine"
-			   "simple_affine_soundness"
-			   expr precision maxdepth)
-  "[Affine] Computes a simple estimation of the minimum and maximum values
-of EXPR using a branch and bound algorithm based on affine arithmetic.
-PRECISION is the number of decimals in the output interval. The parameter N
-concerns the accuracy of the computations of real-valued functions in EXPR.
-The higher the value of N, the more accurate the computation of these functions.
-MAXDEPTH is a maximum recursion depth for the branch and bound algorithm.
-
-This strategy is a simplified version of the more elaborated strategy NUMERICAL."
-  "Computing estimates to the minmax of expression ~a,~%using affine arithmetic")
-
-; numerical
-
-(defun aa-affine-expr (expr n vars &optional subs)
-  (let ((  *ia-builtin* *aa-builtin*)
-	( *ia-extended* *aa-extended*))
-    (ia-interval-expr expr n vars subs)))
-
-(defstep aa-numerical (expr &optional (precision 3) (maxdepth 10)
-			 min? max?
-			 vars 
-			 subs
-			 dirvar
-			 verbose?
-			 label
-			 (equiv? t))
-  (gbandb_numerical__$ ;; required-theories:
-		       (("AffineStrategies__")
-			"This strategy requires importing the theory affine_arith@strategies")
-		       ;; pvsexpr-to-strobj
-		       aa-affine-expr
-		       ;; bandb-function-name
-		       "affine_bandb_numerical.numerical"
-		       ;; bandb soundness theorem name
-		       "affine_bandb_numerical.numerical_soundness"
-		       expr precision maxdepth min? max? vars subs dirvar verbose?
-		       label equiv?)
+(defstep aa-numerical (expr
+		       &optional (precision 3) (maxdepth 10)
+		       min? max?
+		       vars 
+		       subs
+		       dirvar
+		       verbose?
+		       label
+		       (equiv? t))
+  (let ((subs (append subs *aa-builtin*))
+	(rews *aa-rewrite-decls*))
+    (gbandb_numerical__$
+     ;; required-constant
+     "affine_arith@strategies.AffineStrategies__"
+     ;; pvsexpr-to-strobj
+     ia-interval-expr
+     ;; bandb-function-name
+     "affine_bandb_numerical.numerical"
+     ;; bandb soundness theorem name
+     "affine_bandb_numerical.numerical_soundness"
+     ;; rewrite-decls
+     rews
+     ;; beval-solver
+     interval-eq__$
+     expr precision maxdepth min? max? vars subs dirvar verbose?
+     label equiv?))
   "[Affine] Computes lower and upper bounds of the minimum and
 maximum values of EXPR using a branch and bound algorithm based on
 affine arithmetic.  PRECISION is the number of decimals in the
@@ -311,108 +339,41 @@ this fact is trivial from a logical point of view, but requires
 unfolding of several definitions which is time consuming in PVS."
   "Computing minmax values of expression ~a,~%via affine arithmetic")
 
-; interval
+; affine
 
-(defhelper affine-eq__ (names fnum &optional subs nohide)
-  (let ((excl (append
-	       *ia-excluded*
-	       (mapcar #'car *ia-builtin*) 
-	       (mapcar #'car *ia-extended*)
-	       (mapcar #'car subs))))
-    (with-fresh-labels
-     (!ieq fnum)
-     (apply (repeat (expand "length" !ieq)))
-     (apply (repeat (expand names !ieq)))
-     (expand ("X" "r2E" "b2B") !ieq)
-     (apply (repeat (expand "list2array" !ieq)))
-     (apply (repeat (then (expand "beval" !ieq)(expand "realexpr?")(expand "eval" !ieq))))
-     (expand "##")
-     (flatten)
-     (install-rewrites ("real_expr?"
-		       "beval__"
-		       "beval_vs"
-		       "boolexpr_lfcs[ContextData_beval_vs,
-                                      LAMBDA (bexpr:BoolExpr, ctxt0:ContextData_beval_vs):
-                                        LAMBDA (ctxt:ContextData_beval_vs): some?(ctxt`result),
-                                     beval_vs_BCONST, beval_vs_BNOT, beval_vs_BAND, beval_vs_BOR,
-                                     beval_vs_BIMPLIES, beval_vs_BREL, beval_vs_BINCLUDES,
-                                     beval_vs_BITE, beval_vs_BITE_merge1, beval_vs_BITE_merge2,
-                                     beval_vs_BLETIN_RealExpr_ini, beval_vs_BLETIN_RealExpr,
-                                     beval_vs_BLETIN_BoolExpr_merge1, beval_vs_BLETIN_BoolExpr].F"
-		       "beval_vs_BCONST"
-		       "beval_vs_BNOT"
-		       "beval_vs_BAND"
-		       "beval_vs_BOR"
-		       "beval_vs_BIMPLIES"
-		       "beval_vs_BREL"
-		       "beval_vs_BINCLUDES"
-		       "beval_vs_BITE"
-		       "beval_vs_BITE_merge1"
-		       "beval_vs_BITE_merge2"
-		       "beval_vs_BLETIN_RealExpr_ini"
-		       "beval_vs_BLETIN_RealExpr"
-		       "beval_vs_BLETIN_BoolExpr_merge1"
-		       "beval_vs_BLETIN_BoolExpr"))
-     (assert)
-     (assert)
-     (protect (^ !ieq) (then (hide-all-but (!ieq nohide))
-			     (grind :exclude excl)))
-     (assert)))
-  "" "")
 
-(defstep aa-interval (&optional (fnums 1) (precision 3) maxdepth sat?
-			     vars 
-			     ; subs is not supported in this version
-			     dirvar
-			     verbose?
-			     label
-			     (equiv? t)
-			     (tccs? t))
+(defstep affine (&optional (fnums 1) (precision 3) maxdepth sat?
+			   vars 
+			   ;; subs is not supported in this version
+			   dirvar
+			   verbose?
+			   label
+			   (equiv? t)
+			   (tccs? t))
   
-  (gbandb_interval__$ ;; required-theories:
-		      (("AffineStrategies__")
-		       "This strategy requires importing the theory affine_arith@strategies")
-		      ;; pvsexpr-to-strobj
-		      aa-affine-expr
-		      ;; bandb-function-name
-		      "affine_bandb_boolexpr.bandb_boolexpr"
-		      ;; bandb soundness theorem name
-		      "affine_bandb_boolexpr.bandb_boolexpr_soundness"
-		      ("real_expr?"
-		       "beval__"
-		       "beval_vs"
-		       "boolexpr_lfcs[ContextData_beval_vs,
-                                      LAMBDA (bexpr:BoolExpr, ctxt0:ContextData_beval_vs):
-                                        LAMBDA (ctxt:ContextData_beval_vs): some?(ctxt`result),
-                                     beval_vs_BCONST, beval_vs_BNOT, beval_vs_BAND, beval_vs_BOR,
-                                     beval_vs_BIMPLIES, beval_vs_BREL, beval_vs_BINCLUDES,
-                                     beval_vs_BITE, beval_vs_BITE_merge1, beval_vs_BITE_merge2,
-                                     beval_vs_BLETIN_RealExpr_ini, beval_vs_BLETIN_RealExpr,
-                                     beval_vs_BLETIN_BoolExpr_merge1, beval_vs_BLETIN_BoolExpr].F"
-		       "beval_vs_BCONST"
-		       "beval_vs_BNOT"
-		       "beval_vs_BAND"
-		       "beval_vs_BOR"
-		       "beval_vs_BIMPLIES"
-		       "beval_vs_BREL"
-		       "beval_vs_BINCLUDES"
-		       "beval_vs_BITE"
-		       "beval_vs_BITE_merge1"
-		       "beval_vs_BITE_merge2"
-		       "beval_vs_BLETIN_RealExpr_ini"
-		       "beval_vs_BLETIN_RealExpr"
-		       "beval_vs_BLETIN_BoolExpr_merge1"
-		       "beval_vs_BLETIN_BoolExpr")
-		      ;;
-		      affine-eq__$
-		      fnums precision maxdepth sat?
-		      vars 
-		      nil ; subs 
-		      dirvar
-		      verbose?
-		      label
-		      equiv?
-		      tccs?)
+  (let ((subs *aa-builtin*)
+	(rews *aa-rewrite-decls*))
+    (gbandb_interval__$
+     ;; required-constant
+     "affine_arith@strategies.AffineStrategies__"
+     ;; pvsexpr-to-strobj:
+     ia-interval-expr
+     ;; bandb-function-name:
+     "affine_bandb_boolexpr.bandb_boolexpr"
+     ;; bandb soundness theorem name
+     "affine_bandb_boolexpr.bandb_boolexpr_soundness"
+     ;; rewrite-decls
+     rews
+     ;; beval-solver
+     interval-eq__$
+     fnums precision maxdepth sat?
+     vars 
+     subs 
+     dirvar
+     verbose?
+     label
+     equiv?
+     tccs?))
   "[Affine] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on affine
 arithmetic.  The parameter PRECISION indicates an accuracy of
@@ -452,6 +413,19 @@ If TCCs? is set to nil, the strategy doesn't try to prove possible
 TCCs generated during its execution."
   "Checking formula ~a using affine arithmetic")
 
+(defstrat aa-interval (&optional (fnums 1) (precision 3) maxdepth sat?
+				 vars 
+				 ;; subs is not supported in this version
+				 dirvar
+				 verbose?
+				 label
+				 (equiv? t)
+				 (tccs? t))
+  (then
+   (printf "The strategy name aa-interval is deprecated. Use affine instead.")
+   (affine :fnums fnums :precision precision :maxdepth maxdepth :sat? sat?
+	   :vars vars :dirvar dirvar :verbose? verbose? :label label :equiv? equiv? :tccs? tccs?))
+  "[Affine] This strategy name is deprecated. Use affine instead.")
 
 ;--------------------------------------------------------------------------------
 ;-- Helper strategies -----------------------------------------------------------
@@ -461,7 +435,6 @@ TCCs generated during its execution."
   (expand* "null_ol?" "car_ol" "cdr_ol" "cons_ol" "empty_ErrorTerms" "empty_noise")
   "Expands trivial definitions from ordered_list theory."
   "Expanding definitions from oredered_list theory.")
-
 
 ;------------------------------------------------------------------------------;
 

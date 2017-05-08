@@ -112,11 +112,67 @@ to prove possible TCCs generated during its execution."
 rational number up to the PRECISION-1 decimal."
   "Decimalizing expression ~a to the precision ~a")
 
+;; The following strategy is provided for didactic purposes only.
+;; The most sophisticated strategy numerical should be used in proofs instead of simple-numerical
+(defstep simple-numerical (expr &optional (precision 3) (maxdepth 5))
+  (let ((subs    *ia-builtin*)
+	(ia-expr (extra-get-expr expr))
+	(ia-estr (expr2str ia-expr))
+	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
+	(vars    (ia-get-vars-from-expr ia-expr subs))
+	(ia-vars (extra-get-var-ranges fms vars))
+	(unvars  (ia-find-unbound-vars ia-vars))
+	(msg     (cond (unvars
+			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
+				(cdr unvars) unvars (cdr unvars)))
+		       ((null ia-expr)
+			(format nil "Do not understand argument ~a." expr))
+		       ((not (is-number-expr ia-expr))
+			(format nil "Expresion ~a is not a real number expression." ia-expr))))
+	(ia-box    (unless msg (ia-box ia-vars)))
+	(ia-iexpr  (unless msg (ia-interval-expr ia-expr precision ia-vars subs)))
+	(maxdepth  (if (null ia-vars) 0 maxdepth))
+	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
+    (if msg
+	(printf msg)
+      (with-fresh-names
+       ((sia ia-iexpr))
+       (let ((ia-eval  (format nil "simple_bandb.simple_interval(~a,~a,~a)" maxdepth sia ia-box))
+	     (ia-lvars (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars)))
+	 (then
+	  (eval-expr ia-eval :safe? nil)
+	  (lemma "simple_bandb.simple_interval_soundness")
+	  (inst? -1)
+	  (replaces -2)
+	  (beta -1)
+	  (expand "sound?" -1)
+	  (branch (split -1)
+		  ((spread (inst -1 ia-lvars)
+			   ((branch (invoke (case "%1 = %2") (! -1 1) ia-estr)
+				    ((then (replaces -1)
+					   (decimalize -1 precision))
+				     (interval-eq__$ sia 1 subs)
+				     (then (hide -1)(vars-sharp__))))
+			    (if (null ia-vars)
+				(eval-formula)
+			      (vars-in-box__))))
+		   (eval-formula))))))))
+  "[Interval] Computes a simple estimation of the minimum and maximum
+values of EXPR using a branch and bound algorithm based on interval
+arithmetic.  PRECISION is the number of decimals in the output
+interval. PRECISION also indicates an accuracy of 10^-PRECISION in
+every atomic computation. However, this accuracy is not guaranteed in
+the final result.
+
+MAXDEPTH is a maximum recursion depth for the branch and bound
+algorithm.
+
+This strategy is a simplified version of the more elaborated strategy
+NUMERICAL."
+  "Computing estimates to the minmax of expression ~a,~%using interval arithmetic")
+
 ;; *** Concrete instantiations of branch and bound strategies (interval and numerical) 
 ;; *** for interval arithmetic by Mariano Moscato
-
-(defmacro req-th-err-msg ()
-  "This strategy requires importing either interval_arith@strategies4Q (for rational expressions) or interval_arith@strategies (for real-valued expressions) for its proper operation")
 
 (defstep interval (&optional 
 		   (fnums 1) (precision 3) maxdepth sat?
@@ -127,15 +183,16 @@ rational number up to the PRECISION-1 decimal."
 		   label
 		   (equiv? t)
 		   (tccs? t))
-  (gbandb_interval__$
-   (("IntervalStrategies4Q__") #.(req-th-err-msg)) ;;; required-theories
-   ia-interval-expr                                ;;; pvsexpr-to-strobj
-   "interval"                                      ;;; bandb-function-name
-   "interval_soundness"                            ;;; bandb soundness theorem
-   nil                                             ;;; rewrite-decls
-   interval-eq__$                                  ;;; beval-solver
-   fnums precision maxdepth sat? vars subs         ;;; (Pass-through params.)
-   dirvar verbose? label equiv? tccs?)             ;;; (Pass-through params.)
+  (let ((subs (append subs *ia-builtin*)))
+    (gbandb_interval__$
+     "interval_arith@strategies4Q.IntervalStrategies4Q__" ;;; required-constant
+     ia-interval-expr                                     ;;; pvsexpr-to-strobj
+     "interval_bandb.interval"                            ;;; bandb-function-name
+     "interval_bandb.interval_soundness"                  ;;; bandb soundness theorem
+     nil                                                  ;;; rewrite-decls
+     interval-eq__$                                       ;;; beval-solver
+     fnums precision maxdepth sat? vars subs              ;;; (Pass-through params.)
+     dirvar verbose? label equiv? tccs?))                 ;;; (Pass-through params.)
   "[Interval] Checks if formulas FNUMS, which may be simply
 quantified, holds using a branch and bound algorithm based on interval
 arithmetic.  The parameter PRECISION indicates an accuracy of
@@ -190,25 +247,6 @@ If TCCs? is set to nil, the strategy doesn't try to prove possible
 TCCs generated during its execution."
   "Checking formula ~a using interval arithmetic")
 
-(defstep simple-numerical (expr &optional (precision 3) (maxdepth 5))
-  (gbandb_simple-numerical__$ ia-interval-expr            ;;; pvsexpr-to-strobj 
-			      "simple_interval"           ;;; bandb-function-name
-			      "simple_interval_soundness" ;;; bandb soundness theorem name
-			      expr precision maxdepth)    ;;; (Pass-through parameters.)
-  "[Interval] Computes a simple estimation of the minimum and maximum
-values of EXPR using a branch and bound algorithm based on interval
-arithmetic.  PRECISION is the number of decimals in the output
-interval. PRECISION also indicates an accuracy of 10^-PRECISION in
-every atomic computation. However, this accuracy is not guaranteed in
-the final result.
-
-MAXDEPTH is a maximum recursion depth for the branch and bound
-algorithm.
-
-This strategy is a simplified version of the more elaborated strategy
-NUMERICAL."
-  "Computing estimates to the minmax of expression ~a,~%using interval arithmetic")
-
 (defstep numerical (expr 
 		    &optional (precision 3) (maxdepth 10)
 		    min? max?
@@ -218,13 +256,16 @@ NUMERICAL."
 		    verbose?
 		    label
 		    (equiv? t))
-  (gbandb_numerical__$ 
-   (("IntervalStrategies4Q__") #.(req-th-err-msg));;; required-theories
-   ia-interval-expr                               ;;; pvsexpr-to-strobj 
-   "numerical"                                    ;;; bandb-function-name
-   "numerical_soundness"                          ;;; bandb soundness theorem
-   expr precision maxdepth min? max? vars subs    ;;; (Pass-through parameters.)
-   dirvar verbose? label equiv?)                  ;;; (Pass-through parameters.)
+  (let ((subs (append subs *ia-builtin*)))
+    (gbandb_numerical__$ 
+     "interval_arith@strategies4Q.IntervalStrategies4Q__" ;;; required-constant
+     ia-interval-expr                                     ;;; pvsexpr-to-strobj 
+     "numerical_bandb.numerical"                          ;;; bandb-function-name
+     "numerical_bandb.numerical_soundness"                ;;; bandb soundness theorem
+     nil                                                  ;;; rewrite-decls
+     interval-eq__$                                       ;;; beval-solver
+     expr precision maxdepth min? max? vars subs          ;;; (Pass-through parameters.)
+     dirvar verbose? label equiv?))                       ;;; (Pass-through parameters.)
   "[Interval] Computes lower and upper bounds of the minimum and
 maximum values of EXPR using a branch and bound algorithm based on
 interval arithmetic.  PRECISION is the number of decimals in the
@@ -270,25 +311,3 @@ deep embedding of the original expression is correct. The proof of
 this fact is trivial from a logical point of view, but requires
 unfolding of several definitions which is time consuming in PVS."
   "Computing minmax values of expression ~a,~%via interval arithmetic")
-
-(defstep numerical_dom_info (expr 
-		    &optional (precision 3) (maxdepth 10)
-		    min? max?
-		    vars 
-		    subs
-		    dirvar
-		    verbose?
-		    label
-		    (equiv? t))
-  (gbandb_numerical__$ expr precision maxdepth min? max? vars subs dirvar verbose?
-		       label equiv?
-		       ;; required-theories:
-		       (("IntervalStrategies4Q__") "This strategy requires importing either interval_arith@strategies4Q (for rational expressions) or interval_arith@strategies (for real-valued expressions) for its proper operation")
-		       ;; pvsexpr-to-strobj
-		       ia-interval-expr
-		       ;; bandb-function-name
-		       "numerical_dom_info"
-		       ;; bandb soundness theorem name
-		       "numerical_dom_info_soundness"
-		       )
-  "" "")

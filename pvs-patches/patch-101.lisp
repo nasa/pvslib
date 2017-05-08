@@ -2373,51 +2373,93 @@ name of the quantified variable that encodes the recursive call.")
 ;; This file is part of a generic framework to define branch & bound strategies.
 ;;
 
-(defparameter *ia-builtin* '(("sq" "SQ")
-			     ("abs" "ABS")
-			     ("+" "ADD")
-			     ("-" "SUB")
-			     ("*" "MULT")
-			     ("/" "DIV")
-			     ("^" "POW")
-			     ("TRUE" "BCONST(TRUE)")
-			     ("FALSE" "BCONST(FALSE)")
-			     ("NOT" "BNOT")
-			     ("AND" "BAND")
-			     ("&" "BAND")
-                             ("OR" "BOR")
-			     ("IMPLIES" "BIMPLIES")
-			     ("=>" "BIMPLIES")
-			     (">" "REL(>)")
-			     (">=" "REL(>=)")
-			     ("<" "REL(<)")
-			     ("<=" "REL(<=)")
-			     ("=" "EQ")
-			     ("##" "BINCLUDES")))
+;; Every element in *ia-builtin* has the form (<f> <F>), where <F> is either an atom, for
+;; rational functions, or it has the form (<F> <n>) for approximated ones. It is expected that these functions
+;; satisfy the inclusion and fundamental theorems of interval arithmetic. The element may optional has the form
+;; (<f> <F> <nm>), where <nm> is the name of a fully qualified constant that has exists in the current context for
+;; the strategy to work properly
 
-;; Every element in *ia-extended* has the form (<f> <F>), where <F> is either <F>, for
-;; rational functions, or (<F> <n>) for approximated ones. It is expected that these functions
-;; satisfy the inclusion and fundamental theorems of interval arithmetic.
-(defparameter *ia-extended* '(("sqrt" ("SQRT_n"))
-			      ("pi" ("PI_n")) 
-			      ("sin" ("SIN_n"))
-			      ("cos" ("COS_n"))
-			      ("tan" ("TAN_n"))
-			      ("atan" ("ATAN_n"))
-			      ("ln" ("LN_n"))
-			      ("exp" ("EXP_n"))
-			      ("e" ("E_n"))
-			      ("floor" "FLOOR")
-			      ("mod" "MOD")))
+(defparameter *ia-builtin* '(;; Special cases
+			     ("*real*" "interval_expr.r2E")
+			     ("*bool*" "interval_bexpr.b2B")
+			     ("*var*" "interval_expr.X")
+			     ("*neg*" "IntervalExpr_adt.NEG")
+			     ("*bite*" "IntervalExpr_adt.BITE")
+			     ("*letin*" "IntervalExpr_adt.LETIN")
+			     ("*bletin*" "IntervalExpr_adt.BLETIN")
+			     ("*excluded*" ("Tan?" "[||]"))
+			     ;; Standard operations
+			     ("sq" "IntervalExpr_adt.SQ")
+			     ("abs" "IntervalExpr_adt.ABS")
+			     ("+" "IntervalExpr_adt.ADD")
+			     ("-" "IntervalExpr_adt.SUB")
+			     ("*" "IntervalExpr_adt.MULT")
+			     ("/" "IntervalExpr_adt.DIV")
+			     ("^" "IntervalExpr_adt.POW")
+			     ("TRUE" "IntervalExpr_adt.BCONST(TRUE)")
+			     ("FALSE" "IntervalExpr_adt.BCONST(FALSE)")
+			     ("NOT" "IntervalExpr_adt.BNOT")
+			     ("AND" "IntervalExpr_adt.BAND")
+			     ("&" "IntervalExpr_adt.BAND")
+                             ("OR" "IntervalExpr_adt.BOR")
+			     ("IMPLIES" "IntervalExpr_adt.BIMPLIES")
+			     ("=>" "IntervalExpr_adt.BIMPLIES")
+			     ("##" "interval_bexpr.BINCLUDEX")
+			     (">" "interval_bexpr.REL(>)")
+			     (">=" "interval_bexpr.REL(>=)")
+			     ("<" "interval_bexpr.REL(<)")
+			     ("<=" "interval_bexpr.REL(<=)")
+			     ("=" "interval_bexpr.EQ")
+			     ("floor" "interval_expr_floor.FLOOR")
+			     ("sqrt" ("interval_expr_sqrt.SQRT_n"))
 
-(defparameter *ia-excluded* '("Tan?" "[||]"))
+			     ;; The following functions require interval_arith@strategies.IntervalStrategies__
+
+			     ("pi" ("interval_expr_trig.PI_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("sin" ("interval_expr_trig.SIN_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("cos" ("interval_expr_trig.COS_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("tan" ("interval_expr_trig.TAN_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("atan" ("interval_expr_trig.ATAN_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("ln" ("interval_expr_lnexp.LN_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("exp" ("interval_expr_lnexp.EXP_n") "interval_arith@strategies.IntervalStrategies__") 
+			     ("e" ("interval_expr_lnexp.E_n") "interval_arith@strategies.IntervalStrategies__")
+
+			     ;; Single floating-point operations require PRECiSA@bbiasp.PrecisaSP__
+			     
+			     ("ulp_sp" "interval_ulp_sp.ULP_SP" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_add" "bbiasp_add.AEB_ADD" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_sub" "bbiasp_sub.AEB_SUB" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_mul" "bbiasp_mul.AEB_MUL" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_div" "bbiasp_div.AEB_DIV" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_flr" "bbiasp_flr.AEB_FLR" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_flr_t" "bbiasp_flr_t.AEB_FLR_T" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_sqt" "bbiasp_sqt.AEB_SQT" "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_sin" ("bbiasp_sin.AEB_SIN") "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_cos" ("bbiasp_cos.AEB_COS") "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_atn" ("bbiasp_atn.AEB_ATN") "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_atn_t" ("bbiasp_atn_t.AEB_ATN_T") "PRECiSA@bbiasp.PrecisaSP__")
+			     ("aeboundsp_neg" "bbiasp_neg.AEB_NEG" "PRECiSA@bbiasp.PrecisaSP__")
+
+			     ;; Double floating-point operations require PRECiSA@bbiadp.PrecisaDP__
+
+			     ("ulp_dp" "interval_ulp_dp.ULP_DP" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_add" "bbiadp_add.AEB_ADD" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_sub" "bbiadp_sub.AEB_SUB" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_mul" "bbiadp_mul.AEB_MUL" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_div" "bbiadp_div.AEB_DIV" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_flr" "bbiadp_flr.AEB_FLR" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_flr_t" "bbiadp_flr_t.AEB_FLR_T" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_sqt" "bbiadp_sqt.AEB_SQT" "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_sin" ("bbiadp_sin.AEB_SIN") "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_cos" ("bbiadp_cos.AEB_COS") "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_atn" ("bbiadp_atn.AEB_ATN") "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_atn_t" ("bbiadp_atn_t.AEB_ATN_T") "PRECiSA@bbiadp.PrecisaDP__")
+			     ("aebounddp_neg" "bbiadp_neg.AEB_NEG" "PRECiSA@bbiadp.PrecisaDP__")))
 
 (defparameter *ia-let-names* nil)
 
-(defun ia-get-vars-from-expr (expr &optional subs)
-  (get-vars-from-expr expr
-		      (append (mapcar #'car subs)
-			      (mapcar #'car *ia-extended*))))
+(defun ia-get-vars-from-expr (expr subs)
+  (get-vars-from-expr expr (mapcar #'car subs)))
 
 ;; Find unbounded vars (vars is a list of variable names) 
 (defun ia-find-unbound-vars (vars)
@@ -2452,17 +2494,15 @@ name of the quantified variable that encodes the recursive call.")
 	       :test #'(lambda (x y) (string= x (car y))))))
 
 ;; Form a string representing an interval expression of expr, where
-;;   - n      : approximation parameter
-;;   - var    : list of variables
-;;   - subs   : list of substitutions of the general form (<f> (<F> <n>) <arity>)
+;;   - n      : precision
+;;   - vars   : list of variables
+;;   - subs   : list of substitutions of the general form (<f> (<F> <n>))
 ;; Output:
-;;   - Expr such that eval(expr,vars) ## Eval(Expr,box)
-(defun ia-interval-expr (expr n vars &optional subs)
+;;   - Interval expression
+(defun ia-interval-expr (expr n vars subs)
   (setq *ia-let-names* nil)
   (catch '*ia-error*
-    (ia-interval-expr-rec expr n vars
-			  (append subs *ia-builtin* *ia-extended*)
-			  (check-name "IntervalStrategies__"))))
+    (ia-interval-expr-rec expr n vars subs)))
 
 (defun ia-approx-n (n nn)
   (if nn (max (+ n nn) 0) n))
@@ -2476,22 +2516,40 @@ name of the quantified variable that encodes the recursive call.")
 	(format nil "X(~a)" posvar)
       (format nil "POS?(X(~a))" posvar))))
 
-(defun ia-interval-expr-rec (expr n vars subs extended &optional localvars)
+;; If qualified name doesn't occur in the current context, returns qualified theory name.
+;; Otherwise returns nil
+;
+(defun no-qualified-name (name)
+  (when (and name (not (check-name name)))
+      (let* ((p  (or (position #\. name) (length name))))
+	(subseq name 0 p))))
+
+;; Check if id exists in subs as an element of the form (id <something> <name>), where
+;; name is a fully qualified PVS constant. If id doesn't exist, return nil.
+;; If it exists but name doesn't occur in the current context
+;; the exception *ia-error* is raised. Otherwise, return (id <somehting> <name>)
+
+(defun ia-check-required (id subs)
+  (let* ((opl (ia-idsubs? id subs))
+	 (th  (no-qualified-name (nth 2 opl))))
+    (if th
+	(ia-error
+	 (format nil "Theory ~a needs to be imported to support ~a" th id))
+      opl)))
+
+(defun ia-interval-expr-rec (expr n vars subs &optional localvars)
   (let ((val (when (or (is-number-type (type expr)) (is-bool-type (type expr)))
 	       (typecheck (extra-add-evalexpr expr)))))
     (cond ((and val (is-number-type  (type val)))
-	   (format nil "r2E(~a)" val))
+	   (let ((opl (ia-idsubs? "*real*" subs)))
+	     (if opl (format nil "~a(~a)" (cadr opl) val)
+	       (ia-error (format nil "Don't know how to translate number ~a" val)))))
 	  ((and val (is-bool-type (type val)))
-	   (format nil "b2B(~a)" val))
+	   (let ((opl (ia-idsubs? "*bool*" subs)))
+	     (if opl (format nil "~a(~a)" (cadr opl) val)
+	       (ia-error (format nil "Don't know how to translate boolean ~a" val)))))
 	  ((is-const-decl-expr expr (mapcar #'car subs)) ;; Is a constant, but not a rational one
-	   (let ((opl (ia-idsubs? (expr2str expr) *ia-extended*))) ;; Check if extended import is required.
-	     (when (and opl (not extended))
-	       (ia-error (format 
-			  nil
-			  "Theory interval_arith@strategies needs to be imported to support constant ~a"
-			  expr))))
-	   ;; At this point, imported chain is OK. 
-	   (let ((opl (ia-idsubs? (expr2str expr) subs)))
+	   (let ((opl (ia-check-required (expr2str expr) subs)))
 	     (if opl
 		 (let ((op (cadr opl)))
 		   (if (listp op)
@@ -2502,59 +2560,60 @@ name of the quantified variable that encodes the recursive call.")
 	   (let ((vl (when (name-expr? expr)
 		       (member (id expr) localvars :test #'(lambda(x y) (equal x (car y)))))))
 	     (if vl (ia-format-local-var vl (length vars))
-	       (let ((vl (member (expr2str expr) vars :test #'string=)))
-		 (if vl
-		     (format nil "X(~a)" (- (length vars) (length vl)))
+	       (let ((vl  (member (expr2str expr) vars :test #'string=))
+		     (opl (ia-idsubs? "*var*" subs)))
+		 (if (and vl opl)
+		     (format nil "~a(~a)" (cadr opl) (- (length vars) (length vl)))
 		   (ia-error (format nil "Don't know how to translate variable ~a" expr)))))))
-	  ((and (unary-application? expr)
-		(is-function-expr expr "-"))
-	   (format nil "NEG(~a)"
-		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)))
+	  ((and (unary-application? expr) (is-function-expr expr "-"))
+	   (let ((opl (ia-idsubs? "*neg*" subs)))
+	     (if opl (format nil "~a(~a)" (cadr opl)
+			     (ia-interval-expr-rec (args1 expr) n vars subs localvars))
+	       (ia-error (format nil "Don't know how to translate unary operator -")))))
 	  ((is-function-expr expr "^")
-	   (format nil "POW(~a,~a)"
-		   (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)
-		   (args2 expr)))
+	   (let ((opl (ia-idsubs? "^" subs)))
+	     (if opl (format nil "~a(~a,~a)" (cadr opl)
+			     (ia-interval-expr-rec (args1 expr) n vars subs localvars)
+			     (args2 expr))
+	       (ia-error (format nil "Don't know how to translate operator ^")))))
 	  ((is-function-expr expr "##")
-	   (let ((val (extra-add-evalexpr (args2 expr))))
-	     (if (record-expr? val)
-		 (format nil "BINCLUDEX(~a,~a)"
-			 (ia-interval-expr-rec (args1 expr) n vars subs extended localvars)
+	   (let ((val (extra-add-evalexpr (args2 expr)))
+		 (opl (ia-idsubs? "##" subs)))
+	     (if (and (record-expr? val) opl)
+		 (format nil "~a(~a,~a)" (cadr opl)
+			 (ia-interval-expr-rec (args1 expr) n vars subs localvars)
 			 val)
-	       (ia-error (format nil "Don't know how to translate expression ~a" (args2 expr))))))
+	       (ia-error (format nil "Don't know how to translate operator ##")))))
 	  ((if-expr? expr)
-	   (if (is-bool-type (type expr))
-	       (format nil "BITE(~a,~a,~a)"
-		       (ia-interval-expr-rec (nth 0 (arguments expr)) n vars subs extended localvars)
-		       (ia-interval-expr-rec (nth 1 (arguments expr)) n vars subs extended localvars)
-		       (ia-interval-expr-rec (nth 2 (arguments expr)) n vars subs extended localvars))
-	     (ia-error (format nil "IF-THEN-ELSE construct ~a is unsupported" expr))))
+	   (let ((opl (ia-idsubs? "*bite*" subs)))
+	     (if (and (is-bool-type (type expr)) opl)
+		 (format nil "~a(~a,~a,~a)" (cadr opl)
+			 (ia-interval-expr-rec (nth 0 (arguments expr)) n vars subs localvars)
+			 (ia-interval-expr-rec (nth 1 (arguments expr)) n vars subs localvars)
+			 (ia-interval-expr-rec (nth 2 (arguments expr)) n vars subs localvars))
+	       (ia-error (format nil "Don't know how to translate IF-THEN-ELSE")))))
 	  ((let-expr? expr)
-	   (if (or (is-bool-type (type expr)) (is-number-type (type expr)))
-	       (let* ((op  (operator expr))
-		      (typ (domain (type op))))
-		 (if (or (is-number-type typ) (and (is-bool-type (type expr))
-						   (is-bool-type typ)))
-		     (let* ((vt  (cons (id (car (bindings op))) typ))
-			    (xm  (ia-interval-expr-rec (argument expr) n vars subs extended localvars))
-			    (nm  (freshname (format nil "V_~a" (length *ia-let-names*)))))
-		       (setq *ia-let-names* (append *ia-let-names* (list (cons nm xm))))
-		       (format nil "~:[~;B~]LETIN(~a,~a)" (is-bool-type (type expr)) nm
-			       (ia-interval-expr-rec (expression op) n vars subs extended
-						     (cons vt localvars))))
-		   (ia-error (format nil "LET-IN construct ~a is unsupported" expr))))
-	     (ia-error (format nil "LET-IN construct ~a is unsupported" expr))))
+	   (let ((opl (cond ((is-bool-type (type expr))  (ia-idsubs? "*bletin*" subs))
+			    ((is-number-type (type expr)) (ia-idsubs? "*letin*" subs)))))
+	     (if opl
+		 (let* ((op  (operator expr))
+			(typ (domain (type op))))
+		   (if (or (is-number-type typ) (and (is-bool-type (type expr))
+						     (is-bool-type typ)))
+		       (let* ((vt  (cons (id (car (bindings op))) typ))
+			      (xm  (ia-interval-expr-rec (argument expr) n vars subs localvars))
+			      (nm  (freshname (format nil "V_~a" (length *ia-let-names*)))))
+			 (setq *ia-let-names* (append *ia-let-names* (list (cons nm xm))))
+			 (format nil "~a(~a,~a)" (cadr opl) nm
+				 (ia-interval-expr-rec (expression op) n vars subs (cons vt localvars))))
+		     (ia-error (format nil "Don't know how to translate LET-IN"))))
+	       (ia-error (format nil "Don't know how to translate LET-IN")))))
 	  ((arg-tuple-expr? expr)
 	   (format nil "~{~a~^,~}"
-		   (mapcar #'(lambda(x)(ia-interval-expr-rec x n vars subs extended localvars))
+		   (mapcar #'(lambda(x)(ia-interval-expr-rec x n vars subs localvars))
 			   (exprs expr))))
 	  ((is-function-expr expr)
-	   (let ((opl (ia-idsubs? (id (operator expr)) (cdr *ia-extended*))))
-	     (when (and opl (not extended))
-	       (ia-error (format 
-			  nil
-			  "Theory interval_arith@strategies needs to be imported to support function ~a"
-			  (id (operator expr))))))
-	   (let ((opl (ia-idsubs? (id (operator expr)) subs)))
+	   (let ((opl (ia-check-required (id (operator expr)) subs)))
 	     (if opl 
 		 (let ((op (cadr opl)))
 		   (if (listp op)
@@ -2562,29 +2621,35 @@ name of the quantified variable that encodes the recursive call.")
 			       (car op) (ia-approx-n n (nth 1 op))
 			       (let ((args (arguments expr)))
 				 (loop for i from 0 to (- (length args) 1)
-				       collect (ia-interval-expr-rec (nth i args) n vars subs extended localvars))))
+				       collect (ia-interval-expr-rec (nth i args) n vars subs localvars))))
 		     (format nil "~a(~{~a~^, ~})" op
 			     (let ((args (arguments expr)))
-				 (loop for i from 0 to (- (length args) 1)
-				       collect (ia-interval-expr-rec (nth i args) n vars subs extended localvars))))))
+			       (loop for i from 0 to (- (length args) 1)
+				     collect (ia-interval-expr-rec (nth i args) n vars subs localvars))))))
 	       (ia-error (format nil "Don't know how to translate function ~a" (id (operator expr)))))))
 	  (t (ia-error (format nil "Don't know how to translate expression ~a" expr))))))
 
-(defhelper interval-eq__ (names fnum &optional subs nohide)
-  (let ((excl (append
-	       *ia-excluded*
-	       (mapcar #'car *ia-builtin*) 
-	       (mapcar #'car *ia-extended*)
-	       (mapcar #'car subs))))
+(defhelper interval-eq__ (names fnum subs rewrite-decls &optional nohide)
+  (let ((oplx  (enlist-it (cadr (ia-idsubs? "*var*" subs))))
+	(oplr  (enlist-it (cadr (ia-idsubs? "*real*" subs))))
+	(oplb  (enlist-it (cadr (ia-idsubs? "*bool*" subs))))
+	(lexp  (append oplx oplr oplb))
+	(excl  (append
+		(cadr (ia-idsubs? "*excluded*" subs))
+		(loop for sub in subs
+		      unless  (find #\* (car sub))
+		      collect (car sub)))))
     (with-fresh-labels
      (!ieq fnum)
      (apply (repeat (expand "length" !ieq)))
      (apply (repeat (expand names !ieq)))
-     (expand ("X" "r2E" "b2B") !ieq)
+     (expand lexp !ieq)
      (apply (repeat (expand "list2array" !ieq)))
      (apply (repeat (then (expand "beval" !ieq)(expand "realexpr?")(expand "eval" !ieq))))
      (expand "##")
      (flatten)
+     (when rewrite-decls
+       (install-rewrites :defs t :rewrites rewrite-decls))
      (assert)
      (protect (^ !ieq) (then (hide-all-but (!ieq nohide))
 			     (grind :exclude excl)))
@@ -2608,32 +2673,6 @@ name of the quantified variable that encodes the recursive call.")
    (vars-sharp__$))
   "[Interval] Internal strategy." "")
 
-(defmacro req-ths-names (req-ths)
-  `(if (or (not ,req-ths)
-	   (stringp (first ,req-ths)))
-       ,req-ths
-     (let ((fst (first ,req-ths)))
-       (if (listp fst) fst (list fst)))))
-
-(defmacro req-ths-errormsg (req-ths)
-  `(if (all-strings ,req-ths)
-       (format nil "At least one of the following theories are required by the strategy: ~{~a~^,~}" (first ,req-ths))
-     (second ,req-ths)))
-
-(defmacro all-strings (req-ths)
-  `(every #'stringp ,req-ths))
-
-(defmacro validate-required-theories (req-ths)
-  `(and (listp ,req-ths)
-       (or (all-strings ,req-ths)
-	   (and (all-strings (first ,req-ths))
-		(cond ((= (length ,req-ths) 2)
-		       (stringp (second ,req-ths)))
-		      ((> (length ,req-ths) 2)
-		       nil)
-		      (t t))))))
-
-
 (defun ia-is-true-output (ans)
   (and (is-function-expr ans "Some")
        (extra-is-true (argument ans))))
@@ -2645,7 +2684,7 @@ name of the quantified variable that encodes the recursive call.")
 ;; *** Generic branch and bound strategies (interval and numerical) by Mariano Moscato
 
 ;; -------------------------------------------------------------------------- ;;
-(defhelper gbandb_interval__ (required-theories
+(defhelper gbandb_interval__ (required-constant
 			      pvsexpr-to-strobj
 			      bandb-function-name
 			      soundness-lemma-name
@@ -2710,17 +2749,12 @@ name of the quantified variable that encodes the recursive call.")
 	;; ia-vars is just like vars but only names
 	(unvars  (ia-find-unbound-vars ia-vars))
 	(tccs?   (and tccs? (not sat?)))
-	(msg     (cond ((null expr)
+	(qth     (no-qualified-name required-constant))
+	(msg     (cond (qth (format nil "This strategy requires theory ~a to be imported in the current context" qth))
+		       ((null expr)
 			(format nil "Formula ~a not found" fnums))
 		       ((and sat? (null ia-vars))
 			(format nil "Formula ~a doesn't seem to have variables. It cannot be checked for satisfiability" fnums))
-		       ((not (validate-required-theories required-theories))
-			(format nil 
-				"Error in param: required-theories should have the form ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)"))
-		       ((and
-			 (req-ths-names required-theories)
-			 (notany (lambda (thname) (check-name thname)) (req-ths-names required-theories)))
-			  (req-ths-errormsg required-theories))
 		       (unvars
 			(format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
 				(cdr unvars) unvars (cdr unvars))))))
@@ -2815,7 +2849,7 @@ name of the quantified variable that encodes the recursive call.")
 					     (when equiv? 
 					       (reveal !ia-eqs) 
 					       (replaces !ia-eqs :hide? nil)
-					       (beval-solver names 1 subs))
+					       (beval-solver names 1 subs rewrite-decls))
 					     (eval-formula !ia)))
 					;; Universal proof
 					(let ((nqvars   (freshnames "x" (length qvars)))
@@ -2832,8 +2866,7 @@ name of the quantified variable that encodes the recursive call.")
 						   ((when equiv? 
 						      (reveal !ia-eqs) 
 						      (replaces !ia-eqs :hide? nil)
-						      (beval-solver   names !ia-inst 
-								      subs *!ia-tccs*))
+						      (beval-solver names !ia-inst subs rewrite-decls :nohide *!ia-tccs*))
 						    (if (null ia-vars)
 							(eval-formula)
 						      (then (flatten)
@@ -2851,16 +2884,14 @@ name of the quantified variable that encodes the recursive call.")
   "Checks if formulas FNUMS, which may be simply quantified, holds using the
 algorithm called BANDB-FUNCTION-NAME. Its soundness must be guaranteed by
 a lemma of name SOUNDNESS-LEMMA-NAME. BEVAL-SOLVER is the name of the
-strategy that should be used to prove that the pvs expression corresponds
+strategy that should be used to prove that the PVS expression corresponds
 with the beval of the interval expr. REWRITE-DECLS are the rewriting
 rules to be used as to simplify the evaluation expression.
 
-REQUIRED-THEORIES is used to indicate the theories needed to be imported
-in order to use the strategy. It should be a list of the form
-((<th_1> ... <th_n>) <error msg>) or (<th_1> ... <th_n>) where every
-th_i is a theory name and <error msg> is a custom error message.
-The name of the function to translate a pvs expression to a string
-representation of a ObjType is the parameter PVSEXPR-TO-STROBJ.
+REQUIRED-CONSTANT is a fully qualified constant that must occur in the
+current context for this strategy to work. The name of the function to
+translate a pvs expression to a string representation of a ObjType is
+the parameter PVSEXPR-TO-STROBJ.
 
 The parameter PRECISION indicates an accuracy of
 10^-PRECISION in every atomic computation. However, this accuracy is
@@ -2879,16 +2910,16 @@ the variables in EXPR and to provide their ranges. If this list is not
 provided, this information is extracted from the sequent.
 
 SUBS is a list of substitutions for translating user-defined
-real-valued functions into interval ones. Each substitution has
-the form (<f> <F>), where <f> is the name of a real-valued function
+real-valued functions into interval ones. Each substitution has the
+form (<f> <F> [<nm>]), where <f> is the name of a real-valued function
 and <F> is the name of its interval counterpart. It is assumed that
 <F> satisfies the Inclusion and the Fundamental theorems of interval
-arithmetic for <f>. Standard substitutions for basic arithmetic
-operators, abs, sq, sqrt, trigonometric functions, exp, and ln
-are already provided. This parameter can be used to change the precision
-for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
-(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
-PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
+arithmetic for <f>. If <nm> is provided, it should be a
+fully-qualified name of a constant that has to occur in the current
+context for operator <F> to be supported. An error is raised if this
+is not the case. If <f> is not a rational function, the element <F>
+may have the form (<F> <n>), where the parameter <n> indicates a
+relative precision with respect to PRECISION.
 
 DIRVAR is the name of a direction and variable selection method for
 the branch an bound algorithm. Theory interval_bandb includes some
@@ -2911,80 +2942,13 @@ If TCCs? is set to nil, the strategy doesn't try to prove possible
 TCCs generated during its execution." "")
 
 ;; -------------------------------------------------------------------------- ;;
-(defhelper gbandb_simple-numerical__ (pvsexpr-to-strobj
-				      bandb-function-name
-				      soundness-lemma-name
-				      expr 
-				      &optional
-				      (precision 3)
-				      (maxdepth 5))
-  (let ((name    (freshname "sia"))
-	(ia-expr (extra-get-expr expr))
-	(ia-estr (expr2str ia-expr))
-	(fms     (mapcar #'(lambda (fn) (extra-get-formula-from-fnum fn)) (extra-get-fnums '-)))
-	(vars    (ia-get-vars-from-expr ia-expr))
-	(ia-vars (extra-get-var-ranges fms vars))
-	(unvars  (ia-find-unbound-vars ia-vars))
-	(msg     (cond (unvars
-			(format nil "Variable~:[~;s~] ~{~a~^, ~} ~:[is~;are~] unbounded."
-				(cdr unvars) unvars (cdr unvars)))
-		       ((null ia-expr)
-			(format nil "Do not understand argument ~a." expr))
-		       ((not (is-number-expr ia-expr))
-			(format nil "Expresion ~a is not a real number expression." ia-expr))))
-	(ia-box    (unless msg (ia-box ia-vars)))
-	(ia-iexpr  (unless msg (funcall pvsexpr-to-strobj ia-expr precision ia-vars)))
-	(maxdepth  (if (null ia-vars) 0 maxdepth))
-	(ia-eval   (format nil "~a(~a,~a,~a)" bandb-function-name maxdepth name ia-box))
-	(ia-lvars  (format nil "list2array(0)((:~{~a~^, ~}:))" ia-vars))
-	(msg       (or msg (when (listp ia-iexpr) (car ia-iexpr)))))
-    (if msg
-	(printf msg)
-      (spread
-       (name-label name ia-iexpr :hide? t)
-       ((try-branch
-	 (eval-expr ia-eval :safe? nil)
-	 ((then (lemma soundness-lemma-name)
-		(inst? -1)
-		(replaces -2)
-		(beta -1)
-		(expand "sound?" -1)
-		(branch (split -1)
-			((spread (inst -1 ia-lvars)
-				 ((branch (invoke (case "%1 = %2") (! -1 1) ia-estr)
-					  ((then (replaces -1)
-						 (decimalize -1 precision))
-					   (interval-eq__ name 1)
-					   (then (hide -1)(vars-sharp__))))
-				  (if (null ia-vars)
-				      (eval-formula)
-				    (vars-in-box__))))
-			 (eval-formula))))
-	  (skip))
-	 (skip))))))
-  "Computes a simple estimation of the minimum and maximum
-values of EXPR using the algorithm called BANDB-FUNCTION-NAME. Its
-soundness must be guaranteed by a lemma of name SOUNDNESS-LEMMA-NAME.
-The name of the function translating a pvs expression to a string
-representation of a ObjType is the parameter PVSEXPR-TO-STROBJ.
-
-PRECISION is the number of decimals in the output
-interval. PRECISION also indicates an accuracy of 10^-PRECISION in
-every atomic computation. However, this accuracy is not guaranteed in
-the final result.
-
-MAXDEPTH is a maximum recursion depth for the branch and bound
-algorithm.
-
-This strategy is a simplified version of the more elaborated strategy
-NUMERICAL." "")
-
-;; -------------------------------------------------------------------------- ;;
-(defhelper gbandb_numerical__ (required-theories   
+(defhelper gbandb_numerical__ (required-constant   
 			       pvsexpr-to-strobj   
 			       bandb-function-name
 			       soundness-lemma-name
-			       expr 
+			       rewrite-decls
+			       beval-solver
+			       expr
 			       &optional (precision 3) (maxdepth 10)
 			       min? max?
 			       vars 
@@ -3008,12 +2972,8 @@ NUMERICAL." "")
 	(initeqs   (extra-reset-evalexprs))
 	(ia-vars   (extra-get-var-ranges fms vars))
 	(unvars    (ia-find-unbound-vars ia-vars))
-	(msg       (cond ((not (validate-required-theories required-theories))
-			  (format nil "Error in param: required-theories should have the form ((<th_1 name> ... <th_n name>) <error msg>) or (<th_1 name> ... <th_n name>)"))
-		         ((and
-			   (req-ths-names required-theories)
-			   (notany (lambda (thname) (check-name thname)) (req-ths-names required-theories)))
-			  (req-ths-errormsg required-theories))
+	(qth       (no-qualified-name required-constant))
+	(msg       (cond (qth (format nil "This strategy requires theory ~a to be imported in the current context" qth))
 			 (unvars
 			  (format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
 				  (cdr unvars) unvars (cdr unvars)))
@@ -3048,7 +3008,7 @@ NUMERICAL." "")
 		(splits (get-expr-from-obj output 'splits))
 		(ans    (get-expr-from-obj output 'ans)))
 	    (if (and (name-expr? ans) (eq (id ans) 'None))
-		(then (printf "Error evaluating the expression. ~%HINT: Check if all the operations in the expression are supported by the strategy.") (fail))
+		(then (printf "Error evaluating the expression") (fail))
 	      (let ((ans    (if (record-expr? ans) ans (args1 ans)))
 		    (lbacc  (ratio2decimal (- (extra-get-number-from-expr 
 					       (get-expr-from-obj ans 'lb_max))
@@ -3094,7 +3054,7 @@ NUMERICAL." "")
 				   label))
 			 (replaces -1)
 			 (decimalize -1 precision))
-			(then (hide -1) (when equiv? (interval-eq__$ names 1 subs)))
+			(then (hide -1) (when equiv? (beval-solver names 1 subs rewrite-decls)))
 			(then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$))))
 		      (if (null ia-vars)
 			  (eval-formula)
@@ -3106,15 +3066,17 @@ NUMERICAL." "")
 	  (skip))
 	 (skip))))))
 "Computes lower and upper bounds of the minimum and maximum values of
-EXPR using the algorithm called BANDB-FUNCTION-NAME. Its soundness must
-be guaranteed by a lemma of name SOUNDNESS-LEMMA-NAME.
+EXPR using the algorithm called BANDB-FUNCTION-NAME. Its soundness
+must be guaranteed by a lemma of name SOUNDNESS-LEMMA-NAME. BEVAL-SOLVER 
+is the name of the strategy that should be used to prove that the PVS
+expression corresponds with the beval of the interval
+expr. REWRITE-DECLS are the rewriting rules to be used as to simplify
+the evaluation expression.
 
-REQUIRED-THEORIES is used to indicate the theories needed to be imported
-in order to use the strategy. It should be a list of the form
-((<th_1> ... <th_n>) <error msg>) or (<th_1> ... <th_n>) where every
-th_i is a theory name and <error msg> is a custom error message.
-The name of the function to translate a pvs expression to a string
-representation of a ObjType is the parameter PVSEXPR-TO-STROBJ.
+REQUIRED-CONSTANT is a fully qualified constant that must occur in the
+current context for this strategy to work. The name of the function to
+translate a pvs expression to a string representation of a ObjType is
+the parameter PVSEXPR-TO-STROBJ.
 
 PRECISION is the number of decimals in the output interval. PRECISION also
 indicates an accuracy of 10^-PRECISION in every atomic computation. However,
@@ -3131,15 +3093,15 @@ provided, this information is extracted from the sequent.
 
 SUBS is a list of substitutions for translating user-defined
 real-valued functions into interval ones. Each substitution has the
-form (<f> <F>), where <f> is the name of a real-valued function and
-<F> is the name of its interval counterpart. It is assumed that <F>
-satisfies the Inclusion and the Fundamental theorems of interval
-arithmetic for <f>. Standard substitutions for basic arithmetic
-operators, abs, sq, sqrt, trigonometric functions, exp, and ln are
-already provided. This parameter can be used to change the precision
-for a particular function, e.g., ((\"pi\" \"PI_n(4)\") (\"cos\"
-(\"COS_n\" 1))(\"sin\" (\"SIN_n\" -1))) specifies the precision 4,
-PRECISION+1, and PRECISION-1 for pi, cos, and sin, respectively.
+form (<f> <F> [<nm>]), where <f> is the name of a real-valued function
+and <F> is the name of its interval counterpart. It is assumed that
+<F> satisfies the Inclusion and the Fundamental theorems of interval
+arithmetic for <f>. If <nm> is provided, it should be a
+fully-qualified name of a constant that has to occur in the current
+context for operator <F> to be supported. An error is raised if this
+is not the case. If <f> is not a rational function, the element <F>
+may have the form (<F> <n>), where the parameter <n> indicates a
+relative precision with respect to PRECISION.
 
 DIRVAR is the name of a direction and variable selection method for
 the branch an bound algorithm. Theory numerical_bandb includes some
@@ -3157,37 +3119,3 @@ If EQUIV? is set to nil, the strategy doesn't try to prove that the
 deep embedding of the original expression is correct. The proof of
 this fact is trivial from a logical point of view, but requires
 unfolding of several definitions which is time consuming in PVS." "")
-
-;; PRECiSA
-
-(defun add-bb-ia-op (ops)
-  (loop for new-elem in ops
-	do (when (not (member new-elem *ia-extended*)) (setq *ia-extended* (cons new-elem *ia-extended*)))))
-
-(add-bb-ia-op '(("ulp_sp" "ULP_SP")
-		("aeboundsp_add""bbiasp_add.AEB_ADD")
-		("aeboundsp_sub""bbiasp_sub.AEB_SUB")
-		("aeboundsp_mul""bbiasp_mul.AEB_MUL")
-		("aeboundsp_div""bbiasp_div.AEB_DIV")
-		("aeboundsp_flr""bbiasp_flr.AEB_FLR")
-		("aeboundsp_flr_t""bbiasp_flr_t.AEB_FLR_T")
-		("aeboundsp_sqt""bbiasp_sqt.AEB_SQT")
-		("aeboundsp_sin"("bbiasp_sin.AEB_SIN"))
-		("aeboundsp_cos"("bbiasp_cos.AEB_COS"))
-		("aeboundsp_atn"("bbiasp_atn.AEB_ATN"))
-		("aeboundsp_atn_t"("bbiasp_atn_t.AEB_ATN_T"))
-		("aeboundsp_neg""bbiasp_neg.AEB_NEG")))
-
-(add-bb-ia-op '(("ulp_dp" "ULP_DP")
-		("aebounddp_add""bbiadp_add.AEB_ADD")
-		("aebounddp_sub""bbiadp_sub.AEB_SUB")
-		("aebounddp_mul""bbiadp_mul.AEB_MUL")
-		("aebounddp_div""bbiadp_div.AEB_DIV")
-		("aebounddp_flr""bbiadp_flr.AEB_FLR")
-		("aebounddp_flr_t""bbiadp_flr_t.AEB_FLR_T")
-		("aebounddp_sqt""bbiadp_sqt.AEB_SQT")
-		("aebounddp_sin"("bbiadp_sin.AEB_SIN"))
-		("aebounddp_cos"("bbiadp_cos.AEB_COS"))
-		("aebounddp_atn"("bbiadp_atn.AEB_ATN"))
-		("aebounddp_atn_t"("bbiadp_atn_t.AEB_ATN_T"))
-		("aebounddp_neg""bbiadp_neg.AEB_NEG"))) 
