@@ -653,7 +653,7 @@
     (or (cdr val)
 	(let ((exval (evalexpr expr)))
 	  (when (expr? exval) 
-	    (unless (compare* expr exval)
+	    (unless (or (compare* expr exval) (string= (format nil "~a" expr) (format nil "~a" exval)))
 	      (push (cons expr exval) *extra-evalexprs*))
 	    exval)))))
 
@@ -2750,11 +2750,13 @@ name of the quantified variable that encodes the recursive call.")
 	(unvars  (ia-find-unbound-vars ia-vars))
 	(tccs?   (and tccs? (not sat?)))
 	(qth     (no-qualified-name required-constant))
-	(msg     (cond (qth (format nil "This strategy requires theory ~a to be imported in the current context" qth))
-		       ((null expr)
+	(msg     (cond ((null expr)
 			(format nil "Formula ~a not found" fnums))
+		       (qth
+			(format nil "This strategy requires theory ~a to be imported in the current context" qth))
 		       ((and sat? (null ia-vars))
-			(format nil "Formula ~a doesn't seem to have variables. It cannot be checked for satisfiability" fnums))
+			(format nil "Formula ~a doesn't seem to have variables. It cannot be checked for satisfiability"
+				fnums))
 		       (unvars
 			(format nil "Variable~:[~;s~] ~{~a~^,~} ~:[is~;are~] unbounded."
 				(cdr unvars) unvars (cdr unvars))))))
