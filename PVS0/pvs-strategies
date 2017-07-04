@@ -1,11 +1,117 @@
-(defstep inst-tccs (fnum &rest terms)
+(defun find-pvs0_eval_expr (l fn n)
+  (when l
+    (let* ((expr (args1 (ee-pvs-obj (car l))))
+	   (nfn  (ee-fnum (car l)))
+	   (nn   (if (equal fn nfn) (1+ n) 1)))
+      (if (or (constructor-name-expr? expr)
+	      (and (application? expr)
+		   (constructor-name-expr? (operator expr))))
+	  (cons nfn nn)
+	(find-pvs0_eval_expr (cdr l) nfn nn)))))
+
+(defhelper pvs0-unfold-eval__ ()
+  (let ((exprs  (eval-ext-expr '(~ "pvs0_eval_expr(%,%,%)(%,%,%)" *)))
+	(fnoc   (find-pvs0_eval_expr exprs nil 0))
+	(fnum   (car fnoc))
+	(occur  (cdr fnoc)))
+    (when fnoc
+      (expand "pvs0_eval_expr" fnum occur)))
+  "[PVS0] Unfolds first occurence of pvs0_eval_expr"
+  "")
+
+(defhelper pvs0-unfold-eval ()
+  (let ((expr     (car (eval-ext-expr '(~ "pvs0_eval_expr(%1`1,%,%)"))))
+	(pvs0_fun (format nil "~a" (ee-pvs-obj expr)))
+	(pvs0_ev  (format nil "pvs0_eval(~a)" pvs0_fun)))
+    (then
+     (repeat (pvs0-unfold-eval__$))
+     (repeat (rewrite "pvs0_eval" :dir rl))
+     (with-fresh-names
+      ((pe_ pvs0_ev))
+      (expand pvs0_fun)
+      (assert))))
+    "[PVS0] Unfolds pvs0_eval_expr"
+    "Unfolding pvs0_eval_expr")
+
+(defhelper pvs0-eval ()
+  (then
+   (skosimp)
+   (let ((expr     (car (eval-ext-expr '(~ "pvs0_eval[%](%1)"))))
+	 (fnum     (ee-fnum expr))
+	 (pvs0_fun (format nil "~a" (ee-pvs-obj expr))))
+     (then
+      (expand "pvs0_eval" fnum 1)
+      (expand pvs0_fun fnum 4)
+      (pvs0-unfold-eval$)
+      (assert))))
+  "[PVS0] Proves that PVS0 function is extensionally equivalent to a PVS function"
+  "Proving that PVS0 function is extensionally equivalent to a PVS function")
+
+(defhelper pvs0-tccs (wfm)
+  (then
+   (skosimp)
+   (let ((loc  (format nil "~a(%%) < ~a(%%1)" wfm wfm))
+	 (expr (format nil "(~{~a~^,~})"
+		       (ee-pvs-obj (car (eval-ext-expr `(~ ,loc)))))))
+     (then
+      (typepred wfm)
+      (rewrite "pvs0_tccs_correct")
+      (expand "pvs0_tccs")
+      (match "pvs0_ccs(%)" step
+	     (then (eval-expr "%1")
+		   (replaces -1)))
+      (repeat (expand "every"))
+      (with-fresh-labels
+       ((lab! -1))
+       (flatten)
+       (expand "pvs0_tcc")
+       (repeat (inst lab! expr))
+       (repeat
+	(match "reverse(%)" step
+	       (then (eval-expr "%1")
+		     (replaces -1))))
+       (repeat (expand "pvs0_eval_conds"))
+       (pvs0-unfold-eval$)
+       (assert)))))
+  "[PVS0] Proves TCCs of recursive PVS function using PVS0"
+  "Proving TCCs of recursive PVS functions using PVS0")
+
+(defhelper pvs0-terminating (fun)
+  (let ((fun_dg       (format nil "~a_dg" fun))
+	(fun_measures (format nil "~a_measures" fun))
+	(fun_mm       (format nil "~a_mm" fun))
+	(fun_ccg      (format nil "~a_ccg" fun)))
+    (then
+     (use "scp_iff_pvs0_terminates")
+     (assert)
+     (hide 2)
+     (use "ccg_implies_scp_pvs0")
+     (spread (inst -1 fun_dg)
+	     ((then (assert) (hide 2) (expand "ccg_termination_pvs0")
+		    (inst 1 fun_measures) (use "mwg_termination_to_ccg_termination")
+		    (spread (inst -1 fun_mm)
+			    ((then (assert) (assert) (hide 2)
+				   (use "c_bounding_from_gl_termination") (assert) (hide 2)
+				   (eval-formula))
+			     (then (hide 2)
+				   (spread (split)
+					   ((expand fun_ccg)
+					    (then (assert)
+						  (typepred fun_mm)
+						  (expand fun_ccg))))))))
+	      (then (hide 2)
+		    (expand fun_dg))))))
+    "[PVS0] Proves PVS0 terminating judgement"
+    "Proving PVS0 terminating judgement")
+
+(defhelper inst-tccs (fnum &rest terms)
   (with-fresh-labels
    ((all_ (^ fnum) :tccs) (f_ fnum))
    (inst f_ :terms terms))
-  "Intantiates quantifer in FNUM and automatically discharges TCCs"
+  "[PVS0] Intantiates quantifer in FNUM and automatically discharges TCCs"
   "Instantiating quantifier in ~a, TCCs are automatically discharged")
 
-(defstep mm (fun)
+(defhelper mm (fun)
   (let ((fun_data     (format nil "~a_ccg`dg`data" fun))
 	(fun_ccg      (format nil "~a_ccg" fun))
 	(fun_measures (format nil "~a_measures" fun))
@@ -41,5 +147,5 @@
 	       ;;(skosimp*)
 	       ;;(ground)
 	       )))))
-  "Proves mm judgement"
+  "[PVS0] Proves mm judgement"
   "Proving mm judgment")
