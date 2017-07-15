@@ -41,7 +41,7 @@ backward compatibility, but it should be replaced by `trig`.  The new
 library `trig`, which used to be axiomatic, is now
 foundational. However, in contrast to `trig_fnd`, trigonometric
 definitions are based on infinite series, rather than integrals. This
-changes considerably reduces the type-checking of theories involving
+change considerably reduces the type-checking of theories involving
 trigonometric functions. The change from `trig_fnd` to `trig` should
 not have a major impact in your formal developments since names of
 definitions and lemmas are the same. However, theory importing may be
