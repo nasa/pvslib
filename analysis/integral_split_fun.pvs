@@ -1,0 +1,192 @@
+integral_split_fun[T: TYPE+ FROM real]: THEORY
+%------------------------------------------------------------------------------
+%
+%    Provides:	general framework to define piecewise motion laws by integration:
+%		- given a piecewise-derivable acceleration function over time
+%		- the velocity fn is obtained by integrating the acceleration fn
+%		- position is obtained by integrating the velocity function
+%		
+%    Assumptions: piecewise functions are not necessarily derivable	
+%
+%		
+%    Authors: Radu Siminiceanu	National Institute of Aerospace
+%             Rick Butler	NASA Langley
+%	      Cesar Munoz	NASA Langley
+%
+%------------------------------------------------------------------------------
+BEGIN
+
+   ASSUMING
+     IMPORTING  deriv_domain_def,
+     	        continuous_functions,
+     	        derivatives, derivatives_lam,
+   	        integral_def, integral, 
+		table_of_integrals,
+   	        fundamental_theorem,
+                deriv_domains,
+                piecewise_continuous
+
+      deriv_domain : ASSUMPTION deriv_domain?[T]
+
+      connected_domain : ASSUMPTION connected?[T]
+
+      not_one_element : ASSUMPTION not_one_element?[T]
+
+   ENDASSUMING
+
+    %% --- variables
+
+    f, f1,f2, f3, f4 ,r1,r2, r3, r4: VAR [T -> real]
+    v0, v1, x0 : VAR real
+    a, b, c    : VAR real
+
+    t0, t1, tSplit, tSplit1, tSplit2, tSplit3   : VAR T
+
+    %% ---
+
+    split_fun(tSplit:T, f1, f2: [T -> real]): [T -> real] =
+    	LAMBDA(t: T): IF (t <= tSplit) THEN f1(t) ELSE f2(t) ENDIF
+
+    split_fun?(f : [T -> real]) : bool =
+      EXISTS (tSplit:T, r1, r2: [T -> real]):
+                f = LAMBDA(t: T): IF (t <= tSplit) THEN r1(t) ELSE r2(t) ENDIF
+
+    split_fun?_split_fun: LEMMA
+      split_fun?(split_fun(tSplit, r1, r2))
+
+    Split_fun: TYPE = {f : [T -> real] | split_fun?(f)}
+
+    Integrable_Split_fun(a:T,b:T): TYPE = {f : [T -> real] | split_fun?(f) AND Integrable?(a,b,f)}
+
+
+    %% --------------------------------------------------
+
+
+    split_fun_Integrable: LEMMA t0 <= tSplit AND tSplit <= t1 AND
+         Integrable?(t0, tSplit, r1) AND Integrable?(tSplit, t1, r2) 
+       IMPLIES
+         Integrable?(t0, t1, split_fun(tSplit, r1, r2))
+
+
+ 
+    tt: VAR T
+    Integral_split_fun: LEMMA t0 <= tSplit AND tSplit <= t1 AND t0 <= tt AND tt <= t1 AND
+         Integrable?(t0, tSplit, r1) AND Integrable?(tSplit, t1, r2) 
+      IMPLIES
+         Integrable?(t0, t1, split_fun(tSplit, r1, r2)) AND
+         Integral(t0, tt, split_fun(tSplit, r1, r2)) = 
+              IF tt <= tSplit THEN
+                   Integral(t0, tt, r1) 
+              ELSE
+                   Integral(t0, tSplit, r1) + Integral(tSplit, tt, r2)
+              ENDIF
+
+     %% ----------------------------------------------------
+     %% piecewise with 2 breakpoints, (3 functions)
+
+
+    split_fun2(tSplit1, tSplit2:T, f1, f2, f3: [T -> real]): [T -> real] =
+    	LAMBDA(t: T): IF (t <= tSplit1) THEN f1(t) ELSIF (t<=tSplit2) THEN f2(t) ELSE f3(t) ENDIF
+
+    split_fun2?(f : [T -> real]) : bool =
+      EXISTS (tSplit1, tSplit2:T, r1, r2, r3: [T -> real]):
+                f = LAMBDA(t: T): IF (t <= tSplit1) THEN r1(t) ELSIF (t<=tSplit2) THEN r2(t) ELSE r3(t) ENDIF
+
+    split_fun2?_split_fun2: LEMMA
+      split_fun2?(split_fun2(tSplit1, tSplit2, r1, r2, r3))
+
+    Split_fun2: TYPE = {f : [T -> real] | split_fun2?(f)}
+
+    Integrable_Split_fun2(a:T,b:T): TYPE = {f : [T -> real] | split_fun2?(f) AND Integrable?(a,b,f)}
+
+
+    %% --------------------------------------------------
+    in_order?(t0, tSplit1, tSplit2, t1: real): bool =
+        t0<=tSplit1 AND tSplit1<=tSplit2 AND tSplit2<= t1 
+
+    split_fun2_Integrable: LEMMA in_order?(t0, tSplit1, tSplit2, t1) AND
+         Integrable?(t0, tSplit1, r1) AND Integrable?(tSplit1, tSplit2, r2) AND Integrable?(tSplit2, t1, r3)  
+       IMPLIES
+         Integrable?(t0, t1, split_fun2(tSplit1, tSplit2, r1, r2, r3))
+
+   
+ 
+    Integral_split_fun2: LEMMA in_order?(t0, tSplit1, tSplit2, t1) AND t0 <= tt AND tt <= t1 AND
+          Integrable?(t0, tSplit1, r1) AND Integrable?(tSplit1, tSplit2, r2) AND Integrable?(tSplit2, t1, r3)
+      IMPLIES
+         Integrable?(t0, t1, split_fun2(tSplit1, tSplit2, r1, r2, r3)) AND
+         Integral(t0, tt, split_fun2(tSplit1, tSplit2, r1, r2, r3)) = 
+              IF tt <= tSplit1 THEN
+                   Integral(t0, tt, r1) 
+              ELSIF tt<= tSplit2 THEN
+                   Integral(t0, tSplit1, r1) + Integral(tSplit1, tt, r2)
+              ELSE 
+                   Integral(t0, tSplit1, r1) + Integral(tSplit1, tSplit2, r2) + Integral(tSplit2, tt, r3)
+              ENDIF
+
+ %% ----------------------------------------------------
+     %% piecewise with 3 breakpoints, (4 functions)
+
+
+    split_fun3(tSplit1, tSplit2, tSplit3:T, f1, f2, f3, f4: [T -> real]): [T -> real] =
+    	LAMBDA(t: T): IF (t <= tSplit1) THEN f1(t) 
+                      ELSIF (t<=tSplit2) THEN f2(t) 
+                      ELSIF (t<=tSplit3) THEN f3(t)
+                      ELSE f4(t) ENDIF
+
+    split_fun3?(f : [T -> real]) : bool =
+      EXISTS (tSplit1, tSplit2, tSplit3:T, r1, r2, r3, r4: [T -> real]):
+                f = LAMBDA(t: T): IF (t <= tSplit1) THEN r1(t) 
+                                  ELSIF (t<=tSplit2) THEN r2(t) 
+				  ELSIF (t<=tSplit3) THEN r3(t)
+				  ELSE r4(t) ENDIF
+
+    split_fun3?_split_fun3: LEMMA
+      split_fun3?(split_fun3(tSplit1, tSplit2, tSplit3, r1, r2, r3, r4))
+
+    Split_fun3: TYPE = {f : [T -> real] | split_fun3?(f)}
+
+    Integrable_Split_fun3(a:T,b:T): TYPE = {f : [T -> real] | split_fun3?(f) AND Integrable?(a,b,f)}
+
+
+    %% --------------------------------------------------
+    in_order?(t0, tSplit1, tSplit2, tSplit3,  t1: real): bool =
+        t0<=tSplit1 AND tSplit1<=tSplit2 AND tSplit2<= tSplit3 AND tSplit3<=t1 
+
+    split_middle_fun3: LEMMA tSplit1<=tSplit2 AND tSplit2<=tSplit3 IMPLIES
+    		            split_fun3(tSplit1, tSplit2, tSplit3, r1, r2, r3, r4) = 
+			    split_fun( tSplit2, split_fun(tSplit1, r1, r2), split_fun(tSplit3, r3, r4)) 
+
+    split_fun3_Integrable: LEMMA in_order?(t0, tSplit1, tSplit2, tSplit3,  t1) AND
+         Integrable?(t0, tSplit1, r1) AND 
+	 Integrable?(tSplit1, tSplit2, r2) AND 
+	 Integrable?(tSplit2, tSplit3, r3) AND 
+	 Integrable?(tSplit3, t1, r4)  
+       IMPLIES
+         Integrable?(t0, t1, split_fun3(tSplit1, tSplit2, tSplit3, r1, r2, r3, r4))
+
+
+ 
+    Integral_split_fun3: LEMMA in_order?(t0, tSplit1, tSplit2, tSplit3, t1) AND t0 <= tt AND tt <= t1 AND
+         Integrable?(t0, tSplit1, r1) AND 
+	 Integrable?(tSplit1, tSplit2, r2) AND 
+	 Integrable?(tSplit2, tSplit3, r3) AND 
+	 Integrable?(tSplit3, t1, r4)  
+      IMPLIES
+         Integrable?(t0, t1, split_fun3(tSplit1, tSplit2, tSplit3, r1, r2, r3, r4)) AND
+         Integral(t0, tt, split_fun3(tSplit1, tSplit2, tSplit3, r1, r2, r3, r4)) = 
+              IF tt <= tSplit1 THEN
+                   Integral(t0, tt, r1) 
+              ELSIF tt<= tSplit2 THEN
+                   Integral(t0, tSplit1, r1) + Integral(tSplit1, tt, r2)
+              ELSIF tt<=tSplit3 THEN
+                   Integral(t0, tSplit1, r1) + Integral(tSplit1, tSplit2, r2) + Integral(tSplit2, tt, r3)
+	      ELSE Integral(t0, tSplit1, r1) + 
+	      	   Integral(tSplit1, tSplit2, r2) + 
+		   Integral(tSplit2, tSplit3, r3) +
+		   Integral(tSplit3, tt, r4)	   
+              ENDIF
+    
+
+
+END integral_split_fun

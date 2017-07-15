@@ -1,0 +1,59 @@
+(defhelper stripzeroes (fnum expr parity?)
+  (let ((ee (extra-get-expr expr))
+        (index_nonz (if parity? "2*n+1" "2*n"))
+	(index_zer (if parity? "2*n" "2*n+1"))
+	(lem (if parity? "inf_sum_even_0" "inf_sum_odd_0"))
+	(nonz_sub (format nil "(LAMBDA (n:nat): (~a)(~a))" ee index_nonz)))
+    (with-fresh-labels
+     ((fnum! fnum))
+     (lemma lem)
+     (with-fresh-labels
+      ((lab! -1))
+      (inst lab! ee nonz_sub)
+      (branch (split lab!)
+	      ((then
+		(flatten)
+		(replaces lab!))
+	       (hide fnum!))))))
+  "Used by trigsimp. Strips zeroes from a sequence with alternating zero terms."
+  "Stripping zeroes from ~a")
+
+
+(defstep trigsimp (tfun &optional (fnum 1) (occurrence 1))
+  (let ((theparam (equal tfun "sin"))
+	(thelem (format nil "~a_conv" tfun))
+	(thecoef (format nil "~a_coef" tfun)))
+    (then (expand tfun fnum occurrence :assert? none)
+	  (expand "powerseq" fnum :assert? none)
+	  (branch
+	   (match fnum "inf_sum(%a)" step (stripzeroes fnum "%a" theparam))
+	   ((then (assert)
+		  (expand "inf_sum"))
+	    (then (lemma thelem)
+		  (expand "conv_powerseries?")
+		  (match fnum "%a^%" step (inst -1 "%a"))
+		  (expand "powerseries")
+		  (expand "powerseq"))
+	    (then (skeep)
+		  (expand thecoef)
+		  (expand "even?")
+		  (assert))))))
+  "Applies the taylor series definition of sine and cosine, and stripes zeroes from series."
+  "Expanding and simplifying trig function")
+
+  
+(defhelper peel (location &optional (conv_base_expr nil) (iterations 1))
+  (let ((expr (extra-get-expr location))
+        (fnum (car (cdr location))))
+    (then (lemma "series_first_aux")
+          (with-fresh-labels 
+            ((lemnum! -1))
+            (inst lemnum! expr)
+            (branch (split)
+                    ((then (replaces lemnum! fnum)
+                           (assert))
+                     (then (lemma "tail_series_conv")
+                           (inst -1 iterations conv_base_expr)
+                           (assert)))))))
+  "Implements the identity which states that a series is equal to its first term plus the series of remaining terms."
+  "Peeling off first term of series")
