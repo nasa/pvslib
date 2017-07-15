@@ -39,7 +39,7 @@ Recent Changes
 **The library `trig_fnd` is now deprecated**. It's still provided for
 backward compatibility, but it should be replaced by `trig`.  The new
 library `trig`, which used to be axiomatic, is now
-foundational. However, in constrast to `trig_fnd`, trigonometric
+foundational. However, in contrast to `trig_fnd`, trigonometric
 definitions are based on infinite series, rather than integrals. This
 changes considerably reduces the type-checking of theories involving
 trigonometric functions. The change from `trig_fnd` to `trig` should
