@@ -37,14 +37,15 @@ them searchable via a GUI client.
 Recent Changes
 -
 **The library `trig_fnd` is now deprecated**. It's still provided for
-backward compatibility, but it should be replaced by `trig`. This
-change should involve minimum changes since names of definitions and
-lemmas have not change, but theory importing may be slightly different.
-The new library `trig`, which used to be axiomatic, is now foundational. However,
-in constrast to `trig_fnd`, trigonometric definitions are based on infinite
-series, rather than integrals. This changes considerably reduces the
-type-checking of theories involving trigonometric functions. Lemmas
-should have the same name
+backward compatibility, but it should be replaced by `trig`.  The new
+library `trig`, which used to be axiomatic, is now
+foundational. However, in constrast to `trig_fnd`, trigonometric
+definitions are based on infinite series, rather than integrals. This
+changes considerably reduces the type-checking of theories involving
+trigonometric functions. The change from `trig_fnd` to `trig` should
+not have a major impact in your formal developments since names of
+definitions and lemmas are the same. However, theory importing may be
+slightly different.
 
 The PVS developments `TCASII`, `WellClear`,  and `DAIDALUS` are now
 [available](https://github.com/nasa/WellClear/tree/master/PVS) as part 
