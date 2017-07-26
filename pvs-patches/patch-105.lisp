@@ -67,7 +67,7 @@
 		 (trust *PVSGroundEvaluator*
 			(discriminate (case casexpr) !evx)
 			((skip) !
-			 (when auto? (eval-formula !evx)))))))))))
+			 (when auto? (eval-formula !evx safe? quiet?)))))))))))
   "[PVSio] Adds the hypothesis expr=eval(EXPR) to the current goal, 
 where eval(EXPR) is the ground evaluation of EXPR. If SAFE? is t and EXPR
 generates TCCs, the expression is not evaluated. Otherwise, TCCs
