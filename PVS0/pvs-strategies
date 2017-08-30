@@ -1,22 +1,24 @@
-(defun find-pvs0_eval_expr (l fn n)
+(defun find-pvs0_eval_expr (l fn n rec)
   (when l
     (let* ((expr (args1 (ee-pvs-obj (car l))))
 	   (nfn  (ee-fnum (car l)))
 	   (nn   (if (equal fn nfn) (1+ n) 1)))
       (if (or (constructor-name-expr? expr)
 	      (and (application? expr)
-		   (constructor-name-expr? (operator expr))))
+		   (constructor-name-expr? (operator expr))
+		   (or rec (not (equal (id (operator expr)) 'rec)))))
 	  (cons nfn nn)
-	(find-pvs0_eval_expr (cdr l) nfn nn)))))
+	(find-pvs0_eval_expr (cdr l) nfn nn rec)))))
 
-(defhelper pvs0-unfold-eval__ ()
-  (let ((exprs  (eval-ext-expr '(~ "pvs0_eval_expr(%,%,%)(%,%,%)" *)))
-	(fnoc   (find-pvs0_eval_expr exprs nil 0))
+(defhelper pvs0-unfold-nonrec__ (fun &optional rec)
+  (let ((funrec (format nil "~a(%%)(%%)" fun))
+	(exprs  (eval-ext-expr `(~ ,funrec *)))
+	(fnoc   (find-pvs0_eval_expr exprs nil 0 rec))
 	(fnum   (car fnoc))
 	(occur  (cdr fnoc)))
     (when fnoc
-      (expand "pvs0_eval_expr" fnum occur)))
-  "[PVS0] Unfolds first occurence of pvs0_eval_expr"
+      (expand fun fnum occur)))
+  "[PVS0] Unfolds first non-recursive occurence of FUN"
   "")
 
 (defhelper pvs0-unfold-eval ()
@@ -24,11 +26,12 @@
 	(pvs0_fun (format nil "~a" (ee-pvs-obj expr)))
 	(pvs0_ev  (format nil "pvs0_eval(~a)" pvs0_fun)))
     (then
-     (repeat (pvs0-unfold-eval__$))
+     (repeat (pvs0-unfold-nonrec__ "pvs0_eval_expr" t))
      (repeat (rewrite "pvs0_eval" :dir rl))
      (with-fresh-names
       ((pe_ pvs0_ev))
       (expand pvs0_fun)
+      (repeat (expand* "nth" "length"))
       (assert))))
     "[PVS0] Unfolds pvs0_eval_expr"
     "Unfolding pvs0_eval_expr")
@@ -47,10 +50,11 @@
   "[PVS0] Proves that PVS0 function is extensionally equivalent to a PVS function"
   "Proving that PVS0 function is extensionally equivalent to a PVS function")
 
-(defhelper pvs0-tccs (wfm)
+(defhelper pvs0-tccs (fun)
   (then
    (skosimp)
-   (let ((loc  (format nil "~a(%%) < ~a(%%1)" wfm wfm))
+   (let ((wfm  (format nil "~a_wfm" fun))
+	 (loc  (format nil "~a(%%) < ~a(%%1)" wfm wfm))
 	 (expr (format nil "(~{~a~^,~})"
 		       (ee-pvs-obj (car (eval-ext-expr `(~ ,loc)))))))
      (then
@@ -73,7 +77,7 @@
        (repeat (expand "pvs0_eval_conds"))
        (pvs0-unfold-eval$)
        (assert)))))
-  "[PVS0] Proves TCCs of recursive PVS function using PVS0"
+  "[PVS0] Proves TCCs of recursive PVS0 function FUN"
   "Proving TCCs of recursive PVS functions using PVS0")
 
 (defhelper pvs0-terminating (fun)
@@ -98,7 +102,7 @@
      (assert)
      (eval-formula)))
   "[PVS0] Proves PVS0 terminating judgement"
-  "Proving PVS0 terminating judgement")
+  "Proving terminating judgement of ~a")
 
 (defhelper inst-tccs (fnum &rest terms)
   (with-fresh-labels
@@ -107,7 +111,7 @@
   "[PVS0] Intantiates quantifer in FNUM and automatically discharges TCCs"
   "Instantiating quantifier in ~a, TCCs are automatically discharged")
 
-(defhelper mm (fun)
+(defhelper pvs0-mm (fun)
   (let ((fun_data     (format nil "~a_ccg`dg`data" fun))
 	(fun_ccg      (format nil "~a_ccg" fun))
 	(fun_measures (format nil "~a_measures" fun))
@@ -139,9 +143,13 @@
 	       (repeat (expand "eval_conds_rec"))
 	       (expand* pvs0_fun fun_false)
 	       (skosimp*)
-	       ;;(repeat (expand "semantic_rel_expr"))
-	       ;;(skosimp*)
-	       ;;(ground)
+	       (repeat (pvs0-unfold-nonrec__ "semantic_rel_expr"))
+	       (repeat (expand* "nth" "length"))
+	       (skosimp*)
+	       (lift-if)
+	       (ground)
+	       (replaces -)
+	       (ground)
 	       )))))
-  "[PVS0] Proves mm judgement"
-  "Proving mm judgment")
+  "[PVS0] Proves measures judgement of PVS0 function FUN"
+  "Proving measures judgment of ~a")

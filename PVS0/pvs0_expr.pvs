@@ -5,8 +5,8 @@ BEGIN
 
   IMPORTING PVS0Expr[Val], structures@Maybe
 
-  EvalOp1  : TYPE = [nat->[Val->Val]]
-  EvalOp2  : TYPE = [nat->[[Val,Val]->Val]]
+  EvalOp1  : TYPE = list[[Val->Val]]
+  EvalOp2  : TYPE = list[[[Val,Val]->Val]]
 
   false_val : VAR Val
   eval_op1 : VAR EvalOp1
@@ -17,12 +17,16 @@ BEGIN
     (cnst?(expr) AND val = get_val(expr)) OR
     (vr?(expr) AND val = env) OR
     (op1?(expr) AND EXISTS (valarg:Val) : 
-      semantic_rel_expr(false_val,eval_op1,eval_op2)(get_arg(expr),body,env,valarg) AND
-      val = eval_op1(get_op(expr))(valarg)) OR
+       semantic_rel_expr(false_val,eval_op1,eval_op2)(get_arg(expr),body,env,valarg) AND
+              IF get_op(expr) < length(eval_op1) THEN val=nth(eval_op1,get_op(expr))(valarg)
+              ELSE val = false_val
+	      ENDIF) OR
     (op2?(expr) AND EXISTS (valarg1,valarg2:Val) : 
       semantic_rel_expr(false_val,eval_op1,eval_op2)(get_arg1(expr),body,env,valarg1) AND
       semantic_rel_expr(false_val,eval_op1,eval_op2)(get_arg2(expr),body,env,valarg2) AND
-      val = eval_op2(get_op(expr))(valarg1,valarg2)) OR
+        IF get_op(expr) < length(eval_op2) THEN val=nth(eval_op2,get_op(expr))(valarg1,valarg2)
+              ELSE val = false_val
+              ENDIF)  OR
     (ite?(expr) AND EXISTS (valarg:Val) : 
       semantic_rel_expr(false_val,eval_op1,eval_op2)(get_cond(expr),body,env,valarg) AND
       IF false_val /= valarg THEN       
@@ -50,10 +54,15 @@ BEGIN
       cnst(v) : Some(v),
       vr : Some(env),
       op1(op,arg) : LET v = eval_expr(false_val,eval_op1,eval_op2)(i,arg,body,env) IN
-        IF some?(v) THEN Some(eval_op1(op)(val(v))) ELSE None ENDIF,
+        	    IF some?(v) THEN
+		       Some(IF get_op(expr) < length(eval_op1) THEN nth(eval_op1,get_op(expr))(val(v))
+              	       ELSE false_val ENDIF)
+		    ELSE None ENDIF,
       op2(op,arg1,arg2) :  LET v1 = eval_expr(false_val,eval_op1,eval_op2)(i,arg1,body,env),
                                v2 = eval_expr(false_val,eval_op1,eval_op2)(i,arg2,body,env) IN
-                           IF some?(v1) AND some?(v2) THEN Some(eval_op2(op)(val(v1),val(v2))) 
+                           IF some?(v1) AND some?(v2) THEN
+			   Some( IF get_op(expr) < length(eval_op2) THEN nth(eval_op2,get_op(expr))(val(v1),val(v2))
+              		         ELSE false_val ENDIF) 
                            ELSE None ENDIF,
       ite(cnd,arg1,arg2) : LET vc = eval_expr(false_val,eval_op1,eval_op2)(i,cnd,body,env) IN
                            IF some?(vc) THEN
