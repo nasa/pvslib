@@ -30,9 +30,6 @@ BEGIN
   PVS0_partial_recursive : TYPE =
     {pvs0:PVS0 | EXISTS (n:nat) : pvs0_level(n)(pvs0)}
 
-  PVS0_computable : TYPE =
-    {pvs0:PVS0_partial_recursive | terminating?(pvs0)}
-
   IMPORTING structures@map_with_index
 
   level_surjective: LEMMA
@@ -43,5 +40,47 @@ BEGIN
 
   representantion: LEMMA
     EXISTS(f: [nat->PVS0_partial_recursive]): surjective?(f)
+
+  IMPORTING pvs0_eval[nat]
+
+  pvs0_level_computable(n:nat)(pvs0:PVS0) : INDUCTIVE bool =
+    pvs0`1 = false_val AND
+    terminating?(pvs0) AND
+    IF n = 0 THEN pvs0`2 = lop1 AND pvs0`3 = lop2
+    ELSE
+      (EXISTS (p:(pvs0_level_computable(n-1))) :
+	   length(p`2)+1 = length(pvs0`2) AND
+	   FORALL (i:below(length(pvs0`2))): LET op1 = nth(pvs0`2,i) IN
+	     IF i < length(p`2) THEN op1 = nth(p`2,i)
+	     ELSE
+               FORALL(env:Val): pvs0_eval(p)(env) = op1(env)
+	     ENDIF)
+      AND
+      (EXISTS (p:(pvs0_level_computable(n-1))) :
+	   length(p`3)+1 =length(pvs0`3) AND
+	   FORALL (i:below(length(pvs0`3))): LET op2 = nth(pvs0`3,i) IN
+	     IF i < length(p`3) THEN op2 = nth(p`3,i)
+	     ELSE
+               FORALL(env1,env2:Val):
+	         pvs0_eval(p)(tuple2nat(env1,env2)) = op2(env1,env2)
+	     ENDIF) 
+    ENDIF
+
+  n : VAR nat
+
+  pvs0_level_computable_terminating : JUDGEMENT
+    (pvs0_level_computable(n)) SUBTYPE_OF (terminating?)
+
+  pvs0_level_computable_n : JUDGEMENT
+    (pvs0_level_computable(n)) SUBTYPE_OF (pvs0_level(n))
+
+  PVS0_computable : TYPE =
+    {pvs0:PVS0 | EXISTS (n:nat) : pvs0_level_computable(n)(pvs0)}
+
+  PVS0_computable_is_terminating : JUDGEMENT
+    PVS0_computable SUBTYPE_OF (terminating?)
+
+  PVS0_computable_is_partial_recursive : JUDGEMENT
+    PVS0_computable SUBTYPE_OF PVS0_partial_recursive
 
 END pvs0_computable
