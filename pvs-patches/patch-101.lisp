@@ -17,11 +17,12 @@
 %  Defining tactics, i.e., local strategies: deftactic
 %  Labeling and naming: unlabel*, delabel, relabel, name-label,
 %    name-label*, name-replace*, discriminate
-%  Copying formulas: copy*, protect
+%  Copying formulas: copy*, protect, with-focus-on, with-focus-on@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
 %  Control flow: finalize, touch, for, for@, when, when@, unless,
-%    unless@, when-label, unless-label, if-label, skip-steps, sklisp
+%    unless@, when-label, when-label@, unless-label, unless-label@,
+%    if-label, skip-steps, sklisp
 %  Skolem, let-in, inst: skeep, skeep*, skoletin, skoletin*,
 %    redlet, redlet*, skodef, skodef*, insteep, insteep*
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
@@ -932,40 +933,44 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
 
 (defstep name-label (name expr &optional label (fnums *) (dir lr) hide?
 			  (tcc-step (extra-tcc-step)) tcc-label)
-  (let ((labl    (unless (equal label 'none) (or label (format nil "~a:" name))))
-	(estr    (extra-get-expstr expr))
-	(tccsome (and (not (equal tcc-label 'none)) tcc-label))
-	(tccnone (or (equal tcc-label 'none)
-		     (and (null tcc-label) (equal label 'none))))
-	(labtcc  (or tccsome
-		     (if tccnone (freshlabel "nlt")
-		       (if label (mapcar #'(lambda (lb)
-					     (format nil "~a-TCC:" lb))
-					 (flatten-labels label))
-			 (format nil "~a-TCC:" name))))))
-    (when estr
-      (if (not (check-name name))
-	  (then
-	   (with-fresh-labels@
-	    ((!nml fnums)
-	     (!nlx))
-	    (tccs-expression estr :label labtcc :tcc-step tcc-step)
-	    (branch (discriminate (name name estr) (labl !nlx))
-		    ((then (when fnums (replace !nlx !nml))
-			   (let ((flagdir (equal dir 'rl)))
-			     (when@ flagdir (swap-rel !nlx)))
-			   (when hide? (hide !nlx)))
-		     (then
-		      (when tcc-step
-			(hide-all-but (labtcc !nlx))
-			(flatten)
-			(assert))
-		      (delabel labl)))))
-	   (unless tccsome
-	     (if tccnone
-		 (delabel labtcc :hide? t)
-	       (hide labtcc))))
-	(printf "Name ~a already exists" name))))
+  (with-fresh-labels
+   (!notcc :hide)
+   (let ((labl    (unless (equal label 'none) (or label (format nil "~a:" name))))
+	 (estr    (extra-get-expstr expr))
+	 (tccsome (and (not (equal tcc-label 'none)) tcc-label))
+	 (tccnone (or (equal tcc-label 'none)
+		      (and (null tcc-label) (equal label 'none))))
+	 (labtcc  (or tccsome
+		      (if tccnone
+			  !notcc
+			(if label (mapcar #'(lambda (lb)
+					      (format nil "~a-TCC:" lb))
+					  (flatten-labels label))
+			  (format nil "~a-TCC:" name))))))
+     (when estr
+       (if (not (check-name name))
+	   (then
+	    (with-fresh-labels@
+	     ((!nml fnums :tccs? tcc-step)
+	      (!nlx))
+	     (let ((fnums (extra-get-fnums fnums)))
+	       (then@
+		(tccs-expression estr :label labtcc :tcc-step tcc-step)
+		(branch (discriminate (name name estr) (labl !nlx))
+			((then (when fnums (replace !nlx !nml))
+			       (let ((flagdir (equal dir 'rl)))
+				 (when@ flagdir (swap-rel !nlx)))
+			       (when hide? (hide !nlx)))
+			 (then
+			  (when tcc-step
+			    (hide-all-but (labtcc !nlx *!nml-tccs*))
+			    (flatten)
+			    (assert))
+			  (delabel labl)))))))
+	    (unless tccsome
+	      (unless tccnone
+		(hide labtcc))))
+	 (printf "Name ~a already exists" name)))))
   "[Extrategies] Adds formula EXPR=NAME, where NAME is a new name, as
 a hypothesis and replaces EXPR by NAME in FNUMS. The added formula is
 labeled LABEL:, by default LABEL is set to NAME. DIR indicates the
@@ -974,9 +979,11 @@ NAME=EXPR, if DIR is rl. The added formula is hidden when HIDE? is
 t. If TCC-STEP is not null and EXPR yields TCCs, these TCCs are added
 as hypotheses to the main branch. If a TCC-LABEL is provided, these
 hypotheses are labeled TCC-LABEL. Otherwise, these hypotheses are
-labeled LABEL-TCC: and hidden from the sequent.  In branches other
-than the main branch, the strategy tries to discharge these TCCs with
-the proof command TCC-STEP."
+labeled LABEL-TCC: and hidden from the sequent. LABEL and TCC-LABEL
+can also be none, in this case no labels are set for the name
+definition and its TCCs, respectively. In branches other than the main
+branch, the strategy tries to discharge these TCCs with the proof
+command TCC-STEP."
 "Naming ~1@*~a as ~@*~a")
 
 (defun split-names-exprs (nmex label plabel tcclabel ptcclabel tccstp ptccstp)
@@ -1052,25 +1059,28 @@ all formulas that are considered new by PVS are also labeled."
 	  (rest (cdr list)))
       (then step
 	    (mapstep funstep rest list?))))
-  "[Extrategies] Sequentially applies FUNSTEP to each element of LIST. FUNSTEP is a function
-in Lisp that takes one argument and returns a proof command. After each application of FUNSTEP,
-the resulting proof command is applied to all branches. When LIST? is nil, the argument of
-FUNSTEP represents the head of the list at each iteration. For example,
+  "[Extrategies] Sequentially applies FUNSTEP to each element of
+LIST. FUNSTEP is a function in Lisp that takes one argument and
+returns a proof command. After each application of FUNSTEP, the
+resulting proof command is applied to all branches. When LIST? is nil,
+the argument of FUNSTEP represents the head of the list at each
+iteration. For example,
 
 (mapstep #'(lambda(x)`(name ,x \"1\")) (\"One\" \"Uno\"))
 
 behaves as (then (name \"One\" \"1\") (name \"Uno\" \"1\")).
 
-If LIST? is t, the argument of FUNSTEP represents the complete list at each iteration.
-For example,
+If LIST? is t, the argument of FUNSTEP represents the complete list at
+each iteration.  For example,
 
 (mapstep #'(lambda(x)`(name ,(car x) ,(length x))) (\"Two\" \"One\") :list? t)
 
 behaves as (then (name \"Two\" 2) (name \"One\" 1)).
 
-Technicality: Note the use of quotation and anti-quotation in the examples. Variables in FUNSTEP
-other than FUNSTEP's parameter can be unquoted only if they were defined outside FUNSTEP
-as (list 'quote <something>), e.g.,
+Technicality: Note the use of quotation and anti-quotation in the
+examples. Variables in FUNSTEP other than FUNSTEP's parameter can be
+unquoted only if they were defined outside FUNSTEP as (list 'quote
+<something>), e.g.,
 
 (let ((lbs (list 'quote '(\"a\" \"b\" \"c\"))))
   (mapstep #'(lambda(x)`(relabel ,lbs ,x)) (-1 1)))")
@@ -1081,157 +1091,244 @@ as (list 'quote <something>), e.g.,
 	  (rest (cdr list)))
       (then@ step
 	     (mapstep@ funstep rest list?))))
-  "[Extrategies] Sequentially applies FUNSTEP to each element of LIST. FUNSTEP is a function
-in Lisp that takes one argument and returns a proof command. After each application of FUNSTEP,
-the resulting proof command is applied to the first branch. When LIST? is nil, the argument of
-FUNSTEP represents the head of the list at each iteration. If LIST? is t, the argument of FUNSTEP
-represents the complete list at each iteration. See (help mapstep) for examples of use.")
+  "[Extrategies] Sequentially applies FUNSTEP to each element of
+LIST. FUNSTEP is a function in Lisp that takes one argument and
+returns a proof command. After each application of FUNSTEP, the
+resulting proof command is applied to the first branch. When LIST? is
+nil, the argument of FUNSTEP represents the head of the list at each
+iteration. If LIST? is t, the argument of FUNSTEP represents the
+complete list at each iteration. See (help mapstep) for examples of
+use.")
 
 (defun enlist-bindings (bindings)
-  (let ((bndgs (enlist-it bindings)))
-    (if (listp (car bndgs)) bndgs (list bndgs))))
+  (let ((bindings (enlist-it bindings)))
+    (if (listp (car bindings)) bindings (list bindings))))
 
 (defhelper with-fresh-labels-tccs__ (ftccs)
   (mapstep #'(lambda(x)`(tccs-formula* ,(car x) :label ,(cadr x))) ftccs)
   "[Extrategies] Internal strategy." "")
 
+;; Check if :opt (or :opt?, when opt-flat is t) is enabled in list lopts
+(defun enabled-option-flag (opt lopts &optional opt-flag)
+  (if (member opt lopts)
+      t
+      (when opt-flag
+	(let* ((opt? (intern (format nil "~a?" opt) :keyword))
+	       (fv   (member opt? lopts)))
+	  (and 
+	   (not (keywordp (cadr fv)))
+	   (cadr fv))))))
+
+;; Returns a triple of three lists of labels (lab1 lab2 lab3) specified in bindings
+;; such that :delete is enabled in labels in lab1, :hide is enabled in labels in lab2,
+;; neither :delete nor :hide are enabled in lab3.
+
+(defun enabled-delete-hide (bindings &optional dlab hlab nlab)
+  (if bindings
+      (let* ((binding (car bindings))
+	     (lab     (car binding))
+	     (lopts   (cdr binding)))
+	(cond ((enabled-option-flag ':delete lopts t)
+	       (enabled-delete-hide (cdr bindings) (cons lab dlab) hlab nlab))
+	      ((enabled-option-flag ':hide lopts t)
+	       (enabled-delete-hide (cdr bindings) dlab (cons lab hlab) nlab))
+	      (lab
+	       (enabled-delete-hide (cdr bindings) dlab hlab (cons lab nlab)))))
+    (list dlab hlab nlab)))
+
 (defhelper with-fresh-labels__ (bindings thn steps)
   (when steps
-    (let ((bindgs   (enlist-bindings bindings))
-	  (vlbs     (mapcar #'(lambda(x)(list (car x) (list 'quote (freshlabel (string (car x))))))
-			    bindgs))
-	  (ftccs    (loop for b in bindgs
-			  for opt = (cddr b)
-			  when (or (equal (car opt) ':tccs)
-				   (and (equal (car opt) ':tccs?)
-					(cadr opt)))
+    (let ((bindings (enlist-bindings bindings))
+	  ;; Bind variables to new labels
+	  (vlbs     (loop for b in bindings
+			  for ln = (member ':list (cdr b))
+			  collect
+			  (list (car b)
+				(list 'quote (if ln
+						 (freshlabels (string (car b)) (cadr ln))
+					       (freshlabel (string (car b))))))))
+	  ;; Find formulas with enabled TCCs. Return list of variable, fresh label, variable of tccs formulas,
+	  ;; and quoted variable of fresh label of tccs formulas. 
+	  (ftccs    (loop for b in bindings
+			  for opts = (cdr b)
+			  when (when (extra-get-fnums (car opts))
+				 (enabled-option-flag ':tccs opts t))
 			  collect (let* ((tccs (format nil "*~a-tccs*" (car b)))
 					 (lccs (freshlabel tccs)))
 				    (list (car b) lccs (intern tccs :pvs) (list 'quote lccs)))))
+	  ;; Binds implict *var-tccs* variables to new labels
 	  (vtccs    (mapcar #'(lambda (tcc) (cddr tcc)) ftccs))
+	  ;; List of all variables
 	  (vrs      (append vlbs vtccs))
-	  (ltccs    (mapcar #'cadr ftccs))
-	  (labs     (mapcar #'car bindgs))
-	  (plabs    (set-pairing
-		     (loop for b in bindgs
-			   when (cadr b)
-			   collect (car b))))
-	  (fnums    (loop for b in bindgs
-			  for fnum = (cadr b)
-			  when fnum
-			  collect fnum))
+	  ;; Pairs of variables and formula
+	  (labfnums (loop for b in bindings
+			  when (extra-get-fnums (cadr b))
+			  collect (cons (car b) (cadr b))))
+	  ;; List of labels that point to formula numbers
+	  (labs     (set-pairing (mapcar #'car labfnums)))
+	  ;; List of formula numbers
+	  (fnums    (mapcar #'cdr labfnums))
+	  ;; Then or Then@
 	  (thenstep (cons thn steps))
-	  (step     `(let ,vrs (then (relabel ,plabs ,fnums)
-				     (with-fresh-labels-tccs__$ ,ftccs)
-				     (try ,thenstep (skip) (fail))
-				     (delabel ,labs)
-				     (delete ,ltccs)))))
+	  ;; Classification of a labels (delete, hide, none)
+	  (dhnlabs  (enabled-delete-hide bindings (mapcar #'caddr ftccs)))
+	  (dlab     (nth 0 dhnlabs))
+	  (hlab     (nth 1 dhnlabs))
+	  (nlab     (append dlab (nth 2 dhnlabs)))
+	  ;; Main step
+	  (step     `(let ,vrs
+		       (then (relabel ,labs ,fnums)
+			     (with-fresh-labels-tccs__$ ,ftccs)
+			     (try ,thenstep (skip) (fail))
+			     (delete ,dlab)
+			     (touch (delabel ,nlab))
+			     (touch (delabel ,hlab :hide? t))))))
       step))
   "[Extrategies] Internal strategy." "")
 
 (defstrat with-fresh-labels (bindings &rest steps)
   (else (with-fresh-labels__$ bindings then steps) (skip))
   "[Extrategies] Creates fresh labels and binds them to formulas
-specified in BINDINGS.  Then, sequentially applies STEPS to all
-branches. All created labels are removed before the strategy
-exits. BINDINGS has either the form (VAR [FNUMS]) or ((VAR1 [FNUMS1
-[OPT1]]) ...  (VARn [FNUMSn [OPTn]])). Optional information OPTi can
-be either :tccs or :tccs?  t|nil. The option :tccs? nil behaves as if
-no option is provided.  In the other cases, TCCs of FNUMSi are added
-as hypotheses to the sequent by applying (tccs-formula FNUMi) before
-STEPS. The TCCs formulas of FNUMi are automatically labeled using a
-new label denoted by the implicit variable *VARi-tccs*. The strategy
-removes all added hypotheses before exiting.
+specified in BINDINGS. Then, sequentially applies STEPS to all
+branches. All created labels are removed before the strategy exits.
+BINDINGS has either the form (VAR [FNUM] OPT*) or ((VAR1 [FNUM1]
+OPT1*) ...  (VARn [FNUMn] OPTn*)), where VARi denotes a fresh label 
+that represents formula FNUMi. 
+
+OPTi can be
+
+:hide     
+  Hide formulas labeled VARi before the strategy exists. This option
+  can also be enabled/disabled programmatically using the option
+  :hide? flag, where flag can be either t (enabled) or nil (disabled).
+:delete   
+  Delete formulas labeled VARi before the strategy exists. This option
+  can also be enabled/disabled programmatically using the option
+  :delete? flag, where flag can be either t (enabled) or nil
+  (disabled).
+:tccs     
+  Add TCCs of formula FNUMi as hypotheses to the sequent by applying
+  (tccs-formulas FNUMi) before STEPS. The TCCs formulas of FNUMi are
+  automatically labeled using a fresh label denoted by *VARi-tccs*.
+  The strategy removes all added hypotheses before exiting. This
+  option can also be enabled/disabled programmatically using the
+  option :tccs? flag, where flag can be eiter t (enabled) or nil
+  (disabled).
+:list n
+  Bind VARi to a list of n fresh labels  
 
 For example,
 
 (with-fresh-labels 
-  ((l 1) (m -1 :tccs)) 
+  ((l 1) (m -1 :tccs) (n -3 :hide)) 
   (inst? l :where m))
 
-creates fresh labels, which are denoted by the variables l and m, and
-issues the proof command (label l 1), (label m -1), and (tccs-formula
-m). Then, the strategy instantiates formula l with matches from
-formula m. Finally, it removes all added hypotheses and labels.")
+creates fresh labels denoted l, m, and n. The strategy applies the
+following commands in sequence: (label l 1) (label m -1) (label n -3)
+(tccs-formula m) (inst? l :where m) (hide n). Finally, it removes all
+added TCCs and labels.")
 
 (defstrat with-fresh-labels@ (bindings &rest steps)
   (else (with-fresh-labels__$ bindings then@ steps) (skip))
-  "[Extrategies] Creates fresh labels and binds them to formulas specified in BINDINGS. 
-Then, sequentially applies STEPS to the main branch. Created labels are removed before 
-ending. BINDINGS are specified as in WITH-FRESH-LABELS.")
+  "[Extrategies] Creates fresh labels and binds them to formulas
+specified in BINDINGS. Then, sequentially applies STEPS to the main
+branch. Created labels are removed before ending. BINDINGS are
+specified as in WITH-FRESH-LABELS.")
+
+(defhelper with-fresh-names-expand__ (vnms)
+  (mapstep #'(lambda(x)`(expand ,(car x) :assert? none)) vnms)
+  "[Extrategies] Internal strategy." "")
 
 (defhelper with-fresh-names__ (bindings thn steps)
   (when steps
-    (let ((bindgs   (enlist-bindings bindings))
-	  (vnms     (mapcar #'(lambda(x)(list (car x) (freshname (string (car x)))))
-			    bindgs))
-	  (vlbs     (loop for b in bindgs
-			  when (cadr b)
+    (let ((bindings (enlist-bindings bindings))
+	  ;; Bind variables to new names
+	  (vnms     (loop for b in bindings
+			  for ln = (member ':list (cdr b))
+			  collect
+			  (list (car b)
+				(if ln
+				    (list 'quote (freshnames (string (car b)) (cadr ln)))
+				  (freshname (string (car b)))))))
+	  ;; Bind variables to labels
+	  (vlbs     (loop for b in bindings
+			  when (extra-get-expr (cadr b))
 			  collect (let ((v (format nil "*~a*" (car b))))
 				    (list (intern v :pvs) 
 					  (list 'quote (freshlabel (string (car b))))))))
-	  (nmsexs   (loop for b in bindgs
+	  ;; List of variables and expressions
+	  (nmsexs   (loop for b in bindings
 			  for v in vnms
-			  when (cadr b)
+			  when (extra-get-expr (cadr b))
 			  append (list (cadr v) (cadr b))))
-	  (ftccs    (loop for b in bindgs
-			  for opt = (cddr b)
-			  when (cadr b)
-			  collect (when (or (equal (car opt) ':tccs)
-					    (and (equal (car opt) ':tccs?)
-						 (cadr opt))
-					    (and (equal (car opt) ':tcc-step)
-						 (cadr opt)))
-			  (let ((va (format nil "*~a-tccs*" (car b)))
-				(la (format nil "~a-tccs" (car b))))
-				      (list (intern va :pvs) (list 'quote (freshlabel la)))))))
-	  (vtccs    (remove-if-not #'identity ftccs))
-	  (tccstp   (when vtccs
-		      (set-pairing
-		       (loop for b in bindgs
-			     for opt = (cddr b)
-			     when (cadr b)
-			     collect (cond ((or (equal (car opt) ':tccs)
-						(and (equal (car opt) ':tccs?)
-						     (cadr opt))) '(extra-tcc-step))
-					   ((equal (car opt) ':tcc-step) (cadr opt)))))))
-	  (wfn      (freshlabel "wfn"))
-	  (wfn-tccs (freshlabel "wfc-tccs"))
-	  (lbtccs   (mapcar #'car ftccs))
-	  (plbtccs  (when vtccs (set-pairing (pair-lists (list wfn-tccs) lbtccs nil t))))
+	  ;; Find expressions with enabled TCCs. Return list of variable of tccs formulas,
+	  ;; and quoted variable of fresh label of tccs formulas. 
+	  (etccs    (loop for b in bindings
+			  for opts = (cdr b)
+			  for opt-tcc = (when (extra-get-expr (car opts))
+					  (enabled-option-flag ':tccs opts t))
+			  when (extra-get-expr (car opts))
+			  collect (when opt-tcc
+				    (let* ((va  (format nil "*~a-tccs*" (car b)))
+					   (la  (format nil "~a-tccs" (car b)))
+					   (stp (if (listp opt-tcc) opt-tcc '(extra-tcc-step))))
+				      (list stp (intern va :pvs) (list 'quote (freshlabel la)))))))
+	  ;; Binds implict *var-tccs* variables to new labels
+	  (vtccs    (mapcar #'(lambda (tcc) (cdr tcc))
+			    (remove-if-not #'identity etccs)))
+	  ;; List of steps for proving TCCs (including nil)
+	  (ptccstp  (set-pairing
+		     (mapcar #'(lambda (tcc) (car tcc)) etccs)))
+	  ;; List of TCCs labels (including nil)
+	  (lbtccsx  (mapcar #'(lambda (tcc) (cadr tcc)) etccs))
+	  (plbtccs  (set-pairing lbtccsx))
+	  (lbtccs   (remove-if-not #'identity lbtccsx))
 	  (vrsnms   (append vnms vlbs vtccs))
 	  (thenstep (cons thn steps))
 	  (lbvrs    (mapcar #'car vlbs))
-	  (plbvrs   (set-pairing (pair-lists (list wfn) lbvrs nil t)))
-	  (allbs    (cons wfn (cons wfn-tccs (append lbtccs lbvrs))))
-	  (step     `(let ,vrsnms (then (then@ (name-label* ,nmsexs :hide? t :label ,plbvrs
-							    :tcc-label ,plbtccs :tcc-step ,tccstp)
-					       (try ,thenstep (skip) (fail)))
-					(reveal ,wfn)
-					(replaces ,wfn :dir rl)
-					(delete ,wfn ,wfn-tccs)
-					(touch (delabel ,allbs :hidden? t))))))
+	  (plbvrs   (set-pairing lbvrs))
+	  (allbs    (append lbtccs lbvrs))
+	  (step     `(let ,vrsnms
+		       (then (then@ (name-label* ,nmsexs :hide? t :label ,plbvrs
+						 :tcc-label ,plbtccs :tcc-step ,ptccstp)
+				    (try ,thenstep (skip) (fail)))
+			     (with-fresh-names-expand__$ ,vnms)
+			     (delete ,lbtccs)
+			     (touch (delabel ,allbs))))))
       step))
   "[Extrategies] Internal strategy." "")
 
-(defstrat with-fresh-names (bindings &rest steps) (else
-  (with-fresh-names__$ bindings then steps) (skip)) 
+(defstrat with-fresh-names (bindings &rest steps)
+  (else
+   (with-fresh-names__$ bindings then steps) (skip)) 
   "[Extrategies] Creates fresh names and binds them to expressions
  specified in BINDINGS.  Then, sequentially applies STEPS to all
- branches. All created names are expanded before the strategy
- exits. BINDINGS has either the form (VAR [EXPR]) or ((VAR1 [EXPR1
- [OPT1]]) ...  (VARn [EXPRn [OPTn]])). Optional information OPTi can
- be either :tccs, :tccs? t|nil, or :tcc-step TCC-STEP. The option
- :tccs? nil behaves as if no option is provided.  In the other cases,
- TCCs of EXPRi are added as hypotheses to the sequent by applying
- (tccs-expression EXPRi) before STEPS. These TCCs are discharged by a
- default strategy or by TCC-STEP, if one is provided.  The TCCs
- formulas of EXPRi are automatically labeled using a new label denoted
- by the implicit variable *VARi-tccs*.  For all 1 <= i <= n, an
- implicit variable *VARi* is defined such that it denotes the label of
- the formula introduced by (name VARi EXPRi). The strategy removes all
- added labels and hypotheses before exiting.
+ branches. All created names are expanded before the strategy exits.
+ BINDINGS has either the form (VAR [EXPR] OPT*) or ((VAR1 [EXPR1]
+ OPT1*]) ...  (VARn [EXPRn] OPTn*)), where VARi denotes a fresh name
+ to expression EXPRi. An implicit variable *VARi* is defined that
+ denotes the label of the formula VARi = EXPRi. The strategy removes
+ all added labels and hypotheses before exiting.
 
+ OPTi can be
+
+:tccs     
+  Add TCCs of expression EXPRi as hypotheses to the sequent by
+  applying (tccs-expression EXPRi) before STEPS. These TCCs are
+  discharged by a default strategy. The TCCs formulas of EXPRi are
+  automatically labeled using a fresh label denoted by *VARi-tccs*.
+  The strategy removes all added hypotheses before exiting. This
+  option can also be enabled/disabled programmatically using the
+  option :tccs? flag, where flag can be eiter t (enabled), STEP
+  (enabled), or nil (disabled). When :tccs? is STEP, this
+  proof command is used instead of the default strategy to discharge
+  the TCCs generated by EXPRi.
+  using a fresh label denoted by *VARi-tccs*. The strategy removes all 
+  added hypotheses before exiting. This option can also be enabled/disabled
+  programmatically using the option :tccs? flag, where flag can be eiter
+  t (enabled) or nil (disabled).
+:list n
+  Bind VARi to a list of n fresh names  
 
 For example,
 
@@ -1262,32 +1359,56 @@ branch. BINDINGS are specified as in WITH-FRESH-NAMES.")
   "[Extrategies] Internal strategy." "")
 
 (defstep copy* (fnums &optional label hide? labels?)
-  (let ((fs      (extra-get-fnums fnums))
-	(labcpy  (or label (freshlabel "cpy")))
-	(qlabcpy (list 'quote labcpy))
-	(qlabels (list 'quote labels?)))
-    (then
-     (mapstep #'(lambda (x)`(copy__$ ,x ,qlabcpy ,qlabels)) fs)
-     (unless hide? (reveal labcpy))
-     (unless label (delabel labcpy))))
+  (with-fresh-labels
+   (!copy)
+   (let ((fs      (extra-get-fnums fnums))
+	 (labcpy  (or label !copy))
+	 (qlabcpy (list 'quote labcpy))
+	 (qlabels (list 'quote labels?)))
+     (then
+      (mapstep #'(lambda (x)`(copy__$ ,x ,qlabcpy ,qlabels)) fs)
+      (unless hide? (reveal labcpy)))))
   "[Extrategies] Copies formulas in FNUMS. The copied formulas are labeled LABEL(s), if
 LABEL is not nil. When HIDE? is t, the copied formulas are hidden. If LABELS? is t,
 labels are also copied."
   "Copying formulas ~a")
 
 (defstep protect (fnums step &optional label hide?)
-  (if fnums
-      (let ((labprc (or label (freshlabel "prc"))))
-	(with-fresh-labels
-	 (!pro fnums)
-	 (copy* !pro labprc :hide? t :labels? t)
-	 step
-	 (unless hide? (reveal labprc))
-	 (unless label (delabel labprc))))
-    step)
+  (with-fresh-labels
+   (!protect)
+   (if fnums
+       (let ((labprc (or label !protect)))
+	 (with-fresh-labels
+	  (!pro fnums)
+	  (copy* !pro labprc :hide? t :labels? t)
+	  step
+	  (unless hide? (reveal labprc))))
+     step))
   "[Extrategies] Protects formulas FNUMS so that they are not afected by STEP. The protected formulas
  are labeled LABEL(s), if LABEL is not nil."
   "Protecting formulas in ~a")
+
+(defhelper with-focus-on__ (fnums step)
+  (with-fresh-labels
+   (!allbut (^ fnums))
+   (hide !allbut)
+   step
+   (reveal !allbut))
+  "[Extrategies] Internal strategy." "")
+
+(defstrat with-focus-on (fnums &rest steps)
+  (let ((step (cons 'then steps)))
+    (with-focus-on__$ fnums step)) 
+  "[Extrategies]  Hides all but formulas in FNUMS, applies STEPS to all branches, and the reveals hidden
+formulas. 
+CAVEAT: Formulas in the sequent my be reorganized after the application of this strategy.")
+
+(defstrat with-focus-on@ (fnums &rest steps)
+  (let ((step (cons 'then@ steps)))
+    (with-focus-on__$ fnums step)) 
+  "[Extrategies]  Hides all but formulas in FNUMS, applies STEPS to main branch, and the reveals hidden
+formulas.
+CAVEAT:Formulas in the sequent my be reorganized after the application of this strategy.")
 
 ;;; Defining tactics
 
@@ -1372,7 +1493,7 @@ and external *trusted* oracles. The strategy *must* only be used in proof rules.
 ;;; They cannot be written as a combination of the basic proof rules
 
 (defstrat extra-tcc-step ()
-  (then (assert) (subtype-tcc))
+  (then (flatten) (assert) (subtype-tcc))
   "Tries to prove TCCs by first using (assert) and then (subtype-tcc)")
 
 (defhelper relabel-hide__ (step lab1 lab2 hide?)
@@ -1475,7 +1596,7 @@ first subgoal. Added hypotheses are labeled LABEL(s), if LABEL is not nil. They 
 HIDE? is t."
  "Adding TCCs of step ~a as hypotheses")
 
-(defstep with-tccs (step &optional steps (fnums *) (tcc-step (extra-tcc-steps)))
+(defstep with-tccs (step &optional steps (fnums *) (tcc-step (extra-tcc-step)))
   (let ((stps (append (or steps '((skip))) (cons 'finalize tcc-step))))
     (with-fresh-labels
      (!wtccs fnums :tccs)
@@ -1538,10 +1659,16 @@ the execution model of strategies in PVS, FLAG must be a simple variable.")
   "[Extrategies] Internal strategy." "")
 
 (defstrat when-label (label &rest steps)
-  (let ((qlabl (list 'quote label)))
-    (mapstep #'(lambda(x)`(when-label__$ ,qlabl ,x)) steps))
-  "[Extrategies]  Sequentially applies STEPS to all branches as long as at least one formula
-is labeled LABEL in the sequent.")
+  (let ((step (cons 'then steps)))
+    (when-label__$ label step)) 
+  "[Extrategies]  Sequentially applies STEPS to all branches as long as at least one
+formula in the sequent is labeled LABEL.")
+
+(defstrat when-label@ (label &rest steps)
+  (let ((step (cons 'then@ steps)))
+    (when-label__$ label step)) 
+  "[Extrategies]  Sequentially applies STEPS to the main branch as long as at least one
+formula in the sequent is labeled LABEL.")
 
 (defhelper unless-label__ (label step)
   (let ((fs (extra-get-fnums label)))
@@ -1549,16 +1676,22 @@ is labeled LABEL in the sequent.")
   "[Extrategies] Internal strategy." "")
 
 (defstrat unless-label (label &rest steps)
-  (let ((qlabl (list 'quote label)))
-    (mapstep #'(lambda(x)`(unless-label__$ ,qlabl ,x)) steps))
-  "[Extrategies]  Sequentially applies STEPS to all branches as long as no formula is labeled
-as LABEL in the sequent.")
+  (let ((step (cons 'then steps)))
+    (unless-label__$ label step)) 
+  "[Extrategies]  Sequentially applies STEPS to all branches as long as no formula in
+the sequent is labeled LABEL.")
+
+(defstrat unless-label@ (label &rest steps)
+  (let ((step (cons 'then@ steps)))
+    (unless-label__$ label step)) 
+  "[Extrategies]  Sequentially applies STEPS to the main branch as long as no formula in
+the sequent is labeled LABEL.")
 
 (defstrat if-label (label then-step &optional (else-step (skip)))
   (if (extra-get-fnums label)
       then-step else-step)
-  "[Extrategies]  Applies THEN-STEP if at least one formula is labeled LABEL in the current
-sequent; otherwise, applies ELSE-STEP.")
+  "[Extrategies]  Applies THEN-STEP if at least one formula in the sequent is labeled
+LABEL. Otherwise, applies ELSE-STEP.")
 
 (defhelper for__ (n step)
   (if (numberp n)
@@ -1678,8 +1811,9 @@ uses \"YY\" as the name of the skolem constant for \"y\"."
    "Skolemizing and keeping names of the universal formula in ~a")
 
 (defstep skeep* (&optional (fnum '*) preds? postfix n)
-  (with-fresh-labels (!skp fnum)
-	      (for@ n (skeep !skp :preds? preds? :postfix postfix)))
+  (with-fresh-labels
+   (!skp fnum)
+   (for@ n (skeep !skp :preds? preds? :postfix postfix)))
   "[Extrategies] Iterates N times skeep (or until it does nothing if N is nil) in a universally 
 quantified formula in FNUM. If POSTFIX is provided, it is appended to the names of the bounded 
 variables. Names that clash with other names in the current sequent are replaced by fresh 
@@ -1721,8 +1855,9 @@ formula but excludes \"x\", (insteep :but (\"x\" (\"y\" \"100\"))) instantiates 
   "Instantiating with the names of the existential formula in ~a")
 
 (defstep insteep* (&optional (fnum '*) postfix n)
-  (with-fresh-labels (!instp fnum)
-	      (for@ n (insteep !instp :postfix postfix)))
+  (with-fresh-labels
+   (!instp fnum)
+   (for@ n (insteep !instp :postfix postfix)))
   "[Extrategies] Iterates N times insteep (or until it does nothing if N is nil) in an
 existentially quantified formula in FNUM.  If POSTFIX is provided, it is appended to the 
 names of the bounded variables."
@@ -1740,7 +1875,7 @@ names of the bounded variables."
 	(casestr (when flag (format nil "~a" nexpr))))
     (when flag
       (with-fresh-labels
-       ((!skl fn :tccs)
+       ((!skl fn :tccs :delete)
 	(!skd)
 	(!old))
        (try-branch
@@ -1754,12 +1889,10 @@ names of the bounded variables."
 			  (then (replaces !old :hide? nil) (beta (!skl !skd))))
 			(then (replaces !old :hide? nil) (finalize tcc-step))))
 	       (relabel flabels !skd)
-	       (delete !skl)
 	       (if hide?
 		   (hide !old)
 		 (unlabel !old)))
 	 (then (replaces !old :hide? nil)
-	       (delete !skl)
 	       (finalize (assert))))
 	(skip)))))
   "[Extrategies] Internal strategy." "")
@@ -2002,25 +2135,26 @@ TCCs generated during the execution of the command are discharged with the proof
 			  (cond ((and from to) (fromto nfrom nto))
 				(from (remove-before nfrom flist))
 				(to   (remove-after nto flist))
-				(t    flist)))))
+				(t    flist))))
+	(n     (length feqs)))
     (when feqs
-      (let ((labreq (freshlabels "req" (length feqs)))
-	    (plabs  (set-pairing labreq))
-	    (qdir   (list 'quote dir))
-	    (qhide  (list 'quote hide?))
-	    (forms  (extra-get-but-fnums but :all in)))
-	(with-fresh-labels
-	 (!rep forms)
-	 (let ((qrep (list 'quote !rep)))
-	   (then
-	    (relabel plabs feqs)
-	    (mapstep #'(lambda(x)`(try (replace ,x ,qrep :dir ,qdir)
-				       (when ,qhide
-					 (unlabel* ,x ,qrep)
-					 (delabel ,x :hide? t))
-				       (skip)))
-		     labreq)
-	    (delabel labreq)))))))
+      (with-fresh-labels
+       (!replaces :list n)
+       (let ((plabs  (set-pairing !replaces))
+	     (qdir   (list 'quote dir))
+	     (qhide  (list 'quote hide?))
+	     (forms  (extra-get-but-fnums but :all in)))
+	 (with-fresh-labels
+	  (!rep forms)
+	  (let ((qrep (list 'quote !rep)))
+	    (then
+	     (relabel plabs feqs)
+	     (mapstep #'(lambda(x)`(try (replace ,x ,qrep :dir ,qdir)
+					(when ,qhide
+					  (unlabel* ,x ,qrep)
+					  (delabel ,x :hide? t))
+					(skip)))
+		      !replaces))))))))
   "[Extrategies] Iterates the proof command replace to rewrite with the formulas in FNUMS,
 respecting the order, the formulas in IN but not in BUT. The keys DIR and HIDE? are like
 in REPLACE. Notice that in contrast to REPLACE, the default value of HIDE? is T. Instead
@@ -2032,13 +2166,14 @@ of using FNUMS, rewriting formulas can be addressed via FROM and TO."
 	 (qdir   (list 'quote dir))
 	 (qorder (list 'quote order))
 	 (qdont  (list 'quote dont-delete?)))
-     (with-fresh-labels ((!rew fnums)
-		  (!ret target-fnums))
-		 (let ((qrew (list 'quote !rew))
-		       (qret (list 'quote !ret)))
-		   (mapstep@ #'(lambda (x)`(rewrite ,x :fnums ,qrew :target-fnums ,qret
-						    :dir ,qdir :order ,qorder :dont-delete? ,qdont))
-			     lms))))
+     (with-fresh-labels
+      ((!rew fnums)
+       (!ret target-fnums))
+      (let ((qrew (list 'quote !rew))
+	    (qret (list 'quote !ret)))
+	(mapstep@ #'(lambda (x)`(rewrite ,x :fnums ,qrew :target-fnums ,qret
+					 :dir ,qdir :order ,qorder :dont-delete? ,qdont))
+		  lms))))
    "[Extrategies] Rewrites with a list of lemmas or fnums. LEMMAS-OR-FNUMS has the form
 (LEMMAS-OR-FNUMS1 ... LEMMAS-OR-FNUMS). Options are as in rewrite."
   "Rewriting with ~a")
@@ -2048,14 +2183,15 @@ of using FNUMS, rewriting formulas can be addressed via FROM and TO."
 	 (qdir   (list 'quote dir))
 	 (qorder (list 'quote order))
 	 (qdont  (list 'quote dont-delete?)))
-     (with-fresh-labels ((!rws fnums)
-		  (!rwt target-fnums))
-		  (let ((qrws (list 'quote !rws))
-			(qrwt (list 'quote !rwt)))
-		    (repeat
-		     (mapstep@ #'(lambda (x)`(rewrite ,x :fnums ,qrws :target-fnums ,qrwt
-						      :dir ,qdir :order ,qorder :dont-delete? ,qdont))
-			       lms)))))
+     (with-fresh-labels
+      ((!rws fnums)
+       (!rwt target-fnums))
+      (let ((qrws (list 'quote !rws))
+	    (qrwt (list 'quote !rwt)))
+	(repeat
+	 (mapstep@ #'(lambda (x)`(rewrite ,x :fnums ,qrws :target-fnums ,qrwt
+					  :dir ,qdir :order ,qorder :dont-delete? ,qdont))
+		   lms)))))
    "[Extrategies] Recursively rewrites LEMMAS-OR-FNUMS on the first branch. Options are as in rewrites."
    "Rewriting recursively with ~a")
 
@@ -2127,35 +2263,6 @@ quantifier, if provided."
 % Strategies in Extrategies:~a
 %--~%" version strategies))
   "[Extrategies] Prints Extrategies's about information.")
-
-;;; EXPERIMENTAL EXTRATEGIES
-
-;;; Induction
-
-(defhelper inductionfree__ (recvar &optional first)
-  (let ((name (freshname "V"))
-	(pre  (car (eval-ext-expr `(! * (-> ,recvar)))))
-	(term (when pre (format nil "~a" (ee-pvs-obj pre)))))
-    (if term
-	(branch (name-replace name term :hide? t)
-		((inductionfree__$ name)
-		 (skip)))
-      (unless
-       first
-       (typepred recvar))))
-  "[Extrategies] Internal strategy." "")
-
-(defstrat inductionfree (&optional (recvar "v"))
-  (if (forall-expr? (extra-get-formula 1))
-      (let ((recvar (format nil "~a!1" recvar)))
-	(then (skosimp* :preds? t)
-	      (repeat (inductionfree__$ recvar t))
-	      (assert)))
-    (then
-     (repeat (inductionfree__$ recvar t))
-     (assert)))
-  "[Extrategies] Extracts induction free principle from definition of recursive function. RECVAR is the
-name of the quantified variable that encodes the recursive call.")
 
 ;;;;; SPECIFIC FUNCTIONS ;;;;; 
 

@@ -31,7 +31,7 @@
 	    (cons nil expr))))
        (t (cons nil expr))))))
 
-;; Return a list of pairs (str.n), where str is a string representation of
+;; Return a list of pairs (str n), where str is a string representation of
 ;; a polynomial and n is the code of its relation wrt to 0
 (defun tarski-valid-forms-rec (exprs vars strict accum)
   (if (null exprs) accum
@@ -50,14 +50,14 @@
 	       (e2    (nth 2 re))
 	       (conj1 (sturm-expr-wrt0 e1 e2))
 	       (pe1   (catch '*sturm-error*
-			(cons (sturm-poly-expr-rec conj1 vars) r))))
+			(list (sturm-poly-expr-rec conj1 vars) r))))
 	  (cond ((null pe1) 
 		 (push conj1 *tarski-invalid-forms*)
 		 (unless strict
 		   (tarski-valid-forms-rec xprs vars strict accum)))
 		((is-function-expr e0 'abs)
 		 (let* ((conj2 (sturm-expr-wrt0 e1 e2 t))
-			(pe2   (cons (sturm-poly-expr-rec conj2 vars) (1- r))))
+			(pe2   (list (sturm-poly-expr-rec conj2 vars) (1- r))))
 		   (tarski-valid-forms-rec xprs vars strict
 					   (cons pe2 (cons pe1 accum)))))
 		(t (tarski-valid-forms-rec xprs vars strict
@@ -77,9 +77,9 @@
 		     (ra  (if (or (null ca) (extra-is-true ca)) 5 2))
 		     (rb  (if (or (null cb) (extra-is-true cb)) 4 1))
 		     (pea (catch '*sturm-error*
-			    (cons (sturm-poly-expr-rec conja vars) ra)))
+			    (list (sturm-poly-expr-rec conja vars) ra)))
 		     (peb (catch '*sturm-error*
-			    (cons (sturm-poly-expr-rec conjb vars) rb))))
+			    (list (sturm-poly-expr-rec conjb vars) rb))))
 		(cond ((or (null pea) (null peb))
 		       (push (cdr re) *tarski-invalid-forms*)
 		       (unless strict
@@ -99,7 +99,7 @@
   (extra-reset-evalexprs)
   (tarski-valid-forms-rec exprs vars strict nil))
 
-(defstep tarski (&optional (fnums *) var (preds? t) dont-fail?)
+(defstep tarski (&optional (fnums *) var preds? dont-fail? (equiv? t))
   (let ((fns    (extra-get-fnums fnums))
 	(fn     (if (equal (length fns) 1) (car fns) 0))
 	(expr   (when (/= fn 0)
@@ -125,6 +125,7 @@
 	(tkvar  *sturm-var*)
 	(qvars  (when (/= quant 0) vars))
 	(qth    (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
+	(dont-fail?  (or dont-fail? (not equiv?)))
 	(msg    (cond (qth
 		       (format nil "This strategy requires theory ~a to be imported in the current context" qth))
 		      ((null tkvar)
@@ -137,14 +138,17 @@ supported by this strategy:~%~{~a~%~}"
 		       (format nil "Formula ~a is not simply quantified." fn)))))
     (if msg
 	(printf "~a" msg)
-      (then
-       (tarski__$ fnums fall conjs tkvar qvars preds?)
+      (with-fresh-labels@
+       ((labfalse!))
+       (tarski__$ fnums fall conjs tkvar qvars preds? equiv? labfalse!)
        (when invfms
 	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
 and were not considered by this strategy:~%~{~a~%~}"
 		 tkvar invfms))
-       (printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
-	       fnums preds?)
+       (when-label
+	labfalse!
+	(printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
+		fnums preds?))
        (unless dont-fail? (fail)))))
   "[Tarski] Applies decision procedure for univariate polynomial based on Tarski's Theorem
 to formulas in FNUM. Each formula denoted by FNUM is expected to have the form pi Ri qi,
@@ -152,9 +156,18 @@ where pi and qi are polynomials on variable VAR and Ri is a relation in {<,<=,>,
 If FNUM denotes a simply quantified formula, that formula is expected to have one of the forms
 - EXISTS (VAR:real) : p0 R0 q0 AND ... AND pn Rn qn
 - FORALL (VAR:real) : p0 R0 q0 AND ... AND pi Ri qi IMPLIES pj Rj qj OR ... OR pn Rn qn.
-If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. Type
-predicates are introduced as hypotheses when PREDS? is t. If DONT-FAIL? is set to t,
-strategy skips instead of failing when sequent cannot be discharged."
+If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. 
+
+The subtype predicate of VAR is introduced as hypothesis when PREDS? is t. 
+
+When DONT-FAIL? is set to t, strategy skips instead of failing when sequent cannot be 
+discharged. 
+
+When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embedding of 
+the original polynomial system is correct. The proof of this fact is trivial from a logical 
+point of view, but requires unfolding of several definitions which is time consuming in 
+PVS. In this case, DONT-FAIL? is assumed to be t. 
+"
   "Applying Tarski's Theorem to sequent formed by formulas in ~a")
 
 (defhelper tarski_polylist__ (name expr labp labd)
@@ -170,29 +183,39 @@ strategy skips instead of failing when sequent cannot be discharged."
      (replace -2 -1 :dir rl)))
   "[Tarski] Internal strategy." "")
 
-(defhelper tarski_polynomial__ (skname skfn n name names)
-  (let ((castr (format nil "~a = ~a" skname n))
-	(exstp (cons 'expand* names))
-	(rws   *sturm-rews*))
-    (then@
-     (if skname 
-	 (case-replace castr)
-       (then
-	(copy skfn)
-	(hide skfn)
-	(inst * n)))
-     exstp
-     (rewrite "polylist_eval" :dir rl)
-     (expand name)
-     (rewrite* rws)
-     (assert)
-     (unless skname (reveal skfn))))
+(defhelper tarski_polynomial__ (skname skfn ex rews n name names &optional labj labn)
+  (let ((exstp (cons 'expand* names)))
+    (unless-label@
+     labj
+     (with-focus-on@
+      ex
+      (if skname
+	  (let ((castr (format nil "~a = ~a" skname n)))
+	    (then (spread
+		   (case-replace castr)
+		   ((label labj -1)
+		    (label labn 1)))
+		  (assert)))
+	(then@
+	 (copy skfn)
+	 (hide skfn)
+	 (inst * n)))
+      (unless-label
+       labn
+       exstp
+       (rewrite "polylist_eval" :dir rl)
+       (expand name)
+       (when rews
+	 (rewrite* rews)
+	 (assert))
+       (unless skname (reveal skfn))))))
   "[Tarski] Internal strategy." "")
    
-(defhelper tarski__ (fnums fall exprs var qvars preds?)
+(defhelper tarski__ (fnums fall exprs var qvars preds? equiv? labfalse)
   (with-fresh-labels
-   ((fnums! fnums) (labp!) (labd!) (labpred!))
-   (hide-all-but fnums!)
+   ((fnums! fnums) (labp!) (labd!) (labpred!)
+    (labsk! :delete) (labj! :delete) (labn! :delete))
+   (hide *)
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
@@ -204,6 +227,8 @@ strategy skips instead of failing when sequent cannot be discharged."
 	    (conjs (tarski-valid-forms-rec predexprs (list var) nil exprs))
 	    (labp  (list 'quote labp!))
 	    (labd  (list 'quote labd!))
+	    (labj  (list 'quote labj!))
+	    (labn  (list 'quote labn!))
 	    (n     (1- (length conjs)))
 	    (names (freshnames "pl" (1+ n)))
 	    (nes   (pair-lists names conjs))
@@ -212,7 +237,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 		    "zero_pol"))
 	    (degl  (extra-lambda-list
 		    (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) names) 0))
-	    (rell  (extra-lambda-list (mapcar #'cdr conjs) 0)))
+	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
 	(then
 	 (mapstep #'(lambda (x)`(tarski_polylist__ ,(car x) ,(cadr x) ,labp ,labd)) nes)
 	 (with-fresh-names
@@ -227,13 +252,14 @@ strategy skips instead of failing when sequent cannot be discharged."
 		    (expand polyl_ -1 2)
 		    (replaces labp! :in -1)
 		    (with-fresh-labels
-		     ((ex! -1 :tccs) (eqs!))
+		     ((ex! -1) (eqs!))
 		     (with-fresh-names
-		      ((ps_ (! ex! 2 2)) (ds_ (! ex! 2 3)))
-		      (hide *ex!-tccs*)
+		      ((ps_ (! ex! 2 2) :tccs) (ds_ (! ex! 2 3)))
+		      (delete *ps_-tccs*)
 		      (eval-expr (! -1 2))
 		      (replaces -1 -2)
 		      (prop)
+		      (reveal fnums!)
 		      (let ((instp (> (extra-get-fnum ex!) 0))
 			    (skolv (when qvars (freshnames "x" (length qvars))))
 			    (instv (if qvars
@@ -246,27 +272,31 @@ strategy skips instead of failing when sequent cannot be discharged."
 			    (z2n    (pair-lists (fromto 0 n) names))
 			    (qsknm  (when fall (list 'quote j_)))
 			    (qskfn  (when qvars (list 'quote skolfn)))
+			    (qex    (list 'quote ex!))
 			    (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			    (eqs    (extra-evalexprs)))
-			(when valid
+			    (eqs    (extra-evalexprs))
+			    (rews   (when equiv? (list 'quote *sturm-rews*))))
+			(if valid
 			  (if fall
 			      (then
-			       (when qvars (skolem skolfn skolv :skolem-typepreds? preds?))
+			       (when qvars
+				 (skolem skolfn skolv)
+				 (when preds?
+				   (with-labels (typepred skolv) labsk!)))
 			       (inst instfn instv)
-			       (skolem instfn j_ :skolem-typepreds? t)
+			       (skolem instfn j_)
 			       (extra-evalexprs$ eqs)
 			       (expand* "[||]" "##" "contains?")
 			       (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			       (flatten)
-			       (mapstep@ #'(lambda (x)`(tarski_polynomial__
-							,qsknm ,qskfn ,(car x) ,(cdr x) ,qnms))
-					 z2n)
-			       (hide ex! fnums!) 
-			       (assert))
+			       (mapstep #'(lambda (x)`(tarski_polynomial__
+						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
+					z2n)
+			       (when rews (assert)))
 			    (then
 			     (skolem skolfn skolv)
 			     (mapstep@ #'(lambda (x)`(tarski_polynomial__
-						      ,qsknm ,qskfn ,(car x) ,(cdr x) ,qnms))
+						      ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
 				       z2n)
 			     (hide ex!)
 			     (extra-evalexprs$ eqs eqs!)
@@ -276,7 +306,8 @@ strategy skips instead of failing when sequent cannot be discharged."
 			     (expand* "[||]" "##" "contains?")
 			     (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			     (flatten)
-			     (assert))))))))
+			     (assert)))
+			  (relabel labfalse ex!))))))
 	      (then (hide-all-but (labd! labp! 1))
 		    (expand* polyl_ degl_)
 		    (replaces (labd! labp!))
@@ -294,7 +325,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 		  (assert))))))))))
   "[Tarski] Internal strategy." "")
 
-(defstep hutch (&optional (fnums *) var (preds? t) sos? dont-fail?)
+(defstep hutch (&optional (fnums *) var preds? (sos? t) dont-fail? (equiv? t))
   (let ((fns    (extra-get-fnums fnums))
 	(fn     (if (equal (length fns) 1) (car fns) 0))
 	(expr   (when (/= fn 0)
@@ -320,6 +351,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 	(tkvar  *sturm-var*)
 	(qvars  (when (/= quant 0) vars))
 	(qth    (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
+	(dont-fail?  (or dont-fail? (not equiv?)))
 	(msg    (cond (qth
 		       (format nil "This strategy requires theory ~a to be imported in the current context" qth))
 		      ((null tkvar)
@@ -332,32 +364,50 @@ supported by this strategy:~%~{~a~%~}"
 		       (format nil "Formula ~a is not simply quantified." fn)))))
     (if msg
 	(printf "~a" msg)
-      (then
-       (hutch__$ fnums fall conjs tkvar qvars preds? sos?)
+      (with-fresh-labels@
+       ((labfalse!))
+       (hutch__$ fnums fall conjs tkvar qvars preds? sos? equiv? labfalse!)
        (when invfms
 	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
 and were not considered by this strategy:~%~{~a~%~}"
 		 tkvar invfms))
-       (printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
-	       fnums preds?)
+       (when-label
+	labfalse!
+	(printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
+		fnums preds?))
        (unless dont-fail? (fail)))))
   "[Tarski] Applies decision procedure for univariate polynomial based on a variant of
 Tarski's Theorem to formulas in FNUM. Each formula denoted by FNUM is expected to
-have the form pi Ri qi, where pi and qi are polynomials on variable VAR and Ri is a
-relation in {<,<=,>,>=,=,/=}. If FNUM denotes a simply quantified formula, that formula
-is expected to have one of the forms
-- EXISTS (VAR:real) : p0 R0 q0 AND ... AND pn Rn qn
-- FORALL (VAR:real) : p0 R0 q0 AND ... AND pi Ri qi IMPLIES pj Rj qj OR ... OR pn Rn qn.
-If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. Type
-predicates are introduced as hypotheses when PREDS? is t. The option sos? indicates the
-use of a SOS-based heuristics. If DONT-FAIL? is set to t, strategy skips instead of failing 
-when sequent cannot be discharged."
+have the form B(p0 Ri q0,...,pn Rn qn), where B is an arbitrary boolean expresion on 
+polynomial relations of the form pi Ri qi, with pi and qi are polynomials on variable 
+VAR and Ri is a relation in {<,<=,>,>=,=,/=}. If FNUM denotes a simply quantified formula, 
+that formula is expected to have one of the forms
+- EXISTS (VAR:real) : B(p0 Ri q0,...,pn Rn qn)
+- FORALL (VAR:real) : B(p0 Ri q0,...,pn Rn qn)
+If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. 
+
+The subtype predicate of VAR is introduced as hypothesis when PREDS? is t. 
+
+The option SOS?, which is set by default to t, indicates the use of a
+sum-of-squares-based heuristic for dealing with small intervals. If is
+set to nil, a heuristic based on the product of the polynomials is
+used.
+
+When DONT-FAIL? is set to t, strategy skips instead of failing when sequent cannot be 
+discharged. 
+
+When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embedding of 
+the original polynomial system is correct. The proof of this fact is trivial from a logical 
+point of view, but requires unfolding of several definitions which is time consuming in 
+PVS. In this case, DONT-FAIL? is assumed to be t. 
+"
   "Applying a variant of Tarski's Theorem to sequent formed by formulas in ~a")
 
-(defhelper hutch__ (fnums fall exprs var qvars preds? sos?)
+(defhelper hutch__ (fnums fall exprs var qvars preds? sos? equiv? labfalse)
   (with-fresh-labels
-   ((fnums! fnums) (labp!) (labd!) (labpred!))
-   (hide-all-but fnums!)
+   ((fnums! fnums) (labp!) (labd!) (labpred!)
+    (labsk! :delete) (labj! :delete) (labn! :delete))
+   (hide *)
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
@@ -369,6 +419,8 @@ when sequent cannot be discharged."
 	    (conjs (tarski-valid-forms-rec predexprs (list var) nil exprs))
 	    (labp  (list 'quote labp!))
 	    (labd  (list 'quote labd!))
+	    (labj  (list 'quote labj!))
+	    (labn  (list 'quote labn!))
 	    (n     (1- (length conjs)))
 	    (names (freshnames "pl" (1+ n)))
 	    (nes   (pair-lists names conjs))
@@ -380,7 +432,7 @@ when sequent cannot be discharged."
 	    (degl  (extra-lambda-list
 		    (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) names) 0))
 	    (sos   (if sos? "TRUE" "FALSE"))
-	    (rell  (extra-lambda-list (mapcar #'cdr conjs) 0)))
+	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
 	(then
 	 (mapstep #'(lambda (x)`(tarski_polylist__ ,(car x) ,(cadr x) ,labp ,labd)) nes)
 	 (with-fresh-names
@@ -393,13 +445,14 @@ when sequent cannot be discharged."
 		  (expand polyl_ -1 1)
 		  (replaces labp! :in -1)
 		  (with-fresh-labels
-		   ((ex! -1 :tccs) (eqs!))
+		   ((ex! -1) (eqs!))
 		   (with-fresh-names
-		    ((ps_ (! ex! 1 7)) (ds_ (! ex! 1 8)))
-		    (hide *ex!-tccs*)
+		    ((ps_ (! ex! 1 7) :tccs) (ds_ (! ex! 1 8)))
+		    (delete *ps_-tccs*)
 		    (eval-expr (! -1 1))
 		    (replaces -1 -2)
 		    (prop)
+		    (reveal fnums!)
 		    (let ((instp (> (extra-get-fnum ex!) 0))
 			  (skolv (when qvars (freshnames "x" (length qvars))))
 			  (instv (if qvars
@@ -412,38 +465,44 @@ when sequent cannot be discharged."
 			  (z2n    (pair-lists (fromto 0 n) names))
 			  (qsknm  (when fall (list 'quote j_)))
 			  (qskfn  (when qvars (list 'quote skolfn)))
+			  (qex    (list 'quote ex!))
 			  (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			  (eqs    (extra-evalexprs)))
-		      (when valid
-			(expand "SystemSatRat?")
-			(if fall
-			    (then
-			     (when qvars (skolem skolfn skolv :skolem-typepreds? preds?))
-			     (inst instfn instv)
-			     (skolem instfn j_ :skolem-typepreds? t)
-			     (extra-evalexprs$ eqs)
-			     (expand* "[||]" "##" "contains?")
-			     (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
-			     (flatten)
-			     (mapstep@ #'(lambda (x)`(tarski_polynomial__
-						      ,qsknm ,qskfn ,(car x) ,(cdr x) ,qnms))
-				       z2n)
-			     (hide ex! fnums!) 
-			     (assert))
+			  (eqs    (extra-evalexprs))
+			  (rews   (when equiv? (list 'quote *sturm-rews*))))
+		      (if valid
 			  (then
-			   (skolem skolfn skolv)
-			   (mapstep@ #'(lambda (x)`(tarski_polynomial__
-						    ,qsknm ,qskfn ,(car x) ,(cdr x) ,qnms))
-				     z2n)
-			   (hide ex!)
-			   (extra-evalexprs$ eqs eqs!)
-			   (inst instfn instv)
-			   (reveal eqs!)
-			   (replaces eqs!)
-			   (expand* "[||]" "##" "contains?")
-			   (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
-			   (flatten)
-			   (assert))))))))
+			   (expand "SystemSatRat?")
+			   (if fall
+			       (then
+				(when qvars
+				  (skolem skolfn skolv)
+				  (when preds?
+				    (with-labels (typepred skolv) labsk!)))
+				(inst instfn instv)
+				(skolem instfn j_)
+				(extra-evalexprs$ eqs)
+				(expand* "[||]" "##" "contains?")
+				(rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
+				(flatten)
+				(mapstep #'(lambda (x)`(tarski_polynomial__
+							,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
+					 z2n)
+				(when rews (assert)))
+			     (then
+			      (skolem skolfn skolv)
+			      (mapstep@ #'(lambda (x)`(tarski_polynomial__
+						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
+					z2n)
+			      (hide ex!)
+			      (extra-evalexprs$ eqs eqs!)
+			      (inst instfn instv)
+			      (reveal eqs!)
+			      (replaces eqs!)
+			      (expand* "[||]" "##" "contains?")
+			      (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
+			      (flatten)
+			      (assert))))
+			(relabel labfalse ex!))))))
 	    (spread (split 1)
 		    ((then (hide-all-but (labd! 1))
 			   (expand degl_)

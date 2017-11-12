@@ -389,7 +389,7 @@ strategy tries to discharge the current branch using the proof command AUTO-STEP
 		     (cons 'stop-rewrite-theory ths))))
     (with-fresh-labels
      ((!rps fnums)
-      (!rpd))
+      (!rpd :hide))
      (let ((step    (list 'then
 			  startstep
 			  (list 'assert !rps :let-reduce? let-reduce?)
@@ -399,8 +399,7 @@ strategy tries to discharge the current branch using the proof command AUTO-STEP
 	 (then
 	  (name-distrib fnums :label !rpd)
 	  step
-	  (replaces !rpd :dir rl :in !rps :but !rpd :hide? nil)
-	  (hide !rpd))))))
+	  (replaces !rpd :dir rl :in !rps :but !rpd :hide? nil))))))
   "[Field] Autorewrites with \"real_props\" and THEORIES in FNUMS. If SIMPLE? is t,
 only basic rewrite rules are applied. If LET-REDUCE? is nil, let-in expressions will
 not be reduced. If DISTRIB? is nil, distribution laws will not be applied."
@@ -412,7 +411,7 @@ not be reduced. If DISTRIB? is nil, distribution laws will not be applied."
 				(let-reduce? t)
 				dontdistrib protect)
   (with-fresh-labels
-   (!grd)
+   (!grd :hide)
    (let ((th    (cons "real_props" (enlist-it theories)))
 	 (pro   (cons !grd (enlist-it protect)))
 	 (step `(grind :defs ,defs :theories ,th :rewrites
@@ -426,8 +425,7 @@ not be reduced. If DISTRIB? is nil, distribution laws will not be applied."
       (finalize (assert))
       (protect pro step)
       (when dontdistrib
-	(replaces !grd :dir rl :but !grd :hide? nil)
-	(hide !grd)))))
+	(replaces !grd :dir rl :but !grd :hide? nil)))))
   "[Field] Apply grind with \"real_props\". This strategy supports the same
 options as grind. Additionally, grind-reals blocks distribution laws in main level
 expressions in the list of formulas DONTDISTRIB and protects formulas in PROTECT."
@@ -444,31 +442,31 @@ expressions in the list of formulas DONTDISTRIB and protects formulas in PROTECT
     	(formsg   (if eqfs fnum1 (list fnum1 fnum2)))
 	(o1       (relation2num (car (is-relation formula1))))
 	(o2       (relation2num (car (is-relation formula2)))))
-    (if (and o1 o2)
-	(let ((flag  (>= (* f1 f2 o1 o2) 0))
-	      (f11   (args1 formula1))
-	      (f12   (if flag 
-			 (args1 formula2)
-		       (args2 formula2)))
-	      (f21   (args2 formula1))
-	      (f22   (if flag 
-			 (args2 formula2)
-		       (args1 formula2)))
-	      (op    (num2relation (new-relation f1 f2 o1 o2)))
-	      (str   (when op (format nil "~a ~a ~a"
-				      (mk-application '+ f11 f12) op
-				      (mk-application '+ f21 f22))))
-	      (labad (or label (freshlabel "AD"))))
-	  (with-fresh-labels
-	   ((!ad1 f1 :tccs)
-	    (!ad2 f2 :tccs))
-	   (branch (discriminate (case str) labad)
-		   ((then (real-props labad :simple? t) (finalize auto-step))
-		    (finalize (assert (!ad1 !ad2 labad)))
-		    (finalize tcc-step)))
-	   (unless label (delabel labad))
-	   (when hide? (hide (!ad1 !ad2))))) 
-      (printf "No arithmetic relational formulas in ~a" formsg)))
+    (with-fresh-labels
+     (!add)
+     (if (and o1 o2)
+	 (let ((flag  (>= (* f1 f2 o1 o2) 0))
+	       (f11   (args1 formula1))
+	       (f12   (if flag 
+			  (args1 formula2)
+			(args2 formula2)))
+	       (f21   (args2 formula1))
+	       (f22   (if flag 
+			  (args2 formula2)
+			(args1 formula2)))
+	       (op    (num2relation (new-relation f1 f2 o1 o2)))
+	       (str   (when op (format nil "~a ~a ~a"
+				       (mk-application '+ f11 f12) op
+				       (mk-application '+ f21 f22))))
+	       (labad (or label !add)))
+	   (with-fresh-labels
+	    ((!ad1 f1 :tccs :hide? hide?)
+	     (!ad2 f2 :tccs :hide? hide?))
+	    (branch (discriminate (case str) labad)
+		    ((then (real-props labad :simple? t) (finalize auto-step))
+		     (finalize (assert (!ad1 !ad2 labad)))
+		     (finalize tcc-step)))))
+       (printf "No arithmetic relational formulas in ~a" formsg))))
   "[Field] Adds relational formulas FNUM1 and FNUM2. If FNUM2 is nil, adds FNUM to itself.
 If HIDE? is t, the original formulas are hidden.  The new formula is labeled as LABEL,
 if specified. TCCs generated during the execution of the command are discharged with
@@ -477,33 +475,33 @@ branch using the proof command AUTO-STEP."
   "Adding formulas ~a and ~:[~@*~a~;~:*~a~]")
 
 (defstep sub-formulas (fnum1 fnum2 &optional (hide? t) label (tcc-step (extra-tcc-step)))
-  (let ((f1       (extra-get-fnum fnum1))
-	(f2       (extra-get-fnum fnum2))
-	(eqfs     (or (and (numberp f1) (numberp f2) (= f1 f2))
-		      (and (numberp fnum1) (numberp fnum2) (= fnum1 fnum2))))
-	(formula1 (extra-get-formula-from-fnum f1))
-	(formula2 (extra-get-formula-from-fnum f2))
-	(o1       (relation2num (car (is-relation formula1))))
-	(o2       (relation2num (car (is-relation formula2))))
-	(labsb    (or label (freshlabel "SB"))))
-    (if eqfs
-	(printf "Formula ~a cannot be subtracted from itself" fnum1)
-      (if (and o1 o2)
-	  (with-fresh-labels
-	   ((!sb1 f1 :tccs)
-	    (!sb2 f2 :tccs)
-	    (!nsb2)
-	    (!nlb))
-	   (protect
-	    !sb2
-	    (then (then@ (neg-formula !sb2 :label !nsb2 :tcc-step tcc-step)
-			 (add-formulas !sb1 !nsb2 :hide? nil :label labsb))
-		  (unless label (delabel labsb))
-		  (delete !nsb2)
-		  (when hide? (hide !sb1)))
-	    !nlb
-	    hide?))
-	(printf "No arithmetic relational formulas in (~a ~a)" fnum1 fnum2))))
+  (with-fresh-labels
+   (!sub)
+   (let ((f1       (extra-get-fnum fnum1))
+	 (f2       (extra-get-fnum fnum2))
+	 (eqfs     (or (and (numberp f1) (numberp f2) (= f1 f2))
+		       (and (numberp fnum1) (numberp fnum2) (= fnum1 fnum2))))
+	 (formula1 (extra-get-formula-from-fnum f1))
+	 (formula2 (extra-get-formula-from-fnum f2))
+	 (o1       (relation2num (car (is-relation formula1))))
+	 (o2       (relation2num (car (is-relation formula2))))
+	 (labsb    (or label !sub)))
+     (if eqfs
+	 (printf "Formula ~a cannot be subtracted from itself" fnum1)
+       (if (and o1 o2)
+	   (with-fresh-labels
+	    ((!sb1 f1 :tccs)
+	     (!sb2 f2 :tccs)
+	     (!nsb2 :delete)
+	     (!nlb))
+	    (protect
+	     !sb2
+	     (then (then@ (neg-formula !sb2 :label !nsb2 :tcc-step tcc-step)
+			  (add-formulas !sb1 !nsb2 :hide? nil :label labsb))
+		   (when hide? (hide !sb1)))
+	     !nlb
+	     hide?))
+	 (printf "No arithmetic relational formulas in (~a ~a)" fnum1 fnum2)))))
   "[Field] Subtracts relational formulas FNUM1 and FNUM2. If HIDE? is t,
 the original formulas are hidden.  The new formula is labeled as LABEL,
 if specified. TCCs generated during the execution of the command are discharged
@@ -545,10 +543,10 @@ with the proof command TCC-STEP."
     (if (and rel expstr)
 	(with-fresh-labels
 	 ((!cby fn)
-	  (!cbt)
 	  (!cbd)
-	  (!cbdt)
-	  (!ndc))
+	  (!cbt :delete)
+	  (!cbdt :delete)
+	  (!ndc :hide))
 	 (tccs-formula !cby :label !cbt)
 	 (branch (then@ (tccs-expression expstr :label !cbdt :tcc-step tcc-step)
 			(name-distrib (!cby !cbt !cbdt) :prefix "NDC" :label !ndc :tcc-step tcc-step)
@@ -556,9 +554,7 @@ with the proof command TCC-STEP."
 			(replace !ndc !cbd))
 		 ((cancel-by__$ !cby !cbd div tcc-step auto-step)
 		  (delete !cby)))
-	 (replaces !ndc :but !ndc :dir rl :hide? nil)
-	 (hide !ndc)
-	 (delete (!cbt !cbdt)))
+	 (replaces !ndc :but !ndc :dir rl :hide? nil))
       (if (not rel)
 	  (printf "No arithmetic relational formula in ~a" fnum)
 	(if (not expstr)
@@ -704,14 +700,13 @@ with the proof command TCC-STEP."
     (if rel
 	(with-fresh-labels
 	 ((!fd fn)
-	  (!fdt)
+	  (!fdt :delete)
 	  (!ndf)
 	  (!x))
 	 (tccs-formula !fd :label !fdt)
 	 (branch (name-distrib (!fd !fdt) :prefix "NDF" :label !ndf :tcc-step tcc-step)
 		 ((field__$ !fd !ndf !x theories cancel? tcc-step)
-		  (delete !fd)))
-	 (delete !fdt))
+		  (delete !fd))))
       (printf "No arithmetic relational formula in ~a" fnum)))
   "[Field] Removes divisions and apply simplification heuristics to the relational
 formula on real numbers FNUM. It autorewrites with THEORIES when possible. If CANCEL?

@@ -318,7 +318,6 @@
 			      (equiv? t)
 			      (tccs? t))
   (let ((name     (freshname "iar"))
-	(label    (or label (freshlabel name)))
 	(fns      (extra-get-fnums fnums))
 	(fn       (if (= (length fns) 1) (car fns) 0))
 	(expr     (when fns
@@ -400,107 +399,109 @@
 	(if msg
 	    (printf msg)
 	  (with-fresh-labels@
-	   (!ia fnums :tccs? tccs?)
-	   (spread
-	    (name-label* namexprs :hide? t :tcc-step (then (hide !ia) (extra-tcc-step)))
-	    ((try-branch
-	      (eval-expr ia-eval :safe? nil)
-	      ((then
-		(relabel label -1)
-		(let ((output  (args2 (extra-get-formula -1)))
-		      (splits  (get-expr-from-obj output 'splits))
-		      (depth   (get-expr-from-obj output 'depth))
-		      (answer  (get-expr-from-obj output 'ans 'answer))
-		      (istrue  (ia-is-true-output answer))
-		      (isfalse (ia-is-false-output answer))
-		      (cex     (get-list-from-literal (get-expr-from-obj output 'ans 'counterex))))
-		  (then
-		   (when verbose? (printf "~%----"))
-		   (if (and (not istrue) (not isfalse))
-		       (then
-			(printf "Formula cannot be proved nor disproved")
-			(printf "Set MAXDEPTH or PRECISION to values greater than ~a AND ~a, respectively" 
-				maxdepth precision))
-		     (let ((prfex    (and cex findcex (/= quant 0) (not sat?))) ;; Existential proof
-			   (prfall   (and istrue (not findcex) (not sat?)))     ;; Universal proof
-			   (disprf   (and (if findcex istrue cex) (not sat?)))  ;; Disproof
-			   (varvals  (if cex (merge-lists ia-vars cex)
-				       (merge-lists ia-vars (ia-var-intervals ia-vars))))
-			   (eqs      (extra-evalexprs))
-			   (msg      (format nil
-					     (if cex "~:[Formula~;Sequent~] ~@[~a ~]~a for ~{~a = ~a~^, ~}"
-					       "~:[Formula~;Sequent~] ~@[~a ~]~a for any ~{~a ## ~a~^, ~}")
-					     (or prfex prfall disprf)
-					     (unless (or prfex prfall disprf) fnums)
-					     (cond ((or prfex prfall) "holds")
-						   (disprf "can be disproved")
-						   ((and cex findcex) "is satisfiable")
-						   (findcex "is not satisfiable")
-						   (istrue "is valid")
-						   (t "is invalid"))
-					     varvals)))
-		       (if (or prfex prfall) ;; Proof needs to be done
-			   (then
-			    (when verbose? (printf "~a~%Splits: ~a. Depth: ~a~%----~%" msg splits depth))
-			    (let ((name soundness-lemma-name))
-			      (lemma name))
-			    (with-fresh-labels 
-			     ((!ia-inst -1) (!ia-eqs))
-			     (inst? !ia-inst)
-			     (replaces label)
-			     (beta !ia-inst)
-			     (expand "sound?" !ia-inst)
-			     (apply (repeat (expand "length" !ia-inst)))
-			     (extra-evalexprs$ eqs !ia-eqs)
-			     (branch (split !ia-inst)
-				     ((if prfex ;; Existential proof
-					  (let ((vs     (pairlis ia-vars cex))
-						(instvs (mapcar 
-							 #'(lambda (x)
-							     (format nil "~a" 
-								     (cdr (assoc x vs :test #'string=))))
-							 qvars))
-						(instp  (cons 'inst (cons !ia instvs))))
+	   ((!ia fnums :tccs? tccs?)
+	    (!label))
+	   (let ((label (or label !label)))
+	     (spread
+	      (name-label* namexprs :hide? t :tcc-step (then (hide !ia) (extra-tcc-step)))
+	      ((try-branch
+		(eval-expr ia-eval :safe? nil)
+		((then
+		  (relabel label -1)
+		  (let ((output  (args2 (extra-get-formula -1)))
+			(splits  (get-expr-from-obj output 'splits))
+			(depth   (get-expr-from-obj output 'depth))
+			(answer  (get-expr-from-obj output 'ans 'answer))
+			(istrue  (ia-is-true-output answer))
+			(isfalse (ia-is-false-output answer))
+			(cex     (get-list-from-literal (get-expr-from-obj output 'ans 'counterex))))
+		    (then
+		     (when verbose? (printf "~%----"))
+		     (if (and (not istrue) (not isfalse))
+			 (then
+			  (printf "Formula cannot be proved nor disproved")
+			  (printf "Set MAXDEPTH or PRECISION to values greater than ~a AND ~a, respectively" 
+				  maxdepth precision))
+		       (let ((prfex    (and cex findcex (/= quant 0) (not sat?))) ;; Existential proof
+			     (prfall   (and istrue (not findcex) (not sat?)))     ;; Universal proof
+			     (disprf   (and (if findcex istrue cex) (not sat?)))  ;; Disproof
+			     (varvals  (if cex (merge-lists ia-vars cex)
+					 (merge-lists ia-vars (ia-var-intervals ia-vars))))
+			     (eqs      (extra-evalexprs))
+			     (msg      (format nil
+					       (if cex "~:[Formula~;Sequent~] ~@[~a ~]~a for ~{~a = ~a~^, ~}"
+						 "~:[Formula~;Sequent~] ~@[~a ~]~a for any ~{~a ## ~a~^, ~}")
+					       (or prfex prfall disprf)
+					       (unless (or prfex prfall disprf) fnums)
+					       (cond ((or prfex prfall) "holds")
+						     (disprf "can be disproved")
+						     ((and cex findcex) "is satisfiable")
+						     (findcex "is not satisfiable")
+						     (istrue "is valid")
+						     (t "is invalid"))
+					       varvals)))
+			 (if (or prfex prfall) ;; Proof needs to be done
+			     (then
+			      (when verbose? (printf "~a~%Splits: ~a. Depth: ~a~%----~%" msg splits depth))
+			      (let ((name soundness-lemma-name))
+				(lemma name))
+			      (with-fresh-labels 
+			       ((!ia-inst -1) (!ia-eqs))
+			       (inst? !ia-inst)
+			       (replaces label)
+			       (beta !ia-inst)
+			       (expand "sound?" !ia-inst)
+			       (apply (repeat (expand "length" !ia-inst)))
+			       (extra-evalexprs$ eqs !ia-eqs)
+			       (branch (split !ia-inst)
+				       ((if prfex ;; Existential proof
+					    (let ((vs     (pairlis ia-vars cex))
+						  (instvs (mapcar 
+							   #'(lambda (x)
+							       (format nil "~a" 
+								       (cdr (assoc x vs :test #'string=))))
+							   qvars))
+						  (instp  (cons 'inst (cons !ia instvs))))
+					      (then
+					       (flatten)
+					       (hide (-1 1))
+					       instp
+					       (eval-formula !ia :quiet? t)
+					       (when equiv? 
+						 (reveal !ia-eqs) 
+						 (replaces !ia-eqs :hide? nil)
+						 (beval-solver names 1 subs rewrite-decls))
+					       (eval-formula !ia)))
+					  ;; Universal proof
+					  (let ((nqvars   (freshnames "x" (length qvars)))
+						(vs       (when nqvars (pairlis qvars nqvars)))
+						(skvs     (if nqvars
+							      (mapcar #'(lambda (x)
+									  (cdr (assoc x vs :test #'string=))) 
+								      ia-vars)
+							    ia-vars))
+						(ia-lvars (format nil "list2array(0)((:~{~a~^, ~}:))" skvs)))
 					    (then
-					     (flatten)
-					     (hide (-1 1))
-					     instp
-					     (eval-formula !ia :quiet? t)
-					     (when equiv? 
-					       (reveal !ia-eqs) 
-					       (replaces !ia-eqs :hide? nil)
-					       (beval-solver names 1 subs rewrite-decls))
-					     (eval-formula !ia)))
-					;; Universal proof
-					(let ((nqvars   (freshnames "x" (length qvars)))
-					      (vs       (when nqvars (pairlis qvars nqvars)))
-					      (skvs     (if nqvars
-							    (mapcar #'(lambda (x)
-									(cdr (assoc x vs :test #'string=))) 
-								    ia-vars)
-							  ia-vars))
-					      (ia-lvars (format nil "list2array(0)((:~{~a~^, ~}:))" skvs)))
-					  (then
-					   (when nqvars (skolem !ia nqvars :skolem-typepreds? t))
-					   (spread (inst !ia-inst ia-lvars)
-						   ((when equiv? 
-						      (reveal !ia-eqs) 
-						      (replaces !ia-eqs :hide? nil)
-						      (beval-solver names !ia-inst subs rewrite-decls :nohide *!ia-tccs*))
-						    (if (null ia-vars)
-							(eval-formula)
-						      (then (flatten)
-							    (reveal !ia-eqs) 
-							    (replaces !ia-eqs :hide? nil)
-							    (vars-in-box__$))))))))
-				      (eval-formula)))))
-			 (printf msg))))
-		   (hide label)
-		   (when verbose?
-		     (printf "Splits: ~a. Depth: ~a" splits depth)
-		     (printf "See hidden formulas labeled ~a for more information~%----~%" label)))))
-	       (hide !ia))
-	      (skip)))))))))
+					     (when nqvars (skolem !ia nqvars :skolem-typepreds? t))
+					     (spread (inst !ia-inst ia-lvars)
+						     ((when equiv? 
+							(reveal !ia-eqs) 
+							(replaces !ia-eqs :hide? nil)
+							(beval-solver names !ia-inst subs rewrite-decls :nohide *!ia-tccs*))
+						      (if (null ia-vars)
+							  (eval-formula)
+							(then (flatten)
+							      (reveal !ia-eqs) 
+							      (replaces !ia-eqs :hide? nil)
+							      (vars-in-box__$))))))))
+					(eval-formula)))))
+			   (printf msg))))
+		     (hide label)
+		     (when verbose?
+		       (printf "Splits: ~a. Depth: ~a" splits depth)
+		       (printf "See hidden formulas labeled ~a for more information~%----~%" label)))))
+		 (hide !ia))
+		(skip))))))))))
   "Checks if formulas FNUMS, which may be simply quantified, holds using the
 algorithm called BANDB-FUNCTION-NAME. Its soundness must be guaranteed by
 a lemma of name SOUNDNESS-LEMMA-NAME. BEVAL-SOLVER is the name of the
@@ -578,7 +579,6 @@ TCCs generated during its execution." "")
 			       label
 			       (equiv? t))
   (let ((name      (freshname "nml"))
-	(label     (or label (freshlabel name)))
 	(accuracy  (ratio2decimal (expt 10 (- precision)) nil precision))
 	(ia-expr   (typecheck (extra-get-expr expr)))
 	(ia-estr   (expr2str ia-expr))
@@ -643,53 +643,55 @@ TCCs generated during its execution." "")
 		    (eqs    (extra-evalexprs))
 		    (maxd   (and ia-vars (= depth maxdepth))))
 		(with-fresh-labels 
-		 (!iax)
-		 (relabel label -1)
-		 (lemma soundness-lemma-name)
-		 (inst? -1)
-		 (replaces label)
-		 (beta -1)
-		 (expand "sound?" -1)
-		 (apply (repeat (expand "length" -1)))
-		 (extra-evalexprs$ eqs !iax)
-		 (branch
-		  (split -1)
-		  ((then
-		    (flatten)
-		    (relabel label (-2 -3 -4 -5))
-		    (hide label)
-		    (spread
-		     (inst -1 ia-lvars)
-		     ((branch
-		       (invoke (case "%1 = %2") (! -1 1) ia-estr)
-		       ((then 
-			 (when verbose?
-			   (printf "~%----")
-			   (when maxd
-			     (printf "Maximum depth has been reached."))
-			   (printf "Lower bound accuracy <= ~a" lbacc) 
-			   (printf "Upper bound accuracy <= ~a" ubacc)
-			   (printf "Splits: ~a. Depth: ~a~%----~%" splits depth)
-			   (printf "See hidden formulas labeled \"~a\" for more information"
-				   label))
-			 (replaces -1)
-			 (decimalize -1 precision))
-			(then (hide -1) (when equiv? (beval-solver names 1 subs rewrite-decls)))
-			(then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$))))
-		      (if (null ia-vars)
-			  (eval-formula)
-			(then 
-			 (reveal !iax)
-			 (replaces !iax :hide? nil) 
-			 (vars-in-box__$))))))
-		   (eval-formula)))))))
+		 ((!iax) (!label))
+		 (let ((label (or label !label)))
+		   (then
+		    (relabel label -1)
+		    (lemma soundness-lemma-name)
+		    (inst? -1)
+		    (replaces label)
+		    (beta -1)
+		    (expand "sound?" -1)
+		    (apply (repeat (expand "length" -1)))
+		    (extra-evalexprs$ eqs !iax)
+		    (branch
+		     (split -1)
+		     ((then
+		       (flatten)
+		       (relabel label (-2 -3 -4 -5))
+		       (hide label)
+		       (spread
+			(inst -1 ia-lvars)
+			((branch
+			  (invoke (case "%1 = %2") (! -1 1) ia-estr)
+			  ((then 
+			    (when verbose?
+			      (printf "~%----")
+			      (when maxd
+				(printf "Maximum depth has been reached."))
+			      (printf "Lower bound accuracy <= ~a" lbacc) 
+			      (printf "Upper bound accuracy <= ~a" ubacc)
+			      (printf "Splits: ~a. Depth: ~a~%----~%" splits depth)
+			      (printf "See hidden formulas labeled \"~a\" for more information"
+				      label))
+			    (replaces -1)
+			    (decimalize -1 precision))
+			   (then (hide -1) (when equiv? (beval-solver names 1 subs rewrite-decls)))
+			   (then (hide -1) (reveal !iax) (replaces !iax :hide? nil) (vars-sharp__$))))
+			 (if (null ia-vars)
+			     (eval-formula)
+			   (then 
+			    (reveal !iax)
+			    (replaces !iax :hide? nil) 
+			    (vars-in-box__$))))))
+		      (eval-formula)))))))))
 	  (skip))
 	 (skip))))))
-"Computes lower and upper bounds of the minimum and maximum values of
-EXPR using the algorithm called BANDB-FUNCTION-NAME. Its soundness
-must be guaranteed by a lemma of name SOUNDNESS-LEMMA-NAME. BEVAL-SOLVER 
-is the name of the strategy that should be used to prove that the PVS
-expression corresponds with the beval of the interval
+  "Computes lower and upper bounds of the minimum and maximum values
+of EXPR using the algorithm called BANDB-FUNCTION-NAME. Its soundness
+must be guaranteed by a lemma of name SOUNDNESS-LEMMA-NAME.
+BEVAL-SOLVER is the name of the strategy that should be used to prove
+that the PVS expression corresponds with the beval of the interval
 expr. REWRITE-DECLS are the rewriting rules to be used as to simplify
 the evaluation expression.
 
@@ -739,8 +741,6 @@ If EQUIV? is set to nil, the strategy doesn't try to prove that the
 deep embedding of the original expression is correct. The proof of
 this fact is trivial from a logical point of view, but requires
 unfolding of several definitions which is time consuming in PVS." "")
-
-
 
 (defparameter *interval-strategies* "
 %  decimalize: Decimalizes relational formulas involving rational numbers.
