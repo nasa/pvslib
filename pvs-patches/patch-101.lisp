@@ -406,6 +406,10 @@
 		(e    (when ecar (ee-pvs-obj ecar))))
 	   (when (expr? e) e)))))
 
+;; Get a list of PVS object from exprs, where expsr are speficied using Manip's location
+(defun extra-get-exprs (exprs)
+  (mapcar #'ee-pvs-obj (eval-ext-expr exprs)))
+
 (defun extra-get-expstr (expr &optional (tc t))
   (expr2str (extra-get-expr expr tc)))
 
@@ -1289,12 +1293,14 @@ specified as in WITH-FRESH-LABELS.")
 	  (plbvrs   (set-pairing lbvrs))
 	  (allbs    (append lbtccs lbvrs))
 	  (step     `(let ,vrsnms
-		       (then (then@ (name-label* ,nmsexs :hide? t :label ,plbvrs
-						 :tcc-label ,plbtccs :tcc-step ,ptccstp)
-				    (try ,thenstep (skip) (fail)))
-			     (with-fresh-names-expand__$ ,vnms)
-			     (delete ,lbtccs)
-			     (touch (delabel ,allbs))))))
+		       (then 
+			(then@ (when ,nmsexs
+				 (name-label* ,nmsexs :hide? t :label ,plbvrs
+					      :tcc-label ,plbtccs :tcc-step ,ptccstp))
+			       (try ,thenstep (skip) (fail)))
+			(with-fresh-names-expand__$ ,vnms)
+			(delete ,lbtccs)
+			(touch (delabel ,allbs))))))
       step))
   "[Extrategies] Internal strategy." "")
 
