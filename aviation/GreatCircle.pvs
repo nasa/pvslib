@@ -1,0 +1,277 @@
+GreatCircle: THEORY
+BEGIN
+
+  IMPORTING Velocity,
+            LatLonAlt
+
+  double: TYPE = [# isValid: boolean, real: real #]
+
+  minDt: real = 0.00001
+
+  HORIZONTAL_ACCURACY: posreal = 0.0000001
+  HORIZONTAL_ACCURACY_RAD: posreal =  HORIZONTAL_ACCURACY*PI/180;
+  VERTICAL_ACCURACY: posreal = 0.0000001
+  EPS: posreal = 0.000000000000001
+  PRECISION13: posreal = 16348
+
+
+  angle_from_distance(distance: real): real =
+     (distance/1852.0) * pi / (180.0 * 60.0)
+
+  spherical_earth_radius: real = 1.0 / angle_from_distance(1.0)
+
+  angular_distance_prep: LEMMA  FORALL (lat1, lon1, lat2, lon2: real):
+    asin_safe(sqrt_safe(sq(sin((lat1 - lat2) / 2)) +
+                         cos(lat1) * cos(lat2) * sq(sin((lon1 - lon2) / 2)))) * 2.0  >= 0;
+
+   %%
+   % Compute the great circle distance in radians between the two points. The
+   % calculation applies to any sphere, not just a spherical Earth. The
+   % current implementation uses the haversine formula.
+   %%
+   angular_distance(lat1: real, lon1: real, lat2: real, lon2: real): nnreal = 
+      asin_safe(sqrt_safe(sq(sin((lat1 - lat2) / 2)) + cos(lat1)*cos(lat2)* sq(sin((lon1-lon2) / 2)))) * 2.0
+
+  angular_distance(p1: LatLonAlt, p2: LatLonAlt): nnreal =
+     angular_distance(lat(p1), lon(p1), lat(p2), lon(p2))
+
+   within_epsilon(a: real, epsilon: real): boolean =
+    abs(a) < epsilon
+
+  within_epsilon(a: real, b: real, epsilon: real): boolean =
+    abs(a-b) < epsilon
+
+  almost_equals_distance(d: real): boolean =
+     within_epsilon(d,HORIZONTAL_ACCURACY)
+
+  % Return true, if this angle [rad] is within the horizontal accuracy of zero */
+  almost_equals_radian(d: real) : boolean = 
+      within_epsilon(d, HORIZONTAL_ACCURACY_RAD)
+
+  precisionToExp(prec: real): real % = 
+%      IF (prec = PRECISION5) THEN 0.00001  % 1.0E-5
+%      ELSIF (prec = PRECISION7) THEN 0.0000001 % 1.0E-7
+%      ELSIF (prec = PRECISION9) THEN 0.0000000001 % 1.0E-9
+%      ELSIF (prec = PRECISION13) THEN 0.0000000000001 % 1.0E-13
+%      ELSE 0.0000000000001 % 1.0E-13
+%      ENDIF
+
+   isInfinite(v: real): boolean
+
+   doubleToLongBits(v: real): real
+
+   almost_equals(a: real, b: real, maxUlps: real): boolean =
+      IF a = b THEN 
+        true
+      ELSE
+        %% special case of comparing to zero.
+        LET comp = precisionToExp(maxUlps) IN
+        IF (a = 0.0 OR b = 0.0) AND abs(a) < comp AND abs(b) < comp THEN
+           true
+        ELSE
+          IF NOT (a < b OR b < a) THEN % idiom to filter out NaN's
+             false
+          ELSIF isInfinite(a) OR isInfinite(b) THEN
+             false
+          ELSE
+             LET aInt = doubleToLongBits(a),
+                 bInt = doubleToLongBits(b), 
+                 intDiff = abs(aInt - bInt) IN    % This is valid because IEEE-754 doubles are required to be 
+                                                  % lexically ordered            
+            IF (intDiff <= maxUlps) THEN
+              true
+            ELSE
+              false
+            ENDIF
+          ENDIF
+       ENDIF
+     ENDIF
+
+
+  % Return true, if these two altitudes are within the vertical accuracy of each other */
+  almost_equals_alt(a1: real, a2: real) : boolean =
+      within_epsilon(a1, a2, VERTICAL_ACCURACY)
+        
+  distance_from_angle(angle: nnreal, h: nnreal): nnreal = 
+     (spherical_earth_radius + h) * angle
+
+  % Compute the great circle distance between the two given points. The
+  % calculation assumes the Earth is a sphere. This ignores the altitudes.
+  distance(p1: LatLonAlt, p2: LatLonAlt): nnreal =
+      distance_from_angle(angular_distance(lat(p1), lon(p1), lat(p2), lon(p2)), 0.0);
+
+  % The following two functions correspond to the implementation in
+  % Section "Course between points" in the aviation formuary.
+  % According to the aviation formulary: "We obtain the initial course, tc1, 
+  % (at point 1) from point 1 to point 2 by the following......."
+  % Note that these two functions are given suffixes _impl1 and _impl2 and that
+  % these suffixes are numbered in opposite order from how they appear in
+  % the formulary. Note also that d should be the great circle distance
+  % between the points p1 and p2.
+
+  % really should be d: {r: nnreal | r <= pi},  Java code depends upon the fact that sin(pi) != 0 because
+  % the floating point implementation of pi is not exact.
+
+  initial_course_impl2(p1: LatLonAlt, p2: LatLonAlt, d: real): real = 
+      LET  lat1 = lat(p1),
+           lon1 = lon(p1),
+           lat2 = lat(p2),
+           lon2 = lon(p2) IN
+        IF cos(lat1) < EPS THEN % EPS a small number, about machine
+           IF lat1 > 0 THEN 
+              pi 
+           ELSE
+              2.0 * pi  % starting from South pole, all directions are north. JMM: why not 0?        
+           ENDIF
+        ELSE 
+           %% IF almost_equals_radian(d) THEN
+           IF (sin(d) = 0) THEN                %%  The Java code uses the more efficient test above
+              0.0
+              %% if the two points are almost the same, then any course is valid
+              %% returning 0.0 here avoids a 0/0 division (NaN) in the calculations below.
+              %% the special case where d = pi involves a tricky floating point argument
+           ELSE
+              LET acos1 = (sin(lat2) - sin(lat1) * cos(d)) / (sin(d) * cos(lat1)) IN
+                IF almost_equals(lon2, lon1, PRECISION13) THEN
+                   acos_safe(acos1)
+                ELSE
+                   IF sin(lon2 - lon1) > 0 THEN
+                      %% slightly different than aviation formulary because of +East convention that we use
+                      acos_safe(acos1)
+                   ELSE
+                      2 * pi - acos_safe(acos1)
+                   ENDIF
+                ENDIF
+           ENDIF
+        ENDIF
+
+  % The next function is the second implementation featured in the Section "Course between points"
+  % of the aviation formulary.
+
+  initial_course_impl1(p1: LatLonAlt, p2: LatLonAlt, d: real): real = 
+      LET  lat1 = lat(p1),
+           lon1 = lon(p1),
+           lat2 = lat(p2),
+           lon2 = lon(p2) IN
+	  IF cos(lat1) < EPS THEN
+             IF lat1 > 0 THEN 
+                pi               %% starting from North pole, all directions are south
+	     ELSE
+	        2.0 * pi        %%  starting from South pole, all directions are north
+             ENDIF
+          ELSE
+             to2pi(atan2_safe(sin(lon2-lon1)*cos(lat2), 
+                               cos(lat1)*sin(lat2)-sin(lat1)*cos(lat2)*cos(lon2-lon1))) 
+          ENDIF
+
+    % /**
+    %  * The initial true course (course relative to true north) at point #1 on
+    %  * the great circle route from point #1 to point #2. The value is in
+    %  * internal units of angles (radians), and is a compass angle [0..2*Pi]:
+    %  * clockwise from true north.
+    %  * <p>
+    %  * 
+    %  * Usage Note: If point #1 and #2 are close to each other, then the initial
+    %  * course may become unstable. In the extreme case when point #1 equals
+    %  * point #2, then the initial course is undefined.
+    %  */
+    initial_course(p1: LatLonAlt, p2: LatLonAlt): real = 
+       LET d = angular_distance(lat(p1), lon(p1), lat(p2), lon(p2)) IN
+            initial_course_impl1(p1, p2, d);
+    
+    final_course(p1: LatLonAlt, p2: LatLonAlt): real =
+       initial_course(p2, p1) + PI;
+
+
+  % /**
+  %  * Return angle between great circles
+  %  * @param a point on gc1
+  %  * @param b intersection of gc1 and gc2
+  %  * @param c point on gc2
+  %  * @return angle between two great circles
+  %  */
+  angle_between(a:LatLonAlt, b:LatLonAlt, c:LatLonAlt): real =
+      LET ang1 = initial_course(b,a),
+	  ang2 = initial_course(b,c)
+      IN
+          turnDelta(ang1,ang2);			
+	
+   angle_between_old(a:LatLonAlt, b:LatLonAlt, c:LatLonAlt): real =
+      LET 
+         a1 = angular_distance(c,b),
+         b1 = angular_distance(a,c),
+         c1 = angular_distance(b,a),
+         d = sin(c1)*sin(a1)
+      IN
+         IF d = 0.0 THEN PI
+         ELSE
+            acos_safe( (cos(b1)-cos(c1)*cos(a1)) / d )
+         ENDIF
+
+
+  % initial velocity from p1 to p2 with delta time dt
+  velocity_initial(p1: LatLonAlt, p2: LatLonAlt, dt: real): Velocity =
+     IF abs(dt) < minDt THEN %       || Util.almost_equals(abs(t) + minDt, minDt, Util.PRECISION7)) {
+                                     %% time is negative or very small (less than 1 ms)
+        Velocity.ZEROV
+     ELSE 
+        LET d = angular_distance(p1, p2) IN
+           IF almost_equals_radian(d) THEN
+              IF almost_equals_alt(alt(p1), alt(p2)) THEN
+                 Velocity.ZEROV
+              ELSE
+                 (# x := 0.0, y := 0.0, z := (alt(p2) - alt(p1)) / dt #)
+              ENDIF
+           ELSE      
+              LET gs = distance_from_angle(d, 0.0) / dt,
+                  crs = initial_course_impl1(p1, p2, d) IN
+                     Velocity.mkTrkGsVs(crs, gs, (alt(p2) - alt(p1)) / dt)
+           ENDIF
+     ENDIF
+
+
+
+  % initial velocity from p1 to p2 with delta time dt
+  velocity_final(p1: LatLonAlt, p2: LatLonAlt, dt: real): Velocity 
+
+
+
+  linear_initial_impl(s: LatLonAlt, track: real, d: real, vertical: real): LatLonAlt =
+           LET cosd = cos(d), 
+               sind = sin(d),
+               sinslat = sin(lat(s)),
+               cosslat = cos(lat(s)),
+               lat = asin_safe(sinslat * cosd + cosslat * sind * cos(track)),
+               dlon = atan2_safe(sin(track) * sind * cosslat,cosd - sinslat * sin(lat)), 
+           %% slightly different from aviation formulary because we use
+           %% "east positive" convention
+              lon = to_pi(lon(s) + dlon) 
+           IN
+              LatLonAlt.mk(lat, lon, alt(s) + vertical);
+
+
+   linear_initial(s:LatLonAlt, v:Velocity,  t: real): LatLonAlt = 
+      linear_initial_impl(s, trk(v), angle_from_distance(gs(v) * t), v`z * t)
+
+  % /**
+  %  * Find a point from the given lat/lon with an initial angle of 'track' at a distance
+  %  * of 'dist'. This calculation follows the great circle.
+  %  * <p>
+  %  * 
+  %  * This calculation is approximate: small errors (typically less than 0.5%)
+  %  * will be introduced at typical aircraft altitudes.<p>
+  %  * 
+  %  * @param s     a position
+  %  * @param track the second point to define the great circle
+  %  * @param dist  distance from point #1 [m]
+  %  * @return a new position that is distance d from point #1
+  %  * 
+  %  * Note: this method does not compute an accurate altitude
+  %  * 
+  %  */
+  linear_initial(s: LatLonAlt, track: real, dist: real): LatLonAlt = 
+     linear_initial_impl(s, track, angle_from_distance(dist), 0.0)
+
+END GreatCircle
+
+

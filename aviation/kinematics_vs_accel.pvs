@@ -1,0 +1,180 @@
+kinematics_vs_accel: THEORY
+BEGIN
+
+    IMPORTING Velocity,
+	      reals@abs_lems, reals@sign,
+              vectors@vectors_3D, vectors@vectors_2D, vectors@vect_3D_2D, 
+              vsAccel
+
+    %% --- variables
+
+    t, tt: VAR posreal
+    so, vo: VAR Vect3
+
+    %% --- constant acceleration, no ramp up
+
+    vsConstAccelVelocity(v0: nzhVect3, accel: nzreal, t: nnreal): Vect3 =
+      (# x:=v0`x,
+      	 y:=v0`y,
+	 z:=v0`z + accel*t #)
+
+    vsConstAccelPos(s0: Vect3, v0: nzhVect3, accel: nzreal, t: nnreal): Vect3 =
+      (# x:=s0`x + v0`x*t,
+      	 y:=s0`y + v0`y*t,
+	 z:=s0`z + v0`z*t + (1/2)*accel*sq(t) #)
+
+    vsConstAccelTime(v0: Vect3, goalVs: real, accel: nzreal): real =
+      abs((v0`z - goalVs)/accel)
+	    
+    vsSign(v0: Vect3, goalVs: real): Sign =
+      IF v0`z <= goalVs THEN 1 ELSE -1 ENDIF
+   
+    vsConstAccelGoalPos(s0: Vect3, v0: nzhVect3, goalVs: real, accel: nzreal): Vect3 =
+      LET goalt = vsConstAccelTime(v0, goalVs, accel) IN
+      LET sign = vsSign(v0, goalVs) IN
+        vsConstAccelPos(s0, v0, sign*accel, goalt)
+
+    %% --- constant acceleration, then maintain goal speed
+	  
+    vsAccelUntilVelocity(v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal): Vect3 =
+      LET acceltime = vsConstAccelTime(v0, goalVs, accel) IN
+      LET sign = vsSign(v0, goalVs) IN
+      LET tt = min(t, acceltime) IN
+      LET newvz = v0`z+sign*accel*tt IN
+        v0 WITH [`z:=newvz]
+   
+   %% --vsAccelUntil_Vel computes velocity as the integral of acceleration. This shows both computations are equivalent. 
+
+      equals_integral: LEMMA FORALL (v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal): 
+      vsAccelUntilVelocity(v0, goalVs, accel, t) = 
+      vsAccelUntil_Vel(v0, goalVs, accel)(t)
+    
+    vsAccelUntilPos(s0: Vect3, v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal): Vect3 =
+      LET acceltime = vsConstAccelTime(v0, goalVs, accel) IN
+      LET sign = vsSign(v0, goalVs) IN
+      LET posend = vsConstAccelGoalPos(s0, v0, goalVs, accel) IN
+      LET newvel = v0 WITH [`z:=goalVs] IN
+        IF (t<=acceltime) 
+          THEN vsConstAccelPos(s0, v0, sign*accel, t)
+	ELSE
+	  linear_pos(posend, newvel, t-acceltime)
+	ENDIF
+
+   %% --vsAccelUntil_Pos computes position as the the integral of velocity, which was computed 
+   %%   as the integral of acceleration. This shows both computations are equivalent. 
+
+      equals_integral_pos: LEMMA FORALL (s0: Vect3, v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal):
+        vsAccelUntilPos(s0, v0, goalVs, accel,  t)  = 
+        vsAccelUntil_Pos(s0, v0, goalVs, accel)(t)  
+
+    vsAccelUntil(s0: Vect3, v0: nzhVect3, goalVs: real, accel: posreal, t: nnreal): [Vect3, Vect3] = 
+         ( vsAccelUntilPos(s0,v0,goalVs,accel,t), vsAccelUntilVelocity(v0,goalVs,accel,t) ) 
+
+    
+
+      reach_goalVs: LEMMA FORALL (v0:nzhVect3, goalVs:real, accel:posreal, t:nnreal):
+        LET a = vsSign(v0, goalVs)*accel IN
+        t>vsConstAccelTime(v0, goalVs, a) IMPLIES
+        vsAccelUntilVelocity(v0, goalVs, accel, t)`z = goalVs
+
+
+
+    %% --- linear ramp up from a=0 to target acceleration, 
+    %% --- then constant acceleration to target speed,
+    %% --- then maintain goal speed
+
+    gamma(v0z: real, alpha:real, Tr:nnreal)(t: nnreal): real = 
+      IF Tr = 0 THEN 0
+      ELSE v0z*t +(alpha/6)*t^3/Tr
+      ENDIF
+
+    rho(v0z: real, alpha:real, Tr:nnreal)(t: nnreal): real =
+      v0z*t +(alpha/2)*t*(t-Tr)
+	  
+    vsRampupTimeToGoalSpeed1(v0: Vect3, accel: posreal, goalVs: real, tr: posreal): nnreal =
+      sqrt(2*tr*abs((goalVs-v0`z)/accel))
+      
+    vsRampupAccel(accel: posreal, tr: posreal, t: nnreal): nnreal =
+      accel*t/tr
+
+    vsRampupVerticalSpeed(v0: Vect3, accel: posreal, goalVs: real, tr: posreal, t: nnreal): real =
+      v0`z + (1/2)*accel*sq(t)/tr
+
+
+
+    
+    vsAccelUntilWithRampUp( s0: Vect3, v0: Vect3, goalVs: real, vsAccel: posreal, tRamp: posreal)(t:nnreal): [Vect3, Vect3] = 
+       LET sgn = vsSign(v0, goalVs) IN
+       LET deltaV = abs(goalVs-v0`z) IN
+       LET a = sgn*vsAccel IN
+       
+       IF deltaV <= (vsAccel/2)*tRamp THEN
+          LET tMax = sqrt(2*tRamp*deltaV/vsAccel) IN
+             IF t<=tMax THEN 
+                LET newsz = s0`z+gamma(v0`z, a, tRamp)(t) IN
+                LET newvz = v0`z + (a/2)*t^2/tRamp IN
+                (linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+             ELSE 
+                LET newsz = s0`z+ gamma(v0`z, a, tRamp)(tMax) +goalVs*(t-tMax) IN
+                LET newvz = goalVs IN
+		(linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+             ENDIF
+	ELSE 
+          LET tMax = (deltaV +(vsAccel/2)*tRamp)/vsAccel IN
+             IF t< tRamp THEN
+                LET newsz = s0`z+gamma(v0`z, a, tRamp)(t) IN
+                LET newvz = v0`z + (a/2)*t^2/tRamp IN
+		(linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+	     ELSIF t<tMax THEN
+	        LET newsz = s0`z+ gamma(v0`z, a, tRamp)(tRamp) + rho(v0`z, a, tRamp)(t) 
+                            - rho(v0`z, a, tRamp)(tRamp) IN
+                LET newvz = v0`z+ a*t - (a/2)*tRamp IN
+		(linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+             ELSE 
+                LET newsz = s0`z+ gamma(v0`z, a, tRamp)(tRamp) +rho(v0`z, a, tRamp)(tMax)
+                    -rho(v0`z, a, tRamp)(tRamp)+goalVs*(t-tMax) IN
+                LET newvz = goalVs IN
+		(linear_pos(s0, v0, t) WITH [`z:=newsz] , v0 WITH [`z:=newvz])
+	     ENDIF
+	ENDIF  
+
+%% -- vsAUWRU computes position ans velocity as integrals of acceleration. This computation shows both computations are the same. 
+
+     equals_integral_AUWRU: LEMMA FORALL ( s0: Vect3, v0: Vect3, goalVs: real, vsAccel: posreal, tRamp: posreal, t:nnreal):
+                            vsAccelUntilWithRampUp( s0, v0, goalVs, vsAccel, tRamp)(t) = 
+                            vsAUWRU( s0, v0, goalVs, vsAccel, tRamp)(t)
+        
+
+     reach_goal_AUWRU: LEMMA FORALL ( s0: Vect3, v0: Vect3, goalVs: real, vsAccel: posreal, tRamp: posreal, t:nnreal):
+                       LET sgn = vsSign(v0, goalVs), 
+                           deltaV = abs(goalVs-v0`z),
+                           tMax =  IF deltaV <= (vsAccel/2)*tRamp THEN
+                                       sqrt(2*tRamp*deltaV/vsAccel)
+				   ELSE  (deltaV +(vsAccel/2)*tRamp)/vsAccel
+				   ENDIF
+                           IN 
+                       t>=tMax IMPLIES 
+		       vsAccelUntilWithRampUp( s0, v0, goalVs, vsAccel, tRamp)(t)`2`z = goalVs
+  
+      
+    % added 4/14:
+
+    vsAccelPos(so3,vo3:Vect3,t:real,a:real): {w:Vect3 |
+      vect2(w) = vect2(so3)+t*vect2(vo3) AND w`z = so3`z+vo3`z*t+0.5*a*t*t} =
+      (# x:= so3`x+t*vo3`x,
+      	 y:= so3`y+t*vo3`y,
+	 z:= so3`z+vo3`z*t+0.5*a*t*t #)
+
+    vsAccel(so,vo:Vect3,t:real,a:real): {w:[Vect3,Vect3] |
+      vect2(w`1) = vect2(so)+t*vect2(vo) AND w`1`z = so`z+vo`z*t+0.5*a*t*t AND
+      vect2(w`2) = vect2(vo) AND w`2`z = vo`z+a*t} =
+      LET
+      s3:Vect3 = so,
+      pres:Vect3=vsAccelPos(s3,vo,t,a),
+      vres:Vect3=mkVxyz(vo`x,vo`y,vo`z+a*t)
+      IN
+      (pres,vres)
+     
+END kinematics_vs_accel
+
+

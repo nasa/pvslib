@@ -1,0 +1,49 @@
+KinematicsPosition: THEORY
+BEGIN
+    IMPORTING LatLonAlt, Position, Velocity, GreatCircle, Kinematics
+
+    turnByDist2D(so: LatLonAlt, center:LatLonAlt, dir:int, d: real): LatLonAlt =
+       LET  R = max(GreatCircle.distance(so, center), 0.00000001),
+            theta = dir*d/R,
+            % if(chordalSemantics) chorR =  GreatCircle.chord_radius_from_surface_radius(R);
+            %                      theta = dir*d/chorR
+            trkFromCenter = GreatCircle.initial_course(center,so),
+            nTrk = trkFromCenter + theta,
+            sn = GreatCircle.linear_initial(center, nTrk, R)
+       IN
+           mkAlt(sn,0.0);
+
+    turnByDist2D(so: LatLonAlt, center:LatLonAlt, dir:int, d: real, gsAtd: real): [LatLonAlt,Velocity] =
+        LET sn = turnByDist2D(so, center, dir, d),
+            final_course = GreatCircle.final_course(center,sn),
+            finalTrk = final_course + dir*PI/2,
+            vn = Velocity.mkTrkGsVs(finalTrk,gsAtd,0.0)
+        IN
+            (sn,vn)
+
+   turnByDist2D(so: Position, center: Position, dir: int, d: real, gsAt_d: real): [Position,Velocity] =
+     IF isLatLon(so) THEN
+         LET resp = turnByDist2D(lla(so), lla(center), dir, d, gsAt_d) IN
+         (newPositionLLA(resp`1), resp`2)
+     ELSE
+         LET resp = Kinematics.turnByDist2D(vect3(so), vect3(center), dir, d, gsAt_d) IN
+         (newPositionXYZ(resp`1), resp`2)
+     ENDIF
+
+   % /**
+   %  * Altitude and vertical speed after t time units accelerating vertically.
+   %  * @param so  starting position
+   %  * @param voz  initial vertical speed
+   %  * @param a   vertical speed acceleration (or deceleration) (signed)
+   %  * @param t   time of turn [secs]
+   %  * @return alt and vs after t secs
+   %  */
+   vsAccelZonly(so: Position, voz: real, t: real, a: real): [real, real] = 
+           LET  nsz = alt(so) + voz*t + 0.5*a*t*t,
+                nvz = voz + a*t
+           IN 
+                (nsz,nvz);
+
+END KinematicsPosition
+
+

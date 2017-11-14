@@ -1,0 +1,131 @@
+Position: THEORY
+BEGIN
+
+ % This theory captures a single position represented in either
+ % Euclidean or Lat/Lon coordinates.  
+ 
+    IMPORTING LatLonAlt, Velocity, 
+              GreatCircle, VectFuns, Kinematics
+ 
+    minDist: real = 0.000000001;
+
+    Position: TYPE = [#
+                        ll: LatLonAlt,
+                        s3: Vect3,
+                        latlon:  boolean, 
+                        invalid: boolean
+                      #]
+
+    isLatLon(p: Position): MACRO bool = p`latlon
+
+    PositionToLLA(p: Position): LatLonAlt = p`ll
+
+    CONVERSION PositionToLLA
+
+%%    vect3(p: Position): Vect3 = p`s3
+
+    z(p: Position): real   = IF p`latlon THEN alt(p`ll) ELSE p`s3`z ENDIF
+    alt(p: Position): real = IF p`latlon THEN alt(p`ll) ELSE p`s3`z ENDIF
+
+    ZERO_LL : Position = (# ll := zero, s3 := zero, latlon := true, invalid := false #)
+    ZERO_XYZ: Position = (# ll := zero, s3 := zero, latlon := false, invalid := false #)
+    INVALID : Position = (# ll := zero, s3 := zero, latlon := true, invalid := true #)
+
+    newPositionLLA(lla: LatLonAlt): Position =
+       (# ll := lla, s3 := zero, latlon := true, invalid := false #)
+
+    newPositionXYZ(s: Vect3): Position =
+       (# ll := zero, s3 := s, latlon := false, invalid := false #)
+
+
+    mkLatLonAlt(lat: real, lon: real, alt: real): Position =
+        LET lla = LatLonAlt.mk(lat,lon,alt) IN
+           (# ll := lla, s3 := zero, latlon := true, invalid := false #)
+
+    mkXYZ(xx:real, yy:real, zz:real): Position = 
+        LET v3 = (# x := xx, y := yy, z := zz #) IN
+          (# ll := zero, s3 := v3, latlon := false, invalid := false #)
+
+    mkZ(p: Position, z: real): Position =
+      IF (p`latlon) THEN
+        mkLatLonAlt(lat(p`ll), lon(p`ll), z)
+      ELSE
+         mkXYZ(p`s3`x, p`s3`y, z)
+      ENDIF
+
+    mkAlt(p: Position, alt: real): MACRO Position =  mkZ(p, alt);
+
+    lla(p: Position): Macro LatLonAlt = p`ll
+
+    vect3(p: Position): Macro Vect3 = p`s3
+
+    vect2(p: Position): Macro Vect2 = vect2(p`s3)
+
+    latLon?(p: Position): Macro boolean = p`latlon
+
+    linear(pos: Position, vel: Velocity, time: real): Position  = 
+      IF latLon?(pos) THEN
+          newPositionLLA(GreatCircle.linear_initial(lla(pos),vel, time))
+      ELSE
+          newPositionXYZ(linear_pos(vect3(pos), vel, time))
+      ENDIF
+
+         
+   % /**
+   %  * Return angle between P1-P2 and P2-P3
+   %  * @param p1 point 1
+   %  * @param p2 point 2 (intersection of two lines)
+   %  * @param p3 point 3
+   %  * @return angle between two lines
+   %  */
+   angle_between(p1: Position, p2: Position, p3: Position): real =
+      IF isLatLon(p1) THEN
+           GreatCircle.angle_between(lla(p1), lla(p2), lla(p3))
+      ELSE
+           VectFuns.angle_between(vect2(p1), vect2(p2), vect2(p3))
+      ENDIF
+
+  % % /** This computes the horizontal position, the altitude is not computed!
+  % %  * 
+  % %  * @param v    velocity
+  % %  * @param d    distance
+  % %  * @return
+  % %  */
+  % linearDist2D(so: Position, v:Velocity, d: real): [Position,Velocity] =
+  %    IF so`latlon THEN
+  %       LET sEnd = GreatCircle.linear_initial(so`ll, trk(v), d),
+  %           finalTrk = IF d > minDist THEN
+  %                        GreatCircle.final_course(so`ll, sEnd)
+  %                      ELSE
+  %                        trk(v)
+  %                      ENDIF,
+  %           vEnd = mkTrk(v,finalTrk)
+  %       IN
+  %           (newPosition(sEnd),vEnd)
+  %    ELSE
+  %       LET dt = d/Velocity.gs(v) IN 
+  %          (newPosition(Kinematics.linear(so`s3, v, dt)),v) 
+  %    ENDIF
+
+
+   linearDist2D(so: Position, track:real, d: real, gsAt_d: real): [Position,Velocity] =
+     IF so`latlon THEN
+        LET sNew = GreatCircle.linear_initial(so`ll, track, d),
+            finalTrk = IF d > minDist THEN
+                         GreatCircle.final_course(so`ll, sNew)
+                       ELSE
+                         track
+                       ENDIF,
+            vNew = Velocity.mkTrkGsVs(finalTrk, gsAt_d, 0.0)
+        IN
+            (newPositionLLA(sNew),vNew)
+     ELSE
+        LET sNew = Kinematics.linearByDist2D(so`s3,track,d),
+            vNew = Velocity.mkTrkGsVs(track,gsAt_d,0.0)
+        IN (newPositionXYZ(sNew),vNew) 
+     ENDIF
+
+
+END Position
+
+

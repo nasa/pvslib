@@ -1,0 +1,123 @@
+Velocity: THEORY
+BEGIN
+
+    IMPORTING util
+
+    gsp: VAR posreal
+    trk,vs: VAR real
+
+    Velocity: TYPE = Vect3
+
+    ZEROV: MACRO Velocity = vectors_3D.zero
+
+    INVALID: Velocity
+
+    toPi(r: nnreal_lt_2pi): {x:real | -pi <= x AND x <= pi} = 
+	  IF r > pi THEN
+             r-2*pi
+	  ELSE 
+	     r
+	  ENDIF
+
+    to_pi(x: real): {x:real | -pi <= x AND x <= pi} = 
+   	  LET r = to2pi(x) IN 
+            toPi(r)
+
+
+    trkVel(v: Velocity): {x:real | -pi <= x AND x <= pi} =
+        IF v`x = 0 AND v`y = 0 THEN 0 
+        ELSE
+          toPi(track(v))
+        ENDIF
+
+    %% --- velocity components, angles
+
+    groundSpeed(v: Vect2): nnreal = 
+       norm(v)
+
+    gs(v:Velocity): nnreal = norm(vect2(v))
+
+    vs(v:Velocity): real = v`z
+
+    groundSpeed_nzv : JUDGEMENT
+       groundSpeed(v: Nz_vect2) HAS_TYPE posreal
+
+    groundSpeed(v: Velocity): MACRO nnreal = 
+       ground_speed(v)
+
+    trk_is_pi2: LEMMA FORALL (v: Velocity, xx: posreal): 
+       v`x = xx AND v`y = 0 IMPLIES trkVel(v) = pi/2
+
+    trk_track: LEMMA FORALL (v: Velocity): vect2(v) /= vectors_2D.zero IMPLIES
+       trkVel(v) = toPi(track(v))
+
+    mkTrkVel(v:Velocity, trk:real): Velocity = 
+      LET v1 = trkgs2vect(trk, gs(v)) IN
+      (# x := v1`x, 
+         y := v1`y,
+         z := v`z#)
+
+    mkAddTrkVel(v: Velocity, trk: real): Velocity = 
+    LET s = sin(trk),
+        c = cos(trk)
+    IN
+      (# x := v`x*c + v`y*s, 
+         y := -v`x*s + v`y*c,
+         z := v`z
+      #)
+
+  trkgs2vx(trk: real, gs: real): MACRO real = 
+     gs * sin(trk)
+  
+  trkgs2vy(trk: real, gs: real): MACRO real =
+    gs * cos(trk)
+
+  mkVxyz(vx: real, vy: real, vz:real): MACRO Velocity = 
+      (# x := vx, y := vy, z := vz #)
+
+  mkGs(v: Velocity, gs: real): Velocity =
+    IF gs < 0 THEN INVALID
+    ELSIF gs(v) > 0.0 THEN
+       LET scal = gs/gs(v) IN
+          mkVxyz(v`x*scal, v`y*scal, vs(v))
+    ELSE
+       mkVxyz(0,gs,vs(v))
+    ENDIF
+
+  mkVs(v: Velocity, vs: real): MACRO Velocity = mkVxyz(v`x, v`y, vs)
+
+  mkTrkGsVs(trk: real, gs: real, vs: real): Velocity =
+      (# x := trkgs2vx(trk,gs), y:= trkgs2vy(trk,gs), z := vs #)
+ 
+  mkTrkGs(trk: real, gs: nnreal): MACRO Vect2 = 
+    trkgs2vect(trk,gs)
+
+  mkTrkGs_nonzero: JUDGEMENT
+    mkTrkGs(trk,gsp) HAS_TYPE Nz_vect2
+
+  mkTrkGsVs_nonzero: JUDGEMENT
+    mkTrkGsVs(trk,gsp,vs) HAS_TYPE nzhVect3
+
+  track_mktrk: LEMMA
+    FORALL (trk:real, gs: posreal, vs: real):
+      track(mkTrkGsVs(trk,gs,vs)) = to2pi(trk)
+
+  mkTrkGsVs_def: LEMMA FORALL (v:Velocity): gs(v)>0 IMPLIES
+    mkTrkGsVs(trk(vect2(v)),gs(v),vs(v))=v
+
+  Hat(v:Velocity): Velocity =
+    LET n = norm(v) IN
+    IF (n = 0.0) THEN v
+    ELSE
+        mkVxyz(v`x / n, v`y / n, v`z / n)
+    ENDIF
+
+  Hat2D(v:Velocity): Velocity = Hat(mkVs(v,0));
+
+  %% note order of arguments due to angle from north
+  track(p1:Velocity, p2:Velocity): real = 
+     atan2_safe(p2`x-p1`x, p2`y-p1`y)
+
+END Velocity
+
+

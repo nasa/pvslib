@@ -1,0 +1,771 @@
+Plan: THEORY
+BEGIN
+
+   IMPORTING vectors@vectors_4D, NavPoint, Position, KinematicsPosition, 
+             TcpData, list
+
+   i,j: VAR nat
+
+   PlanPoint: TYPE = [# np: NavPoint, 
+                        tcp: TcpDataType #]
+
+   point(p: list[PlanPoint], i: int): NavPoint = IF i < 0 OR i >= length(p) THEN 
+                                                       ZERO_LL
+                                                 ELSE nth(p,i)`np ENDIF
+
+
+   data(p: list[PlanPoint], i: int): TcpDataType = IF i < 0 OR i >= length(p) THEN 
+                                                         ZERO 
+                                                      ELSE nth(p,i)`tcp ENDIF
+
+   time(p: list[PlanPoint], i: int): MACRO real =
+         IF i >= 0 AND i < length(p) THEN nth(p,i)`np`time
+         ELSE -1 ENDIF
+
+
+   ordered?(p: list[PlanPoint]): bool = FORALL (i:int): 0 <= i AND i < length(p)-1 IMPLIES
+                                                  time(p,i) < time(p,i+1)
+
+   size(p: list[PlanPoint]): MACRO nat = length(p)
+
+   ordered_lem: LEMMA FORALL (p: list[PlanPoint], i,j: below[size(p)]): 
+     ordered?(p) AND i < j IMPLIES time(p,i) < time(p,j)
+
+   getFirstTime(p: list[PlanPoint]): MACRO real = time(p,0)
+
+   getLastTime(p: list[PlanPoint]): MACRO real =  time(p,length(p)-1)
+                                         
+   Plan: TYPE = {p: list[PlanPoint] | ordered?(p) AND size(p) > 1}
+
+   isLatLon(p: Plan): bool = isLatLon(point(p,0))
+
+   range(p: Plan): set[real] =
+          {t: real | size(p) > 0 IMPLIES getFirstTime(p) <= t AND t <= getLastTime(p)}
+
+   Range(p: Plan): TYPE = {t: real | range(p)(t)}
+
+   getIndexInRange_rec(p: Plan, t: Range(p), n:below[length(p)]): RECURSIVE int =
+       IF (n <= 1) THEN 0
+       ELSIF  time(p,n) = t THEN n
+       ELSIF time(p,n-1) <= t AND t <= time(p,n) THEN -n-1
+       ELSE getIndexInRange_rec(p,t,n-1)
+       ENDIF measure n
+
+   getIndexInRange(p: Plan, t: Range(p)): int = 
+     If size(p) = 0 THEN -1
+     ELSE getIndexInRange_rec(p,t,length(p)-1)
+     ENDIF
+
+   getIndex(p: Plan, t: real): int = 
+      IF length(p) = 0 OR t < getFirstTime(p) THEN -1
+      ELSIF t > getLastTime(p) THEN -1
+      ELSE getIndexInRange(p,t)
+      ENDIF     
+
+   getSegment(p: Plan, time: real): int =
+      LET i = getIndex(p,time) IN
+        IF (i = -1) THEN -1                % before plan
+        ELSIF (i >= 0) THEN i              % hit point exactly
+        ELSIF (-i-2 = size(p)-1) THEN -1   % after plan
+        ELSE -i-2                          % between point i and i+1
+        ENDIF
+
+   getTcpData(p: Plan, i:int): MACRO TcpDataType =  data(p,i)
+
+   isTCP(p: Plan, i: int) : bool = 
+        data(p,i)`tcp_trk /= NONE OR data(p,i)`tcp_gs /= NONE 
+        OR data(p,i)`tcp_vs /= NONE
+
+   isTrkTCP(p: Plan, i: int) : bool =  data(p,i)`tcp_trk /= NONE
+  
+   isBOT(p: Plan, i: int) : bool = 
+      data(p,i)`tcp_trk = BOT OR data(p,i)`tcp_trk = EOTBOT
+  
+   isEOT(p: Plan, i: int) : bool = 
+      data(p,i)`tcp_trk = EOT OR data(p,i)`tcp_trk = EOTBOT
+  
+
+   isGsTCP(p: Plan, i: int) : bool = 
+              data(p,i)`tcp_gs /= NONE
+  
+   isBGS(p: Plan, i: int) : bool = 
+              data(p,i)`tcp_gs = BGS OR data(p,i)`tcp_gs = EGSBGS
+  
+   isEGS(p: Plan, i: int) : bool = 
+              data(p,i)`tcp_gs = EGS OR data(p,i)`tcp_gs = EGSBGS
+  
+   isVsTCP(p: Plan, i: int) : bool = data(p,i)`tcp_vs /= NONE
+  
+   isBVS(p: Plan, i: int) : bool = 
+              data(p,i)`tcp_vs = BVS OR data(p,i)`tcp_vs = EVSBVS
+  
+   isEVS(p: Plan, i: int) : bool = 
+              data(p,i)`tcp_vs = EVS OR data(p,i)`tcp_vs = EVSBVS
+  
+   % isBeginTCP(p: Plan, i: int) : bool = 
+   %            data(p,i)`tcp_trk = BOT OR data(p,i)`tcp_gs = BGS OR data(p,i)`tcp_vs = BVS 
+   %                                OR data(p,i)`tcp_trk = EOTBOT OR data(p,i)`tcp_gs = EGSBGS 
+   %                                OR data(p,i)`tcp_vs = EVSBVS
+  
+
+   % isEndTCP(p: Plan, i: int) : bool = 
+   %            data(p,i)`tcp_trk = EOT OR data(p,i)` tcp_gs = EGS OR data(p,i)`tcp_vs = EVS 
+   %                                   OR data(p,i)`tcp_trk = EOTBOT OR data(p,i)`tcp_gs = EGSBGS 
+   %                                   OR data(p,i)`tcp_vs = EVSBVS
+  
+  isLinear(p: Plan): bool = FORALL (i: below(size(p))): NOT isTCP(p,i)
+
+  makeNavPoint(pp: PlanPoint, npn: NavPoint): PlanPoint = 
+        (# np := npn, tcp := pp`tcp #)
+
+  makeTcpData(pp: PlanPoint, tcpd: TcpDataType): PlanPoint = 
+        (# np := pp`np, tcp := tcpd #)
+
+
+
+  findPrev(p:Plan, current: int, pred: [Plan,int -> bool]): RECURSIVE int = 
+     IF current < 0 THEN -1
+     ELSIF pred(p,current) THEN current
+     ELSE
+        findPrev(p,current-1,pred)
+     ENDIF
+   MEASURE abs(current+1)
+
+  % /**
+  %  * This returns the index of the Beginning of Turn (BOT) point that is less
+  %  * than the given index, or -1 if there is no such point. This is generally
+  %  * intended to be used to find the beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *            point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of BOT or EOT
+  %  */
+  prevBOT(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isBOT)
+     ENDIF
+
+
+  % /**
+  %  * This returns the index of the turn end point < the given index, or -1 if
+  %  * there is no such point. This is generally intended to be used to find the
+  %  * beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *            point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of EOT
+  %  */
+   prevEOT(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isEOT)
+     ENDIF
+ 
+  % /**
+  %  * This returns the index of the Ground Speed Change Begin point < the given
+  %  * index, or -1 if there is no such point. This is generally intended to be
+  %  * used to find the beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *   /         point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of BGS
+  %  */
+   prevBGS(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isBGS)
+     ENDIF
+ 
+  % /**
+  %  * This returns the index of the ground speed end point <= the given index,
+  %  * or -1 if there is no such point. This is generally intended to be used to
+  %  * find the beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *            point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of EGS
+  %  */
+   prevEGS(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isEGS)
+     ENDIF
+
+  % /**
+  %  * This returns the index of the Vertical Speed Change Begin point < the
+  %  * given index, or -1 if there is no such point. This is generally intended
+  %  * to be used to find the beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *            point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of BVS
+  %  */
+   prevBVS(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isBVS)
+     ENDIF
+
+  % /**
+  %  * This returns the index of the vertical speed end point <= the given
+  %  * index, or -1 if there is no such point. This is generally intended to be
+  %  * used to find the beginning of an acceleration zone.
+  %  * 
+  %  * @param current
+  %  *            the index of the point to begin the search (Note: the index
+  %  *            may be up to size instead of size-1. This allows the current
+  %  *            point to be checked by this method.)
+  %  * @return index before <i>current</i> which has a TCP type of EVS
+  %  */
+   prevEVS(p: Plan, current: int): int = 
+     IF current < 0 OR current > size(p) THEN
+        -1
+     ELSE
+        findPrev(p, current-1, isEVS)
+     ENDIF
+
+
+
+  % This returns true if the given time is >= a BOT but before an EOT point
+  inTrkChange(p: Plan, t: real): bool =
+     LET i = getSegment(p,t),
+         j1 = prevBOT(p, i + 1),
+         j2 = prevEOT(p, i + 1)
+     IN
+        j1 >= 0 AND j1 >= j2
+
+  % This returns true if the given time is >= a GSCBegin but before a GSCEnd point
+  inGsChange(p: Plan, t: real): bool =  
+      LET  i = getSegment(p, t),
+           j1 = prevBGS(p, i + 1),
+           j2 = prevEGS(p, i + 1)
+      IN 
+        j1 >= 0 AND j1 >= j2
+
+  % This returns true if the given time is >= a VSCBegin but before a VSCEnd point
+  inVsChange(p: Plan, t: real): bool =
+       LET i = getSegment(p, t),
+           j1 = prevBVS(p, i + 1),
+           j2 = prevEVS(p, i + 1)
+       IN
+          j1 >= 0 AND j1 >= j2
+ 
+  % copyWithIndex(p: Plan, (n: nat | n <= length(p))): RECURSIVE Plan =
+  %   IF n = 0 THEN null
+  %   ELSE 
+  %      LET ix = length(p) - n,
+  %          pp = nth(p,ix) 
+  %      IN
+  %      cons(makeTcpData(pp,setLinearIndex(pp`tcp,ix)), copyWithIndex(p,n-1))
+  %   ENDIF
+  %   MEASURE n
+
+  %  copyWithIndex(p: Plan): Plan = copyWithIndex(p,length(p))
+
+   % copyWithIndex_def: LEMMA FORALL (p: Plan, (n: nat | n <= length(p))):
+   %   LET nPlan = copyWithIndex(p) IN
+   %   point(nPlan,n) = point(p,n) AND
+   %   data(nPlan,n) = setLinearIndex(data(p,n),n) 
+
+
+   signedRadius(p: Plan, i: int): real = 
+       IF i < 0 OR i >= size(p) THEN 0
+       ELSE data(p,i)`radiusSigned
+       ENDIF
+
+   %%% turnRadius(p: Plan, i: int): real = abs(signedRadius(p, i))
+
+   turnDir(p: Plan, i: int): {i: int | i= -1 OR i = 1} = 
+       sign(data(p,i)`radiusSigned)
+
+
+    % setRadius(p: Plan: int i, double radius): Plan = 
+    %           TcpData d = data.get(i);
+    %           d.radiusSigned = radius;
+    %           data.set(i, d);
+
+        
+    turnCenter(p: Plan, i: int): Position = 
+      IF i < 0 OR i >= size(p) THEN INVALID
+      ELSE
+          data(p,i)`centerTurn
+      ENDIF
+
+   gsAccel(p: Plan, i: int): real = 
+     IF i < 0 OR i >= size(p) THEN -1
+     ELSE
+        data(p,i)`accelGs
+     ENDIF
+
+   vsAccel(p: Plan, i: int): real = 
+     IF i < 0 OR i >= size(p) THEN -1
+     ELSE
+        data(p,i)`accelVs
+     ENDIF
+
+
+   % /**
+   %  * Find the horizontal distance between points i and i+1 [meters].
+   %  * 
+   %  * @param i        index of starting point
+   %  * @param linear   if true, measure the straight distance, if false measure the curved distance
+   %  * @return         path distance (horizontal only)
+   %  */
+   pathDistance(p: Plan, i:int, linear: bool): real = 
+     IF i < 0 OR i+1 >= size(p) THEN 0
+     ELSE
+        LET 
+          p1 = point(p,i),
+          tt = p1`time
+        IN
+          IF NOT linear AND inTrkChange(p, tt) THEN
+             LET
+              p2 = point(p, i + 1),
+              ixBOT = prevBOT(p, i + 1),
+              center = turnCenter(p, ixBOT),
+              chor_R = signedRadius(p,ixBOT),
+              theta = angle_between(p1`position, center, p2`position)
+             IN 
+                 abs(theta * chor_R)
+          ELSE
+             distanceH(point(p,i)`position, point(p,i+1)`position)
+          ENDIF
+     ENDIF
+
+  % /**
+  %  * Find the cumulative horizontal path distance between points i and j
+  %  * [meters].
+  %  * 
+  %  * @param i      beginning index
+  %  * @param j      ending index
+  %  * @param linear if true, then TCP turns are ignored. Otherwise, the length of the circular turns are calculated.
+  %  * @return cumulative path distance (horizontal only)
+  %  */
+  pathDistanceNat(p:Plan, i:nat, j:nat, linear: bool): RECURSIVE real = 
+    IF (size(p) = 0) THEN 0
+    ELSIF j >= size(p) THEN pathDistanceNat(p, i, size(p)-1, linear)
+    ELSIF i >= j THEN 0
+    ELSE
+       pathDistanceNat(p,i,j-1,linear) + pathDistance(p, j-1, linear)
+    ENDIF
+  MEASURE j
+
+  pathDistance4(p:Plan, i:int, j:nat, linear: bool): real = 
+      IF i < 0 THEN pathDistanceNat(p, 0, j, linear)
+      ELSE pathDistanceNat(p, i, j, linear)
+      ENDIF
+
+
+  % Find the cumulative horizontal (curved) path distance for whole plan.
+  pathDistanceFull(p:Plan): real = pathDistance4(p, 0, size(p), false)
+
+   % Find the cumulative horizontal (curved) path distance between points i and j [meters].
+  pathDistance(p:Plan, i:int, j:nat): real =  pathDistance4(p, i, j, false)
+
+
+  trkInTurn(p: Plan, pos:Position, center: Position, dir:int): real = 
+     IF isLatLon(pos) THEN
+	LET final_course = GreatCircle.final_course(lla(center),lla(pos))
+        IN
+           final_course + dir*PI/2
+     ELSE
+        LET trkFromCenter = Velocity.track(vect3(center), vect3(pos)),
+	    nTrk = trkFromCenter
+        IN
+            nTrk + dir*PI/2		 
+     ENDIF
+
+  trkFinal(p: Plan, seg: int, linear: bool): real = 
+     IF seg < 0 OR seg >= size(p) - 1 THEN -1
+     ELSE
+       IF inTrkChange(p, time(p,seg)) AND NOT linear THEN
+          LET ixBOT = prevBOT(p,seg + 1),
+              dir = turnDir(p,ixBOT),
+	      center = turnCenter(p, ixBOT)		
+          IN
+              trkInTurn(p, position(point(p,seg+1)), center, dir)
+       ELSE
+          IF isLatLon(p) THEN
+             GreatCircle.final_course(lla(point(p, seg)`position), lla(point(p, seg + 1)`position))
+          ELSE
+             trk(finalVelocity(point(p, seg), point(p, seg + 1)))
+          ENDIF
+       ENDIF
+     ENDIF
+
+
+  trkOut(p: Plan, seg:int, linear: boolean): real = 
+     IF (seg = size(p) - 1) THEN
+	trkFinal(p, seg-1, linear)
+     ELSE 
+        IF inTrkChange(p, time(p,seg)) AND NOT linear THEN
+	   LET ixBOT = prevBOT(p, seg + 1),
+	     center = turnCenter(p, ixBOT),		
+	     dir = turnDir(p, ixBOT)
+          IN
+	     trkInTurn(p, position(point(p, seg)), center, dir)
+        ELSE
+           IF isLatLon(p) THEN
+	      GreatCircle.initial_course(lla(position(point(p, seg))), lla(position(point(p,seg+1))))
+	   ELSE
+	      trk(initialVelocity(point(p, seg))(point(p, seg+1)))	
+          ENDIF
+        ENDIF
+    ENDIF
+
+  trkIn(p: Plan, seg:int): real = 
+       trkFinal(p,seg-1,false);
+
+  trkOut(p: Plan, seg:int): real = 
+       trkOut(p,seg,false);
+
+
+    % /**
+    %  * ground speed at the end of segment "i"
+    %  * 
+    %  * Note. if there is no acceleration, this will be the same as gsOut
+    %  * 
+    %  * @param i        The index of the point of interest
+    %  * @param linear   If true, then interpret plan in a linear manner
+    %  * @return
+    %  */
+  gsFinal(p: Plan, i:int, linear: bool): real =
+      IF i < 0 OR i > size(p)-1 THEN -1
+      ELSE
+          LET 
+            dist = pathDistance4(p, i, i+1, linear),
+            dt = time(p,i+1) - time(p,i),
+            a = IF inGsChange(p, time(p,i)) AND NOT linear THEN 
+                   gsAccel(p,prevBGS(p,i + 1))
+                ELSE 
+                  0.0
+                ENDIF
+           IN
+              dist / dt + 0.5 * a * dt
+      ENDIF
+
+  gsFinal(p: Plan, i:int): real = gsFinal(p,i,false)
+
+    % /**
+    %  * ground speed out of point "i"
+    %  * 
+    %  * @param i       The index of the point of interest
+    %  * @param linear  If true, then interpret plan in a linear manner
+    %  * @return
+    %  */
+   gsOut(p: Plan, i:int, linear: bool): real =
+      IF i < 0 OR i > size(p)-1 THEN -1
+      ELSIF i = size(p) - 1 THEN
+         gsFinal(p, i - 1)
+      ELSE 
+         LET
+             j = i + 1,
+             dist = pathDistance4(p, i, j, linear),
+             dt = time(p, j) - time(p, i),
+             a = IF inGsChange(p, time(p, j-1)) AND NOT linear THEN 
+                      gsAccel(p,prevBGS(p,i + 1))
+                    ELSE 
+                       0
+                    ENDIF,
+             rtn = dist / dt - 0.5 * a * dt
+         IN
+            IF rtn <= 0 THEN 
+               0.000001 % // do not set to 0 because it will lose track info
+            ELSE
+               rtn
+            ENDIF
+      ENDIF
+
+
+
+
+
+  gsIn(p: Plan, i:int): real = gsFinal(p,i-1,false)
+
+  gsOut(p: Plan, i:int): real = gsOut(p,i,false)
+
+  % /**
+  %  * ground speed at time t (which must be in segment "seg")
+  %  * 
+  %  * @param seg      segment where time "t" is located
+  %  * @param gsAtSeg  ground speed out of segment "seg"
+  %  * @param t        time of interest
+  %  * @param linear   If true, then interpret plan in a linear manner
+  %  * @return         ground speed at time t (which must be in segment "seg")
+  %  */
+  gsAtTime(p: Plan, seg:int, gsAtSeg: real, t: real, linear: bool): real = 
+      IF inGsChange(p, t) AND NOT linear THEN
+          LET dt = t - time(p, seg),
+              gsAccel = gsAccel(p, prevBGS(p, seg + 1))
+          IN
+              gsAtSeg + dt * gsAccel
+          ELSE
+             gsAtSeg
+          ENDIF
+
+  % /**
+  %  * ground speed at time t
+  %  * 
+  %  * @param t      time of interest
+  %  * @param linear If true, then interpret plan in a linear manner
+  %  * @return       ground speed at time t
+  %  */
+  gsAtTime(p: Plan,  t: real,  linear: bool): real =
+          LET seg = getSegment(p, t) IN
+          IF seg < 0 THEN -1
+          ELSE
+             LET gsSeg = gsOut(p, seg, linear) IN
+                gsAtTime(p, seg, gsSeg, t, linear)
+          ENDIF
+
+  gsAtTime(p: Plan, t: real): real = gsAtTime(p, t, false)
+
+  % /**
+  %  * vertical speed at the end of segment "i"
+  %  * 
+  %  * Note. if there is no acceleration, this will be the same as vsOut
+  %  * 
+  %  * @param i
+  %  *            The index of the point of interest
+  %  * @param linear
+  %  *            If true, then interpret plan in a linear manner
+  %  * @return
+  %  */
+  vsFinal(p: Plan, i: int, linear: bool): real = 
+      IF i < 0 OR i > size(p) - 1 THEN -1
+      ELSE 
+        LET 
+           j = i + 1,
+           dist = alt(point(p,j)) - alt(point(p,i)),
+           dt = time(p, j) - time(p, i),
+           a = IF inVsChange(p, time(p,i)) AND NOT linear THEN
+                   vsAccel(p, prevBVS(p, i + 1))
+               ELSE
+                  0.0
+               ENDIF
+        IN
+            dist / dt + 0.5 * a * dt
+      ENDIF
+
+  vsFinal(p: Plan, i: int): real = vsFinal(p,i,false)
+
+  % /**
+  %  * vertical speed out of point "i"
+  %  * 
+  %  * @param i       The index of the point of interest
+  %  * @param linear  If true, then interpret plan in a linear manner
+  %  * @return
+  %  */
+  vsOut(p: Plan, i: int, linear: bool): real = 
+      IF i < 0 OR i >= size(p) - 1 THEN -1
+      ELSIF i = size(p) - 1 THEN
+          vsFinal(p, i - 1)
+      ELSE
+        LET 
+            dist = alt(point(p,i+1)) - alt(point(p,i)),
+           dt = time(p, i+1) - time(p, i),
+           a = IF inVsChange(p, time(p, i)) AND NOT linear THEN 
+                  vsAccel(p, prevBVS(p,i + 1))
+               ELSE 
+                  0
+               ENDIF
+        IN
+          dist / dt - 0.5 * a * dt
+      ENDIF
+
+  vsIn(p: Plan, i: int): real = 
+     vsFinal(p,i-1,false)
+
+  vsOut(p: Plan, i: int): real = 
+     vsOut(p,i,false)
+
+
+  % /**
+  %  * vertical speed at time t (which must be in segment "seg")
+  %  * 
+  %  * @param seg      segment where time "t" is located
+  %  * @param vsAtSeg  vertical speed out of segment "seg"
+  %  * @param t        time of interest
+  %  * @param linear   If true, then interpret plan in a linear manner
+  %  * @return
+  %  */
+  vsAtTime(p: Plan, seg: int, vsAtSeg: real, t: real, linear: bool): real = 
+          IF inVsChange(p, t) AND NOT linear THEN
+             LET dt = t - time(p, seg) IN
+             vsAtSeg + dt * vsAccel(p,prevBVS(p, seg + 1))
+          ELSE
+             vsAtSeg
+          ENDIF
+
+
+  % /**
+  %  * vertical speed at time t
+  %  * 
+  %  * @param t         time of interest
+  %  * @param linear    If true, then interpret plan in a linear manner
+  %  * @return
+  %  */
+  vsAtTime(p: Plan, t: real,  linear: bool): real = 
+      LET seg = getSegment(p, t) IN
+      IF seg < 0 THEN -1
+      ELSE
+         LET  vsSeg = vsOut(p, seg, linear) IN
+           vsAtTime(p, seg, vsSeg, t, linear)
+      ENDIF
+
+  print_i(i: int): void = println(" finalVelocity3: i = "+i);
+
+  finalVelocity3(p: Plan, i: int, linear: bool): Velocity =
+     LET pr = print_i(i) IN
+     IF i >= size(p) THEN INVALID
+     ELSIF i = size(p) - 1 THEN ZEROV
+     ELSE
+        Velocity.mkTrkGsVs(trkFinal(p, i, linear), gsFinal(p, i, linear), vsFinal(p, i, linear))
+     ENDIF
+
+  finalVelocity(p: Plan, i: int): Velocity = finalVelocity3(p,i,false)
+
+  % /**
+  %  * Calculate the distance from the Navpoint at "seq" to plan position at time "t"
+  %  * 
+  %  * @param seg    starting position
+  %  * @param t      time of stopping position
+  %  * @param linear If true, then interpret plan in a linear manner
+  %  * @return
+  %  */
+  distFromPointToTime(p: Plan, seg: int, t: real, linear: bool): real =
+    LET  
+         gs0 = gsOut(p, seg, linear),
+         dt = t - time(p,seg)
+    IN
+       IF inGsChange(p, t) AND NOT linear THEN
+         LET a = gsAccel(p,prevBGS(p, seg + 1)) IN 
+            gs0 * dt + 0.5 * a * dt * dt
+       ELSE
+            gs0 * dt
+       ENDIF
+
+   % updateAlt(p: Plan, t: real, linear: bool, sNew: Position, vNew: Velocity): 
+   %    [Position, Velocity] = 
+   %    LET seg = getSegment(p,t) IN
+   %    IF inVsChange(p, t) AND NOT linear THEN
+   %       LET ixBVS = prevBVS(p, seg + 1),
+   %           n1 = point(p,ixBVS),
+   %           soP = n1`position,
+   %           voPvs = vsAtTime(p, n1`time, linear),
+   %           pv =    vsAccelZonly(soP, voPvs, t - n1`time, vsAccel(p,ixBVS)),
+   %           sNewp = mkAlt(sNew, pv`1),
+   %           vNewp = Velocity.mkVs(vNew,pv`2) 
+   %       IN
+   %          (sNewp,vNewp)
+   %     ELSIF seg < size(p) - 1 THEN % otherwise np2 is not a valid future point
+   %       LET np1 = point(p, seg),
+   %           np2 = point(p, seg+1),
+   %           dt = t - np1`time,
+   %           vZ = (alt(np2) - alt(np1)) / (np2`time - np1`time),
+   %           sZ = alt(np1) + vZ * dt,
+   %           sNewp = mkAlt(sNew,sZ),
+   %           vNewp = Velocity.mkVs(vNew,vZ)
+   %       IN
+   %          (sNewp,vNewp)
+   %     ELSE
+   %           (sNew, vNew)
+   %     ENDIF
+
+  interpolateAltVs(p: Plan, seg: int, dt: real, linear: bool): [real,real]  =
+      LET tSeg = time(p,seg),
+          vsAccel_d = IF ( NOT linear AND inVsChange(p, tSeg)) THEN
+                        vsAccel(p, prevBVS(p, seg+1))
+                      ELSE
+                        0.0
+                      ENDIF,
+          alt1 = alt(point(p,seg)`position),
+          vsInit = vsOut(p,seg,linear), 
+          newAlt = alt1 + vsInit*dt + 0.5 * vsAccel_d*dt*dt,
+          newVs = vsInit + vsAccel_d*dt
+      IN (newAlt,newVs);
+
+
+    posVelWithinSeg2D(p: Plan, seg:int, t:real, linear:bool, gsAt_d: real): [Position, Velocity] =
+      LET  np1 = point(p,seg),
+           so = np1`position
+      IN
+        IF NOT linear AND inTrkChange(p,t) THEN
+           LET ixPrevBOT = prevBOT(p, seg + 1),
+               center = turnCenter(p, ixPrevBOT),
+               dir = turnDir(p, ixPrevBOT),
+               distFromSo = distFromPointToTime(p, seg, t, linear)
+           IN 
+              KinematicsPosition.turnByDist2D(so, center, dir, distFromSo, gsAt_d)
+        ELSE
+           LET  np2 = point(p, seg+1),
+                vo = initialVelocity(np1)(np2),
+                distFromSo = distFromPointToTime(p, seg, t, linear)
+           IN
+               linearDist2D(so, trk(vo), distFromSo, gsAt_d)
+        ENDIF
+
+ print_adv(x: real): void = println(" positionVelocity: gs0 = "+x);
+
+
+
+ positionVelocity(p: Plan, t: real, linear: bool): [Position, Velocity] =
+     IF (t < getFirstTime(p)) THEN (INVALID, Velocity.ZEROV)
+     ELSE 
+        LET seg = getSegment(p,t),
+            np1 = point(p,seg)
+        IN
+          IF (seg + 1 > size(p) - 1) THEN % at Last Point
+             LET v = finalVelocity(p, seg - 1) IN
+                  (np1`position, v)
+          ELSE
+             LET gs0 = gsOut(p,seg, linear),
+                 gsAt_d = gsAtTime(p, seg, gs0, t, linear),
+                 adv = posVelWithinSeg2D(p, seg, t, linear, gsAt_d),
+%%                 pr = print_adv(gs0),  %% DEBUG %%
+                 altPair = interpolateAltVs(p, seg, t-time(p,seg), linear),
+                 sNew = mkAlt(adv`1,altPair`1),
+                 vNew = Velocity.mkVs(adv`2,altPair`2)
+             IN
+                  (sNew, vNew)
+          ENDIF
+     ENDIF
+
+ position(p: Plan, t: real, linear: bool): Position =
+    positionVelocity(p,t,linear)`1
+
+ velocity(p: Plan, t: real, linear: bool): Velocity =
+    positionVelocity(p,t,linear)`2
+
+
+% ———————— Constructors ——————————–
+
+   mk_PlanPoint(np0: NavPoint): PlanPoint = (# np := np0, tcp := ZERO #)
+
+   mk_PlanPoint(np0: NavPoint, tcp0: TcpDataType): PlanPoint = (# np := np0, tcp := tcp0 #)
+
+% —————  Velocity Continuity ————————–
+
+  isVelocityContinuous(p: Plan, i:int): bool = 
+     trkIn(p,i) = trkOut(p,i)  AND  gsIn(p,i) = gsOut(p,i)  AND  vsIn(p,i) = vsOut(p,i)
+
+
+END Plan
+
+

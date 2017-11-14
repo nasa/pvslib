@@ -1,0 +1,105 @@
+NavPoint: THEORY
+BEGIN
+
+   IMPORTING Velocity, Position, GreatCircle
+
+%   TCPType: TYPE = {NONE, BOT, TMID, EOT, BGSC, EGSC, BVSC, EVSC}
+
+   NavPoint: TYPE = [#
+                    position: Position,
+                    time: nnreal
+                    #]
+
+   isLatLon(np: NavPoint): MACRO bool = np`position`latlon
+
+   ZERO_LL : NavPoint = (# position := ZERO_LL , time := 0 #)
+   ZERO_XYZ: NavPoint = (# position := ZERO_XYZ, time := 0 #)
+
+
+   np,np1,np2: VAR NavPoint
+
+   mk_NavPoint(pos1: Position, t: nnreal): NavPoint =
+     (# position := pos1, time := t #)
+
+   mk_v3(x1,y1,z1:real): Position = Position.mkXYZ(x1, y1, z1)
+
+   alt(np: NavPoint): real = 
+      IF isLatLon(np) THEN alt(np`position)
+      ELSE z(np`position)
+      ENDIF
+
+   distanceH(p1: Position, p2: Position): nnreal =
+      IF latLon?(p1) THEN
+         GreatCircle.distance(lla(p1),lla(p2))
+      Else
+         norm(vect2(p1) - vect2(p2))
+      ENDIF
+
+    groundSpeed(n1: NavPoint, n2: NavPoint): nnreal = 
+      LET v1 = vect2(n1`position`s3),
+          v2 = vect2(n2`position`s3)
+      IN
+        IF n2`time = n1`time THEN 0
+        ELSE
+           norm(v2-v1)/abs(n2`time - n1`time)
+        ENDIF
+
+     nz_gs_navPoint(n1: NavPoint)(n2: NavPoint): bool = 
+      LET v1 = vect2(n1`position`s3),
+          v2 = vect2(n2`position`s3)
+      IN
+          v1 /= v2 AND n1`time /= n2`time
+
+     gs_nz: JUDGEMENT 
+        groundSpeed(v1:NavPoint, v2: (nz_gs_navPoint(v1))) HAS_TYPE posreal
+
+    initialVelocity(s1: NavPoint)(s2: NavPoint): Velocity =
+      LET pp = s1`position,
+          tt = s1`time,
+          dt=s2`time-tt 
+      IN
+        IF dt = 0 THEN
+          zero
+        ELSIF dt>0 THEN
+          IF isLatLon(s1) THEN
+              GreatCircle.velocity_initial(lla(s1`position), lla(s2`position), dt)
+          ELSE
+            (1/dt)*(s2`position`s3 - s1`position`s3)
+          ENDIF
+        ELSE
+          IF isLatLon(s1) THEN
+              GreatCircle.velocity_initial(lla(s2`position), lla(s1`position), -dt)
+          ELSE
+              (1/-dt)*(s1`position`s3 - s2`position`s3)
+          ENDIF
+        ENDIF
+
+% /** 
+%  * Calculate and return the final velocity between the current point and the given point
+%  * This function is commutative: direction between points is always determined by the time ordering of 
+%  * the two points.
+%  *
+%  * @param s the given NavPoint
+%  */ 
+finalVelocity(s0: NavPoint, s1: NavPoint): Velocity =
+   LET dt = s1`time - s0`time IN
+   IF  dt = 0 THEN ZEROV
+   ELSIF dt > 0 THEN                    
+      IF isLatLon(s1) THEN
+         GreatCircle.velocity_final(lla(s0`position), lla(s1`position), dt)
+      ELSE
+         (1.0/dt)*(vect3(s1`position) - vect3(s0`position))
+      ENDIF
+   ELSE
+      IF isLatLon(s1) THEN
+          GreatCircle.velocity_final(lla(s1`position), lla(s0`position), -dt)
+      ELSE
+          (1.0/-dt)*(vect3(s0`position) - vect3(s1`position))
+      ENDIF
+  ENDIF
+
+END NavPoint
+
+
+
+
