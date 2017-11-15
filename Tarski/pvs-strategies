@@ -99,7 +99,7 @@
   (extra-reset-evalexprs)
   (tarski-valid-forms-rec exprs vars strict nil))
 
-(defstep tarski (&optional (fnums *) var preds? dont-fail? (equiv? t))
+(defstep tarski (&optional (fnums *) var preds? dont-fail? (equiv? t) timing?)
   (let ((fns    (extra-get-fnums fnums))
 	(fn     (if (equal (length fns) 1) (car fns) 0))
 	(expr   (when (/= fn 0)
@@ -140,7 +140,7 @@ supported by this strategy:~%~{~a~%~}"
 	(printf "~a" msg)
       (with-fresh-labels@
        ((labfalse!))
-       (tarski__$ fnums fall conjs tkvar qvars preds? equiv? labfalse!)
+       (tarski__$ fnums fall conjs tkvar qvars preds? equiv? labfalse! timing?)
        (when invfms
 	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
 and were not considered by this strategy:~%~{~a~%~}"
@@ -167,6 +167,9 @@ When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embed
 the original polynomial system is correct. The proof of this fact is trivial from a logical 
 point of view, but requires unfolding of several definitions which is time consuming in 
 PVS. In this case, DONT-FAIL? is assumed to be t. 
+
+When TIMING? is set to t, strategy prints timing information of the ground evaluation of
+the formally verified PVS algorithm.
 "
   "Applying Tarski's Theorem to sequent formed by formulas in ~a")
 
@@ -184,12 +187,10 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
   "[Tarski] Internal strategy." "")
 
 (defstrat pre-assert (fnums)
-  (let ((fns (extra-get-fnums fnums))
-	(exprs (remove-if
+  (let ((exprs (remove-if
 		#'(lambda (x) (or (not (application? x))
 				  (extra-get-number-from-expr x)))
-		(append (extra-get-exprs `(! ,fns l))
-			(extra-get-exprs `(! ,fns r)))))
+		(extra-get-exprs `(! ,fnums (->* (">" "<" "=" ">=" "<=" "/=")) *))))
 	(n (length exprs)))
     (if exprs
 	(with-fresh-names
@@ -227,7 +228,7 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
        (unless skname (reveal skfn))))))
   "[Tarski] Internal strategy." "")
    
-(defhelper tarski__ (fnums fall exprs var qvars preds? equiv? labfalse)
+(defhelper tarski__ (fnums fall exprs var qvars preds? equiv? labfalse timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
     (labsk! :delete) (labj! :delete) (labn! :delete))
@@ -272,10 +273,9 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 		     (with-fresh-names
 		      ((ps_ (! ex! 2 2) :tccs) (ds_ (! ex! 2 3)))
 		      (delete *ps_-tccs*)
-		      (eval-expr (! -1 2))
+		      (eval-expr (! -1 2) :timing? timing?)
 		      (replaces -1 -2)
 		      (prop)
-		      (reveal fnums!)
 		      (let ((instp (> (extra-get-fnum ex!) 0))
 			    (skolv (when qvars (freshnames "x" (length qvars))))
 			    (instv (if qvars
@@ -293,12 +293,15 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 			    (eqs    (extra-evalexprs))
 			    (rews   (when equiv? (list 'quote *sturm-rews*))))
 			(if valid
-			  (if fall
+			  (if fall ;; For all quantification
 			      (then
 			       (when qvars
+				 (reveal fnums!) ;; Fnums are needed for the skolemization 
 				 (skolem skolfn skolv)
 				 (when preds?
-				   (with-labels (typepred skolv) labsk!)))
+				   (with-labels (typepred skolv) labsk!))
+				 (hide fnums!)   ;; Fnums are not needed for now
+				 )
 			       (inst instfn instv)
 			       (skolem instfn j_)
 			       (extra-evalexprs$ eqs)
@@ -308,21 +311,23 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 			       (mapstep #'(lambda (x)`(tarski_polynomial__$
 						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
 					z2n)
+			       (reveal fnums!)   ;; Finally, fnums are needed for this step
 			       (when rews (pre-assert fnums!)))
-			    (then
+			    (then ;; Exists quantification
 			     (skolem skolfn skolv)
 			     (mapstep@ #'(lambda (x)`(tarski_polynomial__$
 						      ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
 				       z2n)
 			     (hide ex!)
 			     (extra-evalexprs$ eqs eqs!)
+			     (reveal fnums!) ;; Finally, fnums are needed for this step
 			     (inst instfn instv)
 			     (reveal eqs!)
 			     (replaces eqs!)
 			     (expand* "[||]" "##" "contains?")
 			     (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			     (flatten)
-			     (assert)))
+			     (when rews (pre-assert fnums!))))
 			  (relabel labfalse ex!))))))
 	      (then (hide-all-but (labd! labp! 1))
 		    (expand* polyl_ degl_)
@@ -341,7 +346,7 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 		  (assert))))))))))
   "[Tarski] Internal strategy." "")
 
-(defstep hutch (&optional (fnums *) var preds? (sos? t) dont-fail? (equiv? t))
+(defstep hutch (&optional (fnums *) var preds? (sos? t) dont-fail? (equiv? t) timing?)
   (let ((fns    (extra-get-fnums fnums))
 	(fn     (if (equal (length fns) 1) (car fns) 0))
 	(expr   (when (/= fn 0)
@@ -382,7 +387,7 @@ supported by this strategy:~%~{~a~%~}"
 	(printf "~a" msg)
       (with-fresh-labels@
        ((labfalse!))
-       (hutch__$ fnums fall conjs tkvar qvars preds? sos? equiv? labfalse!)
+       (hutch__$ fnums fall conjs tkvar qvars preds? sos? equiv? labfalse! timing?)
        (when invfms
 	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
 and were not considered by this strategy:~%~{~a~%~}"
@@ -415,15 +420,18 @@ discharged.
 When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embedding of 
 the original polynomial system is correct. The proof of this fact is trivial from a logical 
 point of view, but requires unfolding of several definitions which is time consuming in 
-PVS. In this case, DONT-FAIL? is assumed to be t. 
+PVS. In this case, DONT-FAIL? is assumed to be t.
+
+When TIMING? is set to t, strategy prints timing information of the ground evaluation of
+the formally verified PVS algorithm.
 "
   "Applying a variant of Tarski's Theorem to sequent formed by formulas in ~a")
 
-(defhelper hutch__ (fnums fall exprs var qvars preds? sos? equiv? labfalse)
+(defhelper hutch__ (fnums fall exprs var qvars preds? sos? equiv? labfalse timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
     (labsk! :delete) (labj! :delete) (labn! :delete))
-   (hide *)
+   (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
@@ -465,10 +473,9 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 		   (with-fresh-names
 		    ((ps_ (! ex! 1 7) :tccs) (ds_ (! ex! 1 8)))
 		    (delete *ps_-tccs*)
-		    (eval-expr (! -1 1))
+		    (eval-expr (! -1 1) :timing? timing?)
 		    (replaces -1 -2)
 		    (prop)
-		    (reveal fnums!)
 		    (let ((instp (> (extra-get-fnum ex!) 0))
 			  (skolv (when qvars (freshnames "x" (length qvars))))
 			  (instv (if qvars
@@ -488,12 +495,15 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 		      (if valid
 			  (then
 			   (expand "SystemSatRat?")
-			   (if fall
+			   (if fall ;; For all quantification
 			       (then
 				(when qvars
+				  (reveal fnums!) ;; Fnums are needed for the skolemization 
 				  (skolem skolfn skolv)
 				  (when preds?
-				    (with-labels (typepred skolv) labsk!)))
+				    (with-labels (typepred skolv) labsk!))
+				  (hide fnums!)   ;; Fnums are not needed for now
+				  )
 				(inst instfn instv)
 				(skolem instfn j_)
 				(extra-evalexprs$ eqs)
@@ -503,21 +513,23 @@ PVS. In this case, DONT-FAIL? is assumed to be t.
 				(mapstep #'(lambda (x)`(tarski_polynomial__$
 							,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
 					 z2n)
+				(reveal fnums!)   ;; Finally, fnums are needed for this step
 				(when rews (pre-assert fnums!)))
-			     (then
+			     (then ;; Exists quantification
 			      (skolem skolfn skolv)
 			      (mapstep@ #'(lambda (x)`(tarski_polynomial__$
 						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
 					z2n)
 			      (hide ex!)
 			      (extra-evalexprs$ eqs eqs!)
-			      (inst instfn instv)
+			      (reveal fnums!) ;; Finally, fnums are needed for this step
+			      (inst instfn instv) 
 			      (reveal eqs!)
 			      (replaces eqs!)
 			      (expand* "[||]" "##" "contains?")
 			      (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			      (flatten)
-			      (assert))))
+			      (when rews (pre-assert fnums!)))))
 			(relabel labfalse ex!))))))
 	    (spread (split 1)
 		    ((then (hide-all-but (labd! 1))

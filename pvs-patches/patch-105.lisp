@@ -22,7 +22,10 @@
 (pushnew "eval-expr"    *pvsio-strategies* :test #'string=)
 (pushnew "eval"         *pvsio-strategies* :test #'string=)
 
-(defun evalexpr (expr &optional safe)
+;; Evaluates ground expression expr.
+;; When safe is t, evaluation doesn't proceed when there are TCCs.
+;; When timing is t, timing information of the ground evaluation is printed.
+(defun evalexpr (expr &optional safe timing)
   (when expr
     (catch '*eval-error*
       (catch '*pvsio-inprover*
@@ -40,7 +43,10 @@
 	    (let ((cl-input (pvs2cl tc-input)))
 	      (multiple-value-bind 
 		  (cl-eval err)
-		  (catch 'undefined (ignore-errors (eval cl-input)))
+		  (catch 'undefined (ignore-errors
+				      (if timing
+					  (time (eval cl-input))
+					(eval cl-input))))
 		(cond (err 
 		       (throw '*eval-error* (format nil "~a" err)))
 		      ((and (null err) (eq cl-eval 'cant-translate))
@@ -54,10 +60,10 @@
 			   (throw '*eval-error*
 				  (format nil "Result ~a is not ground" cl-eval))))))))))))))
 
-(defrule eval-expr (expr &optional safe? (auto? t) quiet?)
+(defrule eval-expr (expr &optional safe? (auto? t) quiet? timing?)
   (let ((e (extra-get-expr expr)))
     (when e
-	(let ((result (evalexpr e safe?)))
+	(let ((result (evalexpr e safe? timing?)))
 	  (if (stringp result)
 	      (unless quiet? (printf "Error: ~a~%" result))
 	    (when result 
@@ -68,40 +74,44 @@
 			(discriminate (case casexpr) !evx)
 			((skip) !
 			 (when auto? (eval-formula !evx safe? quiet?)))))))))))
-  "[PVSio] Adds the hypothesis expr=eval(EXPR) to the current goal, 
-where eval(EXPR) is the ground evaluation of EXPR. If SAFE? is t and EXPR
-generates TCCs, the expression is not evaluated. Otherwise, TCCs
+  "[PVSio] Adds the hypothesis expr=eval(EXPR) to the current goal,
+where eval(EXPR) is the ground evaluation of EXPR. If SAFE? is t and
+EXPR generates TCCs, the expression is not evaluated. Otherwise, TCCs
 are added as subgoals and the expression is evaluated. If AUTO? is t,
 TCCs are ground evaluated. The strategy is sound in the sense that
-user-defined semantic attachments are not evaluated. However, if SAFE? is nil,
-the strategy may not terminate properly in the presence of unproven TCCs. When
-QUIET? is t, the strategy fails silently."
+user-defined semantic attachments are not evaluated. However, if SAFE?
+is nil, the strategy may not terminate properly in the presence of
+unproven TCCs. When QUIET? is t, the strategy fails silently. When
+TIMING? is t, strategy prints timing information of the ground
+evaluation."
   "Evaluating expression ~a in the current sequent")
 
-(defrule eval-formula (&optional (fnum 1) safe? quiet?)
+(defrule eval-formula (&optional (fnum 1) safe? quiet? timing?)
   (let ((fexpr (extra-get-seqf fnum)))
     (when fexpr
       (let ((expr   (formula fexpr))
-	    (result (evalexpr expr safe?)))
+	    (result (evalexpr expr safe? timing?)))
 	(if (stringp result)
 	    (unless quiet? (printf "Error: ~a~%" result))
 	  (when result 
 	    (trust *PVSGroundEvaluator*
 		   (case result)
 		   (! (skip))))))))
-  "[PVSio] Evaluates the formula FNUM in Common Lisp and adds the result to 
-the antecedent of the current goal. If SAFE? is t and FNUM generates TCCs, 
-the expression is not evaluated. The strategy is safe in the sense that 
-user-defined semantic attachments are not evaluated. However, 
-if SAFE? is nil, the strategy may not terminate properly in
-the presence of unproven TCCs.  When QUIET? is t, the strategy fails silently"
-  "Evaluating formula ~a in the current sequent")
+  "[PVSio] Evaluates the formula FNUM in Common Lisp and adds the
+result to the antecedent of the current goal. If SAFE? is t and FNUM
+generates TCCs, the expression is not evaluated. The strategy is safe
+in the sense that user-defined semantic attachments are not
+evaluated. However, if SAFE? is nil, the strategy may not terminate
+properly in the presence of unproven TCCs.  When QUIET? is t, the
+strategy fails silently. When TIMING? is t, strategy prints timing
+information of the ground evaluation."
+  "Evaluating formula ~a in the current sequent. ")
 
-(defrule eval (expr &optional safe? quiet?)
+(defrule eval (expr &optional safe? quiet? timing?)
   (let ((e (extra-get-expr expr)))
     (when e
       (let ((*in-evaluator* t)
-	    (result (evalexpr e safe?)))
+	    (result (evalexpr e safe? timing?)))
 	(if (stringp result)
 	    (unless quiet? (printf "Error: ~a~%" result))
 	  (when result
