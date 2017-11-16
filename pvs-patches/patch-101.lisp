@@ -668,10 +668,11 @@
        (let ((a (args1 div))
 	     (b (args2 div))
 	     (r (number rat)))
-	 (number-expr? a)
-	 (number-expr? b)
-	 (equal (number a) (numerator r))
-	 (equal (number b) (denominator r)))))
+	 (and 
+	  (number-expr? a)
+	  (number-expr? b)
+	  (equal (number a) (numerator r))
+	  (equal (number b) (denominator r))))))
 
 (defun extra-add-evalexpr (fmexpr)
   (let ((expr (extra-get-expr fmexpr)))
