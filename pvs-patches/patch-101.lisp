@@ -658,20 +658,35 @@
 (defun extra-reset-evalexprs ()
   (setq *extra-evalexprs* nil))
 
-(defun extra-evalexprs ()
+(defun extra-get-evalexprs ()
   (mapcar #'(lambda (x) (list (car x) (cdr x))) *extra-evalexprs*))
 
-(defun div-is-rat (div rat)
+;; Check if PVS expression -n, where n is a literal, is the same as the number expression -n
+(defun same-neg (mn nn)
+  (let ((nn (if (number-expr? nn)
+		(number nn)
+	      nn)))
+    (when (numberp nn)
+      (and (unary-application? mn)
+	   (equal (id (operator mn)) '-)
+	   (let ((n (args1 mn)))
+	     (and
+	      (number-expr? n)
+	      (equal (- (number n)) nn)))))))
+    
+;; Check if PVS expression n/m, where n and m are literals, is the same as the number expression n/m
+(defun same-div (div rat)
   (and (infix-application? div)
-       (number-expr? rat)
        (equal (id (operator div)) '/)
+       (number-expr? rat)
        (let ((a (args1 div))
 	     (b (args2 div))
 	     (r (number rat)))
-	 (and 
-	  (number-expr? a)
+	 (and
+	  (if (number-expr? a)
+	      (equal (number a) (numerator r))
+	    (same-neg a (numerator r)))
 	  (number-expr? b)
-	  (equal (number a) (numerator r))
 	  (equal (number b) (denominator r))))))
 
 (defun extra-add-evalexpr (fmexpr)
@@ -682,11 +697,12 @@
 	    (let ((exval (evalexpr expr)))
 	      (when (expr? exval) 
 		(unless (or (compare* expr exval)
-			    (div-is-rat fmexpr exval))
+			    (same-neg fmexpr exval)
+			    (same-div fmexpr exval))
 		  (push (cons expr exval) *extra-evalexprs*))
 		exval)))))))
 
-(defhelper extra-evalexprs (evalexprs &optional lbl) 
+(defhelper extra-evalexprs (evalexprs &optional label (where *)) 
   (when evalexprs
     (let ((eqs (expr2str (mk-conjunction (mapcar #'(lambda (x) (mk-equation (car x) (cadr x))) evalexprs)))))
       (with-fresh-labels 
@@ -694,9 +710,9 @@
        (branch (case eqs)
 	       ((then (label !xeqs -1)
 		      (flatten !xeqs)
-		      (if lbl
-			  (relabel lbl !xeqs)
-			(replaces !xeqs :hide? nil))
+		      (if label
+			  (relabel label !xeqs)
+			(replaces !xeqs :hide? nil :in where))
 		      (hide !xeqs))
 		(eval-formula))))))
  "[Extrategies] Internal strategy to be used in conjunction with the functions extra-reset-evalexpr, 

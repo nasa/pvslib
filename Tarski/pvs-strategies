@@ -131,9 +131,8 @@
 		      ((null tkvar)
 		       (format nil "No variable found in formulas ~a." fnums))
 		      ((null conjs)
-		       (format nil "The following formula doesn't belong to a system of polynomial constraints on ~a
-supported by this strategy:~%~{~a~%~}"
-			       tkvar invfms))
+		       (format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
+			       invfms))
 		      ((and (< (* fn quant) 0) (> (length qvars) 1))
 		       (format nil "Formula ~a is not simply quantified." fn)))))
     (if msg
@@ -231,12 +230,12 @@ the formally verified PVS algorithm.
 (defhelper tarski__ (fnums fall exprs var qvars preds? equiv? labfalse timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
-    (labsk! :delete) (labj! :delete) (labn! :delete))
-   (hide *)
+    (labsk!) (labj! :delete) (labn! :delete))
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
-	(discriminate (typepred var) labpred!))
+	(discriminate (typepred var) labpred!)
+	(relabel fnums! labpred!))
       (let ((predexprs (when predvar
 			 (get-ands-expr
 			  (mk-disjunction (mapcar #'formula (extra-get-seqfs labpred!)))
@@ -256,6 +255,7 @@ the formally verified PVS algorithm.
 		    (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) names) 0))
 	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
 	(then
+	 (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
 	 (mapstep #'(lambda (x)`(tarski_polylist__$ ,(car x) ,(cadr x) ,labp ,labd)) nes)
 	 (with-fresh-names
 	  ((polyl_ polyl) (degl_ degl) (rell_ rell) (j_))
@@ -269,7 +269,7 @@ the formally verified PVS algorithm.
 		    (expand polyl_ -1 2)
 		    (replaces labp! :in -1)
 		    (with-fresh-labels
-		     ((ex! -1) (eqs!))
+		     ((ex! -1) (eqs! :delete))
 		     (with-fresh-names
 		      ((ps_ (! ex! 2 2) :tccs) (ds_ (! ex! 2 3)))
 		      (delete *ps_-tccs*)
@@ -290,44 +290,42 @@ the formally verified PVS algorithm.
 			    (qskfn  (when qvars (list 'quote skolfn)))
 			    (qex    (list 'quote ex!))
 			    (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			    (eqs    (extra-evalexprs))
+			    (eqs    (extra-get-evalexprs))
 			    (rews   (when equiv? (list 'quote *sturm-rews*))))
 			(if valid
-			  (if fall ;; For all quantification
-			      (then
-			       (when qvars
-				 (reveal fnums!) ;; Fnums are needed for the skolemization 
-				 (skolem skolfn skolv)
-				 (when preds?
-				   (with-labels (typepred skolv) labsk!))
-				 (hide fnums!)   ;; Fnums are not needed for now
-				 )
-			       (inst instfn instv)
-			       (skolem instfn j_)
-			       (extra-evalexprs$ eqs)
-			       (expand* "[||]" "##" "contains?")
-			       (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
-			       (flatten)
-			       (mapstep #'(lambda (x)`(tarski_polynomial__$
-						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
-					z2n)
-			       (reveal fnums!)   ;; Finally, fnums are needed for this step
-			       (when rews (pre-assert fnums!)))
-			    (then ;; Exists quantification
-			     (skolem skolfn skolv)
-			     (mapstep@ #'(lambda (x)`(tarski_polynomial__$
-						      ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
-				       z2n)
-			     (hide ex!)
+			    (then
 			     (extra-evalexprs$ eqs eqs!)
-			     (reveal fnums!) ;; Finally, fnums are needed for this step
-			     (inst instfn instv)
+			     (if fall ;; For all quantification
+				 (then
+				  (when qvars
+				    (reveal fnums!) ;; Fnums are needed for the skolemization 
+				    (skolem skolfn skolv)
+				    (relabel labsk! skolfn)
+				    (when preds?
+				      (with-labels (typepred skolv) labsk!))
+				    (hide fnums! labsk!))   ;; Fnums are not needed anymore, when qvars
+				  (inst instfn instv)
+				  (skolem instfn j_)
+				  (mapstep #'(lambda (x)`(tarski_polynomial__$
+							  ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
+					   z2n)
+				  (if qvars
+				    (reveal labsk!)
+				  (reveal fnums!)))
+			       (then ;; Exists quantification
+				(skolem skolfn skolv)
+				(mapstep@ #'(lambda (x)`(tarski_polynomial__$
+							 ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
+					  z2n)
+				(hide ex!)
+				(reveal fnums!) ;; Finally, fnums are needed for this step
+				(inst instfn instv)))
 			     (reveal eqs!)
 			     (replaces eqs!)
 			     (expand* "[||]" "##" "contains?")
 			     (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			     (flatten)
-			     (when rews (pre-assert fnums!))))
+			     (when rews (pre-assert fnums!)))
 			  (relabel labfalse ex!))))))
 	      (then (hide-all-but (labd! labp! 1))
 		    (expand* polyl_ degl_)
@@ -378,8 +376,7 @@ the formally verified PVS algorithm.
 		      ((null tkvar)
 		       (format nil "No variable found in formulas ~a." fnums))
 		      ((null conjs)
-		       (format nil "The following formula doesn't belong to a system of polynomial constraints on ~a
-supported by this strategy:~%~{~a~%~}"
+		       (format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
 			       tkvar invfms))
 		      ((and (< (* fn quant) 0) (> (length qvars) 1))
 		       (format nil "Formula ~a is not simply quantified." fn)))))
@@ -430,12 +427,12 @@ the formally verified PVS algorithm.
 (defhelper hutch__ (fnums fall exprs var qvars preds? sos? equiv? labfalse timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
-    (labsk! :delete) (labj! :delete) (labn! :delete))
-   (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
+    (labsk!) (labj! :delete) (labn! :delete))
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
-	(discriminate (typepred var) labpred!))
+	(discriminate (typepred var) labpred!)
+	(relabel fnums! labpred!))
       (let ((predexprs (when predvar
 			 (get-ands-expr
 			  (mk-disjunction (mapcar #'formula (extra-get-seqfs labpred!)))
@@ -458,6 +455,7 @@ the formally verified PVS algorithm.
 	    (sos   (if sos? "TRUE" "FALSE"))
 	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
 	(then
+	 (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
 	 (mapstep #'(lambda (x)`(tarski_polylist__$ ,(car x) ,(cadr x) ,labp ,labd)) nes)
 	 (with-fresh-names
 	  ((polyl_ polyl) (degl_ degl) (rell_ rell) (j_))
@@ -469,7 +467,7 @@ the formally verified PVS algorithm.
 		  (expand polyl_ -1 1)
 		  (replaces labp! :in -1)
 		  (with-fresh-labels
-		   ((ex! -1) (eqs!))
+		   ((ex! -1) (eqs! :delete))
 		   (with-fresh-names
 		    ((ps_ (! ex! 1 7) :tccs) (ds_ (! ex! 1 8)))
 		    (delete *ps_-tccs*)
@@ -490,46 +488,43 @@ the formally verified PVS algorithm.
 			  (qskfn  (when qvars (list 'quote skolfn)))
 			  (qex    (list 'quote ex!))
 			  (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			  (eqs    (extra-evalexprs))
+			  (eqs    (extra-get-evalexprs))
 			  (rews   (when equiv? (list 'quote *sturm-rews*))))
 		      (if valid
 			  (then
+			   (extra-evalexprs$ eqs eqs!)
 			   (expand "SystemSatRat?")
 			   (if fall ;; For all quantification
 			       (then
 				(when qvars
 				  (reveal fnums!) ;; Fnums are needed for the skolemization 
 				  (skolem skolfn skolv)
+				  (relabel labsk! skolfn)
 				  (when preds?
 				    (with-labels (typepred skolv) labsk!))
-				  (hide fnums!)   ;; Fnums are not needed for now
-				  )
+				  (hide (fnums! labsk!)))  ;; Fnums are not needed anymore, when qvars
 				(inst instfn instv)
 				(skolem instfn j_)
-				(extra-evalexprs$ eqs)
-				(expand* "[||]" "##" "contains?")
-				(rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
-				(flatten)
 				(mapstep #'(lambda (x)`(tarski_polynomial__$
 							,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
 					 z2n)
-				(reveal fnums!)   ;; Finally, fnums are needed for this step
-				(when rews (pre-assert fnums!)))
+				(if qvars
+				    (reveal labsk!)
+				  (reveal fnums!)))
 			     (then ;; Exists quantification
 			      (skolem skolfn skolv)
 			      (mapstep@ #'(lambda (x)`(tarski_polynomial__$
 						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
 					z2n)
 			      (hide ex!)
-			      (extra-evalexprs$ eqs eqs!)
 			      (reveal fnums!) ;; Finally, fnums are needed for this step
-			      (inst instfn instv) 
-			      (reveal eqs!)
-			      (replaces eqs!)
-			      (expand* "[||]" "##" "contains?")
-			      (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
-			      (flatten)
-			      (when rews (pre-assert fnums!)))))
+			      (inst instfn instv)))
+			   (reveal eqs!)
+			   (replaces eqs!)
+			   (expand* "[||]" "##" "contains?")
+			   (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
+			   (flatten)
+			   (when rews (pre-assert fnums!)))
 			(relabel labfalse ex!))))))
 	    (spread (split 1)
 		    ((then (hide-all-but (labd! 1))
