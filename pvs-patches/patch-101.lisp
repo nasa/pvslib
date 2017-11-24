@@ -1426,11 +1426,13 @@ labels are also copied."
   "Protecting formulas in ~a")
 
 (defhelper with-focus-on__ (fnums step)
-  (with-fresh-labels
-   (!allbut (^ fnums))
-   (hide !allbut)
-   step
-   (reveal !allbut))
+  (let ((fnums (extra-get-fnums fnums)))
+    (when fnums
+      (with-fresh-labels
+       (!allbut (^ fnums))
+       (hide !allbut)
+       step
+       (reveal !allbut))))
   "[Extrategies] Internal strategy." "")
 
 (defstrat with-focus-on (fnums &rest steps)
@@ -2303,7 +2305,8 @@ quantifier, if provided."
 
 ;;;;; SPECIFIC FUNCTIONS ;;;;; 
 
-;; Used in splash for extracting conjuctive expressions in the consequent
+;; The following functions check the boolean connectives of a given expression, even if the
+;; expression is not type-checked yet.
 
 (defun extra-conjunction (expr)
   (or (conjunction? expr)
@@ -2320,6 +2323,14 @@ quantifier, if provided."
 (defun extra-implication (expr)
   (or (implication? expr)
       (is-function-expr expr '(IMPLIES =>))))
+
+(defun extra-equivalence (expr)
+  (or (iff? expr)
+      (is-function-expr expr '(IFF <=>))))
+
+(defun extra-conditional (expr)
+  (or (branch? expr)
+      (is-function-expr expr '(IF))))
 
 ;; Get list of conjunctions (disjunctions when is-and is false)
 (defun get-ands-expr (expr &optional (is-and t))

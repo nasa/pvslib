@@ -5,93 +5,118 @@
    expr
    (if neg '(> < = >= <= /=) '(<= >= /= < > =))))
 
-;; Return a list (n e1 e2) where e1 and e2 are atomic expressions and n is its
-;; (coded) relation representing the relation expression e. Relations are coded as follows:
-;; 0 (=), 1 (>), 2 (<), 3 (/=), 4 (>=), 5 (<=)
-;; If b is negative, expression is an interval relation, i.e., ##. In any other case, n is nil
-(defun tarski-atomic-rel-expr (expr &optional neg)
+;; Return a list (n e1 e2) where e1 and e2 are atomic expressions and
+;; n is its (coded) relation representing the relation expression
+;; e. Relations are coded as follows: 0 (=), 1 (>), 2 (<), 3 (/=), 4
+;; (>=), 5 (<=) If n is negative, expression represents an interval
+;; relation (possibly, negated), i.e., x ## [| a,b |], NOT x ## [| a,b
+;; |].  If n is nil, expression expr is not supported.  When disj is
+;; set to nil, the atomic relation is considered to represent a
+;; conjunction, e.g., abs(x) <= n, n > abs(x), x ## [| a,b |]. When
+;; disj is set to t, the atomic relation is considered to represent a
+;; disjunction, e.g., abs(x) >= n, n < abs(x), NOT x ## [| a,b |].
+
+(defun tarski-atomic-rel-expr (expr &optional disj neg)
   (if (extra-negation expr)
-      (tarski-atomic-rel-expr (args1 expr) (not neg))
+      (tarski-atomic-rel-expr (args1 expr) disj (not neg))
     (let ((r (1- (length (tarski-relation expr neg)))))
       (cond
        ((>= r 0)
 	(cond ((is-function-expr (args1 expr) 'abs)
-	       (if (member r '(2 5))
+	       (if (member r (if disj '(1 4) '(2 5)))
 		   (cons r (arguments expr))
 		 (cons nil expr)))
 	      ((is-function-expr (args2 expr) 'abs)
-	       (if (member r '(1 4))
-		   (cons (1+ r) (reverse (arguments expr)))
+	       (if (member r (if disj '(2 5) '(1 4)))
+		   (cons (if disj (1- r) (1+ r)) (reverse (arguments expr)))
 		 (cons nil expr)))
 	      (t (cons r (arguments expr)))))
-       ((and (not neg) (is-function-expr expr "##"))
+       ((and (iff disj neg) (is-function-expr expr "##"))
 	(let ((val (extra-add-evalexpr (args2 expr))))
 	  (if (record-expr? val)
 	      (cons -1 (list (args1 expr) val))
 	    (cons nil expr))))
        (t (cons nil expr))))))
 
-;; Return a list of pairs (str n), where str is a string representation of
-;; a polynomial and n is the code of its relation wrt to 0
-(defun tarski-valid-forms-rec (exprs vars strict accum)
-  (if (null exprs) accum
-    (let* ((e    (car exprs))
-	   (xprs (cdr exprs))
-	   (re   (tarski-atomic-rel-expr e))
-	   (r    (car re)))
-      (cond
-       ((null r)
-	(push (cdr re) *tarski-invalid-forms*)
-	(unless strict
-	  (tarski-valid-forms-rec xprs vars strict accum)))
-       ((>= r 0)
-	(let* ((e0    (nth 1 re))
-	       (e1    (if (is-function-expr e0 'abs) (args1 e0) e0))
-	       (e2    (nth 2 re))
-	       (conj1 (sturm-expr-wrt0 e1 e2))
-	       (pe1   (catch '*sturm-error*
-			(list (sturm-poly-expr-rec conj1 vars) r))))
-	  (cond ((null pe1) 
-		 (push conj1 *tarski-invalid-forms*)
-		 (unless strict
-		   (tarski-valid-forms-rec xprs vars strict accum)))
-		((is-function-expr e0 'abs)
-		 (let* ((conj2 (sturm-expr-wrt0 e1 e2 t))
-			(pe2   (list (sturm-poly-expr-rec conj2 vars) (1- r))))
-		   (tarski-valid-forms-rec xprs vars strict
-					   (cons pe2 (cons pe1 accum)))))
-		(t (tarski-valid-forms-rec xprs vars strict
-					   (cons pe1 accum))))))
-       (t (let* ((e1    (nth 1 re))
-		 (e2    (nth 2 re))
-		 (lb    (get-expr-from-obj e2 'lb))
-		 (ub    (get-expr-from-obj e2 'ub))
-		 (conja (when ub (sturm-expr-wrt0 e1 ub)))
-		 (conjb (when lb (sturm-expr-wrt0 e1 lb))))
-	    (cond
-	     ((and conja conjb)
+;; Return a list of pairs (str n), where str is a string
+;; representation of a polynomial and n is the code of its
+;; relation. If the original relation was p1 R p2, the relation in the
+;; returned list corresponds to p1 - p2 R 0.  Return nil if expr is
+;; not a polynomial relation. When disj is set to nil, the expression
+;; is considered to represent a conjunction, e.g., abs(x) <= n, n >
+;; abs(x), x ## [| a,b |]. When disj is set to t, the expression is
+;; considered to represent a disjunction, e.g., abs(x) >= n, n <
+;; abs(x), NOT x ## [| a,b |].
+
+(defun tarski-valid-form (expr vars &optional disj)
+  (let* ((re (tarski-atomic-rel-expr expr disj))
+	 (r  (car re)))
+    (cond
+     ((null r)
+      (not (push (cdr re) *tarski-invalid-forms*)))
+     ((>= r 0)
+      (let* ((e0  (nth 1 re))
+	     (e1  (if (is-function-expr e0 'abs) (args1 e0) e0))
+	     (e2  (nth 2 re))
+	     (fm1 (sturm-expr-wrt0 e1 e2))
+	     (pe1 (catch '*sturm-error*
+		    (list (sturm-poly-expr-rec fm1 vars) r))))
+	(cond ((null pe1) 
+	       (not (push fm1 *tarski-invalid-forms*)))
+	      ((is-function-expr e0 'abs)
+	       (let* ((fm2 (sturm-expr-wrt0 e1 e2 t))
+		      (pe2 (list (sturm-poly-expr-rec fm2 vars) (if disj (1+ r) (1- r)))))
+		 (list pe2 pe1)))
+	      (t (list pe1)))))
+     (t (let* ((e1 (nth 1 re))
+	       (e2 (nth 2 re))
+	       (lb (get-expr-from-obj e2 'lb))
+	       (ub (get-expr-from-obj e2 'ub))
+	       (a  (when ub (sturm-expr-wrt0 e1 ub)))
+	       (b  (when lb (sturm-expr-wrt0 e1 lb))))
+	  (if (and a b)
 	      (let* ((ba  (get-expr-from-obj e2 'bounded_above))
 		     (bb  (get-expr-from-obj e2 'bounded_below))
 		     (ca  (get-expr-from-obj e2 'closed_above))
 		     (cb  (get-expr-from-obj e2 'closed_below))
-		     (ra  (if (or (null ca) (extra-is-true ca)) 5 2))
-		     (rb  (if (or (null cb) (extra-is-true cb)) 4 1))
+		     (ra  (if (or (null ca) (extra-is-true ca))
+			      (if disj 1 5)
+			    (if disj 4 2)))
+		     (rb  (if (or (null cb) (extra-is-true cb))
+			      (if disj 2 4)
+			    (if disj 5 1)))
 		     (pea (catch '*sturm-error*
-			    (list (sturm-poly-expr-rec conja vars) ra)))
+			    (list (sturm-poly-expr-rec a vars) ra)))
 		     (peb (catch '*sturm-error*
-			    (list (sturm-poly-expr-rec conjb vars) rb))))
-		(cond ((or (null pea) (null peb))
-		       (push (cdr re) *tarski-invalid-forms*)
-		       (unless strict
-			 (tarski-valid-forms-rec xprs vars strict accum)))
-		      (t (let ((acc (append
-				     (when (or (null ba) (extra-is-true ba)) (list pea))
-				     (when (or (null bb) (extra-is-true bb)) (list peb))
-				     accum)))
-			   (tarski-valid-forms-rec xprs vars strict acc))))))
-	     (t (push (cdr re) *tarski-invalid-forms*)
-		(unless strict
-		  (tarski-valid-forms-rec xprs vars strict accum))))))))))
+			    (list (sturm-poly-expr-rec b vars) rb))))
+		(if (or (null pea) (null peb))
+		    (not (push (cdr re) *tarski-invalid-forms*))
+		  (append
+		   (when (or (null ba) (extra-is-true ba)) (list pea))
+		   (when (or (null bb) (extra-is-true bb)) (list peb)))))
+	    (not (push (cdr re) *tarski-invalid-forms*))))))))
+
+;; The argument exprs is assumed to be list of polynomial relations.
+;; Return a list of pairs (str n), where str is a string
+;; representation of a polynomial and n is the code of its
+;; relation. If the original relation was p1 R p2, the relation in the
+;; returned list corresponds to p1 - p2 R 0.  If strict is t, returns
+;; null if one of the exprs is not a polynomial relation. Otherwise,
+;; it justs ignores these expressions.
+
+(defun tarski-valid-forms-rec (exprs vars strict accum)
+  (if (null exprs) accum
+    (let ((tvf (tarski-valid-form (car exprs) vars)))
+      (when (or tvf (not strict))
+	  (tarski-valid-forms-rec (cdr exprs) vars strict (append tvf accum))))))
+
+;; The argument exprs is assumed to be list of polynomial relations.
+;; Return a list of pairs (str n), where str is a string
+;; representation of a polynomial and n is the code of its
+;; relation. If the original relation was p1 R p2, the relation in the
+;; returned list corresponds to p1 - p2 R 0.  If strict is t, returns
+;; null if one of the exprs is not a polynomial relation. Otherwise,
+;; it justs ignores these expressions.
 
 (defun tarski-valid-forms (exprs vars &optional strict)
   (setq *tarski-invalid-forms* nil)
@@ -99,93 +124,47 @@
   (extra-reset-evalexprs)
   (tarski-valid-forms-rec exprs vars strict nil))
 
-(defstep tarski (&optional (fnums *) var preds? dont-fail? (equiv? t) timing?)
-  (let ((fns    (extra-get-fnums fnums))
-	(fn     (if (equal (length fns) 1) (car fns) 0))
-	(expr   (when (/= fn 0)
-		  (let ((e (extra-get-formula-from-fnum fn)))
-		    (if preds? (lift-predicates-in-quantifier e (list *real*)) e))))
-	(quant  (cond ((forall-expr? expr) 1)
-		      ((exists-expr? expr) -1)
-		      (t 0))) ;; forall: quant > 0, exists: quant < 0, none: 0
-	(vars   (if (/= quant 0)
-		    (mapcar #'(lambda (x) (format nil "~a" (id x)))
-			    (bindings (extra-get-formula-from-fnum fn)))
-		  (enlist-it var)))
-	(fall   (>= (* fn quant) 0))
-	(unqexpr  (when (/= quant 0) (expression expr)))
-	(conjs  (if (/= quant 0)
-		    (let ((exprs (get-ands-expr unqexpr (< quant 0))))
-		      (tarski-valid-forms exprs vars (not fall)))
-		  (let ((exprs (get-ands-expr
-				(mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))
-				nil)))
-		    (tarski-valid-forms exprs vars))))
-	(invfms *tarski-invalid-forms*)
-	(tkvar  *sturm-var*)
-	(qvars  (when (/= quant 0) vars))
-	(qth    (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
-	(dont-fail?  (or dont-fail? (not equiv?)))
-	(msg    (cond (qth
-		       (format nil "This strategy requires theory ~a to be imported in the current context" qth))
-		      ((null tkvar)
-		       (format nil "No variable found in formulas ~a." fnums))
-		      ((null conjs)
-		       (format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
-			       invfms))
-		      ((and (< (* fn quant) 0) (> (length qvars) 1))
-		       (format nil "Formula ~a is not simply quantified." fn)))))
-    (if msg
-	(printf "~a" msg)
-      (with-fresh-labels@
-       ((labfalse!))
-       (tarski__$ fnums fall conjs tkvar qvars preds? equiv? labfalse! timing?)
-       (when invfms
-	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
-and were not considered by this strategy:~%~{~a~%~}"
-		 tkvar invfms))
-       (when-label
-	labfalse!
-	(printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
-		fnums preds?))
-       (unless dont-fail? (fail)))))
-  "[Tarski] Applies decision procedure for univariate polynomial based on Tarski's Theorem
-to formulas in FNUM. Each formula denoted by FNUM is expected to have the form pi Ri qi,
-where pi and qi are polynomials on variable VAR and Ri is a relation in {<,<=,>,>=,=,/=}.
-If FNUM denotes a simply quantified formula, that formula is expected to have one of the forms
-- EXISTS (VAR:real) : p0 R0 q0 AND ... AND pn Rn qn
-- FORALL (VAR:real) : p0 R0 q0 AND ... AND pi Ri qi IMPLIES pj Rj qj OR ... OR pn Rn qn.
-If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. 
-
-The subtype predicate of VAR is introduced as hypothesis when PREDS? is t. 
-
-When DONT-FAIL? is set to t, strategy skips instead of failing when sequent cannot be 
-discharged. 
-
-When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embedding of 
-the original polynomial system is correct. The proof of this fact is trivial from a logical 
-point of view, but requires unfolding of several definitions which is time consuming in 
-PVS. In this case, DONT-FAIL? is assumed to be t. 
-
-When TIMING? is set to t, strategy prints timing information of the ground evaluation of
-the formally verified PVS algorithm.
-"
-  "Applying Tarski's Theorem to sequent formed by formulas in ~a")
-
-(defhelper tarski_polylist__ (name expr labp labd)
-  (let ((nn   (freshname "plst"))
-	(estr (format nil "length[rat](~a)-1" nn)))
+(defhelper tarski_polylist__ (x labp labd)
+  (let ((nmlst (nth 0 x))
+	(nm    (nth 1 x))
+	(expr  (nth 2 x))
+	(estr  (format nil "length[rat](~a)-1" nmlst)))
     (then
-     (name-label name expr :hide? t)
-     (eval-expr name)
-     (name-label nn (! -1 r) :hide? t)
+     (name nm expr)
+     (hide -1)
+     (eval-expr nm)
+     (name-label nmlst (! -1 r) :hide? t :tcc-step nil)
      (label labp -1)
      (eval-expr estr)
      (label labd -1)
      (replace -2 -1 :dir rl)))
   "[Tarski] Internal strategy." "")
 
-(defstrat pre-assert (fnums)
+(defhelper tarski_eq_polynomial__ (nm var)
+  (let ((castr (format nil "polylist(~a)(~a) = polylist(~a)(~a)" nm var nm var))
+	(rews  *sturm-rews*))
+    (spread (case castr) 
+	    ((with-focus-on
+	      -1
+	      (expand nm -1 2)
+	      (rewrite* rews)))))
+   "[Tarski] Internal strategy." "")
+
+(defhelper tarski_polynomial__ (names plnames var)
+  (let ((exstp (cons 'expand* names))
+	(qvar  (list 'quote var)))
+    (branch
+     (rewrite "forall_and_upto")
+     ((then
+       (expand* "iterate_left" "for")
+       (repeat (expand "for_it"))
+       exstp
+       (repeat (rewrite "polylist_eval" :dir rl))
+       (mapstep #'(lambda(x)`(tarski_eq_polynomial__$ ,x ,qvar)) plnames))
+      (eval-formula))))
+  "[Tarski] Internal strategy." "")
+
+(defstrat pre-assert (fnums &optional (step (assert)))
   (let ((exprs (remove-if
 		#'(lambda (x) (or (not (application? x))
 				  (extra-get-number-from-expr x)))
@@ -196,41 +175,91 @@ the formally verified PVS algorithm.
 	 (names_ :list n)
 	 (let ((nandes (merge-lists names_ exprs)))
 	   (name-label* nandes :hide? t :tcc-step nil))
-	 (assert))
-      (assert)))
+	 step)
+      step))
   "[Tarski] Internal strategy.")
 
-(defhelper tarski_polynomial__ (skname skfn ex rews n name names &optional labj labn)
-  (let ((exstp (cons 'expand* names)))
-    (unless-label@
-     labj
-     (with-focus-on@
-      ex
-      (if skname
-	  (let ((castr (format nil "~a = ~a" skname n)))
-	    (then (spread
-		   (case-replace castr)
-		   ((label labj -1)
-		    (label labn 1)))
-		  (assert)))
-	(then@
-	 (copy skfn)
-	 (hide skfn)
-	 (inst * n)))
-      (unless-label
-       labn
-       exstp
-       (rewrite "polylist_eval" :dir rl)
-       (expand name)
-       (when rews
-	 (rewrite* rews))
-       (unless skname (reveal skfn))))))
-  "[Tarski] Internal strategy." "")
-   
-(defhelper tarski__ (fnums fall exprs var qvars preds? equiv? labfalse timing?)
+(defun exclude-type-real-pred (x)
+  (and (extra-negation x)
+       (is-function-expr (args1 x) 'real_pred)))
+       
+(defstep tarski (&optional (fnums *) var (preds? t) dont-fail? timing?)
+  (let ((fns     (extra-get-fnums fnums))
+	(fn      (if (equal (length fns) 1) (car fns) 0))
+	(expr    (when (/= fn 0)
+		   (let ((e (extra-get-formula-from-fnum fn)))
+		     (if preds? (lift-predicates-in-quantifier e (list *real*)) e))))
+	(quant   (cond ((forall-expr? expr) 1)
+		       ((exists-expr? expr) -1)
+		       (t 0))) ;; forall: quant > 0, exists: quant < 0, none: 0
+	(vars    (if (/= quant 0)
+		     (mapcar #'(lambda (x) (format nil "~a" (id x)))
+			     (bindings (extra-get-formula-from-fnum fn)))
+		   (enlist-it var)))
+	(fall    (>= (* fn quant) 0))
+	(unqexpr (when (/= quant 0) (expression expr)))
+	(strict  (not fall))
+	(conjs   (if (/= quant 0)
+		     (let ((exprs (get-ands-expr unqexpr (< quant 0))))
+		       (tarski-valid-forms exprs vars strict))
+		   (let ((exprs (get-ands-expr
+				 (mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))
+				 nil)))
+		     (tarski-valid-forms exprs vars strict))))
+	(invfms  *tarski-invalid-forms*)
+	(tkvar   *sturm-var*)
+	(qvars   (when (/= quant 0) vars))
+	(qth     (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
+	(compl   (and preds? strict)) 
+	(msg     (cond (qth
+			(format nil "This strategy requires theory ~a to be imported in the current context" qth))
+		       ((null conjs)
+			(format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
+				invfms))
+		       ((null tkvar)
+			(format nil "No variable found in formulas ~a." fnums))
+		       ((and (< (* fn quant) 0) (> (length qvars) 1))
+			(format nil "Formula ~a is not simply quantified." fn)))))
+    (if msg
+	(printf "~a" msg)
+      (then@
+       (tarski__$ fnums fall conjs tkvar qvars preds? timing?)
+       (let ((invfms  *tarski-invalid-forms*))
+	 (when invfms
+	   (printf "The following formulas were not considered by this strategy:~%~{~a~%~}"
+		   invfms)))
+       (printf "Sequent formed by formulas in ~a~:[ may not~; doesn't~] hold~:[ (try using :preds? t)~;~].~%" 
+	       fnums compl compl)
+       (unless dont-fail? (fail)))))
+  "[Tarski] Applies decision procedure for univariate polynomial based
+on Tarski's Theorem to formulas in FNUM. Each formula denoted by FNUM
+is expected to have the form pi Ri qi, where pi and qi are polynomials
+on variable VAR and Ri is a relation in {<,<=,>,>=,=,/=}.  If FNUM
+denotes a simply quantified formula, that formula is expected to have
+one of the forms - EXISTS (VAR:real) : p0 R0 q0 AND ... AND pn Rn qn -
+FORALL (VAR:real) : p0 R0 q0 AND ... AND pi Ri qi IMPLIES pj Rj qj OR
+... OR pn Rn qn.  If variable VAR is not provided, it is inferred by
+the strategy from the formulas in FNUM.
+
+The strategy ignores sub-expressions that are not polynomial relations
+when the validity of the formula without these sub-expressions implies
+the validity of the original formula.
+
+By default, the subtype predicate of VAR is introduced as
+hypothesis. This behavior can be disabled by setting PREDS? to nil.
+
+When DONT-FAIL? is set to t, strategy skips instead of failing when
+sequent cannot be discharged.
+
+When TIMING? is set to t, strategy prints timing information of the
+ground evaluation of the formally verified PVS algorithm.
+"
+  "Applying Tarski's Theorem to sequent formed by formulas in ~a")
+
+(defhelper tarski__ (fnums fall exprs var qvars preds? timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
-    (labsk!) (labj! :delete) (labn! :delete))
+    (labsk!))
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
@@ -238,86 +267,79 @@ the formally verified PVS algorithm.
 	(relabel fnums! labpred!))
       (let ((predexprs (when predvar
 			 (get-ands-expr
-			  (mk-disjunction (mapcar #'formula (extra-get-seqfs labpred!)))
+			  (mk-disjunction
+			   (remove-if #'exclude-type-real-pred
+				      (mapcar #'formula (extra-get-seqfs labpred!))))
 			  nil)))
-	    (conjs (tarski-valid-forms-rec predexprs (list var) nil exprs))
+	    (forms (tarski-valid-forms-rec predexprs (list var) nil exprs))
 	    (labp  (list 'quote labp!))
 	    (labd  (list 'quote labd!))
-	    (labj  (list 'quote labj!))
-	    (labn  (list 'quote labn!))
-	    (n     (1- (length conjs)))
-	    (names (freshnames "pl" (1+ n)))
-	    (nes   (pair-lists names conjs))
-	    (polyl (extra-lambda-list
-		    (mapcar #'(lambda (x) (format nil "list2array[rat](0)(~a)" x)) names)
-		    "zero_pol"))
-	    (degl  (extra-lambda-list
-		    (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) names) 0))
-	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
-	(then
-	 (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
-	 (mapstep #'(lambda (x)`(tarski_polylist__$ ,(car x) ,(cadr x) ,labp ,labd)) nes)
-	 (with-fresh-names
-	  ((polyl_ polyl) (degl_ degl) (rell_ rell) (j_))
-	  (lemma "tarski_def")
-	  (spread
-	   (inst -1 rell_ n degl_ polyl_)
-	   ((spread
-	     (split -1)
-	     ((then (expand degl_ -1 2)
-		    (replaces labd! :in -1)
-		    (expand polyl_ -1 2)
-		    (replaces labp! :in -1)
-		    (with-fresh-labels
-		     ((ex! -1) (eqs! :delete))
-		     (with-fresh-names
-		      ((ps_ (! ex! 2 2) :tccs) (ds_ (! ex! 2 3)))
-		      (delete *ps_-tccs*)
-		      (eval-expr (! -1 2) :timing? timing?)
-		      (replaces -1 -2)
-		      (prop)
-		      (let ((instp (> (extra-get-fnum ex!) 0))
-			    (skolv (when qvars (freshnames "x" (length qvars))))
-			    (instv (if qvars
-				       (let ((pns (pair-lists qvars skolv)))
-					 (cdr (assoc var pns :test #'string=)))
-				     var))
-			    (skolfn (when qvars (if fall fnums! ex!)))
-			    (instfn (if fall ex! fnums!))
-			    (valid  (iff instp fall))
-			    (z2n    (pair-lists (fromto 0 n) names))
-			    (qsknm  (when fall (list 'quote j_)))
-			    (qskfn  (when qvars (list 'quote skolfn)))
-			    (qex    (list 'quote ex!))
-			    (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			    (eqs    (extra-get-evalexprs))
-			    (rews   (when equiv? (list 'quote *sturm-rews*))))
-			(if valid
-			    (then
+	    (nfms  (length forms))
+	    (n     (1- nfms)))
+	(with-fresh-names
+	 ((pl_ :list nfms)
+	  (plst_ :list nfms))
+	 (let ((nes   (pair-lists plst_ (pair-lists pl_ forms)))
+	       (polyl (extra-lambda-list
+		       (mapcar #'(lambda (x) (format nil "list2array[rat](0)(~a)" x)) pl_)
+		       "zero_pol"))
+	       (degl  (extra-lambda-list
+		       (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) pl_) 0))
+	       (rell  (extra-lambda-list (mapcar #'cadr forms) 0))
+	       (nvars (length qvars)))
+	   (then
+	    (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
+	    (mapstep #'(lambda (x)`(tarski_polylist__$ ,x ,labp ,labd)) nes)
+	    (with-fresh-names
+	     ((polyl_ polyl) (degl_ degl) (rell_ rell))
+	     (lemma "tarski_def")
+	     (spread
+	      (inst -1 rell_ n degl_ polyl_)
+	      ((spread
+		(split -1)
+		((then (expand degl_ -1 2)
+		       (replaces labd! :in -1)
+		       (expand polyl_ -1 2)
+		       (replaces labp! :in -1)
+		       (with-fresh-labels
+			((ex! -1) (eqs! :delete))
+			(with-fresh-names
+			 ((ps_ (! ex! 2 2) :tccs)
+			  (ds_ (! ex! 2 3))
+			  (x_  :list nvars))
+			 (delete *ps_-tccs*)
+			 (eval-expr (! -1 2) :timing? timing?)
+			 (replaces -1 -2)
+			 (prop)
+			 (let ((instp (> (extra-get-fnum ex!) 0))
+			       (instv (if qvars
+					  (let ((pns (pair-lists qvars x_)))
+					    (cdr (assoc var pns :test #'string=)))
+					var))
+			       (skolfn (when qvars (if fall fnums! ex!)))
+			       (instfn (if fall ex! fnums!))
+			       (valid  (iff instp fall))
+			       (nms    (list "poly_system_strategy.rel5" polyl_ degl_ rell_))
+			       (eqs    (extra-get-evalexprs)))
+			   (when valid
 			     (extra-evalexprs$ eqs eqs!)
 			     (if fall ;; For all quantification
 				 (then
 				  (when qvars
 				    (reveal fnums!) ;; Fnums are needed for the skolemization 
-				    (skolem skolfn skolv)
+				    (skolem skolfn x_)
 				    (relabel labsk! skolfn)
 				    (when preds?
-				      (with-labels (typepred skolv) labsk!))
+				      (with-labels (typepred x_) labsk!))
 				    (hide fnums! labsk!))   ;; Fnums are not needed anymore, when qvars
 				  (inst instfn instv)
-				  (skolem instfn j_)
-				  (mapstep #'(lambda (x)`(tarski_polynomial__$
-							  ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
-					   z2n)
+				  (tarski_polynomial__$ nms pl_ instv)
 				  (if qvars
-				    (reveal labsk!)
-				  (reveal fnums!)))
+				      (reveal labsk!)
+				    (reveal fnums!)))
 			       (then ;; Exists quantification
-				(skolem skolfn skolv)
-				(mapstep@ #'(lambda (x)`(tarski_polynomial__$
-							 ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
-					  z2n)
-				(hide ex!)
+				(skolem skolfn x_)
+				(tarski_polynomial__$ nms pl_ instv)
 				(reveal fnums!) ;; Finally, fnums are needed for this step
 				(inst instfn instv)))
 			     (reveal eqs!)
@@ -325,198 +347,307 @@ the formally verified PVS algorithm.
 			     (expand* "[||]" "##" "contains?")
 			     (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			     (flatten)
-			     (when rews (pre-assert fnums!)))
-			  (relabel labfalse ex!))))))
-	      (then (hide-all-but (labd! labp! 1))
-		    (expand* polyl_ degl_)
-		    (replaces (labd! labp!))
-		    (eval-formula))))
-	    (then (hide-all-but (labd! 1))
-		  (expand degl_)
-		  (replaces -)
-		  (skosimp)
-		  (lift-if)
-		  (assert))
-	    (then (hide-all-but 1)
-		  (expand rell_)
-		  (skosimp)
-		  (lift-if)
-		  (assert))))))))))
+			     (pre-assert fnums!))))))
+		 (then (hide-all-but (labd! labp! 1))
+		       (expand* polyl_ degl_)
+		       (replaces (labd! labp!))
+		       (eval-formula))))
+	       (then (hide-all-but (labd! 1))
+		     (expand degl_)
+		     (replaces -)
+		     (skosimp)
+		     (lift-if)
+		     (assert))
+	       (then (hide-all-but 1)
+		     (expand rell_)
+		     (skosimp)
+		     (lift-if)
+		     (assert))))))))))))
+  "[Tarski] Internal strategy." "")
+   
+;; The argument exprs is assumed to be an arbitrary boolean expression
+;; involving polynomial relations.  Return a string representing the
+;; boolean expression and a list of pairs (str n), where str is a
+;; string representation of a polynomial and n is the code of its
+;; relation. If the original relation was p1 R p2, the relation in the
+;; returned list corresponds to p1 - p2 R 0. Returns an empty list if
+;; the boolean expression involves something different from polynomial
+;; relation.
+
+(defun hutch-valid-forms-rec (expr vars strict accum)
+  (cond ((extra-negation expr)
+	 (multiple-value-bind
+	     (str naccum)
+	     (hutch-valid-forms-rec (args1 expr) vars (not strict) accum)
+	   (if str
+	       (values (format nil "NOT (~a)" str) naccum)
+	     (values nil accum))))
+	((or (extra-conjunction expr) (extra-disjunction expr) (extra-implication expr))
+	 (multiple-value-bind
+	     (str1 accum1)
+	     (hutch-valid-forms-rec (args1 expr) vars
+				    (if (extra-implication expr) (not strict) strict)
+				    accum)
+	   (let ((strictop (if (extra-conjunction expr) strict (not strict)))
+		 (op       (cond ((extra-conjunction expr) "AND")
+				 ((extra-disjunction expr) "OR")
+				 ((extra-implication expr) "IMPLIES"))))
+	     (if (or str1 (not strictop))
+	       (multiple-value-bind
+		   (str2 accum2)
+		   (hutch-valid-forms-rec (args2 expr) vars strict accum1)
+		 (values
+		  (cond ((and str1 str2)
+			 (format nil "(~a) ~a (~a)" str1 op str2))
+			(str1
+			 (format nil "~a" str1))
+			(str2
+			 (format nil "~a" str2)))
+		  accum2))
+	       (values nil accum1)))))
+	((extra-equivalence expr)
+	 (multiple-value-bind
+	     (str1 accum1)
+	     (hutch-valid-forms-rec (args1 expr) vars t accum)
+	   (if str1
+	       (multiple-value-bind
+		   (str2 accum2)
+		   (hutch-valid-forms-rec (args2 expr) vars t accum1)
+		 (if str2
+		     (values (format nil "(~a) IFF (~a)" str1 str2) accum2)
+		   (values nil accum2)))
+	     (values nil accum1))))
+	((extra-conditional expr)
+	 (let ((ite (exprs (argument expr))))
+	   (multiple-value-bind
+	       (strif accumif)
+	       (hutch-valid-forms-rec (nth 0 ite) vars t accum)
+	     (if strif
+		 (multiple-value-bind
+		     (strthen accumthen)
+		     (hutch-valid-forms-rec (nth 1 ite) vars strict accumif)
+		   (if strthen
+		       (multiple-value-bind
+			   (strelse accumelse)
+			   (hutch-valid-forms-rec (nth 2 ite) vars strict accumthen)
+			 (if strelse
+			     (values (format nil "IF ~a THEN ~a ELSE ~a ENDIF"
+					     strif strthen strelse)
+				     accumelse)
+			   (values nil accumelse)))
+		     (values nil accumthen)))
+	       (values nil accumif)))))
+	;; Base case
+	(t (let* ((old   *tarski-invalid-forms*)
+		  (conj  (tarski-valid-form expr vars))
+		  (disj  (unless conj
+			   (setq *tarski-invalid-forms* old)
+			   (tarski-valid-form expr vars t)))
+		  (forms (or conj disj)))
+	     (if (or conj disj)
+		 (let* ((n (length accum))
+			(m (+ n (length forms) -1)))
+		   (values (format nil
+				   (if conj "~{b(~a)~^ AND ~}" "~{b(~a)~^ OR ~}")
+				   (fromto n m))
+			   (append accum forms)))
+	       (values nil accum))))))
+
+;; The argument exprs is assumed to be an arbitrary boolean expression
+;; involving polynomial relations.  Return a string representing the
+;; boolean expression and a list of pairs (str n), where str is a
+;; string representation of a polynomial and n is the code of its
+;; relation. If the original relation was p1 R p2, the relation in the
+;; returned list corresponds to p1 - p2 R 0. Returns an empty list if
+;; the boolean expression involves something different from polynomial
+;; relation.
+(defun hutch-valid-forms (expr vars &optional strict)
+  (setq *tarski-invalid-forms* nil)
+  (setq *sturm-var* nil)
+  (extra-reset-evalexprs)
+  (multiple-value-bind
+      (str forms)
+      (hutch-valid-forms-rec expr vars strict nil)
+    (when str
+      (cons str forms))))
+
+(defhelper hutch_polynomial__ (names plnames var)
+  (let ((exstp (cons 'expand* names))
+	(qvar  (list 'quote var)))
+    (then
+     exstp
+     (repeat (rewrite "polylist_eval" :dir rl))
+     (mapstep #'(lambda(x)`(tarski_eq_polynomial__$ ,x ,qvar)) plnames)))
   "[Tarski] Internal strategy." "")
 
-(defstep hutch (&optional (fnums *) var preds? (sos? t) dont-fail? (equiv? t) timing?)
-  (let ((fns    (extra-get-fnums fnums))
-	(fn     (if (equal (length fns) 1) (car fns) 0))
-	(expr   (when (/= fn 0)
-		  (let ((e (extra-get-formula-from-fnum fn)))
-		    (if preds? (lift-predicates-in-quantifier e (list *real*)) e))))
-	(quant  (cond ((forall-expr? expr) 1)
-		      ((exists-expr? expr) -1)
-		      (t 0))) ;; forall: quant > 0, exists: quant < 0, none: 0
-	(vars   (if (/= quant 0)
-		    (mapcar #'(lambda (x) (format nil "~a" (id x)))
-			    (bindings (extra-get-formula-from-fnum fn)))
-		  (enlist-it var)))
-	(fall   (>= (* fn quant) 0))
-	(unqexpr  (when (/= quant 0) (expression expr)))
-	(conjs  (if (/= quant 0)
-		    (let ((exprs (get-ands-expr unqexpr (< quant 0))))
-		      (tarski-valid-forms exprs vars (not fall)))
-		  (let ((exprs (get-ands-expr
-				(mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))
-				nil)))
-		    (tarski-valid-forms exprs vars))))
-	(invfms *tarski-invalid-forms*)
-	(tkvar  *sturm-var*)
-	(qvars  (when (/= quant 0) vars))
-	(qth    (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
-	(dont-fail?  (or dont-fail? (not equiv?)))
-	(msg    (cond (qth
-		       (format nil "This strategy requires theory ~a to be imported in the current context" qth))
-		      ((null tkvar)
-		       (format nil "No variable found in formulas ~a." fnums))
-		      ((null conjs)
-		       (format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
-			       tkvar invfms))
-		      ((and (< (* fn quant) 0) (> (length qvars) 1))
-		       (format nil "Formula ~a is not simply quantified." fn)))))
+(defstep hutch (&optional (fnums *) var (preds? t) (sos? t) dont-fail? timing?)
+  (let ((fns     (extra-get-fnums fnums))
+	(fn      (if (equal (length fns) 1) (car fns) 0))
+	(expr    (when (/= fn 0)
+		   (let ((e (extra-get-formula-from-fnum fn)))
+		     (if preds? (lift-predicates-in-quantifier e (list *real*)) e))))
+	(quant   (cond ((forall-expr? expr) 1)
+		       ((exists-expr? expr) -1)
+		       (t 0))) ;; forall: quant > 0, exists: quant < 0, none: 0
+	(vars    (if (/= quant 0)
+		     (mapcar #'(lambda (x) (format nil "~a" (id x)))
+			     (bindings (extra-get-formula-from-fnum fn)))
+		   (enlist-it var)))
+	(fall    (>= (* fn quant) 0))
+	(unqexpr (if (/= quant 0)
+		     (expression expr)
+		   (mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))))
+	(strfms  (hutch-valid-forms unqexpr vars t))
+	(invfms  *tarski-invalid-forms*)
+	(tkvar   *sturm-var*)
+	(qvars   (when (/= quant 0) vars))
+	(qth     (no-qualified-name "Tarski@strategies.TarskiStrategy__"))
+	(msg     (cond (qth
+			(format nil "This strategy requires theory ~a to be imported in the current context" qth))
+		       ((null strfms)
+			(format nil "The following formulas are unsupported by this strategy:~%~{~a~%~}"
+				invfms))
+		       ((null tkvar)
+			(format nil "No variable found in formulas ~a." fnums))
+		       ((and (< (* fn quant) 0) (> (length qvars) 1))
+			(format nil "Formula ~a is not simply quantified." fn)))))
     (if msg
 	(printf "~a" msg)
-      (with-fresh-labels@
-       ((labfalse!))
-       (hutch__$ fnums fall conjs tkvar qvars preds? sos? equiv? labfalse! timing?)
-       (when invfms
-	 (printf "The following formulas don't belong to a system of polynomials constraints on ~a
-and were not considered by this strategy:~%~{~a~%~}"
-		 tkvar invfms))
-       (when-label
-	labfalse!
-	(printf "Sequent formed by formulas in ~a~:[, without considering typing information, may not~; doesn't~] hold.~%" 
-		fnums preds?))
+      (then@
+       (hutch__$ fnums fall strfms tkvar qvars preds? sos? timing?)
+       (let ((invfms  *tarski-invalid-forms*))
+	 (when invfms
+	   (printf "The following formulas were not considered by this strategy:~%~{~a~%~}"
+		   invfms)))
+       (printf "Sequent formed by formulas in ~a~:[ may not~; doesn't~] hold~:[ (try using :preds? t)~;~].~%" 
+	       fnums preds? preds?)
        (unless dont-fail? (fail)))))
-  "[Tarski] Applies decision procedure for univariate polynomial based on a variant of
-Tarski's Theorem to formulas in FNUM. Each formula denoted by FNUM is expected to
-have the form B(p0 Ri q0,...,pn Rn qn), where B is an arbitrary boolean expresion on 
-polynomial relations of the form pi Ri qi, with pi and qi are polynomials on variable 
-VAR and Ri is a relation in {<,<=,>,>=,=,/=}. If FNUM denotes a simply quantified formula, 
-that formula is expected to have one of the forms
+  "[Tarski] Applies decision procedure for univariate polynomial based
+on Sturm's Theorem and interval sub-division to formulas in FNUM. Each
+formula denoted by FNUM is expected to have the form B(p0 Ri q0,...,pn
+Rn qn), where B is an arbitrary boolean expresion on polynomial
+relations of the form pi Ri qi, with pi and qi are polynomials on
+variable VAR and Ri is a relation in {<,<=,>,>=,=,/=}. If FNUM denotes
+a simply quantified formula, that formula is expected to have one of
+the forms
 - EXISTS (VAR:real) : B(p0 Ri q0,...,pn Rn qn)
 - FORALL (VAR:real) : B(p0 Ri q0,...,pn Rn qn)
-If variable VAR is not provided, it is inferred by the strategy from the formulas in FNUM. 
+If variable VAR is not provided, it is inferred by the strategy from
+the formulas in FNUM.
 
-The subtype predicate of VAR is introduced as hypothesis when PREDS? is t. 
+The strategy ignores sub-expressions that are not polynomial relations
+when the validity of the formula without these sub-expressions implies
+the validity of the original formula.
+
+By default, the subtype predicate of VAR is introduced as
+hypothesis. This behavior can be disabled by setting PREDS? to nil.
 
 The option SOS?, which is set by default to t, indicates the use of a
 sum-of-squares-based heuristic for dealing with small intervals. If is
 set to nil, a heuristic based on the product of the polynomials is
 used.
 
-When DONT-FAIL? is set to t, strategy skips instead of failing when sequent cannot be 
-discharged. 
+When DONT-FAIL? is set to t, strategy skips instead of failing when
+sequent cannot be discharged.
 
-When EQUIV? is set to nil, the strategy doesn't try to prove that the deep embedding of 
-the original polynomial system is correct. The proof of this fact is trivial from a logical 
-point of view, but requires unfolding of several definitions which is time consuming in 
-PVS. In this case, DONT-FAIL? is assumed to be t.
-
-When TIMING? is set to t, strategy prints timing information of the ground evaluation of
-the formally verified PVS algorithm.
+When TIMING? is set to t, strategy prints timing information of the
+ground evaluation of the formally verified PVS algorithm.
 "
-  "Applying a variant of Tarski's Theorem to sequent formed by formulas in ~a")
+  "Applying Sturm's Theorem and interval sub-division to sequent formed by formulas in ~a")
 
-(defhelper hutch__ (fnums fall exprs var qvars preds? sos? equiv? labfalse timing?)
+(defhelper hutch__ (fnums fall strfms var qvars preds? sos? timing?)
   (with-fresh-labels
    ((fnums! fnums) (labp!) (labd!) (labpred!)
-    (labsk!) (labj! :delete) (labn! :delete))
+    (labsk!))
    (let ((predvar (unless qvars preds?)))
      (then
       (when predvar
 	(discriminate (typepred var) labpred!)
 	(relabel fnums! labpred!))
-      (let ((predexprs (when predvar
-			 (get-ands-expr
-			  (mk-disjunction (mapcar #'formula (extra-get-seqfs labpred!)))
-			  nil)))
-	    (conjs (tarski-valid-forms-rec predexprs (list var) nil exprs))
-	    (labp  (list 'quote labp!))
-	    (labd  (list 'quote labd!))
-	    (labj  (list 'quote labj!))
-	    (labn  (list 'quote labn!))
-	    (n     (1- (length conjs)))
-	    (names (freshnames "pl" (1+ n)))
-	    (nes   (pair-lists names conjs))
-	    (be    (format nil "LAMBDA (bt:BoolTuple(~a)): FORALL (k:upto(~a)): bt(k)" n n))
-	    (mapp  (format nil "LAMBDA (k:upto(~a)): k" n))
-	    (polyl (extra-lambda-list
-		    (mapcar #'(lambda (x) (format nil "list2array[rat](0)(~a)" x)) names)
-		    "zero_pol"))
-	    (degl  (extra-lambda-list
-		    (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) names) 0))
-	    (sos   (if sos? "TRUE" "FALSE"))
-	    (rell  (extra-lambda-list (mapcar #'cadr conjs) 0)))
-	(then
-	 (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
-	 (mapstep #'(lambda (x)`(tarski_polylist__$ ,(car x) ,(cadr x) ,labp ,labd)) nes)
-	 (with-fresh-names
-	  ((polyl_ polyl) (degl_ degl) (rell_ rell) (j_))
-	  (lemma "hutch_def")
-	  (spread
-	   (inst -1 sos n n be rell_ mapp polyl_ degl_)
-	   ((then (expand degl_ -1 1)
-		  (replaces labd! :in -1)
-		  (expand polyl_ -1 1)
-		  (replaces labp! :in -1)
-		  (with-fresh-labels
-		   ((ex! -1) (eqs! :delete))
-		   (with-fresh-names
-		    ((ps_ (! ex! 1 7) :tccs) (ds_ (! ex! 1 8)))
-		    (delete *ps_-tccs*)
-		    (eval-expr (! -1 1) :timing? timing?)
-		    (replaces -1 -2)
-		    (prop)
-		    (let ((instp (> (extra-get-fnum ex!) 0))
-			  (skolv (when qvars (freshnames "x" (length qvars))))
-			  (instv (if qvars
-				     (let ((pns (pair-lists qvars skolv)))
-				       (cdr (assoc var pns :test #'string=)))
-				   var))
-			  (skolfn (when qvars (if fall fnums! ex!)))
-			  (instfn (if fall ex! fnums!))
-			  (valid  (iff instp fall))
-			  (z2n    (pair-lists (fromto 0 n) names))
-			  (qsknm  (when fall (list 'quote j_)))
-			  (qskfn  (when qvars (list 'quote skolfn)))
-			  (qex    (list 'quote ex!))
-			  (qnms   (list 'quote (list "poly_system_strategy.rel5" polyl_ degl_ rell_)))
-			  (eqs    (extra-get-evalexprs))
-			  (rews   (when equiv? (list 'quote *sturm-rews*))))
-		      (if valid
-			  (then
+      (let ((expr   (when predvar
+		      (mk-disjunction
+		       (remove-if #'exclude-type-real-pred
+				  (mapcar #'formula (extra-get-seqfs labpred!))))))
+	    (strfms (if expr
+			(multiple-value-bind
+			    (str forms)
+			    (hutch-valid-forms-rec expr (list var) t (cdr strfms))
+			  (if str
+			      (cons (format nil "(~a) OR (~a)" (car strfms) str) forms)
+			    strfms))
+		      strfms))
+	    (forms  (cdr strfms))
+	    (be     (format nil "LAMBDA (b:BoolTuple(~a)):~:[~;NOT ~](~a)"
+			    (1- (length forms)) fall (car strfms)))
+	    (labp   (list 'quote labp!))
+	    (labd   (list 'quote labd!))
+	    (nfms   (length forms))      
+	    (n      (1- nfms)))
+	(with-fresh-names
+	 ((pl_ :list nfms)
+	  (plst_ :list nfms))
+	 (let ((nes   (pair-lists plst_ (pair-lists pl_ forms)))
+	       (mapp  (format nil "LAMBDA (k:upto(~a)): k" n))
+	       (polyl (extra-lambda-list
+		       (mapcar #'(lambda (x) (format nil "list2array[rat](0)(~a)" x)) pl_)
+		       "zero_pol"))
+	       (degl  (extra-lambda-list
+		       (mapcar #'(lambda (x) (format nil "length[rat](~a)-1" x)) pl_) 0))
+	       (sos   (if sos? "TRUE" "FALSE"))
+	       (rell  (extra-lambda-list (mapcar #'cadr forms) 0))
+	       (nvars (length qvars)))
+	   (then
+	    (hide *) ;; All that is needed is already labeled. It's expensive to have these formulas around
+	    (mapstep #'(lambda (x)`(tarski_polylist__$ ,x ,labp ,labd)) nes)
+	    (with-fresh-names
+	     ((polyl_ polyl) (degl_ degl) (rell_ rell))
+	     (lemma "hutch_def")
+	     (spread
+	      (inst -1 sos n n be rell_ mapp polyl_ degl_)
+	      ((then (expand degl_ -1 1)
+		     (replaces labd! :in -1)
+		     (expand polyl_ -1 1)
+		     (replaces labp! :in -1)
+		     (with-fresh-labels
+		      ((ex! -1) (eqs! :delete))
+		      (with-fresh-names
+		       ((ps_ (! ex! 1 7) :tccs)
+			(ds_ (! ex! 1 8))
+			(x_  :list nvars))
+		       (delete *ps_-tccs*)
+		       (eval-expr (! -1 1) :timing? timing?)
+		       (replaces -1 -2)
+		       (prop)
+		       (let ((instp (> (extra-get-fnum ex!) 0))
+			     (instv (if qvars
+					(let ((pns (pair-lists qvars x_)))
+					  (cdr (assoc var pns :test #'string=)))
+				      var))
+			     (skolfn (when qvars (if fall fnums! ex!)))
+			     (instfn (if fall ex! fnums!))
+			     (valid  (iff instp fall))
+			     (nms    (list "poly_system_strategy.rel5" polyl_ degl_ rell_))
+			     (eqs    (extra-get-evalexprs)))
+			 (when valid
 			   (extra-evalexprs$ eqs eqs!)
 			   (expand "SystemSatRat?")
 			   (if fall ;; For all quantification
 			       (then
 				(when qvars
 				  (reveal fnums!) ;; Fnums are needed for the skolemization 
-				  (skolem skolfn skolv)
+				  (skolem skolfn x_)
 				  (relabel labsk! skolfn)
 				  (when preds?
-				    (with-labels (typepred skolv) labsk!))
+				    (with-labels (typepred x_) labsk!))
 				  (hide (fnums! labsk!)))  ;; Fnums are not needed anymore, when qvars
 				(inst instfn instv)
-				(skolem instfn j_)
-				(mapstep #'(lambda (x)`(tarski_polynomial__$
-							,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms ,labj ,labn))
-					 z2n)
+				(hutch_polynomial__$ nms pl_ instv)
 				(if qvars
 				    (reveal labsk!)
 				  (reveal fnums!)))
 			     (then ;; Exists quantification
-			      (skolem skolfn skolv)
-			      (mapstep@ #'(lambda (x)`(tarski_polynomial__$
-						       ,qsknm ,qskfn ,qex ,rews ,(car x) ,(cdr x) ,qnms))
-					z2n)
-			      (hide ex!)
+			      (skolem skolfn x_)
+			      (hutch_polynomial__$ nms pl_ instv)
 			      (reveal fnums!) ;; Finally, fnums are needed for this step
 			      (inst instfn instv)))
 			   (reveal eqs!)
@@ -524,22 +655,22 @@ the formally verified PVS algorithm.
 			   (expand* "[||]" "##" "contains?")
 			   (rewrite* ("abs_lt" "abs_le" "abs_gt" "abs_ge" "lt_abs" "le_abs" "gt_abs" "ge_abs"))
 			   (flatten)
-			   (when rews (pre-assert fnums!)))
-			(relabel labfalse ex!))))))
-	    (spread (split 1)
-		    ((then (hide-all-but (labd! 1))
-			   (expand degl_)
-			   (replaces -)
-			   (skosimp)
-			   (lift-if)
-			   (assert))
-		     (then (hide-all-but (labd! labp! 1))
-			   (expand* polyl_ degl_)
-			   (replaces (labd! labp!))
-			   (eval-formula))))
-	    (then (hide-all-but 1)
-		  (expand rell_)
-		  (skosimp)
-		  (lift-if)
-		  (assert))))))))))
+			   (pre-assert fnums! :step (ground))
+			   (assert))))))
+	       (spread (split 1)
+		       ((then (hide-all-but (labd! 1))
+			      (expand degl_)
+			      (replaces -)
+			      (skosimp)
+			      (lift-if)
+			      (assert))
+			(then (hide-all-but (labd! labp! 1))
+			      (expand* polyl_ degl_)
+			      (replaces (labd! labp!))
+			      (eval-formula))))
+	       (then (hide-all-but 1)
+		     (expand rell_)
+		     (skosimp)
+		     (lift-if)
+		     (assert))))))))))))
   "[Tarski] Internal strategy." "")
