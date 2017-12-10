@@ -723,29 +723,51 @@ TCCs generated during the execution of the command are discharged with the proof
 discharge the current branch using the proof command AUTO-STEP."
   "Simplifying sq and sqrt in ~a")
 
-(defstep both-sides-f (fnum f &optional (hide? t) label (tcc-step (extra-tcc-step)) (auto-step (assert)))
+(defstep both-sides-f (fnum f &optional (hide? t) label (tcc-step (extra-tcc-step))
+			    (auto-step (assert)) postfix? swap?)
   (let ((fnexpr  (first-formula fnum :test #'field-formula))
 	(fn      (car fnexpr))
 	(formula (cadr fnexpr))
 	(rel     (is-relation formula))
-	(str     (format nil "~a(%1)" f))
+	(iseq    (and (< fn 0) (equal (car rel) '=)))
+	(str     (if postfix?
+		     (format nil "(%1)~a" f)
+		   (format nil "~a(%1)" f)))
 	(lbs     (or label (extra-get-labels-from-fnum fn))))
     (if rel
 	(with-fresh-labels
 	 ((!bsf fn :tccs)
 	  (!bsp)
 	  (!bsl))
-	 (branch (discriminate (wrap-manip !bsf (transform-both !bsf str) :tcc-step (skip) :labels? nil) !bsl)
-		 ((else (finalize auto-step) (delabel !bsf hide?))
-		  (finalize auto-step)
-		  (then (delabel !bsf hide?) (finalize tcc-step))))
+	 (branch
+	  (discriminate
+	   (wrap-manip
+	    !bsf
+	    (transform-both !bsf str :swap swap?)
+	    :tcc-step (skip)
+	    :labels? nil)
+	   !bsl)
+	  ((else (finalize auto-step) (delabel !bsf hide?))
+	   (if iseq
+	       (then (hide-all-but (!bsf 1))
+		     (replaces !bsf)
+		     (assert))
+	     (finalize auto-step))
+	   (then (delabel !bsf hide?) (finalize tcc-step))))
 	 (relabel lbs !bsl :push? nil))
       (printf "No arithmetic relational formula in ~a" fnum)))
-  "[Field] Applies function F to both sides of the relational expression in FNUM. If
-HIDE? is t, the original formula is hidden. The new formulas are labeled as the original
-one, unless an explicit LABEL is provided. TCCs generated during the execution of the
-command are discharged with the proof command TCC-STEP. At the end, the strategy tries to 
-discharge the current branch using the proof command AUTO-STEP."
+  "[Field] Applies function F to both sides of the relational
+expression in FNUM. If HIDE? is t, the original formula is hidden. The
+new formulas are labeled as the original one, unless an explicit LABEL
+is provided. TCCs generated during the execution of the command are
+discharged with the proof command TCC-STEP. At the end, the strategy
+tries to discharge the current branch using the proof command
+AUTO-STEP. When POSTFIX? is set to t, the function F is added as
+postfix string, i.e., if FNUM is the equality expr1 = expr2,
+(both-sides-f FNUM \"^2\" :postfix? t) will generate the case
+(expr1)^2 = (expr2)^n. The flag SWAP? is used to indicate when the
+terms should be swapped (e.g., when multiplying by a negative
+number)."
   "Applying ~1@*~a to both sides of formula ~@*~a")
 
 (defstrat wrap-formula (fnum f)
