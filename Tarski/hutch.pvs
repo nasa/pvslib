@@ -44,7 +44,7 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
          IF i<=n(j) THEN p(j)(i) ELSE 0 ENDIF,n(j)) ELSE cons[list[int]](cons[int](0,null[int]),null[list[int]]) ENDIF)
 
 
-  roots_within_closed(a,(d:posnat|a(d)/=0),low,high,(sl:(Eq_computed_remainder?(a,d)))): nat=
+  roots_in_int(a,(d:posnat|a(d)/=0),low,high,(sl:(Eq_computed_remainder?(a,d)))): nat=
     LET I:RealInt=(# lb:=low,ub:=high,bounded_below:=True,
     		     bounded_above:=True,closed_below:=True,
 		     closed_above:=True #) IN
@@ -60,8 +60,8 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
  			    psq:[nat->int],(nsq:posnat|psq(nsq)/=0),low,high,
     (known_signs:(sound_signs?(k,p,n,low,high))),(slseq:(Eq_computed_remainder_seq?(k,p,n))),
       (sqsl:(Eq_computed_remainder?(psq,nsq)))): bool =
-    (FORALL (i:upto(k)): known_signs(i)=0 IMPLIES roots_within_closed(p(i),n(i),low,high,nth(slseq,i))=1) AND
-      ((EXISTS (i:upto(k)): known_signs(i)=0) IMPLIES roots_within_closed(psq,nsq,low,high,sqsl)=1)
+    (FORALL (i:upto(k)): known_signs(i)=0 IMPLIES roots_in_int(p(i),n(i),low,high,nth(slseq,i))=1) AND
+      ((EXISTS (i:upto(k)): known_signs(i)=0) IMPLIES roots_in_int(psq,nsq,low,high,sqsl)=1)
 
   sum_square_zero_havers(k,p,(n|FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),known_signs,
     (i:upto(k))): RECURSIVE [# sqlist:list[int],sqdeg:nat #] =
@@ -88,12 +88,12 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
 
   decidable_interval_sq(k,p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),low,high,(known_signs:(sound_signs?(k,p,n,low,high))),
     (slseq:(Eq_computed_remainder_seq?(k,p,n)))): bool =
-    (FORALL (i:upto(k)): known_signs(i)=0 IMPLIES roots_within_closed(p(i),n(i),low,high,nth(slseq,i))=1) AND
+    (FORALL (i:upto(k)): known_signs(i)=0 IMPLIES roots_in_int(p(i),n(i),low,high,nth(slseq,i))=1) AND
       ((EXISTS (i:upto(k)): known_signs(i)=0) IMPLIES
         (LET sszh = sum_square_zero_havers(k,p,n,known_signs,k),
     	   spoly = (LAMBDA (d:nat): IF d<length(sszh`sqlist) THEN nth(sszh`sqlist,d) ELSE 0 ENDIF),
 	   sl = sturm_chain(LAMBDA (i:nat): IF i<=sszh`sqdeg THEN spoly(i) ELSE 0 ENDIF,sszh`sqdeg)
-       IN roots_within_closed(spoly,sszh`sqdeg,low,high,sl)=1))
+       IN roots_in_int(spoly,sszh`sqdeg,low,high,sl)=1))
 
  decidable_interval_def: LEMMA FORALL (sumsquares:bool,n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0):
    sound_signs?(k,p,n,low,high)(known_signs) IMPLIES
@@ -109,11 +109,13 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
       (FORALL (i:upto(k)): sign_ext(polynomial(p(i),n(i))(x))=sign_ext(polynomial(p(i),n(i))(high))) OR
       (FORALL (i:upto(k)): sign_ext(polynomial(p(i),n(i))(x))=sign_ext(known_signs(i))))))
 
+  unsatl?: VAR bool
+
   decide_interval(NumTerms:nat,k:nat,be:BoolExpr(NumTerms),RelF6:[nat->subrange(0,5)],
     PolyTerms:[upto(NumTerms)->upto(k)],
     p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),low,high,
-    (known_signs:(sound_signs?(k,p,n,low,high))),(slseq:(Eq_computed_remainder_seq?(k,p,n)))): bool =
-    be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(polynomial(p(PolyTerms(i)),n(PolyTerms(i)))(low),0)) OR
+    (known_signs:(sound_signs?(k,p,n,low,high))),unsatl?:bool,(slseq:(Eq_computed_remainder_seq?(k,p,n)))): bool =
+    ((NOT unsatl?) AND be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(polynomial(p(PolyTerms(i)),n(PolyTerms(i)))(low),0))) OR
     be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(polynomial(p(PolyTerms(i)),n(PolyTerms(i)))(high),0)) OR
     be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(known_signs(PolyTerms(i)),0))
 
@@ -126,8 +128,9 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
        psq = list2array[int](0)(psql) IN Eq_computed_remainder?(psq,nsq)(sqsl))):
     (((not sumsquares) AND LET nsq = length(psql)-1,
        psq = list2array[int](0)(psql) IN decidable_interval(k,p,n,psq,nsq,low,high,known_signs,slseq,sqsl)) OR
-     (sumsquares AND decidable_interval_sq(k,p,n,low,high,known_signs,slseq))) AND low<=high IMPLIES
-    (decide_interval(NumTerms,k,be,RelF6,PolyTerms,p,n,low,high,known_signs,slseq) IFF
+     (sumsquares AND decidable_interval_sq(k,p,n,low,high,known_signs,slseq))) AND low<=high AND 
+     (unsatl? IMPLIES (NOT be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(polynomial(p(PolyTerms(i)),n(PolyTerms(i)))(low),0)))) IMPLIES
+    (decide_interval(NumTerms,k,be,RelF6,PolyTerms,p,n,low,high,known_signs,unsatl?,slseq) IFF
      SystemSat?(NumTerms,k,be,RelF6,PolyTerms,p,n,LAMBDA (qz:real):low<=qz AND qz<=high))
 
   decidable_intervals_exist: LEMMA FORALL (k,p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),(slseq:(Eq_computed_remainder_seq?(k,p,n)))):
@@ -151,35 +154,36 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
 		      (sumsquares AND decidable_interval_sq(k,p,n,low1,high1,known_signs,slseq)))
        IN min(Aset)
 
-  known_signs_update(k,p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),low,high,known_signs, % from a previous run
+  signs_upd(k,p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),low,high,known_signs, % from a previous run
     (slseq:(Eq_computed_remainder_seq?(k,p,n)))): [nat->int] =
       LET ksl =
       array2list[int](k+1)(LAMBDA (i:nat): IF i>k THEN 0 ELSIF known_signs(i)/=0 THEN known_signs(i)
-        ELSIF roots_within_closed(p(i),n(i),low,high,nth(slseq,i))/=0 THEN 0
+        ELSIF roots_in_int(p(i),n(i),low,high,nth(slseq,i))/=0 THEN 0
   	ELSIF polynomial(p(i),n(i))(low)>0 THEN 1
   	ELSE -1 ENDIF) IN
       list2array[int](0)(ksl)
 
-  known_signs_update_sound: LEMMA FORALL ((n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),
+  signs_upd_sound: LEMMA FORALL ((n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),
     slseq:(Eq_computed_remainder_seq?(k,p,n))):
     sound_signs?(k,p,n,low,high)(known_signs) IMPLIES
     FORALL (low1,high1:real): low<=low1 AND low1<high1 AND high1<=high IMPLIES
-    sound_signs?(k,p,n,low1,high1)(known_signs_update(k,p,n,low1,high1,known_signs,slseq))
+    sound_signs?(k,p,n,low1,high1)(signs_upd(k,p,n,low1,high1,known_signs,slseq))
 
   hutch_int_basic(sumsquares:bool,NumTerms:nat,k:nat,be:BoolExpr(NumTerms),RelF6:[nat->subrange(0,5)],
     PolyTerms:[upto(NumTerms)->upto(k)],
     p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),psq:[nat->int]|(not sumsquares) IMPLIES psq=list2array[int](0)(prod_polynomials_list(p,n,LAMBDA i: 1,k)),(nsq:posnat|(not sumsquares) IMPLIES psq(nsq)/=0 AND nsq=length(prod_polynomials_list(p,n,LAMBDA i: 1,k))-1),low,(high|low<high),
-    (known_signs:(sound_signs?(k,p,n,low,high))),(slseq:(Eq_computed_remainder_seq?(k,p,n))),
-      (sqsl|(not sumsquares) IMPLIES Eq_computed_remainder?(psq,nsq)(sqsl))): RECURSIVE {bb:bool| bb IFF 
-        SystemSat?(NumTerms,k,be,RelF6,PolyTerms,p,n,LAMBDA (qz:real): low<=qz AND qz<=high)} =
+    (known_signs:(sound_signs?(k,p,n,low,high))),unsatl?,(slseq:(Eq_computed_remainder_seq?(k,p,n))),
+      (sqsl|(not sumsquares) IMPLIES Eq_computed_remainder?(psq,nsq)(sqsl))): RECURSIVE {bb:bool| (unsatl? IMPLIES
+      (NOT be(LAMBDA (i:upto(NumTerms)): rel5(RelF6(i))(polynomial(p(PolyTerms(i)),n(PolyTerms(i)))(low),0)))) IMPLIES (bb IFF 
+        SystemSat?(NumTerms,k,be,RelF6,PolyTerms,p,n,LAMBDA (qz:real): low<=qz AND qz<=high))} =
         IF ((not sumsquares) AND decidable_interval(k,p,n,psq,nsq,low,high,known_signs,slseq,sqsl)) OR
 	   (sumsquares AND decidable_interval_sq(k,p,n,low,high,known_signs,slseq)) THEN
-  	   decide_interval(NumTerms,k,be,RelF6,PolyTerms,p,n,low,high,known_signs,slseq)
+  	   decide_interval(NumTerms,k,be,RelF6,PolyTerms,p,n,low,high,known_signs,unsatl?,slseq)
   	ELSE
 	  hutch_int_basic(sumsquares,NumTerms,k,be,RelF6,PolyTerms,p,n,psq,nsq,low,(low+high)/2,
-		    known_signs_update(k,p,n,low,(low+high)/2,known_signs,slseq),slseq,sqsl) OR
+		    signs_upd(k,p,n,low,(low+high)/2,known_signs,slseq),unsatl?,slseq,sqsl) OR
 	  hutch_int_basic(sumsquares,NumTerms,k,be,RelF6,PolyTerms,p,n,psq,nsq,(low+high)/2,high,
-		    known_signs_update(k,p,n,(low+high)/2,high,known_signs,slseq),slseq,sqsl)
+		    signs_upd(k,p,n,(low+high)/2,high,known_signs,slseq),TRUE,slseq,sqsl)
 	ENDIF MEASURE hutch_int_meas(sumsquares,k,p,n,psq,nsq,low,high,slseq,sqsl)
 
   % need function that bounds every root of system
@@ -198,9 +202,9 @@ IMPORTING Sturm@compute_sturm,structures@array2list,poly_system_strategy
 	  slseq = array2list[list[list[int]]](k+1)(LAMBDA (j:nat):IF j<=k THEN sturm_chain(LAMBDA (i:nat):
           	  					  IF i<=n(j) THEN p(j)(i) ELSE 0 ENDIF,n(j)) ELSE 
 							  cons[list[int]](cons[int](0,null[int]),null[list[int]]) ENDIF),
-	  known_signs = known_signs_update(k,p,n,-root_bound,root_bound,(LAMBDA (i:nat): 0),slseq),
+	  known_signs = signs_upd(k,p,n,-root_bound,root_bound,(LAMBDA (i:nat): 0),slseq),
 	  sqsl = IF (not sumsquares) THEN sturm_chain(psq,nsq) ELSE null[list[int]] ENDIF
-      IN hutch_int_basic(sumsquares,NumTerms,k,be,RelF6,PolyTerms,p,n,psq,nsq,-root_bound,root_bound,known_signs,slseq,sqsl)
+      IN hutch_int_basic(sumsquares,NumTerms,k,be,RelF6,PolyTerms,p,n,psq,nsq,-root_bound,root_bound,known_signs,FALSE,slseq,sqsl)
 
   hutch_int_def: LEMMA FORALL (sumsquares:bool,NumTerms:nat,k:nat,be:BoolExpr(NumTerms),RelF6:[nat->subrange(0,5)],
     PolyTerms:[upto(NumTerms)->upto(k)],p,(n| FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0)):
