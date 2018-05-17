@@ -1,0 +1,214 @@
+fundamental_algebra: THEORY
+
+%%% The Fundamental Theorem of Algebra %%%
+%%% Narkawicz 12/2013 %%%
+
+BEGIN
+
+  IMPORTING complex_lnexp,
+            power@root,
+	    trig@trig_extra
+
+
+  n : VAR nat
+  pn,nn: VAR posnat
+  a,b : VAR [nat->complex]
+  c,x,y : VAR complex
+  nz  : VAR nzcomplex
+  r,s : VAR real
+  ff,gg:VAR [complex->complex]
+  K : VAR posreal
+
+  %Powers
+
+  ;*(a,b)(n): complex = a(n)*b(n)
+
+  ;+(a,b)(n): complex = a(n)+b(n)
+
+  ;*(c,a)(n): complex = c*a(n)
+
+  cfunmult(ff,gg)(c): complex = ff(c)*gg(c)
+
+  cfunplus(ff,gg)(c): complex = ff(c) + gg(c)
+
+  mult_0_l: LEMMA 0*c = real_(0)
+
+  mult_commutes: LEMMA x*y = y*x
+
+  cpow(c)(n): RECURSIVE complex =
+    IF n = 0 THEN real_(1) ELSE c*cpow(c)(n-1) ENDIF
+    MEASURE n
+
+  cpow_0: LEMMA cpow(c)(pn)=real_(0) IFF c=real_(0)
+
+  cpow_real: LEMMA cpow(real_(r))(n) = real_(r^n)
+
+  abs_rewrite: LEMMA
+    abs(s*complex_i + r) = sqrt(s^2 + r^2)
+
+  arg_cpow: LEMMA
+    -pi < pn*arg(c) AND pn*arg(c)<=pi
+    IMPLIES
+    arg(cpow(c)(pn)) = pn*arg(c)
+
+  abs_cpow: LEMMA
+    abs(cpow(c)(n)) = abs(c)^n
+
+  abs_cpow_increasing: LEMMA
+    abs(x)<=abs(y) IMPLIES abs(cpow(x)(n))<=abs(cpow(y)(n))
+
+  cpow_exp: LEMMA
+    cpow(exp(c))(n) = exp(n*c)
+
+  cpow_mult: LEMMA cpow(x*y)(n) = cpow(x)(n)*cpow(y)(n)
+
+  %%% Continuity %%%
+
+  complex_continuous?(ff): bool =
+    FORALL (x:complex,epsil:posreal): EXISTS (delta:posreal):
+    FORALL (y:complex): abs(x-y)<=delta IMPLIES
+      abs(ff(x)-ff(y))<epsil
+
+  complex_continuous_sum: LEMMA
+    complex_continuous?(ff) AND complex_continuous?(gg)
+    IMPLIES complex_continuous?(cfunplus(ff,gg))
+
+  complex_continuous_mult: LEMMA
+    complex_continuous?(ff) AND complex_continuous?(gg)
+    IMPLIES complex_continuous?(cfunmult(ff,gg))
+
+  complex_continuous_cpow: LEMMA
+    complex_continuous?(LAMBDA (x): c*cpow(x)(n))
+
+  %%% Roots of Unity %%%
+    
+  root_neg_1(pn): complex =
+    IF pn = 1 THEN real_(-1)
+    ELSE exp((complex_i*pi)/pn) ENDIF
+
+  root_neg_1_def: LEMMA
+    cpow(root_neg_1(pn))(pn) = real_(-1)
+
+  root_complex(c)(pn): complex =
+    from_polar(root_nn(abs(c),pn),arg(c)/pn)
+
+  arg_root_complex: LEMMA
+    arg(root_complex(c)(pn)) = arg(c)/pn
+
+  abs_root_complex : LEMMA
+    abs(root_complex(c)(pn)) = root_nn(abs(c),pn)
+
+  root_complex_def: LEMMA
+    cpow(root_complex(c)(pn))(pn) = c
+
+  roots_unity_unique: LEMMA
+    FORALL (nn,mm:posnat): nn<=pn AND mm<=pn AND nn/=mm IMPLIES 
+      exp((2*complex_i*pi*nn)/pn)/=exp((2*complex_i*pi*mm)/pn)
+
+  root_of_unity(pn)(nn:nat | nn<=pn) : complex =
+    exp((2*complex_i*pi*nn)/pn)
+
+  roots_of_unity_closed : LEMMA
+    FORALL ((pn:posnat),(n1:nat),(n2:posnat | n1<=pn AND n2<=pn)) :
+    EXISTS (n3:nat | n3<=pn) :
+    root_of_unity(pn)(n1)*root_of_unity(pn)(n2) = root_of_unity(pn)(n3)
+
+  roots_of_unity_inverses : LEMMA
+    FORALL ((pn:posnat),(n1:nat | n1<=pn)) :
+    EXISTS (n2:nat | n2<=pn) :
+    root_of_unity(pn)(n1)*root_of_unity(pn)(n2) = real_(1)
+
+  root_complex_enum(c)(pn,nn): complex =
+    root_complex(c)(pn)*exp((2*complex_i*pi*nn)/pn)
+
+  root_complex_enum_unique: LEMMA
+    FORALL (nn,mm:posnat): nn<=pn AND mm<=pn AND nn/=mm IMPLIES 
+      root_complex_enum(nz)(pn,nn)/=root_complex_enum(nz)(pn,mm)
+
+  %%% Sums %%%
+
+  csigma(a,n): RECURSIVE complex =
+    IF n = 0 THEN a(0) ELSE a(n)+csigma(a,n-1) ENDIF
+    MEASURE n
+
+  csigma_plus: LEMMA csigma(a+b,n) = csigma(a,n)+csigma(b,n)
+
+  csigma_scal_right: LEMMA
+    csigma(a,n)*c = csigma(c*a,n)
+
+  csigma_eq: LEMMA (FORALL (i:nat): i<=n IMPLIES a(i)=b(i))
+    IMPLIES csigma(a,n) = csigma(b,n)
+
+  csigma_real_triangle: LEMMA
+    abs(csigma(a,n))<=sigma(0,n,LAMBDA (i:nat): abs(a(i)))
+
+  %%% Polynomials %%%
+
+  cpolynomial(a,n)(c): complex =
+    csigma(a*cpow(c),n)
+
+  cpolynomial_rec: LEMMA
+    cpolynomial(a,1+n)(c) = cpolynomial(a,n)(c) + a(1+n)*cpow(c)(1+n)
+
+  cpolynomial_struct_rec: LEMMA
+    cpolynomial(a,1+n)(c) =
+    cpolynomial(LAMBDA (i:nat): a(i+1),n)(c)*c + a(0)
+
+  cpolynomial_add: LEMMA
+    cpolynomial(a+b,n) = cfunplus(cpolynomial(a,n),cpolynomial(b,n))
+
+  cpolynomial_eq_le_degree: LEMMA
+    (FORALL (i:nat): i<=n IMPLIES a(i) = b(i)) IMPLIES
+    cpolynomial(a,n) = cpolynomial(b,n)
+
+  complex_continuous_cpolynomial: LEMMA
+    complex_continuous?(cpolynomial(a,n))
+
+  complex_binomial_theorem: LEMMA
+    cpow(x+y)(n) =
+    csigma(LAMBDA (i:nat): IF i<=n THEN C(n,i)*cpow(x)(i)*cpow(y)(n-i) ELSE real_(0) ENDIF,n)
+
+  complex_poly_shift: LEMMA
+    EXISTS (b): b(0) = cpolynomial(a,n)(c) AND
+    FORALL (x): cpolynomial(a,n)(x) = cpolynomial(b,n)(x-c)
+
+  cpolynomial_limit_infinity: LEMMA n > 0 AND a(n)/=real_(0)
+    IMPLIES
+    EXISTS (M:posnat): FORALL (x): abs(x)>=M IMPLIES
+    abs(cpolynomial(a,n)(x)) > K
+    
+  complex_disk_complete: LEMMA
+    (FORALL (j:nat): abs(a(j))<=K) IMPLIES
+    EXISTS (c): abs(c)<=K AND FORALL (epsil:posreal,N:nat):
+      EXISTS (j:nat): j>N AND abs(c-a(j))<epsil
+
+  cpolynomial_attains_minimum: LEMMA
+    EXISTS (c): FORALL (x):
+      abs(cpolynomial(a,n)(c))<=abs(cpolynomial(a,n)(x))
+
+  fundamental_algebra: LEMMA n>0 AND a(n)/=real_(0)
+    IMPLIES
+    EXISTS (c): cpolynomial(a,n)(c) = real_(0)
+
+  complex_poly_shift_reverse: LEMMA EXISTS (b): FORALL (x):
+    cpolynomial(a,n)(x+c) = cpolynomial(b,n)(x)
+
+  polynomial_zero_factor: LEMMA
+    cpolynomial(a,n)(y) = real_(0) AND n>0 IMPLIES
+    EXISTS (b):
+    (FORALL (x:complex): cpolynomial(a,n)(x) = (x-y)*cpolynomial(b,n-1)(x))
+
+  fundamental_algebra_roots: LEMMA FORALL (r:[posnat->complex]):
+    (FORALL (i,j:posnat): i<=n AND j<=n AND i/=j IMPLIES r(i)/=r(j)) AND
+    (FORALL (i:posnat): i<=n IMPLIES cpolynomial(a,n)(r(i))=real_(0)) AND
+    cpolynomial(a,n)(c)=real_(0) AND n>0 AND (EXISTS (z:complex): cpolynomial(a,n)(z)/=real_(0))
+     IMPLIES EXISTS (i:posnat): i<=n AND c=r(i)
+
+  root_complex_enum_def: LEMMA
+    cpow(root_complex_enum(c)(pn,nn))(pn) = c
+
+  root_complex_enum_complete: LEMMA 
+    cpow(x)(pn) = c IFF ((c=real_(0) AND x=real_(0)) OR
+      EXISTS (nn:posnat):nn<=pn AND x = root_complex_enum(c)(pn,nn))
+
+END fundamental_algebra

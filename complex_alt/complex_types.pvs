@@ -16,25 +16,30 @@ BEGIN
   IMPORTING reals@sq,
             reals@sqrt
 
-  complex: DATATYPE BEGIN complex_(x,y:real): complex_? END complex
+  complex: TYPE = [# Re, Im: real #]
+
+  complex_(re,im:real) : complex = (# Re := re, Im := im #)
 
   z,z1,z2,z3: VAR complex
-  x,y:        VAR real
-
-  Re(z):real = cases z of complex_(x,y): x endcases
-  Im(z):real = cases z of complex_(x,y): y endcases
+  x,y,x1,y1 : VAR real
 
   Re_rew: LEMMA Re(complex_(x,y)) = x
   Im_rew: LEMMA Im(complex_(x,y)) = y
+  eq_rew: LEMMA complex_(x,y) = complex_(x1,y1) <=> x = x1 AND y = y1
 
   AUTO_REWRITE+ Re_rew
   AUTO_REWRITE+ Im_rew
-
-  eq_rew: LEMMA equalities.=(z1,z2) <=> Re(z1) = Re(z2) AND Im(z1) = Im(z2)
-
   AUTO_REWRITE+ eq_rew
 
-  nzcomplex:       TYPE+ = {z | Re(z)/=0 OR Im(z)/=0} CONTAINING complex_(1,0)
+  complex_ext : LEMMA
+    z1 = z2 IFF Re(z1) = Re(z2) AND Im(z1) = Im(z2)
+
+  real_?(z) : bool = (Im(z) = 0)
+
+  real_(x) : MACRO (real_?) = complex_(x,0)
+
+  nonzero?(z) : MACRO bool = z /= real_(0)
+  nzcomplex:       TYPE+ =  (nonzero?) CONTAINING complex_(1,0)
   nonzero_complex: TYPE+ = nzcomplex
 
   complex_i:nzcomplex = complex_(0,1)
@@ -48,6 +53,12 @@ BEGIN
   n0z,n0z1,n0z2: VAR nzcomplex
   n0x: VAR nzreal
 
+  nzcomplex_ext : LEMMA
+    nonzero?(z) IFF (Re(z) /= 0 OR Im(z) /= 0)
+
+  nzcomplex_nz : LEMMA
+    Re(n0z) /= 0 OR Im(n0z) /= 0
+
   conjugate(z):complex = complex_(Re(z),-Im(z))
 
   Re_conjugate: LEMMA Re(conjugate(z)) = Re(z)
@@ -59,33 +70,73 @@ BEGIN
   sq_abs(z):nnreal     = sq(Re(z)) + sq(Im(z))
   nz_sq_abs_pos:  JUDGEMENT sq_abs(n0z) HAS_TYPE posreal
 
-;
-  +(z1,z2):complex = complex_(Re(z1)+Re(z2),Im(z1)+Im(z2));
-  +(x,z)  :complex = complex_(x+Re(z),Im(z));
-  +(z,x)  :complex = complex_(Re(z)+x,Im(z));
+  ;+(z1,z2):complex = complex_(Re(z1)+Re(z2),Im(z1)+Im(z2))
+  ;+(x,z)  : MACRO complex = real_(x)+z 
+  ;+(z,x)  : MACRO complex = z+real_(x)
+  real_plus_complex_def : LEMMA x+z = complex_(x+Re(z),Im(z))
+  complex_plus_real_def : LEMMA z+x = complex_(Re(z)+x,Im(z))
 
-  -(z)    :complex = complex_(-Re(z),-Im(z));
+  ;-(z)    :complex = complex_(-Re(z),-Im(z))
 
-  -(z1,z2):complex = complex_(Re(z1)-Re(z2),Im(z1)-Im(z2));
-  -(x,z)  :complex = complex_(x-Re(z),Im(z));
-  -(z,x)  :complex = complex_(Re(z)-x,Im(z));
+  ;-(z1,z2):complex = complex_(Re(z1)-Re(z2),Im(z1)-Im(z2))
+  ;-(x,z)  : MACRO complex = real_(x)-z 
+  ;-(z,x)  : MACRO complex = z-real_(x)
+  real_minus_complex_def : LEMMA x-z = complex_(x-Re(z),-Im(z))
+  complex_minus_real_def : LEMMA z-x = complex_(Re(z)-x,Im(z))
 
-  *(z1,z2):complex = complex_(Re(z1)*Re(z2) - Im(z1)*Im(z2),
-                              Im(z1)*Re(z2) + Re(z1)*Im(z2));
-  *(x,z)  :complex = complex_(x*Re(z),x*Im(z));
-  *(z,x)  :complex = complex_(Re(z)*x,Im(z)*x);
+  ;*(z1,z2):complex = complex_(Re(z1)*Re(z2) - Im(z1)*Im(z2),
+                              Im(z1)*Re(z2) + Re(z1)*Im(z2))
+  ;*(x,z)  : MACRO complex = real_(x)*z 
+  ;*(z,x)  : MACRO complex = z*real_(x)
+  real_mult_complex_def : LEMMA x*z = complex_(x*Re(z),x*Im(z))
+  complex_mult_real_def : LEMMA z*x = complex_(Re(z)*x,Im(z)*x)
 
-  /(z,n0z):complex = complex_((Re(z)*Re(n0z) + Im(z)*Im(n0z))/sq_abs(n0z),
-                              (Im(z)*Re(n0z) - Re(z)*Im(n0z))/sq_abs(n0z));
-  /(x,n0z):complex = complex_((x*Re(n0z))/sq_abs(n0z),
-                             ((-x)*Im(n0z))/sq_abs(n0z));
-  /(z,n0x):complex = complex_(Re(z)/n0x,Im(z)/n0x);
+  ;/(z,n0z):complex = complex_((Re(z)*Re(n0z) + Im(z)*Im(n0z))/sq_abs(n0z),
+                              (Im(z)*Re(n0z) - Re(z)*Im(n0z))/sq_abs(n0z))
+  ;/(x,n0z)  : MACRO complex = real_(x)/n0z 
+  ;/(z,n0x)  : MACRO complex = z/real_(n0x)
+  real_div_complex_def : LEMMA x/n0z = complex_((x*Re(n0z))/sq_abs(n0z),
+                                                 ((-x)*Im(n0z))/sq_abs(n0z))
+  complex_div_real_def : LEMMA z/n0x = complex_(Re(z)/n0x,Im(z)/n0x)
+
   sq(z):   complex = z*z
 
+  n : VAR nat
+
+  ;^(z,n) : RECURSIVE complex =
+    IF n=0 THEN real_(1)
+    ELSIF n=1 THEN z
+    ELSE z*z^(n-1)
+    ENDIF
+  MEASURE n
+
+  conj_add:         LEMMA conjugate(z1+z2)=conjugate(z1)+conjugate(z2)
+  conj_mult:        LEMMA conjugate(z1*z2)=conjugate(z1)*conjugate(z2)
+  conj_expt:        LEMMA conjugate(z1^n)=conjugate(z1)^n
+  conj_real_mult:   LEMMA conjugate(x*z1)=x*conjugate(z1)
+
+  complex_sub_zero: LEMMA z-z         = real_(0)
   complex_sq_def:   LEMMA sq(z)       = z*z
   complex_neg_neg:  LEMMA -(-z)       = z
   complex_plus_neg: LEMMA z1 + (-z2)  = z1-z2
+  complex_mult_neg: LEMMA z1 * (-z2)    = -(z1*z2)
   complex_div_def:  LEMMA z * (1/n0z) = z/n0z
+  complex_sq_expt2: LEMMA sq(z) = z^2
+  complex_mult_distrib_plus : LEMMA z*(z1+z2) = z*z1 + z*z2
+  complex_mult_distrib_minus : LEMMA z*(z1-z2) = z*z1 - z*z2
+  complex_plus_distrib_mult : LEMMA (z1+z2)*z = z1*z + z2*z
+  complex_minus_distrib_mult : LEMMA (z1-z2)*z = z1*z - z2*z
+  complex_0_mult:   LEMMA 0*z = real_(0)
+  complex_mult_0:   LEMMA z*0 = real_(0)
+  complex_1_mult:   LEMMA 1*z = z
+  complex_mult_1:   LEMMA z*1 = z
+  complex_n1_mult:  LEMMA (-1)*z = -z
+  complex_mult_n1: LEMMA z*(-1) = -z
+  complex_plus_real: LEMMA real_(x)+real_(y) = real_(x+y)
+  complex_minus_real: LEMMA real_(x)-real_(y) = real_(x-y)
+  complex_neg_real: LEMMA -real_(x) = real_(-x)
+  complex_mult_real: LEMMA real_(x)*real_(y) = real_(x*y)
+  complex_div_real: LEMMA real_(x)/real_(n0x) = real_(x/n0x)
 
   Re_add1: LEMMA Re(z1+z2) = Re(z1)+Re(z2)
   Re_add2: LEMMA Re(x+z)   = x+Re(z)
@@ -112,7 +163,7 @@ BEGIN
   Im_neg1: LEMMA Im(-z)    = -Im(z)
 
   Im_sub1: LEMMA Im(z1-z2) = Im(z1)-Im(z2)
-  Im_sub2: LEMMA Im(x-z)   = Im(z)
+  Im_sub2: LEMMA Im(x-z)   = -Im(z)
   Im_sub3: LEMMA Im(z-x)   = Im(z)
 
   Im_mul1: LEMMA Im(z1*z2) = Im(z1)*Re(z2) + Re(z1)*Im(z2)
@@ -149,39 +200,22 @@ BEGIN
   AUTO_REWRITE+ Im_div1
   AUTO_REWRITE+ Im_div2
   AUTO_REWRITE+ Im_div3
-;
-  =(z1,z2): bool = Re(z1) = Re(z2) AND Im(z1) = Im(z2);
-  =(x,z)  : bool = x = Re(z) AND Im(z) = 0;
-  =(z,x)  : bool = Re(z) = x AND Im(z) = 0;
-  /=(z1,z2):bool = NOT (z1 = z2);
-  /=(x,z) : bool = x /= Re(z) OR Im(z) /= 0;
-  /=(z,x) : bool = Re(z) /= x OR Im(z) /= 0;
-
-  c_eq1: LEMMA z1  = z2 <=> Re(z1) = Re(z2) AND Im(z1) = Im(z2)
-  c_eq2: LEMMA x   = z  <=> x = Re(z) AND Im(z) = 0
-  c_eq3: LEMMA z   = x  <=> Re(z) = x AND Im(z) = 0
-  c_ne1: LEMMA z1 /= z2 <=> NOT (z1 = z2)
-  c_ne2: LEMMA x  /= z  <=> x /= Re(z) OR Im(z) /= 0
-  c_ne3: LEMMA z  /= x  <=> Re(z) /= x OR Im(z) /= 0
-
-  AUTO_REWRITE+ c_eq1
-  AUTO_REWRITE+ c_eq2
-  AUTO_REWRITE+ c_eq3
-  AUTO_REWRITE+ c_ne1
-  AUTO_REWRITE+ c_ne2
-  AUTO_REWRITE+ c_ne3
 
   complex_commutative_add:  LEMMA z1+z2      = z2+z1
   complex_associative_add:  LEMMA (z1+z2)+z3 = z1+(z2+z3)
+  complex_associative_sub_add:  LEMMA (z1-z2)+z3 = z1-(z2-z3)
+  complex_associative_sub_sub:  LEMMA (z1-z2)-z3 = z1-(z2+z3)
   complex_commutative_mult: LEMMA z1*z2      = z2*z1
   complex_associative_mult: LEMMA (z1*z2)*z3 = z1*(z2*z3)
+  complex_associative_mult_div: LEMMA z1*(z2/n0z) = (z1*z2)/n0z
 
   complex_div_cancel1: LEMMA n0z * (z/n0z) = z
   complex_div_cancel2: LEMMA (z/n0z) * n0z = z
   complex_div_cancel3: LEMMA z1/n0z = z2 IFF z1 = z2 * n0z
   complex_div_cancel4: LEMMA z2 = z1/n0z IFF z2 * n0z = z1
+  complex_div_zero : LEMMA 0/n0z = real_(0)
 
-  plus_conjugate  : LEMMA z + conjugate(z) = 2*Re(z)
+  plus_conjugate  : LEMMA z + conjugate(z) = real_(2*Re(z))
   minus_conjugate : LEMMA z - conjugate(z) = 2*Im(z)*complex_i
   conjugate_plus  : LEMMA conjugate(z1+z2) = conjugate(z1) + conjugate(z2)
   conjugate_neg   : LEMMA conjugate(-z)    = -conjugate(z)
@@ -189,8 +223,14 @@ BEGIN
   conjugate_times : LEMMA conjugate(z1*z2) = conjugate(z1) * conjugate(z2)
   conjugate_inv   : LEMMA conjugate(1/n0z) = 1/conjugate(n0z)
   conjugate_div   : LEMMA conjugate(z/n0z) = conjugate(z) / conjugate(n0z)
+  conjugate_eq    : LEMMA conjugate(z) = z IFF real_?(z)
 
-  zero_times: LEMMA z1*z2 = 0 <=> z1 = 0 OR z2 = 0
+  zero_times: LEMMA z1*z2 = real_(0) <=> z1 = real_(0) OR z2 = real_(0)
+
+  p : VAR posnat
+
+  complex_pow_zero : LEMMA
+    (real_(0))^p = real_(0)
 
   neg_nzcomplex:  JUDGEMENT -(n0z)       HAS_TYPE nzcomplex
   mul_nzcomplex1: JUDGEMENT *(n0z1,n0z2) HAS_TYPE nzcomplex
@@ -199,6 +239,10 @@ BEGIN
   div_nzcomplex1: JUDGEMENT /(n0z1,n0z2) HAS_TYPE nzcomplex
   div_nzcomplex2: JUDGEMENT /(n0x,n0z)   HAS_TYPE nzcomplex
   div_nzcomplex3: JUDGEMENT /(n0z,n0x)   HAS_TYPE nzcomplex
+  pow_nzcomplex : RECURSIVE JUDGEMENT ^(n0z,n) HAS_TYPE nzcomplex
+
+  complex_pow_eq_zero :LEMMA
+    z^p = real_(0) IFF z = real_(0)
 
   complex_sq_neg:       LEMMA sq(-z)    = sq(z)
   complex_sq_times:     LEMMA sq(z1*z2) = sq(z1) * sq(z2)
@@ -207,8 +251,6 @@ BEGIN
   complex_sq_neg_minus: LEMMA sq(z1-z2) = sq(z2-z1)
   complex_sq_div:       LEMMA sq(z/n0z) = sq(z)/sq(n0z)
 
-  AUTO_REWRITE+ complex_sq_def
   AUTO_REWRITE+ complex_sq_neg
-  AUTO_REWRITE+ complex_sq_times
 
 END complex_types

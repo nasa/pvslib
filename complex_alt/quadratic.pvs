@@ -1,0 +1,136 @@
+% Analytical solution to quadratic polynomials (including complex roots)
+
+quadratic : THEORY
+BEGIN
+
+  IMPORTING reals@quadratic,
+            complex_types,
+	    structures@more_list_props
+
+  % Compute the roots of a quadratic polynomial a*x^2+b*x+c, including complex ones.
+
+  a     : VAR nzreal
+  b,c,d : VAR real
+  eps   : VAR Sign
+
+  c_quadratic(a,b,c)(x:complex) : complex =
+    a*sq(x) + b*x + c 
+
+  c_term_quadratic(a,b,c,d,eps) : complex =
+    IF d >= 0 THEN 
+      real_((-b+eps*sqrt(d))/(2*a))
+    ELSE 
+      complex_(-b,eps*sqrt(-d))/(2*a)
+    ENDIF
+    
+  c_term_quadratic_d_eq_0 : LEMMA
+     c_term_quadratic(a,b,c,0,eps) = real_(-b/(2*a))
+
+  c_term_quadratic_d_ge_0 : LEMMA
+    d >= 0 IMPLIES
+    c_term_quadratic(a,b,c,d,eps) = real_((-b+eps*sqrt(d))/(2*a))
+
+  c_term_quadratic_d_lt_0 : LEMMA
+    d < 0 IMPLIES
+    c_term_quadratic(a,b,c,d,eps) = complex_(-b,eps*sqrt(-d))/(2*a)
+
+  c_term_quadratic_eq : LEMMA
+    d = 0 IFF 
+    c_term_quadratic(a,b,c,d,eps) = c_term_quadratic(a,b,c,d,-eps)
+
+  c_term_quadratic_real : LEMMA
+    d >= 0 IFF
+    FORALL (eps) : real_?(c_term_quadratic(a,b,c,d,eps))
+
+  c_term_quadratic_conj : LEMMA
+    d <= 0 IFF
+    c_term_quadratic(a,b,c,d,eps) = conjugate(c_term_quadratic(a,b,c,d,-eps))
+
+  c_term_quadratic_non_real : LEMMA
+    d < 0 IFF
+     FORALL (eps) : NOT real_?(c_term_quadratic(a,b,c,d,eps))
+
+  quadratic_root(a,b,c,eps) : complex =
+    c_term_quadratic(a,b,c,discr(a,b,c),eps)
+
+  discr_eq_0 : LEMMA
+    discr(a,b,c) = 0 IFF
+    quadratic_root(a,b,c,eps) = quadratic_root(a,b,c,-eps)
+
+  discr_ge_0 : LEMMA
+    discr(a,b,c) >= 0 IFF
+    FORALL (eps) : real_?(quadratic_root(a,b,c,eps))
+
+  discr_le_0 : LEMMA
+    discr(a,b,c) <= 0 IFF
+    quadratic_root(a,b,c,eps) = conjugate(quadratic_root(a,b,c,-eps))
+
+  discr_lt_0 : LEMMA
+    discr(a,b,c) < 0 IFF
+    FORALL (eps) : NOT real_?(quadratic_root(a,b,c,eps))
+
+  c_quadratic_decomposition : LEMMA
+    FORALL (z:complex):
+    c_quadratic(a,b,c)(z) = a*(z-quadratic_root(a,b,c,1))*(z-quadratic_root(a,b,c,-1))
+
+  quadratic_root_correct : THEOREM
+    FORALL (z:complex):
+    c_quadratic(a,b,c)(z) = real_(0) IFF
+    EXISTS (eps) : z = quadratic_root(a,b,c,eps)
+
+  quadratic_root_correct_discr_0 : LEMMA
+    discr(a,b,c) = 0 IMPLIES
+    FORALL (z:complex):
+    c_quadratic(a,b,c)(z) = real_(0) IFF
+    z = real_(-b/(2*a))
+
+  quadratic_roots(a,b,c) : {l:(cons?[complex]) | length(l) <= 2 AND
+                  LET r1 = nth(l,0) IN
+		    r1 = quadratic_root(a,b,c,1) AND
+		    IF length(l) = 1 THEN discr(a,b,c) = 0 
+                    ELSE LET r2 = nth(l,1) IN
+		      r2 = quadratic_root(a,b,c,-1) AND
+                      discr(a,b,c) /= 0
+		    ENDIF} =
+    LET D  = discr(a,b,c),
+        a2 = 2*a IN
+    IF D=0 THEN
+      (: real_(-b/a2) :)
+    ELSIF D > 0 THEN
+      LET sqrtd = sqrt(D) IN 
+      (: real_(-b+sqrtd)/a2, real_(-b-sqrtd)/a2 :)
+    ELSE
+      LET sqrtd = sqrt(-D) IN 
+      (: complex_(-b,sqrtd)/a2, complex_(-b,-sqrtd)/a2 :)
+    ENDIF
+
+  quadratic_roots_correct : THEOREM
+    FORALL (z:complex):
+      c_quadratic(a,b,c)(z) = real_(0) IFF
+      member(z,quadratic_roots(a,b,c))
+
+  quadratic_roots_1 : LEMMA
+    length(quadratic_roots(a,b,c)) = 1 IMPLIES
+      real_?(nth(quadratic_roots(a,b,c),0)) AND
+      nth(quadratic_roots(a,b,c),0) = quadratic_root(a,b,c,eps)
+
+  quadratic_roots_2 : LEMMA
+    length(quadratic_roots(a,b,c)) = 2 IMPLIES
+    (real_?(nth(quadratic_roots(a,b,c),0)) IFF real_?(nth(quadratic_roots(a,b,c),1))) AND
+    nth(quadratic_roots(a,b,c),0) /= nth(quadratic_roots(a,b,c),1) AND
+    (NOT real_?(nth(quadratic_roots(a,b,c),0)) IMPLIES
+    nth(quadratic_roots(a,b,c),0) = conjugate(nth(quadratic_roots(a,b,c),1)))
+ 
+  % Real root of 4x^2 - 20x + 25 is 5/2
+  qtest_r : LEMMA
+   quadratic_roots(4,-20,25) = (: real_(5/2) :)
+
+  % Real quadratic_roots of 2x^2 + x - 6 are {3/2, -2}
+  qtest_rr : LEMMA
+    quadratic_roots(2,1,-6) = (: real_(3/2), real_(-2) :) 
+    
+  % Complex quadratic_roots of x^2 + 4x + 5 are {-2+i,-2-i}
+  qtest_cc : LEMMA
+    quadratic_roots(1,4,5) = (: complex_(-2,1), complex_(-2,-1) :)
+    
+END quadratic
