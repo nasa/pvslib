@@ -124,6 +124,21 @@ Please be mindful that two variants of the term exist.
 In the following, we distinguish the newer usage using capitalization.
 Elsewhere, context should suffice to discern which meaning applies.
 
+A pesky bug in Emacs
+-
+In recent versions of Emacs, a type-checking error in PVS may result in the Emacs error 
+```
+error in process filter: let: ‘recenter’ing a window that does not display current-buffer.
+```
+After this error, it is necessary to reset PVS. To fix this error, the lines 403 and and 575 in `<pvsdir>/emacs/emacs-src/pvs-ilisp.el` should be commented out, i.e., they should read
+```
+		    ;; (recenter -1)
+```
+and 
+```
+	;; (recenter '(nil))
+```
+respectively.
 
 Enjoy it.
 
