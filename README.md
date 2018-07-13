@@ -124,7 +124,7 @@ Please be mindful that two variants of the term exist.
 In the following, we distinguish the newer usage using capitalization.
 Elsewhere, context should suffice to discern which meaning applies.
 
-A pesky bug in Emacs
+A Pesky Bug in Emacs
 -
 In recent versions of Emacs, a type-checking error in PVS may result in the Emacs error 
 ```
