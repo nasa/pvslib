@@ -143,17 +143,16 @@ respectively.
 As of Emacs 26.1 (C-h N : view-emacs-news shows the recent changes),
 the `default-major-mode` variable was removed. This variable occurs in
 2 places in
-`emacs/emacs-src/pvs-ilisp.el.`. Because of this, PVS displays the
+`emacs/emacs-src/pvs-ilisp.el`. Because of this, PVS displays the
 following error
 ```
 error in process filter: Symbol's value as variable is void: default-major-mode
 ```
-To fix this error,  add
 
+To fix this error,  add
 ```
  (defvar default-major-mode nil)
 ```
-
 to your `~/.emacs` or `~/.pvsemacs` file.
 
 Enjoy it.
