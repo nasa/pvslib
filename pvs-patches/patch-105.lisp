@@ -66,8 +66,8 @@
 	(let ((result (evalexpr e safe? timing?)))
 	  (if (stringp result)
 	      (unless quiet? (printf "Error: ~a~%" result))
-	    (when result 
-	      (let ((casexpr (format nil "~a = ~a" e result)))
+	    (when result
+	      (let ((casexpr (format nil "(~a) = ~a" e result)))
 		(with-fresh-labels
 		 ((!evx))
 		 (trust *PVSGroundEvaluator*
@@ -115,7 +115,7 @@ information of the ground evaluation."
 	(if (stringp result)
 	    (unless quiet? (printf "Error: ~a~%" result))
 	  (when result
-	    (printf "~a = ~a~%" e result))))))
+	    (printf "(~a) = ~a~%" e result))))))
   "[PVSio] Prints the evaluation of expression EXPR. If SAFE? is t and EXPR 
 generates TCCs, the expression is not evaluated. This strategy evaluates
 semantic attachments. Therefore, it may not terminate properly. When QUIET? 
