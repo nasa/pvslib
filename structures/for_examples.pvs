@@ -3,11 +3,17 @@ BEGIN
   
   IMPORTING for_iterate,
             ints@factorial
-  
-  %% a = 1;
-  %% for (i=1; i <= n; i++) {
+
+  %% //@ assert n >= 0; 
+  %% int a = 1;
+  %% for (int i=1; i <= n; i++) {
+  %%   /*@ loop invariant
+  %%       a == x^i;
+  %%     @ loop variant n-i;
+  %%   */
   %%   a = a*x;
   %% }
+  %% //@ assert a == x^n
 
   expit(x:real,n:nat): real =
     for[real](1,n,1,LAMBDA(i:subrange(1,n),a:real):a*x)
@@ -15,10 +21,15 @@ BEGIN
   expit_test : LEMMA
     expit(2,10) = 1024
 
+  expit_inv(x:real,n:nat)(i:upto(n),a:real) : MACRO bool =
+    a = x^i
+
+  expit_post(x:real,n:nat)(a:real) : MACRO bool = a = x^n
+
   %% Proved using for_induction. 
-  %% Invariant is LAMBDA(i:upto(n),a:nat): a = x^i
+  %% Invariant is LAMBDA(i:upto(n),a:real): a = x^i
   expit_sound : LEMMA
-    FORALL(x:real,n:nat): expit(x,n) = x^n
+    FORALL(x:real,n:nat): expit_post(x,n)(expit(x,n))
 
   %% a = 1;
   %% for (i=n; i >= 1; i--) {
@@ -106,6 +117,44 @@ BEGIN
   exists_and_subrange : LEMMA
     FORALL(m:int,n:upfrom(m),P:[subrange(m,n)->bool]):
       ((EXISTS (j:subrange(m,n)) : P(j)) =
-        iterate_left[bool](m,n,P,OR))
+    iterate_left[bool](m,n,P,OR))
+
+  IMPORTING Maybe[real]
+
+  sum_array_logic(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n)) : RECURSIVE real =
+    IF i=0 THEN 0
+    ELSE (IF some?(A(i-1)) THEN val(A(i-1)) ELSE 0 ENDIF) +
+          sum_array_logic(n,A)(i-1)
+    ENDIF
+  MEASURE i
+
+  %% //@ assert n >= 0; 
+  %% real a = 0;
+  %% for (int i=1; i <= n; i++) {
+  %%   /*@ loop invariant
+  %%       a == sum_array_logic(n,A)(i);
+  %%     @ loop variant n-i;
+  %%   */
+  %%   a = some?(A(i-1)) ? a+val(A(i-1)) : 0;
+  %% }
+  %% //@ assert a == sum_array_logic(n,A)(n) 
+
+  %% Sum elements of array that are Some
+  sum_array_body(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:subrange(1,n),a:real) : MACRO real =
+    IF some?(A(i-1)) THEN a+val(A(i-1))
+    ELSE a
+    ENDIF
+
+  sum_array(n:nat,A:ARRAY[below(n)->Maybe[real]]) : real =
+    for[real](1,n,0,sum_array_body(n,A))
+
+  sum_array_inv(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n),a:real) : MACRO bool =
+    a = sum_array_logic(n,A)(i)
+
+  sum_array_post(n:nat,A:ARRAY[below(n)->Maybe[real]])(a:real) : MACRO bool =
+    a = sum_array_logic(n,A)(n)
+
+  sum_array_sound : LEMMA
+    FORALL(n:nat,A:ARRAY[below(n)->Maybe[real]]): sum_array_post(n,A)(sum_array(n,A))
 
 END for_examples
