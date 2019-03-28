@@ -1,0 +1,449 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Dependency Pairs notions and formalization of the equivalence between
+%% dependency pairs termination and noetherianity of the innermost 
+%% reduction relation. 
+%%
+%% Author: Ariane Alves Almeida, Thiago Mendonca Ferreira Ramos, 
+%%         Mauricio Ayala-Rincon
+%%         Universidade de Brasilia
+%% Last modified: 16 March 2019
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+dependency_pairs[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]: THEORY
+
+  BEGIN
+
+  ASSUMING
+   
+     IMPORTING variables_term[variable,symbol, arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+ 
+       var_countable: ASSUMPTION is_countably_infinite(V)
+
+  ENDASSUMING
+  IMPORTING  innermost_reduction[variable,symbol,arity]
+  
+		    r,s,t: VAR term
+			E: VAR set[rewrite_rule]
+	        e, e1, e2: VAR rewrite_rule
+	  rho, rho1, rho2: VAR Ren
+    sigma, sigma1, sigma2: VAR Sub
+    	   	   	p: VAR position
+                        R: VAR pred[[term,term]]
+		      i,j: VAR nat
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  %%%%% Dependency pairs as pairs of terms
+  dep_pair?(E)(s,t): bool =
+    app?(t) AND defined?(E)(f(t)) AND 
+    EXISTS(e: rewrite_rule):
+      member(e,E) AND
+      lhs(e) = s AND (EXISTS (p: positions?(rhs(e))): subtermOF(rhs(e),p)=t)
+
+  %%%%% Dependency pairs as pair of rule and position
+  dep_pair_alt?(E)(e,p): bool =
+    member(e,E) AND app?(lhs(e)) AND positionsOF(rhs(e))(p) AND 
+    app?(subtermOF(rhs(e),p)) AND defined?(E)(f(subtermOF(rhs(e),p)))
+
+  %%%%% Types of dependency pairs
+   dep_pair(E):     TYPE = (dep_pair?(E))
+   dep_pair_alt(E): TYPE = (dep_pair_alt?(E))
+
+  %%%%% The rule and position of a dep_pair?
+  rule_and_pos_from_dp(E)(dp: dep_pair(E)): [rewrite_rule,position] = 
+     choose({(e:rewrite_rule, p:position) | 
+       member(e,E) AND
+       lhs(e) = dp`1 AND positionsOF(rhs(e))(p) AND subtermOF(rhs(e),p)=dp`2})  
+    
+%% Definition of chained pairs of DPs. This is used to prove
+%% that DP termination implies Noetherianity.
+  chained_dp?(E)(dp1,dp2: dep_pair(E))(sigma1,sigma2): bool =
+    RTC(non_root_reduction?(E))(ext(sigma1)(dp1`2),
+				ext(sigma2)(dp2`1))
+
+%% Definition of innermost chained pairs of DPs. This definition is
+%% used to prove that innermost DP termination criterion implies 
+%% Noetherianity of the innermost relation. 
+  inn_chained_dp?(E)(dp1,dp2: dep_pair(E))(sigma1,sigma2): bool =
+    is_normal_form?(non_root_reduction?(E))(ext(sigma1)(dp1`1)) AND 
+    is_normal_form?(non_root_reduction?(E))(ext(sigma2)(dp2`1)) AND 
+    RTC(non_root_innermost_reduction?(E))(ext(sigma1)(dp1`2),
+				 ext(sigma2)(dp2`1))
+
+  %%%%% Infinite DP chain
+  infinite_dep_chain?(E)(dps: sequence[dep_pair(E)], sigmas:sequence[Sub]): bool = 
+    FORALL(i,j:nat): NOT = (i,j) IMPLIES
+      chained_dp?(E)(dps(i),dps(i+1))(sigmas(i),sigmas(i+1))
+
+  %%%%% Infinite innermost DP chain
+  inn_infinite_dep_chain?(E)(dps: sequence[dep_pair(E)], sigmas:sequence[Sub]): bool = 
+    FORALL(i,j:nat): NOT = (i,j) IMPLIES 
+      inn_chained_dp?(E)(dps(i),dps(i+1))(sigmas(i),sigmas(i+1))
+
+  %%%%% Termination criterion by Dependency Pairs 
+  dp_termination?(E): bool = 
+  FORALL (seq: sequence[dep_pair(E)], sigmas:sequence[Sub]): 
+    NOT infinite_dep_chain?(E)(seq, sigmas) 
+
+  %%%%% Innermost termination criterion by Dependency pairs
+  inn_dp_termination?(E): bool = 
+  FORALL (seq: sequence[dep_pair(E)], sigmas:sequence[Sub]): 
+    NOT inn_infinite_dep_chain?(E)(seq, sigmas) 
+
+  %%%% Adaptation of termination DP criterion for the alternative 
+  %%%% definition of DPs 
+  dp_termination_alt?(E): bool = 
+  FORALL (dps: sequence[dep_pair_alt(E)], sigmas:sequence[Sub]):
+    LET seq = LAMBDA(i:nat): (lhs(dps(i)`1),subtermOF(rhs(dps(i)`1),dps(i)`2)) IN
+      NOT infinite_dep_chain?(E)(seq,sigmas)
+
+  %%%% Adaptation of innermost termination DP criterion for the alternative 
+  %%%% definition of DPs 
+  inn_dp_termination_alt?(E): bool = 
+  FORALL (dps: sequence[dep_pair_alt(E)], sigmas:sequence[Sub]):
+    LET seq = LAMBDA(i:nat): (lhs(dps(i)`1),subtermOF(rhs(dps(i)`1),dps(i)`2)) IN
+      NOT inn_infinite_dep_chain?(E)(seq,sigmas)
+
+  %%% Equivalence of DP criterion regarding both definitions of DPs 
+  dp_termination_and_alt_eq: LEMMA 
+    FORALL(E): dp_termination_alt?(E) IFF dp_termination?(E)
+  
+  %%% Equivalence of innermost termination DP criterion for both defs. of DPs. 
+  inn_dp_termination_and_inn_alt_eq: LEMMA 
+    FORALL(E): inn_dp_termination_alt?(E) IFF inn_dp_termination?(E)
+  
+  %% This recursive definition builds from sequences of DPs and   
+  %% substitutions, indexed pairs of term and position that will
+  %% be used to build an infinite rewriting derivation from a 
+  %% chained sequence of DPs 
+  term_pos_dps_alt(E)(dps: sequence[dep_pair_alt(E)], 
+		  sigmas:sequence[Sub], 
+		  i:nat): RECURSIVE {(t,p) | positionsOF(t)(p)}=
+   LET delta = ext(sigmas(i)) IN
+   IF i=0 THEN 
+      (delta(rhs(dps(0)`1)),dps(0)`2)
+    ELSE LET (Ca,pa) = term_pos_dps_alt(E)(dps,sigmas,i-1) IN 
+      (replaceTerm(Ca, delta(rhs(dps(i)`1)), pa), 
+       pa o dps(i)`2)
+    ENDIF
+  MEASURE i
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Necessity of DP termination.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+   noetherian_implies_dp_termination: LEMMA 
+    FORALL (E): noetherian?(reduction?(E)) IMPLIES dp_termination?(E)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  First principal lemma stating necessity of the innermost termination
+%%  DP criterion for innermost Noetherianity. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  inn_noetherian_implies_inn_dp_termination: LEMMA 
+    FORALL (E): noetherian?(innermost_reduction?(E)) IMPLIES inn_dp_termination?(E)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%% Minimal terms used to build a sequence infinite
+%%% of DPs from an infinite innermost derivation. 
+  minimal_innermost_non_terminating?(E)(t:term): bool = 
+    NOT terminating?(innermost_reduction?(E))(t) AND
+    FORALL(p: positions?(t) | NOT p = empty_seq):
+      terminating?(innermost_reduction?(E))(subtermOF(t,p))
+      
+%%% Simple property of minimal non innermost terminating terms:
+%%% they have to be applications
+  mint_is_app: LEMMA
+    FORALL(E, t):
+      minimal_innermost_non_terminating?(E)(t) IMPLIES app?(t)
+  
+
+%%% Simple definitional lemma: arguments of a minimal
+%%% non innermost terminating term are innermost 
+%%% terminating.
+  args_innermost_minimal: LEMMA
+    FORALL(t:term | app?(t) AND length(args(t)) > 0 AND 
+    	   NOT terminating?(innermost_reduction?(E))(t)):
+      minimal_innermost_non_terminating?(E)(t) IFF
+         FORALL(i: below[length(args(t))]): 
+	  terminating?(innermost_reduction?(E))(args(t)(i))
+
+%%% Key auxiliary lemma: any non innermost terminating term has a
+%%% minimal non innermost terminating subterm.
+ inn_non_terminating_has_mint: LEMMA
+    FORALL(E: set[rewrite_rule]):
+      FORALL(t: term | NOT terminating?(innermost_reduction?(E))(t)):
+        EXISTS(p: positions?(t)): 
+	  minimal_innermost_non_terminating?(E)(subtermOF(t,p))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% For any infinite non root innermost derivation there exists an infinite
+%%% sequence of associated non root positions of its redexes.  
+positions_of_inf_nr_reduction: LEMMA
+    FORALL(seqt: sequence[term]):
+       (FORALL(i:nat): non_root_innermost_reduction?(E)(seqt(i), seqt(i+1))) IMPLIES
+       (EXISTS(seqp: sequence[position]):
+          FORALL(j:nat):
+	    NOT seqp(j) = empty_seq AND 
+	    positionsOF(seqt(j))(seqp(j)) AND
+	    innermost_reduction_fix?(E)(seqt(j), seqt(j+1), seqp(j)))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+IMPORTING orders@infinite_pigeonhole,
+	  sets_aux@infinite_nat_def,
+	  sets_aux@card_finite
+
+
+%%%%% For any infinite sequence non-empty position, this auxiliary
+%%%%% function extracts its first position, wich is an argument position
+%%%%% and will be used to provide the set of positions where an infinite 
+%%%%% reduction would take place in the lemma that follows.  
+
+  args_of_pos_seq(seqp: sequence[position] | FORALL(i:nat): NOT seqp(i) = empty_seq)(n:nat): posnat =
+     first(seqp(n))
+
+%%%% For any sequence as in the previous definition, and an index l of an argument of s
+%%%% the predicate verifies whether there is an infinite number of redexes in the lth 
+%%%% argument.
+  inf_red_arg_in_inf_nr_im_red(seqp: sequence[position] | FORALL(i:nat): NOT seqp(i) = empty_seq)	
+                                 (l : posnat) : bool = 
+      is_infinite(inverse_image(args_of_pos_seq(seqp), l))
+
+%%% Given a sequence as above, there is an argument l such that infinite redexes are 
+%%% reduces at this argument. 
+  exists_inf_red_arg_in_inf_nr_im_red : LEMMA 
+    FORALL(E)(s: term | app?(s))
+    	     (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n)))
+	     (seqp: sequence[position] | FORALL(n: nat): 
+	       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+					     NOT empty_seq = seqp(n) AND
+					     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n))):
+      EXISTS (l: {l: posnat | l <= length(args(s))}):
+        inf_red_arg_in_inf_nr_im_red(seqp)(l)
+
+
+% For any non-root innermost infinite derivation, starting from a term s, and
+% lth argument that reduces an infinite number of times through the derivation 
+% there exists an index m of the derivation such that the (n+1)th non-root 
+% innermost reduction on the lth argument happens from seq(m) to seq(m+1):
+% arg_rest?(E)(s)(l)(seq(m),seq(m+1)).
+
+  exists_nth_in_inf_nr_im_red : LEMMA
+    FORALL(E)((s: term | app?(s)),
+    	     (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n))),
+	     (seqp: sequence[position] | FORALL(n: nat): 
+	       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+					     NOT empty_seq = seqp(n) AND
+					     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n))),
+             (l: posnat | l <= length(args(s)) AND inf_red_arg_in_inf_nr_im_red(seqp)(l))) : 
+       FORALL (n : nat) :  EXISTS (m : nat) :
+               	args_of_pos_seq(seqp)(m) = l AND
+                card({k: nat | args_of_pos_seq(seqp)(k) = l AND k < m }) = n 
+
+% For any non-root innermost infinite derivation, starting from a term s, and
+% lth argument that reduces an infinite number of times through the derivation 
+% the function provides the nth index where such lth argument reduces in the
+% derivation by choosing the mininum index m such that there is a reduction from
+% seq(m) to seq(m+1) in the lth argument and there are exactly n indexes k smaller 
+% than m such that seq(k) reductes to seq(k+1) in the lth argument.
+   nth_index(E)(s: term | app?(s))
+    	       (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n)))
+	       (seqp: sequence[position] | FORALL(n: nat): 
+	       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+					     NOT empty_seq = seqp(n) AND
+					     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n)))
+             (l: posnat | l <= length(args(s)) AND inf_red_arg_in_inf_nr_im_red(seqp)(l))(n:nat) : nat = 
+     choose({m: nat | args_of_pos_seq(seqp)(m) = l AND
+                      card({k: nat | args_of_pos_seq(seqp)(k) = l AND k < m }) = n}) 
+
+% The function nth_index function above is increasing.
+  nth_index_increasing: LEMMA
+    FORALL(E)(s: term | app?(s))
+    	     (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n)))
+	     (seqp: sequence[position] | FORALL(n: nat): 
+		       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+						     NOT empty_seq = seqp(n) AND
+						     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n)))
+             (l: posnat | l <= length(args(s)) AND inf_red_arg_in_inf_nr_im_red(seqp)(l))
+             (i:nat, j: nat | i < j):
+       nth_index(E)(s)(seqt)(seqp)(l)(i) < nth_index(E)(s)(seqt)(seqp)(l)(j)
+
+% The function nth_index function above is continuous.
+  nth_index_continuous: LEMMA
+    FORALL(E)(s: term | app?(s))
+    	     (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n)))
+	     (seqp: sequence[position] | FORALL(n: nat): 
+	       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+					     NOT empty_seq = seqp(n) AND
+					     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n)))
+             (l: posnat | l <= length(args(s)) AND inf_red_arg_in_inf_nr_im_red(seqp)(l))
+             (i:nat):
+      card({k_1: nat | args_of_pos_seq(seqp)(k_1) = l AND k_1 < nth_index(E)(s)(seqt)(seqp)(l)(i + 1)}) 
+      = 
+      card({k_1: nat | args_of_pos_seq(seqp)(k_1) = l AND k_1 < nth_index(E)(s)(seqt)(seqp)(l)(i)}) + 1
+
+
+% For any non-root innermost infinite derivation, starting from a term s, and
+% lth argument that reduces an infinite number of times through the derivation, 
+% there are no reduction in the lth argument in indexes that are not image 
+% of function nth_index.
+
+ argument_protected_in_non_nth_index : LEMMA 
+    FORALL(E)(s: term | app?(s))
+    	     (seqt: sequence[term] | FORALL(n: nat): RTC(non_root_innermost_reduction?(E))(s, seqt(n)))
+	     (seqp: sequence[position] | FORALL(n: nat): 
+	       	      			     positionsOF(seqt(n))(seqp(n)) AND 
+					     NOT empty_seq = seqp(n) AND
+					     innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n)))
+             (l: posnat | l <= length(args(s)) AND inf_red_arg_in_inf_nr_im_red(seqp)(l))
+             (j:nat):
+	       (j < nth_index(E)(s)(seqt)(seqp)(l)(0) OR 
+	        (EXISTS(n:nat): nth_index(E)(s)(seqt)(seqp)(l)(n) < j AND j < nth_index(E)(s)(seqt)(seqp)(l)(n+1))) 
+	       IMPLIES
+                 NOT arg_rest?(E)(s)(l)(seqt(j), seqt(j + 1))(seqp(j))
+
+  mint_is_nr_inn_terminating: LEMMA
+   minimal_innermost_non_terminating?(E)(s) IMPLIES
+   noetherian?(rest?(non_root_innermost_reduction?(E),s))
+  
+
+% For any derivation, if there exists a mininum index j such that
+% the jth element of the derivation does not reduces to the (j+1)th
+% element through a non-root innermost reduction, then in all indexes k
+% smaller than j there is an element that derivates from the first
+% element through k non-root innermost reductions.
+  reductions_below_min_root_are_non_root: LEMMA
+    FORALL(seq:sequence[term] | EXISTS(i:nat): NOT rest?(non_root_innermost_reduction?(E), seq(0))
+    			      		       	        (seq(i),seq(i+1)), 
+           j:nat | j = min({i:nat | NOT rest?(non_root_innermost_reduction?(E), seq(0))(seq(i),seq(i+1))})): 
+      FORALL(k:posnat | k <= j):
+	  iterate(non_root_innermost_reduction?(E),k)(seq(0), seq(k))
+
+% An infinite deriation starting with a term that is minimal non innermost terminating
+% must have an index where the first reduction in a root position occurs in this derivation.
+  inf_inn_deriv_of_mint_has_min_root_reduction_index: LEMMA
+    FORALL(seq: sequence[term]):
+      (minimal_innermost_non_terminating?(E)(seq(0)) AND
+      FORALL(i:nat): innermost_reduction?(E)(seq(i), seq(i+1))) IMPLIES
+      EXISTS(j:nat): innermost_reduction_fix?(E)(seq(j), seq(j+1), empty_seq) AND
+        FORALL(k:nat): innermost_reduction_fix?(E)(seq(k), seq(k+1), empty_seq) IMPLIES k >= j 
+
+% Every minimal non innermost terminating term derivates a term that
+% has its arguments in normal form.
+  mint_reduces_to_int_nrnf_term: LEMMA
+    FORALL(s: (minimal_innermost_non_terminating?(E))):
+     EXISTS(t: term | NOT terminating?(innermost_reduction?(E))(t)): 
+        RTC(non_root_innermost_reduction?(E))(s,t) AND 
+        is_normal_form?(non_root_reduction?(E))(t)
+	
+
+% If a term t instantiated with a normal substitution is reducible at position p,
+% then p was a application position of the term t previously the instantiation.
+  reducible_position_of_normal_inst_is_app_pos_of_term:  LEMMA
+    FORALL(E)(t, (sigma: (normal_sub?(E))), p: positions?(ext(sigma)(t))):
+      reducible?(reduction?(E))(subtermOF(ext(sigma)(t),p)) IMPLIES 
+      positionsOF(t)(p) AND app?(subtermOF(t,p))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Key result to build the infinite sequence of dependency pairs:
+% Whenever a normal subsitution gives rise to a subterm that is
+% a right hand side of a rule with this instantiation and is a
+% minimal non innermost terminating term, then this pair of
+% rule and position is indeed a dependency pair regarding the
+% specification of an alternative dependency pair.
+
+  normal_inst_of_rule_with_mint_on_rhs_gives_dp_alt: LEMMA 
+   FORALL(E)(e | member(e, E), sigma:(normal_sub?(E)), 
+   	     p: positions?(ext(sigma)(rhs(e)))):
+     minimal_innermost_non_terminating?(E)(subtermOF(ext(sigma)(rhs(e)),p)) IMPLIES
+     dep_pair_alt?(E)(e,p)
+
+%%%%% Transforming a mnit into a nf_subterms mnit
+  mint_to_nit_nrnf(E)(s: term | minimal_innermost_non_terminating?(E)(s)): term = 
+    choose({t: term | RTC(non_root_innermost_reduction?(E))(s,t) AND is_normal_form?(non_root_reduction?(E))(t) AND NOT terminating?(innermost_reduction?(E))(t)})
+
+
+  reduced_nit_nrnf_has_mint: LEMMA
+    FORALL(s: term | minimal_innermost_non_terminating?(E)(s)):
+      EXISTS(sigma: Sub, e: rewrite_rule | member(e,E) , p: positions?(rhs(e))):
+        ext(sigma)(lhs(e)) = mint_to_nit_nrnf(E)(s) AND 
+        minimal_innermost_non_terminating?(E)(subtermOF(ext(sigma)(rhs(e)),p))
+
+
+%%%%% Creating the first DP and sigma
+  dp_and_sub_from_int_nrnf(E)(s: term | minimal_innermost_non_terminating?(E)(s)): [dep_pair_alt(E), Sub] = 
+    LET nf_term = mint_to_nit_nrnf(E)(s),
+    	sub_e_p = choose({(sigma: Sub, 
+    		  	   e: rewrite_rule, 
+  			   p: positions?(rhs(e))) | member(e,E) AND 
+    		  	      	      		    ext(sigma)(lhs(e)) = nf_term AND 
+  		     				    minimal_innermost_non_terminating?(E)(subtermOF(ext(sigma)(rhs(e)),p))}) IN
+    ((sub_e_p`2,sub_e_p`3),sub_e_p`1)
+
+
+next_inst_dp_is_inn_chained_and_mnt: LEMMA
+   FORALL (E: set[rewrite_rule[variable, symbol, arity]], dp: dep_pair_alt(E),
+           sigma: Sub[variable, symbol, arity] | minimal_innermost_non_terminating?(E)(subtermOF(ext(sigma)(rhs(dp`1)),dp`2)) AND
+                  			       	 is_normal_form?(non_root_reduction?(E))(ext(sigma)(lhs(dp`1)))):
+   LET std_dp = (lhs(dp`1), subtermOF(rhs(dp`1),dp`2)),
+       next_dp_sub = dp_and_sub_from_int_nrnf(E)(subtermOF(ext(sigma)(rhs(dp`1)),dp`2)),
+       next_std_dp = (lhs(next_dp_sub`1`1), subtermOF(rhs(next_dp_sub`1`1),next_dp_sub`1`2)),
+       next_sub = next_dp_sub`2 IN
+
+     inn_chained_dp?(E)(std_dp, next_std_dp)(sigma, next_sub)
+     AND
+     minimal_innermost_non_terminating?(E)(ext(next_sub)(next_std_dp`2))
+
+
+%%%%% Creating a DP from an instantiated DP leading to an infinite dp_chain
+  next_dp_and_sub(E)(dp_s: [[dep_pair_alt(E), Sub]] | 
+  			 minimal_innermost_non_terminating?(E)(subtermOF(ext(dp_s`2)(rhs(dp_s`1`1)), dp_s`1`2)) AND 
+  		       	 is_normal_form?(non_root_reduction?(E))(ext(dp_s`2)(lhs(dp_s`1`1)))):
+			{(dp_: dep_pair_alt(E), sigma_: Sub) | inn_chained_dp?(E)((lhs(dp_s`1`1),
+										    subtermOF(rhs(dp_s`1`1),dp_s`1`2)),
+										    (lhs(dp_`1),subtermOF(rhs(dp_`1),dp_`2)))
+										  (dp_s`2, sigma_) AND
+							       minimal_innermost_non_terminating?(E)(subtermOF(ext(sigma_)
+												    (rhs(dp_`1)), dp_`2))} = 
+    dp_and_sub_from_int_nrnf(E)(subtermOF(ext(dp_s`2)(rhs(dp_s`1`1)), dp_s`1`2))
+
+
+IMPORTING seq_recursion_theorem     % Recursion Theorem for (infinite) sequences
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Second principal Lemma stating that
+%%% innermost Dependency Pairs termination implies innermost Noetherianity
+ inn_dp_termination_implies_noetherian: LEMMA 
+  FORALL(E): inn_dp_termination?(E) IMPLIES noetherian?(innermost_reduction?(E))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Main correctness theorem of the (innermost) Dependency Pairs criterion. 
+%%% It states the equivalence between the innermost DP termination criterion 
+%%% and Noetherianity of the innermost reduction relation.
+%%% It is proved as corollary of the two principal lemmas:
+%%%            inn_noetherian_implies_inn_dp_termination and 
+%%%            dp_termination_implies_noetherian
+ inn_dp_termination_iff_innermost_noetherian : THEOREM
+  FORALL(E): inn_dp_termination?(E) IFF noetherian?(innermost_reduction?(E))
+
+
+IMPORTING noetherian
+
+ inn_chain(E)(dps1,dps2: [dep_pair(E), Sub]): bool =
+   inn_chained_dp?(E)(dps1`1,dps2`1)(dps1`2,dps2`2)
+
+  inn_dp_termination_noetherian: LEMMA
+    FORALL(E): inn_dp_termination?(E) IFF noetherian?(inn_chain(E))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  
+  END dependency_pairs

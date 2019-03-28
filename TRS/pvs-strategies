@@ -1,0 +1,61 @@
+
+(defun match-top-pred-formula (formula pred)
+  (if (negation? formula)
+      (match-top-pred-formula (args1 formula) pred)
+      (let ((op* (operator* formula)))
+	(when (name-expr? op*)
+	  (same-id op* pred)))))
+
+(defun match-top-pred (pred)
+  #'(lambda (fmla)(match-top-pred-formula fmla pred)))
+
+(defun find-pred-sformnums (sforms where pred)
+  (let ((pred (pc-parse pred 'name)))
+    (find-all-sformnums sforms where
+			(match-top-pred pred))))
+
+(defstep hide-top-preds (pred &optional (where *))
+  (let ((fnums (find-pred-sformnums (s-forms (current-goal *ps*))
+				  where pred)))
+    (hide :fnums fnums))
+  "Hides sequent formulas in WHERE whose top predicate is PRED"
+  "Hiding formulas of the form ~a(...) in ~a")
+				  
+
+(defstep reduce-invariant ()
+  (then (skosimp)
+	(expand "Inv" +)
+	(branch (induct "n")
+		((then (expand "Run")(flatten)
+		       (hide-top-preds "Inv"))
+		 (then (expand "Run")
+		      (flatten)
+		      (hide-top-preds "Init")
+		      (SIMPLIFY-WITH-REWRITES - :DEFS T)
+		      (skosimp*)
+		      (inst?)
+		      (prop)))))
+  "Simplifies an invariant obligation into those for the initialization
+and the individual transitions."
+  "Apply the invariance rule")
+
+
+(defstep singleton (existence-lemma)
+ (let ((sforms (select-seq (s-forms (current-goal *ps*)) '+))
+       (fmla (loop for sf in sforms thereis (and (forall-expr? (formula sf))(formula sf))))
+       (bindings (when fmla (bindings fmla)))
+       (skonames (new-sko-symbol-list (mapcar #'id bindings) *current-context* nil nil)))
+  (then (if bindings (skolem + skonames) (skip))
+        (lemma existence-lemma)
+	(inst - :terms skonames)
+        (let ((sk (gentemp "sk")))(then (skolem - sk)	(expand "singleton?")(inst + sk)))
+	(skeep :preds? t)
+	(use "extensionality")
+	(lazy-grind)))
+	"Applying singleton strategy"
+	"(singleton existence-lemma) is used to discharge TCCS for the the(choice) operator")
+
+(defstep skeepall ()
+  (then (skeep*)(all-typepreds)(ground))
+  "Applying skeep*, all-typepreds, and ground"
+  "(skeepall) applies skeep*, all-typepreds, and ground")
