@@ -1,0 +1,204 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% Notions and properties related with innermost reduction, non-root
+%% reductions (reductions in internal positions), etc. Used for proving
+%% soundness of Dependency Pairs innermost based termination
+%% Author: Ariane Alves Almeida, Mauricio Ayala-Rincon
+%%         Universidade de Brasilia
+%% Last modified: 2nd Jan 2019
+%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+innermost_reduction[variable: TYPE+, symbol: TYPE+, arity: [symbol -> nat]]
+		: THEORY
+
+  BEGIN
+
+   ASSUMING
+   
+     IMPORTING variables_term[variable,symbol, arity],
+               sets_aux@countability[term],
+               sets_aux@countable_props[term]
+ 
+       var_countable: ASSUMPTION is_countably_infinite(V)
+
+   ENDASSUMING
+IMPORTING reduction[variable, symbol, arity]
+
+   s, t, t1, t2, u, v: VAR term
+      sigma, sg1, sg2: VAR Sub
+                    x: VAR (V)
+                    R: VAR pred[[term, term]] 
+              	    E: VAR set[rewrite_rule]
+              	    e: VAR rewrite_rule
+	      	    k: VAR posnat
+  
+% Terms such that all their proper subterms are normal forms. 
+
+  nr_normal_form_subterms: LEMMA
+    is_normal_form?(non_root_reduction?(E))(t) IFF
+    FORALL(q: positions?(t)):
+      NOT (q = empty_seq) IMPLIES 
+      is_normal_form?(reduction?(E))(subtermOF(t,q))
+
+% Innermost reduction at some specific position.
+  innermost_reduction_fix?(E)(s,t,(p: positions?(s))): bool =
+    is_normal_form?(non_root_reduction?(E))(subtermOF(s,p)) AND  
+       reduction_fix?(E)(s,t,p)
+
+% Innermost reduction relation.
+  innermost_reduction?(E)(s,t): bool =  
+    EXISTS (p: positions?(s)):
+      innermost_reduction_fix?(E)(s,t,p)
+
+% Innermost reduction is subset of the reduction relation
+  innermost_subset_reduction: LEMMA
+    subset?(innermost_reduction?(E), reduction?(E))
+
+% Any noetherian term regarding reduction is noetherian
+% regargind innermost reduction
+  terminating_is_inn_terminating: LEMMA
+    terminating?(reduction?(E))(t) IMPLIES terminating?(innermost_reduction?(E))(t)
+
+% Compatibility of innermost reduction with contexts.
+  inn_reduction_is_comp_op: LEMMA
+    comp_op?(innermost_reduction?(E))
+
+%%% All subterms of an innermost terminating term have to
+%%% be innermost terminating. 
+  innermost_terminating_all_subterms: LEMMA
+    FORALL(E: set[rewrite_rule]):
+      FORALL(t:term): 
+        terminating?(innermost_reduction?(E))(t) IFF
+  	  FORALL(p: positions?(t)):
+      	    terminating?(innermost_reduction?(E))(subtermOF(t,p))
+
+% If a term instantiated with a substitution sigma has
+% its arguments in normal form, then this substitution is normal
+  normal_subst  : LEMMA 
+    FORALL(s : term | app?(s), sigma:Sub) :
+      is_normal_form?(non_root_reduction?(E))(ext(sigma)(s)) IMPLIES normal_sub?(E)(restriction(sigma)(Vars(s)))
+
+
+% Innermost normal forms have subterms that are also innermost nf's.
+  inn_nf_subterms: LEMMA 
+    NOT reducible?(innermost_reduction?(E))(t) IFF 
+      FORALL(p:positions?(t)): NOT reducible?(innermost_reduction?(E))(subtermOF(t,p))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Nf's are innermost nf's and vice versa.
+
+  innf_iff_nf: LEMMA
+    is_normal_form?(reduction?(E))(t) IFF
+      is_normal_form?(innermost_reduction?(E))(t)
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Non nf's are innermost reducible (at some position).
+  non_nf_has_reducible_subterm: LEMMA
+    FORALL(E)(t:term | NOT is_normal_form?(reduction?(E))(t)): 
+        EXISTS(p: positions?(t)): 
+	  reducible?(innermost_reduction?(E))(subtermOF(t,p))
+
+% Innermost reduction relation excluding reductions at root position.
+  non_root_innermost_reduction?(E)(s,t): bool =  
+     EXISTS (p: positions?(s) | NOT (p = empty_seq)): 
+       is_normal_form?(non_root_reduction?(E))(subtermOF(s,p)) AND
+       reduction_fix?(E)(s,t,p)
+
+% Innermost at non-root positions reduction relation subset of
+% innermost reduction relation.  
+  non_root_inn_subset_inn_reduction: LEMMA
+    subset?(non_root_innermost_reduction?(E), innermost_reduction?(E))
+
+
+% Every non-root innermost deduction preserves the root application
+% symbol of the term
+  non_root_ir_preserves_root_symbol: COROLLARY 
+     FORALL(s: term | app?(s), t: term) :   
+         RTC(non_root_innermost_reduction?(E))(s,t)    IMPLIES          
+                (app?(t) AND f(s) = f(t))
+
+% Every non-root innermost derivation preserves the argument positions
+% in the reducted term
+   non_root_ir_preserves_pos_args: LEMMA 
+       FORALL(s: term | app?(s),  k: posnat | positionsOF(s)( #(k)), t: term) :   
+         RTC(non_root_innermost_reduction?(E))(s,t) IMPLIES 
+             positionsOF(t)( #(k))
+
+
+%%%%%%%% In a derivation in which some argument is not touched, all terms
+%%%%%%%% have this argument preserved
+  arg_preservation_in_finite_reduction: LEMMA
+   FORALL(E)(seqt: finseq[term] | NOT seqt = empty_seq AND app?(seqt(0)))
+	    (seqp: finseq[position] | length(seqt) = length(seqp))
+	    (l: posnat | l <= length(args(seqt(0)))):
+     (FORALL(n: below[length(seqp) - 1]):
+       (positionsOF(seqt(n))(seqp(n)) AND 
+       NOT empty_seq = seqp(n) AND 
+       NOT first(seqp(n)) = l AND
+       innermost_reduction_fix?(E)(seqt(n), seqt(n+1), seqp(n)))) IMPLIES
+       FORALL(n: below[length(seqp)]):
+       subtermOF(seqt(0), #(l)) = subtermOF(seqt(n), #(l))
+
+
+                 
+
+
+% Non-root innermost derivations of a term implies innermost derivation
+% of every argument of this term
+  non_root_rtc_reduction_of_argument: LEMMA
+    FORALL(s: term | app?(s)):
+    RTC(non_root_innermost_reduction?(E))(s,t) IMPLIES
+      FORALL(k:posnat | k <= length(args(s))):
+        RTC(innermost_reduction?(E))(subtermOF(s, #(k)), subtermOF(t, #(k)))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Notions and results of restricted reduction specialized to (non-root)
+% innermost reduction given a specific argument.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Predicate to define the non-root innermost reduction relation 
+% over pairs of terms, which are non-root innermost descendants 
+% of a given term s, and which innermost contract in redexes 
+% of a given kth argument of s.
+  arg_rest?(E)(s)(k)(u,v): bool = 
+    rest?(non_root_innermost_reduction?(E),s)(u,v) AND
+    EXISTS(p:positions?(u) | NOT (p = empty_seq)):
+      first(p) = k AND 
+      innermost_reduction_fix?(E)(u,v,p)
+
+% Variation of the previous predicate with a fixed position where
+% the reduction occurs. This currification allows to define the
+% set of positions where the argument k of a given term u is reduced. 
+ arg_rest?(E)(s)(k)(u,v)(p: positions?(u) | NOT (p = empty_seq)): bool = 
+   rest?(non_root_innermost_reduction?(E),s)(u,v) AND
+   first(p) = k AND 
+   innermost_reduction_fix?(E)(u,v,p)
+
+% ARI Check if it is used: not used (remove?)
+% The terms derivated form a given term s by non-root innermost reduction
+% are the union of terms derivated by innermost reduction in all possible
+% arguments of s.
+  nr_rest_is_union_of_arg_rests: LEMMA
+    FORALL(s: term | app?(s)):
+      LET k_rest = {a: [term, term] | app?(a`1) AND 
+      	  	       	      	      EXISTS(k: posnat): 
+				        arg_rest?(E)(s)(k)(a`1,a`2)} IN
+      rest?(non_root_innermost_reduction?(E),s) = k_rest
+
+% ARI not used (remove?)
+% Given parallel positions p and q of a term s where consecutive innermost
+% reductions occur, the order of these reduction can be interchanged leading to the same result
+  innermost_reduction_permutates: LEMMA
+    FORALL(s,t1,t: term, p,q: positions?(s)):
+      parallel(p,q) AND 
+      innermost_reduction_fix?(E)(s,t1,p) AND  
+      innermost_reduction_fix?(E)(t1,t,q) 
+      IMPLIES
+      EXISTS(t2:term):
+       innermost_reduction_fix?(E)(s,t2,q) AND innermost_reduction_fix?(E)(t2,t,p)
+   
+  END innermost_reduction
