@@ -82,23 +82,23 @@
     (abs (|real_defs| . abs))
     (\#\# (|interval| . \#\#))))
 
-(defun init-metit (arch)
+(defun init-metit (prebins arch)
   (let* ((metit-lib)
 	 (which-metit (extra-system-call "which metit"))
 	 (which-z3    (extra-system-call "which z3"))
 	 (metit-arch  (or arch *metit-arch*))
-	 (z3-bin      (or (and (not arch) (zerop (car which-z3)) (cdr which-z3))
-			  (and (not arch) (environment-variable "Z3_NONLIN"))
-			  (and *pvs-metit* metit-arch 
-			       (format nil "~a/dist/bin/~a/z3" *pvs-metit* metit-arch))))
-	 (metit-bin   (or (and (not arch) (zerop (car which-metit)) (cdr which-metit))
-			  (and *pvs-metit* metit-arch 
+	 (z3-bin      (or (and prebins *pvs-metit* metit-arch 
+			       (format nil "~a/dist/bin/~a/z3" *pvs-metit* metit-arch))
+			  (and (zerop (car which-z3)) (cdr which-z3))
+			  (environment-variable "Z3_NONLIN")))
+	 (metit-bin   (or (and prebins *pvs-metit* metit-arch 
 			       (setq metit-lib (format 
-					 nil "~:[~;DY~]LD_LIBRARY_PATH=~a/dist/lib/~a" 
-					 (string= metit-arch "Darwin" :end1 
-						  (min (length metit-arch) 6)) 
-					 *pvs-metit* metit-arch))
-			       (format nil "~a/dist/bin/~a/metit" *pvs-metit* metit-arch))))
+						nil "~:[~;DY~]LD_LIBRARY_PATH=~a/dist/lib/~a" 
+						(string= metit-arch "Darwin" :end1 
+							 (min (length metit-arch) 6)) 
+						*pvs-metit* metit-arch))
+			       (format nil "~a/dist/bin/~a/metit" *pvs-metit* metit-arch))
+			  (and (zerop (car which-metit)) (cdr which-metit))))
 	 (metit-tptp (or (and (not arch) (environment-variable "TPTP"))
 			 (format nil "~a/dist/tptp" *pvs-metit*))))
     (cond ((or (null metit-bin) (not (probe-file metit-bin)))
@@ -325,8 +325,8 @@
     (when *metit-arch*
       (format t "Host architecture: ~a~%" *metit-arch*))))
 
-(defun metit (s-forms timeout options arch about)
-  (cond ((not (init-metit arch)) nil)
+(defun metit (s-forms timeout options prebins arch about)
+  (cond ((not (init-metit prebins arch)) nil)
 	(about
 	 (metit-about)
 	 nil)
@@ -373,7 +373,7 @@
 				       "~%Error running MetiTarski. The error message is:~% ~a~%"
 				       (cdr result)))))))))))
 
-(defrule metit (&optional (fnums 1) (timeout 60) options arch about?)
+(defrule metit (&optional (fnums 1) (timeout 60) options (pre-bins? t) arch about?)
   (if (check-name "DisableMetiTarski__")
       (printf
        "MetiTarski has been disabled because MetiTarski@Disable appears in the chain of imported theories.")
@@ -381,18 +381,20 @@
 	(printf "MetiTarski has been disabled.")
       (let ((s-forms (extra-get-seqfs fnums)))
 	(if s-forms
-	    (let ((result (metit s-forms timeout options arch about?)))
+	    (let ((result (metit s-forms timeout options pre-bins? arch about?)))
 	      (when result
 		(trust MetiTarski (case "TRUE") !)))
 	  (printf "Formula(s) ~a not found" fnums)))))
-  "Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a processor time limit 
-(in seconds). Additional options to MetiTarski can be provided through OPTIONS. 
-Executables of MetiTarski and z3 are pre-intstalled in the NASA PVS Library.* 
-By default, the strategy tries to use the versions of MetiTarski and z3 installed 
-in the system. If the executables are not in the path, the pre-installed versions
-are tried. The option ARCH forces the strategy to use the pre-installed version for 
-a given architecture. If ABOUT? is set to t, the strategy prints information about
-MetiTarski and z3 and then exits.
+  "Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a
+processor time limit (in seconds). Additional options to MetiTarski
+can be provided through OPTIONS.  Executables of MetiTarski and z3 are
+pre-intstalled in the NASA PVS Library.* These binaries are always
+tried when PRE-BINS? is set to t (default value).  If PRE-BINS? is set
+to nil, the strategy tries to use the versions of MetiTarski and z3
+installed in the system. The option ARCH forces the strategy to use
+the pre-installed version for a given architecture. If ABOUT? is set
+to t, the strategy prints information about MetiTarski, z3, and their
+pre-installed versions.
 
 MetiTarski requires an external algebraic decision method (EADM). The default EADM
 is z3. However, other EADM are also supported, e.g., QEP and Mathematica. See 
