@@ -97,7 +97,6 @@ BEGIN
 	    Aset = {z:real| polynomial(a,n)(z)=0}
         IN rootnum>=0 AND EXISTS (bij: [below(rootnum)->(Aset)]): bijective?(bij)
 
-
   roots_closed_int_def: LEMMA FORALL (sl:(Eq_computed_remainder?(a,n))): a(n)/=0 AND x<y IMPLIES
 	LET rootnum = roots_closed_int(a,n,x,y,lower_bound,upper_bound,sl),
 	    Aset = {z:real|(lower_bound IMPLIES x<=z) 
@@ -156,88 +155,82 @@ BEGIN
     (always_nonnegative(a,n,I) IFF
     (FORALL (x:real): contains?(I)(x) IMPLIES polynomial(a,n)(x)>=0))
 
-  R:VAR [[real,real]->bool]
-  
-  SturmRel?(R): bool = (R = (<)) OR (R = (<=)) OR (R = (>)) OR (R = (>=))
-  	       	       OR (R = (/=[real]))
+  SturmRel : TYPE = { le_, lt_, ge_, gt_, ne_ }
 
-  realord,ro: VAR (SturmRel?)
+  re,ro: VAR SturmRel
 
-  strict?(realord): bool = (realord = (<)) OR (realord = (>)) OR (realord = (/=[real]))
+  rel_disjunction : LEMMA
+    re = lt_ OR re = le_ OR re = gt_ OR re = ge_ OR re = ne_ 
 
-  swap(realord): (SturmRel?) =
-	  IF realord = (<) THEN >
-	  ELSIF realord = (<=) THEN >=
-	  ELSIF realord = (>) THEN <
-	  ELSIF realord = (>=) THEN <=
-	  ELSE (/=[real])
+  swap(re): SturmRel =
+	  IF re = lt_ THEN gt_
+	  ELSIF re = le_ THEN ge_
+	  ELSIF re = gt_ THEN lt_
+	  ELSIF re = ge_ THEN le_
+	  ELSE ne_
 	  ENDIF
 
-  swap_lt : LEMMA
-    swap(<) = (>)
-
-  swap_gt : LEMMA
-    swap(>) = (<)
-
-  swap_le : LEMMA
-    swap(<=) = (>=)
-
-  swap_ge : LEMMA
-    swap(>=) = (<=)
-
-  swap_ne : LEMMA
-    swap(/=[real]) = (/=[real])
+  realord(re)(x:real,y:real) : bool =
+    IF re = lt_ THEN x < y
+    ELSIF re = le_ THEN x <= y
+    ELSIF re = gt_ THEN x > y
+    ELSIF re = ge_ THEN x >= y
+    ELSE x /= y
+    ENDIF
 
   real_order_scal_pos: LEMMA
-    FORALL (p:posreal,x,y:real): realord(p*x,p*y)=realord(x,y)
+    FORALL (p:posreal,x,y:real): realord(re)(p*x,p*y)=realord(re)(x,y)
 
-  compute_poly_sat(a,(n|a(n)/=0),(I|I`lb<I`ub),realord): bool =
-    IF realord = (>=) THEN always_nonnegative(a,n,I)
-    ELSIF realord = (<=) THEN always_nonnegative(-a,n,I)
+  real_order_scal_pos_0 : LEMMA
+    FORALL (p:posreal,x:real) : realord(re)(p*x,0) = realord(re)(x,0)
+
+  compute_poly_sat(a,(n|a(n)/=0),(I|I`lb<I`ub),re): bool =
+    IF re = ge_ THEN always_nonnegative(a,n,I)
+    ELSIF re = le_ THEN always_nonnegative(-a,n,I)
     ELSE
       LET newa = (LAMBDA (i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF),
           sl = sturm_chain(newa,n)
-      IN number_roots_interval(a,n,I,sl)=0 AND realord(polynomial(a,n)((I`lb+I`ub)/2),0)
+      IN number_roots_interval(a,n,I,sl)=0 AND realord(re)(polynomial(a,n)((I`lb+I`ub)/2),0)
     ENDIF
 
   compute_poly_sat_def: LEMMA a(n)/=0 AND I`lb<I`ub IMPLIES
-    (compute_poly_sat(a,n,I,realord) IFF
-     (FORALL (x:real): contains?(I)(x) IMPLIES realord(polynomial(a,n)(x),0)))
+    (compute_poly_sat(a,n,I,re) IFF
+     (FORALL (x:real): contains?(I)(x) IMPLIES realord(re)(polynomial(a,n)(x),0)))
 
   aq: VAR [nat->rat]
 
-  compute_poly_sat_rational(aq,(n|aq(n)/=0),(I|I`lb<I`ub),realord): bool =
-    compute_poly_sat(rat_poly_to_int(aq,n),n,I,realord)
+  compute_poly_sat_rational(aq,(n|aq(n)/=0),(I|I`lb<I`ub),re): bool =
+    compute_poly_sat(rat_poly_to_int(aq,n),n,I,re)
 
   compute_poly_sat_rational_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
-    (compute_poly_sat_rational(aq,n,I,realord) IFF
-    (FORALL (x:real): contains?(I)(x) IMPLIES realord(polynomial(aq,n)(x),0)))
+    (compute_poly_sat_rational(aq,n,I,re) IFF
+    (FORALL (x:real): contains?(I)(x) IMPLIES realord(re)(polynomial(aq,n)(x),0)))
 
   % Next function assumes x<y
 
-  compute_poly_mono_basic(aq,(n|aq(n)/=0),(I|I`lb<I`ub),realord): bool =
-    IF n = 1 THEN realord(sign(aq(1))*I`lb,sign(aq(1))*I`ub)
-    ELSIF (realord = (/=[real])) THEN
-      compute_poly_sat_rational(poly_deriv(aq),n-1,I,>=) OR
-      compute_poly_sat_rational(poly_deriv(aq),n-1,I,<=)
-    ELSIF realord(I`lb,I`ub) THEN
-      compute_poly_sat_rational(poly_deriv(aq),n-1,I,>=)
+  compute_poly_mono_basic(aq,(n|aq(n)/=0),(I|I`lb<I`ub),re): bool =
+    IF n = 1 THEN realord(re)(sign(aq(1))*I`lb,sign(aq(1))*I`ub)
+    ELSIF re = ne_ THEN
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,ge_) OR
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,le_)
+    ELSIF realord(re)(I`lb,I`ub) THEN
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,ge_)
     ELSE
-      compute_poly_sat_rational(poly_deriv(aq),n-1,I,<=)
+      compute_poly_sat_rational(poly_deriv(aq),n-1,I,le_)
     ENDIF
 
   compute_poly_mono_basic_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
     ((FORALL (x,y:real): x<y AND contains?(I)(x) AND contains?(I)(y) IMPLIES
-      realord(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
-    compute_poly_mono_basic(aq,n,I,realord))
+      realord(re)(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
+    compute_poly_mono_basic(aq,n,I,re))
 
-  mono(aq,(n|aq(n)/=0),(I|I`lb<I`ub),ro,realord): bool =
-    IF ro(1,1) AND NOT realord(1,1) THEN FALSE
-    ELSIF (ro=(<)) OR (ro=(<=)) THEN compute_poly_mono_basic(aq,n,I,realord)
-    ELSIF (ro=(>)) OR (ro=(>=)) THEN compute_poly_mono_basic(aq,n,I,swap(realord))
-    ELSIF NOT (realord=(/=[real])) THEN FALSE
-    ELSE compute_poly_mono_basic(aq,n,I,realord)
-         OR compute_poly_mono_basic(aq,n,I,swap(realord))
+  mono(aq,(n|aq(n)/=0),(I|I`lb<I`ub),ro,re): bool =
+    IF realord(ro)(1,1) AND NOT realord(re)(1,1) THEN FALSE
+    ELSIF ro=lt_ OR ro=le_ THEN compute_poly_mono_basic(aq,n,I,re)
+    ELSIF ro=gt_ OR ro=ge_ THEN compute_poly_mono_basic(aq,n,I,swap(re))
+    ELSIF NOT re=ne_ THEN FALSE
+    ELSE compute_poly_mono_basic(aq,n,I,re)
+         OR compute_poly_mono_basic(aq,n,I,swap(re))
     ENDIF 
 
   poly_non_constant_real_int: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
@@ -245,8 +238,8 @@ BEGIN
       polynomial(aq,n)(x)/=polynomial(aq,n)(y)
 
   mono_def: LEMMA aq(n)/=0 AND I`lb<I`ub IMPLIES
-    ((FORALL (x,y:real): ro(x,y) AND contains?(I)(x) AND contains?(I)(y) IMPLIES
-      realord(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
-    mono(aq,n,I,ro,realord))
+    ((FORALL (x,y:real): realord(ro)(x,y) AND contains?(I)(x) AND contains?(I)(y) IMPLIES
+      realord(re)(polynomial(aq,n)(x),polynomial(aq,n)(y))) IFF
+    mono(aq,n,I,ro,re))
 
 END compute_sturm

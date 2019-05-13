@@ -1,8 +1,8 @@
 (defparameter *sturm-var* nil) ;; Variable
 
 (defparameter *sturm-rews* '("polylist_const" "polylist_monom" "polylist_sum" "polylist_neg" 
-			     "polylist_minus" "polylist_prod" "polylist_div" "polylist_pow" "polylist_sq" 
-			     "expt_x1" "expt_x0"))
+			     "polylist_minus" "polylist_prod" "polylist_div" "polylist_pow"
+			     "polylist_sq" "expt_x1" "expt_x0"))
 
 (defparameter *sturm-invalid-forms* nil) 
 
@@ -99,8 +99,11 @@
 	     (not-relation rel))))))
 
 (defun sturm-rel-str (rel)
-  (if (member rel '(< <= > >=))
-      (format nil "reals.~a" rel) (format nil "~a[real]" rel)))
+  (cond ((equal rel '<) "lt_")
+	((equal rel '<=) "le_")
+	((equal rel '>) "gt_")
+	((equal rel '>=) "ge_")
+	(t "ne_")))
 
 (defun sturm-get-expr-fms (expr quant)
   (when expr
@@ -209,68 +212,67 @@ strategy skips instead of failing when sequent cannot be discharged."
 		 (lemma "sturm_def")
 		 (with-fresh-labels
 		  ((!stlm -1))
-		  (spread (inst !stlm xval stu_ relstr)
-			  ((then (replaces !stu-deg)
-				 (assert !stlm)
-				 (expand stu_ !stlm 2)
-				 (replaces !stu-lst :in !stlm)
-				 (let ((fnlem (extra-get-fnum !stlm)))
-				   (if fnlem
-				       (then
-					(eval-expr (! !stlm 1))
-					(let ((b        (args2 (extra-get-formula -1)))
-					      (is-true  (extra-is-true b)))
-					  (if (iff sat is-true) 
-					      (printf "Formula ~a doesn't hold for ~a in ~a."
-						      fnum var ri)
-					    (then 
-					     (replaces -1)
-					     (flatten !stlm)
-					     (let ((fa  (cond (sat !stlm)
-							      ((> (* fnum quant) 0) !stu)))
-						   (ex  (if sat !stu !stlm))
-						   (nn (when fa (freshnames "x" (length qvars))))
-						   (vs (if fa 
-							   (let ((pns (pair-lists qvars nn)))
-							     (cdr (assoc var pns :test #'string=)))
-							 var))
-						   (rws *sturm-rews*)
-						   (eqs (extra-get-evalexprs)))
-					       (if sat
-						   (then
-						    (skolem fa nn)
-						    (expand "contains?")
-						    (flatten)
-						    (with-fresh-labels
-						     (!steqs)
-						     (extra-evalexprs$ eqs !steqs)
-						     (reveal !steqs) 
-						     (spread (inst ex vs)
-							     ((rewrite* rws !stlm)))
-						     (replaces !steqs)
-						     (expand* "[||]" "##" "contains?")
-						     (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
-						     (flatten)
-						     (assert)))
-						 (then
-						  (when fa (skolem fa nn :skolem-typepreds? preds?))
-						  (inst ex vs)
-						  (extra-evalexprs$ eqs)
-						  (expand* "[||]" "##" "contains?")
-						  (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
-						  (flatten)
-						  (rewrite* rws !stlm)
-						  (assert))))))))
-				     (if sat
-					 (printf "Domain of variable ~a is the empty interval ~a. Formula ~a doesn't hold."
-						 var ri fnum)
-				       (then
-					(printf "Domain of variable ~a is the empty interval ~a. Formula ~a trivially holds."
-						var ri fnum)
-					(discriminate (skosimp* :preds? t) !stlm)
-					(hide-all-but !stlm)
-					(grind))))))
-			   (then (hide-all-but 1) (expand "SturmRel?"))))))
+		  (inst !stlm xval stu_ relstr)
+		  (replaces !stu-deg)
+		  (assert !stlm)
+		  (expand stu_ !stlm 2)
+		  (replaces !stu-lst :in !stlm)
+		  (let ((fnlem (extra-get-fnum !stlm)))
+		    (if fnlem
+			(then
+			 (eval-expr (! !stlm 1))
+			 (let ((b        (args2 (extra-get-formula -1)))
+			       (is-true  (extra-is-true b)))
+			   (if (iff sat is-true) 
+			       (printf "Formula ~a doesn't hold for ~a in ~a."
+				       fnum var ri)
+			     (then 
+			      (replaces -1)
+			      (flatten !stlm)
+			      (let ((fa  (cond (sat !stlm)
+					       ((> (* fnum quant) 0) !stu)))
+				    (ex  (if sat !stu !stlm))
+				    (nn (when fa (freshnames "x" (length qvars))))
+				    (vs (if fa 
+					    (let ((pns (pair-lists qvars nn)))
+					      (cdr (assoc var pns :test #'string=)))
+					  var))
+				    (rws *sturm-rews*)
+				    (eqs (extra-get-evalexprs)))
+				(if sat
+				    (then
+				     (skolem fa nn)
+				     (expand "contains?")
+				     (flatten)
+				     (with-fresh-labels
+				      (!steqs)
+				      (extra-evalexprs$ eqs !steqs)
+				      (reveal !steqs) 
+				      (spread (inst ex vs)
+					      ((rewrite* rws !stlm)))
+				      (replaces !steqs)
+				      (expand* "[||]" "##" "contains?" "realord")
+				      (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+				      (flatten)
+				      (assert)))
+				  (then
+				   (when fa (skolem fa nn :skolem-typepreds? preds?))
+				   (inst ex vs)
+				   (extra-evalexprs$ eqs)
+				   (expand* "[||]" "##" "contains?" "realord")
+				   (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
+				   (flatten)
+				   (rewrite* rws !stlm)
+				   (assert))))))))
+		      (if sat
+			  (printf "Domain of variable ~a is the empty interval ~a. Formula ~a doesn't hold."
+				  var ri fnum)
+			(then
+			 (printf "Domain of variable ~a is the empty interval ~a. Formula ~a trivially holds."
+				 var ri fnum)
+			 (discriminate (skosimp* :preds? t) !stlm)
+			 (hide-all-but !stlm)
+			 (grind)))))))
 	   (replaces !stu-lst)
 	   (eval-formula))))))))
   "[Sturm] Internal strategy." "")
@@ -423,7 +425,7 @@ strategy skips instead of failing when sequent cannot be discharged."
 				   (inst ex :terms vs)
 				   (flatten)
 				   (extra-evalexprs$ eqs)
-				   (expand* xval_ "[||]" "##" "contains?")
+				   (expand* xval_ "[||]" "##" "contains?" "realord")
 				   (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
 				   (flatten)
 				   (expand* rel_ relvar_ lp_ deg_)
@@ -459,16 +461,12 @@ strategy skips instead of failing when sequent cannot be discharged."
 				     (spread (inst ex :terms vs)
 					     ((rewrite* rws)))
 				     (replaces !steqs)
-				     (expand* "[||]" "##" "contains?")
+				     (expand* "[||]" "##" "contains?" "realord")
 				     (rewrite* ("abs_lt" "abs_le" "ge_abs" "gt_abs"))
 				     (flatten)
 				     (assert)))
 				   (eval-formula))))))))
 			 (eval-formula))))
-		      (then (hide-all-but 1) 
-			    (expand* "SturmRel?" relvar_))
-		      (then (hide-all-but 1)
-			    (expand* "SturmRel?" rel_))
 		      (then (hide-all-but 1)
 			    (branch (splash 1 :reverse? t)
 				    ((assert)

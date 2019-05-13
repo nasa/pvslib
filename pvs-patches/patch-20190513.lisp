@@ -8,11 +8,11 @@
 (define-condition groundeval-error (simple-error) ())
 
 (define-condition equality-unknown (groundeval-error)
-  ((lhs :initarg :lhs :reader lhs)
-   (rhs :initarg :rhs :reader rhs))
+  ((obj1 :initarg :obj1 :reader obj1)
+   (obj2 :initarg :obj2 :reader obj2))
   (:report (lambda (condition stream)
-             (format stream "Equality unknown between types ~a and ~a."
-               (type-of (lhs condition)) (type-of (rhs condition))))))
+	      (format stream "Equality unknown between objects ~a and ~a of LISP types ~a and ~a, respectively."
+		      (obj1 condition) (obj2 condition) (type-of (obj1 condition)) (type-of (obj2 condition))))))
 
 ;; Taken from PVS 6.0 code (src/groundeval/eval-macros.lisp)
 (defun pvs_equalp (x y)
@@ -76,8 +76,6 @@
                   (unless (or (eq x-el y-el)
                               (pvs_equalp x-el y-el))
                     (return nil))))))
-	;; BEGIN M3: Added case
-	((or (functionp x)(functionp y))
-	 (error 'equality-unknown :lhs x :rhs y))
-	;; END M3
-        (t nil)))
+	;; BEGIN CM/MM: Added case
+	(t (error 'equality-unknown :obj1 x :obj2 y))))
+	;; END CM/MM
