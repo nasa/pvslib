@@ -1,6 +1,6 @@
 ;;
 ;; extrategies.lisp
-;; Release: Extrategies-7.0.0 (05/11/19)
+;; Release: Extrategies-7.0.0 (05/13/19)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -28,7 +28,7 @@
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
 
-(defparameter *extrategies-version* "Extrategies-7.0.0 (05/11/19)")
+(defparameter *extrategies-version* "Extrategies-7.0.0 (05/13/19)")
 (defstruct (TrustedOracle (:conc-name get-))
   (name nil :read-only t)      ; Oracle name 
   (internal nil :read-only t)  ; Internal oracle
@@ -1920,12 +1920,16 @@ names of the bounded variables."
        (try-branch
 	(discriminate (name-label* retexpr :fnums nil :dir rl :tcc-step tcc-step) !old)
 	((then (branch (discriminate (case casestr) !skd)
-		       ((if consq (then (replaces !old :hide? nil) (beta (!skl !skd)))
+		       ((if consq (then (replaces !old :hide? nil)
+					(beta (!skl !skd))
+					(finalize (assert (!skl !skd))))
 			  (then (when old (hide !old) (reveal !old))
 				(beta !skd :let-reduce? nil)))
 			(if consq (then (when old (hide !old) (reveal !old))
 					(beta !skd :let-reduce? nil))
-			  (then (replaces !old :hide? nil) (beta (!skl !skd))))
+			  (then (replaces !old :hide? nil)
+				(beta (!skl !skd))
+				(finalize (assert (!skl !skd)))))
 			(then (replaces !old :hide? nil) (finalize tcc-step))))
 	       (relabel flabels !skd)
 	       (if hide?
@@ -1998,12 +2002,14 @@ from previous versions. The option OLD? reproduces the old order."
 	       ((then
 		 (expand "id" !rdd :assert? none)
 		 (if (> fn 0)
-		    (beta (!rdl !rdd))
-		  (beta !rdd :let-reduce? nil)))
+		     (then (beta (!rdl !rdd))
+			   (finalize (assert (!rdl !rdd))))
+		   (beta !rdd :let-reduce? nil)))
 		(then
 		 (expand "id" !rdd :assert? none)
 		 (if (< fn 0)
-		     (beta (!rdl !rdd))
+		     (then (beta (!rdl !rdd))
+			   (finalize (assert (!rdl !rdd))))
 		   (beta !rdd :let-reduce? nil)))
 		(finalize tcc-step)))
        (relabel flabels !rdd)
