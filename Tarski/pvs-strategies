@@ -374,28 +374,25 @@ ground evaluation of the formally verified PVS algorithm.
 ;; the boolean expression involves something different from polynomial
 ;; relation.
 
-(defun hutch-valid-forms-rec (expr vars strict accum)
+(defun hutch-valid-forms-rec (expr vars accum)
   (cond ((extra-negation expr)
 	 (multiple-value-bind
 	     (str naccum)
-	     (hutch-valid-forms-rec (args1 expr) vars (not strict) accum)
+	     (hutch-valid-forms-rec (args1 expr) vars accum)
 	   (if str
 	       (values (format nil "NOT (~a)" str) naccum)
 	     (values nil accum))))
 	((or (extra-conjunction expr) (extra-disjunction expr) (extra-implication expr))
 	 (multiple-value-bind
 	     (str1 accum1)
-	     (hutch-valid-forms-rec (args1 expr) vars
-				    (if (extra-implication expr) (not strict) strict)
-				    accum)
-	   (let ((strictop (if (extra-conjunction expr) strict (not strict)))
-		 (op       (cond ((extra-conjunction expr) "AND")
-				 ((extra-disjunction expr) "OR")
-				 ((extra-implication expr) "IMPLIES"))))
-	     (if (or str1 (not strictop))
+	     (hutch-valid-forms-rec (args1 expr) vars accum)
+	   (let ((op (cond ((extra-conjunction expr) "AND")
+			   ((extra-disjunction expr) "OR")
+			   ((extra-implication expr) "IMPLIES"))))
+	     (if str1
 	       (multiple-value-bind
 		   (str2 accum2)
-		   (hutch-valid-forms-rec (args2 expr) vars strict accum1)
+		   (hutch-valid-forms-rec (args2 expr) vars accum1)
 		 (values
 		  (cond ((and str1 str2)
 			 (format nil "(~a) ~a (~a)" str1 op str2))
@@ -408,11 +405,11 @@ ground evaluation of the formally verified PVS algorithm.
 	((extra-equivalence expr)
 	 (multiple-value-bind
 	     (str1 accum1)
-	     (hutch-valid-forms-rec (args1 expr) vars t accum)
+	     (hutch-valid-forms-rec (args1 expr) vars accum)
 	   (if str1
 	       (multiple-value-bind
 		   (str2 accum2)
-		   (hutch-valid-forms-rec (args2 expr) vars t accum1)
+		   (hutch-valid-forms-rec (args2 expr) vars accum1)
 		 (if str2
 		     (values (format nil "(~a) IFF (~a)" str1 str2) accum2)
 		   (values nil accum2)))
@@ -421,15 +418,15 @@ ground evaluation of the formally verified PVS algorithm.
 	 (let ((ite (exprs (argument expr))))
 	   (multiple-value-bind
 	       (strif accumif)
-	       (hutch-valid-forms-rec (nth 0 ite) vars t accum)
+	       (hutch-valid-forms-rec (nth 0 ite) vars accum)
 	     (if strif
 		 (multiple-value-bind
 		     (strthen accumthen)
-		     (hutch-valid-forms-rec (nth 1 ite) vars strict accumif)
+		     (hutch-valid-forms-rec (nth 1 ite) vars accumif)
 		   (if strthen
 		       (multiple-value-bind
 			   (strelse accumelse)
-			   (hutch-valid-forms-rec (nth 2 ite) vars strict accumthen)
+			   (hutch-valid-forms-rec (nth 2 ite) vars accumthen)
 			 (if strelse
 			     (values (format nil "IF ~a THEN ~a ELSE ~a ENDIF"
 					     strif strthen strelse)
@@ -461,15 +458,15 @@ ground evaluation of the formally verified PVS algorithm.
 ;; returned list corresponds to p1 - p2 R 0. Returns an empty list if
 ;; the boolean expression involves something different from polynomial
 ;; relation.
-(defun hutch-valid-forms (expr vars &optional strict)
+(defun hutch-valid-forms (expr vars &optional neg)
   (setq *tarski-invalid-forms* nil)
   (setq *sturm-var* nil)
   (extra-reset-evalexprs)
   (multiple-value-bind
       (str forms)
-      (hutch-valid-forms-rec expr vars strict nil)
+      (hutch-valid-forms-rec expr vars nil)
     (when str
-      (cons str forms))))
+      (cons (if neg (format nil "NOT (~a)" str) str) forms))))
 
 (defhelper hutch_polynomial__ (names plnames var)
   (let ((exstp (cons 'expand* names))
@@ -497,7 +494,8 @@ ground evaluation of the formally verified PVS algorithm.
 	(unqexpr (if (/= quant 0)
 		     (expression expr)
 		   (mk-disjunction (mapcar #'formula (extra-get-seqfs fns)))))
-	(strfms  (hutch-valid-forms unqexpr vars t))
+	(strfms  (hutch-valid-forms unqexpr vars
+				    (when (/= quant 0) (not (iff fall (> quant 0))))))
 	(invfms  *tarski-invalid-forms*)
 	(tkvar   *sturm-var*)
 	(qvars   (when (/= quant 0) vars))
@@ -571,7 +569,7 @@ ground evaluation of the formally verified PVS algorithm.
 	    (strfms (if expr
 			(multiple-value-bind
 			    (str forms)
-			    (hutch-valid-forms-rec expr (list var) t (cdr strfms))
+			    (hutch-valid-forms-rec expr (list var) (cdr strfms))
 			  (if str
 			      (cons (format nil "(~a) OR (~a)" (car strfms) str) forms)
 			    strfms))
