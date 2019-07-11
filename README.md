@@ -1,4 +1,4 @@
-[NASA PVS Library](http://shemesh.larc.nasa.gov/fm/ftp/larc/PVS-library)
+[PVS Library](http://shemesh.larc.nasa.gov/fm/ftp/larc/PVS-library)
 =
 
 The NASA PVS Library is a
@@ -23,7 +23,7 @@ version, type the following command from the directory `<pvsdir>`
 (the dollar sign represents the prompt of the operating system).
 
 ~~~
-$ git clone http://github.com/nasa/pvslib nasalib 
+$ git clone http://github.com/nasa/pvslib nasalib
 ~~~
 
 The command above will put a copy of the library in the directory
@@ -48,15 +48,15 @@ definitions and lemmas are the same. However, theory importing may be
 slightly different.
 
 The PVS developments `TCASII`, `WellClear`,  and `DAIDALUS` are now
-[available](https://github.com/nasa/WellClear/tree/master/PVS) as part 
+[available](https://github.com/nasa/WellClear/tree/master/PVS) as part
 of the
 [GitHub WellClear distribution](https://github.com/nasa/WellClear). The PVS development `PRECiSA`  is now
-[available](https://github.com/nasa/PRECiSA/tree/master/PVS) as part 
+[available](https://github.com/nasa/PRECiSA/tree/master/PVS) as part
 of the [GitHub PRECiSA distribution](https://github.com/nasa/PRECiSA). The PVS development `PolyCARP`  is now
-[available](https://github.com/nasa/PolyCARP/tree/master/PVS) as part 
+[available](https://github.com/nasa/PolyCARP/tree/master/PVS) as part
 of the [GitHub PolyCARP distribution](https://github.com/nasa/PolyCARP).
 
-Getting the Most Stable Version 
+Getting the Most Stable Version
 -
 The most stable version of the NASA Library is available from the
 NASA PVS Library
@@ -65,7 +65,7 @@ comes in 3 sizes: basic, classic, and full. All the distribution files
 include the same PVS specification and proof files. They differ in the binary files, which are only included in
 the classic and full distributions. The full distribution also includes
 pre-installed versions of [Z3](http://z3.codeplex.com) and
-[MetiTarski](http://www.cl.cam.ac.uk/~lp15/papers/Arith). 
+[MetiTarski](http://www.cl.cam.ac.uk/~lp15/papers/Arith).
 
 
 Installing the NASA PVS Library
@@ -91,7 +91,7 @@ remove the file `~/.pvs.lisp` or, if you have a special configuration
 in that file, remove the following line  
 
 ~~~
-(load "<pvsdir>/nasalib/pvs-patches.lisp") 
+(load "<pvsdir>/nasalib/pvs-patches.lisp")
 ~~~
 
 Finally, go to the directory `<pvsdir>/nasalib` and run the shell
@@ -126,7 +126,7 @@ Elsewhere, context should suffice to discern which meaning applies.
 
 Some Pesky Bugs in Recent Versions of Emacs
 -
-In recent versions of Emacs, a type-checking error in PVS may result in the Emacs error 
+In recent versions of Emacs, a type-checking error in PVS may result in the Emacs error
 ```
 error in process filter: let: ‘recenter’ing a window that does not display current-buffer.
 ```
@@ -134,7 +134,7 @@ After this error, it is necessary to reset PVS. To fix this error, the lines 403
 ```
 		    ;; (recenter -1)
 ```
-and 
+and
 ```
 	;; (recenter '(nil))
 ```
@@ -158,4 +158,3 @@ to your `~/.emacs` or `~/.pvsemacs` file.
 Enjoy it.
 
 [The NASA Langley Formal Methods Team](http://shemesh.larc.nasa.gov/fm)
-
