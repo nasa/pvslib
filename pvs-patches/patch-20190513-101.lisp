@@ -2338,7 +2338,7 @@ quantifier, if provided."
   (or (branch? expr)
       (is-function-expr expr '(IF))))
 
-;; Get list of conjunctions (disjunctions when is-and is false)
+;; Get list of conjunctions (negated disjunctions when is-and is false)
 (defun get-ands-expr (expr &optional (is-and t))
   (cond ((or (and is-and (extra-conjunction expr))
              (and (not is-and) (extra-disjunction expr)))
@@ -2347,9 +2347,10 @@ quantifier, if provided."
 	((and (not is-and) (extra-implication expr))
 	 (append (get-ands-expr (args1 expr) t)
 		 (get-ands-expr (args2 expr) nil)))
+	((extra-negation expr)
+	 (get-ands-expr (args1 expr) (not is-and)))
 	(is-and (list expr))
-	(t      (list (if (extra-negation expr) (args1 expr)
-			(mk-negation expr))))))
+	(t      (list (mk-negation expr)))))
 
 ;; Given an expression of the form a => (b = > c), return the list
 ;; (c a b), where the first element is the thesis and the other members of the
