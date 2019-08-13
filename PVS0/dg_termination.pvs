@@ -1,0 +1,64 @@
+dg_termination[T: TYPE+,
+	       MT: TYPE,
+	       lt: (well_founded?[MT]),
+	       N: posnat] : THEORY
+BEGIN
+
+ IMPORTING dp_termination[T,MT,lt],
+ 	   pvs0_to_dg[T],
+	   digraphs@c_cycles[CallingContext],
+	   pvs0_to_ccg[T]
+
+%FunMeasure: TYPE = [T -> MT]
+G: VAR (cdigraph) 
+M: VAR FunMeasure
+cc: VAR CallingContext
+pvs0: VAR PVS0
+ 
+ le(mt1,mt2: MT) : bool = mt1=mt2 OR lt(mt1,mt2)
+
+ gt(mt1,mt2: MT) : bool = lt(mt2,mt1)
+
+ ge(mt1,mt2: MT) : bool = le(mt2,mt1)
+
+ ltval(pvs0)(M, cc): bool = FORALL(val1,val2:T): 
+     eval_conds(pvs0)(cc`conds,val1) AND
+     semantic_rel_expr(pvs0)(cc`actuals,val1,val2) 
+   IMPLIES
+     lt(M(val2),M(val1))
+
+ leval(pvs0)(M, cc): bool = FORALL(val1,val2:T): 
+     eval_conds(pvs0)(cc`conds,val1) AND
+     semantic_rel_expr(pvs0)(cc`actuals,val1,val2) 
+     IMPLIES
+     ltval(pvs0)(M,cc) OR M(val1) = M(val2)   
+
+ cc_to_pvs0_cc(pvs0)(cc: (cc_of_pvs0(pvs0`4))): PVS0Expr_CC =
+    (# rec_expr:= rec(cc`actuals), cnds:= cc`conds, path:= cc`nid #)
+
+ sound_dpg_digraph(pvs0)(dg:(cdigraph)): bool =
+    (FORALL(cc: (cc_of_pvs0(pvs0`4))): vert(dg)(cc)) AND
+    (FORALL(cc1,cc2: (cc_of_pvs0(pvs0`4)))(v1,v3: T):
+      (EXISTS(v2:T):
+      dep_link?(pvs0)(v1, v2, cc_to_pvs0_cc(pvs0)(cc1), cc_to_pvs0_cc(pvs0)(cc2)))
+      IMPLIES edges(dg)(cc1,cc2))
+
+ SoundDPGDigraph(pvs0) : TYPE = (sound_dpg_digraph(pvs0))
+
+ dg_termination?(pvs0,(G:SoundDPGDigraph(pvs0))): bool =
+  EXISTS(M: FunMeasure):
+    FORALL(c: prewalk | circuit?(G, c)):
+       ((FORALL (i:below[length(c)-1]): 
+         leval(pvs0)(M, c(i))) AND
+        EXISTS (i:below[length(c)-1]): 
+         ltval(pvs0)(M, c(i)))
+
+ pvs0_to_dg_sound_dpg_digraph: JUDGEMENT
+ 	pvs0_to_fully_connected_dg(pvs0) HAS_TYPE (sound_dpg_digraph(pvs0))
+
+ dg_termination_implies_ccg: LEMMA
+ 	dg_termination?(pvs0,pvs0_to_fully_connected_dg(pvs0)) IMPLIES ccg_termination_pvs0(pvs0)
+
+ 
+
+END dg_termination

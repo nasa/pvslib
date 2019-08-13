@@ -1,0 +1,59 @@
+dp_termination[ T:TYPE+, 
+		MT : TYPE,   % measure type
+		lt : (well_founded?[MT])
+                ] : THEORY
+
+  BEGIN
+  IMPORTING measure_termination_defs[T,MT,lt],
+  	    orders@well_foundedness[MT]	    
+
+  pvs0 : VAR PVS0
+  wfm : VAR WFM
+  cc_seq : TYPE = [nat -> PVS0Expr_CC]
+  val_seq : TYPE = [nat -> T]
+  vi, vo : VAR T
+
+ %%% Checks if is possible to link two contexts by some output of the first contexts
+ %%% used as input value to the second
+  dep_link?(pvs0)(env, vact2: T, cc1,cc2: PVS0Expr_CC) : bool =
+  	pvs0_tcc_valid_cc(pvs0`4)(cc1) AND pvs0_tcc_valid_cc(pvs0`4)(cc2) AND
+  	EXISTS (vact1: T):
+	       eval_conds(pvs0)(cc1`cnds,env) AND
+	       semantic_rel_expr(pvs0)(get_arg(cc1`rec_expr),env,vact1) AND
+    	       eval_conds(pvs0)(cc2`cnds,vact1) AND
+ 	       semantic_rel_expr(pvs0)(get_arg(cc2`rec_expr),vact1,vact2) 
+
+ %%% Checks if a given sequence of contexts form a chain by checking if every two 
+ %%% elements form a link with a given initial input value used as output for the evaluation
+  infinite_dp_chain?(pvs0)(cseq: cc_seq, vseq : val_seq) : bool =  
+	FORALL (i:nat): dep_link?(pvs0)(vseq(i), vseq(i+2), cseq(i), cseq(i+1)) 
+
+  %%% The termination criterion using the dependency chains
+  dp_termination?(pvs0) : bool =
+  	FORALL (cseq: cc_seq) : 
+	    NOT EXISTS (vseq : val_seq): infinite_dp_chain?(pvs0)(cseq, vseq)
+
+  dp_decreasement?(pvs0): bool = 
+  	pvs0_tcc_termination(pvs0)
+
+
+  IMPORTING orders@well_foundedness[T]
+
+
+ lt_wfm_dp(pvs0)(wfm)(v3,v1: T): bool =
+   LET lt_ = transitive_closure(lt) IN 
+    EXISTS(v2:T, cc1,cc2: (pvs0_tcc_valid_cc(pvs0`4))):
+      semantic_rel_expr(pvs0)(get_arg(cc1`rec_expr), v1, v2)
+      AND eval_conds(pvs0)(cc1`cnds, v1)
+      AND
+      semantic_rel_expr(pvs0)(get_arg(cc2`rec_expr), v2, v3)
+      AND eval_conds(pvs0)(cc2`cnds, v2)
+      AND lt_(wfm(v3), wfm(v2)) AND lt_(wfm(v2), wfm(v1))
+
+  lt_wfm_dp_well_founded : LEMMA 
+ 	well_founded?(lt_wfm_dp(pvs0)(wfm))
+
+  dp_dec_implies_dp_termination : LEMMA
+  	dp_decreasement?(pvs0) IMPLIES dp_termination?(pvs0)
+
+  END dp_termination
