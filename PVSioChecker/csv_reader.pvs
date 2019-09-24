@@ -1,0 +1,101 @@
+csv_reader: THEORY
+BEGIN
+
+  CSVError : ExceptionTag[string] = "FieldError"
+
+  CSVFieldSpec : TYPE+ = { String, Rational, Integer }
+
+  CSVData: DATATYPE
+  BEGIN
+    str_field(str_val: string):str?
+    int_field(int_val: int):int?
+    rat_field(rat_val: real):rat?
+  END CSVData
+
+  IMPORTING decimals@decimalstr % Needed for decstr2rat, rat2decstr
+  
+  toString(data: CSVData): string
+  = CASES data OF
+       str_field(s): s,
+       int_field(i): rat2decstr(i),
+       rat_field(i): rat2decstr(i)
+    ENDCASES
+
+  IMPORTING csv_writer
+
+  CSVDataFromSpec(spec: list[CSVFieldSpec]): TYPE+
+  = {l: list[CSVData] | length(l) = length(spec) AND
+    		      	FORALL(i:below(length(spec)))
+			: CASES nth(spec,i) OF
+			    String: str?(nth(l,i)),
+			    Integer: int?(nth(l,i)),
+			    Rational: rat?(nth(l,i))
+			  ENDCASES }
+
+  getField(spec: list[CSVFieldSpec])(data: CSVDataFromSpec(spec), i: below(length(data)))
+  : {d: CSVData | CASES nth(spec,i) OF
+		    String: str?(d),
+		    Integer: int?(d),
+		    Rational: rat?(d)
+		  ENDCASES }
+  = nth(data,i)
+
+  % to prove getField-related TCCs use csv-tcc strategy
+
+  csv_data_from_spec_field_rat
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Rational
+      IMPLIES rat?(getField(spec)(data,i))
+
+  csv_data_from_spec_field_int
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Integer
+      IMPLIES int?(getField(spec)(data,i))
+
+  csv_data_from_spec_field_str
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = String
+      IMPLIES str?(getField(spec)(data,i))
+
+  % THROWS CSVError
+  processCSVLine(spec: list[CSVFieldSpec], strs: list[string] | length(spec) <= length(strs))
+  : RECURSIVE CSVDataFromSpec(spec)
+  = IF null?(spec) THEN null
+    ELSE LET fieldSpec=car(spec),
+    	     str=car(strs)
+	 IN catch[CSVDataFromSpec(spec)]
+	    ( (: NotARealNumber , NotAnInteger :) ,
+	        LET rest: list[CSVData] = processCSVLine(cdr(spec),cdr(strs))
+	      	IN cons( IF fieldSpec = Integer THEN int_field(str2int(str))
+	      	   	 ELSIF fieldSpec = Rational THEN rat_field(decimalstr.decstr2rat(str))
+	      	   	 ELSE str_field(str) ENDIF , rest),
+	    throw(CSVError) ) ENDIF
+  MEASURE strs BY <<
+
+  IMPORTING pvsio_checker
+  IMPORTING structures@string_utils
+
+  % THROWS CSVError
+  readCSVRecord(ins: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
+  : CSVDataFromSpec(data_spec)
+  = LET line  = readln_checker(ins),
+    	tokens = str_split(line, dlct`dlmt)
+    IN IF length(data_spec) > length(tokens)
+       THEN throw(CSVError)
+       ELSE processCSVLine(data_spec,tokens) ENDIF
+
+  % Usage Example
+
+  ex1: void
+  = LET file = "csv_reader_test.csv",
+    	fin: IStream = fopenin(file),
+    	spec: list[CSVFieldSpec] = (: Integer, String, Rational :)
+    IN while(NOT eof?(fin),
+       	     LET data: {l:list[CSVData] | length(l) = 3} = readCSVRecord(fin,MSEXCEL_DIALECT,spec)
+	     IN printf("~a ~a ~a~%",(toString(car(data)),toString(nth(data,1)),toString(nth(data,2))))
+         ) & fclose(fin);
+
+END csv_reader
