@@ -52,18 +52,21 @@
   "Internal strategy. DO NOT USE, use derivable instead"
   "")
 
-(defstep derivable (&optional (fnum 1))
+(defstep derivable (&optional fnum)
   (if (not (check-name "analysis@strategies.AnalysisStrategies__"))
       (printf "This strategy requires theory analysis@strategies to be imported in the current context")
-    (let ((fn   (extra-get-fnum fnum))
-	  (expr (and fn (> fn 0) (extra-get-formula fnum))))
+    (let ((fn   (if fnum (extra-get-fnum fnum)
+		  (extra-get-fnum '(? + "derivable?"))))
+	  (expr (and fn (> fn 0) (extra-get-formula fn))))
       (if (not (is-function-expr expr '("derivable?")))
 	  (printf "Formula of the form derivable?(...) must appear in the consequent")
-	(derivable__$ fnum))))
-  "Discharges a formula of the form derivable?(f) in the consequent, where f is a function of type [real->real]"
+	(derivable__$ fn))))
+  "Discharges a formula of the form derivable?(f) in the consequent, where f
+is a function of type [real->real]. If FNUM is not provided, it tries to
+discharge the first formula derivable?(f) occurring in the consequent."
   "Discharging derivable(f) in ~a")
 
-(defstrat differentiable (&optional (fnum 1))
+(defstrat differentiable (&optional fnum)
   (derivable fnum)
   "Same as derivable")
 
@@ -88,25 +91,29 @@
   "Internal strategy. DO NOT USE, use deriv instead"
   "")
 
-(defstep deriv (f &optional (fnums *))
+(defstep deriv (&optional f (fnums *))
   (if (not (check-name "analysis@strategies.AnalysisStrategies__"))
       (printf "This strategy requires theory analysis@strategies to be imported in the current context")
-    (let ((fun   (extra-get-expr f))
+    (let ((fun   (if f (extra-get-expr f)
+		       (extra-get-expr `(~ * "deriv(%1)"))))
 	  (drvbl (format nil "derivable?(~a)" fun))
 	  (drv   (format nil "deriv(~a)" fun)))
-      (with-fresh-labels
-       ((fnum!) (fnums! fnums))
-       (spread
-	(with-tccs (case drvbl))
-	((with-fresh-names@
-	  ((d_))
-	  (name-label d_ drv :label fnum! :dir rl)
-	  (deriv__$ fnum! fun)
-	  (let ((fns (extra-get-fnums fnums!)))
-	    (when fns
-	      (replace fnum! fns)
-	      (beta fns)
-	      (rewrites ("expt_x0" "expt_x1") fns))))
-	 (derivable))))))
-  "Computes the derivative of f and introduces the hypotheses derivable?(f) and deriv(f) = f', where f is a function of type [real->real]. The derivative is replaced in the formulas in FNUMS."
+      (if (not fun)
+	  (printf "Formula of the form deriv(...) must appear in the sequent")
+	(with-fresh-labels
+	 ((fnum!) (fnums! fnums))
+	 (spread
+	  (with-tccs (case drvbl))
+	  ((with-fresh-names@
+	    ((d_))
+	    (name-label d_ drv :label fnum! :dir rl)
+	    (deriv__$ fnum! fun)
+	    (let ((fns (extra-get-fnums fnums!)))
+	      (when fns
+		(replace fnum! fns)
+		(beta fns)
+		(rewrites ("expt_x0" "expt_x1") fns))))
+	   (derivable)))))))
+  "Computes the derivative of f and introduces the hypotheses derivable?(f) and deriv(f) = f', where f is a function of type [real->real]. The derivative is replaced in the formulas in FNUMS. If F is not provided, it looks for the first one
+occurring in formula of the form deriv(f)."
   "Computing deriv(~a)")

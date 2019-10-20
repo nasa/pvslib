@@ -381,12 +381,15 @@
   (when *current-context*
     (loop for i from 1 to n
 	  collect (freshname prefix))))
-  
+
+(defun extra-extract-fnums (fnums)
+  (extract-fnums-arg (if (stringp fnums) (makesym fnums) fnums)))
+   
 ;; Get a list of formula numbers from fnums
 (defun extra-get-fnums (fnums &optional enlist?)
   (if (or (not enlist?) (atom fnums) (member (car fnums) '(^ +^ -^)))
-    (map-fnums-arg fnums)
-    (mapcar #'map-fnums-arg fnums)))
+    (extra-extract-fnums fnums)
+    (mapcar #'extra-extract-fnums fnums)))
 
 ;; Get a formula number from fnum
 (defun extra-get-fnum (fnum)
