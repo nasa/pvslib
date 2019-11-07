@@ -347,6 +347,14 @@
   (let ((pc-name (pc-parse name 'expr)))
     (resolve pc-name 'expr nil *current-context*)))
 
+;; If qualified name doesn't occur in the current context, returns qualified theory name.
+;; Otherwise returns nil
+
+(defun no-qualified-name (name)
+  (when (and name (not (check-name name)))
+      (let* ((p  (or (position #\. name) (length name))))
+	(subseq name 0 p))))
+
 ;; Check if an identifier is a free variable (and not in but list)
 ;; If a type is provided, check if the given name is a free variable of the given type.
 (defun is-freevar (name &optional type but)
