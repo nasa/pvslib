@@ -23,8 +23,8 @@
 %  Control flow: finalize, touch, for, for@, when, when@, unless,
 %    unless@, when-label, when-label@, unless-label, unless-label@,
 %    if-label, skip-steps, sklisp
-%  Skolem, let-in, inst: skeep, skeep*, skoletin, skoletin*,
-%    redlet, redlet*, skodef, skodef*, insteep, insteep*
+%  Let-in: skoletin, skoletin*, redlet, redlet*
+%  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
 
@@ -727,7 +727,7 @@
 		      (hide !xeqs))
 		(eval-formula))))))
  "[Extrategies] Internal strategy to be used in conjunction with the functions extra-reset-evalexpr, 
-extra-add-evalexprm and extra-evalexprs. Parameter evalexprs is a list of expressions and ground 
+extra-add-evalexprm, and extra-get-evalexprs. Parameter evalexprs is a list of expressions and ground 
 evaluations. This strategy will introduce, as hypotheses, the equalities for those ground evaluations." "")
 
 (defstruct (xterval)
@@ -1913,6 +1913,92 @@ existentially quantified formula in FNUM.  If POSTFIX is provided, it is appende
 names of the bounded variables."
   "Iterating insteep in ~a")
 
+;; Unroll
+(defun extra-subrange-index (type)
+  (let ((below (simple-below? type)))
+    (if below
+	(let ((ub (extra-get-number-from-expr below)))
+	  (when ub (list 0 (1- ub) below)))
+      (let ((upto (simple-upto? type)))
+	(let ((ub (extra-get-number-from-expr upto)))
+	  (when ub (list 0 ub upto)))
+	(let ((x (simple-subrange? type)))
+	  (when x
+	    (let ((lb (extra-get-number-from-expr (car x)))
+		  (ub (extra-get-number-from-expr (cdr x))))
+	      (when (and lb ub)
+		(list lb ub (car x) (cdr x))))))))))
+
+(defhelper unroll-inst__ (fn bndgs id n labs)
+  (let ((terms (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_))
+		       bndgs)))
+    (with-fresh-labels
+     ((lab!))
+     (let ((labs (cons lab! labs)))
+       (branch
+	(discriminate (inst-cp fn :terms terms) labs :strict? t)
+	((skip)
+	 (eval-formula))))))
+ "[Extrategies] Internal strategy." "")
+
+(defhelper unroll-skl__ (fn bndgs id l exprs)
+  (with-fresh-names
+   ((n))
+   (let ((sks (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
+	 (fmt (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
+	 (css (if l (format nil fmt l) "TRUE")))
+     (then
+      (skolem fn sks)
+      (branch
+       (case css)
+       ((then (hide-all-but 1)
+	      (typepred n)
+	      (mapstep #'(lambda (expr)`(eval-expr ,expr)) exprs)
+	      (flatten)
+	      (assert)
+	      (grind))
+	(then (split -1) (replace -1 :hide? t :actuals? t)))))))
+  "[Extrategies] Internal strategy." "")
+
+(defstep unroll (&optional fnum var)
+  (let ((fnqf  (or (first-formula (or fnum '*) :test #'insteep-formula)
+		   (first-formula (or fnum '*) :test #'skeep-formula)))
+	(fn    (car  fnqf))
+	(qf    (cadr fnqf))
+	(bndgs (when qf (bindings qf)))
+	(bndg  (when qf
+		 (if var (loop for bndg in bndgs
+			       when (equal var (expr2str (id bndg)))
+			       return bndg)
+		   (car bndgs))))
+	(id    (when bndg (id bndg)))
+	(range (when bndg (extra-subrange-index (type bndg))))
+	(l     (when (and range (<= (car range) (cadr range)))
+		 (fromto (car range) (cadr range))))
+	(inst? (when l (insteep-formula fn qf)))
+	(labs  (when l (extra-get-labels fn))))
+    (when range
+      (with-fresh-labels
+       ((fn! fn :hide? inst?))
+       (if (and l inst?)
+	   (let ((qfn    (list 'quote fn!))
+		 (qbndgs (list 'quote  bndgs))
+		 (qid    (list 'quote id))
+		 (qlabs  (list 'quote labs)))
+	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n ,qlabs)) l))
+	 (let ((exprs (remove-if #'(lambda (x) (extra-get-number-from-expr x t))
+				 (cddr range))))
+	   (unroll-skl__$ fn! bndgs id l exprs))))))
+  "[Extrategies] Unrolls quantifier of the form FORALL(x:<int-subrange>):<exp> or
+EXISTS(x:<int-subrange>):<exp>(x) in formula FNUM, where <int-subrange> is either subrange(n,m),
+below(n), or upto(n). Assuming that n ... m is the range specified by <int-subrange>, an universal
+quantifier is unrolled as the conjunction <exp>(n) AND ... AND <exp>(m) and the sequent is then
+flattened. An existential quantifier is unrolled as the disjunction <exp>(n) OR ... OR <exp>(m) and
+the sequent is then split. If FNUM is not provided, the first quantified formula in the sequent is
+used. By default, the first quantified variable is unrolled. A different variables can be specified
+using VAR."
+  "Unrolling quantifier over an integer subrange~@[ in formula ~a~]")
+
 (defhelper skoletin__ (fn expr name nth var postfix hide? tcc-step old)
   (let ((flabels (extra-get-labels-from-fnum fn))
 	(consq   (> fn 0))
@@ -2547,3 +2633,4 @@ quantifier, if provided."
       (if (numberp e) e
 	(copy expr 'exprs e))))
    (t n)))
+
