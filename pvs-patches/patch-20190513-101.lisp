@@ -1,6 +1,6 @@
 ;;
 ;; extrategies.lisp
-;; Release: Extrategies-7.0.0 (05/13/19)
+;; Release: Extrategies-7.0.0 (11/11/19)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -28,7 +28,7 @@
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
 
-(defparameter *extrategies-version* "Extrategies-7.0.0 (05/13/19)")
+(defparameter *extrategies-version* "Extrategies-7.0.0 (11/11/19)")
 (defstruct (TrustedOracle (:conc-name get-))
   (name nil :read-only t)      ; Oracle name 
   (internal nil :read-only t)  ; Internal oracle
@@ -123,7 +123,7 @@
 
 ;; Get the absolute path to the PVS NASA library
 (defun extra-pvs-nasalib ()
-  (car (member "nasalib" *pvs-library-path* :test #'search)))
+  (loop for path in *pvs-library-path* when (probe-file (format nil "~a/nasalib.all" path)) return path))
 
 ;;;;;;;;;; Utility functions and additional strategies
 
@@ -593,21 +593,25 @@
   (multiple-value-bind (n l) (parse-integer str :junk-allowed t)
     (when (and n (= (length str) l)) n)))
 
-;; Expression to string (tries to minimize parentheses)
-(defun expr2str (expr)
-  (when expr
-    (cond ((stringp expr) expr)
-	  ((numberp expr) (format nil "~a" expr))
-	  ((and (infix-application? expr)
-		(= (parens expr) 0)
-		(not (is-relation expr)))
-	   (format nil "(~a)" expr))
-	  ((and (or (name-expr? expr)
-		    (rational-expr? expr))
-		(> (parens expr) 0))
-	   (format nil "~a" (copy expr 'parens 0)))
-	  (t (format nil "~a" expr)))))
-  
+;; Expression to string.
+;; When full? is set to true, it prints expression in fully expanded form.
+;; Otherwise, it ttries to minimize parentheses 
+(defun expr2str (expr &optional full?)
+  (when (and expr (or (stringp expr) (expr? expr)))
+    (if full?
+	(full-name (if (stringp expr) (tc-expr expr) expr))
+      (cond ((stringp expr) expr)
+	    ((numberp expr) (format nil "~a" expr))
+	    ((and (infix-application? expr)
+		  (= (parens expr) 0)
+		  (not (is-relation expr)))
+	     (format nil "(~a)" expr))
+	    ((and (or (name-expr? expr)
+		      (rational-expr? expr))
+		  (> (parens expr) 0))
+	     (format nil "~a" (copy expr 'parens 0)))
+	    (t (format nil "~a" expr))))))
+
 ;; Creates a list of numbers in the range from..to.
 (defun fromto (from to) 
   (cond 
@@ -727,7 +731,7 @@
 		      (hide !xeqs))
 		(eval-formula))))))
  "[Extrategies] Internal strategy to be used in conjunction with the functions extra-reset-evalexpr, 
-extra-add-evalexprm, and extra-get-evalexprs. Parameter evalexprs is a list of expressions and ground 
+extra-add-evalexpr, and extra-get-evalexprs. Parameter evalexprs is a list of expressions and ground 
 evaluations. This strategy will introduce, as hypotheses, the equalities for those ground evaluations." "")
 
 (defstruct (xterval)
@@ -1288,6 +1292,9 @@ specified as in WITH-FRESH-LABELS.")
 (defhelper with-fresh-names__ (bindings thn steps)
   (when steps
     (let ((bindings (enlist-bindings bindings))
+	  ;; Get list of expressions (same length as bindings)
+	  (exprs    (loop for b in bindings
+			  collect (extra-get-expr (cadr b))))
 	  ;; Bind variables to new names
 	  (vnms     (loop for b in bindings
 			  for ln = (member ':list (cdr b))
@@ -1298,22 +1305,24 @@ specified as in WITH-FRESH-LABELS.")
 				  (freshname (string (car b)))))))
 	  ;; Bind variables to labels
 	  (vlbs     (loop for b in bindings
-			  when (extra-get-expr (cadr b))
+			  for e in exprs
+			  when e
 			  collect (let ((v (format nil "*~a*" (car b))))
 				    (list (intern v :pvs) 
 					  (list 'quote (freshlabel (string (car b))))))))
 	  ;; List of variables and expressions
 	  (nmsexs   (loop for b in bindings
+			  for e in exprs
 			  for v in vnms
-			  when (extra-get-expr (cadr b))
-			  append (list (cadr v) (cadr b))))
+			  when e
+			  append (list (cadr v) e)))
 	  ;; Find expressions with enabled TCCs. Return list of variable of tccs formulas,
 	  ;; and quoted variable of fresh label of tccs formulas. 
 	  (etccs    (loop for b in bindings
-			  for opts = (cdr b)
-			  for opt-tcc = (when (extra-get-expr (car opts))
-					  (enabled-option-flag ':tccs opts t))
-			  when (extra-get-expr (car opts))
+			  for e in exprs
+			  for opt-tcc = (when e
+					  (enabled-option-flag ':tccs (cdr b) t))
+			  when e
 			  collect (when opt-tcc
 				    (let* ((va  (format nil "*~a-tccs*" (car b)))
 					   (la  (format nil "~a-tccs" (car b)))
@@ -1944,20 +1953,24 @@ names of the bounded variables."
 (defhelper unroll-skl__ (fn bndgs id l exprs)
   (with-fresh-names
    ((n))
-   (let ((sks (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
-	 (fmt (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
-	 (css (if l (format nil fmt l) "TRUE")))
-     (then
-      (skolem fn sks)
-      (branch
-       (case css)
-       ((then (hide-all-but 1)
-	      (typepred n)
-	      (mapstep #'(lambda (expr)`(eval-expr ,expr)) exprs)
-	      (flatten)
-	      (assert)
-	      (grind))
-	(then (split -1) (replace -1 :hide? t :actuals? t)))))))
+   (let ((sks   (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
+	 (fmt   (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
+	 (css   (if l (format nil fmt l) "TRUE"))
+	 (k     (length exprs)))
+     (with-fresh-names
+      ((nms :list k))
+      (let ((nmexprs (merge-lists nms (mapcar #'(lambda (expr) (expr2str expr t)) exprs))))
+	(then
+	 (skolem fn sks)
+	 (branch
+	  (case css)
+	  ((then (hide-all-but 1)
+		 (typepred n)
+		 (name-replace* nmexprs)
+		 (mapstep #'(lambda (nm)`(eval-expr ,nm)) nms)
+		 (flatten)
+		 (assert))
+	   (then (split -1) (else (replace -1 :hide? t :actuals? t) (hide -1))))))))))
   "[Extrategies] Internal strategy." "")
 
 (defstep unroll (&optional fnum var)
