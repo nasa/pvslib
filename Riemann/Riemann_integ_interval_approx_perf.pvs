@@ -1,0 +1,264 @@
+Riemann_integ_interval_approx_perf
+%
+% Performant version of the RiemannSum_R2I function defined in Riemann_integ_interval_approx.
+%
+: THEORY
+BEGIN
+
+  IMPORTING Riemann_integ_interval_approx
+
+  % The interval-arithmetic functions over which the riemann theorems
+  % are proven are such that they can not return non proper intervals
+  % as result when evaluated in the partition defined in P.
+
+  f_bound_determines_locally_proper_results
+  : LEMMA
+    FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+           n: nat, F: [nat -> [Interval -> Interval]], g: [real->real])
+    : F_Bound?([|a + (i-1)*(b-a)/(2^m) , a + i*(b-a)/(2^m)|], g, n, F)
+      IMPLIES Proper?(F(n)([|a + (i-1)*(b-a)/(2^m) , a + i*(b-a)/(2^m)|]))
+
+  locallyProper?
+  (a: real, b: {x: real | a < x}, m: posnat, n: nat)
+  (F: [nat -> [Interval -> Interval]])
+  : bool
+  = FORALL(i: subrange[1,2^m])
+    : Proper?(F(n)([|a + (i-1)*(b-a)/(2^m) , a + i*(b-a)/(2^m)|])) 
+
+  LocallyProper(a: real, b: {x: real | a < x}, m: posnat, n: nat)
+  : TYPE
+  = (locallyProper?(a,b,m,n))
+
+  r_proper_on_f_locally_proper
+  : LEMMA
+    FORALL(a: real, b: {x: real | a < x}, m: posnat,
+           n: nat, F: LocallyProper(a,b,m,n))
+    : FORALL(i: subrange[1,2^m]): Proper?(R(a, b, m, i, n, F))
+
+  rienmann_sum_r2i_proper_if_every_participating_r_is_proper
+  : LEMMA
+    FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+           n: nat, F: LocallyProper(a,b,m,n))
+    : ( FORALL(j: subrange[1,i]): Proper?(R(a, b, m, j, n, F)) )
+      IMPLIES Proper?(RiemannSum_R2I(a,b,m,i,n,F,R))
+
+  % Some properties about RiemannSum_R2I
+
+  bestRationalInterval(I: Interval, epsilon: posreal)
+  : Interval
+  = [| best_rational(I`lb-epsilon, I`lb) , best_rational(I`ub, I`ub+epsilon)  |]
+  % = LET	dummy = printf("DEBUG best rational for ~a ~a~%",(I`lb-epsilon, I`lb)),
+  % 	lb = best_rational(I`lb-epsilon, I`lb),
+  %   	dummy = printf("DEBUG best rational for ~a ~a~%",(I`ub, I`ub+epsilon)),
+  % 	ub = best_rational(I`ub, I`ub+epsilon)
+  %   IN [| lb , ub |]
+
+  best_rational_interval_overapproximates
+  : LEMMA
+    FORALL(I: Interval, epsilon: posreal)
+    : I << bestRationalInterval(I, epsilon)
+
+  %
+
+  R_(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m], n: nat,
+    F: [nat -> [Interval -> Interval]], Delta: Interval, epsilon: posreal)
+  : Interval
+  =  Mult
+     ( bestRationalInterval
+       ( F(n)([| a + (i-1)*(b-a)/(2^m), a + i*(b-a)/(2^m) |]),
+       	 epsilon ),
+       Delta )
+
+  R__
+  ( epsilon: posreal )
+  ( a: real,
+    b: {x: real | a < x},
+    m: posnat,
+    i: subrange[1,2^m],
+    n: nat,
+    F: [nat -> [Interval -> Interval]])
+  : Interval
+  = R_(a,b,m,i,n,F,bestRationalInterval([| (b-a) / 2^m |],epsilon), epsilon)
+
+  r___includes_r
+  : LEMMA
+    FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+           n: nat, F: [nat -> [Interval -> Interval]],epsilon: posreal, x: real)
+    : Proper?(R(a, b, m, i, n, F))
+      IMPLIES R(a, b, m, i, n, F) << R__(epsilon)(a, b, m, i, n, F)
+  
+  % RiemannSum_R2I_
+  % ( a: real,
+  %   b: {x: real | a < x},
+  %   m: posnat,
+  %   i: subrange[1,2^m],
+  %   n: nat,
+  %   F: [nat -> [Interval -> Interval]],
+  %   R: Riem_sec_r2i,
+  %   epsilon: posreal )
+  % : RECURSIVE Interval
+  % = LET res = IF i = 1
+  %   	      THEN R__(epsilon)(a, b, m, 1, n, F) 
+  %     	      ELSE Add
+  % 	       	   ( R__(epsilon)(a, b, m, i, n, F),
+  % 	      	     RiemannSum_R2I_(a, b, m, i-1, n, F, R, epsilon)) ENDIF
+  %   IN bestRationalInterval(res, epsilon)
+  % MEASURE i
+
+  % faster_Riemann_inclusion
+  % : THEOREM
+  %   FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+  %          n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal, x: real)
+  %   : RiemannSum_R2I(a,b,m,i,n,F,R) << RiemannSum_R2I_(a,b,m,i,n,F,R__(epsilon),epsilon)
+
+  % faster_Riemann_correctness
+  % : COROLLARY
+  %   FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+  %          n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal, x: real)
+  %   : x ## RiemannSum_R2I(a,b,m,i,n,F,R)
+  %     IMPLIES x ## RiemannSum_R2I_(a,b,m,i,n,F,R__(epsilon),epsilon)
+
+  % Tail-Recursive version of RiemannSumm
+
+  RiemannSum_R2I_tr_
+  ( a: real,
+    b: {x: real | a < x},
+    m: posnat,
+    i: subrange[1,2^m],
+    n: nat,
+    F: [nat -> [Interval -> Interval]],
+    R: Riem_sec_r2i,
+    epsilon: posreal )
+  ( accum : Interval )
+  : RECURSIVE Interval
+  = IF i = 1
+    THEN accum 
+    ELSE RiemannSum_R2I_tr_
+         (a, b, m, i-1, n, F, R, epsilon)
+         (bestRationalInterval(Add(R__(epsilon)(a, b, m, i-1, n, F), accum), epsilon)) ENDIF
+  MEASURE i
+
+  RiemannSum_R2I_tr
+  ( a: real,
+    b: {x: real | a < x},
+    m: posnat,
+    n: nat,
+    F: [nat -> [Interval -> Interval]],
+    R: Riem_sec_r2i,
+    epsilon: posreal )
+  : Interval
+  = RiemannSum_R2I_tr_
+    (a, b, m, 2^m, n, F, R, epsilon)
+    (bestRationalInterval(R__(epsilon)(a, b, m, 2^m, n, F),epsilon))
+
+  % ----- %
+
+  bestRationalAdd(epsilon:posreal)(X,Y:Interval)
+  : MACRO Interval
+  = bestRationalInterval(Add(X,Y),epsilon)
+
+  bestRationalSigma(epsilon:posreal)(l:nat,u:int,F:[nat->Interval])
+  : RECURSIVE Interval
+  = IF l > u
+    THEN [|0|]
+    ELSE bestRationalAdd(epsilon)(F(l),bestRationalSigma(epsilon)(l+1,u,F)) ENDIF
+  MEASURE (abs(u+1-l))
+
+  bestRationalSigma_one
+  : LEMMA
+    FORALL(j: nat,F:[nat->Interval],epsilon:posreal):
+    bestRationalSigma(epsilon)(j,j,F) = bestRationalInterval(F(j),epsilon)
+
+  Sigma_alternative_definition
+  : LEMMA
+    FORALL(i:nat,j:upfrom(i),F:[nat->Interval])
+    : Sigma(i,j,F) = Add(F(i), Sigma(i+1, j, F))
+
+  Sigma_fundamental
+  : LEMMA
+    FORALL(n: nat, F,G:[nat->Interval],epsilon:posreal)
+    : (FORALL(i:nat): F(i) << G(i))
+      IMPLIES Sigma(1,n,F) << Sigma(1,n,G)
+      
+  bestRationalSigma_includes_sigma
+  : LEMMA
+    FORALL(i: nat,j: int, F:[nat->Interval],epsilon:posreal)
+    : Sigma(i,j,F) << bestRationalSigma(epsilon)(i,j,F)
+
+% nop, not true
+  % bestRationalSigma_commutes_on_last
+  % : CONJECTURE
+  %   FORALL(i: nat,j:above(i), epsilon:posreal, F:[nat->Interval])
+  %   : bestRationalSigma(epsilon)(i,j,F)
+  %     = bestRationalAdd(epsilon)(F(j),bestRationalSigma(epsilon)(i,j-1,F))
+      
+  % bestRationalSigma_commutation
+  % : CONJECTURE
+  %   FORALL(k: nat, epsilon:posreal, F:[nat->Interval])
+  %   : bestRationalSigma(epsilon)(1,k+1,F)
+  %     = bestRationalAdd(epsilon)(F(k+1),bestRationalSigma(epsilon)(1,k,F))
+
+  % ----- %
+  
+  extendedR__( epsilon: posreal )
+  ( a: real,
+    b: {x: real | a < x},
+    m: posnat,
+    i: nat,
+    n: nat,
+    F: [nat -> [Interval -> Interval]])
+  : MACRO Interval
+  = IF 1 <= i AND i <= 2^m
+    THEN R__(epsilon)(a,b,m,i,n,F)
+    ELSE [|0|] ENDIF
+
+%NOT NEEDED?
+  % faster_Riemann_as_sum
+  % : THEOREM
+  %   FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+  %          n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal)
+  %   : RiemannSum_R2I_(a,b,m,i,n,F,R__(epsilon),epsilon)
+  %     = bestRationalSigma
+  %     	(epsilon)
+  % 	(1,i,LAMBDA(k:nat): extendedR__(epsilon)(a, b, m, k, n, F))
+
+  tr_Riemann_as_sum
+  : THEOREM
+    FORALL(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+           n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal)
+    : RiemannSum_R2I_tr_
+      (a,b,m,i,n,F,R__(epsilon),epsilon)
+      (bestRationalSigma(epsilon)(i,2^m,(LAMBDA(k:nat):extendedR__(epsilon)(a, b, m, k, n, F))))
+      = bestRationalSigma(epsilon)(1,2^m,(LAMBDA(k:nat):extendedR__(epsilon)(a, b, m, k, n, F)))
+    
+%NOT NEEDED?
+  % tr_Riemann_equivalence
+  % : THEOREM
+  %   FORALL(a: real, b: {x: real | a < x}, m: posnat,
+  %          n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal)
+  %   : RiemannSum_R2I_(a,b,m,2^m,n,F,R__(epsilon),epsilon) = RiemannSum_R2I_tr(a,b,m,n,F,R__(epsilon),epsilon)
+
+%NOT NEEDED?
+  % tr_Riemann_inclusion_
+  % : COROLLARY
+  %   FORALL(a: real, b: {x: real | a < x}, m: posnat, 
+  %          n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal, i: subrange[1,2^m])
+  %   : RiemannSum_R2I(a,b,m,i,n,F,R)
+  %     << RiemannSum_R2I_tr_
+  %     	 (a,b,m,i,n,F,R__(epsilon),epsilon)
+  % 	 (bestRationalInterval(R__(epsilon)(a, b, m, i, n, F),epsilon))
+	 
+  tr_Riemann_inclusion
+  : THEOREM
+    FORALL(a: real, b: {x: real | a < x}, m: posnat, 
+           n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal, x: real)
+    : RiemannSum_R2I(a,b,m,2^m,n,F,R) << RiemannSum_R2I_tr(a,b,m,n,F,R__(epsilon),epsilon)
+
+  tr_Riemann_correctness
+  : COROLLARY
+    FORALL(a: real, b: {x: real | a < x}, m: posnat,
+           n: nat, F: LocallyProper(a,b,m,n),epsilon: posreal, x: real)
+    : x ## RiemannSum_R2I(a,b,m,2^m,n,F,R)
+      IMPLIES x ## RiemannSum_R2I_tr(a,b,m,n,F,R__(epsilon),epsilon)
+
+END Riemann_integ_interval_approx_perf

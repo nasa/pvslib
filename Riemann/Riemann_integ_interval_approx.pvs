@@ -1,76 +1,116 @@
-%****
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % @Author Amer Tahat
-% Acknowledgment: The author extends his gratitude to Cesar Munoz, Anthony Narkawicz, and Ali Ebnenasir for their 
-% valued comments during the development of this pvs theory.  
+%
+% Acknowledgment: The author extends his gratitude to Cesar Munoz, Anthony
+% Narkawicz, and Ali Ebnenasir for their valued comments during the development
+% of this pvs theory.
+%
 % Copyright (C) 2016, Michigan Technological University and Amer Tahat.
+%
 % GNU LGPL information:
 % ---------------------
-% This code is free software: you can redistribute it and/or modify it under the terms 
-% of the GNU General Public License  as published by the Free Software Foundation.
-% This code is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; 
-% without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-% See the GNU General Public License for more details.
-%****
-Riemann_integ_interval_approx : THEORY
+%
+% This code is free software: you can redistribute it and/or modify it under the
+% terms of the GNU General Public License  as published by the Free Software
+% Foundation. This code is distributed in the hope that it will be useful, but
+% WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+% FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+% details.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Riemann_integ_interval_approx
+: THEORY BEGIN
 
-  BEGIN
+  IMPORTING  interval_arith@interval,
+             interval_arith@strategies,
+             interval_arith@simple_bandb,
+             reals@sigma_nat,
+             interval_arith@symbols_as_interval,
+             analysis@integral_def[real],
+             trig@sincos,
+             listn[Interval]
 
-       IMPORTING  interval_arith@interval,
-                  interval_arith@strategies,
-                  interval_arith@simple_bandb,
- 		  reals@sigma_nat,
-                  interval_arith@symbols_as_interval,
-                  analysis@integral_def[real],
-                  trig@sincos,
-                  listn[Interval]
+  X,Y   : VAR StrictInterval
+  x,a,b : VAR real
+  n     : VAR nat
+  m     : VAR posnat
+  f     : VAR [real -> real] 
+  F     : VAR [nat -> [Interval -> Interval]]
+  G     : TYPE = [aa: real, bb: {az: real| aa < az}, mm: posnat,
+                  ii: below(2^mm+1),nn: nat -> Interval]
+  
+  % Here F is an enclosure method that will help to approximate Riemann sections
+  % with interval values.
+  %
+  Riem_sec_r2i : TYPE
+  = [ aa: real,
+      bb: {az: real | aa < az},
+      mm: posnat,
+      ii: subrange[1,2^mm],
+      n: nat,
+      F: [nn: nat -> [Interval -> Interval]] -> Interval]
+  
+  %----
+  % R is to compute the interval approx (reflections) to the ith Riemann section
+  % over a given eq-partition P.
+  %----
+  
+  R(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m], n: nat,
+      F: [nat -> [Interval -> Interval]]): Interval =  
+    LET P = eq_partition(a, b, 2^m+1)
+    IN F(n)([| P(i-1), P(i) |]) * [| (b-a) / 2^m |]
+    
+  %---
+  % RiemannSum_R2I: 
+  % R2I: stands for Real to Interval. 
+  % RiemannSum_R2I: we can inst F(n)(X) with {Cos, Sin, etc.} or a combination
+  %   thereof
+  %---
 
-X,Y      : VAR StrictInterval
-x,a,b    : VAR real
-n        : VAR nat
-m        : VAR posnat
-f        : VAR [real -> real] 
-F	 : VAR [nat->[Interval->Interval]]
-G        : TYPE = [aa:real,bb:{az:real|aa<az},mm:posnat,ii:below(2^mm+1),nn:nat->Interval]
+  RiemannSum_R2I(a: real, b: {x: real | a < x}, m: posnat, i: subrange[1,2^m],
+               n: nat, F: [nat -> [Interval -> Interval]], R: Riem_sec_r2i):
+    RECURSIVE Interval =
+  IF i = 1 THEN R(a, b, m, 1, n, F) 
+  ELSE Add(R(a, b, m, i, n, F), RiemannSum_R2I(a, b, m, i-1, n, F, R))
+  ENDIF
+  MEASURE i
 
-% Here F is an enclosure method that will help to approximate Riemann sections with interval values.
+  SigmaSub(fDom?:[nat->bool])(i,j:nat,F:[(fDom?)->Interval])
+  : Interval
+  = Sigma(i,j,LAMBDA(n:nat):IF fDom?(n) THEN F(n) ELSE [|0|] ENDIF)
 
-Riem_sec_r2i:TYPE = [aa:real,bb:{az:real|aa<az},mm:posnat,ii:subrange[1,2^mm],n:nat,F:[nn:nat-> [Interval->Interval]]->Interval]
-
-%----
-% R is to compute the interval approx (reflections) to the ith Riemann section over a given eq-partition  P.   
-%----
-
-R(a:real,b:{x:real|a<x},m:posnat,i:subrange[1,2^m],n:nat,F:[nat->[Interval->Interval]]):Interval =  
-  LET P = eq_partition(a,b,2^m+1) IN  F(n)([|P(i-1),P(i)|])*[|(b-a)/2^m|]
-
-%---
-% RiemannSum_R2I: 
-% R2I: stands for Real to Interval. 
-% RiemannSum_R2I:  we can inst F(n)(X) with {Cos, Sin , etc.. or their combination} .
-%--  
-
-RiemannSum_R2I(a:real,b:{x:real|a<x},m:posnat,i:subrange[1,2^m],n:nat,F:[nat->[Interval->Interval]],R:Riem_sec_r2i): RECURSIVE  Interval =
-										IF  i=1  Then R(a,b,m,1,n,F) 
-										ELSE Add(R(a,b,m,i,n,F),RiemannSum_R2I(a,b,m,i-1,n,F,R))
-										ENDIF MEASURE i
+  subrange?(i,j:int)(k:int):bool=i<=k AND k<=j 
+ 
+  riemann_sum_r2i_alternative_definition
+  : LEMMA
+    FORALL( a: real,
+    	    b: {x: real | a < x},
+	    m: posnat,
+	    i: subrange[1,2^m],
+            n: nat,
+	    F: [nat -> [Interval -> Interval]],
+	    R: Riem_sec_r2i)
+    : RiemannSum_R2I(a,b,m,i,n,F,R)
+      = SigmaSub(subrange?(1,2^m))(1,i,LAMBDA(k:(subrange?(1,2^m))):R(a, b, m, k, n, F))
 
 %---
 %– Helpful lemmas :
 %--
 
-F_integrable_cos  : lemma Integrable?(lb(X),ub(X),cos) 
-F_integrable_cos2 : lemma integrable?(lb(X),ub(X),cos)
+F_integrable_cos  : LEMMA Integrable?(lb(X), ub(X), cos) 
+F_integrable_cos2 : LEMMA integrable?(lb(X), ub(X), cos)
 
-%-
-eq_part_width: lemma  LET P = eq_partition(lb(X),ub(X),2^m+1)  IN 
-  (forall (i:subrange(1,2^m)):  StrictInterval?([|P(i-1),P(i)|])  
-                                             IMPLIES P(i)-P(i-1) = (ub(X)-lb(X))/2^m)
+eq_part_width : LEMMA
+  LET P = eq_partition(lb(X),ub(X),2^m+1)
+  IN FORALL (i:subrange(1,2^m)):
+       StrictInterval?([| P(i-1), P(i) |]) IMPLIES
+         P(i) - P(i-1) = (ub(X)-lb(X)) / 2^m
 
-l: VAR {l: real | l > 0}
-X₀: VAR Interval
+l  : VAR {l: real | l > 0}
+Xt : VAR Interval
 
 Mult_r2i_dist: LEMMA
-  [|lb(X₀) * l, ub(X₀) * l|] = Mult([|lb(X₀), ub(X₀)|], [|l|])
+  [| lb(Xt) * l, ub(Xt) * l |] = Mult([| lb(Xt), ub(Xt) |], [| l |])
 
 m₀, M₀: VAR real
 
@@ -81,8 +121,8 @@ m₀, M₀: VAR real
 integ_r2i_bound: LEMMA
   a < b AND
    integrable?(a, b, f) AND
-    (FORALL (x: closed_interval(a, b)): m₀ <= f(x) AND f(x) <= M₀)
-   IMPLIES integral(a, b, f) ## [|m₀ * (b - a), M₀ * (b - a)|] 
+    (FORALL (x: closed_interval(a, b)): m₀ <= f(x) AND f(x) <= M₀) IMPLIES
+      integral(a, b, f) ## [|m₀ * (b - a), M₀ * (b - a)|] 
 
 %---
 
@@ -96,7 +136,8 @@ F_Bound?(X: StrictInterval, f: [real -> real], n: nat,
       bool = FORALL (x: closed_interval(lb(X), ub(X))): f(x) ## F(n)(X)  
 
 integ_inclus_fun?(X: StrictInterval, f: [real -> real], n: nat): bool =
-    integrable?(lb(X), ub(X), f) AND
+    integrable?(lb(X), ub(X), f)
+    AND
      (EXISTS (F: [nat -> [Interval -> Interval]]):
         FORALL (x: closed_interval(lb(X), ub(X))): f(x) ## F(n)(X))  
 
@@ -107,14 +148,14 @@ integ_r2i_bound₂: THEOREM
    (FORALL (x: closed_interval(lb(X), ub(X))): f(x) ## [|m₀, M₀|])
    IMPLIES integral(lb(X), ub(X), f) ## Mult([|m₀, M₀|], [|ub(X) - lb(X)|])     
 
-%–——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————   
-%                                                                  Integ_Inclusion_fun: Type+
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-% This Type includes all {atan, sin, cos, exp, poly and their safe combinations AND the compositions of large family of them.}. 
- 
-%–
-
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Integ_Inclusion_fun: Type+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% This Type includes all {atan, sin, cos, exp, poly and their safe combinations
+% AND the compositions of large family of them.}. 
+% 
+%
 Integ_Inclusion_fun: TYPE+ =
       {f: [real -> real] |
                FORALL (X: StrictInterval, n: nat):
@@ -126,7 +167,7 @@ Integ_inclus_f: THEOREM
   integrable?(lb(X), ub(X), f) AND F_Bound?(X, f, n, F) IMPLIES
    integral(lb(X), ub(X), f) ##
     Mult([|lb(F(n)(X)), ub(F(n)(X))|], [|ub(X) - lb(X)|])      
-							    
+                                                            
 %–
 % Another version of Integ_inclus_f above:
 
@@ -134,13 +175,16 @@ Integ_inclusion_f: LEMMA
   integrable?(lb(X), ub(X), f) AND F_Bound?(X, f, n, F) IMPLIES
    integral(lb(X), ub(X), f) ## Mult(F(n)(X), [|ub(X) - lb(X)|])
 
-%——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-%                                                             -  Major Theorems -
-%  The follwing are key lemmas/theorems to show the fundamental Riemann inclusion/soundness theorem;
-%  Eval: can be inst by interval functions like: Cos, Sin, Exp,... and their combinations.  
-%  n   : is the approximation parameter for example  Taylor series; for exact functions n can be instantiated with any number; 
-%  2^m : is number of subdivisions in P.  
-%——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%                                                            -  Major Theorems -
+%  The follwing are key lemmas/theorems to show the fundamental Riemann
+% inclusion/soundness theorem;
+% - Eval: can be inst by interval functions like: Cos, Sin, Exp,... and their
+%         compositions.  
+% - n   : is the precision parameter for approximation methods; for exactly
+%         calculated functions n can be instantiated with any number; 
+% - 2^m : is the number of subdivisions in P.  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 Integ_inclusion₂_f: THEOREM
   LET P = eq_partition(lb(X), ub(X), 2 ^ m + 1) IN
@@ -207,7 +251,7 @@ Integ_inclusion₃_f: THEOREM
                        (P)(i)|])
              * [|(ub(X) - lb(X)) / 2 ^ m|]))
  
-%————————————————————————————————————————————————————————  The sum of n integrals ——————————————————————————————————————————————————————————————————————
+% The sum of n integrals 
 
 simple_two: LEMMA
   LET P = eq_partition(lb(X), ub(X), 2 ^ m + 1) IN
@@ -218,9 +262,11 @@ n_sub_integral: TYPE =
       [a: real, {x: real | a < x}, m: nat, subrange[1, 2 ^ m],
        Integ_Inclusion_fun ->
          real]
-
-% sub_integ's inputs are: a function g and ith subdivision of a partition P ; it returns the integral of the function over the ith subdivision:
-
+	 
+%
+% sub_integ's inputs are: a function g and ith subdivision of a partition P;
+% it returns the integral of the function over the ith subdivision:
+%
 sub_integ(a: real, b: {x: real | a < x}, m: nat, i: subrange[1, 2 ^ m],
           g: Integ_Inclusion_fun):
       real =
@@ -233,7 +279,8 @@ sub_integ(a: real, b: {x: real | a < x}, m: nat, i: subrange[1, 2 ^ m],
                     finseq_appl[closed_interval[real](a, b)](P)(i)|]),
                g)
 
-% sum_n_split = integral(p(0),p(1),g) + integral(P(1),P(2),g)+...+integral(P(i-1),P(i),g):
+% sum_n_split
+% = integral(p(0),p(1),g) + integral(P(1),P(2),g)+...+integral(P(i-1),P(i),g):
 
 sum_n_split(a: real, b: {x: real | a < x}, m: nat, i: subrange[1, 2 ^ m],
             g: Integ_Inclusion_fun): RECURSIVE
@@ -259,10 +306,16 @@ sum_n_split(a: real, b: {x: real | a < x}, m: nat, i: subrange[1, 2 ^ m],
    MEASURE i 
 
 %-
-% Main inductive lemma to prove general_integ_split₁: It is based on pvs R.Butler [2009] lemma "integral_split" and induction. 
-% This lemma shows that : integral(P(0),P(i),g)= integral(P(0),P(1),g)+ integral(P(1),P(2),g)+....+integral(P(i-1),P(i),g)
+% Main inductive lemma to prove general_integ_split₁: It is based on pvs
+% R.Butler [2009] lemma "integral_split" and induction. This lemma shows
+% that:
+%
+%   integral(P(0),P(i),g)
+%   = integral(P(0),P(1),g)
+%     + integral(P(1),P(2),g)
+%     + ...
+%     + integral(P(i-1),P(i),g)
 %- 
-
 general_integ_split: LEMMA
   a < b IMPLIES
    LET P = eq_partition(a, b, 2 ^ m + 1) IN
@@ -270,22 +323,23 @@ general_integ_split: LEMMA
        integral(finseq_appl[closed_interval[real](a, b)](P)(0),
                 finseq_appl[closed_interval[real](a, b)](P)(i), g)
         = sum_n_split(a, b, m, i, g)
-				      
-%——————————————————————————————————————-  integral_split with n points based on integral_split R.Butler [2009] ————————————————————————————————————————————
-%  This lemma shows that : Sum(i=1->2^m) integral(P(i-1),P(i),g))= integral(a,b,g). 
-% integral_n_split//
+                                      
+% integral_split with n points based on integral_split R.Butler [2009]
+%  This lemma shows that:
+%    Sum(i=1->2^m) integral(P(i-1),P(i),g)) = integral(a,b,g). 
 %-
 
  general_integ_split₁: THEOREM
    integral(lb(X), ub(X), g) = sum_n_split(lb(X), ub(X), m, 2 ^ m, g) 
 
-%-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 trivial: LEMMA (FORALL (n, n2: nat): n < n2 => n + 1 <= n2)
 
 %-
 
-%Next is the main inductive theorem to prove  Riemann Integral approximation soundness theorem. 
+% Below is the main inductive theorem to prove  Riemann Integral approximation
+% soundness theorem. 
 
 Fundamental_Riemann_inclusion₁: THEOREM
   LET P = eq_partition(lb(X), ub(X), 2 ^ m + 1) IN
@@ -307,31 +361,36 @@ Fundamental_Riemann_inclusion₁: THEOREM
           sum_n_split(lb(X), ub(X), m, i, g) ##
            RiemannSum_R2I(lb(X), ub(X), m, i, n, Eval, R)))
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-                                                               % Simple_Riemann_Soundness%
-% The following theorem is so important in the development of the proposed simple_Riemann proof strategy for single variable real valued functions of type 
-% integ_inclus_fun. 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Simple_Riemann_Soundness
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% The following theorem is so important in the development of the proposed
+% simple_Riemann proof strategy for single variable real valued functions of
+% type integ_inclus_fun. 
+%
+  Simple_Riemann_Soundness
+  : THEOREM
+     FORALL (X: StrictInterval,
+     	     g: Integ_Inclusion_fun,
+	     m: posnat,
+             n: nat)
+     : LET P = eq_partition(lb(X), ub(X), 2 ^ m + 1)
+       IN FORALL (Eval: { F : [nat -> [Interval -> Interval]]
+       	  	 	    | FORALL (i: subrange(1, 2 ^ m))
+			      : F_Bound?
+			      	( [| finseq_appl[closed_interval[real](lb(X), ub(X))](P)(i - 1),
+                                     finseq_appl[closed_interval[real](lb(X), ub(X))](P)(i) |],
+                                  g, n, F) })
+	  : integral(lb(X), ub(X), g) ##
+            RiemannSum_R2I(lb(X), ub(X), m, 2 ^ m, n, Eval, R)
 
-Simple_Riemann_Soundness: THEOREM
-  LET P = eq_partition(lb(X), ub(X), 2 ^ m + 1) IN
-    (FORALL (Eval:
-               {F: [nat -> [Interval -> Interval]] |
-                        FORALL (i: subrange(1, 2 ^ m)):
-                          F_Bound?([|finseq_appl
-                                     [closed_interval[real](lb(X), ub(X))]
-                                     (P)(i - 1),
-                                     finseq_appl
-                                     [closed_interval[real](lb(X), ub(X))]
-                                     (P)(i)|],
-                                   g, n, F)}):
-       integral(lb(X), ub(X), g) ##
-        RiemannSum_R2I(lb(X), ub(X), m, 2 ^ m, n, Eval, R))
-
-%——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————–
-                                                                      % APPLICATIONS:
-% Several theorems  were verified using automatic proof strategies which were built based on Soundness theorem; see the file examples_numerical_Riemann.pvs 
+%——————————————————————————————————————————————————————————————————————————————
+% APPLICATIONS
+%——————————————————————————————————————————————————————————————————————————————
+%
+% Several theorems  were verified using automatic proof strategies which were
+% built based on Soundness theorem; see the file examples_numerical_Riemann.pvs 
 % and pvs-strategies. 
-%——————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
-  
+%  
 END Riemann_integ_interval_approx
