@@ -538,27 +538,25 @@ with the proof command TCC-STEP."
 	(fn       (car fnexpr))
 	(formula  (cadr fnexpr))
 	(rel      (is-relation formula))
-	(expstr   (extra-get-expstr expr))
-	(div      (freshname "CBD")))
-    (if (and rel expstr)
-	(with-fresh-labels
-	 ((!cby fn)
-	  (!cbd)
-	  (!cbt :delete)
-	  (!cbdt :delete)
-	  (!ndc :hide))
-	 (tccs-formula !cby :label !cbt)
-	 (branch (then@ (tccs-expression expstr :label !cbdt :tcc-step tcc-step)
-			(name-distrib (!cby !cbt !cbdt) :prefix "NDC" :label !ndc :tcc-step tcc-step)
-			(name-label div expstr :fnums (^ !ndc) :label !cbd :tcc-step tcc-step)
-			(replace !ndc !cbd))
-		 ((cancel-by__$ !cby !cbd div tcc-step auto-step)
-		  (delete !cby)))
-	 (replaces !ndc :but !ndc :dir rl :hide? nil))
-      (if (not rel)
-	  (printf "No arithmetic relational formula in ~a" fnum)
-	(if (not expstr)
-	    (printf "No suitable expression ~a" expr)))))
+	(e        (when rel (extra-get-expr expr))))
+    (if e
+	(with-fresh-names
+	 ((div))
+	 (with-fresh-labels
+	  ((!cby fn)
+	   (!cbd)
+	   (!cbt :delete)
+	   (!cbdt :delete)
+	   (!ndc :hide))
+	  (tccs-formula !cby :label !cbt)
+	  (branch (then@ (tccs-expression e :label !cbdt :tcc-step tcc-step)
+			 (name-distrib (!cby !cbt !cbdt) :prefix "NDC" :label !ndc :tcc-step tcc-step)
+			 (name-label div e :fnums (^ !ndc) :label !cbd :tcc-step tcc-step)
+			 (replace !ndc !cbd))
+		  ((cancel-by__$ !cby !cbd div tcc-step auto-step)
+		   (delete !cby)))
+	  (replaces !ndc :but !ndc :dir rl :hide? nil)))
+      (printf "No suitable expression in ~a" fnum)))
   "[Field] Cancels the common expression EXPR in the relational formula FNUM.
 TCCs generated during the execution of the command are discharged with the 
 proof command TCC-STEP. At the end, the strategy tries to discharge the 
@@ -652,31 +650,32 @@ with the proof command TCC-STEP."
 	 (is_eq    (equation? form))
 	 (divs     (get-divisors-formula form))
 	 (ndivs    (get-const-divisors 1 divs))
-	 (edivs    (remove-if #'(lambda (x) (str2int (car x))) divs)))
+	 (edivs    (remove-if #'(lambda (x) (str2int (car x))) divs))
+	 (exprs    (mapcar #'car edivs)))
+     
      (if divs
-	 (let ((names    (freshnames "FDX" (length edivs)))
-	       (nameseq  (merge-lists names
-				      (mapcar #'(lambda(x) (car x))
-					      edivs)))
-	       (eprod    (makeprod edivs names))
-	       (prod     (normal-mult (if (= ndivs 1) eprod
-					(cons (cons (expr2str ndivs) 1)
-					      eprod))))
-	       (prodgt0  (format nil "~a > 0" prod)))
-	   (spread (name-label* nameseq :label labx :tcc-step tcc-step)
-		   ((if is_eq
-			(then@ (field_case__ labfd labndf labx prod theories)
-			       (field__$ labfd labndf labx theories cancel? tcc-step))
-		      (branch (case prodgt0)
-			      ((then@
-				(finalize (then (delete labfd) (grind-reals :theories theories)))
-				(field_case__ labfd labndf labx prod theories +)
-				(field__$ labfd labndf labx theories cancel? tcc-step))
-			       (then@
-				(finalize (then (delete labfd) (grind-reals :theories theories)))
-				(field_case__ labfd labndf labx prod theories -)
-				(field__$ labfd labndf labx theories cancel? tcc-step))
-			       (finalize tcc-step)))))))
+	 (with-fresh-names@
+	  ((fdx exprs :tccs? tcc-step))
+	  (reveal *fdx*)
+	  (relabel labx *fdx*)
+	  (let ((eprod    (makeprod edivs fdx))
+		(prod     (normal-mult (if (= ndivs 1) eprod
+					 (cons (cons (expr2str ndivs) 1)
+					       eprod))))
+		(prodgt0  (format nil "~a > 0" prod)))
+	    (if is_eq
+		(then@ (field_case__ labfd labndf labx prod theories)
+		       (field__$ labfd labndf labx theories cancel? tcc-step))
+	      (branch (case prodgt0)
+		      ((then@
+			(finalize (then (delete labfd) (grind-reals :theories theories)))
+			(field_case__ labfd labndf labx prod theories +)
+			(field__$ labfd labndf labx theories cancel? tcc-step))
+		       (then@
+			(finalize (then (delete labfd) (grind-reals :theories theories)))
+			(field_case__ labfd labndf labx prod theories -)
+			(field__$ labfd labndf labx theories cancel? tcc-step))
+		       (finalize tcc-step))))))
        (try (replaces labx :but labx :dir rl :hide? nil)
 	    (then@ (delete labx)
 		   (field__$ labfd labndf labx theories cancel? tcc-step))

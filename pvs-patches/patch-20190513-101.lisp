@@ -404,29 +404,25 @@
   (car (extra-get-fnums fnum)))
 
 ;; Get a PVS object from expr, where expr can be speficied as a formula or a string
-;; or using Manip's location
-(defun extra-get-expr (expr &optional (tc t))
+;; or using Manip's location. If full is t, expression is obtained in fully-expanded form
+(defun extra-get-expr (expr &optional (tc t) full)
   (when expr
-    (cond ((expr? expr) expr)
-	  ((or (numberp expr) (symbolp expr))
-	   (extra-get-formula expr))
-	  ((stringp expr)
-	   (let ((e (pc-parse expr 'expr)))
-	     (if tc (pc-typecheck e) e)))
-	  ((listp expr)
-	   (let* ((ecar (car (eval-ext-expr expr)))
-		  (e    (when ecar (ee-pvs-obj ecar))))
-	     (when (expr? e) e))))))
+    (let ((nexpr
+	   (cond ((expr? expr) expr)
+		 ((or (numberp expr) (symbolp expr))
+		  (extra-get-formula expr))
+		 ((stringp expr)
+		  (let ((e (pc-parse expr 'expr)))
+		    (if (or tc full) (pc-typecheck e) e)))
+		 ((listp expr)
+		  (let* ((ecar (car (eval-ext-expr expr)))
+			 (e    (when ecar (ee-pvs-obj ecar))))
+		    (when (expr? e) e))))))
+      (if (and full (expr? nexpr)) (full-name nexpr) nexpr))))
 
 ;; Get a list of PVS object from exprs, where expsr are speficied using Manip's location
 (defun extra-get-exprs (exprs)
   (mapcar #'ee-pvs-obj (eval-ext-expr exprs)))
-
-;; Return string of expression. If full is t, prints expression in fully-expanded form
-(defun extra-get-expstr (expr &optional full)
-  (let ((e (extra-get-expr expr full)))
-    (when e
-      (format nil "~a" (if full (full-name e) e)))))
 
 ;; Returns list of formula numbers not in fnums
 (defun extra-get-but-fnums (fnums &key (all '*))
@@ -985,7 +981,7 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
   (with-fresh-labels
    (!notcc :hide)
    (let ((labl    (unless (equal label 'none) (or label (format nil "~a:" name))))
-	 (estr    (extra-get-expstr expr full?))
+	 (e       (extra-get-expr expr t full?))
 	 (tccsome (and (not (equal tcc-label 'none)) tcc-label))
 	 (tccnone (or (equal tcc-label 'none)
 		      (and (null tcc-label) (equal label 'none))))
@@ -996,7 +992,7 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
 					      (format nil "~a-TCC:" lb))
 					  (flatten-labels label))
 			  (format nil "~a-TCC:" name))))))
-     (when estr
+     (when e
        (if (not (check-name name))
 	   (then
 	    (with-fresh-labels@
@@ -1004,8 +1000,8 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
 	      (!nlx))
 	     (let ((fnums (extra-get-fnums fnums)))
 	       (then@
-		(tccs-expression estr :label labtcc :tcc-step tcc-step)
-		(branch (discriminate (name name estr) (labl !nlx))
+		(tccs-expression e :label labtcc :tcc-step tcc-step)
+		(branch (discriminate (name name e) (labl !nlx))
 			((then (when fnums (replace !nlx !nml))
 			       (let ((flagdir (equal dir 'rl)))
 				 (when@ flagdir (swap-rel !nlx)))
@@ -1026,7 +1022,7 @@ a hypothesis and replaces EXPR by NAME in FNUMS. Options are as follows.
 * DIR indicates the direction of the name definition, e.g., EXPR=NAME, 
   if DIR is lr, or NAME=EXPR, if DIR is rl. 
 * The added formula is hidden when HIDE? is t. 
-* When full? is set to t, expression is named in fully-expanded form. This
+* When FULL? is set to t, expression is named in fully-expanded form. This
   is sometimes necessary due to PVS overloading feature.
 * If TCC-STEP is not null and EXPR yields TCCs, these TCCs are added
   as hypotheses to the main branch. 
@@ -1297,7 +1293,7 @@ specified as in WITH-FRESH-LABELS.")
 	  ;; Get list of expressions (same length as bindings)
 	  (exprs    (loop for b in bindings
 			  for full? = (enabled-option-flag ':full (cdr b) t)
-			  collect (extra-get-expstr (cadr b) full?)))
+			  collect (extra-get-expr (cadr b) t full?)))
 	  ;; Bind variables to new names (same length as bindings)
 	  (vnms     (loop for b in bindings
 			  for e in exprs
@@ -1323,7 +1319,7 @@ specified as in WITH-FRESH-LABELS.")
 			  when (or e (and (cadr b) (listp (cadr b))))
 			  append (if e (list (cadr v) e)
 				   (let* ((vs (cadadr v))
-					  (es (mapcar #'(lambda (e) (extra-get-expstr e full?))
+					  (es (mapcar #'(lambda (e) (extra-get-expr e t full?))
 						      (cadr b))))
 				     (merge-lists vs es)))))
 	  ;; List of labels (same length as nmsexs)
@@ -1597,12 +1593,11 @@ and external *trusted* oracles. The strategy *must* only be used in proof rules.
       (reverse (mapcar #'tccinfo-formula *tccforms*)))))
   
 (defhelper tccs-expression__ (expr label hide? full? tcc-step)
-  (let ((e    (extra-get-expr expr))
-	(estr (extra-get-expstr e full?)))
+  (let ((e    (extra-get-expr expr t full?)))
     (when e
       (with-fresh-labels
        (!tce)
-       (relabel-hide__ (discriminate (typepred! estr :all? t :implicit? t) !tce)
+       (relabel-hide__ (discriminate (typepred! e :all? t :implicit? t) !tce)
 		       label !tce hide?)
        (let ((tccs  (get-tccs-expression e))
 	     (tcc   (when tccs (expr2str (mk-conjunction tccs)))))
@@ -1617,7 +1612,7 @@ and external *trusted* oracles. The strategy *must* only be used in proof rules.
   (when tcc-step
     (tccs-expression__$ expr label hide? full? tcc-step))
   "[Extrategies] Adds TCCs of expression EXPR as hypotheses to the current sequent. Added hypotheses
-are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t. When full? is set to t, 
+are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t. When FULL? is set to t, 
 expression is considered in fully-expanded form. This is sometimes necessary due to PVS overloading feature.
 TCCs generated during the execution of the command are discharged with the proof command TCC-STEP. 
 If TCC-STEP is nil, the strategy does nothing."
@@ -1916,7 +1911,7 @@ names. Type predicates are introduced as hypothesis when PREDS? is t."
     (loop for bnd in bindings
 	  for i from 1
 	  for is = (is-binding-in-subs bnd i n subs)
-	  collect (if is (or (extra-get-expstr (cadar is)) '_)
+	  collect (if is (or (extra-get-expr (cadar is)) '_)
 		    (format nil "~a~a" (id bnd) postfix)))))
 
 (defstep insteep (&optional (fnum (+ -)) postfix but)
@@ -2020,15 +2015,16 @@ names of the bounded variables."
     (when range
       (with-fresh-labels
        ((fn! fn :hide? inst?))
-       (if (and l inst?)
+       (if (skeep-formula fn qf)
+	   (let ((exprs (remove-if #'(lambda (x) (extra-get-number-from-expr x t))
+				   (cddr range))))
+	     (unroll-skl__$ fn! bndgs id l exprs))
+	 (when inst?
 	   (let ((qfn    (list 'quote fn!))
 		 (qbndgs (list 'quote  bndgs))
 		 (qid    (list 'quote id))
 		 (qlabs  (list 'quote labs)))
-	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n ,qlabs)) l))
-	 (let ((exprs (remove-if #'(lambda (x) (extra-get-number-from-expr x t))
-				 (cddr range))))
-	   (unroll-skl__$ fn! bndgs id l exprs))))))
+	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n ,qlabs)) l)))))))
   "[Extrategies] Unrolls quantifier of the form FORALL(x:<int-subrange>):<exp> or
 EXISTS(x:<int-subrange>):<exp>(x) in formula FNUM, where <int-subrange> is either subrange(n,m),
 below(n), or upto(n). Assuming that n ... m is the range specified by <int-subrange>, an universal
@@ -2252,7 +2248,7 @@ TCCs generated during the execution of the command are discharged with the proof
 (defstep cut (cases &optional (tcc-step (extra-tcc-step)))
   (let ((cases (enlist-it cases)))
     (when cases
-      (let ((expr   (extra-get-expstr (car cases)))
+      (let ((expr   (extra-get-expr (car cases)))
 	    (expest (cdr cases)))
 	(branch (case expr)
 		((cut$ expest tcc-step)
@@ -2414,7 +2410,7 @@ of using FNUMS, rewriting formulas can be addressed via FROM and TO."
 			     (append b (list (bindings expr)))))))))
 
 (defstep suffices (fnum expr &optional after-var after-qn (tcc-step (extra-tcc-step)))
-  (let ((estr   (extra-get-expstr expr))
+  (let ((estr   (extra-get-expr expr))
 	(fnexpr (when estr (first-formula fnum :test #'skeep-formula)))
     	(fn     (car fnexpr))
 	(expr   (cadr fnexpr))

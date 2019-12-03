@@ -139,4 +139,4 @@ is t, the strategy fails silently."
 		     collect `(eval-formula ,fnum ,safe? ,quiet?))))
     (try-here steps))
   "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The formulas are evaluated in order until the first TRUE is obtained or the list of fnums is over."
-  "Evaluating formulas in current sequent.")
+  "Evaluating formulas in current sequent")
