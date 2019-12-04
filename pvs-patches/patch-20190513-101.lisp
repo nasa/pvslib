@@ -1366,7 +1366,7 @@ specified as in WITH-FRESH-LABELS.")
 				 (name-label* ,nmsexs :hide? t :label ,plbvrs
 					      :tcc-label ,plbtccs :tcc-step ,ptccstp))
 			       (try ,thenstep (skip) (fail)))
-			(with-fresh-names-expand__$ ,vnms)
+			(repeat (with-fresh-names-expand__$ ,vnms))
 			(delete ,lbtccs)
 			(touch (delabel ,allbs))))))
       step))
