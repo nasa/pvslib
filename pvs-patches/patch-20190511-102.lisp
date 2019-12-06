@@ -321,20 +321,20 @@ where new names are defined. These formulas are hidden if HIDE? is t. TCCs gener
 during the execution of the command are discharged with the proof command TCC-STEP.")
 
 (defstep wrap-manip (fnum manip &optional (tcc-step (extra-tcc-step)) (labels? t))
-  (with-fresh-labels
-   ((!wmp fnum)
-    (!wmd))
-   (let ((labs (when labels? (extra-get-labels fnum))))
-     (branch (discriminate
-	      (let ((old *suppress-manip-messages*))
-		(unwind-protect$
-		 (then
-		  (sklisp (setq *suppress-manip-messages* t))
-		  manip)
-		 (sklisp (setq *suppress-manip-messages* old))))
-	      !wmd :strict? t)
-	     ((when labels? (relabel labs !wmd))
-	      (finalize tcc-step)))))
+  (let ((labs (when labels? (extra-get-labels fnum)))
+	(old *suppress-manip-messages*)
+	(new (setq *suppress-manip-messages* t)))
+    (unwind-protect$
+     (with-fresh-labels
+      ((!wmp fnum :tccs)
+       (!wmd))
+      (branch (discriminate
+	       manip
+	       !wmd :strict? t)
+	      ((skip)
+	       (finalize tcc-step)))
+      (when labels? (relabel labs !wmd)))
+     (sklisp (setq *suppress-manip-messages* old))))
   "[Field] Applies Manip's command MANIP,  dicharges TCCs using TCC-STEP, and
 preserves labels of FNUM when labels? is t."
   "Applying Manip's command ~1@*~a to ~@*~a")
@@ -652,7 +652,6 @@ with the proof command TCC-STEP."
 	 (ndivs    (get-const-divisors 1 divs))
 	 (edivs    (remove-if #'(lambda (x) (str2int (car x))) divs))
 	 (exprs    (mapcar #'car edivs)))
-     
      (if divs
 	 (with-fresh-names@
 	  ((fdx exprs :tccs? tcc-step))
