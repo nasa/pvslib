@@ -2324,12 +2324,14 @@ TCCs generated during the execution of the command are discharged with the proof
 	  (let ((qrep (list 'quote !rep)))
 	    (then
 	     (relabel plabs feqs)
-	     (mapstep #'(lambda(x)`(try (replace ,x ,qrep :dir ,qdir)
-					(when ,qhide
-					  (unlabel* ,x ,qrep)
-					  (delabel ,x :hide? t))
-					(skip)))
-		      !replaces))))))))
+	     (try (mapstep #'(lambda(x)`(try (replace ,x ,qrep :dir ,qdir)
+					     (when ,qhide
+					       (unlabel* ,x ,qrep)
+					       (delabel ,x :hide? t))
+					     (skip)))
+			   !replaces)
+		  (skip)
+		  (fail)))))))))
   "[Extrategies] Iterates the proof command replace to rewrite with the formulas in FNUMS,
 respecting the order, the formulas in IN but not in BUT. The keys DIR and HIDE? are like
 in REPLACE. Notice that in contrast to REPLACE, the default value of HIDE? is T. Instead
