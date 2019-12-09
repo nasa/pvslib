@@ -332,7 +332,7 @@ during the execution of the command are discharged with the proof command TCC-ST
 	       manip
 	       !wmd :strict? t)
 	      ((when labels? (relabel labs !wmd))
-	       (then (hide !wmp) (finalize tcc-step)))))
+	       (finalize tcc-step))))
      (sklisp (setq *suppress-manip-messages* old))))
   "[Field] Applies Manip's command MANIP,  dicharges TCCs using TCC-STEP, and
 preserves labels of FNUM when labels? is t."
