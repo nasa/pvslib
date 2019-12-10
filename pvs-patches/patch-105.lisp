@@ -105,7 +105,7 @@ evaluated. However, if SAFE? is nil, the strategy may not terminate
 properly in the presence of unproven TCCs.  When QUIET? is t, the
 strategy fails silently. When TIMING? is t, strategy prints timing
 information of the ground evaluation."
-  "Evaluating formula ~a in the current sequent. ")
+  "Evaluating formula ~a")
 
 (defrule eval (expr &optional safe? quiet? timing?)
   (let ((e (extra-get-expr expr)))
@@ -139,4 +139,4 @@ is t, the strategy fails silently."
 		     collect `(eval-formula ,fnum ,safe? ,quiet?))))
     (try-here steps))
   "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The formulas are evaluated in order until the first TRUE is obtained or the list of fnums is over."
-  "Evaluating formulas in current sequent")
+  "Evaluating formulas in ~a")
