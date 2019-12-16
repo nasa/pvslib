@@ -1,6 +1,6 @@
 ;;
 ;; extrategies.lisp
-;; Release: Extrategies-6.0.0 (11/11/19)
+;; Release: Extrategies-7.0.0 (12/12/19)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -15,6 +15,7 @@
 (defparameter *extrategies* "
 %  Printing and commenting: printf, commentf
 %  Defining tactics, i.e., local strategies: deftactic
+%  Defining oracles, i.e., trusted proof rules: deforacle 
 %  Labeling and naming: unlabel*, delabel, relabel, name-label,
 %    name-label*, name-replace*, discriminate
 %  Copying formulas: copy*, protect, with-focus-on, with-focus-on@
@@ -26,19 +27,19 @@
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
+%  Ground evaluation (PVSio): eval-formula, eval-expr, eval
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
 
-(defparameter *extrategies-version* "Extrategies-6.0.0 (11/11/19)")
+(defparameter *extrategies-version* "Extrategies-7.0.0 (12/12/19)")
+
 (defstruct (TrustedOracle (:conc-name get-))
   (name nil :read-only t)      ; Oracle name 
   (internal nil :read-only t)  ; Internal oracle
   (info nil :read-only t)      ; Information
-  stack)                       ; Current stack of trusted proof steps
+  label)                       ; Label of sub-goal where oracle can be applied
   
-(defparameter *extra-trusted-oracles* nil) ; Hashtable of trusted oracles
-(setq *extra-trusted-oracles* (make-hash-table))
-(defparameter *extra-disabled-oracles* nil) ; Hashtable of disabled oracles
-(setq *extra-disabled-oracles* (make-hash-table))
+(defparameter *extra-trusted-oracles* (make-hash-table)) ; Hashtable of trusted oracles
+(defparameter *extra-disabled-oracles* (make-hash-table)) ; Hashtable of disabled oracles
 
 (defun is-trusted-oracle (orcl)
   (gethash orcl *extra-trusted-oracles*))
@@ -46,13 +47,20 @@
 (defun is-disabled-oracle (orcl)
   (gethash orcl *extra-disabled-oracles*))
 
+(defun extra-set-oracle-label (orcl)
+  (let ((torcl (is-trusted-oracle orcl)))
+    (when torcl
+      (setf (get-label torcl) (label *ps*)))))
+
+(defun extra-reset-oracle-label (orcl)
+  (let ((torcl (is-trusted-oracle orcl)))
+    (when torcl
+      (setf (get-label torcl) nil))))
+
 (defun extra-trust-oracle (orcl info &optional internal?) ; Set a trusted oracle
   (let ((torcl (make-TrustedOracle :name orcl :internal internal? :info info)))
     (when (not (is-trusted-oracle orcl))
       (setf (gethash orcl *extra-trusted-oracles*) torcl))))
-
-(extra-trust-oracle '*PVSTypechecker* "PVS Typechecker" t)
-(extra-trust-oracle '*PVSGroundEvaluator* "PVS Ground Evaluator" t)
 
 (defun extra-disable-oracle (orcl)
   (let ((torcl (gethash orcl *extra-trusted-oracles*)))
@@ -66,13 +74,17 @@
       (remhash orcl *extra-disabled-oracles*)
       (setf (gethash orcl *extra-trusted-oracles*) torcl))))
 
-(defun extra-disable-but (orcls &optional but) 
+(defun extra-disable-oracles-but (orcls &optional but) 
   (let ((disables (if (member "_" orcls :test #'string=)
 		      (extra-list-oracle-names)
 		    orcls)))
     (loop for name in (remove-if #'(lambda (n) (member n but :test #'string=))
 				 disables)
 	  do (extra-disable-oracle (intern name :pvs)))))
+
+(defun extra-disable-all-oracles ()
+    (loop for name in (extra-list-oracle-names t)
+	  do (extra-disable-oracle (intern name :pvs))))
 
 (defun extra-list-oracles (&optional (enabled t))
   (sort 
@@ -84,6 +96,21 @@
 
 (defun extra-list-oracle-names (&optional (enabled t))
   (mapcar #'car (extra-list-oracles enabled)))
+
+(defmacro deforacle (name args step doc format &optional internal)
+  (let* ((info     (format nil "Try (help ~a)" name name))
+	 (dismsg   (format nil "~a has been disabled" name))
+	 (docmsg   (if internal doc (format nil "[Trusted Oracle] ~a" doc))))
+  `(progn
+     (extra-trust-oracle ',name ,info ,internal)
+     (defrule ,name ,args
+       (if (is-disabled-oracle ',name)
+	   (printf ,dismsg)
+	 (unwind-protect$
+	  (then@ (sklisp (extra-set-oracle-label ',name))
+		 ,step)
+	  (sklisp (extra-reset-oracle-label ',name))))
+       ,docmsg ,format))))
 
 ;; Load file from library
 (defun extra-load-from-lib (lib filename)
@@ -123,7 +150,7 @@
 
 ;; Get the absolute path to the PVS NASA library
 (defun extra-pvs-nasalib ()
-  (loop for path in *pvs-library-path* when (probe-file (format nil "~a/nasalib.all" path)) return path))
+  (loop for path in *pvs-library-path* when (probe-file (format nil "~aRELEASE/nasalib.lisp" path)) return path))
 
 ;;;;;;;;;; Utility functions and additional strategies
 
@@ -1531,42 +1558,37 @@ defines a tactic that behaves as (myfirsttactic) when used without parameters, e
 (mythirdtactic <fnum>)."
   "Defining local tactic ~a")
 
-;; This strategy enables the addition of trusted formulas into the current sequent.
-;; Examples of such additions are type-checking information (TCCs), ground evaluations,
-;; and external trusted oracles. The strategy MUST only be used in proof rules.
-
-(defun trust! (orcl stamp)
+;; This function performs a miracle on behalf of the trusted oracle ORCL. 
+(defun trust! (orcl)
   #'(lambda (ps)
-      (let* ((torcl (is-trusted-oracle orcl)))
-	(cond ((and torcl stamp
-		    (equal stamp
-			   (car (get-stack torcl))))
+      (let* ((torcl    (is-trusted-oracle orcl))
+	     (labl     (when torcl (get-label torcl)))
+	     (idx      (when labl (search labl (label ps))))
+	     (prefix   (equal idx 0)))
+	(cond ((and torcl prefix)
 	       (unless (get-internal torcl)
 		 (format t "Trusted oracle: ~a." orcl))
 	       (values '! nil nil))
 	      (t
 	       (values 'X nil nil))))))
 
-(addrule 'trust! (orcl stamp) ()
-	 (trust! orcl stamp)
-	 "Trusts oracle ORCL with STAMP. This strategy *must* only be used in proof rules."
+;; This strategy performs a miracle on behalf of the trusted oracle ORCL. 
+(addrule 'trust! (orcl) ()
+	 (trust! orcl)
+	 "This strategy performs a miracle on behalf of trusted orcale ORCL. 
+This strategy *must* only be used in the definition of the oracle ORCL."
 	 "")
 
-(defstrat trust (orcl step &optional steps)
+(defstrat trust-branch! (orcl step &optional steps)
   (let ((steps (if (equal steps '!) (list steps) steps))
 	(torcl (is-trusted-oracle orcl)))
     (if torcl
-	(let ((stamp (get-universal-time))
-	      (xxx   (push stamp (get-stack torcl)))
-	      (mrcl  `(trust! ,orcl ,stamp))
+	(let ((mrcl  `(trust! ,orcl))
 	      (stps  (mapcar #'(lambda (x) (or (and (equal x '!) mrcl) x)) steps)))
-	  (unwind-protect$
-	   (try-branch step stps (skip))
-	   (sklisp (pop (get-stack torcl)))))
+	  (try-branch step stps (skip)))
       (printf "~a is not a trusted oracle" orcl)))
-  "This strategy enables the addition of trusted formulas into the current sequent.
-Examples of such additions are type-checking information (TCCs), ground evaluations,
-and external *trusted* oracles. The strategy *must* only be used in proof rules.")
+  "This strategy is like the strategy branch, but performs a miracle on behalf of ORCL when symbol ! 
+is found in STEPS. This rule *must* only be used in the definition of the oracle ORCL.")
 
 ;;; TCCs -- The following rules extend the internal proving capabilities of PVS.
 ;;; They cannot be written as a combination of the basic proof rules
@@ -1589,37 +1611,33 @@ and external *trusted* oracles. The strategy *must* only be used in proof rules.
       (pc-typecheck (pc-parse (format nil "~a" expr) 'expr))
       (reverse (mapcar #'tccinfo-formula *tccforms*)))))
   
-(defhelper tccs-expression__ (expr label hide? full? tcc-step)
-  (let ((e    (extra-get-expr expr t full?)))
-    (when e
-      (with-fresh-labels
-       (!tce)
-       (relabel-hide__ (discriminate (typepred! e :all? t :implicit? t) !tce)
-		       label !tce hide?)
-       (let ((tccs  (get-tccs-expression e))
-	     (tcc   (when tccs (expr2str (mk-conjunction tccs)))))
-	 (when tccs
-	   (trust *PVSTypechecker*
-		  (discriminate (case tcc) !tce)
-		  ((relabel-hide__ (flatten -1) label !tce hide?)
-		   (finalize tcc-step) !)))))))
-  "[Extrategies] Internal strategy." "")
-
-(defrule tccs-expression (expr &optional label hide? full? (tcc-step (extra-tcc-step)))
+(deforacle tccs-expression (expr &optional label hide? full? (tcc-step (extra-tcc-step)))
   (when tcc-step
-    (tccs-expression__$ expr label hide? full? tcc-step))
+    (let ((e    (extra-get-expr expr t full?)))
+      (when e
+	(with-fresh-labels
+	 (!tce)
+	 (relabel-hide__ (discriminate (typepred! e :all? t :implicit? t) !tce)
+			 label !tce hide?)
+	 (let ((tccs  (get-tccs-expression e))
+	       (tcc   (when tccs (expr2str (mk-conjunction tccs)))))
+	   (when tccs
+	     (trust-branch! tccs-expression
+			    (discriminate (case tcc) !tce)
+			    ((relabel-hide__ (flatten -1) label !tce hide?)
+			     (finalize tcc-step) !))))))))
   "[Extrategies] Adds TCCs of expression EXPR as hypotheses to the current sequent. Added hypotheses
-are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t. When FULL? is set to t, 
+are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t. When full? is set to t, 
 expression is considered in fully-expanded form. This is sometimes necessary due to PVS overloading feature.
 TCCs generated during the execution of the command are discharged with the proof command TCC-STEP. 
 If TCC-STEP is nil, the strategy does nothing."
-  "Adding TCCs of expression ~a as hypotheses")
+  "Adding TCCs of expression ~a as hypotheses" t)
 
 (defhelper tccs-formula__ (fn)
   (let ((tccs  (get-tccs-expression (extra-get-formula-from-fnum fn)))
 	(tcc   (when tccs (expr2str (mk-conjunction tccs)))))
     (when tccs
-      (trust *PVSTypechecker*
+      (trust-branch! tccs-formula*
 	     (case tcc)
 	     ((flatten -1) !))))
   "[Extrategies] Internal strategy." "")
@@ -1634,14 +1652,14 @@ If TCC-STEP is nil, the strategy does nothing."
 	 (mapstep #'(lambda(x)`(tccs-formula__$ ,x)) fs2)))))
   "[Extrategies] Internal strategy." "")
 
-(defrule tccs-formula* (&optional (fnums *) label hide?)
+(deforacle tccs-formula* (&optional (fnums *) label hide?)
   (with-fresh-labels
    (!tcfs)
    (discriminate (tccs-formula*__$ fnums) !tcfs)
    (relabel-hide__ (skip) label !tcfs hide?))
   "[Extrategies] Adds TCCs of formulas FNUMS as hypotheses to the current sequent. Added hypotheses
 are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t."
-  "Adding TCCs of formulas ~a as hypotheses")
+  "Adding TCCs of formulas ~a as hypotheses" t)
 
 (defstep tccs-formula (&optional (fnum 1) label hide?)
   (tccs-formula* fnum label hide?)
@@ -1649,31 +1667,28 @@ are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t."
 are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t."
   "Adding TCCs of formula ~a as hypotheses")
 
-(defhelper tccs-step__ (step label hide?)
+(deforacle tccs-step (step &optional label hide?)
   (with-fresh-labels
    ((!tcs)
     (!tcl))
-   (trust
-    *PVSTypechecker*
-    (with-labels step !tcs :push? t)
+   (trust-branch!
+    tccs-step
+    (with-labels step !tcs t)
     ((let ((parent (parent-proofstate *ps*))
 	   (tccs   (loop for goal in (remaining-subgoals parent)
 			 append (select-seq (s-forms (current-goal goal)) !tcs)))
 	   (fms    (mapcar #'formula tccs))
 	   (expr   (when fms (expr2str (mk-conjunction fms)))))
        (when expr
-	 (trust *PVSTypechecker*
-		(discriminate (case expr) !tcl)
-		((relabel-hide__ (flatten !tcl) label !tcl hide?)
-		 (delete !tcs) !)))) !)))
-  "[Extrategies] Internal strategy." "")
-
-(defrule tccs-step (step &optional label hide?)
-  (tccs-step__$ step label hide?)
+	 (trust-branch!
+	  tccs-step
+	  (discriminate (case expr) !tcl)
+	  ((relabel-hide__ (flatten !tcl) label !tcl hide?)
+	   (delete !tcs) !)))) !)))
   "[Extrategies] If STEP generates subgoals, e.g., TCCs, these subgoals are added as hypotheses to the
 first subgoal. Added hypotheses are labeled LABEL(s), if LABEL is not nil. They are hidden when
 HIDE? is t."
- "Adding TCCs of step ~a as hypotheses")
+ "Adding TCCs of step ~a as hypotheses" t)
 
 (defstep with-tccs (step &optional steps (fnums *) (tcc-step (extra-tcc-step)))
   (let ((stps (append (or steps '((skip))) (cons 'finalize tcc-step))))
@@ -2668,3 +2683,113 @@ quantifier, if provided."
       (if (numberp e) e
 	(copy expr 'exprs e))))
    (t n)))
+
+;;;;;;;;;; PVSio
+
+(in-package :pvs)
+
+(define-condition eval-error (simple-condition) ())
+
+(define-condition pvsio-inprover (simple-condition) ())
+
+;; Evaluates ground expression expr.
+;; When safe is t, evaluation doesn't proceed when there are TCCs.
+;; When timing is t, timing information of the ground evaluation is printed.
+(defun evalexpr (expr &optional safe timing)
+  (when expr
+    (handler-case
+	(let* ((pr-input (extra-get-expr expr))
+	       (*tccforms* nil)
+	       (*generate-tccs* 'all)
+	       (tc-input (pc-typecheck pr-input)))
+	  (when (and *tccforms* safe)
+	    (format t "~%Typechecking ~s produced TCCs:~%" expr)
+	    (evaluator-print-tccs *tccforms*)
+	    (error 'eval-error
+		   :format-control "Use option :safe? nil if TCCs are provable"))
+	  (let* ((cl-input (handler-case (pvs2cl tc-input)
+			     (pvseval-error (condition) nil)))
+		 (cl-eval (if timing
+			      (time (eval cl-input))
+			      (eval cl-input)))
+		 (pvs-val (cl2pvs cl-eval (type tc-input))))
+	    (assert (expr? pvs-val))
+	    pvs-val))
+      ;; At the moment, all errors simply print the condition, and evalexpr returns nil
+      (groundeval-error (condition) (when *eval-verbose* (format t "~%~a" condition)))
+      (pvsio-inprover (condition) (format t "~%error2: ~a" condition)))))
+
+(deforacle eval-expr (expr &optional safe? (auto? t) quiet? timing?)
+  (let ((e (extra-get-expr expr)))
+    (when e
+	(let ((result (evalexpr e safe? timing?)))
+	  (if (stringp result)
+	      (unless quiet? (printf "Error: ~a~%" result))
+	    (when result
+	      (let ((casexpr (format nil "(~a) = ~a" e result)))
+		(with-fresh-labels
+		 ((!evx))
+		 (trust-branch!
+		  eval-expr
+		  (discriminate (case casexpr) !evx)
+		  ((skip) !
+		   (when auto? (eval-formula !evx safe? quiet?)))))))))))
+  "[PVSio] Adds the hypothesis expr=eval(EXPR) to the current goal,
+where eval(EXPR) is the ground evaluation of EXPR. If SAFE? is t and
+EXPR generates TCCs, the expression is not evaluated. Otherwise, TCCs
+are added as subgoals and the expression is evaluated. If AUTO? is t,
+TCCs are ground evaluated. The strategy is sound in the sense that
+user-defined semantic attachments are not evaluated. However, if SAFE?
+is nil, the strategy may not terminate properly in the presence of
+unproven TCCs. When QUIET? is t, the strategy fails silently. When
+TIMING? is t, strategy prints timing information of the ground
+evaluation."
+  "Evaluating expression ~a in the current sequent" t)
+
+(deforacle eval-formula (&optional (fnum 1) safe? quiet? timing?)
+  (let ((fexpr (extra-get-seqf fnum)))
+    (when fexpr
+      (let ((expr   (formula fexpr))
+	    (result (evalexpr expr safe? timing?)))
+	(if (stringp result)
+	    (unless quiet? (printf "Error: ~a~%" result))
+	  (when result 
+	    (trust-branch!
+	     eval-formula
+	     (case result)
+	     (! (skip))))))))
+  "[PVSio] Evaluates the formula FNUM in Common Lisp and adds the
+result to the antecedent of the current goal. If SAFE? is t and FNUM
+generates TCCs, the expression is not evaluated. The strategy is safe
+in the sense that user-defined semantic attachments are not
+evaluated. However, if SAFE? is nil, the strategy may not terminate
+properly in the presence of unproven TCCs.  When QUIET? is t, the
+strategy fails silently. When TIMING? is t, strategy prints timing
+information of the ground evaluation."
+  "Evaluating formula ~a" t)
+
+(defrule eval (expr &optional safe? quiet? timing?)
+  (let ((e (extra-get-expr expr)))
+    (when e
+      (let ((*in-evaluator* t)
+	    (result (evalexpr e safe? timing?)))
+	(if (stringp result)
+	    (unless quiet? (printf "Error: ~a~%" result))
+	  (when result
+	    (printf "(~a) = ~a~%" e result))))))
+  "[PVSio] Prints the evaluation of expression EXPR. If SAFE? is t and EXPR 
+generates TCCs, the expression is not evaluated. This strategy evaluates
+semantic attachments. Therefore, it may not terminate properly. When QUIET? 
+is t, the strategy fails silently."
+  "Printing the evaluation of ~a")
+
+(defrule eval-formulas (&optional (fnums *) (but nil) safe? quiet?)
+  (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
+			     fnums but))
+	(steps (loop for fnum in fnums
+		     collect `(eval-formula ,fnum ,safe? ,quiet?))))
+    (then :steps steps))
+  "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The
+formulas are evaluated in order until the first TRUE is obtained or
+the list of fnums is over."
+  "Evaluating formulas in ~a")

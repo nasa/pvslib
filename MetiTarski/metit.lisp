@@ -38,8 +38,6 @@
 (defparameter *metit-archs* nil) ;; List of supported architectures
 (defparameter *metit-arch* nil)  ;; Host architecture
 
-(extra-trust-oracle 'MetiTarski "MetiTarski Theorem Prover via PVS proof rule metit")
-
 (defvar *metit-id-counter*)  
 
 (newcounter *metit-id-counter*)
@@ -373,18 +371,12 @@
 				       "~%Error running MetiTarski. The error message is:~% ~a~%"
 				       (cdr result)))))))))))
 
-(defrule metit (&optional (fnums 1) (timeout 60) options (pre-bins? t) arch about?)
-  (if (check-name "DisableMetiTarski__")
-      (printf
-       "MetiTarski has been disabled because MetiTarski@Disable appears in the chain of imported theories.")
-    (if (is-disabled-oracle 'MetiTarski)
-	(printf "MetiTarski has been disabled.")
-      (let ((s-forms (extra-get-seqfs fnums)))
-	(if s-forms
-	    (let ((result (metit s-forms timeout options pre-bins? arch about?)))
-	      (when result
-		(trust MetiTarski (case "TRUE") !)))
-	  (printf "Formula(s) ~a not found" fnums)))))
+(deforacle metit (&optional (fnums 1) (timeout 60) options (pre-bins? t) arch about?)
+  (let ((s-forms (extra-get-seqfs fnums)))
+    (if s-forms
+	(let ((result (metit s-forms timeout options pre-bins? arch about?)))
+	  (when result (trust! metit)))
+      (printf "Formula(s) ~a not found" fnums)))
   "Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a
 processor time limit (in seconds). Additional options to MetiTarski
 can be provided through OPTIONS.  Executables of MetiTarski and z3 are
@@ -399,8 +391,6 @@ pre-installed versions.
 MetiTarski requires an external algebraic decision method (EADM). The default EADM
 is z3. However, other EADM are also supported, e.g., QEP and Mathematica. See 
 MetiTarski's documentation for information about using a different EADM.
-
-If current theory imports MetiTarski@Disable, metit does nothing.
 
 * The files METIT-LICENSE.txt and Z3-LICENSE.txt in nasalib/MetiTarski/dist
   contains MetiTarski's and z3's license of use, respectively." 
