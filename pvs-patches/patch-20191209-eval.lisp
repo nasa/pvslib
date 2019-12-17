@@ -18,9 +18,10 @@
 
 (defparameter *pvsio-strategies* nil)
 
-(pushnew "eval-formula" *pvsio-strategies* :test #'string=)
-(pushnew "eval-expr"    *pvsio-strategies* :test #'string=)
-(pushnew "eval"         *pvsio-strategies* :test #'string=)
+(pushnew "eval-formula*" *pvsio-strategies* :test #'string=)
+(pushnew "eval-formula"  *pvsio-strategies* :test #'string=)
+(pushnew "eval-expr"     *pvsio-strategies* :test #'string=)
+(pushnew "eval"          *pvsio-strategies* :test #'string=)
 
 ;; Evaluates ground expression expr.
 ;; When safe is t, evaluation doesn't proceed when there are TCCs.
@@ -124,6 +125,16 @@ semantic attachments. Therefore, it may not terminate properly. When QUIET?
 is t, the strategy fails silently."
   "Printing the evaluation of ~a")
 
+(defstep eval-formula* (&optional (fnums *) (but nil) safe? quiet?)
+  (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
+			     fnums but)))
+    (mapstep #'(lambda (fnum) `(finalize (eval-formula ,fnum ,safe? ,quiet?)))
+	     fnums)) 
+  "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The
+formulas are evaluated in order until the first one that discharges the
+sequent of when the list of FNUMS is over."
+  "Evaluating formulas in ~a")
+
 (defstrat pvsio-about ()
   (let ((version *pvsio-version*)
 	(strategies *pvsio-strategies*))
@@ -134,12 +145,3 @@ is t, the strategy fails silently."
 %--~%" version strategies))
   "[PVSio] Prints PVSio's about information.")
 
-(defstep eval-formula* (&optional (fnums *) (but nil) safe? quiet?)
-  (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
-			     fnums but)))
-    (mapstep #'(lambda (fnum) `(finalize (eval-formula ,fnum ,safe? ,quiet?)))
-	     fnums)) 
-  "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The
-formulas are evaluated in order until the first one that discharges the
-sequent of when the list of FNUMS is over."
-  "Evaluating formulas in ~a")
