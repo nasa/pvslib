@@ -16,7 +16,7 @@
 
 ;; List of strategies in Extrategies:
 (defparameter *extrategies* "
-%  Printing and commenting: printf, commentf
+%  Printing and commenting: printf, commentf, now
 %  Defining tactics, i.e., local strategies: deftactic
 %  Defining oracles, i.e., trusted proof rules: deforacle 
 %  Labeling and naming: unlabel*, delabel, relabel, name-label,
@@ -26,12 +26,13 @@
 %    with-fresh-names, with-fresh-names@
 %  Control flow: finalize, finalize*, touch, for, for@, when, when@, unless,
 %    unless@, when-label, when-label@, unless-label, unless-label@,
-%    if-label, skip-steps, sklisp
+%    if-label, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
 %  Ground evaluation (PVSio): eval-formula, eval-formula*, eval-expr, eval
-%  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
+%  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices
+%  Strategy debugging (experts only): skip-steps, show-debug-mode, toggle-debug-mode")
 
 (defparameter *extrategies-version* "Extrategies-6.0.0 (12/12/19)")
 
@@ -159,7 +160,7 @@
 (defun extra-pvs-nasalib ()
   (loop for path in *pvs-library-path* when (probe-file (format nil "~aRELEASE/nasalib.lisp" path)) return path))
 
-;;;;;;;;;; Utility functions and additional strategies
+;;; Utility functions and additional strategies
 
 ;; return a PVS array that represents list
 (defun extra-lambda-list (list default &optional test)
@@ -171,11 +172,6 @@
 	    (if myl 
 		(format nil "~{IF i=~a THEN ~a ELS~}E ~a ENDIF" myl default)
 	      default))))
-
-(defstep skip-steps (&rest steps)
-  (skip)
-  "[Extrategies] Skips steps. This strategy is using for debugging purposes."
-  "Skipping steps")
 
 ;; This strategy is similar to (lisp ...). However, that strategy returns
 ;; the value of the evaluation, which is printed in console. The
@@ -921,10 +917,10 @@ evaluations. This strategy will introduce, as hypotheses, the equalities for tho
     rel))
 
 (defun extra-is-true (expr)
-  (and (name-expr? expr) (same-declaration expr *true*)))
+  (tc-eq expr *true*))
 
 (defun extra-is-false (expr)
-  (and (name-expr? expr) (same-declaration expr *false*)))
+  (tc-eq expr *false*))
 
 ;;;;;;;;;; Extrategies
 
@@ -942,6 +938,20 @@ ARGS. ARGS must be constant values.")
     (comment msg))
   "[Extrategies] Adds the formatted comment MSG to the sequent using the format
 arguments ARGS. ARGS can only have constant values.")
+
+(defstrat now ()
+  (let ((dummy (multiple-value-bind
+		   (second minute hour date month year day-of-week dst-p tz)
+		   (get-decoded-time)
+		 (format t "~%TIME ~d/~2,'0d/~d  ~2,'0d:~2,'0d:~2,'0d~%"
+			 month
+			 date
+			 year
+			 hour
+			 minute
+			 second))))
+    (skip))
+  "[Extrategies] Prints current time.")
 
 ;;; Labeling and naming
 
@@ -1016,7 +1026,7 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
 (defstep name-label (name expr &optional label (fnums *) (dir lr) hide? full?
 			  (tcc-step (extra-tcc-step)) tcc-label)
   (with-fresh-labels
-   (!notcc :hide)
+   ((!notcc :hide))
    (let ((labl    (unless (equal label 'none) (or label (format nil "~a:" name))))
 	 (e       (extra-get-expr expr t full?))
 	 (tccsome (and (not (equal tcc-label 'none)) tcc-label))
@@ -1101,7 +1111,7 @@ a hypothesis and replaces EXPR by NAME in FNUMS. Options are as follows.
 	(qdir     (list 'quote dir))
 	(qhide    (list 'quote hide?)))
     (with-fresh-labels
-     (!nls fnums)
+     ((!nls fnums))
      (let ((qnls (list 'quote !nls)))
        (mapstep@ #'(lambda(x)`(name-label ,(nth 0 x) ,(nth 1 x) :label ,(nth 2 x) :fnums ,qnls
 					  :dir ,qdir :hide? ,qhide
@@ -1284,11 +1294,11 @@ that represents formula FNUMi.
 OPTi can be
 
 :hide     
-  Hide formulas labeled VARi before the strategy exists. This option
+  Hide formulas labeled VARi before the strategy exits. This option
   can also be enabled/disabled programmatically using the option
   :hide? flag, where flag can be either t (enabled) or nil (disabled).
 :delete   
-  Delete formulas labeled VARi before the strategy exists. This option
+  Delete formulas labeled VARi before the strategy exits. This option
   can also be enabled/disabled programmatically using the option
   :delete? flag, where flag can be either t (enabled) or nil
   (disabled).
@@ -1493,7 +1503,7 @@ labels are also copied."
    (if fnums
        (let ((labprc (or label !protect)))
 	 (with-fresh-labels
-	  (!pro fnums)
+	  ((!pro fnums))
 	  (copy* !pro labprc :hide? t :labels? t)
 	  step
 	  (unless hide? (reveal labprc))))
@@ -1506,7 +1516,7 @@ labels are also copied."
   (let ((fnums (extra-get-fnums fnums)))
     (when fnums
       (with-fresh-labels
-       (!allbut (^ fnums))
+       ((!allbut (^ fnums)))
        (hide !allbut)
        step
        (reveal !allbut))))
@@ -1654,7 +1664,7 @@ If TCC-STEP is nil, the strategy does nothing."
 
 (defhelper tccs-formula*__ (fnums)
   (with-fresh-labels
-   (!tcf fnums)
+   ((!tcf fnums))
    (let ((fs1 (extra-get-fnums !tcf)))
      (when fs1
        (all-implicit-typepreds !tcf)
@@ -1701,13 +1711,18 @@ HIDE? is t."
  "Adding TCCs of step ~a as hypotheses" t)
 
 (defstep with-tccs (step &optional steps (fnums *) (tcc-step (extra-tcc-step)))
-  (let ((stps (append (or steps '((skip))) (cons 'finalize tcc-step))))
-    (with-fresh-labels
-     (!wtccs fnums :tccs)
-     (branch step stps)))
-  "[Extrategies] Applies STEP after introducing TCCs for the formulas in FNUMS. If STEP generates
-subgoals, these subgoals are consecutively discharged using STEPS, which is a list of steps.
-TCCs generated during the execution of the command are discharged with the proof command TCC-STEP."
+  (with-fresh-labels
+   ((!wtccs fnums :tccs))
+   (let ((stps (append (or steps '((skip)))
+		       (list `(then (reveal ,*!wtccs-tccs*) (finalize ,tcc-step))))))
+     (then
+      (hide *!wtccs-tccs*)
+      (branch step stps))))
+  "[Extrategies] Applies STEP after introducing TCCs for the formulas
+in FNUMS. If STEP generates subgoals, these subgoals are consecutively
+discharged using STEPS, which is a list of steps.  TCCs generated
+during the execution of the command are discharged with the proof
+command TCC-STEP."
   "Applying ~a assumings TCCs")
 	     
 ;;; Control flow
@@ -1923,7 +1938,7 @@ uses \"YY\" as the name of the skolem constant for \"y\"."
 
 (defstep skeep* (&optional (fnum '*) preds? postfix n)
   (with-fresh-labels
-   (!skp fnum)
+   ((!skp fnum))
    (for@ n (skeep !skp :preds? preds? :postfix postfix)))
   "[Extrategies] Iterates N times skeep (or until it does nothing if N is nil) in a universally 
 quantified formula in FNUM. If POSTFIX is provided, it is appended to the names of the bounded 
@@ -1967,7 +1982,7 @@ formula but excludes \"x\", (insteep :but (\"x\" (\"y\" \"100\"))) instantiates 
 
 (defstep insteep* (&optional (fnum '*) postfix n)
   (with-fresh-labels
-   (!instp fnum)
+   ((!instp fnum))
    (for@ n (insteep !instp :postfix postfix)))
   "[Extrategies] Iterates N times insteep (or until it does nothing if N is nil) in an
 existentially quantified formula in FNUM.  If POSTFIX is provided, it is appended to the 
@@ -1994,7 +2009,7 @@ names of the bounded variables."
   (let ((terms (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_))
 		       bndgs)))
     (with-fresh-labels
-     ((lab!))
+     (lab!)
      (branch
       (discriminate (inst-cp fn :terms terms) lab! :strict? t)
       ((unlabel lab! fn)
@@ -2003,7 +2018,7 @@ names of the bounded variables."
 
 (defhelper unroll-skl__ (fn bndgs id l exprs)
   (with-fresh-names
-   ((n))
+   (n)
    (let ((sks (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
 	 (fmt (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
 	 (css (if l (format nil fmt l) "TRUE")))
@@ -2052,14 +2067,17 @@ names of the bounded variables."
 		 (qbndgs (list 'quote  bndgs))
 		 (qid    (list 'quote id)))
 	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n)) l)))))))
-  "[Extrategies] Unrolls quantifier of the form FORALL(x:<int-subrange>):<exp> or
-EXISTS(x:<int-subrange>):<exp>(x) in formula FNUM, where <int-subrange> is either subrange(n,m),
-below(n), or upto(n). Assuming that n ... m is the range specified by <int-subrange>, an universal
-quantifier is unrolled as the conjunction <exp>(n) AND ... AND <exp>(m) and the sequent is then
-flattened. An existential quantifier is unrolled as the disjunction <exp>(n) OR ... OR <exp>(m) and
-the sequent is then split. If FNUM is not provided, the first quantified formula in the sequent is
-used. By default, the first quantified variable is unrolled. A different variables can be specified
-using VAR."
+  "[Extrategies] Unrolls quantifier of the form
+FORALL(x:<int-subrange>):<exp> or EXISTS(x:<int-subrange>):<exp>(x) in
+formula FNUM, where <int-subrange> is either subrange(n,m), below(n),
+or upto(n). Assuming that n ... m is the range specified by
+<int-subrange>, an universal quantifier is unrolled as the conjunction
+<exp>(n) AND ... AND <exp>(m) and the sequent is then flattened. An
+existential quantifier is unrolled as the disjunction <exp>(n) OR
+... OR <exp>(m) and the sequent is then split. If FNUM is not
+provided, the first quantified formula in the sequent is used. By
+default, the first quantified variable is unrolled. A different
+variables can be specified using VAR."
   "Unrolling quantifier over an integer subrange~@[ in formula ~a~]")
 
 (defhelper skoletin__ (fn expr name nth var postfix hide? tcc-step old)
@@ -2141,7 +2159,7 @@ LET x:posreal = 2 IN 1/x."
 
 (defstep skoletin* (&optional (fnum *) postfix hide? (tcc-step (extra-tcc-step)) n old?)
   (with-fresh-labels
-   (!sks fnum)
+   ((!sks fnum))
    (for@ n (skoletin !sks :postfix postfix :hide? hide? :tcc-step tcc-step :old? old?)))
   "[Extrategies] Iterates N times skoletin (or until it does nothing if N is nil) in FNUM.
 
@@ -2193,7 +2211,7 @@ IN 1/x."
 
 (defstep redlet* (&optional (fnum *) (tcc-step (extra-tcc-step)) (n 1))
   (with-fresh-labels
-   (!rds fnum)
+   ((!rds fnum))
    (for@ n (redlet !rds :tcc-step tcc-step)))
   "[Extrategies] Iterates N times redlet (or until it does nothing if N is nil). TCCs generated during
 the execution of the command are discharged with the proof command TCC-STEP."
@@ -2216,7 +2234,7 @@ the execution of the command are discharged with the proof command TCC-STEP."
 	(ivr   (instvar v n (length names))))
     (when nve
       (with-fresh-labels
-       (!skk fnum :tccs)
+       ((!skk fnum :tccs))
        (try-branch
 	(name-label v e :fnums nil :dir rl :hide? t)
 	((branch (let ((stp (cons 'inst (cons !skk ivr))))
@@ -2264,7 +2282,7 @@ are discharged with the proof command TCC-STEP."
 
 (defstep skodef* (&optional (fnum *) hide? postfix (tcc-step (extra-tcc-step)) n)
   (with-fresh-labels
-   (!skk fnum)
+   ((!skk fnum))
    (for@ n (skodef !skk :postfix postfix :hide? hide? :tcc-step tcc-step)))
   "[Extrategies] Iterates N times skodef (or until it does nothing if N is nil) in FNUM.
 TCCs generated during the execution of the command are discharged with the proof command TCC-STEP."
@@ -2344,13 +2362,13 @@ TCCs generated during the execution of the command are discharged with the proof
 	(n     (length feqs)))
     (when feqs
       (with-fresh-labels
-       (!replaces :list n)
+       ((!replaces :list n))
        (let ((plabs  (set-pairing !replaces))
 	     (qdir   (list 'quote dir))
 	     (qhide  (list 'quote hide?))
 	     (forms  (extra-get-but-fnums but :all in)))
 	 (with-fresh-labels
-	  (!rep forms)
+	  ((!rep forms))
 	  (let ((qrep (list 'quote !rep)))
 	    (then
 	     (relabel plabs feqs)
@@ -2447,7 +2465,7 @@ of using FNUMS, rewriting formulas can be addressed via FROM and TO."
 					      after-var after-qn))))
     (when form
       (with-fresh-labels 
-       (!sff fn :tccs)
+       ((!sff fn :tccs))
        (branch (case form)
 	       ((skip)
 		(delete !sff)
@@ -2470,8 +2488,6 @@ quantifier, if provided."
 % Strategies in Extrategies:~a
 %--~%" version strategies))
   "[Extrategies] Prints Extrategies's about information.")
-
-;;;;; SPECIFIC FUNCTIONS ;;;;; 
 
 ;; The following functions check the boolean connectives of a given expression, even if the
 ;; expression is not type-checked yet.
@@ -2699,7 +2715,7 @@ quantifier, if provided."
 	(copy expr 'exprs e))))
    (t n)))
 
-;;;;;;;;;; PVSio
+;;; PVSio
 
 ;; Evaluates ground expression expr.
 ;; When safe is t, evaluation doesn't proceed when there are TCCs.
@@ -2748,7 +2764,7 @@ quantifier, if provided."
 	    (when result
 	      (let ((casexpr (format nil "(~a) = ~a" e result)))
 		(with-fresh-labels
-		 ((!evx))
+		 (!evx)
 		 (trust-branch!
 		  eval-expr
 		  (discriminate (case casexpr) !evx)
@@ -2770,14 +2786,11 @@ evaluation."
   (let ((fexpr (extra-get-seqf fnum)))
     (when fexpr
       (let ((expr   (formula fexpr))
-	    (result (evalexpr expr safe? timing?)))
+	    (result (evalexpr expr safe? timing?))
+	    (doit   (extra-is-true result)))
 	(if (stringp result)
 	    (unless quiet? (printf "Error: ~a~%" result))
-	  (when result 
-	    (trust-branch!
-	     eval-formula
-	     (case result)
-	     (! (skip))))))))
+	  (when doit (trust! eval-formula))))))
   "[PVSio] Evaluates the formula FNUM in Common Lisp and adds the
 result to the antecedent of the current goal. If SAFE? is t and FNUM
 generates TCCs, the expression is not evaluated. The strategy is safe
@@ -2803,12 +2816,34 @@ semantic attachments. Therefore, it may not terminate properly. When QUIET?
 is t, the strategy fails silently."
   "Printing the evaluation of ~a")
 
-(defstep eval-formula* (&optional (fnums *) (but nil) safe? quiet?)
-  (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
-			     fnums but)))
-    (mapstep #'(lambda (fnum) `(finalize (eval-formula ,fnum ,safe? ,quiet?)))
-	     fnums)) 
-  "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The
-formulas are evaluated in order until the first one that discharges the
-sequent of when the list of FNUMS is over."
+(defstep eval-formula* (&optional (fnums *) safe? quiet?)
+  (let ((fnms (extra-get-fnums fnums)))
+    (mapstep #'(lambda (fnum) `(eval-formula ,fnum ,safe? ,quiet?))
+	     fnms)) 
+  "[PVSio] Evaluates all the formula in FNUMS. The formulas are
+evaluated in order until the first one that discharges the sequent or
+when the list of FNUMS is over. Options are as in eval-formula."
   "Evaluating formulas in ~a")
+
+;;; Debugging features
+
+(defstep skip-steps (&rest steps)
+  (skip)
+  "[Extrategies] Skips steps. This strategy is using for debugging purposes."
+  "Skipping steps")
+
+(defstrat show-debug-mode ()
+  (if (member :strat-debug *features*)
+      (printf "~%Debug mode is currently enabled.~%")
+    (printf "~%Debug mode is currently disabled.~%"))
+  "[Extrategies] Shows current debug mode.")
+
+(defstrat toggle-debug-mode ()
+  (if (member :strat-debug *features*)
+      (let ((dummy (setq *features* (remove :strat-debug *features*)))
+	    (dummy (load "pvs-strategies")))
+	(printf "~%Debug mode disabled.~%"))
+    (let ((dummy (pushnew :strat-debug *features*))
+	  (dummy (load "pvs-strategies")))
+      (printf "~%Debug mode enabled.~%")))
+  "[Extrategies] Toggles debug mode on the current theory strategies.")

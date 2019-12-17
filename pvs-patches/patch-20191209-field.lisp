@@ -410,7 +410,7 @@ not be reduced. If DISTRIB? is nil, distribution laws will not be applied."
 				(let-reduce? t)
 				dontdistrib protect)
   (with-fresh-labels
-   (!grd :hide)
+   ((!grd :hide))
    (let ((th    (cons "real_props" (enlist-it theories)))
 	 (pro   (cons !grd (enlist-it protect)))
 	 (step `(grind :defs ,defs :theories ,th :rewrites
@@ -541,7 +541,7 @@ with the proof command TCC-STEP."
 	(e        (when rel (extra-get-expr expr))))
     (if e
 	(with-fresh-names
-	 ((div))
+	 (div)
 	 (with-fresh-labels
 	  ((!cby fn)
 	   (!cbd)
@@ -614,7 +614,7 @@ current branch using the proof command AUTO-STEP."
 	(rel     (is-relation formula)))
     (if rel
 	(with-fresh-labels
-	 (!cf fn)
+	 ((!cf fn))
 	 (try (wrap-manip !cf (factor !cf) :tcc-step tcc-step)
 	      (let ((form (extra-get-formula !cf))
 		    (l1   (get-mults-monom nil (args1 form)))
