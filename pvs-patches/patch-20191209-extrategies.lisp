@@ -1983,7 +1983,7 @@ names of the bounded variables."
 	      (when (and lb ub)
 		(list lb ub (car x) (cdr x))))))))))
 
-(defhelper unroll-inst__ (fn bndgs id n labs)
+(defhelper unroll-inst__ (fn bndgs id n)
   (let ((terms (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_))
 		       bndgs)))
     (with-fresh-labels
@@ -2032,8 +2032,7 @@ names of the bounded variables."
 	(range (when bndg (extra-subrange-index (type bndg))))
 	(l     (when (and range (<= (car range) (cadr range)))
 		 (fromto (car range) (cadr range))))
-	(inst? (when l (insteep-formula fn qf)))
-	(labs  (when l (extra-get-labels fn))))
+	(inst? (when l (insteep-formula fn qf))))
     (when range
       (with-fresh-labels
        ((fn! fn :hide? inst?))
@@ -2044,9 +2043,8 @@ names of the bounded variables."
 	 (when inst?
 	   (let ((qfn    (list 'quote fn!))
 		 (qbndgs (list 'quote  bndgs))
-		 (qid    (list 'quote id))
-		 (qlabs  (list 'quote labs)))
-	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n ,qlabs)) l)))))))
+		 (qid    (list 'quote id)))
+	     (mapstep #'(lambda(n)`(unroll-inst__$ ,qfn ,qbndgs ,qid ,n)) l)))))))
   "[Extrategies] Unrolls quantifier of the form FORALL(x:<int-subrange>):<exp> or
 EXISTS(x:<int-subrange>):<exp>(x) in formula FNUM, where <int-subrange> is either subrange(n,m),
 below(n), or upto(n). Assuming that n ... m is the range specified by <int-subrange>, an universal
