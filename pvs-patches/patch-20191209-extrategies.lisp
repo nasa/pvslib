@@ -21,13 +21,13 @@
 %  Copying formulas: copy*, protect, with-focus-on, with-focus-on@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
-%  Control flow: finalize, touch, for, for@, when, when@, unless,
+%  Control flow: finalize, finalize*, touch, for, for@, when, when@, unless,
 %    unless@, when-label, when-label@, unless-label, unless-label@,
 %    if-label, skip-steps, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
 %  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
-%  Ground evaluation (PVSio): eval-formula, eval-expr, eval
+%  Ground evaluation (PVSio): eval-formula, eval-formula*, eval-expr, eval
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices")
 
 (defparameter *extrategies-version* "Extrategies-6.0.0 (12/12/19)")
@@ -170,6 +170,9 @@
   "[Extrategies] Skips steps. This strategy is using for debugging purposes."
   "Skipping steps")
 
+;; This strategy is similar to (lisp ...). However, that strategy returns
+;; the value of the evaluation, which is printed in console. The
+;; strategy sklisp doesn't!
 (defstrat sklisp (lispexpr)
   (let ((xxx (eval lispexpr)))
     (skip))
@@ -1708,7 +1711,13 @@ TCCs generated during the execution of the command are discharged with the proof
 
 (defstrat finalize (step)
   (else (finalize__$ step) (skip))
-  "[Extrategies] Either finishes the current goal with STEP or does nothing.")
+  "[Extrategies] Either finishes the current goal with STEP or does
+  nothing.")
+
+(defstrat finalize* (&rest steps)
+  (mapstep #'(lambda(step)`(finalize ,step)) steps)
+  "[Extrategies] Applies each step in STEPS until the first one that
+  finishes the current goal.")
 
 (defstep touch (&optional (step (skip)))
   (else step (case "TRUE"))
@@ -1991,7 +2000,8 @@ names of the bounded variables."
    (let ((sks (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
 	 (fmt (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
 	 (css (if l (format nil fmt l) "TRUE"))
-         (es  exprs)) 
+         (es  exprs)
+	 (xxx (format t "exprs: ~a" exprs)))
      (then
       (skolem fn sks)
       (branch

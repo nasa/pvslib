@@ -11,7 +11,7 @@
 ;; is claimed in the United States under Title 17, U.S.Code. All Other
 ;; Rights Reserved.
 ;;
-;; List of strategies in PVSio: eval, eval-expr, and eval-formula
+;; List of strategies in PVSio: eval, eval-expr, eval-formula, and eval-formula*
 ;;
 
 (in-package :pvs)
@@ -134,13 +134,12 @@ is t, the strategy fails silently."
 %--~%" version strategies))
   "[PVSio] Prints PVSio's about information.")
 
-(defrule eval-formulas (&optional (fnums *) (but nil) safe? quiet?)
+(defstep eval-formula* (&optional (fnums *) (but nil) safe? quiet?)
   (let ((fnums (gather-fnums (s-forms (current-goal *ps*))
-			     fnums but))
-	(steps (loop for fnum in fnums
-		     collect `(eval-formula ,fnum ,safe? ,quiet?))))
-    (then :steps steps))
+			     fnums but)))
+    (mapstep #'(lambda (fnum) `(finalize (eval-formula ,fnum ,safe? ,quiet?)))
+	     fnums)) 
   "[PVSio] Evaluates all the formula in FNUMS not present in BUT. The
-formulas are evaluated in order until the first TRUE is obtained or
-the list of fnums is over."
+formulas are evaluated in order until the first one that discharges the
+sequent of when the list of FNUMS is over."
   "Evaluating formulas in ~a")
