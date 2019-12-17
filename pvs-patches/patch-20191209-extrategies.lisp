@@ -1988,11 +1988,10 @@ names of the bounded variables."
 		       bndgs)))
     (with-fresh-labels
      ((lab!))
-     (let ((labs (cons lab! labs)))
-       (branch
-	(discriminate (inst-cp fn :terms terms) labs :strict? t)
-	((skip)
-	 (eval-formula))))))
+     (branch
+      (discriminate (inst-cp fn :terms terms) lab! :strict? t)
+      ((unlabel lab! fn)
+       (eval-formula)))))
  "[Extrategies] Internal strategy." "")
 
 (defhelper unroll-skl__ (fn bndgs id l exprs)
