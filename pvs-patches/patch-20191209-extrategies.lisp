@@ -1721,8 +1721,9 @@ TCCs generated during the execution of the command are discharged with the proof
 
 (defstep touch (&optional (step (skip)))
   (else step (case "TRUE"))
-  "[Extrategies] Does step and touches the proof context so that try and else consider that step
-does something, even when it doesn't." "Doing ~a and touching the proof context")
+  "[Extrategies] Does step and touches the proof context so that try
+and else consider that step does something, even when it doesn't."
+  "Doing ~a and touching the proof context")
 
 (defstrat when (flag &rest steps)
   (if (and flag steps)
@@ -1999,9 +2000,7 @@ names of the bounded variables."
    ((n))
    (let ((sks (mapcar #'(lambda (bnd)(if (equal id (id bnd)) n '_)) bndgs))
 	 (fmt (format nil "NOT ( ~~{~a=~~a ~~^OR ~~})" n))
-	 (css (if l (format nil fmt l) "TRUE"))
-         (es  exprs)
-	 (xxx (format t "exprs: ~a" exprs)))
+	 (css (if l (format nil fmt l) "TRUE")))
      (then
       (skolem fn sks)
       (branch
@@ -2009,11 +2008,13 @@ names of the bounded variables."
        ((then
 	 (hide-all-but 1)
 	 (typepred n)
-	 (with-fresh-names
-	  ((nms exprs :full))
-	  (mapstep #'(lambda (nm)`(eval-expr ,nm)) nms)
-	  (flatten)
-	  (assert)))
+	 (if exprs
+	     (with-fresh-names
+	      ((nms exprs :full))
+	      (mapstep #'(lambda (nm)`(eval-expr ,nm)) nms)
+	      (flatten)
+	      (assert))
+	   (then (flatten) (assert))))
 	(then (split -1) (else (replace -1 :hide? t :actuals? t) (hide -1))))))))
   "[Extrategies] Internal strategy." "")
 
