@@ -2812,4 +2812,3 @@ is t, the strategy fails silently."
 formulas are evaluated in order until the first one that discharges the
 sequent of when the list of FNUMS is over."
   "Evaluating formulas in ~a")
-
