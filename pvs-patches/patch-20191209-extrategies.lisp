@@ -24,12 +24,13 @@
 %  Copying formulas: copy*, protect, with-focus-on, with-focus-on@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
-%  Control flow: try@, finalize, finalize*, touch, for, for@, when, when@, 
-%    unless, unless@, when-label, when-label@, unless-label, unless-label@,
-%    if-label, sklisp
+%  Control flow: try@, try-then, try-then@, finalize, finalize*, touch,
+%    for, for@, when, when@, unless, unless@, when-label, when-label@,
+%    unless-label, unless-label@, if-label, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
-%  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step, with-tccs
+%  TCCs: tccs-expression, tccs-formula, tccs-formula*, tccs-step,
+%    if-tcc-sequent, with-tccs
 %  Ground evaluation (PVSio): eval-formula, eval-formula*, eval-expr, eval
 %  Miscellaneous: splash, replaces, rewrites, rewrite*, suffices
 %  Strategy debugging (experts only): skip-steps, show-debug-mode, toggle-debug-mode")
@@ -1705,42 +1706,69 @@ are labeled LABEL(s), if LABEL is not nil. They are hidden when HIDE? is t."
 	  (discriminate (case expr) !tcl)
 	  ((relabel-hide__ (flatten !tcl) label !tcl hide?)
 	   (delete !tcs) !)))) !)))
-  "[Extrategies] If STEP generates subgoals, e.g., TCCs, these subgoals are added as hypotheses to the
-first subgoal. Added hypotheses are labeled LABEL(s), if LABEL is not nil. They are hidden when
-HIDE? is t."
+  "[Extrategies] If STEP generates subgoals, e.g., TCCs, these
+subgoals are added as hypotheses to the first subgoal. Added
+hypotheses are labeled LABEL(s), if LABEL is not nil. They are hidden
+when HIDE? is t."
  "Adding TCCs of step ~a as hypotheses" t)
 
-(defstep with-tccs (step &optional steps (fnums *)
+(defstrat if-tcc-sequent (&optional (step '(skip)))
+  (when step
+    (if (typep *goal* 'tcc-sequent)
+	step
+      (skip)))
+  "Apply the step STEP only if the current sequent is a TCC
+sequent. Otherwise, it behaves as a (skip).")
+
+(defstep with-tccs (step &optional (fnums *)
 			 (tcc-step (extra-tcc-step))
 			 protect?)
   (with-fresh-labels
    ((!wtccs fnums :tccs))
-   (let ((stps (append (or steps '((skip)))
-		       (list `(then (when ,protect? (reveal ,*!wtccs-tccs*))
-				    (finalize ,tcc-step))))))
-     (then
-      (when protect? (hide *!wtccs-tccs*))
-      (branch step stps))))
+   (when protect? (hide *!wtccs-tccs*))
+   (branch
+    step
+    ((if-tcc-sequent
+      (then
+       (when protect? (reveal *!wtccs-tccs*))
+       (finalize tcc-step))))))
   "[Extrategies] Applies STEP after introducing TCCs for the formulas
-in FNUMS. If STEP generates subgoals, these subgoals are consecutively
-discharged using STEPS, which is a list of steps.  TCCs generated
-during the execution of the command are discharged with the proof
-command TCC-STEP. When PROTECT? is set to t, TCCs are hidden when STEP
-is executed and revealed afterwards. This way, explicit formula
-numbers used in STEP are protected."
+in FNUMS. TCCs generated during the execution of the command are
+discharged with the proof command TCC-STEP. When PROTECT? is set to t,
+TCCs are hidden when STEP is executed and revealed afterwards to be
+proven by TCC-STEP. This way, explicit formula numbers used in STEP
+are protected."
   "Applying ~a assumings TCCs")
 	     
 ;;; Control flow
 
-(defstrat try@ (strategy then-strategy else-strategy)
+(defstrat try@ (step then-step else-step)
   (try-branch
-   strategy
-   (then-strategy
+   step
+   (then-step
     (skip))
-   else-strategy)
-  "[Extrategies] Tries strategy STRATEGY on current goal, and if
-successful, applies strategy THEN-STRATEGY to the main subgoal. If no
-change, then ELSE-STRATEGY is applied to current goal.")
+   else-step)
+  "[Extrategies] Tries STEP on current goal, and if successful,
+applies strategy THEN-STEP to the main subgoal. If no change, then
+ELSE-STEP is applied to current goal.")
+
+(defhelper try-then__ (steps trythn)
+  (when steps
+    (let ((try-steps (reduce (lambda (sl1 sl2) `(,trythn ,sl1 ,sl2 (skip)))
+			     steps
+			     :from-end t)))
+      try-steps))
+  "[Extrategies] Internal strategy." "")
+ 
+(defstrat try-then (&rest steps)
+  (try-then__$ steps try)
+  "[Extrategies] Successively applies the steps in STEPS to all
+branches until the first that does nothing.")
+
+(defstrat try-then@ (&rest steps)
+  (try-then__$ steps try@)
+  "[Extrategies] Successively applies the steps in STEPS to the
+main branch until the first that does nothing.")
 
 (defhelper finalize__ (step)
   (try step (fail) (skip))
