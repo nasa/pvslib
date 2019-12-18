@@ -24,8 +24,8 @@
 %  Copying formulas: copy*, protect, with-focus-on, with-focus-on@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
-%  Control flow: finalize, finalize*, touch, for, for@, when, when@, unless,
-%    unless@, when-label, when-label@, unless-label, unless-label@,
+%  Control flow: try@, finalize, finalize*, touch, for, for@, when, when@, 
+%    unless, unless@, when-label, when-label@, unless-label, unless-label@,
 %    if-label, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
@@ -1731,6 +1731,16 @@ numbers used in STEP are protected."
   "Applying ~a assumings TCCs")
 	     
 ;;; Control flow
+
+(defstrat try@ (strategy then-strategy else-strategy)
+  (try-branch
+   strategy
+   (then-strategy
+    (skip))
+   else-strategy)
+  "[Extrategies] Tries strategy STRATEGY on current goal, and if
+successful, applies strategy THEN-STRATEGY to the main subgoal. If no
+change, then ELSE-STRATEGY is applied to current goal.")
 
 (defhelper finalize__ (step)
   (try step (fail) (skip))
