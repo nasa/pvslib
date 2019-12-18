@@ -1710,19 +1710,24 @@ first subgoal. Added hypotheses are labeled LABEL(s), if LABEL is not nil. They 
 HIDE? is t."
  "Adding TCCs of step ~a as hypotheses" t)
 
-(defstep with-tccs (step &optional steps (fnums *) (tcc-step (extra-tcc-step)))
+(defstep with-tccs (step &optional steps (fnums *)
+			 (tcc-step (extra-tcc-step))
+			 protect?)
   (with-fresh-labels
    ((!wtccs fnums :tccs))
    (let ((stps (append (or steps '((skip)))
-		       (list `(then (reveal ,*!wtccs-tccs*) (finalize ,tcc-step))))))
+		       (list `(then (when ,protect? (reveal ,*!wtccs-tccs*))
+				    (finalize ,tcc-step))))))
      (then
-      (hide *!wtccs-tccs*)
+      (when protect? (hide *!wtccs-tccs*))
       (branch step stps))))
   "[Extrategies] Applies STEP after introducing TCCs for the formulas
 in FNUMS. If STEP generates subgoals, these subgoals are consecutively
 discharged using STEPS, which is a list of steps.  TCCs generated
 during the execution of the command are discharged with the proof
-command TCC-STEP."
+command TCC-STEP. When PROTECT? is set to t, TCCs are hidden when STEP
+is executed and revealed afterwards. This way, explicit formula
+numbers used in STEP are protected."
   "Applying ~a assumings TCCs")
 	     
 ;;; Control flow
