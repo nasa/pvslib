@@ -1752,23 +1752,24 @@ are protected."
 applies strategy THEN-STEP to the main subgoal. If no change, then
 ELSE-STEP is applied to current goal.")
 
-(defhelper try-then__ (steps trythn)
-  (when steps
-    (let ((try-steps (reduce (lambda (sl1 sl2) `(,trythn ,sl1 ,sl2 (skip)))
-			     steps
-			     :from-end t)))
-      try-steps))
+(defhelper try-then__ (steps trythn else-step)
+  (let ((try-steps (reduce (lambda (sl1 sl2) `(,trythn ,sl1 ,sl2 ,else-step))
+			   steps
+			   :initial-value '(skip)
+			   :from-end t)))
+    try-steps)
   "[Extrategies] Internal strategy." "")
  
-(defstrat try-then (&rest steps)
-  (try-then__$ steps try)
+(defstrat try-then (steps &optional (else-step (skip)))
+  (try-then__$ steps try else-step)
   "[Extrategies] Successively applies the steps in STEPS to all
-branches until the first that does nothing.")
+branches until the first that does nothing, then it applies
+ELSE-STEP.")
 
-(defstrat try-then@ (&rest steps)
-  (try-then__$ steps try@)
-  "[Extrategies] Successively applies the steps in STEPS to the
-main branch until the first that does nothing.")
+(defstrat try-then@ (steps &optional (else-step (skip)))
+  (try-then__$ steps try@ else-step)
+  "[Extrategies] Successively applies the steps in STEPS to the main
+branch until the first that does nothing, then it applies ELSE-STEP.")
 
 (defhelper finalize__ (step)
   (try step (fail) (skip))
