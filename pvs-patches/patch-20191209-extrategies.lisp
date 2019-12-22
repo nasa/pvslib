@@ -437,9 +437,18 @@
 (defun extra-get-fnum (fnum)
   (car (extra-get-fnums fnum)))
 
-;; Get a PVS object from expr, where expr can be speficied as a formula or a string
-;; or using Manip's location. If full is t, expression is obtained in fully-expanded form
-(defun extra-get-expr (expr &optional (tc t) full)
+;; Get a PVS object from type, where expr can be speficied as a formula or a string.
+(defun extra-get-type (expr)
+  (cond ((expr? expr) expr)
+	((stringp expr)
+	 (pc-typecheck (pc-parse expr 'type-expr)))))
+
+;; Get a PVS object from expr, where expr can be specified as a formula or a string
+;; or using Manip's location. If type is nil, expression is just parsed but not type-checked.
+;; If type is t, expression is type-checked. Otherwise, type expression is type-checked and
+;; type is considered to be the expected typed. If full is t, expression is obtained in
+;; fully-expanded form
+(defun extra-get-expr (expr &optional (type t) full)
   (when expr
     (let ((nexpr
 	   (cond ((expr? expr) expr)
@@ -447,12 +456,16 @@
 		  (extra-get-formula expr))
 		 ((stringp expr)
 		  (let ((e (pc-parse expr 'expr)))
-		    (if (or tc full) (pc-typecheck e) e)))
+		    (cond ((or (stringp type) (expr? type))
+			   (pc-typecheck e :expected (extra-get-type type)))
+			  ((or type full)
+			   (pc-typecheck e))
+			  (t e))))
 		 ((listp expr)
 		  (let* ((ecar (car (eval-ext-expr expr)))
 			 (e    (when ecar (ee-pvs-obj ecar))))
-		    (when (expr? e) e))))))
-      (if (and full (expr? nexpr)) (full-name nexpr) nexpr))))
+		    e)))))
+      (if full (full-name nexpr) nexpr))))
 
 ;; Get a list of PVS object from exprs, where expsr are speficied using Manip's location
 (defun extra-get-exprs (exprs)
