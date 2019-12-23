@@ -1643,7 +1643,7 @@ is found in STEPS. This rule *must* only be used in the definition of the oracle
   (when (expr? expr)
     (let ((*tccforms* nil)
 	  (*generate-tccs* 'all))
-      (pc-typecheck expr)
+      (pc-typecheck (pc-parse (format nil "~a" expr) 'expr) :expected (type expr))
       (reverse (mapcar #'tccinfo-formula *tccforms*)))))
 
 (deforacle tccs-expression (expr &optional label hide? full? (tcc-step (extra-tcc-step)))
