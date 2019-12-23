@@ -1645,7 +1645,7 @@ is found in STEPS. This rule *must* only be used in the definition of the oracle
 	  (*generate-tccs* 'all))
       (pc-typecheck expr)
       (reverse (mapcar #'tccinfo-formula *tccforms*)))))
-  
+
 (deforacle tccs-expression (expr &optional label hide? full? (tcc-step (extra-tcc-step)))
   (when tcc-step
     (let ((e (extra-get-expr expr t full?)))
