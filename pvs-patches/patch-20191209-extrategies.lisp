@@ -1638,16 +1638,17 @@ is found in STEPS. This rule *must* only be used in the definition of the oracle
 	  (hide lab2)))
   "[Extrategies] Internal strategy." "")
 
+;; Expression is a valid expression
 (defun get-tccs-expression (expr)
-  (when expr
+  (when (expr? expr)
     (let ((*tccforms* nil)
 	  (*generate-tccs* 'all))
-      (pc-typecheck (pc-parse (format nil "~a" expr) 'expr))
+      (pc-typecheck expr)
       (reverse (mapcar #'tccinfo-formula *tccforms*)))))
   
 (deforacle tccs-expression (expr &optional label hide? full? (tcc-step (extra-tcc-step)))
   (when tcc-step
-    (let ((e    (extra-get-expr expr t full?)))
+    (let ((e (extra-get-expr expr t full?)))
       (when e
 	(with-fresh-labels
 	 (!tce)
