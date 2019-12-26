@@ -37,6 +37,7 @@
 (defparameter *pvs-metit* nil)   ;; PVS' MetiTarski directory
 (defparameter *metit-archs* nil) ;; List of supported architectures
 (defparameter *metit-arch* nil)  ;; Host architecture
+(defparameter *metit-gsubs* nil) ;; Global variable substitutions. Assoc list of (pvs_id.metit_id)
 
 (defvar *metit-id-counter*)  
 
@@ -110,6 +111,7 @@
 	   (setq *metit-lib* metit-lib)
 	   (setq *metit-bin* metit-bin)
 	   (setq *metit-tptp* metit-tptp)
+	   (setq *metit-gsubs* nil)
 	   (newcounter *metit-id-counter*)))))
 
 (defun metit-archs ()
@@ -137,22 +139,28 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defun merge-assoc (al)
+  (when al
+    (cons (caar al) (cons (cdar al) (merge-assoc (cdr al))))))
+
+(defun translate-to-metitarski-global-variable (expr)
+  (or
+   (cdr (assoc expr *metit-gsubs* :test #'tc-eq))
+   (let ((yname (metit-id-name "V")))
+     (setq *metit-gsubs* (cons (cons expr yname) *metit-gsubs*))
+     yname)))
+
 (defmethod translate-to-metitarski* ((expr name-expr) bindings)
-  (or (cond ((is-const-decl-expr expr '("pi" "e"))
-	     (metit-interpretation expr))
-	    ((is-variable-expr expr)
-	     (cdr (assoc (id expr) bindings :test #'string=))))
-      (error "constant/variable ~a cannot be handled." expr)))
+  (if (is-const-decl-expr expr '("pi" "e"))
+      (metit-interpretation expr)
+    (or (cdr (assoc (id expr) bindings))
+	(translate-to-metitarski-global-variable expr))))
 
 (defmethod translate-to-metitarski* ((expr fieldappl) bindings)
-  (or (when (is-variable-expr expr)
-	(cdr (assoc (format nil "~a" expr)  bindings :test #'string=)))
-      (error "field application ~a cannot be handled." expr)))
+  (translate-to-metitarski-global-variable expr))
 
 (defmethod translate-to-metitarski* ((expr projappl) bindings)
-  (or (when (is-variable-expr expr)
-	(cdr (assoc (format nil "~a" expr)  bindings :test #'string=)))
-      (error "projection ~a cannot be handled." expr)))
+  (translate-to-metitarski-global-variable expr))
 
 (defmethod translate-to-metitarski* ((expr decimal) bindings)
   (format nil "(~a / ~a)" (args1 expr) (args2 expr)))
@@ -175,11 +183,6 @@
 
 (defun metit-id-name (id)
   (intern (format nil "~a~a" (string-upcase id) (funcall *metit-id-counter*))))
-
-(defun metit-id-names (n)
-  (if (= n 0) nil
-    (cons (intern (format nil "V~a" (funcall *metit-id-counter*)))
-	  (metit-id-names (1- n)))))
 
 ;;
 ;; (argument expr) return a tuple of the arguments of expr
@@ -226,9 +229,9 @@
 		    (translate-to-metitarski* (args1 (args2 expr)) bindings)
 		    (translate-to-metitarski* (args1 expr) bindings)
 		    (translate-to-metitarski* (args1 expr) bindings)
-		    (translate-to-metitarski* (args2 (args2 expr)) bindings)))		    
-	   (t   (error "expression ~a cannot be handled." expr))))
-      (error "expression ~a cannot be handled." operator))))
+		    (translate-to-metitarski* (args2 (args2 expr)) bindings)))
+	   (t   (translate-to-metitarski-global-variable expr))))
+      (translate-to-metitarski-global-variable expr))))
 
 ;;
 ;; translate-metit-bindings : Go through a list of bind declarations and create a
@@ -240,7 +243,7 @@
 	 (if (tc-eq (type (car bind-decls)) *real*)
 	     (let ((yname (metit-id-name (id (car bind-decls)))))
 	       (translate-metit-bindings (cdr bind-decls) ;;making bindings here
-					 (cons (cons (string (id (car bind-decls)))
+					 (cons (cons (id (car bind-decls))
 						     yname)
 					       bindings)
 					 (cons yname accum)))
@@ -271,7 +274,7 @@
 ;; and converts it into the proper logical form p1 > 0 & p1 >= 0 and returns
 ;; a new expression with these propositional atoms in the antecedent
 ;;
-;; The we recursively call translate-metit-bindings to build a cons list of bindvars
+;; Then, we recursively call translate-metit-bindings to build a cons list of bindvars
 ;; ((p1 : real. P11))
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -289,12 +292,14 @@
 		(format nil "(?[~{~a~^, ~}]: ~a)" bindvars yexpression)))))))) ;;no else case
 
 (defmethod translate-to-metitarski* ((expr if-expr) bindings)
-  (let ((condexpr (translate-to-metitarski* (nth 0 (arguments expr)) bindings)))
-    (format nil "((~a => ~a) & ((~~ ~a) => ~a))"
-	    condexpr
-	    (translate-to-metitarski* (nth 1 (arguments expr)) bindings)
-	    condexpr
-	    (translate-to-metitarski* (nth 2 (arguments expr)) bindings))))
+  (if (tc-eq (type expr) *boolean*)
+      (let ((condexpr (translate-to-metitarski* (nth 0 (arguments expr)) bindings)))
+	(format nil "((~a => ~a) & ((~~ ~a) => ~a))"
+		condexpr
+		(translate-to-metitarski* (nth 1 (arguments expr)) bindings)
+		condexpr
+		(translate-to-metitarski* (nth 2 (arguments expr)) bindings)))
+    (error "conditional expression ~a cannot be handled" expr)))
 
 (defun translate-to-metitarski (expr &optional bindings)
   (translate-to-metitarski* expr bindings))
@@ -323,76 +328,78 @@
     (when *metit-arch*
       (format t "Host architecture: ~a~%" *metit-arch*))))
 
-(defun metit (s-forms timeout options prebins arch about)
+(defun metit (s-forms timeout verbose options prebins arch about)
   (cond ((not (init-metit prebins arch)) nil)
-	(about
-	 (metit-about)
-	 nil)
+	(about (metit-about) nil)
 	(t (let* ((expr  (typecheck (mk-disjunction (mapcar #'formula s-forms))))
-		  (fvars (get-vars-from-expr expr '("pi" "e")))
-		      (metit-forms
-		       (handler-case
-			(if (null fvars)
-			    (loop for sf in s-forms
-				  collect
-				  (let ((fmla (formula sf)))
-				    (format nil "fof(pvs2metit,conjecture, ~a)." 
-					    (translate-to-metitarski fmla))))
-			  (let* ((names    (metit-id-names (length fvars))))
-			    (when fvars (format t "Substitutions: ~{~a -> ~a~^, ~}~%" 
-						(merge-lists fvars names)))
-			    (list (format nil "fof(pvs2metit,conjecture, (![~{~a~^, ~}]: ~a))."
-					  names (translate-to-metitarski expr (pairlis fvars names))))))
-			(error (condition) 
-			       (format t "Error: ~a~%" condition))))
-		      (file (when metit-forms
-			      (pathname (format nil "~a/pvsbin/~a.tptp"
-						(working-directory)
-						(label *ps*))))))
-	     (cond (metit-forms
-		    (format t "MetiTarski Input = ~% ~{~a~%~}" metit-forms)
-		    (with-open-file (stream (ensure-directories-exist file) 
-					    :direction :output
-					    :if-exists :supersede)
-				    (format stream "~{~a ~%~}" metit-forms))
-		    ;; --time is the timeout in seconds
-		    ;; --autoInclude will try to pick the correct axiom files
-		    (let* ((metit-call 
-			    (format nil "bash -c \"Z3_NONLIN=~a ~@[~a~] ~a --autoInclude --tptp ~a --time ~a~@[ ~a~] ~a\"" 
-				    *z3-bin* *metit-lib* *metit-bin* *metit-tptp* timeout options 
-				    (namestring file)))
-			   (result (extra-system-call metit-call)))
-		      (cond ((zerop (car result))
-			     (format t "~%Result = ~a" (cdr result))
-			     (cond ((search "Theorem"  (cdr result) :from-end t)
-				    (format t "~%MetiTarski succesfully proved.~%") t)
-				   (t (format t "~%Unable to prove with MetiTarski.~%"))))
-			    (t (format t
-				       "~%Error running MetiTarski. The error message is:~% ~a~%"
-				       (cdr result)))))))))))
+		  (metit-forms
+		   (handler-case
+		       (let ((fmla  (translate-to-metitarski expr))
+			     (names (mapcar #'cdr *metit-gsubs*)))
+			 (list (format nil "fof(pvs2metit,conjecture,~@[![~{~a~^, ~}]: ~]~a)."
+				       names fmla)))
+		     (error (condition) 
+			    (format t "Error: ~a~%" condition))))
+		  (file (when metit-forms
+			  (pathname (format nil "~a/pvsbin/~a.tptp"
+					    (working-directory)
+					    (label *ps*))))))
+	     (when metit-forms
+	       (when verbose
+		 (format t "PVS Expression:~%~a~%" expr)
+		 (when *metit-gsubs* (format t "Global Substitutions:~%~{~a -> ~a~^, ~}~%" 
+					     (merge-assoc *metit-gsubs*)))
+		 (format t "MetiTarski Input:~%~{~a~%~}"
+			 metit-forms))
+	       (with-open-file (stream (ensure-directories-exist file) 
+				       :direction :output
+				       :if-exists :supersede)
+			       (format stream "~{~a ~%~}" metit-forms))
+	       ;; --time is the timeout in seconds
+	       ;; --autoInclude will try to pick the correct axiom files
+	       (let* ((metit-call 
+		       (format nil "bash -c \"Z3_NONLIN=~a ~@[~a~] ~a --autoInclude --tptp ~a --time ~a~@[ ~a~] ~a\"" 
+			       *z3-bin* *metit-lib* *metit-bin* *metit-tptp* timeout options 
+			       (namestring file)))
+		      (result (extra-system-call metit-call)))
+		 (when verbose
+		   (format t "MetiTarski Call:~%~a~%" metit-call)) 
+		 (cond ((zerop (car result))
+			(when verbose
+			  (format t "~a~%" (cdr result)))
+			(cond ((search "Theorem"  (cdr result) :from-end t)
+			       (format t "~%MetiTarski succesfully proved.~%") t)
+			      (t (format t "~%Unable to prove with MetiTarski.~%"))))
+		       (t (format t
+				  "~%Error running MetiTarski. The error message is:~% ~a~%"
+				  (cdr result))))))))))
 
-(deforacle metit (&optional (fnums 1) (timeout 60) options (pre-bins? t) arch about?)
+(deforacle metit (&optional (fnums 1) (timeout 60) verbose? options (pre-bins? t) arch about?)
   (let ((s-forms (extra-get-seqfs fnums)))
     (if s-forms
-	(let ((result (metit s-forms timeout options pre-bins? arch about?)))
+	(let ((result (metit s-forms timeout verbose? options pre-bins? arch about?)))
 	  (when result (trust! metit)))
       (printf "Formula(s) ~a not found" fnums)))
-  "Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a
-processor time limit (in seconds). Additional options to MetiTarski
+  "
+Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a processor
+time limit (in seconds). Output information generated by MetiTarski is
+printed when verbose? is set to t. Additional options to MetiTarski
 can be provided through OPTIONS.  Executables of MetiTarski and z3 are
 pre-intstalled in the NASA PVS Library.* These binaries are always
-tried when PRE-BINS? is set to t (default value).  If PRE-BINS? is set
-to nil, the strategy tries to use the versions of MetiTarski and z3
-installed in the system. The option ARCH forces the strategy to use
+tried when PRE-BINS? is set to t (default value).  If PRE-BINS?  is
+set to nil, the strategy tries to use the versions of MetiTarski and
+z3 installed in the system. The option ARCH forces the strategy to use
 the pre-installed version for a given architecture. If ABOUT? is set
 to t, the strategy prints information about MetiTarski, z3, and their
 pre-installed versions.
 
-MetiTarski requires an external algebraic decision method (EADM). The default EADM
-is z3. However, other EADM are also supported, e.g., QEP and Mathematica. See 
-MetiTarski's documentation for information about using a different EADM.
+MetiTarski requires an external algebraic decision method (EADM). The
+default EADM is z3. However, other EADM are also supported, e.g., QEP
+and Mathematica. See MetiTarski's documentation for information about
+using a different EADM.
 
-* The files METIT-LICENSE.txt and Z3-LICENSE.txt in nasalib/MetiTarski/dist
-  contains MetiTarski's and z3's license of use, respectively." 
-	 "~%Proving formula(s) ~a with MetiTarski")
+* The files METIT-LICENSE.txt and Z3-LICENSE.txt in
+  nasalib/MetiTarski/dist contains MetiTarski's and z3's license of
+  use, respectively."
+  "~%Proving formula(s) ~a with MetiTarski")
       
