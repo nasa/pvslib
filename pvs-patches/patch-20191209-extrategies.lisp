@@ -2811,7 +2811,7 @@ quantifier, if provided."
 			     (cl2pvs cl-eval (type tc-input)))
 			 (if (expr? pvs-val) pvs-val
 			   (throw '*eval-error*
-				  (format nil "Result ~a is not ground" cl-eval))))))))))))))
+				  (format nil "Result ~a is not ground" expr))))))))))))))
 
 (deforacle eval-expr (expr &optional safe? (auto? t) quiet? timing?)
   (let ((e (extra-get-expr expr)))
