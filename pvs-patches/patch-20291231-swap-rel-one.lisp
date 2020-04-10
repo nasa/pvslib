@@ -1,0 +1,18 @@
+;; By MM and CM. April 10, 2020.
+(defhelper swap-rel-one (fnum)
+  (let ((formula (manip-get-formula fnum))
+	(operator (id (operator formula)))
+	(lhs (textify (args1 formula)))
+	(rhs (textify (args2 formula)))
+	(new-op (reverse-relation operator))
+	(new-expr (format nil "(~A) ~A (~A)" rhs new-op lhs))
+	(replace-expr (format nil "~A IFF ~A" formula new-expr))
+	(is-eq (and (equal operator '=)
+		    (equal (id (type formula)) (id *boolean*))))
+        (case-step `(case ,replace-expr))
+        (main-branch `(replace -1 ,(if (< fnum 0) (- fnum 1) fnum) :hide? t))
+        (just-step `(if ,is-eq (then (iff -1) (ground)) (ground)))
+	(steplist (list main-branch just-step)))
+    (spread case-step steplist))
+  "[Manip] Reverse order of a relational formula."
+  "~%Reversing the order of the relation in formula ~A")
