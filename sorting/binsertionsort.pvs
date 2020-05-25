@@ -1,0 +1,82 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% Formalization of correctness of binary insertion sort
+%%%%% over finite sequences.
+%%%%%
+%%% Grupo de Teoria da Computacao, Universidade de Brasilia
+%%% Nikson Bernardes, M. Ayala-Rincon, Flavio L.C. de Moura,
+%%% Ariane Alves Almeida
+%%% Last modification:  May 6, 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+binsertionsort[T : TYPE, (IMPORTING total_preorder) leq : (total_preorder?[T])] : THEORY
+
+BEGIN
+
+IMPORTING sorting_seq[T, leq], structures@seq_extras[T]
+
+v : VAR finite_sequence[T]   % This is the Data Structure for arrays
+i,j,k : VAR T  
+
+% Binary searches the position of key k in the sequence v   
+bin_search(v)(k)(i : below[length(v)], (j :below[length(v)] | i <=j)) : RECURSIVE upto[j + 1] =
+IF i=j THEN
+   IF leq(k, v(i))  THEN i ELSE i + 1 ENDIF
+ELSE LET l = floor((i+j)/2) IN
+     IF k = v(l) THEN l
+     ELSIF  lt(k, v(l)) THEN IF i=l THEN i ELSE bin_search(v)(k)(i, l-1) ENDIF
+     ELSE bin_search(v)(k)(l+1, j)
+     ENDIF
+ENDIF 
+MEASURE j - i
+
+% binsertionsort_aux(v)(j) inserts v(j) in the jth-prefix, v(j+1) in the (j+1)th prefix
+% and so on, until the last element of the sequence v. 
+binsertionsort_aux((v | length(v)>=2))(j : below[length(v)]) : RECURSIVE  {w : finite_sequence[T] | length(w) = length(v) } =
+IF j = 0 THEN v
+ELSE LET l = bin_search(v)(v(j))(0, j - 1),
+         w = insert?(v(j), delete(v, j), l) IN
+     IF j = length(v) - 1 THEN w
+     ELSE binsertionsort_aux(w)(j+1)
+     ENDIF
+ENDIF     
+MEASURE length(v) - j
+
+binsertionsort(v) : {w : finite_sequence[T] | length(w) = length(v) } =
+IF length(v) <= 1 THEN v 
+ELSE binsertionsort_aux(v)(1) 
+ENDIF
+
+% Proof of soundness of bin(aryin)sertionsort
+
+b_search_bound: LEMMA FORALL(v)(k)(i : below[length(v)], (j :below[length(v)] | i <=j)) :
+ bin_search(v)(k)(i,j) >= i AND bin_search(v)(k)(i,j) <= j+1
+
+
+b_search_preserves_sorting: LEMMA FORALL(v)(k)(i : below[length(v)], (j :below[length(v)] | i <=j)):
+ is_sorted?(v) AND (i=0 OR geq(k, v(i-1))) AND (j=v`length-1 OR leq(k, v(j+1))) => is_sorted?(insert?(k,v,bin_search(v)(k)(i,j)))
+
+
+b_search_translation: LEMMA FORALL(v | length(v)>=2)(k)(j :below[length(v)-1], i:upto[j]):
+  bin_search(v)(k)(i,j) = bin_search(v^(0,j))(k)(i,j)
+
+
+bs_aux_perm: LEMMA  FORALL((v | length(v)>=2), (j : below[length(v)])) :
+ permutations(v, binsertionsort_aux(v)(j))
+
+
+bs_aux_sorts : LEMMA FORALL(v | length(v)>=2, j : below[length(v)] | j > 0) :
+ is_sorted?(v^(0,j-1)) => is_sorted?(binsertionsort_aux(v)(j))
+
+
+binsertion_permutation : LEMMA FORALL (v): permutations(v, binsertionsort(v))
+
+
+binsertion_sorts : LEMMA  FORALL (v): is_sorted?(binsertionsort(v))
+
+
+binsertionsort_works : LEMMA
+FORALL (v):
+       is_sorted?(binsertionsort(v)) AND permutations(v,binsertionsort(v))
+
+
+END binsertionsort

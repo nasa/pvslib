@@ -1,0 +1,416 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%	Ford-Johnson sorting algorithm (on nat)
+%% 
+%%      By Nikson Fernandes, Mauricio Ayala-Rincon and Ariane Alves Almeida
+%%      Last modified: May 6th, 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ford_johnson[T : TYPE, (IMPORTING total_preorder) leq : (total_preorder?[T])]: THEORY
+ BEGIN
+
+
+  IMPORTING firt_phase_ford_johnson[T, leq], sorting_seq[nat, <=]
+
+  k,i,j,n : VAR nat
+  s1: var finseqfj
+
+% %%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+% %% SECOND PHASE of the Ford-Johnson algorithm XX
+% %%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+% t is the Ford-Johnson's index for efficient binary insertion 
+t(k:nat): {t:nat | k>1 => t>=2} =   (2^(k+1) + (-1)^(k))/3 - 1
+
+t_is_increasing : LEMMA 
+FORALL(i,j:posnat) :  i < j IFF t(i) < t(j)
+
+t_is_unbounded : LEMMA                          % not used
+FORALL(i: nat) : (EXISTS (j : nat) : t(j) > i)
+
+t_qinversible : LEMMA 
+FORALL(l : posnat): EXISTS (k:posnat) : t(k - 1) < l AND t(k) >= l
+
+% minimum k necessary to index l keys. 
+maxk(l: posnat) : {k:above(1) | t(k-1) < l AND t(k)>=l }
+
+maxk_correction: COROLLARY
+FORALL(l: posnat, k : posnat): t(k) < l <=> k < maxk(l)
+
+% flag for describe index for a sequence
+is_indx?(s:finseq[fjnode[T]] | length(s)>0, indx:finseq[nat] | length(indx) > 0): bool =
+	is_sorted?(indx) AND
+	(FORALL(i:below[length(indx)]):
+		indx(i) < length(s) AND
+		FORALL(j:below[length(indx)]| i/=j):indx(i)/=indx(j))
+
+% Remove the first sibling of the current fjnode
+% that would be inserted in the main sequence of the 
+% sequence
+removeSon(s: finseq[fjnode[T]], indx: nat): finseq[fjnode[T]] =
+	(#length := s`length ,
+	  seq:= (lambda(i:below[s`length]):
+		IF i = indx THEN consFjnode(val(s(i)),
+		                            IF cons?(smallerones(s(i))) THEN
+		                                cdr(smallerones(s(i)))
+				            ELSE smallerones(s(i)) ENDIF)
+		ELSE s(i)
+		ENDIF)
+	#)
+
+
+% Updating of the index sequence (used as index of the sequence of fjnodes)
+% when a new fjnode is added at position n. 
+upToOne(indx:finseq[nat], n : nat): finseq[nat] =
+	(#length:= indx`length,
+	seq:= (lambda(i:below[indx`length]): IF indx(i) < n THEN indx(i) ELSE indx(i)+1 ENDIF )
+	#)
+
+% upToOne (index) still ponts for same element in sequence after insert
+upToOneIsCorrectAll:LEMMA
+	FORALL (s:finseq[fjnode[T]],indx:finseq[nat])(k: below[length(indx)], x:fjnode,i:below[length(s)]):
+	indx(k)<length(s)	IMPLIES s(indx(k)) = insert?(x, s, i)(upToOne(indx,i)(k))
+
+upToOnePreservesIndx:LEMMA
+FORALL (s:finseq[fjnode[T]] | length(s)>0,indx:finseq[nat] | length(indx)>0, x:fjnode,i:upto[length(s)]):
+	is_indx?(s,indx) IMPLIES is_indx?(insert?(x, s, i), upToOne(indx,i))
+
+
+% Binary search over sequences of fjnodes (the top keys of these sequences)
+% Implemented in binsertionsort over plain sequences.
+bin_search(s:finseq[fjnode[T]])(k:fjnode)(i : below[length(s)], (j :below[length(s)] | i <=j)) : RECURSIVE upto[j + 1] =
+IF i=j THEN
+   IF leq(val(k), val(s(i)))  THEN i ELSE i + 1 ENDIF
+ELSE LET l = floor((i+j)/2) IN
+     IF val(k) = val(s(l)) THEN l
+     ELSIF  leq(val(k), val(s(l))) THEN IF i=l THEN i ELSE bin_search(s)(k)(i, l-1) ENDIF
+     ELSE bin_search(s)(k)(l+1, j)
+     ENDIF
+ENDIF 
+MEASURE j - i
+
+
+b_search_bound: LEMMA FORALL(s:finseq[fjnode[T]])(k:fjnode[T])(i : below[length(s)], (j :below[length(s)] | i <=j)) :
+ bin_search(s)(k)(i,j) >= i AND  bin_search(s)(k)(i,j) <=j + 1
+
+b_search_preserves_sorting: LEMMA
+FORALL(s:finseq[fjnode[T]])(k:fjnode[T])(i : below[length(s)], (j :below[length(s)] | i <=j)):
+  (is_sorted?(s) AND (i=0 OR leq(val(s(i-1)), val(k))) AND (j=s`length-1 OR leq(val(k), val(s(j+1))))) =>
+  is_sorted?(insert?(k,s,bin_search(s)(k)(i,j)))
+
+b_search_removeSon: LEMMA
+FORALL(s:finseq[fjnode[T]])(k:fjnode[T])(indx:nat)(i : below[length(s)], (j :below[length(s)] | i <=j)):
+  (i=0 OR leq(val(s(i-1)), val(k))) AND (j=s`length-1 OR leq(val(k), val(s(j+1)))) =>
+  bin_search(s)(k)(i,j) = bin_search(removeSon(s, indx))(k)(i,j) 
+
+
+%% PartialERforK? is a predicate intermediary between nstructER_basic? for deep
+%% n and n-1 in second phase of algorithm, when until a specific position
+%% (t(k-1)) all nodes are trees with deep n-1, and all nodes greater than position (t(k)) are with deep n, otherwise all node between this, are divided by pos (all greater than pos have deep n-1, and less n). that
+%% characterizes finseqfj structures s,built from an input flattened
+%% sequence s, with the correct expected organization after n recursive steps
+
+PartialERforK?(s:finseqfj | length(s`seqfj)>0, indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx),
+                k : posnat, pos : below[length(indx)] | (k=1 OR t(k-1) <= pos) AND pos <= t(k),
+		n : posnat): bool =
+LET mIdx = IF t(k) < length(indx)  THEN t(k) ELSE length(indx) -1 ENDIF IN 
+ (FORALL(j : below[length(s`seqfj)] ) : 
+      nstruct?(s`seqfj(j))(n-1) OR
+      (nstruct?(s`seqfj(j))(n) AND
+       EXISTS(i:below[length(indx)] |(i <= pos OR i>t(k)) AND (i > t(k-1) OR k = 1)) :
+       (indx(i) = j)))						      	AND
+ (FORALL(j:below[length(s`seqfj)]) :
+   ( t(k) < length(indx) AND j > indx(t(k)) =>
+     (nstruct?(s`seqfj(j))(n) AND
+     EXISTS(i:below[length(indx)] |(i <= pos OR i>t(k)) AND (i > t(k-1) OR k = 1)) :
+       (indx(i) = j))) AND
+   ((k /= 1 AND t(k-1) < length(indx) AND j < indx(t(k-1))) => (nstruct?(s`seqfj(j))(n-1))))	AND
+ (FORALL(i : below[length(indx)] | (k = 1 OR t(k-1) < i) AND i <= t(k) ) :
+  IF i <= pos THEN nstruct?(s`seqfj(indx(i)))(n)
+   ELSE nstruct?(s`seqfj(indx(i)))(n - 1) ENDIF	)			AND
+ is_sorted?(s`seqfj)
+ 
+   
+oddNstructPreservation?(s:finseqfj | length(s`seqfj)>0,	n : nat): bool =
+(FORALL(i:below[length(s`oddList)]):
+  EXISTS(m:below[n]): nstruct?(nth(s`oddList,i))(m))
+AND
+(FORALL(i,j:below[length(s`oddList)]):
+ i>j =>   length(smallerones(nth(s`oddList,i))) < length(smallerones(nth(s`oddList,j))))
+
+
+oddNstructDeconstruction : LEMMA
+FORALL(s:finseqfj | length(s`seqfj) > 0, n : posnat) :
+oddNstructPreservation?(s,n) IMPLIES
+IF NOT null?(s`oddList) AND  length(smallerones(nth(s`oddList,0))) = n-1 THEN
+oddNstructPreservation?( (# seqfj := s`seqfj, oddList := cdr(s`oddList) #), n - 1)
+ELSE oddNstructPreservation?(s,n - 1)
+ENDIF
+
+%% nstructER_basic? is a predicate fora level od deep
+%% n in second phase of algorithm, is a version simplified of nstructER of first fase 
+nstructER_basic?(s:finseqfj  | length(s`seqfj)>0, n:nat) : bool =
+  (FORALL(i:below[s`seqfj`length]):
+    nstruct?(s`seqfj`seq(i))(n)) AND
+  oddNstructPreservation?(s, n) AND
+  is_sorted?(s`seqfj)
+
+nstructER_vs_nstructER_basic: LEMMA
+FORALL(s:finseqfj |plain_finseqfj(s) and length(s`seqfj) /=0):
+LET n =  logb(s`seqfj`length,2) IN
+		  nstructER_basic?(seqfjBottleneck(s), n)
+
+% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+occ_in_rest: LEMMA
+FORALL(s:finseq[fjnode[T]] | length(s)>0, x:T):
+  occurrences(rest(s))(x) = occurrences(s)(x) - occurrences(x)(s`seq(0))
+
+occ_in_removeson: LEMMA
+FORALL(s:finseq[fjnode[T]], i:below[length(s)], x:T):
+  cons?(smallerones(s`seq(i))) => occurrences(removeSon(s,i))(x) = occurrences(s)(x) - occurrences(x)(car(smallerones(s`seq(i))))
+  
+occ_in_insert: LEMMA
+FORALL(s:finseq[fjnode[T]], node:fjnode[T], i:upto[length(s)], x:T):
+  occurrences(insert?(node, s, i))(x) = occurrences(s)(x) + occurrences(x)(node)
+  
+insert_removeson_permutation: LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0, i, searchIndx:below[length(s`seqfj)]):
+  cons?(smallerones(s`seqfj`seq(i))) =>  permutation(s`seqfj,insert?(car(smallerones(s`seqfj`seq(i))),
+                                                     removeSon(s`seqfj, i), searchIndx))
+
+
+insertSonPreservesPartialERforK:LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0,
+		     k : posnat, (pos : posnat | (k = 1 OR t(k-1) < pos) AND pos <= t(k)),
+		     n:posnat,
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n) ):
+LET b = car(smallerones(s`seqfj`seq(indx`seq(pos)))) IN
+LET bsearch = bin_search(s`seqfj)(b)(0, indx`seq(pos)-1) IN
+  LET sk = (# seqfj:= insert?(b,  removeSon(s`seqfj, indx`seq(pos)),bsearch),
+            oddList := s`oddList #) IN
+   PartialERforK?(sk, upToOne(indx, bsearch), k, pos -1, n)
+
+
+insertCarPreservesPartialERforK:LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0 and length(s`oddList)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND  PartialERforK?(s, indx, maxk(indx`length), min(t(maxk(indx`length)), indx`length - 1), n) ):
+LET bsearch = bin_search(s`seqfj)(car(s`oddList))(0, length(s`seqfj) - 1) IN
+  LET sk = (# seqfj:= insert?(car(s`oddList),s`seqfj,bsearch),
+            oddList := cdr(s`oddList) #) IN
+   LET k = maxk(indx`length) IN
+   nstruct?(car(s`oddList))(n - 1) =>  PartialERforK?(sk, upToOne(indx, bsearch), k, length(indx) -1, n)
+
+
+%% The function below insert all elements in a finseqfj structure in the interval
+%% from t(k) until t(k-1)
+		
+binsert_tk_interval(s:finseqfj | length(s`seqfj)>0,
+                    k : posnat, (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)),
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+RECURSIVE [finseqfj, finseq[nat]] =
+  IF  k = 1 THEN
+      LET b = car(smallerones(s`seqfj`seq(indx(0)))) IN
+        ( (# seqfj:= insert?(b, removeSon(s`seqfj, indx(0)), 0), oddList:=s`oddList #),
+             upToOne(indx,indx(0)) )
+  ELSIF (pos = t(k-1) OR (indx`length> 1 => k>maxk(indx`length)))
+  THEN  (s,indx)
+  ELSE 
+       LET b = car(smallerones(s`seqfj`seq(indx(pos)))) IN
+       	   LET searchIndx = bin_search(s`seqfj)(b)(0, indx(pos)-1) IN
+	       binsert_tk_interval((# seqfj:= insert?(b, removeSon(s`seqfj, indx(pos)), searchIndx), oddList:=s`oddList #), k, pos-1, n,
+	      			 upToOne(indx,searchIndx))
+%	      (s,indx)
+  ENDIF
+MEASURE pos
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LEMMAS binsert_tk_interval %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\
+
+binsert_tk_interval_length: LEMMA
+FORALL(k : posnat, (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+      length(binsert_tk_interval(s, k, pos, n, indx)`1`seqfj) /= 0 AND
+      length(binsert_tk_interval(s, k, pos, n, indx)`2) = length(indx)
+
+
+
+
+binsert_tk_interval_preserves_indx: LEMMA
+FORALL(k : posnat, (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+       is_indx?(binsert_tk_interval(s, k, pos, n, indx)`1`seqfj,
+                binsert_tk_interval(s, k, pos, n, indx)`2)
+
+
+up_partialER: LEMMA
+FORALL(k : above[1], (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		          pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+	LET sk = binsert_tk_interval(s, k, pos, n, indx) IN
+	    PartialERforK?(sk`1, sk`2, k, t(k-1), n)
+
+
+binsert_tk_interval_preserves_oddList: LEMMA
+FORALL(k : posnat, (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+      binsert_tk_interval(s, k, pos, n, indx)`1`oddList =  s`oddList 
+
+
+
+binsert_tk_interval_gives_permutation: LEMMA
+FORALL(k : posnat, (pos : nat | (k = 1 OR t(k-1) <= pos) AND pos <= t(k)))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx: finseq[nat]| length(indx)>0 AND is_indx?(s`seqfj, indx) AND
+		           pos < length(indx) AND PartialERforK?(s, indx, k, pos, n)
+			    ):
+       permutation(s, binsert_tk_interval(s, k, pos, n, indx)`1)
+
+
+PartialERforK_equiv: LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0,
+                    k :above[1],
+		    n : posnat, 
+                    indx:finseq[nat] | length(indx)>0 AND (is_indx?(s`seqfj, indx) AND
+		           k+1<=maxk(indx`length))
+			   ):
+  PartialERforK?(s, indx, k, t(k-1), n) =>  PartialERforK?(s, indx, 1 + k,  min(t(1 + k), length(indx) - 1), n)
+
+
+basis_PartialERforK_equiv: LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat, 
+                    indx:finseq[nat] | length(indx)>0 AND (is_indx?(s`seqfj, indx)) AND indx`seq(0) = 0
+			   ):
+PartialERforK?(s, indx, 1, t(1), n) =>
+LET sk = binsert_tk_interval(s, 1, t(1), n, indx) IN
+       	       PartialERforK?(sk`1, sk`2, 2, min(t(2), length(sk`2)-1), n)
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END LEMMAS binsert_tk_interval %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% The function below applies recursively the previous one in the whole finseqfj
+% structure until the deep of the trees is reduced by one. Also, it includes the
+% first element in the oddList whenever it is required.  
+binsert_one_level(s:finseqfj | length(s`seqfj)>0,
+                    k :posnat,
+		    ncycles : posnat, 
+                    indx:finseq[nat] | length(indx)>0 AND (is_indx?(s`seqfj, indx) AND
+		           k<=maxk(indx`length) AND
+		           PartialERforK?(s, indx, k, min(t(k),length(indx)-1), ncycles) AND oddNstructPreservation?(s,ncycles) AND (k=1 => indx`seq(0)=0))
+			   ):
+RECURSIVE finseqfj  =
+IF t(k-1) >= length(indx) or length(s`seqfj) = 0 THEN s
+ELSE
+  IF t(k) < length(indx) THEN
+    LET sk = binsert_tk_interval(s, k, t(k), ncycles, indx) IN
+             binsert_one_level( sk`1, k+1, ncycles, sk`2)
+  ELSIF length(s`oddList)/=0 AND length(smallerones(car(s`oddList))) = ncycles - 1 THEN
+    LET b = car(s`oddList) IN
+    LET searchIndx = bin_search(s`seqfj)(b)(0,length(s`seqfj)-1) IN
+    LET s1 = (# seqfj:= insert?(b, s`seqfj, searchIndx), oddList:=cdr(s`oddList) #),
+        indx =  upToOne(indx,searchIndx) IN
+	       binsert_tk_interval(s1, k, length(indx)-1, ncycles, indx)`1
+  ELSE
+    binsert_tk_interval(s, k, length(indx)-1, ncycles, indx)`1
+  ENDIF
+ENDIF
+MEASURE maxk(indx`length) + 1 - k
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LEMMAS binsert_one_level %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+binsert_one_level_length: LEMMA
+FORALL(k :posnat, indx:finseq[nat] | length(indx)>0 AND k<=maxk(indx`length) AND (k=1 => indx`seq(0)=0) )(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat | (is_indx?(s`seqfj, indx) AND
+		           PartialERforK?(s, indx, k, min(t(k),length(indx)-1), n) AND oddNstructPreservation?(s,n))
+			   ):
+	 length(binsert_one_level(s, k, n, indx)`seqfj) /= 0
+
+
+binsert_one_level_gives_permutation: LEMMA
+FORALL(k :posnat, indx:finseq[nat] | length(indx)>0 AND k<=maxk(indx`length) AND (k=1 => indx`seq(0)=0))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat | (is_indx?(s`seqfj, indx) AND
+		           PartialERforK?(s, indx, k, min(t(k),length(indx)-1), n) AND oddNstructPreservation?(s,n))
+			   ):
+       permutation(s, binsert_one_level(s, k, n, indx))
+
+
+
+% PartialERforK?(sk, indx, maxk, t(maxk), n) => PartialERforK?(sk, indx2, 1, t(1), n-1)
+
+binsert_one_level_go_to_nstruct: LEMMA
+FORALL(k :posnat, indx:finseq[nat] | length(indx)>0 AND k<=maxk(indx`length) AND (k=1 => indx`seq(0)=0))(s:finseqfj | length(s`seqfj)>0,
+		    n : posnat | (is_indx?(s`seqfj, indx) AND
+		           PartialERforK?(s, indx, k, min(t(k),length(indx)-1), n) AND oddNstructPreservation?(s,n))
+			   ):
+	LET sk = binsert_one_level(s, k, n, indx) IN
+          nstructER_basic?(sk, n-1)
+	  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END LEMMAS binsert_one_level %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+nstructER_basic_equiv: LEMMA
+FORALL(s:finseqfj |  length(s`seqfj)>0, n:posnat):
+LET indx = (# length:= length(s`seqfj),seq:= LAMBDA(i:below[length(s`seqfj)]): i #) IN
+  nstructER_basic?(s,n) => ( PartialERforK?(s, indx, 1, min(t(1), length(s`seqfj)-1), n) AND oddNstructPreservation?(s,n))
+
+
+%% seqfjFatten is the main function in the second phase of the Ford-Johnson algorithm.
+%% It recursively calls the previous function flattening the given finseqfj strucutre
+%% until the deep of the trees 	     uis zero and the list of odd fjnodes is empty.  The
+%% result is a finseqfj structure that consisx1ts of a sorted sequence of fjnodes
+%% rooting trees that consist of a single key.
+
+seqfjFatten(s :finseqfj | length(s`seqfj)>0, n : nat | nstructER_basic?(s,n)): RECURSIVE finseqfj =
+IF n = 0  THEN s ELSE seqfjFatten(binsert_one_level(s, 1, n, (# length:= length(s`seqfj),seq:= LAMBDA(i:below[length(s`seqfj)]): i #)), n-1) ENDIF
+MEASURE n
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% BEGIN LEMMAS seqfjFatten %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+seqfjFatten_length: LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0, n:nat | nstructER_basic?(s,n)):
+  seqfjFatten(s,n)`seqfj`length /= 0
+
+
+seqfjFatten_gives_permutation: LEMMA  
+FORALL(s:finseqfj | length(s`seqfj)>0, n:nat | nstructER_basic?(s,n)):
+  permutation(s, seqfjFatten(s,n))
+
+seqfjFatten_gives_down_nstructER_basic: LEMMA
+FORALL(s:finseqfj | length(s`seqfj)>0, n:nat | nstructER_basic?(s,n)):
+  nstructER_basic?(seqfjFatten(s,n),0)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END LEMMAS seqfjFatten %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%	Ford-Johnson algorithm	
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mergeInsertion(s:finseq[fjnode[T]] | length(s)>0 and plain_finseqfj((# seqfj:= s, oddList:=null #))): finseq[fjnode[T]] =
+	LET sc:finseqfj = (# seqfj:= s, oddList:=null #) IN
+	LET h = logb(length(s),2) IN
+	seqfjFatten(seqfjBottleneck(sc), h)`seqfj
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mergeInsertion_is_ok: LEMMA
+FORALL(s:finseq[fjnode[T]] | plain_finseqfj((#seqfj:= s, oddList:=null #)) and length(s)>0):
+	permutation(s,mergeInsertion(s)) and is_sorted?(mergeInsertion(s))
+
+
+End ford_johnson

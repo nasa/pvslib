@@ -1,0 +1,72 @@
+%*****************************
+% Specification of Radix sort with two total preorders 
+%
+% This theory contains a formalization of Radixsort for lists[T],
+% where T is a non-interpreted type.  It sorts elements of type 
+% T by two different total pre-orders (denoted as <= and <<)
+% using as assumed stable sorting method mergesort.  The result
+% is the input list sorted by the lexicographical order built
+% from << and <=.
+%
+% Authors: Thiago Mendonca Ferreira Ramos, Mauricio Ayala-Rincon,
+%          Mariano Moscato and Cesar Munoz, Ariane Alves Almeida
+%        
+%
+% Last modified: 6 May 2020
+%
+%*****************************
+
+radix_sort[T : TYPE, N:nat, (IMPORTING total_preorder) leq :[below(N)->(total_preorder?[T])] ]   
+		: THEORY
+
+BEGIN
+
+IMPORTING sorting, mergesort
+
+
+% Radixsort mege-sorts a list of elements of type T by the total preorders
+% <= and <<
+radixsort_aux(l : list[T], i : upto[N]) : RECURSIVE list[T] =
+ IF i = N THEN l
+ ELSE radixsort_aux(merge_sort[T,leq(i)](l), i + 1)
+ ENDIF
+ MEASURE N - i
+ 
+radixsort(l : list[T]) : list[T] = radixsort_aux(l, 0)
+
+% The first lemma states that radixsort permutes the input data, or in
+% other words that it preserves input data.
+ radixsort_permutes : LEMMA
+  FORALL(l : list[T]): permutations[T](radixsort(l), l)
+
+% Definition of the lexicographical order built from << and <= 
+ lex(i:upto(N))(x, y:T) : INDUCTIVE bool =
+   i=0 OR
+   (i > 0 AND ((leq(i-1)(x,y) AND NOT leq(i-1)(y,x)) OR
+               (leq(i-1)(x,y) AND leq(i-1)(y,x) AND
+	        lex(i-1)(x,y))))
+
+% The corollary "radixsort_sorts" states that radixsort indeed sorts the input
+% list according to the total preorder lex. 
+
+  lex_total_preorder: LEMMA
+  FORALL (i: upto[N]): total_preorder?[T](lex(i));
+
+  %
+
+  merge_sort_lex_sorted
+  : LEMMA
+    FORALL (l: list[T], i: below(N) | is_sorted?[T, lex(i)](l))
+    : is_sorted?[T, lex(1 + i)](merge_sort[T, leq(i)](l))
+
+  radix_sort_is_sorted
+  : RECURSIVE JUDGEMENT
+    radixsort_aux(l: list[T], i : upto[N] | is_sorted?[T,lex(i)](l)) HAS_TYPE (is_sorted?[T,lex(N)])
+
+  radixsort_sorts : THEOREM
+    FORALL(l : list[T]):
+      is_sorted?[T,lex(N)](radixsort(l))
+
+  %
+
+END radix_sort

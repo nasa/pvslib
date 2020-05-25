@@ -1,0 +1,261 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%	Ford-Johnson sorting algorithm 
+%%      -- FIRST PHASE --
+%%      By Nikson Fernandes, Mauricio Ayala-Rincon and Ariane Alves Almeida
+%%      Last modified: 6 May 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+fjnode [T: TYPE]: DATATYPE 
+ BEGIN
+  consFjnode(val: T, smallerones: list[fjnode]):consFjnode?
+END fjnode
+
+firt_phase_ford_johnson[T : TYPE, (IMPORTING total_preorder) leq : (total_preorder?[T])]: THEORY
+ BEGIN
+
+  IMPORTING fjnode[T], 
+            structures@listn[fjnode[T]], structures@seq_extras[fjnode[T]],
+	    sorting_seq[T,leq], reals@log_nat
+
+  k,i,j,n : VAR nat
+  s: var finseq[fjnode[T]]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%			Auxiliary functions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% Logarithm basis b function defined as a singleton set
+logb(y: {x:real | x >= 1}, b: above(1)) : nat = log_nat(y,b)`1
+
+
+% Logarithm (basis b) of exponential is the identity - General
+% results on log_nat are available at reals@log_nat nasalib theory.
+log_exp: LEMMA
+FORALL(b:above(1)): logb(b^n,b) = n  
+
+
+% The same as is_sorted? but for (the top keys in) sequences of fjnodes.
+is_sorted?(s): bool =
+FORALL (i : below[length(s)]) :
+    0 <= i AND i <= length(s) - 2 => leq(val(s(i)), val(s(i+1)))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% The type finseqfj contains a sequence of fjnodes rooting trees with the
+%% same deep and a list of fjnodes rooting trees of different decreasing deeps. 
+%% In the sequence, pairs of roots of fjnodes are sorted, while in the 
+%% list (oddList) fjnodes rooting trees that have not a pair are being
+%% included during the first phase of the Ford-Johnson algorithm.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+finseqfj: TYPE = [# seqfj: finseq[fjnode[T]], oddList: list[fjnode[T]] #]
+  s1: var finseqfj
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%    more auxiliary definitions
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+add_fold(fj: fjnode[T])(f:[(lambda(x: fjnode) : x << fj)->nat])
+        (fjlist : list[fjnode[T]] | FORALL(n : below[length(fjlist)]): nth(fjlist,n)<<fj):
+RECURSIVE nat =
+IF length(fjlist) = 0 THEN 0
+ELSE f(car(fjlist)) + add_fold(fj)(f)(cdr(fjlist))
+ENDIF
+MEASURE length(fjlist)
+
+nodes(fj : fjnode[T]): RECURSIVE nat = 
+     1 +
+     IF length(smallerones(fj)) = 0 THEN 0
+     ELSE add_fold(fj)(LAMBDA(x: fjnode | x << fj): nodes(x))(smallerones(fj))  
+     ENDIF
+MEASURE fj by <<
+
+map(fjlist : list[fjnode[T]])(f:[fjnode->nat]) : RECURSIVE nat =
+IF length(fjlist) = 0 THEN 0
+ELSE f(car(fjlist)) + map(cdr(fjlist))(f)
+ENDIF
+MEASURE length(fjlist)
+
+% map and accumulates over finseq of fjnodes
+map(sfj : finseq[fjnode[T]])(f:[fjnode->nat]) : RECURSIVE nat =
+IF length(sfj) = 0 THEN 0
+ELSE f(sfj(0)) + map(rest(sfj))(f)
+ENDIF
+MEASURE length(sfj)
+
+s_nodes(fjlist : list[fjnode[T]]) : nat =
+map(fjlist)(nodes)
+
+% occurrences of the natural n in a fjnode
+occurrences(n:T)(fj : fjnode[T]) :RECURSIVE nat =
+   IF val(fj) = n THEN 1 ELSE 0 ENDIF +
+   IF length(smallerones(fj)) = 0 THEN 0
+   ELSE add_fold(fj)(LAMBDA(x:fjnode | x << fj): occurrences(n)(x))(smallerones(fj))
+   ENDIF
+MEASURE fj by <<
+
+% occurrences of the natural n in a list of fjnodes
+occurrences(fjlist : list[fjnode[T]])(n:T) : nat =
+map(fjlist)(occurrences(n)) 
+
+% occurrences of the natural n in a finseq of fjnodes
+occurrences(sfj : finseq[fjnode[T]])(n:T): nat =
+map(sfj)(occurrences(n)) 
+
+permutation(s1,s2: finseq[fjnode[T]]): bool =
+FORALL(x:T):
+  occurrences(s1)(x) =
+  occurrences(s2)(x)
+
+permutation(s1,s2:finseqfj): bool =
+FORALL(x:T):
+  occurrences(s1`seqfj)(x) +  occurrences(s1`oddList)(x) =
+  occurrences(s2`seqfj)(x) +  occurrences(s2`oddList)(x)
+
+permutation_equiv :  LEMMA
+(FORALL (s: finseqfj) : permutation(s,s) ) AND
+(FORALL (s, s1 : finseqfj) : permutation(s, s1) IFF permutation(s1,s) )AND
+(FORALL (s, s1, s2: finseqfj) : permutation(s, s1) AND permutation(s1,s2) IMPLIES permutation(s, s2) )
+
+rest(s1:finseqfj): finseqfj = (# seqfj:= rest(s1`seqfj), oddList:=s1`oddList #)
+
+%%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+%% FIRST PHASE of the Ford-Johnson algorithm XX
+%%XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+%% compare2to2 compares pairs of roots of fjnodes in a finseqfj structure
+%% and halves the sequence of fjnodes buiding trees by increasing their
+%% deep in one. If the length of the sequence is odd, the last fjnode is
+%% included in the oddList.
+compare2to2(s1): finseqfj =
+IF s1`seqfj`length > 1 THEN
+(# seqfj :=
+   (#length := floor(s1`seqfj`length/2),
+	seq := (LAMBDA (i:below[floor(s1`seqfj`length/2)]): 
+	        (IF lt(val(s1`seqfj`seq(2*i)), val(s1`seqfj`seq(2*i+1))) THEN
+	          consFjnode(val(s1`seqfj`seq(2*i+1)),
+		             cons(s1`seqfj`seq(2*i),
+			          smallerones(s1`seqfj`seq(2*i+1))))
+                 ELSE
+		  consFjnode(val(s1`seqfj`seq(2*i)),
+                             cons(s1`seqfj`seq(2*i+1),
+                             smallerones(s1`seqfj`seq(2*i))))
+                ENDIF))
+    #),
+    oddList := IF odd?(s1`seqfj`length) THEN
+                cons(s1`seqfj`seq(s1`seqfj`length-1), s1`oddList)
+               ELSE s1`oddList
+	       ENDIF
+#)
+ELSE s1
+ENDIF
+%% seqfjBottleneck  applies recursively comapre2to2 to a flat s1 finseqfj
+%% with a l length sequence of single root fjnodes and an empty oddList,
+%% until the finseqfj structure consists just of a one length sequence of
+%% fjnodes, that is a single fjnode with 2^(floor(log(l,2))) nodes and
+%% the corresponding list consisting of the remaining odd fjnodes. 
+seqfjBottleneck(s1): RECURSIVE finseqfj =
+ IF s1`seqfj`length > 1 THEN seqfjBottleneck(compare2to2(s1))
+ ELSE s1
+ ENDIF
+MEASURE s1`seqfj`length
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%  Correction of the first phase
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%  The predicate nstruct? holds for fjnodes that have the strucutre of
+%%  F.-J. binary trees with 2^n nodes
+nstruct?(node:fjnode)(n): RECURSIVE boolean =
+	IF n>0 THEN
+		length(smallerones(node)) = n AND 
+		(FORALL(i:below[length(smallerones(node))]):nstruct?(nth(smallerones(node),i))(n-1-i) AND
+		leq(val(nth(smallerones(node),i)), val(node)) )
+	Else 	length(smallerones(node)) = 0 ENDIF
+MEASURE n
+
+%% length_odd computes the exact length of the list of odd fjnodes after
+%% n levels of recusion in the first and second phase of the FJ algorithm.
+%% In the first phase it is used increasingly while in the second decreasingly. 
+length_odd(l:nat,n | 2^n <= l) : RECURSIVE nat =
+  IF n = 0  THEN 0
+  ELSE (IF odd?(floor(l/2^(n-1))) THEN 1 ELSE 0 ENDIF) + length_odd(l,n-1)
+  ENDIF 
+MEASURE n
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% plain_finseqfj characterizes finseqfj structures that consist of a 
+% sequence of roots and an empty odd list
+plain_finseqfj(s1): bool =
+   ( FORALL(i:below[length(s1`seqfj)]) : nstruct?(s1`seqfj`seq(i))(0)) AND
+      length(s1`oddList) = 0
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% nstructER? is the predicate that characterizes finseqfj structures s1, 
+%% built from an input flattened sequence s, with the correct expected
+%% organization after n recursive steps in the fist phase of the algorithm:
+%% s and s1 have the same contents (they are "permutations"), the length of
+%% the sequence is exactly what should be (floor(l/2^n)), each fjnode in thecs
+%% sequence is an nstruct? of deep n, and the list of odd fjnodes has the
+%% exact required length, length_odd(l,n), rooted by fjnodes with the exact
+%% deep and that satisfy the predicate nstruct?   
+nstructER?(s:finseqfj | plain_finseqfj(s))(s1, (n:nat | 2^n <= length(s`seqfj))) : bool =
+LET l = s`seqfj`length IN
+  permutation(s, s1) AND 
+  s1`seqfj`length = floor(l/2^n) AND
+  (FORALL(k:below[s1`seqfj`length]):
+    nstruct?(s1`seqfj`seq(k))(n)) AND
+  LET lOdd = length_odd(l,n)  IN
+  length(s1`oddList) = lOdd AND
+  (FORALL(i,j:below[length(s1`oddList)]):
+        i>j =>   length(smallerones(nth(s1`oddList,i))) < length(smallerones(nth(s1`oddList,j)))) AND
+  (FORALL(i:below[length(s1`oddList)]):  EXISTS (m : below[n] | odd?(floor(l/2^m))) : nstruct?(nth(s1`oddList,i))(m))
+
+%   (length(s1`oddList) > 0 => length(smallerones(car(s1`oddList))) < n)
+   %  EXISTS (m : below[n]) : nstruct?(car(s1`oddList))(m))
+
+% A simple lemma on nstructER
+plain_finseqfj_nstructER0: LEMMA
+    FORALL(s0:finseqfj | length(s0`seqfj) > 0): plain_finseqfj(s0) => nstructER?(s0)(s0,0)
+
+occ_list_vs_fjnodes : LEMMA
+FORALL(s:fjnode[T], n:T)( l:list[fjnode[T]] | (FORALL (i :below[length(l)] ) : nth(l,i) << s)):
+add_fold(s)(LAMBDA(x :fjnode | x << s) : occurrences(n)(x))(l) =
+occurrences(l)(n)
+
+% One single step of the first phase of FJ algorithm preserves contents
+comparePeservesElements: LEMMA
+FORALL(s:finseqfj):  permutation(s,compare2to2(s))
+
+% The fist phase preserves contensts
+seqfjBottPreservesElements : COROLLARY
+FORALL(s:finseqfj): permutation(s,seqfjBottleneck(s))
+
+
+% every level of first phase maintains the structure, however with twice the size(increase 1 the deep, n+1) of each node (tree) in main sequence	
+oneStepCorrectionER : LEMMA
+FORALL (s:finseqfj | plain_finseqfj(s))(n : nat | 2^(n+1) <= length(s`seqfj)):
+  (nstructER?(s)(s1, n) AND length(s1`seqfj)>1 IMPLIES nstructER?(s)(compare2to2(s1),n+1))
+
+% first phase of algorithm build a correct structure
+correctionER: LEMMA
+  FORALL (s0:finseqfj | plain_finseqfj(s0) AND s0`seqfj`length>0) (s:finseqfj | s`seqfj`length > 0):
+  LET n =  logb(s0`seqfj`length,2) IN
+   (EXISTS(m: nat | m<=n):nstructER?(s0)(s,m)) => nstructER?(s0)(seqfjBottleneck(s), n)
+
+% final length of main sequence in first phase is 1
+lengthBottleneckIs1: LEMMA
+  FORALL (s0:finseqfj | plain_finseqfj(s0) AND length(s0`seqfj)>0)(m:nat| 2^m <=s0`seqfj`length)
+        (s:finseqfj | s`seqfj`length > 0 ):
+        nstructER?(s0)(s,m) => seqfjBottleneck(s)`seqfj`length = 1
+ 
+% first phase of algorithm is sorted (have length = 1)  and preserves all nodes 
+seqfjBottleneck_works: LEMMA
+FORALL(s: finseqfj) :
+    plain_finseqfj(s) =>
+    (is_sorted?(seqfjBottleneck(s)`seqfj)  AND
+    permutation(s, seqfjBottleneck(s)))
+
+
+End firt_phase_ford_johnson

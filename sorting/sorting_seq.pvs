@@ -9,16 +9,16 @@
 %%%%% be useful. 
 %%% Grupo de Teoria da Computacao, Universidade de Brasilia
 %%% M. Ayala-Rincon, A. A. Almeida, Flavio L.C. de Moura
-%%% Last modification:  October 13, 2015
+%%% Last modification:  May 6th, 2020
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-sorting_seq [T : TYPE, (IMPORTING total_preorder) <= : (total_preorder?[T]) ] : THEORY
+sorting_seq [T : TYPE, (IMPORTING total_preorder) leq : (total_preorder?[T])] : THEORY
 
 BEGIN
 
-IMPORTING sorting [T, <=], structures@seq_extras[T]
+IMPORTING sorting[T, leq], structures@seq_extras[T]
 
-h, h1 : VAR finite_sequence[T]   % This is the Data Structure for heaps
+h, h1, v : VAR finite_sequence[T]   % This is the Data Structure for heaps
 i,j : VAR nat  
 
 %% Permutations check whether two finite sequences are permutations
@@ -69,10 +69,18 @@ transitive?(permutations)
 psorted(h)(i : below[length(h)] , ( j : below[length(h)] | i <= j)) : bool =
 length(h) = 0 OR 
 (FORALL (k : below[length(h)]) :
-     (i <= k AND k <= j - 1) => (k<i OR h(k) <= h(k+1)))
+     (i <= k AND k <= j - 1) => (k<i OR leq(h(k), h(k+1))))
 
 % Predicate for sorted finite sequences.
-sorted(h) : bool = length(h) = 0 OR psorted(h)(0,length(h) - 1) 
+%sorted(h) : bool = length(h) = 0 OR psorted(h)(0,length(h) - 1)
+
+% Predicate for sorted finite sequences.
+is_sorted?(h): bool =
+FORALL (k : below[length(h)]) :
+    0 <= k AND k <= length(h) - 2 => leq(h(k), h(k+1))
+
+% Added by Nikson Nov. 2018 (for use in Ford-Johnson)
+is_sorted_equiv : LEMMA  is_sorted?(h) IFF FORALL (i : below[length(h)], j : below[length(h)] | i <= j) : leq(h(i), h(j))
 
 % Indices of the left and right child in heaps
 ind_lc(i) : nat = 2 * i + 1
@@ -100,8 +108,8 @@ is_p_heap(h)(i : below[length(h)] , ( j : below[length(h)] | i <= j)) : bool =
 FORALL(k : below[length(h) - 1]) : k < i OR  
                                    (k<=j => (is_parent(h)(j,k) => 
                                     ( (both_childs(h)(j,k) AND 
-                                      h(k) >= left_child(h)(k) AND  h(k) >= right_child(h)(k)) OR 
-                                    (one_child(h)(j,k) AND  h(k) >= left_child(h)(k)))))
+                                      geq(h(k), left_child(h)(k)) AND  geq(h(k), right_child(h)(k))) OR 
+                                    (one_child(h)(j,k) AND  geq(h(k), left_child(h)(k))))))
 
 is_heap(h) : bool = length(h)=0 OR is_p_heap(h)(0, length(h) - 1)  
 
@@ -109,11 +117,11 @@ is_heap(h) : bool = length(h)=0 OR is_p_heap(h)(0, length(h) - 1)
 
 root_is_greatest_in_p_heap : LEMMA   
  FORALL (h, (n : below[length(h)]), (i: below[n+1])) : 
- 	is_p_heap(h)(0,n) => h(0) >= h(i)
+ 	is_p_heap(h)(0,n) => geq(h(0), h(i))
 
 root_is_greatest_in_heap : COROLLARY    
  FORALL (h, (i : below[length(h)])) : 
- 	is_heap(h) =>  h(0) >= h(i)
+ 	is_heap(h) =>  geq(h(0), h(i))
 
 
 % The parent of the kth node. (not used)
@@ -122,7 +130,7 @@ parent(h)(k : posnat | k < length(h)) : T = h(floor((k-1)/2))
 % The index of the greatest child of the ith node of the partial 
 % heap from 0 to n.
 ind_gc(h)(n:below[length(h)], (i : below[n + 1] | is_parent(h)(n,i))) : nat = 
- IF (both_childs(h)(n,i) AND left_child(h)(i) < right_child(h)(i)) THEN ind_rc(i)
+ IF (both_childs(h)(n,i) AND NOT  leq(right_child(h)(i), left_child(h)(i)))  THEN ind_rc(i)
  ELSE ind_lc(i) ENDIF   
 
 % Constructioh of the swap of nodes ith and jth in a heap h
@@ -132,7 +140,7 @@ swap(h)(i, j : below[length(h)]) :  finite_sequence[T] =
 
 swap_of_p_heap : LEMMA
 FORALL((h | length(h) > 0),  (n : below[length(h)]), (i:below[n+1])) :
-         is_p_heap(h)(0,n) => swap(h)(n,0)(n) >= h(i)
+         is_p_heap(h)(0,n) => geq(swap(h)(n,0)(n), h(i))
 
 swap_commutes : LEMMA 
 FORALL (h, (i, j : below[length(h)])):
@@ -165,8 +173,25 @@ FORALL (h, (i, j : below[length(h)])) : permutations(h, swap(h)(i,j))
 % places the greater element in last position 
 swap_of_heap : LEMMA
 FORALL((h | length(h) > 0),  (i : below[length(h)])) :
-         is_heap(h) => swap(h)(length(h)-1,0)(length(h)-1) >= h(i)
+         is_heap(h) => geq(swap(h)(length(h)-1,0)(length(h)-1), h(i))
 
+
+% Auxiliary lemmas on sequence insert and delete used for
+% proving soundness of bin(ary)insertionsort
+
+occ_in_insert : LEMMA FORALL (v)(x,y:T,k:upto[length(v)]) :
+ IF x=y THEN occurrences(insert?(y,v,k))(x) = 1 + occurrences(v)(x)
+ ELSE  occurrences(insert?(y,v,k))(x) = occurrences(v)(x)
+ ENDIF
+
+occ_in_delete : LEMMA FORALL (v)(x:T)(i:below[length(v)]) :
+ IF x=v(i) THEN occurrences(delete(v,i))(x) = occurrences(v)(x) - 1
+ ELSE  occurrences(delete(v,i))(x) = occurrences(v)(x)
+ ENDIF
+
+delete_insert_same_permutes  : LEMMA 
+FORALL (v | length(v)>0)(i,j:below[length(v)]) :
+permutations(v,insert?(v(i), delete(v, i), j)) 
 
 end sorting_seq
 

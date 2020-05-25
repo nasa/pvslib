@@ -1,0 +1,243 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Searching and Sorting - Examples of formalization
+%%% of correctness properties of functional specifications.
+%%% This file contains specification and verification of
+%%% basic notions and properties such as list permutation,
+%%% sorted lists etc. 
+%%%
+%%% Grupo de Teoria da Computacao, Universidade de Brasilia
+%%% Thiago M.F. Ramos, Ariane A. Almeida & 
+%%% Ana C. R. Oliveira Valverde & M. Ayala-Rincon
+%%% Last modification:  September/2019
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+sorting_aux [T : TYPE]: THEORY
+
+BEGIN
+
+IMPORTING list_props[T]
+
+x: VAR T
+l, l1, l2: VAR list[T]
+
+elim_list((l : list[T] | NOT null?(l)), (x : T | member(x, l))) : RECURSIVE list[T] =
+IF x = car(l) THEN cdr(l) 
+ELSE cons(car(l),elim_list(cdr(l),x))
+ENDIF
+MEASURE length(l) 
+
+elim_list_length : LEMMA
+   FORALL (n : T, l : list[T]) :
+      member(n,l) IMPLIES length(elim_list(l,n)) = length(l) -1 
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Searching function
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%% Preservation lemma on lists: a nonempty list 
+%%% without occurrences of "i" has a cdr without
+%%% occurrences of "i"   
+preservation_contents :	LEMMA
+FORALL(l : list[T] | NOT null?(l), i: T) : 
+  (FORALL( k : below[length(l)]): 
+      NOT nth(l, k) = i)  =>
+     (FORALL( k : below[length(cdr(l))]): 
+          NOT nth(cdr(l), k) = i)
+
+%%% Auxiliarly lemma relating member and nth
+    nth_implies_member : LEMMA
+FORALL(l : list[T], i : T, k : below[length(l)]) :
+nth(l, k) = i => member(i,l) 
+
+%%% Auxiliarly lemma member implies exists position
+    member_implies_exists_nth : LEMMA
+FORALL(l : list[T] | NOT null?(l), i : T) : 
+member(i,l) => EXISTS (k : below[length(l)]) : nth(l,k) = i
+
+%%% Auxiliarly lemma k-th of l is k-th of l o l'
+  nth_of_list_is_nth_append_list : LEMMA 
+FORALL(l1, l2 : list[T], k : below[length(l1)]) :
+  nth(l1, k) = nth(append(l1,l2), k)
+
+nth_of_cons: LEMMA
+FORALL (l: list[T], k: T, x:below[length(l)+1]):
+   IF x=0 THEN nth(cons(k,l),x) = k ELSE  nth(cons(k,l),x) = nth(l, x-1) ENDIF
+       
+
+nth_of_append: LEMMA
+FORALL (l1,l2: list[T], (i: below[length(l1)+length(l2)])):
+       nth(append(l1,l2),i) = 
+       	(IF i < length(l1) THEN nth(l1,i) ELSE
+	   nth(l2, i-length(l1))
+	ENDIF)
+
+
+
+%%% The reverse of an empty list is the empty list
+null_rev_null : LEMMA
+FORALL (l :list[T]):
+  null?(l) => null?(reverse(l))
+
+%%% If k appears at position m in l, then k is member of l
+nth_member : LEMMA
+FORALL (m : nat, (l: list[T]| m<length(l)), k : T) :
+  nth(l,m)=k => member(k,l)
+
+%%% For a non empty list l, the car of its
+%%% reverse is the same as the car of its
+%%% cdr.
+car_rev : LEMMA
+FORALL ((l : list[T]| length(l)>1) ) :
+  car(reverse(cdr(l)))=car(reverse(l))
+
+%%% The first element of a non empty list is the last
+%%% of its reverse.
+nth_rev_zero : LEMMA
+FORALL ((l: list[T] | NOT null?(l))) :
+ nth(l, 0) = nth(reverse(l),length(l)-1)
+
+%%% The last element of a non empty list is the first
+%%% of its reverse.
+nth_rev_last : LEMMA
+FORALL ((l: list[T] | NOT null?(l))) :
+ nth(l, length(l)-1) = nth(reverse(l), 0)
+
+%%% The m-th element of the list l o p coincides
+%%% with the m-th element of the list l, whenever
+%%% m is less than the length of l.
+nth_append : LEMMA
+FORALL (m : nat, (l:list[T]| NOT null?(l) AND m<length(l)), p : list[T]):
+  nth(append(l,p),m) = nth(l,m)
+%%% The m-th element of the list l is the
+%%% ((length(l) - 1) - m)-th of its reverse.
+nth_rev : LEMMA
+FORALL (m : nat) :
+   FORALL (l : list[T]| NOT null?(l) AND m<length(l)) :
+ nth(l, m) =  nth(reverse(l),length(l)-1-m)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% The function "occurrences" counts how many
+%%% times an element x occurs into a list l.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+occurrences(l)(x): RECURSIVE nat =
+IF  null?(l) THEN 0
+    ELSIF 
+      car(l) = x THEN 1 + occurrences(cdr(l))(x)
+      ELSE
+	occurrences(cdr(l))(x)
+	ENDIF
+MEASURE length(l)
+
+%% Permutations check whether two lists are permutations
+%% counting occurrences of their elements.
+permutations(l1,l2:list[T]):bool =
+	FORALL (x : T): occurrences(l1)(x) = occurrences(l2)(x)
+
+occurrences_of_nth_element: LEMMA
+	FORALL (l : list[T], i : below[length(l)]):
+	      NOT null?(l) IMPLIES occurrences(l)(nth(l,i))>0
+
+occurrences_of_app : LEMMA
+        FORALL (l1,l2:list[T], x : T) : 
+            occurrences(append(l1, l2))(x) =
+            occurrences(l1)(x) + occurrences(l2)(x)
+
+cons_of_perm_is_permutation : LEMMA
+        FORALL (l1, l2:list[T], x:T): 
+               permutations(l1, l2) IMPLIES permutations(cons(x,l1), cons(x,l2))
+
+ocurrence_list_has_element : LEMMA
+	FORALL (l:list[T], x:T):
+	       occurrences(l)(x) /= 0 IMPLIES EXISTS (i: below[length(l)]): nth(l,i)=x
+
+no_occurrence_implies: LEMMA
+	FORALL (l:list[T], x:T):
+	       occurrences(l)(x) = 0 IMPLIES FORALL (i: below[length(l)]): nth(l,i)/=x
+
+member_implies_pos_occurrences : LEMMA
+     FORALL (l:list[T], x:T):
+      member(x,l) IMPLIES occurrences(l)(x) > 0
+
+occurrences_implies_member : LEMMA
+     FORALL (l:list[T], x:T):
+      occurrences(l)(x)>0 IMPLIES member(x,l)
+
+%% Permutations preserve contents.
+permutations_preserve_contents : LEMMA
+FORALL (l1, l2 : list[T], i: below[length(l1)]):
+       permutations(l1,l2) IMPLIES EXISTS (j: below[length(l2)]): nth(l2,j) = nth(l1,i)
+
+%% The predicate permutations is commutative.
+permutations_is_commutative : LEMMA
+	permutations(l1,l2) IFF permutations(l2,l1)
+
+%%%% Change to permutations_equiv
+%permutations is transitive
+permutations_is_transitive : LEMMA
+permutations(l,l1) AND permutations (l1,l2) IMPLIES permutations (l,l2)
+
+%moving a member to the head of a list gives as result a permutation
+cons_elim_is_permutation  : LEMMA
+member(x,l) IMPLIES permutations(l, cons(x, elim_list(l,x)))
+
+%Same occurrences of each element implies same length
+same_occurrences_same_length  : LEMMA
+    FORALL (l, l1 : list[T]) :  (FORALL (x : T) : occurrences(l)(x) = occurrences(l1)(x)) 
+       IMPLIES length(l) = length(l1)   
+
+%% The predicate permutations is reflexive is unnecessary; always
+%% is enough to expand "permutations". But a kind of extensional
+%% reflexivity is necessary for lists of the same length and content.
+permutations_is_ext_reflexive  : LEMMA
+     FORALL (l : list[T], l1: list[T] | length(l1)=length(l) ) :   
+       (FORALL (i : below[length(l)]) : nth(l,i) = nth(l1,i)) => permutations(l,l1)     
+
+% New general lemmas on append, suffixes and prefixes
+suffix(l:list[T],n:below[length(l) + 1]) : RECURSIVE list[T] =
+  IF n = 0 THEN l
+  ELSE suffix(cdr(l), n - 1)
+  ENDIF
+MEASURE length(l)
+
+prefix(l:list[T], n : below[ length(l) + 1]) : RECURSIVE list[T] =
+  IF n = 0 THEN null
+  ELSE cons(car(l), prefix(cdr(l), n-1))
+  ENDIF
+MEASURE length(l)
+
+app_prefix_suffix :LEMMA
+  FORALL (l:list[T], n :below[length(l)+1]) : l = append(prefix(l,n), suffix(l,n))
+
+length_suffix : LEMMA
+FORALL (l:list[T], n :below[length(l)+1]) : length(suffix(l, n)) = length(l) - n 
+
+length_prefix : LEMMA 
+FORALL (l:list[T], n :below[length(l)+1]) : length(prefix(l, n)) = n 
+
+contents_suffix : LEMMA
+ FORALL (l:list[T], n :below[length(l)+1], i : below[length(l)-n] ) : 
+      nth(suffix(l, n),i) = nth(l,i+n) 
+
+contents_prefix :LEMMA
+ FORALL (l:list[T], n :below[length(l)+1], i : below[n] ) : 
+      nth(prefix(l, n),i) = nth(l,i) 
+
+permutations_of_appends : LEMMA
+  FORALL (l,l1, l2, l3:list[T]) : permutations(l,l1) AND permutations(l2, l3) IMPLIES
+    permutations(append(l,l2), append(l1,l3))
+
+permutations_of_app_suff : LEMMA
+  FORALL (l,l1, l2, l3:list[T]) : 
+    permutations(l,l1) AND permutations(append(l,l2), append(l1,l3))  
+     IMPLIES permutations(l2, l3)
+
+permutations_of_app_pref : LEMMA
+  FORALL (l,l1, l2, l3:list[T]) : 
+    permutations(l2,l3) AND permutations(append(l,l2), append(l1,l3))  
+     IMPLIES permutations(l, l1)
+
+END sorting_aux
+

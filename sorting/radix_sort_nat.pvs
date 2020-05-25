@@ -1,0 +1,108 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%% Computational Logic A & D / PROJECT SECOND SEMESTER 2019 
+%%%%% 
+%%%%% Merge sort
+%%% 
+%%% Grupo de Teoria da Computacao, Universidade de Brasilia
+%%% Ariane A. Almeida, Mauricio Ayala-Rincon
+%%% Mariano Moscato, Thiago Ferreira Ramos
+%%% Last modification:  May 6th, 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+radix_sort_nat  : THEORY
+BEGIN
+
+IMPORTING ints@div_nat, ints@mod_nat, ints@mod_lems
+
+d_nth(n, d : nat) : RECURSIVE below[10] =
+    IF d = 0 THEN  nmod(n, 10)
+    ELSE d_nth(div(n,10), d - 1)
+    ENDIF
+    MEASURE d
+    
+n_digits(n:nat) : RECURSIVE posnat =
+   IF n < 10 THEN 1
+   ELSE 1 + n_digits(div(n, 10))
+   ENDIF
+   MEASURE n
+
+max_digits(l : list[nat] | length(l) >= 1): RECURSIVE posnat =
+   IF length(l) = 1 THEN n_digits(car(l))
+   ELSE max(n_digits(car(l)), max_digits(cdr(l)))
+   ENDIF
+   MEASURE length(l)
+
+ max_digits_works : LEMMA
+  FORALL(l : (cons?[nat]), i : below[length(l)]):
+   n_digits(nth(l,i)) <= max_digits(l)
+
+ d_nth_zero : LEMMA
+ FORALL(i : nat):
+ d_nth(0,i) = 0
+
+ d_nth_digits : LEMMA
+ FORALL(m,n : nat, i: nat | i > 0) :
+ (max(n_digits(m), n_digits(n)) <= i AND d_nth(m,i-1) < d_nth(n,i-1) ) => m < n
+
+ d_exp_dec  : LEMMA
+  FORALL(n, d : nat) : d_nth(n, d) * 10 ^ d + nmod(n, 10 ^ d) =
+       nmod(n, 10 ^ (1 + d))
+
+ d_nth_rem: LEMMA
+  FORALL(x,m,k : nat):
+  d_nth(nmod(m,10^(x+1)),x) = d_nth(nmod(m, 10^(x+1+k)),x)
+
+ n_digits_power: LEMMA
+ FORALL(m, x: nat):
+   m < 10 ^ (n_digits(m) + x)
+
+d_nth_nmod: LEMMA
+   FORALL(x: posnat, m:nat, (j: nat | x <= j)):
+     d_nth(m, x - 1) = d_nth(nmod(m, 10 ^ j), x - 1)
+
+n_digits_monotone: LEMMA
+FORALL (a, b: nat):
+        a <= b => n_digits(a) <= n_digits(b)
+
+n_digits_ten_power : LEMMA
+FORALL(x : posnat):
+n_digits(10 ^ x - 1) = x
+
+n_digits_nmod_leq: LEMMA
+  FORALL(n: nat, x:posnat):
+    n_digits(nmod(n, 10 ^ x)) <= x
+
+IMPORTING  total_preorder
+
+N : nat
+
+leq_N : [below[N] -> ( total_preorder?[nat])] =  LAMBDA (i : below[N] ) : ( LAMBDA(m, n : nat) :  d_nth(m,i) <= d_nth(n,i))
+
+IMPORTING radix_sort[nat, N,  leq_N]
+
+ lex_preserves: LEMMA
+ FORALL(m,n : nat, i : below[N], j : nat | i <= j):
+ lex(i)(m,n) <=> lex(i)(nmod(m, 10^j),nmod(n, 10^j))
+
+ lex_nat_works_aux : LEMMA
+ FORALL(m,n : nat, i: nat, j : below[N + 1]| i <= j) :
+ (max(n_digits(m), n_digits(n)) <= i AND lex(j)(m,n)) => m <= n
+
+ lex_nat_works : COROLLARY
+ FORALL(m,n : nat) :
+ (max(n_digits(m), n_digits(n)) <= N AND lex(N)(m,n)) => m <= n
+
+ radixsort_nat_works : LEMMA
+   FORALL(l : list[nat]):
+     permutations(radixsort(l), l) AND
+     IF null?(l) THEN
+       is_sorted?[nat,<=](radixsort(l))
+     ELSE
+       max_digits(l) <= N IMPLIES
+       is_sorted?[nat,<=](radixsort(l))
+     ENDIF 
+
+END radix_sort_nat
+
+
