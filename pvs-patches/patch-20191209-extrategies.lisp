@@ -876,7 +876,7 @@ evaluations. This strategy will introduce, as hypotheses, the equalities for tho
 
 ;; Put a variable bound in the hash table *extra-varranges*
 (defun extra-insert-range (var val islb isclosed)
-  (let* ((var (format nil "~a" var))
+  (let* ((var (format nil "~a" (id var))) ;; id is applied because (v) is a name-expr
 	 (xv  (or (gethash var *extra-varranges*)
 		  (make-xterval)))
 	 (did (if islb 
