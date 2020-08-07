@@ -159,8 +159,8 @@ maintain these developments. For the developments originally made by
 the Formal Methods group at Langley Research Center, these
 developments are considered fundamental research that do not
 constitute software. Contributions made by others may have particular
-licenses, which are listed in their `top.pvs` files in their
-respective directory.  In case of doubt, please contact the developers
+licenses, which are listed in the file `top.pvs` in the
+respective directories.  In case of doubt, please contact the developers
 of each contribution, which are also listed in this file.
 
 PVS patches, which are included in the `pvs-patches` directory, are part of the
