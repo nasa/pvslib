@@ -159,12 +159,12 @@ maintain these developments. For the developments originally made by
 the Formal Methods group at Langley Research Center, these
 developments are considered fundamental research that do not
 constitute software. Contributions made by others may have particular
-licenses, which are listed in the file `top.pvs` in the
-respective directories.  In case of doubt, please contact the developers
+licenses, which are listed in the file `top.pvs` in each
+respective directory.  In case of doubt, please contact the developers
 of each contribution, which are also listed in this file.
 
-PVS patches, which are included in the `pvs-patches` directory, are part of the
-PVS source and they are covered by PVS license.
+PVS patches, which are included in the directory `pvs-patches`, are part of the
+PVS source and they are covered by the PVS open source license.
 
 Some proof strategies require third party research tools, e.g.,
 MetiTarski and Z3. For convenience, they are included in this
