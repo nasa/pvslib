@@ -10,8 +10,8 @@ is part of the
   [research on theorem proving](http://shemesh.larc.nasa.gov/fm/fm-pvs.html) sponsored by [NASA
   Langley](http://www.nasa.gov/centers/langley/home).
 
-The current version of NASA PVS Library is 6.0.10 (xx/xx/xx)
-and requires [PVS 6.0](http://pvs.csl.sri.com/download.shtml). The
+This branch contains the  last version of the NASA PVS Library  that
+is compatible and requires [PVS 6.0](http://pvs.csl.sri.com/download.shtml). The
 following instructions assume that PVS 6.0 is installed in the directory
 `<pvsdir>`, i.e., in the instructions below replace `<pvsdir>` by the
 absolute path where PVS is installed.
@@ -161,7 +161,7 @@ developments are considered fundamental research that do not
 constitute software. Contributions made by others may have particular
 licenses, which are listed in the file `top.pvs` in each
 respective directory.  In case of doubt, please contact the developers
-of each contribution, which are also listed in this file.
+of each contribution, which are also listed in that file.
 
 PVS patches, which are included in the directory `pvs-patches`, are part of the
 PVS source and they are covered by the PVS open source license.
