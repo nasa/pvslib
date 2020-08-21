@@ -115,7 +115,7 @@ the PVS language is case sensitive, but the operating systems may not
 be. Please double check that the name of the theory uses the same
 capitalization as the name of the file.
 
-## Oraganizing Your Contribution
+## Organizing Your Contribution
 
 In order to consider your contribution, please create a
 directory that includes all the PVS theories of your
