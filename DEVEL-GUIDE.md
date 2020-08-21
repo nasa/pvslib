@@ -128,7 +128,7 @@ the library theories. Include at least the following tags in PVS comments:
 `@library`, `@description`, `@author`, `@poc`, `@date`,`@copyless`.
 The copyless statement should allow us to include your contribution to
 NASALib. Please only contribute libraries that can be considered
-fundamental research in the public domain.  *DO NOT* contribute copyrighted material. 
+fundamental research in the public domain.  **DO NOT** contribute copyrighted material. 
 
 Example:
 
