@@ -152,6 +152,6 @@ Finally, make sure that all formulas in you library are proven. Use,
 for example, `proveit MyLibrary` from the parent directory of
 `MyLibrary` and double check that all formulas are reported as proven.
 
-Please contact (us)[https://shemesh.larc.nasa.gov/people/cam] before
+Please contact [us](https://shemesh.larc.nasa.gov/people/cam) before
 sending us any contribution. Unexpected contributions will be
 considered SPAM and immediately deleted. 
