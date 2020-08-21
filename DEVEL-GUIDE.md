@@ -1,6 +1,6 @@
 # Developers Guide to NASALib
 
-By Ricky Butler.
+(From draft originally written by Ricky Butler)
 
 ## Naming Conventions
 
@@ -109,4 +109,44 @@ Typical abbreviations include:
 
 ## Theory Names
 
-One theory per file and exactly the same name as the file.
+One theory per file and exactly the same name as the file  (without
+the `.pvs` extension). Note that
+the PVS language is case sensitive, but the operating systems may not
+be. Please double check that the name of the theory uses the same
+capitalization as the name of the file.
+
+## Organization
+
+In order to consider your contribution, please organize your
+contribution in a directory that includes all the PVS theories of your
+contribution. The name of that directory is used as the name of the library.
+We reserve the right to change the name of the library or, even, the
+name of theories, for consistency with other theories.
+
+Every library directory must have a file `top.pvs` that imports all
+the library theories. Include at least the following tags in PVS comments
+`@library`, `@description`, `@author`, `@poc`, `@date`,`@copyless`.
+The copyless statement should allow us to include your contribution to
+NASALib. Please only contribute libraries that can be considered
+fundamental research in the public domain.  DO NOT contribute copyrighted material. 
+
+Example:
+
+```
+% @library MyLibrary
+% @author Joane Doe and John Doe
+% @poc j.doe@xyz.com
+% @date August 20, 2020
+% @copyless This library is distributed under xyz
+top: THEORY
+BEGIN
+	IMPORTING th1, % Theory 1
+	                   th2, % Theory 2
+                       ...
+					   thn  % Theory n
+END top
+```
+
+Finally, make sure that all formulas in you library are proven. Use,
+for example, `proveit MyLibrary` from the parent directory of
+`MyLibrary` and double check that all formulas are reported as proven.

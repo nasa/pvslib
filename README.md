@@ -162,7 +162,7 @@ Older versions of NASALib are available from
 
 # Contributors
 
-NASALib has grown over the years thanks to the contribution of several people, among them
+NASALib has grown over the years thanks to the contribution of several people, among them:
 
 * [Aaron Dutle](http://shemesh.larc.nasa.gov/people/amd), NASA, USA
 * Alfons Geser, HTWK Leipzig, Germany
@@ -214,7 +214,9 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Víctor Carreño, NASA (retired), USA
 
 If we have incorrectly attributed a PVS development or you have contributed to NASALib and
-your name is not included here, please let us know. 
+your name is not included here, please let us know.
+
+If you want to contribute please read this [guide](DEVEL-GUIDE.md).
 
 DISCLAIMER
 --
