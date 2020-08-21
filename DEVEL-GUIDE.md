@@ -153,5 +153,5 @@ for example, `proveit MyLibrary` from the parent directory of
 `MyLibrary` and double check that all formulas are reported as proven.
 
 Please contact [us](https://shemesh.larc.nasa.gov/people/cam) before
-sending us any contribution. Unexpected contributions will be
+sending any contribution. Unexpected contributions will be
 considered SPAM and immediately deleted. 
