@@ -1,0 +1,95 @@
+#!/bin/bash
+
+VERSION="ProofLite-7.1.0 (06/01/20)"
+DEPENDENCYALLVERSION="dependency-all - $VERSION"
+
+usage() {
+    echo "NAME
+  $DEPENDENCYALLVERSION -- Generates the dependency graphs for the PVS libraries in the current folder.
+
+SYNOPSIS
+
+  dependency-all <options>
+
+DESCRIPTION
+  
+  Uses provethem to iterate dependency-graph over all the libraries in the current directory. 
+
+  As in provethem, the scope of application of dependency-all can be controlled using 
+  the options --after, --before, --but, --do, --from, and --to detailed below. The order 
+  implicitly referred to by all these options is the one induced by the applicable 
+  all-theories file.
+
+OPTIONS
+
+  --force         forces regeneration of .dep files
+
+  --after=<dir>   proves all libraries after <dir>, exclusive
+  --before=<dir>  proves all libraries before <dir>, exclusive
+  --but=<dir1>,..,<dirn>  does not process libraries <dir1>,...,<dirn>
+  --do=<dir1>,..,<dirn>   process libraries <dir1>,...,<dirn>
+  --from=<dir>    proves all libraries from <dir>, inclusive.
+  --to=<dir>      proves all libraries to <dir>, inclusive.
+
+  -h|--help       prints this message
+  --version       prints version information and exit
+
+SEE ALSO
+  provethem -- for iterating commands on a list of directories
+"
+}
+
+ADDITIONALARGS=
+
+while [ $# -gt 0 ]
+do
+  case $1 in
+    -h|-help|--help) 
+	usage
+	exit 0;;
+    -version|--version)
+	echo $DEPENDENCYALLVERSION
+	exit 0;;
+    -force|--force)
+	FORCE=--force;;
+    # valid options
+    --after=*|-after=*\
+	|--before=*|-before=*\
+	|--but=*|-but=*\
+	|--do=*|-do=*\
+	|--from=*|-from=*\
+	|--to=*|-to=*)
+	ADDITIONALARGS="$ADDITIONALARGS $1";;	
+    --after|-after\
+	|--before|-before\
+	|--but|-but\
+	|--do|-do\
+	|--from|-from\
+	|--to|-to)
+	if [[ $2 == -* ]]; then
+	    if [[ $1 =~ ^-[^-].*$ ]]; then
+		echo "Warning: missing values for $1 option (expected syntax is $1 <values>)"
+	    else
+		echo "Warning: missing values for $1 option (expected syntax is $1=<values>)"
+	    fi;
+	else
+	    ADDITIONALARGS="$ADDITIONALARGS $1 $2"
+	    shift
+	fi;;
+    # invalid options
+    *)
+	echo "Warning: omitting unrecognized option $1";;
+  esac
+  shift 
+done
+
+provethem=`which provethem`
+
+if [ "$provethem" ]; then
+    NASALIBPATH=$(pvs -raw -E '(let ((msg (extra-pvs-nasalib))) (format t "~%NASALIBPATH ~a~%" msg)(bye))' -v 0 -batch | sed -nE 's#NASALIBPATH (.*)$#\1#p')
+    NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)/$#\1#p')
+    $provethem $ADDITIONALARGS --execute "cd $NASALIBPATH; ./dependencygraph $FORCE --centered-in=%DIR% --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR%; mv %DIR%.svg %DIR%/"
+else
+  echo "Error: directory where PVS is installed must be in the environment variable PATH for this command to work"
+fi
+

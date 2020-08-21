@@ -1,0 +1,72 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% This theory formalizes the Recursion Theorem for the multiple-function
+%% PVS0 model
+%% 
+%%
+%% Thiago Mendonca Ferreira Ramos, Ariane Alves Almeida Mauricio Ayala-Rincon
+%% Universidade de Brasilia
+%% Last modified: 29 May 2020 by Thiago MF Ramos
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+mf_pvs0_Recursion_Theorem  
+		: THEORY
+
+  BEGIN
+
+  IMPORTING mf_pvs0_basic_programs
+  
+
+  p_recursive2nat(pr : partial_recursive) : nat = listPVS0nat2nat(pr`4)
+
+  greater_index_rec(exp : mf_PVS0Expr[nat]) : RECURSIVE nat =
+  CASES exp OF
+  	cnst(n) : 0,
+	vr : 0,
+	op1(i,e) : greater_index_rec(e),
+	op2(i,e1,e2) : max(greater_index_rec(e1),greater_index_rec(e2)),
+	ite(e1,e2,e3) : max(greater_index_rec(e1),max(greater_index_rec(e2),greater_index_rec(e3))),
+	rec(i,e) : max(i,greater_index_rec(e))
+   ENDCASES
+   MEASURE exp BY <<
+
+  greater_index_rec_correctness : LEMMA
+   FORALL(i : nat, sub, expr : mf_PVS0Expr[nat]) : subterm(rec(i,sub), expr) => i <= greater_index_rec(expr)
+
+  greater_index_rec_list(l : list[mf_PVS0Expr[nat]]) : RECURSIVE nat =
+   IF null?(l) THEN 0
+   ELSE max(greater_index_rec(car(l)), greater_index_rec_list(cdr(l)))
+   ENDIF
+   MEASURE length(l)
+
+  greater_index_rec_list_correctness : LEMMA
+   FORALL(i: nat, sub : mf_PVS0Expr[nat], l : list[mf_PVS0Expr[nat]], j : below[length(l)]):
+   subterm(rec(i,sub), nth(l,j)) => i <= greater_index_rec_list(l)
+
+
+   printA( len, len2: nat) : list[mf_PVS0Expr[nat]] = cons(op2(1,cnst(1+len+len2+length(mult`4)),op2(1,rec(length(mult`4)+len+1,vr),op1(0,rec(1,op2(1,cnst(5),rec(length(mult`4)+len+1,vr)))))), append[mf_PVS0Expr[nat]](map(offset_rec(1))(mult`4), (: vr :)^len))
+
+   map_offset_rec_appendn : LEMMA
+   FORALL(len, n : nat):
+   map(offset_rec(n))( (: vr :)^len) = (: vr :)^len
+
+  print_correctness : LEMMA
+   FORALL(i,len, len2, h : nat):
+   semantic_rel(lop1,lop2,false_val,append(printA(len,len2), (: cnst(h) :)))(i,tuple2nat(1+len+len2+length(mult`4),tuple2nat(h, 5*h+1)))
+
+  vr_subterm : LEMMA
+   FORALL(len : nat, j : below[length((: vr :)^len)], i : nat, expr : mf_PVS0Expr[nat]):
+   NOT subterm(rec(i,expr),nth( (: vr :)^len, j))
+
+  print_limited : LEMMA
+   FORALL(len,len2, h : nat):
+   limited(append(printA(len,len2), (: cnst(h) :)))
+
+  Recursion_Theorem : THEOREM
+	FORALL( pvs0 : PVS0):
+	EXISTS(print : partial_recursive ):
+	LET self = (lop1,lop2,false_val, append(pvs0`4,map(offset_rec(length(pvs0`4)))(print`4))) IN
+	partial_recursive?(self) AND
+	FORALL(i : nat):
+	semantic_rel_expr(self)(offset_rec(length(pvs0`4))(nth(print`4,0)),i,p_recursive2nat(self))
+
+  END mf_pvs0_Recursion_Theorem

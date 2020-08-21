@@ -1,0 +1,116 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% This theory formalizes soundness of basic multiple-function PVS0 programs
+%%
+%% Thiago Mendonca Ferreira Ramos, Ariane Alves Almeida Mauricio Ayala-Rincon
+%% Universidade de Brasilia
+%% Last modified: 29 May 2020 by Thiago MF Ramos
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+mf_pvs0_basic_programs  % [ parameters ]
+		: THEORY
+
+  BEGIN
+   IMPORTING numbers@tuple2nat
+  
+  succ(n : nat) : nat = n+1
+  pi1 : [nat->nat] = (LAMBDA(n,m : nat) : n) o nat2tuple
+  pi2 : [nat->nat] = (LAMBDA(n,m : nat) : m) o nat2tuple
+
+  bigger(n,m : nat) : nat = IF n > m THEN 1 ELSE 0 ENDIF
+  
+  false_val : nat = 0
+  
+  lop1 : list[[nat->nat]] = (: succ, pi1, pi2 :)
+  lop2 : list[[[nat,nat]->nat]] = (: bigger, tuple2nat :)
+
+  IMPORTING mf_pvs0_computable[false_val,lop1,lop2],map_append
+
+  equal_function(i,j : nat) : nat = IF (i=j) THEN 1 ELSE 0 ENDIF
+  equal : partial_recursive =
+  LET i = op1[nat](1,vr), j = op1[nat](2,vr) IN
+  (lop1,lop2,false_val,(:
+	ite(op2(0,i,j),
+	   cnst(false_val),
+	   ite(op2(0,j,i),
+	       cnst(false_val),
+	       cnst(1)))
+  :))
+
+  equal_works : LEMMA
+  FORALL (i,j :nat):
+  semantic_rel(equal)(tuple2nat(i,j),equal_function(i,j))
+
+  sub_function(x,y: nat) : nat = IF x > y THEN x-y ELSE 0 ENDIF
+ sub : partial_recursive =
+ LET x = op1[nat](1,vr),
+     y = op1[nat](2,vr),
+     k2(a,b : mf_PVS0Expr[nat]) = op2(1,a,b),
+     bt(a,b : mf_PVS0Expr[nat]) = op2(0,a,b) IN
+ (lop1,lop2,false_val, (: ite(bt(x,y),op1(0,rec(0,k2(x,op1(0,y)))),cnst(0)) :))
+
+  sub_works : LEMMA
+ FORALL(x,y : nat) : semantic_rel(sub)(tuple2nat(x,y),sub_function(x,y))
+
+  sub1 : partial_recursive =
+ (lop1,lop2,false_val, cons(rec(1,op2(1,vr,cnst(1))),map(offset_rec(1))(sub`4)))
+
+
+   
+ sub1_works : COROLLARY
+ FORALL(x : nat): semantic_rel(sub1)(x, sub_function(x,1))
+
+  sum_function(x,y : nat) : RECURSIVE nat =
+   IF x /= 0 THEN 1+sum_function(x-1,y)
+   ELSE y
+   ENDIF
+   MEASURE x
+
+  sum : partial_recursive =
+   LET x = op1[nat](1,vr), y = op1[nat](2,vr) IN
+   (lop1,lop2,false_val,
+	cons(ite(x,
+	      op1(0, rec(0, op2(1,rec(1, x) ,y))),
+	      y
+	), map(offset_rec(1))(sub1`4))
+   )
+
+   sum_works : LEMMA
+   FORALL(x,y: nat):
+   semantic_rel(sum)(tuple2nat(x,y), sum_function(x,y))
+
+   sum_function_correctness : LEMMA
+   FORALL(x,y: nat):
+   sum_function(x,y) = x+y
+
+   sum_correctness : COROLLARY
+   FORALL(x,y: nat):
+   semantic_rel(sum)(tuple2nat(x,y), x+y)
+
+   mult_function(x,y : nat) : RECURSIVE nat =
+   IF x /= 0 THEN y + mult_function(x-1,y)
+   ELSE 0
+   ENDIF
+   MEASURE x
+
+
+   mult : partial_recursive =
+   LET x=op1[nat](1,vr), y=op1[nat](2,vr) IN
+   (lop1,lop2,false_val,
+        cons(ite(x,
+	    rec(1,op2(1,y,rec(0,op2(1,rec(1+length(sum`4),x),y)))),
+	    cnst(0)
+   	    ), append[mf_PVS0Expr[nat]](map(offset_rec(1))(sum`4), map(offset_rec(1+length(sum`4)))(sub1`4)))
+   )
+
+   mult_works : LEMMA
+   FORALL(x,y : nat):
+   semantic_rel(mult)(tuple2nat(x,y), mult_function(x,y))
+
+   mult_function_correctness: LEMMA
+   FORALL(x,y: nat):
+   mult_function(x,y) = x*y
+
+   mult_correctness : COROLLARY
+   FORALL(x,y : nat):
+   semantic_rel(mult)(tuple2nat(x,y), x*y)
+  END mf_pvs0_basic_programs

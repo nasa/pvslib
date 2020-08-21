@@ -1,0 +1,57 @@
+#!/bin/sh
+
+## This scripts uses symbolic links to allow for multiple versions of PVS
+## to live in the same computer. However, only one of those versions can be
+## used at a given time. 
+
+if [ "$1" = "-help" ]; then
+  echo "Set the environment variable \$PVS_BASE to the root of your PVS directories."
+  echo "Each PVS directory should be named PVS-<version>."
+  echo "If you have a file ~/.pvs.lisp, put in in PVS-<version>/pvs.lisp"
+  echo "Define the following environment variables:"
+  echo "export PVS_DIR=\$PVS_BASE/PVS"
+  echo "export PATH=\$PVS_DIR:\$PATH"
+  echo "export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib"
+  echo "export PVSEMACS=<absdirtoemacs>" 
+  exit
+fi
+
+if [ ! -d "$PVS_BASE" ]; then
+  echo "Set variable \$PVS_BASE to the root of your PVS directories."
+  echo "Each PVS directory should be name PVS-<version>."
+elif [ -z "$1" ]; then
+  echo "*** PVS versions in this system:"
+  ls -1d $PVS_BASE/PVS-* | sed -e "s/.*PVS-//g"
+  if [ ! -L $PVS_BASE/PVS ]; then
+    echo "*** Current version of PVS hasn't been set"
+  else
+    echo "*** Current PVS version:"
+    ls -l $PVS_BASE/PVS | sed -e "s/.*->.*PVS-//g"
+  fi
+elif [ -e $PVS_BASE/PVS -a ! -L $PVS_BASE/PVS ]; then
+  echo "Directory or file $PVS_BASE/PVS already exists"
+elif [ ! -d $PVS_BASE/PVS-$1 ]; then
+  echo "Directory $PVS_BASE/PVS-$1 doesn't exist"
+else
+  if [ ! -f  $PVS_BASE/PVS-$1/pvs.lisp ]; then
+    touch $PVS_BASE/PVS-$1/pvs.lisp
+  fi
+  if [ -L $PVS_BASE/PVS ]; then
+    rm -f $PVS_BASE/PVS
+  fi
+  ln -f -s $PVS_BASE/PVS-$1 $PVS_BASE/PVS
+  rm -f ~/.pvs.*
+  rm -f $PVS_BASE/PVS/src/*fasl
+  ln -f -s $PVS_BASE/PVS-$1/pvs.lisp ~/.pvs.lisp
+  if [ -d "$PVS_BASE/PVS/nasalib/pvs-patches" ]; then
+      rm -f $PVS_BASE/PVS/nasalib/pvs-patches/*fasl
+  fi
+  echo "PVS set to version $1"
+  if [ -z "$PVS_DIR" ]; then
+    echo "Define the following environment variables:"
+    echo "export PVS_DIR=\$PVS_BASE/PVS"
+    echo "export PATH=\$PVS_DIR:\$PATH"
+    echo "export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib"
+    echo "export PVSEMACS=<absdirtoemacs>"
+  fi
+fi

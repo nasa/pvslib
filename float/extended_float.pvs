@@ -1,0 +1,112 @@
+extended_float
+[ radix     : above(1),
+  precision : above(1),
+  dExp      : { d: posnat | d > 2*(precision-1) - 1 }
+] : THEORY BEGIN
+
+  %
+  % Unbounded floating-point numbers
+  %
+
+  IMPORTING float[radix]
+
+  given_format: Format=(#Prec:=precision,dExp:=dExp#)
+  
+  unb_canonic_float: TYPE = (Fcanonic?(given_format))
+
+  % Projection
+  prj_ucf(f1: unb_canonic_float): real = FtoR(f1)
+
+  closest?_ucf(x1: real,(f1:(Fbounded?(given_format)))): bool =
+    EvenClosest?(given_format)(x1,f1)
+        
+  closest?_ucf__j: JUDGEMENT
+    closest?_ucf HAS_TYPE
+        {round: RestrictedRounding(given_format, EvenClosest?) |
+                                 rounded_mode?(given_format)(round) }
+				 
+  currified_closest?_ucf(x1: real)(f1:(Fbounded?(given_format))): bool =
+    closest?_ucf(x1,f1)
+
+  rnd_eclosest_is_particuLar_closest
+  : LEMMA FORALL (x1: real)
+    : currified_closest?_ucf(x1)(RND_EClosest(given_format)(x1))
+
+  % rounding to the nearest (even)
+  rnd_ucf(x1 : real): { f:unb_canonic_float |  currified_closest?_ucf(x1)(f) } =
+    RND_EClosest(given_format)(x1)
+
+  rnd_prj_ucf: LEMMA FORALL(f: unb_canonic_float): rnd_ucf(prj_ucf(f)) = f
+
+  rnd_opp_ucf: LEMMA FORALL(x:real): rnd_ucf(-x) = Fopp(rnd_ucf(x))
+
+  rnd_ucf_monotonic : LEMMA FORALL(x1,x2: real): x1 <= x2 IMPLIES prj_ucf(rnd_ucf(x1)) <= prj_ucf(rnd_ucf(x2))
+
+  rnc_ucf_increasing: LEMMA FORALL(x1,x2: real): x1 <= x2 IMPLIES rnd_ucf(x1) <= rnd_ucf(x2)
+
+  %
+  %
+  %
+
+  min_exp       : negint  = -dExp
+  
+  max_exp       : posint  = dExp - 2*(precision-1) + 1
+  
+  min_pos_value : posreal = radix^min_exp
+  
+  max_pos_value : posreal = (radix^precision - 1) * radix^max_exp
+
+  % exponent boundaries for fractional representation of the significand.
+  emax: above(1) = max_exp + precision - 1
+
+  min_pos_value__min_pos_unb_canonic_float__eq
+  : LEMMA
+    min_pos_value = minimum_positive_bounded_value(given_format)
+
+  efloat: DATATYPE
+  BEGIN
+    inf(positive?: bool): infinite?
+    nan(signaling?: bool): nan?
+    zero(positive?: bool): zero?
+    nzfinite(val: {v: unb_canonic_float | Fexp(v) <= max_exp AND Fnum(v) /= 0}): nzfinite?
+  END efloat
+
+  is_finite?(d:efloat): bool = zero?(d) OR nzfinite?(d)
+  AUTO_REWRITE+ is_finite?
+
+  is_numeric?(d:efloat): bool = NOT nan?(d)
+
+  neginf: efloat = inf(FALSE)
+  AUTO_REWRITE+ neginf
+  
+  posinf: efloat = inf(TRUE)
+  AUTO_REWRITE+ posinf
+
+  inf_exclusive: LEMMA NOT inf(TRUE) = inf(FALSE)
+  AUTO_REWRITE+ inf_exclusive
+
+  negzero: efloat = zero(FALSE)
+  AUTO_REWRITE+ negzero
+  
+  poszero: efloat = zero(TRUE)
+  AUTO_REWRITE+ poszero
+
+  zero_inclusive: LEMMA FORALL(x: efloat) : zero?(x) = (x = zero(TRUE) OR x = zero(FALSE))
+  AUTO_REWRITE+ zero_inclusive
+
+  zero_exclusive: LEMMA NOT zero(TRUE) = zero(FALSE)
+  AUTO_REWRITE+ zero_exclusive
+
+  qnan: efloat = nan(FALSE)
+  AUTO_REWRITE+ qnan
+
+  snan: efloat = nan(TRUE)
+  AUTO_REWRITE+ snan
+
+  nznfinite?(d:efloat): bool
+  = nzfinite?(d) AND Fnum(val(d)) < 0
+
+  nzpfinite?(d:efloat): bool
+  = nzfinite?(d) AND Fnum(val(d)) > 0
+
+END extended_float

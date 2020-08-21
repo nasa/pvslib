@@ -1,0 +1,162 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%
+%% This theory formalizes the semantic evaluation of multiple-function PVS0
+%% programs and their equivalence. Also, termination notions according to
+%% such semantic evaluation operators are given. 
+%%
+%%
+%% Thiago Mendonca Ferreira Ramos, Ariane Alves Almeida Mauricio Ayala-Rincon
+%% Universidade de Brasilia
+%% Last modified: 29 May 2020 by Thiago MF Ramos
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+mf_pvs0_expr[Val:TYPE+]: THEORY
+BEGIN
+
+  IMPORTING mf_PVS0Expr[Val], structures@Maybe
+
+  EvalOp1  : TYPE = list[[Val->Val]]
+  EvalOp2  : TYPE = list[[[Val,Val]->Val]]
+  lmf_PVS0Expr : TYPE = (cons?[mf_PVS0Expr[Val]])
+
+  PVS0 : TYPE = [EvalOp1,EvalOp2,Val,lmf_PVS0Expr]
+
+  pvs0 : VAR PVS0
+
+  get_false_val(pvs0) : MACRO Val = pvs0`3
+  get_body(pvs0) : MACRO lmf_PVS0Expr = pvs0`4
+  eval_op1(pvs0)(n:nat,v:Val): Val =
+    IF n < length(pvs0`1) THEN nth(pvs0`1,n)(v) ELSE get_false_val(pvs0) ENDIF
+  eval_op2(pvs0)(n:nat,v1,v2:Val): Val =
+    IF n < length(pvs0`2) THEN nth(pvs0`2,n)(v1,v2) ELSE get_false_val(pvs0) ENDIF
+
+  semantic_rel_expr(pvs0)(expr:mf_PVS0Expr,env:Val,val:Val) : INDUCTIVE bool =
+    (cnst?(expr) AND val = get_val(expr)) OR
+    (vr?(expr) AND val = env) OR
+    (op1?(expr) AND EXISTS (valarg:Val) : 
+       semantic_rel_expr(pvs0)(get_arg(expr),env,valarg) AND
+       val = eval_op1(pvs0)(get_op(expr),valarg)) OR
+    (op2?(expr) AND EXISTS (valarg1,valarg2:Val) : 
+      semantic_rel_expr(pvs0)(get_arg1(expr),env,valarg1) AND
+      semantic_rel_expr(pvs0)(get_arg2(expr),env,valarg2) AND
+      val = eval_op2(pvs0)(get_op(expr),valarg1,valarg2)) OR
+    (ite?(expr) AND EXISTS (valarg:Val) : 
+      semantic_rel_expr(pvs0)(get_cond(expr),env,valarg) AND
+      IF get_false_val(pvs0) /= valarg THEN       
+        semantic_rel_expr(pvs0)(get_if(expr),env,val) 
+      ELSE semantic_rel_expr(pvs0)(get_else(expr),env,val)
+      ENDIF) OR
+    (rec?(expr) AND EXISTS (valarg:Val) : 
+      semantic_rel_expr(pvs0)(get_arg(expr),env,valarg) AND
+      IF get_from_list(expr) < length(get_body(pvs0)) THEN
+      	 semantic_rel_expr(pvs0)(nth(get_body(pvs0),get_from_list(expr)),valarg,val)
+      ELSE val = get_false_val(pvs0)
+      ENDIF)
+
+  terminates_expr(pvs0)(expr:mf_PVS0Expr) : bool = 
+    FORALL (env:Val): 
+      EXISTS (val:Val) : semantic_rel_expr(pvs0)(expr,env,val)
+
+% This builds a measure according to the seven cases in the data structure pvs0.
+% See also use of reduce_nat in the PVS library file ordstruct_adt.
+
+  sizepvs0: [mf_PVS0Expr -> nat] = 
+    reduce_nat(LAMBDA(v:Val):1, 1, LAMBDA(m,n:nat):2+n, LAMBDA(m,n,l:nat):2+n+l, 
+               LAMBDA(n,m:nat):1+m, LAMBDA(m,n,l:nat):1+m+n+l)
+
+  eval_expr(pvs0)(i:nat,expr:mf_PVS0Expr,env:Val) : RECURSIVE Maybe[Val] =
+    IF i = 0 Then None
+    ELSE CASES expr OF
+      cnst(v) : Some(v),
+      vr : Some(env),
+      op1(op,arg) : LET v = eval_expr(pvs0)(i,arg,env) IN
+        	    IF some?(v) THEN
+		       Some(eval_op1(pvs0)(get_op(expr),val(v)))
+		    ELSE None ENDIF,
+      op2(op,arg1,arg2) :  LET v1 = eval_expr(pvs0)(i,arg1,env),
+                               v2 = eval_expr(pvs0)(i,arg2,env) IN
+                           IF some?(v1) AND some?(v2) THEN
+			   Some(eval_op2(pvs0)(get_op(expr),val(v1),val(v2))) 
+                           ELSE None ENDIF,
+      ite(cnd,arg1,arg2) : LET vc = eval_expr(pvs0)(i,cnd,env) IN
+                           IF some?(vc) THEN
+                             IF get_false_val(pvs0) /= val(vc) THEN
+                               eval_expr(pvs0)(i,arg1,env)
+                             ELSE
+                               eval_expr(pvs0)(i,arg2,env)
+                             ENDIF
+                           ELSE None
+                           ENDIF,
+      rec(n,arg) : LET v = eval_expr(pvs0)(i,arg,env) IN 
+                 IF some?(v) THEN
+		   IF n < length(get_body(pvs0)) THEN
+                      eval_expr(pvs0)(i-1,nth(get_body(pvs0),n),val(v))
+		   ELSE
+		      Some(get_false_val(pvs0))
+		   ENDIF
+                 ELSE None
+                 ENDIF
+    ENDCASES
+    ENDIF
+  MEASURE lex2(i,sizepvs0(expr))
+
+  eval_expr_ge_n_j : RECURSIVE JUDGEMENT
+    eval_expr(pvs0)(i:nat,expr:mf_PVS0Expr,env:Val) HAS_TYPE
+      { myv : Maybe[Val] | some?(myv) IMPLIES i > 0 AND 
+        FORALL (m:upfrom(i)): myv = eval_expr(pvs0)(m,expr,env) }
+
+  eval_expr_gt_0: LEMMA
+    FORALL(n:nat,expr:mf_PVS0Expr,env:Val):
+      LET myv = eval_expr(pvs0)(n,expr,env) IN
+        some?(myv) IMPLIES n > 0
+
+  eval_expr_ge_n : LEMMA
+    FORALL (pvs0)(n:nat,m:upfrom(n),expr:mf_PVS0Expr,env:Val):
+       LET myv = eval_expr(pvs0)(n,expr,env) IN
+        some?(myv) IMPLIES myv = eval_expr(pvs0)(m,expr,env)
+
+  semantic_rel_eval_expr : LEMMA
+    FORALL (pvs0)(expr:mf_PVS0Expr,env:Val,val:Val) :
+      semantic_rel_expr(pvs0)(expr,env,val)
+      IMPLIES
+      EXISTS (n:nat): LET myv = eval_expr(pvs0)(n,expr,env) IN
+        some?(myv) AND val = val(myv)
+
+  eval_expr_n?(pvs0)(expr:mf_PVS0Expr,env:Val)(n:nat) : MACRO bool =
+    LET myv = eval_expr(pvs0)(n,expr,env) IN
+      some?(myv)
+
+  eval_expr_n_pos: LEMMA
+  FORALL (pvs0)(expr:mf_PVS0Expr,env:Val)(n:nat):
+    eval_expr_n?(pvs0)(expr,env)(n) 
+    IMPLIES n>0 
+
+  deterministic_expr : LEMMA
+    FORALL (pvs0)(env:Val,expr:mf_PVS0Expr,val1,val2:Val): 
+      semantic_rel_expr(pvs0)(expr,env,val1) AND
+      semantic_rel_expr(pvs0)(expr,env,val2) IMPLIES
+      val1 = val2
+
+  eval_expr_semantic_rel_j : RECURSIVE JUDGEMENT 
+    eval_expr(pvs0)(i:nat,expr:mf_PVS0Expr,env:Val) HAS_TYPE
+      { myv : Maybe[Val] | some?(myv) IMPLIES
+        semantic_rel_expr(pvs0)(expr,env,val(myv)) }
+
+  eval_expr_semantic_rel : LEMMA
+    FORALL (pvs0)(env:Val,expr:mf_PVS0Expr,val:Val)(n:nat) :
+      LET myv = eval_expr(pvs0)(n,expr,env) IN
+        some?(myv) AND val = val(myv) IMPLIES 
+        semantic_rel_expr(pvs0)(expr,env,val)
+
+  %%% Termination for expr and body 
+
+  eval_expr_termination(pvs0)(expr:mf_PVS0Expr) : bool =
+    FORALL (env:Val):
+      EXISTS (n:nat): eval_expr_n?(pvs0)(expr,env)(n) 
+
+  eval_expr_terminates: LEMMA
+   FORALL (expr:mf_PVS0Expr): 
+      eval_expr_termination(pvs0)(expr) 
+      IFF terminates_expr(pvs0)(expr)
+
+END mf_pvs0_expr

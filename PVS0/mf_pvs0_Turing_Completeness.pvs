@@ -1,0 +1,290 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% The partial recursive multiple-function PVS0 model built from 
+%% the basic operators: successor, first and second projections composed
+%% to nat2tuple, tuple2nat and greater-than, is Turing Complete
+%%
+%% Turing Completeness is proved showing that the functions below are
+%% implementable by PVS0 programs.
+%% - Projections x_1, ..., x_n |-> x_i,
+%% - Constant x_1, ..., x_n |-> 0,
+%% - Successor x |-> x + 1,
+%% - The function chi such that chi(x,y) = 1 if x <= y and chi(x,y) = 0,
+%% And in addition, that PVS0 programs are closed under 
+%% - composition,
+%% - minimization, and
+%% - primitive recurrence.
+%%
+%% This theory formalizes projections, composition, minimization and
+%% primitive recurrence.
+%%
+%% Thiago Mendonca Ferreira Ramos, Ariane Alves Almeida Mauricio Ayala-Rincon
+%% Universidade de Brasilia
+%% Last modified: 29 May 2020 by Thiago MF Ramos
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+mf_pvs0_Turing_Completeness  
+		: THEORY
+
+  BEGIN
+
+  IMPORTING mf_pvs0_basic_programs
+
+  
+  IMPORTING  chain_of_appends[mf_PVS0Expr[nat]]%, map_append
+
+  % proj_aux_function select the ith elment of the n-tuple
+  % built from x (between the range j and n)
+  proj_aux_function(j,i,n,x : nat) : RECURSIVE nat =
+  IF i > j THEN proj_aux_function(j+1,i,n,pi2(x))
+  ELSIF i = n THEN x
+  ELSE pi1(x)
+  ENDIF
+  MEASURE IF i > j THEN i - j ELSE 0 ENDIF
+
+
+  nat2list(n, x : nat) : RECURSIVE list[nat] =
+  IF n = 0 THEN null
+  ELSIF n = 1 THEN (: x :)
+  ELSE cons(pi1(x), nat2list(n-1,pi2(x)))
+  ENDIF
+  MEASURE n
+
+  nat2list_length : LEMMA
+  FORALL(n,x : nat):
+  length(nat2list(n,x)) = n
+
+  proj_aux_function_not_last : LEMMA
+  FORALL(x, j: nat, i : nat| j <= i, n : nat | i < n, m : nat | n <= m):
+  proj_aux_function(j,i,n,x) = proj_aux_function(j,i,m,x)
+
+  proj_aux_function_last : LEMMA
+  FORALL(x, j: nat, i : nat| j <= i, n : nat | i = n):
+  proj_aux_function(j,i,n,x) = nth(nat2list(1+n-j,x),i-j)
+
+  nat2list_extension : LEMMA
+  FORALL(x, n : nat, i: nat | i < n, m : nat | n <= m):
+  nth(nat2list(n+1,x), i) = nth(nat2list(m+1,x), i)
+  
+  proj_aux_function_works : LEMMA
+  FORALL(x,j : nat, i : nat| j <= i, n : nat | i < n):
+  proj_aux_function(j,i,n,x) = nth(nat2list(n+1,x), i-j)
+  
+
+
+  proj_aux: partial_recursive =
+  LET j = op1[nat](1,vr),
+      i = op1[nat](1,op1[nat](2,vr)),
+      n = op1[nat](1,op1[nat](2,op1[nat](2,vr))),
+      x = op1[nat](2,op1[nat](2,op1[nat](2,vr))),
+      k4(a,b,c,d : mf_PVS0Expr[nat]) = op2[nat](1,a,op2[nat](1,b,op2[nat](1,c,d))) IN
+  (lop1,lop2,false_val, cons(
+  	ite[nat](op2(0,i,j),
+	    rec(0,k4(op1(0,j),i,n,op1(2,x))),
+	    ite(rec(1,op2(1,i,n)),
+		x
+	    ,
+		op1(1,x)
+	    )),
+	 map(offset_rec(1))(equal`4)
+ ))
+
+ proj_aux_works : LEMMA
+ FORALL(j,i,n,x : nat):
+ semantic_rel(proj_aux)(tuple2nat(j,tuple2nat(i,tuple2nat(n,x))), proj_aux_function(j,i,n,x))
+
+ % The proj function maps a natural x in in an n-tuple and projects its i-th element. 
+ proj_function(i,n,x : nat): nat =
+ proj_aux_function(0,i,n,x)
+
+ proj : partial_recursive =
+ LET i = op1[nat](1,vr),
+     n = op1[nat](1,op1[nat](2,vr)),
+     x = op1[nat](2,op1[nat](2,vr)),
+     k4(a,b,c,d : mf_PVS0Expr[nat]) = op2[nat](1,a,op2[nat](1,b,op2[nat](1,c,d))) IN
+ (lop1,lop2,false_val, cons(rec(1,k4(cnst(0),i,n,x)),map(offset_rec(1))(proj_aux`4)))
+
+ proj_works : LEMMA
+ FORALL(i,n,x : nat):
+ semantic_rel(proj)(tuple2nat(i,tuple2nat(n,x)),proj_function(i,n,x))
+
+
+ %There exists a partial recursive PVS0 that projects an i-th element from natural tranformed in an n+1-tuple.
+ proj_correctness : LEMMA
+ FORALL(i,x : nat, n : nat | i <= n):
+ semantic_rel(proj)(tuple2nat(i,tuple2nat(n,x)),nth(nat2list(n+1,x),i))
+
+  expr_comp(n : nat, l : (cons?[(limited)])) : RECURSIVE mf_PVS0Expr[nat] =
+  IF length(l)=1 THEN rec(n,vr)
+  ELSE op2(1,rec(n,vr),expr_comp(n+length(car(l)),cdr(l)))
+  ENDIF
+  MEASURE length(l)
+
+  chain_offset(n : nat, l : (cons?[(limited)])) : RECURSIVE list[mf_PVS0Expr[nat]] =
+  IF length(l) = 1 THEN
+     map(offset_rec(n))(car(l))
+  ELSE append(map(offset_rec(n))(car(l)), chain_offset(n+length(car(l)),cdr(l)))
+  ENDIF
+  MEASURE length(l)
+
+  rec_indices_chain_offset_is_limited : LEMMA
+  FORALL(n : nat, l : (cons?[(limited)]), i : below[length(chain_offset(n,l))]):
+  valid_index_rec(nth(chain_offset(n,l),i), n + length(chain_offset(n,l)))
+
+  rec_indices_expr_comp_is_limited : LEMMA
+  FORALL(l : (cons?[(limited)]), n : nat ):
+  valid_index_rec(expr_comp(n,l), n+length(chain_offset(n,l)))
+
+  chain_offset_length : LEMMA
+  FORALL(l : (cons?[(limited)]), n : nat):
+  length(chain_offset(n,l)) = length(chain_of_appends(l))
+
+ comp(f : (limited), l : (cons?[(limited)])) : partial_recursive =
+ (lop1,lop2,false_val, cons(rec(1,op2(1,cnst(length(l)),expr_comp(1+length(f),l))), chain_offset(1,cons(f,l))))
+
+ list2nat(l : (cons?[nat])) : RECURSIVE nat =
+ IF length(l) = 1 THEN car(l)
+ ELSE tuple2nat(car(l), list2nat(cdr(l)))
+ ENDIF
+ MEASURE length(l)
+
+  offset_rec_chain_offset : LEMMA
+  FORALL(l : (cons?[(limited)]), m,n : nat):
+  map(offset_rec(m))(chain_offset(n,l)) = chain_offset(m+n,l)
+
+  offset_rec_expr_comp : LEMMA
+  FORALL(l : (cons?[(limited)]), m,n : nat):
+  offset_rec(n)(expr_comp(m,l)) = expr_comp(n+m,l)
+
+  limits_of_chain_offset : LEMMA
+  FORALL(l1 : (limited), l : (cons?[(limited)]), i : below[length(l)], input, output : nat , k : nat | k >= length(chain_of_appends(take(l,i)))  + length(l1) AND k < length(chain_of_appends(take(l,i))) +length(nth(l,i)) + length(l1)):
+  semantic_rel_expr(lop1,lop2,false_val,append(l1,chain_offset(length(l1),l)))(rec(k,vr),input,output) <=> semantic_rel_expr(lop1,lop2,false_val,nth(l,i))(nth(nth(l,i),k-length(l1)-length(chain_of_appends(take(l,i)))),input,output)
+
+ chain_offset_prop : LEMMA
+ FORALL(l1 : (limited), l : (cons?[(limited)]), input,output : nat):
+ semantic_rel(lop1,lop2,false_val,cons(expr_comp(length(l1)+1,l),map(offset_rec(1))(append(l1,chain_offset(length(l1),l)))))(input,output) <=>
+ (EXISTS(interm : (cons?[nat]) | length(interm)=length(l)):
+ FORALL(i : below[length(interm)]): semantic_rel(lop1,lop2,false_val,nth(l,i))(input,nth(interm,i)) AND
+ output = list2nat(interm))
+
+ % There exists a partial recursive PVS0 programs that composes another partial recursive PVS0 program with a list of them.
+ comp_is_composition : LEMMA
+ FORALL(f : (limited), l : (cons?[(limited)]), input, output : nat):
+ semantic_rel(comp(f,l))(input,output) <=>
+ (EXISTS(interm : (cons?[nat])| length(interm) = length(l)):
+ 		semantic_rel(lop1,lop2,false_val,f)(tuple2nat(length(interm),list2nat(interm)),output) AND
+ 		FORALL(i : below[length(l)]): semantic_rel(lop1,lop2,false_val,nth(l,i))(input,nth(interm,i)))
+
+
+ %min_aux(f)(x,y) := if f(x,y) /= 0 then min(f)(x+1,y)
+ %                   else x
+ % where (x,y) := vr, x := op1(1,vr), y := op1(2,vr)
+ min_relation(x,y : nat ,f : (limited), ans : nat) : INDUCTIVE bool =
+ IF semantic_rel(lop1,lop2,false_val,f)(tuple2nat(x,y),0) THEN ans = x
+ ELSIF EXISTS (k : nat): semantic_rel(lop1,lop2,false_val,f)(tuple2nat(x,y),k) THEN
+       min_relation(x+1,y,f,ans)
+ ELSE FALSE
+ ENDIF
+
+
+ min_relation_works : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ min_relation(x,y,f,ans) =>
+ (semantic_rel(lop1,lop2,false_val,f)(tuple2nat(ans,y),0) AND x <= ans AND
+ FORALL(i : nat | i >= x AND i < ans): EXISTS( k : posint): semantic_rel(lop1,lop2,false_val,f)(tuple2nat(i,y),k))
+
+ 
+
+ min_relation_leq : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ min_relation(x,y,f,ans) => x <= ans
+
+ min_aux(f : (limited)) : partial_recursive =
+ (lop1,lop2,false_val, cons( ite(rec(1,vr),rec(0,op2(1,op1(0,op1(1,vr)),op1(2,vr))),op1(1,vr)), map(offset_rec(1))(f)))
+
+ min_aux_leq_eval_expr : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat, n : nat):
+ eval_expr(min_aux(f))(n,nth(min_aux(f)`4,0),tuple2nat(x,y)) = Some(ans) => x <= ans
+
+ min_aux_leq : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ semantic_rel(min_aux(f))(tuple2nat(x,y),ans) => x <= ans
+
+  min_relation_works2 : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ (semantic_rel(lop1,lop2,false_val,f)(tuple2nat(ans,y),0) AND x <= ans AND 
+ FORALL(i : nat | i >= x AND i < ans): EXISTS( k : nat): semantic_rel(lop1,lop2,false_val,f)(tuple2nat(i,y),k) AND k /= 0) => min_relation(x,y,f,ans) 
+
+ min_aux_is_min_relation : LEMMA
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ min_relation(x,y,f,ans) <=> semantic_rel(min_aux(f))(tuple2nat(x,y),ans)
+
+ 
+ min_aux_correctness : COROLLARY
+ FORALL(x,y : nat, f : (limited), ans : nat):
+ semantic_rel(min_aux(f))(tuple2nat(x,y),ans) <=>
+ (semantic_rel(lop1,lop2,false_val,f)(tuple2nat(ans,y),0) AND x <= ans AND
+ FORALL(i : nat | i >= x AND i < ans): EXISTS( k : posint): semantic_rel(lop1,lop2,false_val,f)(tuple2nat(i,y),k))
+
+ % min(f)(y) = res => (f(res,y) = 0 /\ forall(x < res): f(x,y) > 0) 
+ min(f : (limited)) : partial_recursive =
+ (lop1,lop2,false_val, cons(rec(1,op2(1,cnst(0),vr)), map(offset_rec(1))(min_aux(f)`4)))
+
+ %There is a minimization PVS0 program of another PVS0 program.
+ min_correctness : COROLLARY
+ FORALL(y : nat, f : (limited), ans : nat):
+ semantic_rel(min(f))(y,ans) <=>
+ (semantic_rel(lop1,lop2,false_val,f)(tuple2nat(ans,y),0) AND
+ FORALL(i : nat |  i < ans): EXISTS( k : posint): semantic_rel(lop1,lop2,false_val,f)(tuple2nat(i,y),k))
+
+
+ 
+
+ prim_recurrence_relation(recur, final : (limited))(x,y : nat)(ans : nat): INDUCTIVE bool =
+ IF x/=0 THEN EXISTS(z : nat):
+	      semantic_rel(lop1,lop2,false_val,recur)(tuple2nat(z,tuple2nat(x-1,y)), ans) AND
+    	      prim_recurrence_relation(recur,final)(x-1,y)(z)
+ ELSE semantic_rel(lop1,lop2,false_val,final)(y,ans)
+ ENDIF
+
+ prim_recurrence(recur, final : (limited)) : partial_recursive =
+ LET x = op1[nat](1,vr),
+     y = op1[nat](2,vr),
+     minus1(x: mf_PVS0Expr[nat]) = rec(1+length(recur)+length(final),x),
+     recur_function(x,y,z : mf_PVS0Expr[nat]) = rec[nat](1,op2[nat](1,x,op2[nat](1,y,z))),
+     final_function(x : mf_PVS0Expr[nat]) = rec[nat](1+length(recur),x),
+     recursive_call(x,y : mf_PVS0Expr[nat]) = rec[nat](0,op2[nat](1,x,y))IN
+ (lop1,lop2,false_val, cons(ite(x,
+                                recur_function(recursive_call(minus1(x),y),minus1(x), y),
+				final_function(y)),
+			append(map(offset_rec(1))(recur),append(map(offset_rec(1+length(recur)))(final),map(offset_rec(1+length(recur)+length(final)))(sub1`4)))))
+
+ 
+
+ prim_recurrence_is_prim_recurrence_relation : LEMMA
+ FORALL(recur, final : (limited), x, y, ans : nat) :
+ semantic_rel(prim_recurrence(recur,final))(tuple2nat(x,y),ans) <=>
+ prim_recurrence_relation(recur,final)(x,y)(ans)
+
+ prim_recurrence_relation_works: LEMMA
+ FORALL(recur, final : (limited), x, y, ans : nat) :
+ prim_recurrence_relation(recur,final)(x,y)(ans) <=>
+ (EXISTS(l : list[nat] | length(l) = x+1): ans = nth(l,length(l)-1) AND
+ 	   semantic_rel(lop1,lop2,false_val,final)(y,nth(l,0)) AND
+ FORALL(i : below[length(l)-1]):
+ 	   semantic_rel(lop1,lop2,false_val,recur)(tuple2nat(nth(l,i),tuple2nat(i,y)),nth(l,i+1))
+	   )
+
+ % There exists a manner to build primitive recurrence.
+ prim_recurrence_correctness: COROLLARY
+  FORALL(recur, final : (limited), x, y, ans : nat) :
+ semantic_rel(prim_recurrence(recur,final))(tuple2nat(x,y),ans) <=>
+ (EXISTS(l : list[nat] | length(l) = x+1): ans = nth(l,length(l)-1) AND
+ 	   semantic_rel(lop1,lop2,false_val,final)(y,nth(l,0)) AND
+ FORALL(i : below[length(l)-1]):
+ 	   semantic_rel(lop1,lop2,false_val,recur)(tuple2nat(nth(l,i),tuple2nat(i,y)),nth(l,i+1))
+	   )
+ 
+
+
+  
+
+  END mf_pvs0_Turing_Completeness

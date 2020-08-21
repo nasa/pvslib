@@ -1,0 +1,89 @@
+dnf_strategy : THEORY
+BEGIN
+
+  IMPORTING poly_system_strategy,
+            dnf_polynomials,
+	    structures@Maybe,
+	    structures@array2list
+
+  %%% handle constants with remove_constants (extra lemmas to close TCC's)
+
+  remove_constants_rec(l:list[DNF_Atom], a:list[DNF_Atom]) :
+  RECURSIVE Maybe[list[DNF_Atom]] = IF null?(l) THEN a
+  ELSIF car(l)`d < 1 THEN
+    IF eval_atm(car(l))(0) THEN remove_constants_rec(cdr(l),a)
+    ELSE None
+    ENDIF
+  ELSE remove_constants_rec(cdr(l),cons(car(l),a))
+  ENDIF
+  MEASURE l BY <<
+  
+  when_not_none: LEMMA FORALL (l1, l2, l3: list[DNF_Atom]): some?(remove_constants_rec(l1, l2)) IMPLIES some?(remove_constants_rec(l1, l3))
+
+  relation_remove_constants_rec: LEMMA FORALL (l,l2: list[DNF_Atom]): FORALL (a: DNF_Atom): (some?(remove_constants_rec(l, append(l2, (:a:)))) AND some?(remove_constants_rec(l, l2))) IMPLIES val(remove_constants_rec(l, append(l2, (:a:)))) = append(val(remove_constants_rec(l, l2)), (: a :))
+
+  remove_constants(l:list[DNF_Atom]): {m:Maybe[list[DNF_Atom]] | some?(m) IMPLIES FORALL (i:below(length(val(m)))) : (nth(val(m),i))`d >= 1 AND ((nth(val(m),i))`pn)((nth(val(m),i))`d) /= 0} = remove_constants_rec(l, null)
+
+  %%% type property
+  %remove_constants_degree : LEMMA FORALL (l:list[DNF_Atom]): FORALL (j: nat): j <= length(val(remove_constants(l))) - 1 IMPLIES nth(val(remove_constants(l)), j)`d > 0
+
+  %%% some useful structural properties
+  relation_remove_constants_single: LEMMA FORALL (a : DNF_Atom): some?(remove_constants( (: a :))) IMPLIES (val(remove_constants( (: a :))) = (: :) OR val(remove_constants( (: a :))) = (: a :))
+
+  relation_remove_constants_null: LEMMA FORALL (l: list[DNF_Atom]): FORALL (a : DNF_Atom): (some?(remove_constants(cons(a,l))) AND val(remove_constants( (: a :) ))  = (: :)) IMPLIES val(remove_constants(cons (a, l))) = val(remove_constants(l))
+
+   relation_remove_constants: LEMMA  FORALL (l: list[DNF_Atom]): FORALL (a: DNF_Atom) : (some?(remove_constants(cons(a,l))) AND val(remove_constants( (: a :) ))  = (: a :)) IMPLIES val(remove_constants(cons(a, l))) = append(val(remove_constants(l)), (: a :))
+
+  %%% Towards eval_remove_constants_none and eval_remove_constants
+  eval_truth: LEMMA FORALL (x:real): FORALL (l:list[DNF_Atom]): FORALL (a:DNF_Atom): eval_atm_list(cons(a, l))(x) IFF (eval_atm(a)(x) AND eval_atm_list(l)(x))
+
+
+  %eval_constant_polys : LEMMA FORALL (p:Polylist): deg(p) < 1 IMPLIES FORALL (x:real): polylist(p)(x) = car(p)
+
+
+  %%% two key properties
+  degr_lemma: LEMMA FORALL (polyn : [nat -> rat]): FORALL (x: real): FORALL (deg: nat): degr_rec(polyn, deg) = 0 IMPLIES polynomial(polyn, deg)(x) = polynomial(polyn, deg)(0)
+  
+
+  eval_remove_constants_none: LEMMA FORALL (l:list[DNF_Atom]): none?(remove_constants(l)) IMPLIES (FORALL (x: real): eval_atm_list(l)(x) = FALSE)
+
+  eval_remove_constants: LEMMA FORALL (x:real): FORALL (l:list[DNF_Atom]): some?(remove_constants(l)) IMPLIES (eval_atm_list(val(remove_constants(l)))(x) = (eval_atm_list(l))(x))
+
+  %%% Satisfiability
+  conj_to_tarski(ll:list[DNF_Atom]) : bool =
+    LET rc = remove_constants(ll) IN
+    IF rc = None THEN FALSE
+    ELSIF length(val(rc)) = 0 THEN TRUE % indicates that every relation in ll was trivially true
+    ELSE
+      LET l   = val(rc),
+          k   = length(l) - 1, % Number of polynomial relations
+          pq  = LAMBDA (j:nat): IF j <= k THEN nth(l,j)`pn
+	                        ELSE LAMBDA (i:nat) -> rat : 0
+		  	        ENDIF,
+          n   = LAMBDA (j:nat): IF j <= k THEN nth(l,j)`d
+	                        ELSE 0 ENDIF, % Array of degrees
+	  rel = LAMBDA (j:nat): IF j <= k THEN to_nat(nth(l,j)`rel)
+	                        ELSE 0 ENDIF  % Arrray of relations
+    IN tarski(k,pq,n,rel)
+    ENDIF
+
+   satisfiability_relation: LEMMA FORALL (a:DNF_Atom): a`d > 0 IMPLIES (FORALL (x:real): (rel5(to_nat(a`rel))(polynomial(a`pn,a`d)(x),0)) IFF (eval_atm(a)(x)))
+
+ % This proof could probably be slightly simplified
+   satisfiability_relation_system: LEMMA FORALL (ll: list[DNF_Atom]): (some?(remove_constants(ll)) AND length(val(remove_constants(ll))) > 0) IMPLIES (((FORALL (j:upto(length(val(remove_constants(ll))) - 1)): ((nth(val(remove_constants(ll)),j)`pn)(nth(val(remove_constants(ll)),j)`d) /= 0 AND (nth(val(remove_constants(ll)),j)`d > 0))) IMPLIES (FORALL (x:real): (FORALL (j:upto(length(val(remove_constants(ll))) - 1)): rel5(to_nat(nth(val(remove_constants(ll)),j)`rel))(polynomial(nth(val(remove_constants(ll)),j)`pn,nth(val(remove_constants(ll)),j)`d)(x),0)) IFF eval_atm_list(ll)(x))))
+
+  % pq(j) becomes list2array[rat](0)(nth(val(remove_constants(ll)),j)`plist)
+  % n(j) becomes  deg(nth(val(remove_constants(ll)),j)`plist)
+  % k becomes length(val(remove_constants(ll))) - 1
+   % RelF6 becomes to_nat(nth(val(remove_constants(ll)),j)`rel)
+  conj_to_tarski_sound: LEMMA FORALL (ll: list[DNF_Atom]): conj_to_tarski(ll) IFF (EXISTS (x:real): eval_atm_list(ll)(x))
+
+  rel_to_tarski(rel:PolyRelExpr) : bool =
+     LET d = dnf(rel) IN
+     EXISTS (i:below(length(d))) : conj_to_tarski(nth(d,i))
+
+   dnf_eval_truth: LEMMA FORALL (d:DNF): FORALL (x:real): eval(d)(x) IFF EXISTS (i: below(length(d))): eval_atm_list(nth(d, i))(x)
+
+  rel_to_tarski_sound: LEMMA FORALL (rel:PolyRelExpr) : rel_to_tarski(rel) IFF (EXISTS (x:real):eval(rel)(x))
+
+END dnf_strategy

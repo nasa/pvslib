@@ -3,7 +3,7 @@ BEGIN
 
 % Systems of Polynomials 
 
-IMPORTING poly_systems,system_solvers
+IMPORTING poly_systems,system_solvers,preprocessing_univariate
 
   a,r,g : VAR [nat->int]
   p : VAR [nat->[nat->int]]
@@ -14,6 +14,18 @@ IMPORTING poly_systems,system_solvers
   x,y,c,b : VAR real
   babove,bbelow,bbelow2,babove2: VAR bool
   RelF6,TQRow: VAR [nat->subrange(0,5)]
+
+  TarskiRel : TYPE = {peq,pgt,plt,pneq,pge,ple}
+
+  to_nat(r:TarskiRel) : upto(5) =
+    CASES r OF
+      peq  : 0,
+      pgt  : 1,
+      plt  : 2,
+      pneq : 3,
+      pge  : 4,
+      ple  : 5
+    ENDCASES   
 
   % Next is a function that takes a system, possibly involving only inequalities and not equalities,
   % and converts it to a system(s) with at least one equality.
@@ -32,10 +44,11 @@ IMPORTING poly_systems,system_solvers
     prod_polynomials_list(LAMBDA (i): IF RelF6(i)>=4 THEN p(i) ELSE (LAMBDA (j:nat): 1) ENDIF,
     			  LAMBDA (i): IF RelF6(i)>=4 THEN n(i) ELSE 0 ENDIF,(LAMBDA (i): 1),k)
 
-  rel5(i:subrange(0,5))(r1,r2:real): bool =
-    (IF i=0 THEN r1=r2 ELSIF i=1 THEN r1>r2
-	ELSIF i=2 THEN r1<r2 ELSIF i=3 THEN r1/=r2 
-	ELSIF i=4 THEN r1>=r2 ELSIF i=5 THEN r1<=r2 ELSE TRUE ENDIF)
+%moved to toy
+  %rel5(i:subrange(0,5))(r1,r2:real): bool =
+  %  (IF i=0 THEN r1=r2 ELSIF i=1 THEN r1>r2
+  %	ELSIF i=2 THEN r1<r2 ELSIF i=3 THEN r1/=r2 
+  %	ELSIF i=4 THEN r1>=r2 ELSIF i=5 THEN r1<=r2 ELSE TRUE ENDIF)
 
   solvable_at?(k,p,(n|FORALL (j:upto(k)): p(j)(n(j))/=0),RelF6)(x): bool =
    FORALL (i:upto(k)): 
@@ -60,7 +73,7 @@ IMPORTING poly_systems,system_solvers
 
 
   compute_solvable_single(i:subrange(0,5),a,(d|a(d)/=0)): bool = 
-   IF d=0 THEN rel5(i)(a(0),0)
+  IF d=0 THEN rel5(i)(a(0),0)
    ELSIF d=1 THEN TRUE
    ELSIF i=3 THEN TRUE
    ELSE LET iseq = sturm_tarski_faster(1,a,d,LAMBDA (k):LAMBDA (j):1,
@@ -75,8 +88,7 @@ IMPORTING poly_systems,system_solvers
            ENDIF
     ENDIF
 
-
-  compute_solvable_single_def: LEMMA a(d)/=0 IMPLIES FORALL (i:subrange(0,5)):
+compute_solvable_single_def: LEMMA a(d)/=0 IMPLIES FORALL (i:subrange(0,5)):
     (EXISTS (x): rel5(i)(polynomial(a,d)(x),0)) IFF
     compute_solvable_single(i,a,d)
 
@@ -89,7 +101,8 @@ IMPORTING poly_systems,system_solvers
     LET newp=greatify_poly_rel(p,RelF6),
 	newRel=greatify_rel(RelF6)
     IN
-    IF k=0 THEN compute_solvable_single(RelF6(0),p(0),n(0))
+    IF preprocessingStepConj(k,p,n,RelF6) THEN TRUE
+    ELSIF k=0 THEN compute_solvable_single(RelF6(0),p(0),n(0))
     ELSIF (EXISTS (i:upto(k)): newRel(i)=0) THEN
       LET fe = first_eq(newRel,k) IN 
         sturm_tarski_faster(k-1,newp(fe),n(fe),
@@ -110,10 +123,46 @@ IMPORTING poly_systems,system_solvers
 	  sturm_tarski_faster(k,poly_deriv(Qprod),Qdeg-1,newp,n,newRel)/=0))
     ENDIF
 
+  compute_solvable_new(k,p,(n|FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0),RelF6): bool =
+    LET newp=greatify_poly_rel(p,RelF6),
+	newRel=greatify_rel(RelF6)
+    IN
+    IF preprocessingStepConj(k,p,n,RelF6) THEN TRUE
+    ELSIF k=0 THEN compute_solvable_single(RelF6(0),p(0),n(0))
+    ELSIF (EXISTS (i:upto(k)): newRel(i)=0) THEN
+      LET fe = first_eq(newRel,k) IN 
+        sturm_tarski_faster(k-1,newp(fe),n(fe),
+  	        (LAMBDA (i): IF i<fe THEN newp(i) ELSE newp(i+1) ENDIF),
+                (LAMBDA (i): IF i<fe THEN n(i) ELSE n(i+1) ENDIF),
+  		(LAMBDA (i): IF i<fe THEN newRel(i) ELSE newRel(i+1) ENDIF))/=0
+    ELSE
+      LET Qprodlist = prod_polynomials_list(newp,n,LAMBDA i: 1,k),
+	  Qdeg = length(Qprodlist)-1,
+	  Qprod = (LAMBDA (i): IF i<length(Qprodlist) THEN nth(Qprodlist,i) ELSE 0 ENDIF)
+      IN 
+        (Qdeg>0 AND sturm_tarski_faster(k,Qprod,Qdeg,newp,n,newRel)/=0)
+	OR
+	(Qdeg>=2  AND
+	  sturm_tarski_faster(k,poly_deriv(Qprod),Qdeg-1,newp,n,newRel)/=0)
+    ENDIF
+
+ preprocessing_better1: LEMMA (FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0) IMPLIES
+    	(((FORALL (j:upto(k)): rel5(greatify_rel(RelF6)(j))(greatify_poly_rel(p,RelF6)(j)(n(j)),0)) OR
+	  (FORALL (j:upto(k)): (odd?(n(j)) IMPLIES rel5(greatify_rel(RelF6)(j))(-greatify_poly_rel(p,RelF6)(j)(n(j)),0)) AND
+	  	  	       (even?(n(j)) IMPLIES rel5(greatify_rel(RelF6)(j))(greatify_poly_rel(p,RelF6)(j)(n(j)),0))))
+	IMPLIES preprocessingStepConj(k,p,n,RelF6))
+
+  compute_solvable_improved: LEMMA (FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0) IMPLIES (compute_solvable(k,p,n,RelF6) IFF compute_solvable_new(k,p,n,RelF6))
+
   compute_solvable_def: LEMMA
     (FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0) IMPLIES
     ((EXISTS (x:real): FORALL (j:upto(k)): rel5(RelF6(j))(polynomial(p(j),n(j))(x),0)) IFF
      compute_solvable(k,p,n,RelF6))
+
+  compute_solvable_new_def: LEMMA
+    (FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0) IMPLIES
+    ((EXISTS (x:real): FORALL (j:upto(k)): rel5(RelF6(j))(polynomial(p(j),n(j))(x),0)) IFF
+     compute_solvable_new(k,p,n,RelF6))
 
   poly_system_list(k,p,(n|FORALL (j:upto(k)): p(j)(n(j))/=0 AND n(j)>0)): {lli : list[list[int]] |
     length[list[int]](lli) = k+1 AND (FORALL (i:upto(k)): length[int](nth[list[int]](lli,i)) = n(i)+1) AND
@@ -126,7 +175,7 @@ IMPORTING poly_systems,system_solvers
     LET pi = (LAMBDA (j): rat_poly_to_int(pq(j),n(j))),
     	pl = poly_system_list(k,pi,n),
 	p = (LAMBDA (i): LAMBDA (j): IF i<=k AND j<=n(i) THEN nth[int](nth[list[int]](pl,i),j) ELSE 0 ENDIF)
-    IN compute_solvable(k,p,n,RelF6)
+    IN compute_solvable_new(k,p,n,RelF6)
 
   tarski_def: LEMMA
     (FORALL (j:upto(k)): pq(j)(n(j))/=0 AND n(j)>0) IMPLIES
