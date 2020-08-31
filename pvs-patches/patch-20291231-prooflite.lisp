@@ -243,10 +243,10 @@ is replaced with replacement."
 	  (lto        (aref loc 2)))
      (loop repeat (- lfrom 1) do (read-line file nil nil))
      (if (= line 0)
-	 (pvs-message "Installing proof scripts [Theory: ~a]" 
+	 (pvs-message "Installing inlined proof scripts into theory ~a." 
 		      theory)
-       (pvs-message "Installing proof script at line ~a [Theory: ~a]" 
-		    line theory))
+       (pvs-message "Installing proof script at line ~a of file ~a." 
+		    line filename))
      (do ((str (read-one-line file))
 	  (n   lfrom)
 	  (formulas)
@@ -312,7 +312,6 @@ is replaced with replacement."
   (let((at-least-one-script-saved? nil))
     (with-open-file 
      (file prl-filename :direction :input)
-     (pvs-message "Installing proof scripts from file \"~a\" into theory \"~a\"." prl-filename (id theory))
      (do ((str (read-line file nil))
 	  (formulas)
 	  (script))

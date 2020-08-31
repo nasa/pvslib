@@ -328,9 +328,9 @@
 			(prlfile (probe-file
 				  (make-pathname :defaults *default-pathname-defaults*
 						 :name prl-filename))))
-		    (if prlfile
-			(install-prooflite-scripts-from-prl-file theory prlfile force)
-		      (pvs-message "Warning: prl file ~a not found in current context.~%" prl-filename))
+		    (when prlfile
+		      (pvs-message "Installing proof scripts from ~a into theory ~a.~%" prl-filename (id theory))
+		      (install-prooflite-scripts-from-prl-file theory prlfile force))
 		    (install-prooflite-scripts (filename theory) (id theory) 0 force))))
 	      (proveit-theories pvstheories force thfs traces txtproofs texproofs nil
 				;; if auto-fix?, save proofs
