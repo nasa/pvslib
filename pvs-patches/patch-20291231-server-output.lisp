@@ -4,6 +4,13 @@
 
 (in-package :pvs)
 
+(defvar *pvs-patches* nil)
+(let ((path-filename (namestring *load-truename*)))
+  (setq *pvs-patches* (remove path-filename *pvs-patches* :test #'string=))
+  (push path-filename *pvs-patches*))
+
+(in-package :pvs)
+
 ;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
 (unless (pvs-context *workspace-session*)
   (change-workspace (working-directory) t))
