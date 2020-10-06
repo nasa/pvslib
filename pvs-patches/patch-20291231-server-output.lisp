@@ -2,6 +2,7 @@
 ;; (push :pvsdebug *features*)
 ;; (setq *debugger-hook* nil)
 
+
 (in-package :pvs)
 
 (defvar *pvs-patches* nil)
@@ -390,3 +391,26 @@
 ;; 	  (setf pvs-json::*interrupted-rpc* (format nil "Error: ~a" condition))
 ;;     	  (restore))
 ;;       (abort))))
+
+;; {tclib.lisp}
+(in-package :pvs)
+
+(defvar *omit-library-not-found-error* nil)
+
+(setq *omit-library-not-found-error* (if *pvs-lisp-process* t nil))
+
+(defun get-pvs-library-alist ()
+  (let ((alist nil))
+    (dolist (path *pvs-library-path*)
+      (let ((dir-p (directory-p path)))
+	(if dir-p
+	    (dolist (sdir (uiop:subdirectories path))
+	      (let* ((subdir (truename sdir))
+		     (dname (or (pathname-name sdir)
+				(car (last (pathname-directory sdir))))))
+		(when (valid-pvs-id* dname)
+		  (push (cons (intern dname :pvs) subdir) alist))))
+	  (unless *omit-library-not-found-error*
+	    (assert dir-p (path) "The library ~s cannot be found." path)))))
+    ;; earlier paths in *pvs-library-path* shadow later ones.
+    (nreverse alist)))
