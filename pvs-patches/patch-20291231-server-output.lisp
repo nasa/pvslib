@@ -253,6 +253,16 @@
 ;; END wrong hook names
 ;;
 
+;; M3: Request to save proofs to prf file [Sept 2020]
+(in-package :pvs-json)
+(defrequest save-all-proofs (theoryref)
+  "Stores the declaration proofs into the corresponding PRF file"
+  ;; (let ((theory (pvs::get-typechecked-theory theoryref)))
+  ;;   (unless theory
+  ;;     (pvs-error "Save-all-proofs error" (format nil "Theory ~a cannot be found" theoryref)))
+  ;;   (pvs::save-all-proofs theory))
+  (pvs::save-all-proofs))
+
 ;; {interface/pvs-json-methods.lisp}
 (in-package :pvs-json)
 (defrequest prover-status ()
@@ -271,8 +281,10 @@
   #+pvsdebug (format t "~%[store-last-attempted-proof] formula ~a theory ~a overwrite? ~a ~%" formula theory overwrite?)
   (unless pvs::*last-attempted-proof*
     (pvs-error "store-last-attempted-proof error" "There is no attempted proof script to be saved."))
-  (let ((dst-decl (pvs:get-formula-decl theory formula)))
-    (if (equal dst-decl (car pvs::*last-attempted-proof*))
+  (let ;;((dst-decl (pvs:get-formula-decl theory formula)))
+      ((dst-decl (car pvs::*last-attempted-proof*)))
+    (if ;;(equal dst-decl (car pvs::*last-attempted-proof*))
+	(eq (id dst-decl) (intern formula))
 	(let ((script (cdr pvs::*last-attempted-proof*)))
 	  (if overwrite?
 	      (let ((prinfo (pvs::default-proof dst-decl)))
