@@ -13,8 +13,8 @@
 (in-package :pvs)
 
 ;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
-(unless (pvs-context *workspace-session*)
-  (change-workspace (working-directory) t))
+;; (unless (pvs-context *workspace-session*)
+;;   (change-workspace (working-directory) t))
 
 (when *pvs-lisp-process*
   (setq *proofstate-hooks* (remove 'update-ps-control-info-result *proofstate-hooks*))
