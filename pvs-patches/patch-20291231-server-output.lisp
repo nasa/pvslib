@@ -2,27 +2,256 @@
 ;; (push :pvsdebug *features*)
 ;; (setq *debugger-hook* nil)
 
-
 (in-package :pvs)
+
 
 (defvar *pvs-patches* nil)
 (let ((path-filename (namestring *load-truename*)))
   (setq *pvs-patches* (remove path-filename *pvs-patches* :test #'string=))
   (push path-filename *pvs-patches*))
 
-(in-package :pvs)
-
+;; (in-package :pvs)
 ;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
 ;; (unless (pvs-context *workspace-session*)
 ;;   (change-workspace (working-directory) t))
 
-(when *pvs-lisp-process*
-  (setq *proofstate-hooks* (remove 'update-ps-control-info-result *proofstate-hooks*))
-  (pushnew 'pvs-json:update-ps-control-info-result *proofstate-hooks*)
-  (setq *success-proofstate-hooks* (remove 'rpc-output-notify-proof-success *success-proofstate-hooks*))
-  (pushnew 'pvs-json::rpc-output-notify-proof-success *success-proofstate-hooks*)
-  (setq *finish-proofstate-hooks* (remove 'finish-proofstate-rpc-hook *finish-proofstate-hooks*))
-  (pushnew 'pvs-json::finish-proofstate-rpc-hook *finish-proofstate-hooks*))
+
+
+;;
+;; BEGIN wrong hook names
+;;
+;; None of these modifications should be merged to master. They try to avoid the use of
+;; *success-proofstate-hooks* *finish-proofstate-hooks* and *proofstate-hooks* and replace
+;; them with *success-proofstate-hooks2* *finish-proofstate-hooks2* and *proofstate-hooks2*
+
+(in-package :pvs)
+(defvar *success-proofstate-hooks2* nil "Hooks for succesly finished branches") ;; M3 [Sept 2020]
+(defvar *finish-proofstate-hooks2* nil "Hooks invoked at finished proofstates.") ;; M3 [Sept 2020]
+(defvar *proofstate-hooks2* nil)
+
+;; (when *pvs-lisp-process*
+;;   (setq *proofstate-hooks* (remove 'update-ps-control-info-result *proofstate-hooks*))
+;;   (pushnew 'pvs-json:update-ps-control-info-result *proofstate-hooks*)
+;;   (setq *success-proofstate-hooks* (remove 'rpc-output-notify-proof-success *success-proofstate-hooks*))
+;;   (pushnew 'pvs-json::rpc-output-notify-proof-success *success-proofstate-hooks*)
+;;   (setq *finish-proofstate-hooks* (remove 'finish-proofstate-rpc-hook *finish-proofstate-hooks*))
+;;   (pushnew 'pvs-json::finish-proofstate-rpc-hook *finish-proofstate-hooks*))
+;; {already in 20201008 snapshot}
+(in-package :pvs-xml-rpc)
+(defun pvs-server (&key (port 22334))
+  ;; (dolist (glbl *pvs-top-level-globals*)
+  ;;   (unless (assoc glbl excl:*required-top-level-bindings*)
+  ;;     (push (cons glbl glbl) excl:*required-top-level-bindings*))
+  ;;   (unless (assoc glbl excl:*required-thread-bindings*)
+  ;;     (push (cons glbl glbl) excl:*required-thread-bindings*)))
+  (let ((cmdsrv (make-xml-rpc-server 
+		 :start (list 
+			 ;; :host "locahost" 
+			 :port port))))
+    (export-xml-rpc-method cmdsrv
+	'("pvs.request" xmlrpc-pvs-request t "Request a PVS method.")
+      :string :string :string)
+    (setq *pvs-xmlrpc-server* cmdsrv)
+    (setq pvs:*pvs-lisp-process* mp:*current-process*)
+    ;; M3: When running the server, signals automatically abort to top-level so they
+    ;; don't affect the server responsiveness [Sept 2020].
+    (setf *debugger-hook* #'pvs::rpc-mode-debugger)
+    ;; M3: Install hook for sequent collection [Sept 2020].
+    (pushnew 'pvs-json:update-ps-control-info-result pvs::*proofstate-hooks2*)
+    (pushnew 'pvs-json::finish-proofstate-rpc-hook pvs::*finish-proofstate-hooks2*)
+    (pushnew 'pvs-json::rpc-output-notify-proof-success pvs::*success-proofstate-hooks2*)
+    ;; M3: Rewriting messages are disable by default when in server mode [Sept 2020].
+    (setq pvs::*rewrite-msg-off* t)
+    ;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
+    (pvs::change-workspace (pvs::working-directory) t)
+    t))
+
+(in-package :pvs)
+(defmethod proofstepper ((proofstate proofstate))
+
+;;The key part of the proofstate for the stepper is the strategy field.
+;;It indicates which rule to apply to the current goal, how to proceed
+;;with the subgoals generated, and how to deal with failures.
+;;We have to be careful to ensure that the strategies do not meddle with
+;;logical things, i.e., they merely indicate which rules are applied
+;;where.  So, it might be better if the strategy merely indicated the
+;;top-level rule and the subgoal strategies.
+;;a rule-application yields a signal to pop with failure, pop with
+;;success, no change (if the rule wasn't applicable), or in the most
+;;usual case, a list of subgoals.  To achieve some measure of type
+;;correctness, we have a class of rules, and rule application is a
+;;method for this class.
+;;The defn. below is tentative.  It needs to be cleaned up later.
+
+;;(NSH:4-10-91) I want to use strategies in two ways.  One is as a
+;;strategy for applying patterns of rules, and the other is as a rule
+;;itself.  The first one is invoked as change-strategy and the second
+;;one as apply-strategy.  The second one generates lifts all the pending
+;;subgoals back to the current proofstate and thus behaves as a derived
+;;rule.  It also won't print out any output.  In replaying a proof, the
+;;apply-strategies will be replayed but the change-strategies will not.
+;;
+  (cond
+    ((fresh? proofstate)   ;;new state
+     (let ((post-proofstate ;;check if current goal is prop-axiom.
+	    (cond ((eq (check-prop-axiom (s-forms (current-goal proofstate)))
+		       '!) ;;set flag to proved! and update fields.
+		   (pvs-json:update-ps-control-info-result proofstate) ; M3 so the sequent
+					; it's accumulated for the rpc response.
+					; It could be a call to output-proofstate
+					; but currently that would disturb the
+					; behavior of the wish viewer.
+		   (setf (status-flag proofstate) '!      
+			 (current-rule proofstate) '(propax)
+			 (printout proofstate)
+			 (format nil "~%which is trivially true.")
+			 (justification proofstate)
+			 (make-instance 'justification
+			   :label (label-suffix (label proofstate))
+			   :rule '(propax)))
+		   proofstate)	    ;;else display goal, 
+		  ;;eval strategy, invoke rule-apply
+		  (t (catch-restore ;;in case of restore/enable interrupts
+		      (progn
+			(when ;;(not (strat-proofstate? proofstate))
+			    ;;NSH(8.19.95): display-proofstate called only
+			    ;;when current state is root, or has rule/input.
+			    ;;in-apply taken care of in display-proofstate. 
+			    (and (not (strat-proofstate? proofstate))
+				 (or (null (parent-proofstate proofstate))
+				     (current-rule (parent-proofstate proofstate))
+				     (current-input (parent-proofstate proofstate))))
+			  (apply-proofstate-hooks proofstate))
+			(let* ((*rule-args-alist* nil)
+			       (strategy
+				(strat-eval*
+				 (if (strategy proofstate)
+				     (strategy proofstate)
+				     '(postpone t)) ;;if no strat, move on.
+				 proofstate))
+			       (*proof-strategy-stack*
+				(cons strategy *proof-strategy-stack*)))
+			  (setf (strategy proofstate) strategy)
+			  (rule-apply strategy proofstate))))))))
+       ;;rule-apply returns a revised proofstate.
+       (cond ((null post-proofstate) ;;hence aborted
+	      (let ((nps	     ;;NSH(7.18.94) for proper restore
+		     (nonstrat-parent-proofstate
+		      proofstate)))
+		(setf (status-flag nps) nil
+		      (remaining-subgoals nps) nil
+		      (current-subgoal nps) nil
+		      (pending-subgoals nps) nil
+		      (done-subgoals nps) nil
+		      (strategy nps)
+		      (query*-step)) ;;unevaluated
+		;;(query*-step)
+		;;is okay here.
+		nps))
+	     ((eq (status-flag post-proofstate) '?)	 ;;subgoals created
+	      (format-printout post-proofstate)		 ;;print commentary
+	      (cond ((> (length (remaining-subgoals post-proofstate)) 1)
+		     (when (and *rerunning-proof*
+				(integerp *rerunning-proof-message-time*)
+				(> (- (get-internal-real-time)
+				      *rerunning-proof-message-time*)
+				   3000)) ;;print mini-buffer msg
+		       (setq *rerunning-proof* (format nil "~a." *rerunning-proof*))
+		       (setq *rerunning-proof-message-time*
+			     (get-internal-real-time))
+		       (pvs-message *rerunning-proof*))
+		     (format-nif "~%this yields  ~a subgoals: "
+				 (length (remaining-subgoals post-proofstate))))
+		    ((not (typep (car (remaining-subgoals post-proofstate))
+				 'strat-proofstate))
+		     (format-nif "~%this simplifies to: ")))
+	      post-proofstate)
+	     ((eq (status-flag post-proofstate) '!) ;;rule-apply proved
+	      ;; M3: call hooks for success [Sept 2020]
+	      (dolist (hook *success-proofstate-hooks2*)
+		(funcall hook proofstate)) 
+	      (format-printout post-proofstate)
+	      (wish-done-proof post-proofstate)
+	      (dpi-end post-proofstate)
+					;		       (when (printout post-proofstate)
+					;			 (format-if (printout post-proofstate)))
+	      post-proofstate)
+	     (t  post-proofstate))))
+    ;;if incoming goal has subgoals
+    ((eq (status-flag proofstate) '?) ;;working on subgoals
+     (cond ((null (remaining-subgoals proofstate))
+	    (cond ((null (pending-subgoals proofstate))
+		   (success-step proofstate)) ;;no more subgoals,declare success
+		  (t			      ;;pending subgoals
+		   (post-processing-step proofstate))))
+	   (t ;;subgoals remain
+	    (let ((newps (pop (remaining-subgoals proofstate))))
+	      (setf ;;(parent-proofstate newps) proofstate
+	       (current-subgoal proofstate) newps)
+	      ;; (substitution newps)
+	      ;; (if (null (out-substitution proofstate))
+	      ;;     (substitution proofstate)
+	      ;;     (out-substitution proofstate))
+	      ;; (context newps)
+	      ;; (if (null (out-context proofstate))
+	      ;;     (context proofstate)
+	      ;;     (out-context proofstate))
+	      
+	      ;; (when (eq (status-flag newps) '*)
+	      ;;   (if (null (remaining-subgoals newps));;leaf node
+	      ;;       (setf (status-flag newps) nil;;make it fresh
+	      ;;             (strategy newps)
+	      ;;             (strategy proofstate))
+	      ;;             (post-subgoal-strat (strategy proofstate))
+	      ;;             nil
+	      ;;       (setf (status-flag newps) '?
+	      ;;       (strategy newps)
+	      ;;       (strategy proofstate))
+	      ;;       (post-subgoal-strat (strategy proofstate))
+	      ;;       nil
+	      ;;   )
+	      ;;   (setf (strategy proofstate);;zero out strategy
+	      ;;         (if (null (remaining-subgoals proofstate))
+	      ;;             nil
+	      ;;             (strategy proofstate))))
+	      newps))))
+   ((eq (status-flag proofstate) '*)  ;;pending goals, but proceeding
+    (next-proofstate proofstate))
+   ((memq (status-flag proofstate) '(X XX))  ;;failure
+    (format-if "~%~%Attempted proof of ~a failed." (label proofstate))
+    (next-proofstate proofstate))
+   ((eq (status-flag proofstate) '!)  ;;success
+    ;;(format t "~%~%Proved ~a." (label proofstate))
+    (next-proofstate proofstate))
+   (t (next-proofstate proofstate)))) ;;just in case
+
+(in-package :pvs)
+(defun finish-proofstate (ps)
+  (let* ((proved? (and (typep ps 'top-proofstate)
+		       (eq (status-flag ps) '!)))
+	 (done-str (if proved? "Q.E.D." "Unfinished")))
+    (when (and *pvs-emacs-interface*
+	       *pvs-emacs-output-proofstate-p*)
+      (format nil ":pvs-prfst ~a :end-pvs-prfst"
+	(write-to-temp-file (if proved? "true" "false"))))
+    ;; M3 moved *ps-control-info* related to specific hooked function (finish-proofstate-rpc-hook) [Sept 2020]
+    ps)
+  ;; notify susbcribers
+  (dolist (hook *finish-proofstate-hooks2*)
+    (funcall hook ps)))
+
+(in-package :pvs)
+;; Allows external functions to be called, as for the wish display
+;; Used for JSON output - *proofstate-hooks* are not used; see output-proofstate
+(defun apply-proofstate-hooks (proofstate)
+  ;; Should make this a hook instead at some point
+  (display-proofstate proofstate)
+  (dolist (hook *proofstate-hooks2*)
+    (funcall hook proofstate)))
+
+;;
+;; END wrong hook names
+;;
 
 ;; {interface/pvs-json-methods.lisp}
 (in-package :pvs-json)
