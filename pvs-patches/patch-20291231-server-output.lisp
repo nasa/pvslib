@@ -10,13 +10,6 @@
   (setq *pvs-patches* (remove path-filename *pvs-patches* :test #'string=))
   (push path-filename *pvs-patches*))
 
-;; (in-package :pvs)
-;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
-;; (unless (pvs-context *workspace-session*)
-;;   (change-workspace (working-directory) t))
-
-
-
 ;;
 ;; BEGIN wrong hook names
 ;;
@@ -28,6 +21,15 @@
 (defvar *success-proofstate-hooks2* nil "Hooks for succesly finished branches") ;; M3 [Sept 2020]
 (defvar *finish-proofstate-hooks2* nil "Hooks invoked at finished proofstates.") ;; M3 [Sept 2020]
 (defvar *proofstate-hooks2* nil)
+
+;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
+(unless ;; (pvs-context *workspace-session*)
+    ;; (boundp '*success-proofstate-hooks2*)
+    *success-proofstate-hooks2*
+  (change-workspace (working-directory) t)
+  (pushnew 'pvs-json:update-ps-control-info-result pvs::*proofstate-hooks2*)
+  (pushnew 'pvs-json::finish-proofstate-rpc-hook pvs::*finish-proofstate-hooks2*)
+  (pushnew 'pvs-json::rpc-output-notify-proof-success pvs::*success-proofstate-hooks2*))
 
 ;; (when *pvs-lisp-process*
 ;;   (setq *proofstate-hooks* (remove 'update-ps-control-info-result *proofstate-hooks*))
