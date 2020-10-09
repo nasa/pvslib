@@ -457,10 +457,10 @@
 	(t (call-next-method))))
 
 ;; ===debug
-
+;;(in-package :pvs-json)
 ;; (defrequest prove-formula (formula theory &optional rerun?)
 ;;   "Starts interactive proof of a formula from a given theory
-
+;;
 ;; Creates a ps-control-info struct to control the interaction.  It has slots
 ;;   command
 ;;   json-result
@@ -502,6 +502,20 @@
 ;; 	(setf (pvs:psinfo-json-result pvs:*ps-control-info*) nil)
 ;; 	(mp:close-gate (pvs:psinfo-res-gate pvs:*ps-control-info*))
 ;; 	json-result))))
+
+(in-package :pvs-json)
+(defrequest add-pvs-library (string)
+  "Just evaluate the string in lisp"
+  (let ((*package* (find-package :pvs)))
+    #+pvsdebug (format t "~%[add-pvs-library] string ~s~%" string)
+    (push string pvs::*pvs-library-path*)))
+
+(in-package :pvs-json)
+(defrequest lisp (string)
+  "Just evaluate the string in lisp"
+  (let ((*package* (find-package :pvs)))
+    #+pvsdebug (format t "~%[lisp] string ~s~%" string)
+    (format nil "~a" (eval (read-from-string string)))))
 
 ;; ;; {interface/pvs-json-methods.lisp}
 ;; (in-package :pvs-json)
@@ -640,7 +654,7 @@
 
 (defvar *omit-library-not-found-error* nil)
 
-(setq *omit-library-not-found-error* (if *pvs-lisp-process* t nil))
+(setq *omit-library-not-found-error* (if (environment-variable "PVSPORT") t nil))
 
 (defun get-pvs-library-alist ()
   (let ((alist nil))
