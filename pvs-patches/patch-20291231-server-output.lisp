@@ -2,8 +2,113 @@
 ;; (push :pvsdebug *features*)
 ;; (setq *debugger-hook* nil)
 
+
+;; debug
+(in-package :pvs)
+(defun restore-context ()
+  (assert *workspace-session*)
+  #+pvsdebug
+  (assert (and (file-equal *default-pathname-defaults*
+			   (working-directory))
+	       (file-equal *default-pathname-defaults*
+			   (current-context-path))))
+  (unless (current-pvs-context)
+    (let ((ctx-file (merge-pathnames *context-name*)))
+      (if (file-exists-p ctx-file)
+	  (handler-case
+	      (let ((context
+		     (if (with-open-file (in ctx-file)
+			   (and (char= (read-char in) #\()
+				(char= (read-char in) #\")))
+			 (with-open-file (in ctx-file) (read in))
+			 (fetch-object-from-file ctx-file))))
+		(setf (cdddr context)
+		      (remove-duplicates (cdddr context) :key #'ce-file :test #'equal
+					 :from-end t))
+		(setf (cdddr context)
+		      (delete-if-not #'(lambda (ce)
+					 (file-exists-p (make-specpath (ce-file ce))))
+			(cdddr context)))
+		(dolist (ce (cdddr context))
+		  (let ((ndeps (remove-if-not #'(lambda (dep)
+						    (let ( ;; #+pvsdebug (dummy (format t "~%[restore-context] ce 0 ~s~%" ce))
+				     (spec-path ;;(make-specpath dep)
+				      (let* ((ext "pvs")
+				      	     (path (parse-namestring dep))
+					     (pname (pathname-name path))
+					     (dir (pathname-directory path)))
+					(if dir
+					    (let* ((pdir (namestring (make-pathname :directory dir)))
+						   (lib-path (get-library-path pdir)))
+					      (if lib-path
+						  (make-pathname :directory (pathname-directory lib-path)
+								 :name pname :type ext)
+						(progn
+						  (error 'file-error)
+						  )
+						))
+					  (make-pathname :defaults *default-pathname-defaults* :name dep :type ext)))))
+						      (file-exists-p spec-path)))
+						(ce-dependencies ce))))
+		    (unless (equal ndeps (ce-dependencies ce))
+		      (pvs-message "PVS context has bad deps: ~a"
+			(remove-if #'file-exists-p (ce-dependencies ce)))
+		      (setf (ce-dependencies ce) nil)
+		      (setf (ce-object-date ce) nil)
+		      (setf (ce-theories ce) nil))))
+		(cond ((duplicate-theory-entries?)
+		       (pvs-message "PVS context has duplicate entries - resetting")
+		       (setf (pvs-context *workspace-session*) (list *pvs-version*))
+		       (write-context))
+		      (t ;;(same-major-version-number (car context) *pvs-version*)
+		       ;; Hopefully we are backward compatible between versions
+		       ;; 3 and 4.
+		       (assert (every #'(lambda (ce)
+					  (file-exists-p (make-specpath (ce-file ce))))
+				      (pvs-context-entries context)))
+		       (setf (pvs-context *workspace-session*) context)
+		       (assert (not (duplicates? (pvs-context-entries) :key #'ce-file)))
+		       (setf (cadr (current-pvs-context))
+			     (delete "PVSio/"
+				     (delete "Manip/"
+					     (delete "Field/" (cadr (current-pvs-context))
+						     :test #'string=)
+					     :test #'string=)
+				     :test #'string=))
+		       (cond ((and (listp (cadr context))
+				   (listp (caddr context))
+				   (every #'context-entry-p (cdddr context)))
+			      (load-prelude-libraries (cadr context))
+			      (setq *default-decision-procedure*
+				    (or (when (listp (caddr context))
+					  (getf (caddr context)
+						:default-decision-procedure))
+					'shostak))
+			      (dolist (ce (cdddr context))
+				(unless (listp (ce-object-date ce))
+				  (setf (ce-object-date ce) nil))))
+			     ((every #'context-entry-p (cdr context))
+			      (setf (pvs-context *workspace-session*)
+				    (cons (car (current-pvs-context))
+					  (cons nil
+						(cons nil (cdr (current-pvs-context)))))))
+			     (t (pvs-message "PVS context is not quite right ~
+                                      - resetting")
+				(setf (pvs-context *workspace-session*)
+				      (list *pvs-version*))))))
+		(assert (not (duplicates? (pvs-context-entries) :key #'ce-file))))
+	    (file-error (err)
+	      (pvs-message "PVS context problem - resetting")
+	      (pvs-log "  ~s" err)
+	      (setf (pvs-context *workspace-session*) (list *pvs-version*))
+	      (write-context)))
+	  (setf (pvs-context *workspace-session*) (list *pvs-version*))))
+    nil))
+
+
 (in-package :pvs)
 
+(format t "~%*pvs-patches-loaded* ~s~%" *pvs-patches-loaded*)
 
 (defvar *pvs-patches* nil)
 (let ((path-filename (namestring *load-truename*)))
@@ -17,19 +122,37 @@
 ;; *success-proofstate-hooks* *finish-proofstate-hooks* and *proofstate-hooks* and replace
 ;; them with *success-proofstate-hooks2* *finish-proofstate-hooks2* and *proofstate-hooks2*
 
-(in-package :pvs)
-(defvar *success-proofstate-hooks2* nil "Hooks for succesly finished branches") ;; M3 [Sept 2020]
-(defvar *finish-proofstate-hooks2* nil "Hooks invoked at finished proofstates.") ;; M3 [Sept 2020]
-(defvar *proofstate-hooks2* nil)
 
 ;; when in raw mode, (pvs-context *workspace-session*) is not being set by default
-(unless ;; (pvs-context *workspace-session*)
-    ;; (boundp '*success-proofstate-hooks2*)
-    *success-proofstate-hooks2*
-  (change-workspace (working-directory) t)
-  (pushnew 'pvs-json:update-ps-control-info-result pvs::*proofstate-hooks2*)
-  (pushnew 'pvs-json::finish-proofstate-rpc-hook pvs::*finish-proofstate-hooks2*)
-  (pushnew 'pvs-json::rpc-output-notify-proof-success pvs::*success-proofstate-hooks2*))
+;; (when (boundp '*success-proofstate-hooks2*)
+;; (unless ;; (pvs-context *workspace-session*)
+;;     ;; (boundp '*success-proofstate-hooks2*)
+;;     *success-proofstate-hooks2*
+;;   (progn
+;;     (let ((wd (working-directory)))
+;;       (format t "~%[anonymous] wd ~s~%" wd)
+;;       (change-workspace wd t))
+;;   (pushnew 'pvs-json:update-ps-control-info-result pvs::*proofstate-hooks2*)
+;;   (pushnew 'pvs-json::finish-proofstate-rpc-hook pvs::*finish-proofstate-hooks2*)
+;;   (pushnew 'pvs-json::rpc-output-notify-proof-success pvs::*success-proofstate-hooks2*))
+;;   ))
+
+
+(ignore-errors
+  (let ((context (pvs-context *workspace-session*)))
+  (format t "~%[anonymous] context ~s~%" context)
+  (unless context
+    (let ((wd (working-directory)))
+      (format t "~%[anonymous] wd ~s~%" wd)
+      (change-workspace wd t)))))
+
+
+(in-package :pvs)
+(defvar *success-proofstate-hooks2* '(pvs-json:update-ps-control-info-result) "Hooks for succesly finished branches") ;; M3 [Sept 2020]
+(defvar *finish-proofstate-hooks2* '(pvs-json::finish-proofstate-rpc-hook) "Hooks invoked at finished proofstates.") ;; M3 [Sept 2020]
+(defvar *proofstate-hooks2* '(pvs-json:update-ps-control-info-result))
+
+(format t "~%*success-proofstate-hooks2* ~s~%" *success-proofstate-hooks2*)
 
 ;; (when *pvs-lisp-process*
 ;;   (setq *proofstate-hooks* (remove 'update-ps-control-info-result *proofstate-hooks*))
@@ -652,10 +775,8 @@
 ;; {tclib.lisp}
 (in-package :pvs)
 
-(defvar *omit-library-not-found-error* nil)
-
-(setq *omit-library-not-found-error* (if (environment-variable "PVSPORT") t nil))
-
+(defvar *omit-library-not-found-error* (if (environment-variable "PVSPORT") t nil))
+;; (setq *omit-library-not-found-error* (if (environment-variable "PVSPORT") t nil))
 (defun get-pvs-library-alist ()
   (let ((alist nil))
     (dolist (path *pvs-library-path*)
