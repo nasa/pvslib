@@ -792,3 +792,40 @@
 	    (assert dir-p (path) "The library ~s cannot be found." path)))))
     ;; earlier paths in *pvs-library-path* shadow later ones.
     (nreverse alist)))
+
+
+;;;;;
+
+;;;;;
+
+(in-package :pvs)
+(defun make-prf-pathname (fname &optional (dir *default-pathname-defaults*))
+  (assert (or (stringp fname) (pathnamep fname)))
+  (let* ((pname (pathname fname))
+	 ;; #+pvsdebug (dummy (format t "~%[make-prf-pathname] fname ~s~%" fname))
+	 (name (if (let ((type (pathname-type pname)))
+		     (and type (not (string= type "pvs")) (not (string= type "prf"))))
+		   (format nil "~s" pname)
+		 (pathname-name pname)))
+	 ;; #+pvsdebug (dummy (format t "~%[make-prf-pathname] name ~s~%" name))
+	 (fdir (pathname-directory pname)))
+    (make-pathname :directory (or fdir (pathname-directory dir))
+		   :name name
+		   :type "prf")))
+
+;;; interface/pvs-emacs.lisp
+;; Note that this has the side effect of setting the view of the sform,
+;; Which is a cons of the string and its view (computed lazily).
+(in-package :pvs)
+(defun pvs2json-sform (sform fnum par-sforms)
+  (let* ((nf (formula sform))
+	 (frm (if (negation? nf) (args1 nf) nf)))
+    (unless (view sform)
+      (multiple-value-bind (frmstr frmview)
+	  (pp-with-view frm *proofstate-indent* *proofstate-width*)
+	(setf (view sform) (list frmstr frmview))))
+    (let ((names-info (names-info-proof-formula sform)))
+      `(("labels" . ,(cons fnum (label sform)))
+	("changed" . ,(if (memq sform par-sforms) nil t))
+	("formula" . ,(car (view sform)))
+	("names-info" . ,names-info)))))
