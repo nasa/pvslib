@@ -83,7 +83,8 @@ BEGIN
       printf("File ~a doesn't exist",file)
     ENDIF
 
-  checker_with_header(file:string,check:[[IStream,OStream]->bool],head:[[IStream,OStream]->void],maxr:nat) : void =
+  checker_with_header(file:string,check:[[IStream,OStream]->bool],head:[[IStream,OStream]->void],
+                      maxr:nat) : void =
     LET nameout = IF maxr = 0 THEN format("~a~a.~a",
                                  {|pathname_dir(file),pathname_name(file),val(OutExtension)|}) 
           ELSE format("~a~a-~a.~a",
@@ -109,14 +110,9 @@ BEGIN
            LET result = val(lvar) IN
 	   IF result="" THEN throw("EmptyInput") ELSE result ENDIF)
 
-  almost_equal_prec?(r1,r2:real,prec:nnreal) : bool =
-    abs(r1-r2) <= prec
-
-  almost_equal?(r1,r2:real) : bool =
-    almost_equal_prec?(r1,r2,val(DefaultTolerance))
-
-  check_real_prec(fout:OStream,msg:string,pvs,io:real,prec:nnreal) : bool =
-    IF NOT almost_equal_prec?(pvs,io,prec) THEN
+  check_fun[T:TYPE](fout:OStream,msg:string,pvs,io:T,
+                    to_str:[T->string],eqt?:PRED[[T,T]]) : bool =
+    IF NOT eqt?(pvs,io) THEN
       fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
              {|msg,val(CurrentLine),val(Records),to_str(pvs),to_str(io)|}) &
       FALSE
@@ -124,25 +120,52 @@ BEGIN
       TRUE
     ENDIF
 
-  check_real(fout:OStream,msg:string,pvs,io:real) : bool =
-    check_real_prec(fout,msg,io,pvs,val(DefaultTolerance))
-
   check_bool(fout:OStream,msg:string,pvs,io:bool) : bool =
-    IF pvs /= io THEN
-      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
-             {|msg,val(CurrentLine),val(Records),pvs,io|}) &
-      FALSE
-    ELSE
-      TRUE
-    ENDIF
+    check_fun[bool](fout,msg,pvs,io,
+                    LAMBDA(x:bool):pvs2str[bool](x),
+                    LAMBDA(x,y:bool):x=y)
 
   check_int(fout:OStream,msg:string,pvs,io:int) : bool =
-    IF pvs /= io THEN
-      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS: ~a vs. Input: ~a~%",
-             {|msg,val(CurrentLine),val(Records),pvs,io|}) &
+    check_fun[int](fout,msg,pvs,io,
+                    LAMBDA(x:int):pvs2str[int](x),
+                    LAMBDA(x,y:int):x=y)
+
+  almost_equal_prec?(prec:nnreal)(r1,r2:real) : bool =
+    abs(r1-r2) <= prec
+
+  almost_equal?(r1,r2:real) : bool =
+    almost_equal_prec?(val(DefaultTolerance))(r1,r2)
+
+  check_real_prec(fout:OStream,msg:string,pvs,io:real,prec:nnreal) : bool =
+    check_fun[real](fout,msg,pvs,io,to_str,almost_equal_prec?(prec))
+
+  check_real(fout:OStream,msg:string,pvs,io:real) : bool =
+    check_fun[real](fout,msg,pvs,io,to_str,almost_equal?)
+
+  check_fun_list_it[T:TYPE](fout:OStream,msg:string,pvs,io:list[T],
+                         to_str:[T->string],eqt?:PRED[[T,T]],n:nat) : RECURSIVE bool =
+    IF null?(pvs) AND null?(io) THEN
+      TRUE
+    ELSIF null?(pvs) THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS[~a]: N/A vs. Input[~a]: ~a~%",
+              {|msg,val(CurrentLine),val(Records),n,n,to_str(car(io))|}) AND
+      FALSE
+    ELSIF null?(io) THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS[~a]: ~a vs. Input[~a]: N/A~%",
+              {|msg,val(CurrentLine),val(Records),n,to_str(car(pvs)),n|}) AND
+      FALSE
+    ELSIF NOT eqt?(car(pvs),car(io)) THEN
+      fprintf(fout,"*** ERROR~a. Line: ~a. Record: ~a. PVS[~a]: ~a vs. Input[~a]: ~a~%",
+             {|msg,val(CurrentLine),val(Records),n,to_str(car(pvs)),n,to_str(car(io))|}) AND
+      check_fun_list_it[T](fout,msg,cdr(pvs),cdr(io),to_str,eqt?,n+1) AND
       FALSE
     ELSE
-      TRUE
+      check_fun_list_it[T](fout,msg,cdr(pvs),cdr(io),to_str,eqt?,n+1) 
     ENDIF
+    MEASURE length(pvs)+length(io)
+
+  check_fun_list[T:TYPE](fout:OStream,msg:string,pvs,io:list[T],
+                         to_str:[T->string],eqt?:PRED[[T,T]]) : bool =
+    check_fun_list_it[T](fout,msg,pvs,io,to_str,eqt?,0)			 
 
 END pvsio_checker
