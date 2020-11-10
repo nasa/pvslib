@@ -1,0 +1,64 @@
+%
+%  This theory formalizes the notion of operation on floating point numbers
+%  as defined in the IEEE754 standard. In its clause 5, the standard states
+%  that every operation returning a numeric result must be performed as it
+%  were first computed with infinite precision and unbounded range, and then
+%  this intermediary result were rounded to fit in the destination format.
+%
+%  The definitions in this theory are as generic as possible, in order to
+%  facilitate its reuse among different representations of floating-point
+%  numbers.
+%
+%  The case in which both arguments are zero had to be treated separately
+%  because the standard states that "when neither the inputs nor result are
+%  NaN [...] the sign of a sum [...] differs from at most one of the addends’
+%  signs" [Sect. 6.3, pg. 10]; in particular, if both arguments are -0, the
+%  rule mentioned in the first paragraph would contradict this statement, since
+%  the projection of -0 is 0, the sum with itself results in 0, and the
+%  rounding of 0 is +0, which differs from the sign of both operands.
+%
+%  Author: Mariano M. Moscato (mariano.moscato _AT_ nianet.org)
+%
+ieee754_operation_scheme__binary[
+
+  fpnumber   : TYPE,               % floating-point data
+  numeric?   : [fpnumber->bool],   % identifies numeric data (finite or infinite)
+  zero?      : [fpnumber->bool],   % identifies zeros
+  finite?    : [fpnumber->bool],   % identifies floating-point finite numbers
+  projection : [(finite?)->real],  % projection function
+  rounding   : [real->fpnumber],   % rounding function
+
+  pre?1 : [real->bool],         % precondition for the first argument
+  pre?2 : [real->[real->bool]], % precondition for the second argument
+  fun_r : [x:(pre?1),y:(pre?2(x))->real],   % function on real numbers
+
+  non_finite_behaviour :
+  [{args: [fpnumber, fpnumber] | NOT finite?(args`1) OR NOT finite?(args`2)} ->fpnumber],
+
+  undefined_behaviour :
+  [ { args: [fpnumber, fpnumber]
+      | finite?(args`1) AND finite?(args`2) AND
+        (NOT pre?1(projection(args`1)) OR NOT pre?2(projection(args`1))(projection(args`2))) }
+    -> fpnumber ],
+
+  zero_behaviour :
+  [{args: [(finite?), (finite?)] | zero?(args`1) OR zero?(args`2)} ->fpnumber]
+  
+]: THEORY
+BEGIN
+  ASSUMING
+
+    finite_is_numeric: ASSUMPTION FORALL(X:fpnumber): finite?(X) IMPLIES numeric?(X)
+
+  ENDASSUMING
+
+  fun_fp( X,Y: fpnumber ) : fpnumber
+  = IF NOT finite?(X) OR NOT finite?(Y)
+    THEN non_finite_behaviour(X,Y)
+    ELSIF zero?(X) OR zero?(Y)
+    THEN zero_behaviour(X,Y)
+    ELSIF NOT pre?1(projection(X)) OR NOT pre?2(projection(X))(projection(Y))
+    THEN undefined_behaviour(X,Y)
+    ELSE rounding(fun_r(projection(X),projection(Y))) ENDIF
+
+END ieee754_operation_scheme__binary

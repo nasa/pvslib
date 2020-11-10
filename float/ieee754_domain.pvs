@@ -1,0 +1,118 @@
+ieee754_domain
+[ b    : above(1),
+  p    : above(1),
+  emax : above(1)
+] : THEORY BEGIN
+
+  emin : negint = 1 - emax
+
+  %  Each finite datum is expected to represent rational numbers of the form
+  %  (-1)^sign * b^exponent * significand where
+  % - sign is 0 or 1
+  % - exponent is any integer s.t. emin <= exponent <= emax
+  % - significand is a rational represented by a digit string of length p of the form:
+  %     d_0 . d_1 d_2 ... d_{p-1}
+  %   where d_i is an integer digit 0 <= d_i < b (therefore 0 <= significand < b)
+
+  sign: TYPE = {s: int | s=0 OR s=1}
+  exponent: TYPE = {e: int | emin <= e AND e <= emax}
+  significand: TYPE = [below(p)->below(b)]
+
+  % Lexicographic order (big endian)
+  ;<= (s1,s2: significand) : bool
+  = FORALL(i: below(p) | FORALL(j: below(i)): s1(j) = s2(j)): s1(i) <= s2(i)
+
+  significand_lt_first_discrepancy
+  : LEMMA
+    FORALL(m1,m2: significand)
+    : m1 <= m2 AND NOT m1 = m2
+      IMPLIES EXISTS(k: below(p))
+      	      : (FORALL(j: below(k)): m1(j) = m2(j)) AND
+	      	m1(k) < m2(k)
+
+  smax: significand = LAMBDA(i: below(p)): b-1
+  smin: significand = LAMBDA(i: below(p)): IF i=p-1 THEN 1 ELSE 0 ENDIF
+  szero: significand = LAMBDA(i: below(p)): 0
+
+  smax_is_max
+  : LEMMA
+    FORALL(m: significand): m <= smax
+  AUTO_REWRITE+ smax_is_max
+
+  smin_is_min
+  : LEMMA
+    FORALL(m: significand | NOT m = szero): smin <= m
+  AUTO_REWRITE+ smin_is_min
+
+  s: VAR sign
+  e: VAR exponent
+  m: VAR significand
+
+  IMPORTING reals@sigma[nat]
+  value(s,e,m): real
+  = (-1)^s * b^e * sigma(0,p-1,LAMBDA(i:nat): IF i < p THEN m(i) * b^(-i) ELSE 0 ENDIF)
+
+  significand_zero_value_zero
+  : LEMMA
+    m = szero
+    IMPLIES value(s,e,m) = 0
+
+  IMPORTING reals@sigma_nat
+
+  significand_le_value_le
+  : LEMMA
+    FORALL(m1,m2: significand)
+    : m1 <= m2
+      IMPLIES    sigma(0, p-1, LAMBDA (i: nat): IF i < p THEN m1(i) * b ^ (-i) ELSE 0 ENDIF)
+      	      <= sigma(0, p-1, LAMBDA (i: nat): IF i < p THEN m2(i) * b ^ (-i) ELSE 0 ENDIF)
+
+  value_monotonicity
+  : LEMMA
+    FORALL(s1,s2: sign, e1,e2: exponent, m1,m2: significand)
+    : ( (s2 < s1)
+        OR (s1=0 AND s1=s2 AND e1 <= e2 AND m1 <= m2)
+	OR (s1=1 AND s1=s2 AND e2 <= e1 AND m2 <= m1) )
+      IMPLIES value(s1,e1,m1) <= value(s2,e2,m2)
+
+  exactly_representable?(x: real): bool
+  = EXISTS(s: sign, e: exponent, m: significand): value(s,e,m) = x
+
+  exactly_representable_symm_0
+  : LEMMA
+    FORALL(x: real): exactly_representable?(x) = exactly_representable?(-x)
+
+  er_real_value
+  : LEMMA FORALL(s: sign, e: exponent, m: significand)
+    : exactly_representable?(value(s, e, m))
+  AUTO_REWRITE+ er_real_value
+
+  zero_is_er: LEMMA exactly_representable?(0)
+  AUTO_REWRITE+ zero_is_er
+
+  er_real: TYPE+ = (exactly_representable?) CONTAINING 0
+
+  er_lb: er_real = value(1,emax,smax)
+
+  er_lower_bound
+  : LEMMA
+    FORALL(x: er_real): er_lb <= x 
+
+  er_ub: er_real = value(0,emax,smax)
+
+  er_upper_bound
+  : LEMMA
+    FORALL(x: er_real): x <= er_ub
+
+  er_min_pos: er_real = value(0,emin,smin)
+
+  er_min_pos_prop
+  : LEMMA
+    FORALL(x: er_real | 0 < x): er_min_pos <= x
+
+  er_max_neg: er_real = value(1,emin,smin)
+
+  er_max_neg_prop
+  : LEMMA
+    FORALL(x: er_real | x < 0):  x <= er_max_neg
+
+END ieee754_domain

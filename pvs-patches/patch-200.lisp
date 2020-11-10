@@ -1,1 +1,0 @@
-../MetiTarski/metit.lisp

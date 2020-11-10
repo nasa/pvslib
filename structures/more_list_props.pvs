@@ -64,19 +64,17 @@ more_list_props   [ T : TYPE ]
     ENDIF
     MEASURE length(x)
 
-%Multiple concatenation of a list: w^3 means (: w  w  w :).
-;
-  ^(l1, n): RECURSIVE list[T] = 
+  %Multiple concatenation of a list: w^3 means (: w  w  w :).
+  ;^(l1, n): RECURSIVE list[T] = 
     IF n = 0 THEN (null)
     ELSE append( l1, ^(l1, n-1) )
     ENDIF
     MEASURE n
 
-% Just like for sequences, a sub-list can be extracted with the operator '^'.
-% Note that ^ allows any natural numbers m and n to define the range; 
-% if m > n then the empty sequence is returned.
-;
-  ^(l1, pair): RECURSIVE list[T] =
+  % Just like for sequences, a sub-list can be extracted with the operator '^'.
+  % Note that ^ allows any natural numbers m and n to define the range; 
+  % if m > n then the empty sequence is returned.
+  ;^(l1, pair): RECURSIVE list[T] =
     LET (m, n) = pair
      IN IF m > n OR m >= length(l1) OR m < 0
         THEN null
@@ -100,16 +98,9 @@ more_list_props   [ T : TYPE ]
     IMPLIES
     nth(l1, n) = nth(l1^pair, n-pair`1)
 
-
-  prefixes(l1:list[T])(l2:list[T]) : bool
-    = EXISTS(l3: list[T]): append(l2,l3) = l1
-
-  suffixes(l1:list[T])(l2:list[T]) : bool
-    = EXISTS(l3: list[T]): append(l3,l2) = l1
-
-%
-% Lemmas and Theorems
-%
+  %
+  % Lemmas and Theorems
+  %
 
   prefix_length: LEMMA
     prefix?(X,Y) IMPLIES length(X) <= length(Y)
@@ -120,15 +111,20 @@ more_list_props   [ T : TYPE ]
   every_forall: LEMMA
     every(p)(L) IFF FORALL (n:below(length(L))): p(nth(L,n))
 
+  every_as_member
+  : LEMMA
+    FORALL(P: PRED[T], l: list[T])
+    : every(P)(l) IMPLIES FORALL(x: T): member(x,l) IMPLIES P(x)
+
   some_exists: LEMMA
     some(p)(L) IFF EXISTS (n:below(length(L))): p(nth(L,n))
 
   list_extensionality : LEMMA
     l1=l2 IFF length(l1) = length(l2) AND FORALL(n:below(length(l1))): nth(l1,n) = nth(l2,n)
 
-  %If the length of the list of elements from set A is greater than the 
-  %cardinality of the set, then there is at least one repeated element
-  %in the list.
+  % If the length of the list of elements from set A is greater than the 
+  % cardinality of the set, then there is at least one repeated element
+  % in the list.
   list_pigeonhole: THEOREM
       every(A)(B) AND 
       length(B) > card(A)
@@ -137,11 +133,17 @@ more_list_props   [ T : TYPE ]
          n /= m 
          AND nth(B, n) = nth(B, m)  
 
-   nth_append : LEMMA
-     FORALL(i:nat): i < length(l1)+length(l2) IMPLIES
-       nth(append(l1,l2),i) = IF i < length(l1) THEN nth(l1,i)
+  nth_append : LEMMA
+    FORALL(i:nat): i < length(l1)+length(l2) IMPLIES
+      nth(append(l1,l2),i) = IF i < length(l1) THEN nth(l1,i)
                               ELSE nth(l2,i-length(l1))
                               ENDIF
+
+  append_eq_length_left
+  : LEMMA
+    append(l1,l2) = append(l3,l4) AND
+    length(l2) = length(l4)
+    IMPLIES l2=l4 AND l1=l3
 
   length_null : LEMMA
     length(null[T]) = 0
@@ -183,6 +185,12 @@ more_list_props   [ T : TYPE ]
   cdr_append: LEMMA FORALL(l1|NOT null?(l1)):
     cdr(append(l1,l2)) = append(cdr(l1),l2)
 
+  car_append
+  : LEMMA FORALL(l1|NOT null?(l1)): car(append(l1,l2)) = car(l1)
+
+  car_append_2
+  : LEMMA FORALL(l1|null?(l1) AND cons?(append(l1,l2))): car(append(l1,l2)) = car(l2)
+
   member_nth: LEMMA
    FORALL(l: list[T], t: T): 
     member(t, l) IMPLIES EXISTS(i: below(length(l))): nth(l,i) = t
@@ -194,10 +202,6 @@ more_list_props   [ T : TYPE ]
   member_iff_nth : LEMMA
    FORALL(l: list[T], t: T): 
     member(t, l) IFF EXISTS(i: below(length(l))): nth(l,i) = t
-
-  nnprefixes_same_head: LEMMA
-   FORALL(l1: list[T], l2: (prefixes[T](l1))): 
-    NOT null?(l1) AND NOT null?(l2) IMPLIES car(l1) = car(l2)
 
   member_append_r: LEMMA
    FORALL(i: T, l1,l2: list[T]):
@@ -318,6 +322,10 @@ more_list_props   [ T : TYPE ]
   suffix_of_null: LEMMA 
     suffix?(l,null) IMPLIES l = null
 
+  prefix_of_null
+  : LEMMA 
+    prefix?(l,null) IMPLIES l = null
+
   suffix_of_cons: LEMMA
     suffix?(l2,cons(a,l1)) AND
     length(l2) < length(cons(a,l1)) 
@@ -391,6 +399,9 @@ more_list_props   [ T : TYPE ]
   last_append: LEMMA FORALL(l2|NOT null?(l2)):
     last(append(l1,l2)) = last(l2)
 
+  last_cdr: LEMMA FORALL(l1|cons?(l1) AND cons?(cdr(l1))):
+    last(cdr(l1)) = last(l1)
+
   % reverse
   null_reverse: LEMMA
     null?(reverse(l)) IFF null?(l)
@@ -404,7 +415,29 @@ more_list_props   [ T : TYPE ]
   member_reverse: LEMMA
     member(a,l) IFF member(a, reverse(l))
 
-  % "no_repetitions?" holds with the list contains only one aparition of each 
+  %
+  %
+  %
+
+  prefix(l1:list[T])(l2:list[T]) : MACRO bool
+  = EXISTS(l3: list[T]): append(l2,l3) = l1
+
+  prefixes(l1:list[T])(l2:list[T]) : bool
+    = EXISTS(l3: list[T]): append(l2,l3) = l1
+
+  suffix(l1:list[T])(l2:list[T]) : MACRO bool
+  = EXISTS(l3: list[T]): append(l3, l2) = l1
+
+  suffixes(l1:list[T])(l2:list[T]) : bool
+    = EXISTS(l3: list[T]): append(l3, l2) = l1
+
+  %
+  
+  nnprefixes_same_head: LEMMA
+   FORALL(l1: list[T], l2: (prefixes[T](l1))): 
+    NOT null?(l1) AND NOT null?(l2) IMPLIES car(l1) = car(l2)
+
+  % "no_repetitions?" holds when the list contains only one apparition of each 
   % of its elements.
   no_repetitions?(l:list[T]):bool =
     FORALL(i,j:below(length(l))): i /= j IMPLIES nth(l,i) /= nth(l,j)
@@ -415,7 +448,11 @@ more_list_props   [ T : TYPE ]
     (FORALL(n:T): member(n,l1) IMPLIES NOT member(n,l2))
     IFF no_repetitions?(append(l1,l2))
 
-  % Complementary function for nth.
+  %
+  % Index function.
+  %
+
+  % Returns the first index for a given element of the list.
   idx(l,(a:T|member(a,l))): RECURSIVE {i: below(length(l)) | nth(l,i) = a} =
     IF car(l) = a THEN 0 ELSE 1 + idx(cdr(l),a) ENDIF
   MEASURE length(l)
@@ -478,7 +515,22 @@ more_list_props   [ T : TYPE ]
   P, Q: VAR PRED[T]
   i: VAR nat
 
-  append1(l1, x): list[T] = append(l1, cons(x, null))
+  %
+  % 
+  %
+
+  snoc(m: list[T], s: T)
+  : list[T]
+  = append(m,(:s:))
+
+  length_snoc
+  : LEMMA
+    FORALL(m: list[T], s: T)
+    : length(snoc(m,s)) = 1 + length(m)
+
+  %
+  %
+  %
 
   length_parm: LEMMA
      FORALL (pl: list[(P)]):
@@ -529,6 +581,13 @@ more_list_props   [ T : TYPE ]
 
   ldiff_append: LEMMA forall (l1, l2): ldiff(append(l1, l2), l2) = l1
 
+  filter_nth: LEMMA forall (L :list[T], P: [T->bool]):
+     LET FL = filter(L,P)  IN  
+       cons?(FL) IMPLIES
+      FORALL (i:below(length(FL))):
+      EXISTS (j: below(length(L))):
+        nth(FL, i) = nth(L,j)
+
   takeFromRight(l: list[T], n: nat)
   : RECURSIVE list[T]
   = IF length(l) <= n OR null?(l) THEN l
@@ -558,6 +617,81 @@ more_list_props   [ T : TYPE ]
   : LEMMA
     FORALL (l: list[T], n: below(length(l)), m: below(length(takeFromRight(l, n))))
     : nth(takeFromRight(l, n), m) = nth(l, length(l) - n + m)
+
+  %
+  % Merge
+  %
+
+  merge(l: list[list[T]])
+  : RECURSIVE list[T]
+  = CASES l OF
+      null: null,
+      cons(x,xs): append(x, merge(xs))
+    ENDCASES
+  MEASURE length(l)
+
+  %
+  % Generalized induction on lists
+  %
+
+  LIST_induction: LEMMA
+    FORALL (p: [list[T] -> boolean]):
+      (FORALL (l1: list[T]):
+        (FORALL (l2: list[T]): length(l2) < length(l1) IMPLIES p(l2)) IMPLIES p(l1))
+       IMPLIES (FORALL (l: list[T]): p(l))
+
+  %
+  % Sublist
+  %
+
+  sublist?(l1,l2: list[T]): RECURSIVE bool
+  = null?(l1) OR (NOT null?(l2) AND (prefix?(l1,l2) OR sublist?(l1, cdr(l2))))
+  MEASURE l2 BY <<
+
+  sublist(l: list[T]): TYPE = { l_:list[T] | sublist?(l_,l) }
+
+  sublist_alt_def
+  : RECURSIVE JUDGEMENT
+    sublist?(l1,l2) HAS_TYPE { b:bool | b = EXISTS(l_: list[T] | suffix?(l_,l2)): prefix?(l1,l_) }
+
+  prefix_is_sublist
+  : LEMMA
+    prefix?(l1,l2) IMPLIES sublist?(l1,l2)
+
+  %
+  %
+  %
+
+  respects_order?(l2)(l1)
+  : MACRO bool
+  = FORALL(i1: below(length(l1)), j1: subrange(i1+1,length(l1)-1))
+    : EXISTS(i2: below(length(l2)), j2: subrange(i2+1,length(l2)-1))
+      : nth(l1,i1) = nth(l2,i2) AND nth(l1,j1) = nth(l2,j2)
+
+  prefix_respects_order
+  : LEMMA
+    FORALL(l2: list[T], l1: list[T] | prefix?(l1,l2))
+    : respects_order?(l2)(l1)
+
+  suffix_respects_order
+  : LEMMA
+    FORALL(l2: list[T], l1: list[T] | suffix?(l1,l2))
+    : respects_order?(l2)(l1)
+
+  sublist_respects_order
+  : LEMMA
+    FORALL(l2: list[T], l1: list[T]| sublist?(l1,l2))
+    : respects_order?(l2)(l1)
+
+  snoc_car_sublist_append
+  : LEMMA
+    FORALL(l:(cons?[T]),l_:list[T])
+    : sublist?(snoc(l_, car(l)),append(l_,l))
+
+  append_consume_one
+  : LEMMA
+    FORALL(l: (cons?[T]),l_:list[T])
+    : append(snoc(l_, car(l)), cdr(l)) = append(l_, l)
 
 END more_list_props
 

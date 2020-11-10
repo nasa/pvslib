@@ -1,0 +1,155 @@
+mf_pvs0_lang[Val:TYPE+] : THEORY
+BEGIN
+  
+  IMPORTING mf_pvs0_expr[Val]
+
+  pvs0          : VAR PVS0
+  env           : VAR Val
+  val,val1,val2 : VAR Val
+
+  terminating?(pvs0:PVS0) : bool =
+    terminates_expr(pvs0)(nth(get_body(pvs0),0))
+
+  semantic_rel(pvs0:PVS0)(env:Val,val:Val) : bool =
+    semantic_rel_expr(pvs0)(nth(get_body(pvs0),0),env,val)
+
+  determined?(pvs0:PVS0)(env:Val) : bool =
+    EXISTS (val:Val) : semantic_rel(pvs0)(env,val)
+
+  deterministic : THEOREM
+    semantic_rel(pvs0)(env,val1) AND
+    semantic_rel(pvs0)(env,val2)
+    IMPLIES val1 = val2
+
+  eval(pvs0:PVS0)(n:nat)(env:Val) : Maybe[Val] =
+    eval_expr(pvs0)(n,nth(get_body(pvs0),0),env)
+
+  eval_pvs0_ge_n : COROLLARY
+    FORALL (n:nat,m:upfrom(n),env:Val):
+       LET myv = eval(pvs0)(n)(env) IN
+        some?(myv) IMPLIES myv = eval(pvs0)(m)(env)
+
+  semantic_rel_eval : THEOREM
+    semantic_rel(pvs0)(env,val)
+    IMPLIES
+        EXISTS (n:nat): LET myv = eval(pvs0)(n)(env) IN
+        some?(myv) AND val = val(myv) 
+
+  eval_termination(pvs0) : bool =
+    eval_expr_termination(pvs0)(nth(get_body(pvs0),0))
+
+  eval_terminates: LEMMA
+    eval_termination(pvs0) IFF terminating?(pvs0)
+
+  % Concrete counter for terminating functions
+
+  terminating_determined_all : LEMMA
+    terminating?(pvs0) IFF FORALL (val:Val) : determined?(pvs0)(val)
+  
+  mu_nonempty: LEMMA
+    FORALL (pvs0:PVS0,val:(determined?(pvs0))):
+      LET S = { n : nat | LET myv = eval(pvs0)(n)(val) IN some?(myv) } IN
+      nonempty?(S)
+
+  mu(pvs0:PVS0)(val:(determined?(pvs0))): posnat =
+    LET  S = { n : nat | LET myv = eval(pvs0)(n)(val) IN  some?(myv) } IN
+    min(S)
+
+  mu_terminates : LEMMA
+    FORALL (pvs0:PVS0,val:(determined?(pvs0))):
+       LET mun = mu(pvs0)(val),
+           myv = eval(pvs0)(mun)(val) IN
+       some?(myv)
+
+  mu_min : LEMMA
+    FORALL (pvs0:PVS0,val:(determined?(pvs0)),n:nat):
+       some?(eval(pvs0)(n)(val)) IMPLIES mu(pvs0)(val) <= n
+
+  % Uses mu to evaluate a terminating PVS0 function
+
+  mu_eval(pvs0:PVS0)(v:(determined?(pvs0))) : Val =
+    LET n = mu(pvs0)(v) IN val(eval(pvs0)(n)(v))
+
+  eval_semantic: LEMMA
+   FORALL (pvs0:PVS0)(arg:(determined?(pvs0)),val:Val):
+    some?(eval(pvs0)(mu(pvs0)(arg))(arg))
+     IMPLIES semantic_rel(pvs0)( arg, val(eval(pvs0)(mu(pvs0)(arg))(arg)))
+
+  mu_eval_correct : THEOREM
+    FORALL (pvs0:PVS0)(arg:(determined?(pvs0)),val:Val):
+      semantic_rel(pvs0)(arg,val) IFF val = mu_eval(pvs0)(arg) 
+
+  % Defining a non-terminating function in PVS0
+
+  false_val : VAR Val
+  eval_op1 : VAR EvalOp1
+  eval_op2 : VAR EvalOp2
+  
+  Delta(false_val,eval_op1,eval_op2) : PVS0 = (eval_op1,eval_op2,false_val,(:rec(0,vr):))
+
+  Delta_undetermined : THEOREM
+    FORALL (false_val,eval_op1,eval_op2)(val:Val) : 
+      NOT determined?(Delta(false_val,eval_op1,eval_op2))(val)
+
+  Delta_non_terminating : THEOREM
+    FORALL (false_val,eval_op1,eval_op2) : 
+      NOT terminating?(Delta(false_val,eval_op1,eval_op2))
+
+  pvs0_not_in_pvs : THEOREM
+    EXISTS (pvs0:PVS0) : NOT EXISTS (f:[Val->Val]) : FORALL(v:Val) :
+      semantic_rel(pvs0)(v,f(v))
+
+%% Shifiting the index of the recursion operator.
+
+   offset_rec(offset : nat)(expr : mf_PVS0Expr) :RECURSIVE mf_PVS0Expr =
+    CASES expr OF
+    	  cnst(n) : cnst(n),
+	  vr : vr,
+	  op1(o,e) : op1(o,offset_rec(offset)(e)),
+	  op2(o,e1,e2) : op2(o,offset_rec(offset)(e1),offset_rec(offset)(e2)),
+	  rec(o,e) : rec(o+offset,offset_rec(offset)(e)),
+	  ite(e1,e2,e3): ite(offset_rec(offset)(e1),offset_rec(offset)(e2),offset_rec(offset)(e3))
+    ENDCASES
+    MEASURE expr BY <<
+
+    offset_composition : LEMMA
+    FORALL(expr : mf_PVS0Expr, m,n : nat):
+    (offset_rec(m) o offset_rec(n))(expr) = offset_rec(m+n)(expr)
+
+    offset_composition2 : LEMMA
+    FORALL(m,n : nat):
+    offset_rec(m) o offset_rec(n) = offset_rec(m+n)
+
+    IMPORTING structures@more_list_props
+
+    add_rec_list_aux : LEMMA
+    FORALL(false_val : Val, expr : mf_PVS0Expr, k : nat, lexpr1, lexpr2: lmf_PVS0Expr): FORALL(f1 : EvalOp1, f2: EvalOp2): FORALL(i : Val):
+    eval_expr(f1,f2,false_val,lexpr1)(k,expr,i) =
+    eval_expr(f1,f2,false_val,append(lexpr2,map(offset_rec(length(lexpr2)))(lexpr1)))(k,offset_rec(length(lexpr2))(expr),i)
+
+    valid_index_rec(pvs : mf_PVS0Expr, n : nat) : bool =
+    	FORALL(i : nat, expr : mf_PVS0Expr):
+ 	subterm(rec(i,expr),pvs) => i < n
+
+	valid_index_rec_offset : LEMMA
+	FORALL(expr : mf_PVS0Expr, m,n : nat) :
+	valid_index_rec(expr,m) <=> valid_index_rec(offset_rec(n)(expr),n+m)
+
+   add_rec_list_aux2 : LEMMA
+    FORALL(expr : mf_PVS0Expr, k : nat, lexpr1 : lmf_PVS0Expr | (FORALL(j : below(length(lexpr1))): valid_index_rec(nth(lexpr1,j),length(lexpr1)))
+    AND valid_index_rec(expr,length(lexpr1)), lexpr2: lmf_PVS0Expr): FORALL(f1 : EvalOp1, f2 : EvalOp2) : FORALL(i:Val) : 
+    eval_expr(f1,f2,false_val,lexpr1)(k,expr,i) =
+    eval_expr(f1,f2,false_val,append(lexpr1,lexpr2))(k,expr,i)
+
+    add_rec_list : LEMMA
+    FORALL(expr : mf_PVS0Expr, lexpr1, lexpr2: lmf_PVS0Expr): FORALL(f1 : EvalOp1, f2: EvalOp2): FORALL(i,o1 : Val):
+    (semantic_rel_expr(f1,f2,false_val,lexpr1)(expr,i,o1) <=>
+    semantic_rel_expr(f1,f2,false_val,append(lexpr2,map(offset_rec(length(lexpr2)))(lexpr1)))(offset_rec(length(lexpr2))(expr),i,o1))
+
+     add_rec_list2: LEMMA
+    FORALL(expr : mf_PVS0Expr, lexpr1 : lmf_PVS0Expr | (FORALL(j : below(length(lexpr1))): valid_index_rec(nth(lexpr1,j),length(lexpr1)))
+    AND valid_index_rec(expr,length(lexpr1)), lexpr2: lmf_PVS0Expr): FORALL(f1 : EvalOp1, f2 : EvalOp2) : FORALL(i,o1:Val) :
+    semantic_rel_expr(f1,f2,false_val,lexpr1)(expr,i,o1) <=>
+    semantic_rel_expr(f1,f2,false_val,append(lexpr1,lexpr2))(expr,i,o1)
+
+END mf_pvs0_lang

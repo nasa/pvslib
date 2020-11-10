@@ -1,0 +1,289 @@
+dnf_polynomials : THEORY
+BEGIN
+
+  IMPORTING structures@more_list_props, PolyRelExpr
+
+  i: VAR nat
+
+  DNF_At: TYPE = [# pn : [nat->rat], d : nat, rel : TarskiRel #]
+
+  DNF_Atom : TYPE = {(dnf_atm : DNF_At) | dnf_atm`d > 0 IMPLIES (dnf_atm`pn)(dnf_atm`d) /= 0}
+
+  DNF : TYPE  = list[list[DNF_Atom]]
+
+  %%% Evaluate p of type PolyRelExpr
+  eval_rel(rel:TarskiRel)(re:real,r:rat): bool = 
+    CASES rel OF
+      plt: re < r, 
+      ple: re <= r, 
+      pgt: re > r, 
+      pge: re >= r, 
+      peq: re = r, 
+      pneq: re /= r 
+    ENDCASES
+
+eval(p:PolyRelExpr)(x:real) : RECURSIVE bool = 
+    (CASES p OF
+      PCONST(pb): pb,
+      PREL(pn,d,rel,r): eval_rel(rel)(polynomial(pn, d)(x),r),
+      PABS(pn,d,rel,r): eval_rel(rel)(abs(polynomial(pn, d)(x)),r),
+      PAND(pe1,pe2): eval(pe1)(x) AND eval(pe2)(x),
+      POR(pe1,pe2): eval(pe1)(x) OR eval(pe2)(x),
+      PNOT(pe): NOT(eval(pe)(x)),
+      PIMPLIES(pe1,pe2): eval(pe1)(x) IMPLIES eval(pe2)(x),
+      PWHEN(pe1,pe2): eval(pe1)(x) WHEN eval(pe2)(x),
+      PIFF(pe1,pe2): eval(pe1)(x) IFF eval(pe2)(x),
+      PITE(pe1,pe2,pe3): IF eval(pe1)(x) THEN eval(pe2)(x) ELSE eval(pe3)(x) ENDIF
+    ENDCASES) MEASURE p BY <<;
+
+  %%% Evaluate dnf of type DNF
+  eval_atm(dnf_atm:DNF_Atom)(x:real) : bool = eval_rel(dnf_atm`rel)(polynomial(dnf_atm`pn, dnf_atm`d)(x), 0)
+
+  eval_atm_list(dnf_atm_lst:list[DNF_Atom])(x:real) : RECURSIVE bool =
+    IF null?(dnf_atm_lst) THEN TRUE
+    ELSE (eval_atm(car(dnf_atm_lst))(x) AND eval_atm_list(cdr(dnf_atm_lst))(x))
+    ENDIF MEASURE length(dnf_atm_lst);
+
+  eval(dnf:DNF)(x:real) : RECURSIVE bool =
+    IF null?(dnf) THEN FALSE
+    ELSE (eval_atm_list(car(dnf))(x) OR eval(cdr(dnf))(x))
+    ENDIF MEASURE length(dnf);
+
+  change_function(pol:[nat->rat], re:rat) : [nat->rat] = LAMBDA i : IF i = 0 THEN (pol(0) - re) ELSE pol(i) ENDIF
+
+  %%% constructor for DNF_Atom–-here we handle the rational "re", normalize, and take the true degree of our polynomial
+  degr_rec(polyn:[nat -> rat], deg:nat) : RECURSIVE upto(deg) =
+    IF deg = 0 THEN 0
+    ELSIF polyn(deg) /= 0 THEN deg
+    ELSE degr_rec(polyn, deg - 1)
+    ENDIF MEASURE deg
+
+   degr_rec_lemma: LEMMA FORALL (polyn:[nat->rat]): FORALL (deg:nat): FORALL (x:real): polynomial(polyn, degr_rec(polyn, deg))(x) = polynomial(polyn, deg)(x)
+
+   degr_rec_change_function: LEMMA FORALL  (polyn:[nat->rat]): FORALL (re:rat): FORALL (deg:nat): degr_rec(change_function(polyn, re), deg) = degr_rec(polyn, deg)
+
+  construct_record(polyn: [nat->rat], deg:nat, trel: TarskiRel, re: rat) : DNF_Atom = (# pn := change_function(polyn, re), d := degr_rec(polyn, deg), rel := trel #)
+
+  %%% Define a depth function on PolyRelExpr's; depth should indicate the number of operators (AND, ORs, NOTS).  For "PABS" we define it as 1 because PABS could introduce an "OR" operator (but it doesn't much matter because ABS is handled specially and doesn't involve recursive calls).
+  depth(p:PolyRelExpr): RECURSIVE nat =
+  (CASES p OF
+      PCONST(pb): 0,
+      PREL(pn, d,rel,r): 0,
+      PABS(pn, d,rel,r): 1,
+      PAND(pe1,pe2): 1 + depth(pe1) + depth(pe2),
+      POR(pe1,pe2): 1 + depth(pe1) + depth(pe2),
+      PNOT(pe): 1 + depth(pe),
+      PIMPLIES(pe1,pe2): 2 + depth(pe1) + depth(pe2),
+      PWHEN(pe1,pe2): 2 + depth(pe1) + depth(pe2),
+      PIFF(pe1,pe2): 2*depth(pe1) + 2*depth(pe2) + 5,
+      PITE(pe1,pe2,pe3): 4 + 2*depth(pe1) + depth(pe2) + depth(pe3)
+    ENDCASES) MEASURE p BY <<;
+
+
+  %%% For NNF
+  not_eval_rel(rel:TarskiRel): TarskiRel = 
+    CASES rel OF
+      plt: pge,
+      ple: pgt,
+      pgt: ple,
+      pge: plt,
+      peq: pneq,
+      pneq: peq
+    ENDCASES;
+
+  abs_nnf_rel(pn: [nat->rat], d:nat, rel:TarskiRel, r: rat) : PolyRelExpr =
+    (CASES rel OF
+       plt: IF r <= 0 THEN PCONST(FALSE) ELSE PAND(PREL(pn,d,plt,r), PREL(pn,d,pgt,-1*r)) ENDIF,
+       ple: IF r < 0 THEN PCONST(FALSE) ELSE PAND(PREL(pn,d,ple,r), PREL(pn,d,pge, -1*r)) ENDIF,
+       pgt: IF r < 0 THEN PCONST(TRUE) ELSE POR(PREL(pn,d,pgt,r), PREL(pn,d,plt,-1*r)) ENDIF,
+       pge: IF r <= 0 THEN PCONST(TRUE) ELSE POR(PREL(pn,d,pge,r), PREL(pn,d,ple,-1*r)) ENDIF,
+       peq: IF r < 0 THEN PCONST(FALSE)  ELSE POR(PREL(pn,d,peq,r), PREL(pn,d,peq,-1*r)) ENDIF,
+       pneq: IF r < 0 THEN PCONST(TRUE) ELSE  PAND(PREL(pn,d,pneq,r), PREL(pn,d,pneq,-1*r)) ENDIF
+     ENDCASES)
+
+  abs_nnf_rel_preserves_truth: LEMMA FORALL (x:real): FORALL (r:rat): FORALL (pn:[nat->rat]): FORALL (d:nat): FORALL (rel:TarskiRel): eval(abs_nnf_rel(pn,d,rel,r))(x) IFF eval(PABS(pn,d, rel,r))(x)
+
+   abs_nnf_rel_pnot_preserves_truth: LEMMA FORALL (x:real): FORALL (r:rat):  FORALL (pn:[nat->rat]): FORALL (d:nat): FORALL (rel:TarskiRel): eval(PABS(pn,d, not_eval_rel(rel), r))(x) = eval(PNOT(PABS(pn, d, rel, r)))(x)
+
+  nnf(p:PolyRelExpr) : RECURSIVE PolyRelExpr =
+  (CASES p OF
+      PCONST(pb): PCONST(pb),
+      PREL(pn,d,rel,r): PREL(pn,d,rel,r),
+      PABS(pn,d,rel,r): abs_nnf_rel(pn,d, rel, r),
+      PAND(pe1,pe2): PAND(nnf(pe1),nnf(pe2)),
+      POR(pe1,pe2): POR(nnf(pe1),nnf(pe2)),
+      PNOT(pe): (CASES pe OF
+      		  PCONST(pb): PCONST(NOT pb),
+     	  	  PREL(pn,d,rel,r): PREL(pn,d,not_eval_rel(rel),r),
+     		  PABS(pn,d,rel,r): abs_nnf_rel(pn,d,not_eval_rel(rel),r),
+     		  PAND(pe1,pe2): POR(nnf(PNOT(pe1)),nnf(PNOT(pe2))),
+     		  POR(pe1,pe2): PAND(nnf(PNOT(pe1)),nnf(PNOT(pe2))),
+     		  PNOT(pe1): nnf(pe1),
+     		  PIMPLIES(pe1,pe2): PAND(nnf(pe1), nnf(PNOT(pe2))),
+     		  PWHEN(pe1,pe2): PAND(nnf(PNOT(pe1)), nnf(pe2)),
+     		  PIFF(pe1,pe2): POR(PAND(nnf(pe1), nnf(PNOT(pe2))),PAND(nnf(PNOT(pe1)), nnf(pe2))),
+		  PITE(pe1,pe2,pe3): POR(PAND(nnf(pe1), nnf(PNOT(pe2))),PAND(nnf(PNOT(pe1)), nnf(PNOT(pe3))))
+     		ENDCASES),
+      PIMPLIES(pe1,pe2): POR(nnf(PNOT(pe1)), nnf(pe2)),
+      PWHEN(pe1,pe2): POR(nnf(pe1), nnf(PNOT(pe2))),
+      PIFF(pe1,pe2): PAND(POR(nnf(PNOT(pe1)), nnf(pe2)),POR(nnf(pe1), nnf(PNOT(pe2)))),
+      PITE(pe1,pe2,pe3): PAND(POR(nnf(PNOT(pe1)), nnf(pe2)), POR(nnf(pe1), nnf(pe3)))
+    ENDCASES) MEASURE depth(p);
+
+  has_special_form(p:PolyRelExpr): RECURSIVE bool =
+  (CASES p OF
+      PCONST(pb): TRUE,
+      PREL(pn,d,rel,r): TRUE,
+      PABS(pn,d,rel,r): FALSE,
+      PAND(pe1,pe2): has_special_form(pe1) AND has_special_form(pe2),
+      POR(pe1,pe2): has_special_form(pe1) AND has_special_form(pe2),
+      PNOT(pe): FALSE,
+      PIMPLIES(pe1,pe2): FALSE,
+      PWHEN(pe1,pe2): FALSE,
+      PIFF(pe1,pe2): FALSE,
+      PITE(pe1,pe2,pe3): FALSE
+      ENDCASES) MEASURE p BY <<;
+
+  NNF_expr: TYPE = {p:PolyRelExpr | has_special_form(p)}
+
+  % maybe this proof could be simplified
+  nnf_not_has_special_form: LEMMA FORALL (p:PolyRelExpr): has_special_form(nnf(p)) IMPLIES has_special_form(nnf(PNOT(p)))
+  nnf_has_special_form: LEMMA FORALL (p:PolyRelExpr): has_special_form(nnf(p))
+
+   %%% distribute ANDs over ORs
+   pull_out_conjunctions(p:NNF_expr): RECURSIVE list[NNF_expr] =
+    (CASES p OF
+      PCONST(pb): (: PCONST(pb) :),
+      PREL(pn,d,rel,r): (: PREL(pn,d,rel,r) :),
+      PAND(pe1,pe2): (: PAND(pe1, pe2) :),
+      POR(pe1,pe2): append(pull_out_conjunctions(pe1), pull_out_conjunctions(pe2))
+      ENDCASES) MEASURE depth(p);
+
+   length_pull_out_conjunctions: LEMMA FORALL (p:NNF_expr): length(pull_out_conjunctions(p)) >= 1
+
+   conjunct_element(p:NNF_expr, b: list[NNF_expr]) : RECURSIVE list[NNF_expr] =
+     IF null?(b) THEN null
+     ELSE append((: PAND(p, car(b)) :), conjunct_element(p, cdr(b)))
+     ENDIF MEASURE length(b)
+
+   conjunct_lists(a:list[NNF_expr], b: list[NNF_expr]) : RECURSIVE list[NNF_expr] =
+      IF null?(a) THEN null
+      ELSE append(conjunct_element(car(a), b), conjunct_lists(cdr(a), b))
+      ENDIF MEASURE length(a)
+
+   length_conjunct_lists: LEMMA FORALL (p1, p2:NNF_expr): length(conjunct_lists(pull_out_conjunctions(p1), pull_out_conjunctions(p2))) >= 1
+
+  form_disjunction(a:list[NNF_expr]|length(a) > 0): RECURSIVE NNF_expr =
+    IF length(a) = 1 THEN car(a)
+    ELSE POR(car(a), form_disjunction(cdr(a)))
+    ENDIF MEASURE length(a);
+
+    distribute_ands(p:NNF_expr) : RECURSIVE NNF_expr =
+   (CASES p OF
+      PCONST(pb): PCONST(pb),
+      PREL(pn,d,rel,r): PREL(pn,d,rel,r),
+      PABS(pn,d,rel,r): PABS(pn,d,rel,r),
+      PAND(pe1,pe2):
+         LET a = distribute_ands(pe1), b = distribute_ands(pe2) IN form_disjunction(conjunct_lists(pull_out_conjunctions(a), pull_out_conjunctions(b))),
+      POR(pe1,pe2): POR(distribute_ands(pe1), distribute_ands(pe2))
+    ENDCASES) MEASURE depth(p);
+
+%%% Various useful properties, will be important in proving that distribute_ands preserves truth
+  has_no_ors(p:PolyRelExpr): RECURSIVE bool =
+  (CASES p OF
+      PCONST(pb): TRUE,
+      PREL(pn,d,rel,r): TRUE,
+      PABS(pn,d,rel,r): FALSE,
+      PAND(pe1,pe2): has_no_ors(pe1) AND has_no_ors(pe2),
+      POR(pe1,pe2): FALSE,
+      PNOT(pe): FALSE,
+      PIMPLIES(pe1,pe2): FALSE,
+      PWHEN(pe1,pe2): FALSE,
+      PIFF(pe1,pe2): FALSE,
+      PITE(pe1,pe2,pe3):FALSE
+      ENDCASES) MEASURE p BY <<;
+
+  conjunct_element_prop: LEMMA FORALL (c: NNF_expr): FORALL (b: list[NNF_expr]): ((FORALL (q:NNF_expr): member(q, b) IMPLIES has_no_ors(q)) AND has_no_ors(c)) IMPLIES (FORALL (q:NNF_expr): member(q, conjunct_element(c, b)) IMPLIES has_no_ors(q))
+
+  conjunct_lists_prop: LEMMA FORALL (a: list[NNF_expr]): FORALL (b: list[NNF_expr]): ((FORALL (q:NNF_expr): member(q, a) IMPLIES has_no_ors(q)) AND (FORALL (q:NNF_expr): member(q, b) IMPLIES has_no_ors(q))) IMPLIES (FORALL (q:NNF_expr): member(q, conjunct_lists(a, b)) IMPLIES has_no_ors(q))
+
+  conjunct_elements_truth_prop:LEMMA FORALL (p: list[NNF_expr] | length(p) > 0): FORALL (c: NNF_expr): FORALL (x:real): (EXISTS (a: NNF_expr): eval(a)(x) AND member(a, conjunct_element(c, p))) IFF (eval(c)(x) AND (EXISTS (b: NNF_expr): member(b, p) AND eval(b)(x)))
+
+  conjunct_truth_prop: LEMMA FORALL (p1: list[NNF_expr] | length(p1) > 0): FORALL (p2: list[NNF_expr] | length(p2) > 0): FORALL (x:real): ((EXISTS (p: NNF_expr): member(p, conjunct_lists(p1, p2)) AND eval(p)(x))
+IFF ((EXISTS (a: NNF_expr): member(a, p1) AND eval(a)(x)) AND (EXISTS (b: NNF_expr): member(b, p2) AND eval(b)(x))))
+
+ form_disjunction_prop: LEMMA FORALL (a: list[NNF_expr]| length(a) > 0): FORALL (p: NNF_expr): (FORALL (q:NNF_expr): member(q, a) IMPLIES has_no_ors(q)) IMPLIES (member(p,pull_out_conjunctions(form_disjunction(a))) IFF member(p, a))
+
+  distrib_ands_special_form: LEMMA FORALL (a: NNF_expr): FORALL (q:NNF_expr): member(q, pull_out_conjunctions(distribute_ands(a))) IMPLIES has_no_ors(q)
+
+  special_form_conjunct: LEMMA FORALL (a: NNF_expr): FORALL (b: NNF_expr): FORALL (q:NNF_expr): member(q, conjunct_lists(pull_out_conjunctions(distribute_ands(a)), pull_out_conjunctions(distribute_ands(b)))) IMPLIES has_no_ors(q)
+
+  form_disjunction_eval: LEMMA FORALL (a:list[NNF_expr]|length(a) > 0): FORALL (x:real): eval(form_disjunction(a))(x) IFF (EXISTS (p:NNF_expr): member(p, a) AND eval(p)(x))
+
+  pull_out_conjunctions_eval: LEMMA FORALL (p:NNF_expr): FORALL (x:real): eval(distribute_ands(p))(x) IFF EXISTS (p_1: NNF_expr): member(p_1, pull_out_conjunctions(distribute_ands(p))) AND eval(p_1)(x)
+
+  form_disjunction_truth: LEMMA FORALL (p:NNF_expr): FORALL (x:real): eval(distribute_ands(p))(x) IFF eval(form_disjunction(pull_out_conjunctions(distribute_ands(p))))(x)
+
+ construct_dnf_bool(pb: bool): DNF = IF (pb = TRUE) THEN (: (: construct_record( LAMBDA i: IF i = 0 THEN 1 ELSE 0 ENDIF, 0, pneq, 0) :) :) ELSE (: (: construct_record( LAMBDA i: IF i = 0 THEN 1 ELSE 0 ENDIF, 0, peq, 0) :) :) ENDIF
+
+  %%% THE DNF construction
+  construct_dnf(p:NNF_expr) : RECURSIVE DNF =
+  (CASES p OF
+      PCONST(pb): construct_dnf_bool(pb),
+      PREL(pn,d,rel,r): (: (: construct_record(pn,d,rel,r) :) :),
+      PAND(pe1,pe2): (: append(car(construct_dnf(pe1)), car(construct_dnf(pe2))) :), % placeholder
+      POR(pe1,pe2): append(construct_dnf(pe1), construct_dnf(pe2))
+      ENDCASES) MEASURE depth(p);
+
+  dnf(p:PolyRelExpr) : DNF = construct_dnf(distribute_ands(nnf(p)))
+
+  %%% prove evaluations are the same, first of NNF, then of distribute_ands, then of dnf
+  nnf_pnot_preserves_truth : LEMMA FORALL (p:PolyRelExpr): FORALL (x: real): eval(nnf(PNOT(p)))(x) = eval(PNOT(p))(x)
+  
+  nnf_preserves_truth : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): eval(nnf(p))(x) = eval(p)(x)
+
+  distribute_pand_preserves_truth_new: LEMMA FORALL (p1: NNF_expr): FORALL (p2: NNF_expr): FORALL (x: real): eval(distribute_ands(PAND(p1, p2)))(x) IFF eval(PAND(distribute_ands(p1), distribute_ands(p2)))(x)
+  
+  distribute_ands_preserves_truth : LEMMA FORALL (p:NNF_expr): FORALL (x:real): eval(distribute_ands(p))(x) = eval(p)(x)
+
+  dnf_const_preserves_truth : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): PCONST?(p) IMPLIES eval(construct_dnf(distribute_ands(nnf(p))))(x) = eval(distribute_ands(nnf(p)))(x)
+
+  %alternative statement
+  dnf_const_preserves_truth_1 : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): PCONST?(p) IMPLIES eval(construct_dnf(p))(x) = eval(p)(x)
+
+   eval_rel_preserves_truth: LEMMA FORALL (rel:TarskiRel): FORALL(x:real): FORALL(y:rat): eval_rel(rel)(x - y, 0) IFF eval_rel(rel)(x, y)
+
+  dnf_prel_preserves_truth_len1: LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): (PREL?(p) AND d(p) = 1) IMPLIES eval(construct_dnf(distribute_ands(nnf(p))))(x) = eval(distribute_ands(nnf(p)))(x)
+  
+  dnf_prel_preserves_truth_len0: LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): (PREL?(p) AND d(p) = 0) IMPLIES eval(construct_dnf(distribute_ands(nnf(p))))(x) = eval(distribute_ands(nnf(p)))(x)
+
+   dnf_prel_preserves_truth : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): PREL?(p) IMPLIES eval(construct_dnf(distribute_ands(nnf(p))))(x) = eval(distribute_ands(nnf(p)))(x)
+
+%alternative statement
+  dnf_prel_preserves_truth2 : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): PREL?(p) IMPLIES eval(construct_dnf(p))(x) = eval(p)(x)
+
+
+  %%% towards dnf_preserves_truth
+  dnf_special_form: LEMMA FORALL (p:PolyRelExpr): PAND?(distribute_ands(nnf(p))) IMPLIES has_no_ors(distribute_ands(nnf(p)))
+
+  construct_dnf_length: LEMMA FORALL (p:NNF_expr): length(construct_dnf(p)) > 0
+  construct_dnf_car_length: LEMMA FORALL (p:NNF_expr): length(car(construct_dnf(p))) > 0
+
+  has_no_ors_prop: LEMMA FORALL (p:PolyRelExpr): (has_special_form(p) AND has_no_ors(p)) IMPLIES FORALL (x:real): eval(construct_dnf(p))(x) = eval_atm_list(car(construct_dnf(p)))(x)
+
+  eval_atm_list_truth: LEMMA FORALL (lst:list[DNF_Atom]): FORALL (x:real): eval_atm_list(lst)(x) IFF (FORALL (i: nat): i < length(lst) IMPLIES (eval_atm(nth(lst, i))(x)))
+
+  eval_atm_list_prop: LEMMA FORALL (x:real): FORALL (l1, l2:list[DNF_Atom]): eval_atm_list(append(l1, l2))(x) IFF (eval_atm_list(l1)(x) AND eval_atm_list(l2)(x))
+
+  has_no_ors_dnf_prop: LEMMA FORALL (p:PolyRelExpr): (has_special_form(p) AND has_no_ors(p)) IMPLIES length(construct_dnf(p)) = 1
+
+  % major lemma 1
+  construction_lemma_1: LEMMA FORALL (p1, p2: NNF_expr): FORALL(x:real): (has_no_ors(p1) AND has_no_ors(p2)) IMPLIES (eval(construct_dnf(PAND(p1, p2)))(x) IFF (eval(construct_dnf(p1))(x) AND eval(construct_dnf(p2))(x)))
+
+  % major lemma 2
+  construction_lemma_2:  LEMMA FORALL (d1, d2: DNF): FORALL(x:real): eval(append(d1, d2))(x) IFF (eval(d1)(x) OR eval(d2)(x))
+
+  dnf_preserves_truth : LEMMA FORALL (p:PolyRelExpr): FORALL (x:real): eval(dnf(p))(x) = eval(p)(x)
+
+  
+END dnf_polynomials
