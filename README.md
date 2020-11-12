@@ -13,7 +13,7 @@ It consists of a collection of formal development (i.e.,
 [Formal Methods Team at NASA LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
-The current version of NASALib is 7.1.0 (08/20/20) and requires [PVS 7.1](http://www.csl.sri.com/users/owre/drop/pvs-snapshots).
+The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http://pvs.csl.sri.com/).
 
 # Libraries
 
