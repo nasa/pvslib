@@ -1,0 +1,134 @@
+%%
+%% In mathematics, a circular segment is a portion of a circle centered at point C 
+%% bounded by an arc of less than pi and the cord between the end points of the arc. 
+%% The data strcuture defined in this theory allows for the representation of 
+%% a circular semgment and its complement, e.g., the region defined by the difference 
+%% between the circle and the circular segment. The boolean parameter clockwise
+%% defines the direction of the arc (clockwise or counter clockwise). When the arc is 0,
+% the circular segment represent the whole circle.
+%% 
+
+circular_segment_2D : THEORY
+  BEGIN 
+
+    IMPORTING angle_2D
+
+    Arc : TYPE = {alpha : Angle_2D | LET (A,C,B)=alpha IN sqv(A-C) = sqv(B-C)}
+
+    CircularSegment_2D : DATATYPE
+    BEGIN 
+      mk_circular_segment(arc:Arc) : circular_segement_2D? 
+    END CircularSegment_2D
+
+    % Return true if the clockwise arc is a circular segment, i.e., 0 <= arc <= pi
+    cw_circular_segment?(CS:CircularSegment_2D) : bool =
+      anti_reflex?(arc(CS))
+
+    radius(CS:CircularSegment_2D) : posreal = 
+      LET (A,C,B) = arc(CS) IN
+        norm(A-C)
+    
+     % Function returns true if point Q is inside circlular segment CS or its complement,
+     % depedning on the arc from A,B being either clocwise or counter clockwise
+     % (this function includes borders) 
+    point_in?(CS: CircularSegment_2D,clockwise:bool)(Q:Vect2) : bool =
+      LET (A,C,B) = arc(CS),
+           CA = A-C,
+           CQ = Q-C,
+           AQ = Q-A,
+           AB = B-A,
+           QAB = det(AQ,AB) IN  % QAB = 0 then Q is colinear to AB
+                                % QAB > 0 then Q is to the right of AB
+                                % QAB < 0 then Q is to the left of AB                 
+        sqv(CQ) <= sqv(CA) AND
+        (QAB = 0 OR clockwise = QAB < 0)
+ 
+    def_points_in_circular_segment : LEMMA
+     FORALL (CS:CircularSegment_2D,clockwise:bool) :
+      LET (A,C,B) = arc(CS) IN
+        point_in?(CS,clockwise)(A) AND
+        point_in?(CS,clockwise)(B) 
+
+    center_in_circular_segment : LEMMA
+     FORALL (CS:CircularSegment_2D,clockwise:bool) :
+      LET (A,C,B) = arc(CS) IN
+        point_in?(CS,clockwise)(C) IFF 
+        (clockwise = reflex?(A,C,B) IMPLIES collinear?(A,B,C))
+    
+    % Function returns true if point Q is inside circlular segment CS or its complement,
+    % depedning on the arc from A,B being either clocwise or counter clockwise
+    % (this function excludes borders) 
+    point_strictly_in?(CS: CircularSegment_2D,clockwise:bool)(Q:Vect2) : bool =
+      LET (A,C,B) = arc(CS),
+           CA = A-C,
+           CQ = Q-C,
+           AQ = Q-A,
+           AB = B-A,
+           QAB = det(AQ,AB) IN  % QAB = 0 then Q is colinear to AB
+                                % QAB > 0 then Q is to the right of AB
+                                % QAB < 0 then Q is to the left of AB                 
+        sqv(CQ) < sqv(CA) AND
+        QAB /= 0 AND 
+        clockwise = (QAB < 0)  
+
+    def_points_not_strictly_in_circular_segment : LEMMA
+     FORALL (CS:CircularSegment_2D,clockwise:bool) :
+      LET (A,C,B) = arc(CS) IN
+        NOT point_strictly_in?(CS,clockwise)(A) AND
+        NOT point_strictly_in?(CS,clockwise)(B) 
+
+    center_strictly_in_circular_segment : LEMMA
+      FORALL (CS:CircularSegment_2D,clockwise:bool) :
+        LET (A,C,B) = arc(CS) IN
+          point_strictly_in?(CS,clockwise)(C) IFF 
+          (non_collinear?(A,B,C) AND clockwise = anti_reflex?(A,C,B))
+
+    % Test circular segments
+    test_circular_segment_cw : CircularSegment_2D =
+      LET C : Vect2 = (1,2),
+          A : Vect2 = (1,6),
+          B : Vect2 = (5,2) IN
+        mk_circular_segment(A,C,B)
+
+    test_Q_in_CS_cw : LEMMA
+      LET CS = test_circular_segment_cw,
+          C : Vect2 = (1,2),
+          Q0 : Vect2 = (3,5),
+          Q1 : Vect2 = (4,4),
+          Q2 : Vect2 = (1,2) IN
+        point_in?(CS,TRUE)(Q0) AND
+        point_strictly_in?(CS,TRUE)(Q1) AND
+        point_in?(CS,FALSE)(Q2) AND
+        point_in?(CS,FALSE)(C)
+ 
+    test_Q_not_in_CS_cw : LEMMA
+      LET CS = test_circular_segment_cw,
+          Q0 : Vect2 = (3,5),
+          Q1 : Vect2 = (4,4),
+          Q2 : Vect2 = (1,2), 
+          Q3 : Vect2 = (4,5) IN
+        NOT point_in?(CS,FALSE)(Q0) AND
+        NOT point_in?(CS,FALSE)(Q1) AND
+        NOT point_strictly_in?(CS,TRUE)(Q2) AND
+        NOT point_in?(CS,TRUE)(Q3) AND
+        NOT point_in?(CS,FALSE)(Q3)
+
+    % Test circular segments
+    test_circular_segment_ccw : CircularSegment_2D =
+      LET C : Vect2 = (1,2),
+          A : Vect2 = (-3,2),
+          B : Vect2 = (1,-2) IN
+        mk_circular_segment(A,C,B)
+
+    test_Q_in_CS_ccw : LEMMA
+      LET CS = test_circular_segment_ccw,
+          Q0 : Vect2 = (0,0),
+          Q1 : Vect2 = (-1,-1),
+          Q2 : Vect2 = (2,2), 
+          Q3 : Vect2 = (-2,0) IN
+        point_in?(CS,TRUE)(Q0) AND
+        point_strictly_in?(CS,FALSE)(Q1) AND
+        point_in?(CS,TRUE)(Q2) AND
+        point_strictly_in?(CS,FALSE)(Q3)
+
+  END circular_segment_2D

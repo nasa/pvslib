@@ -1,0 +1,223 @@
+triangle_2D : THEORY
+BEGIN 
+
+  IMPORTING angle_2D
+ 
+  % A triangle is represented by 3 non-collinear points
+
+  Triangle_2D : DATATYPE
+    BEGIN 
+      mk_triangle(points:NonCollinearPoints) : triangle_2D? 
+    END Triangle_2D
+    
+  perimeter(T:Triangle_2D) : posreal =
+    LET (A,B,C) = points(T),
+        AB = B-A,
+        BC = C-B,
+        CA = A-C IN
+      norm(AB) + norm(BC) + norm (CA)
+
+  area(T:Triangle_2D) : posreal =
+    LET (A,B,C) = points(T),
+        AB = B-A,
+        AC = C-A IN
+    abs(det(AB,AC))/2
+
+  % 0 = right,  0 < acute, obtuse  < 0
+  IMPORTING reals@sign3
+
+  type_by_angle(T:Triangle_2D) : int =
+    LET (A,B,C) = points(T),
+        dotA = (B-A)*(C-A),
+        dotB = (A-B)*(C-B),
+        dotC = (A-C)*(B-C) IN
+      sign3(dotA*dotB*dotC)
+
+  right?(T:Triangle_2D) : bool =
+    type_by_angle(T) = 0
+
+  acute?(T:Triangle_2D) : bool =
+    type_by_angle(T) > 0
+    
+  obtuse?(T:Triangle_2D) : bool =
+    type_by_angle(T) < 0 
+
+  % 0 = equilateral,  0 < isosceles, scalene  < 0
+  type_by_side(T:Triangle_2D) : int =
+    LET (A,B,C) = points(T),
+        ab = sqv(B-A),
+        bc = sqv(C-B),
+        ca = sqv(A-C) IN
+    IF ab = bc AND bc = ca THEN 0
+    ELSIF ab = bc OR bc = ca OR ab = ca THEN 1
+    ELSE -1
+    ENDIF
+
+  equilateral?(T:Triangle_2D) : bool =
+    type_by_side(T) = 0  
+
+  isosceles?(T:Triangle_2D) : bool =
+    type_by_side(T) > 0  
+  
+  scalene?(T:Triangle_2D) : bool =
+    type_by_side(T) < 0
+
+  IMPORTING structures@listn
+
+  % Return vertices in clockwise/counter-clockwise order
+  vertices(T:Triangle_2D,clockwise:bool) : listn[Vect2](3) =
+    LET (A,B,C) = points(T),
+        AB = B-A,
+        BC = C-B,
+        CA = A-C IN
+    IF clockwise = (det(AB,BC) < 0) THEN 
+      (: A, B, C :)
+    ELSE  
+      (: A, C, B :)
+    ENDIF
+
+  % Vertices form a triangle:
+  % ABC are listed in the order specified by clockwise
+  vertices_of_triangle : LEMMA
+  FORALL (T:Triangle_2D,clockwise:bool) :
+    LET (A,B,C) = points(T),
+        l = vertices(T,clockwise),
+        AB = B-A,
+        BC = C-B,
+        P1 = nth(l,0),
+        P2 = nth(l,1),
+        P3 = nth(l,2),
+        P12 = P2-P1,
+        P23 = P3-P2,
+        P31 = P1-P3 IN
+      A = P1 AND 
+      IF clockwise = (det(AB,BC) < 0) THEN
+        B = P2 AND C = P3
+      ELSE 
+        B = P3 AND C = P2 
+      ENDIF AND
+      IF clockwise THEN 
+        det(P12,P23) < 0 AND det(P23,P31) < 0 AND det(P31,P12) < 0
+      ELSE 
+        det(P12,P23) > 0 AND det(P23,P31) > 0 AND det(P31,P12) > 0
+      ENDIF
+
+  % Function returns true if point Q is inside triangle T (including borders) 
+  % Implemented formula in https://mathworld.wolfram.com/TriangleInterior.html
+  % a  = (det(Q,AC)-det(A,AC))/d,
+  % b  = (det(A,AB)-det(Q,AB))/d IN 
+  % a >= 0 AND b >= 0 AND a+b <= 1
+ point_in?(T:Triangle_2D)(Q:Vect2) : bool =
+    LET (A,B,C) = points(T),
+        AB = B-A, 
+        AC = C-A, 
+        d  = det(AB,AC),
+        ad  = det(Q,AC)-det(A,AC),
+        bd  = det(A,AB)-det(Q,AB) IN 
+      IF d > 0 THEN ad >= 0 AND bd >= 0 AND ad+bd <= d 
+      ELSE ad <= 0 AND bd <= 0 and d <= ad+bd  
+      ENDIF
+
+  def_points_in_triangle : LEMMA
+    FORALL (T:Triangle_2D) :
+      LET (A,B,C) = points(T) IN
+        point_in?(T)(A) AND
+        point_in?(T)(B) AND
+        point_in?(T)(C) 
+
+  % Function returns true if point Q is inside triangle T (excluding borders) 
+  % Implemented formula in https://mathworld.wolfram.com/TriangleInterior.html, 
+  % where A is v0, AB is v1, AC is v2 and Q is v.
+  % a  = (det(Q,AC)-det(A,AC))/d,
+  % b  = (det(A,AB)-det(Q,AB))/d IN 
+  % a > 0 AND b > 0 AND a+b < 1
+  point_strictly_in?(T:Triangle_2D)(Q:Vect2) : bool =
+    LET (A,B,C) = points(T),
+        AB = B-A, 
+        AC = C-A, 
+        d  = det(AB,AC),
+        ad = det(Q,AC)-det(A,AC),
+        bd = det(A,AB)-det(Q,AB) IN 
+      IF d > 0 THEN ad > 0 AND bd > 0 AND ad+bd < d 
+      ELSE ad < 0 AND bd < 0 and d < ad+bd  
+      ENDIF
+  
+  def_points_not_striclty_in_triangle : LEMMA
+    FORALL (T:Triangle_2D) :
+      LET (A,B,C) = points(T) IN
+        NOT point_strictly_in?(T)(A) AND
+        NOT point_strictly_in?(T)(B) AND
+        NOT point_strictly_in?(T)(C) 
+
+  % Test actue and obtuse triangles
+  test_acute : LEMMA
+    acute?(mk_triangle(mk_vect2(-3,0),mk_vect2(1,3),mk_vect2(0,-2))) AND 
+    acute?(mk_triangle(mk_vect2(1,3),mk_vect2(4,1),mk_vect2(0,-2)))      
+
+  test_obtuse : LEMMA
+    obtuse?(mk_triangle(mk_vect2(-1,0),mk_vect2(1,3),mk_vect2(0,-2))) AND 
+    obtuse?(mk_triangle(mk_vect2(1,3),mk_vect2(2,1),mk_vect2(0,-2)))      
+
+  test_isosceles : LEMMA
+    isosceles?(mk_triangle(mk_vect2(-2,0),mk_vect2(0,3),mk_vect2(2,0))) AND
+    isosceles?(mk_triangle(mk_vect2(1,1),mk_vect2(1,3),mk_vect2(3,1)))
+
+  test_scalene : LEMMA
+    scalene?(mk_triangle(mk_vect2(-2,0),mk_vect2(1,3),mk_vect2(0,-2))) AND
+    scalene?(mk_triangle(mk_vect2(1,3),mk_vect2(0,-2),mk_vect2(3,1)))
+
+  % Test triangle defined by A = (-2,0), B = (1,3), and C = (0,-2)
+  test_triangle_cw : Triangle_2D = 
+    LET A : Vect2 = (-2,0),
+        B : Vect2 = (1,3),
+        C : Vect2 = (0,-2) IN
+        mk_triangle(A,B,C) 
+
+  test_is_right_cw : LEMMA
+    right?(test_triangle_cw)
+
+  test_area_cw : LEMMA
+    area(test_triangle_cw) = 6
+
+  test_vertices_cw : LEMMA
+    vertices(test_triangle_cw,TRUE)  = (: mk_vect2(-2,0), mk_vect2(1,3), mk_vect2(0,-2) :) AND
+    vertices(test_triangle_cw,FALSE) = (: mk_vect2(-2,0), mk_vect2(0,-2), mk_vect2(1,3) :) 
+
+  test_Q_in_T_cw : LEMMA
+    LET T  = test_triangle_cw,
+        Q0 : Vect2 = (0,0),
+        Q1 : Vect2 = (-1,-1),
+        Q2 : Vect2 = (1,1) IN
+      point_in?(T)(Q0) AND
+      point_in?(T)(Q1) AND
+      NOT point_in?(T)(Q2) AND
+      NOT point_strictly_in?(T)(Q1)
+
+% Test triangle defined by A = (1,3), B = (0,-2), and C = (3,1)
+  test_triangle_ccw : Triangle_2D = 
+    LET A : Vect2 = (1,3),
+        B : Vect2 = (0,-2),
+        C : Vect2 = (3,1) IN
+        mk_triangle(A,B,C) 
+
+  test_is_right_ccw : LEMMA
+    right?(test_triangle_ccw)      
+
+  test_area_ccw : LEMMA
+    area(test_triangle_ccw) = 6
+
+  test_vertices_ccw : LEMMA
+    vertices(test_triangle_ccw,FALSE)  = (: mk_vect2(1,3), mk_vect2(0,-2), mk_vect2(3,1) :) AND
+    vertices(test_triangle_ccw,TRUE) = (: mk_vect2(1,3), mk_vect2(3,1), mk_vect2(0,-2) :) 
+  
+  test_Q_in_T_ccw : LEMMA
+    LET T  = test_triangle_ccw,
+        Q0 : Vect2 = (0,0),
+        Q1 : Vect2 = (1,1),
+        Q2 : Vect2 = (2,2) IN
+      NOT point_in?(T)(Q0) AND
+      point_in?(T)(Q1) AND
+      point_in?(T)(Q2) AND
+      NOT point_strictly_in?(T)(Q2)
+
+END triangle_2D

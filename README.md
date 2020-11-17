@@ -62,6 +62,7 @@ Currently, NASALib consists of 53 libraries and includes almost 30K lemmas.
 | [scott](./scott/README.md) | Scott topology. |
 | [series](./series/README.md) | Power series, comparison test, ratio test, Taylor's theorem. |
 | [sets_aux](./sets_aux/README.md) | Power sets, orders, cardinality over infinite sets. Includes functional and relational facts based on Axiom of Choice and refinement relations based on equivalence relations. |
+| [shapes](./shapes/README.md) | 2D-Shapes: triangle, parallelogram, rectangle, circular segment |
 | [sigma_set](./sigma_set/README.md) | Summations over countably infinite sets. |
 | [sorting](./sorting/README.md) | Sorting algorithms. |
 | [structures](./structures/README.md) | Bounded arrays, finite sequences, bags, and several other structures. |
