@@ -1,16 +1,13 @@
 NASALib
 =
 
-NASALib is a collaborative effort being carried out for over
-[three decades](http://shemesh.larc.nasa.gov/fm/ftp/larc/PVS-library)
-in the context of the
-[research effort on theorem proving](http://shemesh.larc.nasa.gov/fm/fm-pvs.html)
-sponsored by
-[NASA Langley Research Center (LaRC)](http://www.nasa.gov/centers/langley/home).
+NASALib is a continuing collaborative effort that has spanned over 3 decades,
+to aid in research related to theorem proving  sponsored by NASA
+(https://shemesh.larc.nasa.gov/fm/pvs/).
 It consists of a collection of formal development (i.e.,
 <i>libraries</i>) written in the Prototype Verification System
-([PVS](http://pvs.csl.sri.com)) and maintained by the
-[Formal Methods Team at NASA LaRC](http://shemesh.larc.nasa.gov/fm).
+([PVS](http://pvs.csl.sri.com)), contributed by SRI, NASA,NIA, and the PVS community, and maintained by the
+[NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
 The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http://pvs.csl.sri.com/).
