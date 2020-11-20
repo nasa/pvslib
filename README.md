@@ -239,6 +239,6 @@ tools are also included as appropriate.
 
 Enjoy it.
 
-[The Formal Methods Team at NASA LaRC](http://shemesh.larc.nasa.gov/fm)
+[The NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
 
 Contact: [César A. Muñoz (NASA)](http://shemesh.larc.nasa.gov/people/cam)
