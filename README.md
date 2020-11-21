@@ -75,7 +75,7 @@ Currently, NASALib consists of 53 libraries and includes almost 30K lemmas.
 
 ## Dependencies
 
-Check the [NASALib dependency graph](./all-theories.svg "Dependency Graph").
+Check the [NASALib dependency graph](docs/all-theories.svg "Dependency Graph").
 
 # Scripts
 
@@ -214,7 +214,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 If we have incorrectly attributed a PVS development or you have contributed to NASALib and
 your name is not included here, please let us know.
 
-If you want to contribute please read this [guide](DEVEL-GUIDE.md).
+If you want to contribute please read this [guide](docs/DEVEL-GUIDE.md).
 
 DISCLAIMER
 --
