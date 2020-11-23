@@ -91,7 +91,7 @@ NASALib also provides a collection of scripts that automates several tasks.
 * [`dependencygraph`](./Scripts.md#dependencygraph) - Generates a library dependency graph for libraries in the current directory.
 * [`dependency-all`](./Scripts.md#d#dependency-all) - Generates the dependency graphs for the PVS libraries in the current folder.
 
-Click [here](Scripts.md) for more details on these scripts.
+Click [here](docs/Scripts.md) for more details on these scripts.
 
 (*) Already included in the PVS 7.1 distribution.
 
@@ -217,7 +217,7 @@ your name is not included here, please let us know.
 If you want to contribute please read this [guide](docs/DEVEL-GUIDE.md).
 
 DISCLAIMER
---
+--<
 NASALib is a collection of formal specifications most of
 which have been in the public domain for several years. The Formal
 Methods Team at NASA LaRC still
