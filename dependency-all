@@ -1,11 +1,27 @@
 #!/bin/bash
 
-VERSION="ProofLite-7.1.0 (06/01/20)"
-DEPENDENCYALLVERSION="dependency-all - $VERSION"
+if [ ! -z "$PVS_DIR" ]; then
+    provethem="$PVS_DIR/provethem"
+else
+    provethem=`which provethem`
+    if [ ! $provethem  ]; then
+	printf "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH.\n"
+	exit 1;
+    fi
+fi
+
+readVersion() {
+    if ! type "$provethem" > /dev/null 2>&1  || ! VERSION=$($provethem --version) ; then
+	printf "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH.\n"
+	exit 1;
+    fi
+}
 
 usage() {
+    readVersion
+    
     echo "NAME
-  $DEPENDENCYALLVERSION -- Generates the dependency graphs for the PVS libraries in the current folder.
+  dependency-all $VERSION -- Generates the dependency graphs for the PVS libraries in the current folder.
 
 SYNOPSIS
 
@@ -48,10 +64,13 @@ do
 	usage
 	exit 0;;
     -version|--version)
-	echo $DEPENDENCYALLVERSION
+	readVersion
+	echo $VERSION
 	exit 0;;
     -force|--force)
 	FORCE=--force;;
+    --collection-label=*)
+	COLLECTIONLABEL="$COLLECTIONLABEL $1";;
     # valid options
     --after=*|-after=*\
 	|--before=*|-before=*\
@@ -83,13 +102,11 @@ do
   shift 
 done
 
-provethem=`which provethem`
-
 if [ "$provethem" ]; then
-    NASALIBPATH=$(pvs -raw -E '(let ((msg (extra-pvs-nasalib))) (format t "~%NASALIBPATH ~a~%" msg)(bye))' -v 0 -batch | sed -nE 's#NASALIBPATH (.*)$#\1#p')
-    NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)/$#\1#p')
-    $provethem $ADDITIONALARGS --execute "cd $NASALIBPATH; ./dependencygraph $FORCE --centered-in=%DIR% --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR%; mv %DIR%.svg %DIR%/"
+    NASALIBPATH=$(pvs -raw -E '(let ((msg (extra-pvs-nasalib))) (format t "~%NASALIBPATH ~a~%" msg)(bye))' -v 0 -batch | sed -nE 's#NASALIBPATH (.*)/$#\1#p')
+    NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)$#\1#p')
+    $provethem $ADDITIONALARGS --execute "cd ..; pwd -P; $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL --centered-in=%DIR% --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR%; mv %DIR%.svg %DIR%/"
 else
-  echo "Error: directory where PVS is installed must be in the environment variable PATH for this command to work"
+  echo "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH"
 fi
 
