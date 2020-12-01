@@ -29,23 +29,37 @@ SYNOPSIS
 
 DESCRIPTION
   
-  Uses provethem to iterate dependency-graph over all the libraries in the current directory. 
+  Applies dependencygraph over all the libraries in the current directory that are
+  listed in the all-theories file. 
 
-  As in provethem, the scope of application of dependency-all can be controlled using 
+  The option -no-iterate provokes the generation of a graph for the whole collection.
+
+  If such option is not present, one graph is generated for each library in the
+  collection. When in iterative mode, the scope of application can be controlled using 
   the options --after, --before, --but, --do, --from, and --to detailed below. The order 
   implicitly referred to by all these options is the one induced by the applicable 
   all-theories file.
 
+  This command also accepts all the parameters accepted by dependencygraph.
+
 OPTIONS
 
-  --force         forces regeneration of .dep files
+  --force         force regeneration of .dep files
 
-  --after=<dir>   proves all libraries after <dir>, exclusive
-  --before=<dir>  proves all libraries before <dir>, exclusive
+  --no-iterate    generate graph for the whole collection instead of
+  		  iterating on each library.
+
+  --zoomed        zoom into the current library when in iterative mode
+  		  or all of them otherwise.
+
+  --after=<dir>   process all libraries after <dir>, exclusive
+  --before=<dir>  process all libraries before <dir>, exclusive
   --but=<dir1>,..,<dirn>  does not process libraries <dir1>,...,<dirn>
   --do=<dir1>,..,<dirn>   process libraries <dir1>,...,<dirn>
-  --from=<dir>    proves all libraries from <dir>, inclusive.
-  --to=<dir>      proves all libraries to <dir>, inclusive.
+  --from=<dir>    process all libraries from <dir>, inclusive.
+  --to=<dir>      process all libraries to <dir>, inclusive.
+
+  --dry-run       no action. Print call to dependencygraph.
 
   -h|--help       prints this message
   --version       prints version information and exit
@@ -56,6 +70,9 @@ SEE ALSO
 }
 
 ADDITIONALARGS=
+NOITERATE=
+DRYRUN=
+ZOOMORCENTER="--centered-in=%DIR%"
 
 while [ $# -gt 0 ]
 do
@@ -71,33 +88,41 @@ do
 	FORCE=--force;;
     --collection-label=*)
 	COLLECTIONLABEL="$COLLECTIONLABEL $1";;
+    -no-iterate|--no-iterate)
+	NOITERATE=t;;
+    -dry-run|--dry-run)
+	DRYRUN=echo;;
+    -zoomed|--zoomed)
+	ZOOMORCENTER="--zoom=%DIR%";;
     # valid options
     --after=*|-after=*\
-	|--before=*|-before=*\
-	|--but=*|-but=*\
-	|--do=*|-do=*\
-	|--from=*|-from=*\
-	|--to=*|-to=*)
-	ADDITIONALARGS="$ADDITIONALARGS $1";;	
+    	|--before=*|-before=*\
+    	|--but=*|-but=*\
+    	|--do=*|-do=*\
+    	|--from=*|-from=*\
+    	|--to=*|-to=*)
+    	ADDITIONALARGS="$ADDITIONALARGS $1";;	
     --after|-after\
-	|--before|-before\
-	|--but|-but\
-	|--do|-do\
-	|--from|-from\
-	|--to|-to)
-	if [[ $2 == -* ]]; then
-	    if [[ $1 =~ ^-[^-].*$ ]]; then
-		echo "Warning: missing values for $1 option (expected syntax is $1 <values>)"
-	    else
-		echo "Warning: missing values for $1 option (expected syntax is $1=<values>)"
-	    fi;
-	else
-	    ADDITIONALARGS="$ADDITIONALARGS $1 $2"
-	    shift
-	fi;;
-    # invalid options
+    	|--before|-before\
+    	|--but|-but\
+    	|--do|-do\
+    	|--from|-from\
+    	|--to|-to)
+    	if [[ $2 == -* ]]; then
+    	    if [[ $1 =~ ^-[^-].*$ ]]; then
+    		echo "Warning: missing values for $1 option (expected syntax is $1 <values>)"
+    	    else
+    		echo "Warning: missing values for $1 option (expected syntax is $1=<values>)"
+    	    fi;
+    	else
+    	    ADDITIONALARGS="$ADDITIONALARGS $1 $2"
+    	    shift
+    	fi;;
+    # # invalid options
+    # *)
+    # 	echo "Warning: omitting unrecognized option $1";;
     *)
-	echo "Warning: omitting unrecognized option $1";;
+	ADDITIONALDGARGS="$ADDITIONALDGARGS $1";;
   esac
   shift 
 done
@@ -105,7 +130,14 @@ done
 if [ "$provethem" ]; then
     NASALIBPATH=$(pvs -raw -E '(let ((msg (extra-pvs-nasalib))) (format t "~%NASALIBPATH ~a~%" msg)(bye))' -v 0 -batch | sed -nE 's#NASALIBPATH (.*)/$#\1#p')
     NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)$#\1#p')
-    $provethem $ADDITIONALARGS --execute "cd ..; pwd -P; $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL --centered-in=%DIR% --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR%; mv %DIR%.svg %DIR%/"
+    if [ $DRYRUN ]; then
+	echo "-- Dry run --"
+    fi
+    if [ "$NOITERATE" ]; then
+	$DRYRUN $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL --svg --rankdir=TB --collection-label="$NASALIBDIR=NASALib" --collection-label="lib=PVS Prelude" --splines=ortho all-theories
+    else
+	$DRYRUN $provethem $ADDITIONALARGS --execute "cd ..; $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL $ZOOMORCENTER --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR% $ADDITIONALDGARGS; mv %DIR%.svg %DIR%/"
+    fi
 else
   echo "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH"
 fi

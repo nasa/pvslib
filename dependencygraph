@@ -257,13 +257,15 @@ $zoom = deslash(join(',',@zoom));
 my ($reach_from_library,$reach_from_theory) = split(/@/,$reach_from) if $reach_from;
 $pdf = $pdf || (!$dot && !$svg);
 
+print "collection_labels @{[ %collection_labels ]}\n\n" if $debug;
+
 usage if $help;
 
 $file = shift;
 if (!$file) {
     $file = 'all-theories';
 } elsif ( ! -f $file ) {
-  die 'File $file not found';
+  die "File $file not found";
 }
 die "$usageln\n" if shift; 
 
@@ -356,8 +358,12 @@ if ($reach_from) {
   push(@zoomlist, $reach_from_library) if !grep(/^$reach_from_library$/,@zoomlist);
 }
 
+$centered_in = "" if grep(/^$centered_in$/,@zoom);
+
 if ($centered_in) {
   push(@targets, $centered_in) if !grep(/^$centered_in$/,@targets);
+  print "\ncentered_in $centered_in\n";
+  print "\nzoom @zoom\n";
 }
 
 die "Nothing to generate\n" if !@targets;
@@ -368,6 +374,8 @@ if ($top) {
   $topfile = "top";
 }
 
+print "\ntargets @targets \n" if $debug;
+
 my @libraries=@targets;
 
 
@@ -376,7 +384,9 @@ $centered_in = getcwd."/".$centered_in if $centered_in;
 
 while (@libraries) {
   $lib = pop(@libraries);
-  
+
+  print "\nlib $lib\n" if $debug;
+
   push(@nodes,$lib);
 
   if ($force || ! -f "$lib/pvsbin/$topfile.dep" ) {
@@ -435,11 +445,18 @@ while (@libraries) {
 	# add vertex in case the library is not connected to any other
 	add_library_vertex($fullyQualifiedLibName);
       } elsif ($line =~/^(\/.+)\//) {
-	my $uname = unqualify_library_name($1);
-	if ($closure) {
-	  if (!grep(/^$uname$/,@libraries) && !grep(/^$uname$/,@libraries) && grep(/^$uname$/,@all_libs)) {
-	    push(@libraries, $uname);
-	    push(@zoomlist, $uname) if ($closure eq "theory") && !grep(/^$uname$/,@zoomlist);
+	my $destlib = unqualify_library_name($1);
+	print "-> destlib $destlib \n" if $debug;
+
+	# if the destination is zoomed
+	if (grep(/^$destlib$/,@zoomlist)) {
+	  if ($line =~/(.+):(.*)/ && ($showtop || $2 ne "$topfile")) {
+	    add_theory_vertex($fullyQualifiedLibName,$2);
+	  }
+	} elsif ($closure) {
+	  if (!grep(/^$destlib$/,@libraries) && grep(/^$destlib$/,@all_libs)) {
+	    push(@libraries, $destlib);
+	    push(@zoomlist, $destlib) if ($closure eq "theory") && !grep(/^$destlib$/,@zoomlist);
 	  } 
 	}
 	add_libraries_edge($fullyQualifiedLibName,$1);
@@ -465,7 +482,7 @@ $graph->set_graph_attribute('concentrate',true);
 my $writer = Graph::Writer::Dot->new(cluster => 'group');
 if ($reach_from || $centered_in) {
 
-#  print "graph $graph \n";
+#  print "\ngraph $graph \n" if $debug;
 
   
   # Compute Shortest Path Tree from $reach_from node.
@@ -473,8 +490,8 @@ if ($reach_from || $centered_in) {
   @reachables = $graph->all_successors($reach_from) if $reach_from; 
   @reachables = $graph->neighbours($centered_in) if $centered_in;
 
-#  print "centered_in $centered_in \n";
-#  print "reachables @reachables \n";
+  print "centered_in $centered_in \n" if $debug;
+  print "reachables @reachables \n" if $debug;
   
   push(@reachables, $reach_from) if $reach_from;
   push(@reachables, $centered_in) if $centered_in;
