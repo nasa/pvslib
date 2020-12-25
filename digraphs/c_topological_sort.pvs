@@ -36,7 +36,7 @@ BEGIN
    non_temporary_marking: TYPE = {m| ∀ x: ¬temporary?(m(x))}
 
   % -------------------------------------------------------------------------- %
-  % Counting temporaries and permanent marks inside a marking                  %
+  % Counting temporary and permanent marks inside a marking                    %
   % -------------------------------------------------------------------------- %
 
    temp_count((l:list[T]), m) : nat = length(filter[T](l, temporary? o m))
@@ -55,7 +55,7 @@ BEGIN
    perm_count_same2  : Lemma ∀ (l: list[T]), (m: marking), (x: T) :
       ¬ permanent?(m(x)) ⇒ perm_count(l, m WITH [x := temporary]) = perm_count(l, m)
    perm_count_incr   : Lemma ∀ (l: list[T]), (m: marking), (x: T) : perm_count(l, m WITH [x := temporary]) <= perm_count(l, m)
-   perm_count_bound  : Lemma ∀ (l: list[T]), (m: marking) : perm_count(l, m) <= length(l)
+   perm_count_bound  : Lemma ∀ (l: list[T]), (m: marking): perm_count(l, m) <= length(l)
 
   % -------------------------------------------------------------------------- %
   % Topological lists                                                          %
@@ -91,26 +91,23 @@ BEGIN
   % -------------------------------------------------------------------------- %
 
    visit(G)
-        (m: marking,
-	 l: (topperm_list(G, m)),
-         node_id:
-           { (i: VertID(G)) | let x = node(G)(i) in
-	   ¬ permanent?(m(x)) ∧
-	   ∀ y: m(y) = temporary ⇒  x = y ∨ (∃ (w:Walk(G)): from?(w, y, x))},
-	 adjs:
-	   { k: Adjs(G, node_id) |
-	   ∀ (x:VertID(G)): edge?(G)(node(G)(node_id), node(G)(x)) ⇒
-	     member(x, k) ∨ permanent?(m(node(G)(x)))}
-	 ): RECURSIVE {res : [marking, list[Vert(G)]] | let(m', l') = res in let node = node(G)(node_id) in
-	 topperm_list(G, m')(l') ∧
-	 greater_marking(m', m) ∧
-	 suffix?(l, l') ∧
-	 permanent?(m'(node)) ∧
-	 ∀ x: member(x, l') ⇒ ¬ member(x, l) ⇒ (x = node ∨ ∃ (w: Walk(G)): from?(w , node, x))
-	 } =
+        (m       : marking,
+	 % permanent, non-repetitive topological list
+	 l       : (topperm_list(G, m)),
+	 % current base node id
+         node_id : { (i: VertID(G)) | let x = node(G)(i) in
+	                             ¬ permanent?(m(x)) ∧
+	                             ∀ y: m(y) = temporary ⇒  x = y ∨ (∃ (w:Walk(G)): from?(w, y, x))}, % must be reachable from all nodes marked `temporary`
+	 % list of remaining adjacent nodes to process
+	 adjs    : { k: Adjs(G, node_id) | ∀ (x:VertID(G)): edge?(G)(node(G)(node_id), node(G)(x)) ⇒
+	                                   member(x, k) ∨ permanent?(m(node(G)(x)))} % adjacent nodes that are not in this list must have been processed and marked with a `permanent` mark
+	 ): RECURSIVE
+	 {res : [marking, list[Vert(G)]] | let(m', l') = res in let node = node(G)(node_id) in
+	                                   topperm_list(G, m')(l') ∧ greater_marking(m', m) ∧ suffix?(l, l') ∧ permanent?(m'(node)) ∧
+	                                   ∀ x: member(x, l') ⇒ ¬ member(x, l) ⇒ (x = node ∨ ∃ (w: Walk(G)): from?(w , node, x))} = % newly added nodes are reachable from the currently explored one
    let node = node(G)(node_id) in
    Cases adjs of
-     null: (m WITH [node := permanent], cons(node, l)),
+     null: (m WITH [node := permanent], cons(node, l)), % All adjacent nodes have been processed
      cons(child_id, adjs'):
          let child = node(G)(child_id) in
          Cases m(child) of
