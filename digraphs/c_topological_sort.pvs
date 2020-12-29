@@ -10,80 +10,107 @@ BEGIN
 
    IMPORTING c_dags[T]
    G: VAR dag
-   x,y: VAR T
+   x, y: VAR T
    n, k, i, j: VAR nat
-   l : VAR list[T]
+   l: VAR list[T]
 
    Vert(G): TYPE = (vert(G))
-   VertID(G) : TYPE = below(size(G))
-   Adjs(G, (n: VertID(G))) : TYPE =
-       {l: list[VertID(G)] | ∀ (x: VertID(G)): member(x, l) ⇒ edge?(G)(node(G)(n), node(G)(x))}
+   VertID(G): TYPE = below(size(G))
+   Adjs(G, (n: VertID(G))): TYPE =
+         {l: list[VertID(G)] |
+            FORALL (x: VertID(G)):
+              member(x, l) ⇒ edge?(G)(node(G)(n), node(G)(x))}
 
   % -------------------------------------------------------------------------- %
   % Marking of a digraph                                                       %
   % -------------------------------------------------------------------------- %
 
    mark: DATATYPE
-   BEGIN
-      none: none?
-      temporary: temporary?
-      permanent: permanent?
-   END mark
+          BEGIN
+           none: none?
+           temporary: temporary?
+           permanent: permanent?
+          END mark
 
    marking: TYPE = [T -> mark]
    m: VAR marking
-   empty_marking: marking = λ x : none
-   non_temporary_marking: TYPE = {m| ∀ x: ¬temporary?(m(x))}
+   empty_marking: marking = LAMBDA x: none
+   non_temporary_marking: TYPE = {m | FORALL x: ¬temporary?(m(x))}
 
   % -------------------------------------------------------------------------- %
   % Counting temporary and permanent marks inside a marking                    %
   % -------------------------------------------------------------------------- %
 
-   temp_count((l:list[T]), m) : nat = length(filter[T](l, temporary? o m))
-   perm_count((l:list[T]), m) : nat = length(filter[T](l, permanent? o m))
+   temp_count((l: list[T]), m): nat = length(filter[T](l, temporary? o m))
+   perm_count((l: list[T]), m): nat = length(filter[T](l, permanent? o m))
 
    % Technical results
-   temp_count_same   : Lemma ∀ (l: list[T]), (m: marking), (x: T) :
-      ¬ member(x, l) ⇒ temp_count(l, m WITH [x := temporary]) = temp_count(l, m)
-   temp_count_incr   : Lemma ∀ (l: list[T]), (m: marking), (x: T) :
-      member(x, l) ⇒ ¬ temporary?(m(x)) ⇒ no_repetitions?(l) ⇒
-      temp_count(l, m WITH [x := temporary]) = 1 + temp_count(l, m)
-   temp_count_bound  : Lemma ∀ (l: list[T]), (m: marking) : temp_count(l, m) <= length(l)
+   temp_count_same: LEMMA
+     FORALL (l: list[T]), (m: marking), (x: T):
+       NOT member(x, l) ⇒
+        temp_count(l, m WITH [x := temporary]) = temp_count(l, m)
+   temp_count_incr: LEMMA
+     FORALL (l: list[T]), (m: marking), (x: T):
+       member(x, l) ⇒
+        NOT temporary?(m(x)) ⇒
+         no_repetitions?(l) ⇒
+          temp_count(l, m WITH [x := temporary]) = 1 + temp_count(l, m)
+   temp_count_bound: LEMMA
+     FORALL (l: list[T]), (m: marking): temp_count(l, m) <= length(l)
 
-   perm_count_same   : Lemma ∀ (l: list[T]), (m: marking), (x: T) :
-      ¬ member(x, l) ⇒ perm_count(l, m WITH [x := temporary]) = perm_count(l, m)
-   perm_count_same2  : Lemma ∀ (l: list[T]), (m: marking), (x: T) :
-      ¬ permanent?(m(x)) ⇒ perm_count(l, m WITH [x := temporary]) = perm_count(l, m)
-   perm_count_incr   : Lemma ∀ (l: list[T]), (m: marking), (x: T) : perm_count(l, m WITH [x := temporary]) <= perm_count(l, m)
-   perm_count_bound  : Lemma ∀ (l: list[T]), (m: marking): perm_count(l, m) <= length(l)
+   perm_count_same: LEMMA
+     FORALL (l: list[T]), (m: marking), (x: T):
+       NOT member(x, l) ⇒
+        perm_count(l, m WITH [x := temporary]) = perm_count(l, m)
+   perm_count_same2: LEMMA
+     FORALL (l: list[T]), (m: marking), (x: T):
+       NOT permanent?(m(x)) ⇒
+        perm_count(l, m WITH [x := temporary]) = perm_count(l, m)
+   perm_count_incr: LEMMA
+     FORALL (l: list[T]), (m: marking), (x: T):
+       perm_count(l, m WITH [x := temporary]) <= perm_count(l, m)
+   perm_count_bound: LEMMA
+     FORALL (l: list[T]), (m: marking): perm_count(l, m) <= length(l)
 
   % -------------------------------------------------------------------------- %
   % Topological lists                                                          %
   % -------------------------------------------------------------------------- %
 
-   permanent_list?(G, m)(l: list[Vert(G)]): bool = ∀ x: member(x, l) ⇔ permanent?(m(x))
-   permanent_list(G, m) : TYPE = (permanent_list?(G, m))
+   permanent_list?(G, m)(l: list[Vert(G)]): bool =
+       FORALL x: member(x, l) ⇔ permanent?(m(x))
+   permanent_list(G, m): TYPE = (permanent_list?(G, m))
 
-   topological_list?(G)(l: list[Vert(G)]) : bool =
-     ∀ (i: below(length(l))), x:
-        (∃ (w:Walk(G)): from?(w, nth(l, i), x)) ⇒ (∃ (j: below(length(l))): x = nth(l, j) ∧ j >= i)
+   topological_list?(G)(l: list[Vert(G)]): bool =
+       FORALL (i: below(length(l))), x:
+         (EXISTS (w: Walk(G)): from?(w, nth(l, i), x)) ⇒
+          (EXISTS (j: below(length(l))): x = nth(l, j) ∧ j >= i)
 
    topperm_list(G, m)(l: list[Vert(G)]): bool =
-     permanent_list?(G, m)(l) ∧ topological_list?(G)(l) ∧ no_repetitions?[T](l)
+       permanent_list?(G, m)(l) ∧
+        topological_list?(G)(l) ∧ no_repetitions?[T](l)
 
   % -------------------------------------------------------------------------- %
   % Comparison of markings                                                     %
   % -------------------------------------------------------------------------- %
 
-   greater_marking(m1, m2: marking) : bool =
-     ∀(node: T) : (permanent?(m2(node)) ⇒ permanent?(m1(node))) ∧ (temporary?(m1(node)) ⇒ temporary?(m2(node)))
+   greater_marking(m1, m2: marking): bool =
+       FORALL (node: T):
+         (permanent?(m2(node)) ⇒ permanent?(m1(node))) ∧
+          (temporary?(m1(node)) ⇒ temporary?(m2(node)))
 
    % Technical results
-   greater_marking_update: Lemma ∀ (m: marking), (x: T): greater_marking(m WITH [x := permanent], m)
-   greater_marking_temp_count : Lemma ∀ (l: list[T]) (m1, m2: marking):
-     greater_marking(m1, m2) ⇒ temp_count(l, m1) <= temp_count(l, m2)
-   greater_marking_perm_count : Lemma ∀ (l: list[T]) (m1, m2: marking) (x:T):
-     greater_marking(m1, m2) ⇒ member(x, l) ⇒ ¬ permanent?(m2(x)) ⇒ permanent?(m1(x)) ⇒ perm_count(l, m1) > perm_count(l, m2)
+   greater_marking_update: LEMMA
+     FORALL (m: marking), (x: T):
+       greater_marking(m WITH [x := permanent], m)
+   greater_marking_temp_count: LEMMA
+     FORALL (l: list[T]) (m1, m2: marking):
+       greater_marking(m1, m2) ⇒ temp_count(l, m1) <= temp_count(l, m2)
+   greater_marking_perm_count: LEMMA
+     FORALL (l: list[T]) (m1, m2: marking) (x: T):
+       greater_marking(m1, m2) ⇒
+        member(x, l) ⇒
+         NOT permanent?(m2(x)) ⇒
+          permanent?(m1(x)) ⇒ perm_count(l, m1) > perm_count(l, m2)
 
 
   % -------------------------------------------------------------------------- %
@@ -91,35 +118,46 @@ BEGIN
   % -------------------------------------------------------------------------- %
 
    visit(G)
-        (m       : marking,
-	 % permanent, non-repetitive topological list
-	 l       : (topperm_list(G, m)),
-	 % current base node id
-         node_id : { (i: VertID(G)) | let x = node(G)(i) in
-	                             ¬ permanent?(m(x)) ∧
-	                             ∀ y: m(y) = temporary ⇒  x = y ∨ (∃ (w:Walk(G)): from?(w, y, x))}, % must be reachable from all nodes marked `temporary`
-	 % list of remaining adjacent nodes to process
-	 adjs    : { k: Adjs(G, node_id) | ∀ (x:VertID(G)): edge?(G)(node(G)(node_id), node(G)(x)) ⇒
-	                                   member(x, k) ∨ permanent?(m(node(G)(x)))} % adjacent nodes that are not in this list must have been processed and marked with a `permanent` mark
-	 ): RECURSIVE
-	 {res : [marking, list[Vert(G)]] | let(m', l') = res in let node = node(G)(node_id) in
-	                                   topperm_list(G, m')(l') ∧ greater_marking(m', m) ∧ suffix?(l, l') ∧ permanent?(m'(node)) ∧
-	                                   ∀ x: member(x, l') ⇒ ¬ member(x, l) ⇒ (x = node ∨ ∃ (w: Walk(G)): from?(w , node, x))} = % newly added nodes are reachable from the currently explored one
-   let node = node(G)(node_id) in
-   Cases adjs of
-     null: (m WITH [node := permanent], cons(node, l)), % All adjacent nodes have been processed
-     cons(child_id, adjs'):
-         let child = node(G)(child_id) in
-         Cases m(child) of
-	    permanent: visit(G)(m, l, node_id, adjs')
-	    else
-               let (m', l') = visit(G)(m With [child := temporary], l, child_id, nth(adjs(G), child_id)) in
-	       visit(G)(m', l', node_id, adjs')
-         endcases
-     endcases
-   measure lex3(size(G) + 1 - perm_count(data(G), m),
-                size(G) + 1 - temp_count(data(G), m),
-		length(adjs))
+        (m: marking, l: (topperm_list(G, m)),
+         node_id:
+           {i: VertID(G) |
+              LET x = node(G)(i) IN
+                NOT permanent?(m(x)) ∧
+                 FORALL y:
+                   m(y) = temporary ⇒
+                    x = y ∨ (EXISTS (w: Walk(G)): from?(w, y, x))},
+         adjs:
+           {k: Adjs(G, node_id) |
+              FORALL (x: VertID(G)):
+                edge?(G)(node(G)(node_id), node(G)(x)) ⇒
+                 member(x, k) ∨ permanent?(m(node(G)(x)))}): RECURSIVE
+         {res: [marking, list[Vert(G)]] |
+            LET (mp, lp) = res IN
+              LET node = node(G)(node_id) IN
+                topperm_list(G, mp)(lp) ∧
+                 greater_marking(mp, m) ∧
+                  suffix?(l, lp) ∧
+                   permanent?(mp(node)) ∧
+                    FORALL x:
+                      member(x, lp) ⇒
+                       NOT member(x, l) ⇒
+                        (x = node ∨
+                          EXISTS (w: Walk(G)): from?(w, node, x))} =
+     LET node = node(G)(node_id) IN
+       CASES adjs
+         OF null: (m WITH [node := permanent], cons(node, l)),
+            cons(child_id, adjsp):
+              LET child = node(G)(child_id) IN
+                CASES m(child) OF permanent: visit(G)(m, l, node_id, adjsp)
+                  ELSE LET (mp, lp) =
+                             visit(G)
+                                  (m WITH [child := temporary], l,
+                                   child_id, nth(adjs(G), child_id))
+                         IN visit(G)(mp, lp, node_id, adjsp)
+                  ENDCASES
+         ENDCASES
+      MEASURE lex3(size(G) + 1 - perm_count(data(G), m),
+                   size(G) + 1 - temp_count(data(G), m), length(adjs))
 
 
 
@@ -128,44 +166,47 @@ BEGIN
   % -------------------------------------------------------------------------- %
 
    topological_sort_aux(G)
-                       (n : below(size(G)),
-		        m : non_temporary_marking,
-			l : (topperm_list(G,m))):
-     Recursive {res: [non_temporary_marking, list[Vert(G)]] | let (m', l') = res in
-                    topperm_list(G, m')(l') ∧
-	            greater_marking(m', m) ∧
-	            suffix?(l, l') ∧
-                    ∀(i: upto(n)): member(node(G)(i), l')} =
-     let node = node(G)(n) in
-     cases m(node) of
-        permanent:
-	    if n = 0 then
-	        (m, l)
-	    else
-	        topological_sort_aux(G)(n-1, m, l)
-	    endif
-	else
-            if n = 0 then
-                visit(G)(m with [node := temporary], l, n, nth(adjs(G), n))
-            else
-                let (m', l') = visit(G)(m with [node := temporary], l, n, nth(adjs(G), n)) in
-	        topological_sort_aux(G)(n-1, m', l')
-            endif
-     endcases
-     Measure n
+                       (n: below(size(G)), m: non_temporary_marking,
+                        l: (topperm_list(G, m))): RECURSIVE
+         {res: [non_temporary_marking, list[Vert(G)]] |
+            LET (mp, lp) = res IN
+              topperm_list(G, mp)(lp) ∧
+               greater_marking(mp, m) ∧
+                suffix?(l, lp) ∧
+                 FORALL (i: upto(n)): member(node(G)(i), lp)} =
+     LET node = node(G)(n) IN
+       CASES m(node)
+         OF permanent:
+              IF n = 0 THEN (m, l)
+              ELSE topological_sort_aux(G)(n - 1, m, l)
+              ENDIF
+         ELSE IF n = 0
+                THEN visit(G)
+                          (m WITH [node := temporary], l, n,
+                           nth(adjs(G), n))
+              ELSE LET (mp, lp) =
+                         visit(G)
+                              (m WITH [node := temporary], l, n,
+                               nth(adjs(G), n))
+                     IN topological_sort_aux(G)(n - 1, mp, lp)
+              ENDIF
+         ENDCASES
+      MEASURE n
 
-   member_length: Lemma ∀ (l1, l2: list[T]):
-      no_repetitions?(l1) ⇒
-      (∀ x: member(x, l1) ⇒ member(x, l2)) ⇒
-      length(l2) >= length(l1)
+   member_length: LEMMA
+     FORALL (l1, l2: list[T]):
+       no_repetitions?(l1) ⇒
+        (FORALL x: member(x, l1) ⇒ member(x, l2)) ⇒ length(l2) >= length(l1)
 
-   topological_sort(G) : {res: [non_temporary_marking, list[Vert(G)]] | let (m, l) = res in
-                    topperm_list(G, m)(l) ∧
-		    length(l) = size(G) ∧
-                    ∀(i: below(size(G))): member(node(G)(i), l)}
-		    =
-		    if (size(G) = 0) then (empty_marking, null)
-		    else topological_sort_aux(G)(size(G) - 1, empty_marking, null) endif
+   topological_sort(G): {res: [non_temporary_marking, list[Vert(G)]] |
+                           LET (m, l) = res IN
+                             topperm_list(G, m)(l) ∧
+                              length(l) = size(G) ∧
+                               FORALL (i: below(size(G))):
+                                 member(node(G)(i), l)} =
+       IF (size(G) = 0) THEN (empty_marking, null)
+       ELSE topological_sort_aux(G)(size(G) - 1, empty_marking, null)
+       ENDIF
 
   % -------------------------------------------------------------------------- %
   % Topological ordering theorem                                               %
@@ -175,7 +216,8 @@ BEGIN
          {f: (bijective?[(vert(G)), below(size(G))]) |
             FORALL (x, y: (vert(G))): edge?(G)(x, y) ⇒ f(x) < f(y)}
 
-   topological_sort_exists: Theorem ∀ G: ∃ (f: topological_ordering(G)): True
+   topological_sort_exists: THEOREM
+     FORALL G: EXISTS (f: topological_ordering(G)): TRUE
 
 
 END c_topological_sort
