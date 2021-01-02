@@ -174,6 +174,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA
 * Ben Di Vito, NASA (retired), USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
+* Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France 
 * Concepción Vidal, University of La Coruña, Spain
 * David Griffioen,CWI, The Netherlands
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
@@ -211,13 +212,14 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Thomas Norris
 * Víctor Carreño, NASA (retired), USA
 
-If we have incorrectly attributed a PVS development or you have contributed to NASALib and
-your name is not included here, please let us know.
+If we have incorrectly attributed a PVS development or you have
+contributed to NASALib and your name is not included here, please let
+us know.
 
 If you want to contribute please read this [guide](docs/DEVEL-GUIDE.md).
 
 DISCLAIMER
---<
+--
 NASALib is a collection of formal specifications most of
 which have been in the public domain for several years. The Formal
 Methods Team at NASA LaRC still
