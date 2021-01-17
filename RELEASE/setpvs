@@ -12,7 +12,7 @@ Each PVS directory should be named PVS-<version>.
 If you have a file ~/.pvs.lisp, put in in PVS-<version>/pvs.lisp
 Define the following environment variables:
 export PVS_DIR=\$PVS_BASE/PVS
-export PATH=\$PVS_DIR:\$PATH
+export PATH=\$PVS_DIR:\$PVS_DIR/nasalib/RELEASE:\$PATH
 export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib
 export PVSEMACS=<absolute directory to Emacs application>"
     exit 0
@@ -22,8 +22,7 @@ while [ $# -gt 0 ]
 do
     case $1 in
 	-h|-help|--help)    
-	    usage
-	    exit 0;;
+	    usage;;
 	-*)
 	    echo "Error: unknown option $1"
 	    echo "Type setpvs -h for help"
@@ -36,38 +35,60 @@ done
 if [ ! -d "$PVS_BASE" ]; then
     usage
 elif [ -z "$version" ]; then
-    echo "*** PVS versions in this system:"
+    echo "*** PVS versions in $PVS_BASE:"
     ls -1d $PVS_BASE/PVS-* | sed -e "s/.*PVS-//g"
+    ls -1d $PVS_BASE/pvs-* | sed -e "s/.*pvs-//g"
     if [ ! -L $PVS_BASE/PVS ]; then
 	echo "*** Current version of PVS hasn't been set"
     else
-	echo "*** Current PVS version:"
-	ls -l $PVS_BASE/PVS | sed -e "s/.*->.*PVS-//g"
+	lspvs=`ls -l $PVS_BASE/PVS | sed -e "s/.* -> //g"`
+	echo "*** Current PVS version ($lspvs):"
+	if [[ $lspvs =~ PVS ]] ; then
+	    echo $lspvs | sed -e "s/.*PVS-//g"
+	elif [[ $lspvs =~ pvs ]] ; then
+	    echo $lspvs | sed -e "s/.*pvs-//g"
+	fi
     fi
+    exit 1
 elif [ -e $PVS_BASE/PVS -a ! -L $PVS_BASE/PVS ]; then
     echo "Directory or file $PVS_BASE/PVS already exists"
-elif [ ! -d $PVS_BASE/PVS-$version ]; then
-    echo "Directory $PVS_BASE/PVS-$version doesn't exist"
-else
-    if [ ! -f  $PVS_BASE/PVS-$version/pvs.lisp ]; then
-	touch $PVS_BASE/PVS-$version/pvs.lisp
+    exit 1
+fi
+
+pvs_dir=
+lspvs=`ls -d $PVS_BASE/PVS-* $PVS_BASE/pvs-*`
+if [[ $lspvs =~ PVS-$version ]] ; then
+    if [ -d "$PVS_BASE/PVS-$version" ]; then
+	pvs_dir="$PVS_BASE/PVS-$version"
     fi
-    if [ -L $PVS_BASE/PVS ]; then
-	rm -f $PVS_BASE/PVS
+elif [[ $lspvs =~ pvs-$version ]] ; then
+    if [ -d "$PVS_BASE/pvs-$version" ]; then
+	pvs_dir="$PVS_BASE/pvs-$version"
     fi
-    ln -f -s $PVS_BASE/PVS-$version $PVS_BASE/PVS
-    rm -f ~/.pvs.*
-    rm -f $PVS_BASE/PVS/src/*fasl
-    ln -f -s $PVS_BASE/PVS-$version/pvs.lisp ~/.pvs.lisp
-    if [ -d "$PVS_BASE/PVS/nasalib/pvs-patches" ]; then
-	rm -f $PVS_BASE/PVS/nasalib/pvs-patches/*fasl
-    fi
-    echo "PVS set to version $version"
-    if [ -z "$PVS_DIR" ]; then
-	echo "Define the following environment variables:"
-	echo "export PVS_DIR=\$PVS_BASE/PVS"
-	echo "export PATH=\$PVS_DIR:\$PATH"
-	echo "export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib"
-	echo "export PVSEMACS=<absdirtoemacs>"
-    fi
+fi
+if [ -z "$pvs_dir" ]; then
+    echo "Neither directory $PVS_BASE/PVS-$version nor $PVS_BASE/pvs-$version found"
+    exit 1
+fi
+
+if [ ! -f  $pvs_dir/pvs.lisp ]; then
+    touch $pvs_dir/pvs.lisp
+fi
+if [ -L $PVS_BASE/PVS ]; then
+    rm -f $PVS_BASE/PVS
+fi
+ln -f -s $pvs_dir $PVS_BASE/PVS
+rm -f ~/.pvs.*
+rm -f $PVS_BASE/PVS/src/*fasl
+ln -f -s $pvs_dir/pvs.lisp ~/.pvs.lisp
+if [ -d "$PVS_BASE/PVS/nasalib/pvs-patches" ]; then
+    rm -f $PVS_BASE/PVS/nasalib/pvs-patches/*fasl
+fi
+echo "PVS set to version $version"
+if [ -z "$PVS_DIR" ]; then
+    echo "Define the following environment variables:"
+    echo "export PVS_DIR=\$PVS_BASE/PVS"
+    echo "export PATH=\$PVS_DIR:\$PVS_DIR/nasalib/RELEASE:\$PATH"
+    echo "export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib"
+    echo "export PVSEMACS=<absdirtoemacs>"
 fi
