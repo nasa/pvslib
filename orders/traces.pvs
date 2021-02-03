@@ -1,0 +1,79 @@
+traces[T:TYPE] : THEORY
+BEGIN
+
+  IMPORTING termination[T]
+
+  rel  : VAR Relation
+  init : VAR PRED[T]
+  inv  : VAR PRED[T]
+
+  reachable(rel)(init)(t:T) : INDUCTIVE bool =
+    init(t) OR
+    EXISTS (tp:T) : reachable(rel)(init)(tp) AND rel(tp,t)
+
+  invariant(rel)(init)(inv) : bool =
+    FORALL (t:(reachable(rel)(init))) : inv(t)
+
+  invariant_rule : THEOREM
+    FORALL (rel,init,inv) :
+      ((FORALL (t0:(init)) : inv(t0)) AND
+       (FORALL (t1:(reachable(rel)(init)))(t2:T):
+         rel(t1,t2) AND inv(t1) IMPLIES inv(t2)))
+      IMPLIES
+        invariant(rel)(init)(inv)
+
+  IMPORTING structures@Maybe
+
+  % A trace is an infinite sequence such of values or none, such that
+  % if one if none, all the rest are nones.
+  Trace : TYPE = { seq: sequence[Maybe[T]] |
+    FORALL (i:nat) : none?(seq(i)) IMPLIES none?(seq(i+1)) }
+
+  none_forever : LEMMA
+    FORALL (tr:Trace,i:nat,j:upfrom(i)) :
+      none?(tr(i)) IMPLIES none?(tr(j))
+
+  % Trace is finite if at some point is none
+  finite_trace?(tr:Trace) : bool =
+    EXISTS (n:nat) : none?(tr(n))
+
+  FiniteTrace : TYPE = (finite_trace?)
+
+  length(ftr:FiniteTrace) : nat =
+    min( {n :nat | none?(ftr(n))} )
+
+  none_after_length : LEMMA
+    FORALL (ftr:FiniteTrace, i:upfrom(length(ftr))) :
+      none?(ftr(i))
+
+  length_is_none : LEMMA
+     FORALL (ftr:FiniteTrace) :
+       none?(ftr(length(ftr)))
+
+  % Trace of a relation 
+  traces(rel)(tr:Trace) : bool =
+    FORALL (n:nat) :
+      none?(tr(n)) OR 
+      IF some?(tr(n+1)) THEN rel(val(tr(n)),val(tr(n+1)))
+      ELSE NOT EXISTS (t:T): rel(val(tr(n)),t)
+      ENDIF
+       
+  %    { t:T | init(t) OR EXISTS (t0:(init)) : TC(rel)(t0,t) }
+
+  % If rel is terminating, the set of runs is empty because there are
+  % no ascending (infinite) sequences
+  %run(rel)(initial) : PRED[(ascending?(rel))] =
+  %  {seq : (ascending?(rel)) | initial(seq(0)) }
+
+
+  %invariant(rel)(initial)(p) : bool =
+  %  FORALL (seq : (run(rel)(initial)), n:nat ): p(seq(n))
+
+  %invariant_run : THEOREM
+  %  FORALL (rel,initial,p):
+  %    (FORALL (seq : (run(rel)(initial))) :
+  %     p(seq(0)) AND 
+  %     FORALL (n : nat) : p(seq(n)) IMPLIES p(seq(n+1)))
+  %    IMPLIES invariant(rel)(initial)(p)
+
+END traces
