@@ -61,9 +61,13 @@ BEGIN
   Trace : TYPE = { seq: sequence[Maybe[T]] |
     FORALL (i:nat) : none?(seq(i)) IMPLIES none?(seq(i+1)) }
 
-  none_forever : LEMMA
+  none_above : LEMMA
     FORALL (tr:Trace,i:nat,j:upfrom(i)) :
       none?(tr(i)) IMPLIES none?(tr(j))
+
+  some_below : LEMMA
+    FORALL (tr:Trace,i:nat,j:upto(i)) :
+      some?(tr(i)) IMPLIES some?(tr(j))
 
   % Trace is finite if at some point is none
   finite_trace?(tr:Trace) : bool =
@@ -107,31 +111,26 @@ BEGIN
         val(tr(0)) = t1 AND
         val(tr(n)) = t2)       
 
-  % termininating
-
   % Run is a trace from an initial set
-  run(rel)(init) : PRED[(traces(rel))] =
-    { tr:(traces(rel)) | some?(tr(0)) AND init(val(tr(0))) }
-
-  % Reachable prexix
+  run(rel)(init) : PRED[Trace] =
+    { tr:Trace | traces(rel)(tr) AND some?(tr(0)) AND init(val(tr(0))) }
 
   run_empty : LEMMA
-    empty?(init) IFF empty?(run(rel)(init))    
+    empty?(init) IFF empty?(run(rel)(init))
+
+  run_all_reachable : LEMMA
+    FORALL (rel,init)(tr:(run(rel)(init)))(n:nat) : some?(tr(n)) IMPLIES
+      reachable(rel)(init)(val(tr(n)))
+
+  reachable_prefix_of_trace : LEMMA
+    FORALL (rel,init)(t:(reachable(rel)(init))):
+      (EXISTS (rn:(run(rel)(init)), n:nat):
+        (FORALL (i:upto(n)): some?(rn(i))) AND
+         init(val(rn(0))) AND
+         val(rn(n)) = t)   
        
-  % A prefix is a finite sequence
-  %prefix(tr:Trace)(fseq:finite_sequence[T]) : bool =
-  %  FORALL (i:below(length(fseq))): some?(tr(i)) AND val(tr(i)) = fseq(i)
-
-  %    { t:T | init(t) OR EXISTS (t0:(init)) : TC(rel)(t0,t) }
-
-  % If rel is terminating, the set of runs is empty because there are
-  % no ascending (infinite) sequences
-  %run(rel)(initial) : PRED[(ascending?(rel))] =
-  %  {seq : (ascending?(rel)) | initial(seq(0)) }
-
-
-  %invariant(rel)(initial)(p) : bool =
-  %  FORALL (seq : (run(rel)(initial)), n:nat ): p(seq(n))
+  invariant_run(rel)(init)(inv) : bool =
+    FORALL (tr : (run(rel)(init)), n:nat ): some?(tr(n)) IMPLIES inv(val(tr(n)))
 
   %invariant_run : THEOREM
   %  FORALL (rel,initial,p):
