@@ -1,9 +1,9 @@
 traces[T:TYPE+] : THEORY
 BEGIN
 
-  IMPORTING termination[T]
+  IMPORTING termination
 
-  rel  : VAR Relation
+  rel  : VAR Relation[T]
   init : VAR PRED[T]
   inv  : VAR PRED[T]
 
@@ -36,6 +36,26 @@ BEGIN
     FORALL (rel,init)(t:T):
       reachable(rel)(init)(t) IFF
       (init(t) OR EXISTS (tt:(init)): TC(rel)(tt,t))
+
+  % Relation is normalizing starting from init
+  normalizing(init:PRED[T])(rel) : bool =
+    empty?({seq:(ascending?(rel)) | init(seq(0))})
+
+  normalizing_reachable : LEMMA
+    normalizing(init)(rel) =
+    empty?({seq:(ascending?(rel)) | 
+      FORALL (i:nat): reachable(rel)(init)(seq(i))})
+
+  terminating_is_normalizing : LEMMA
+    terminating = normalizing(LAMBDA(t:T):TRUE)
+
+  normalizing_is_terminating : LEMMA
+    normalizing(init)(rel) IFF
+    terminating(LAMBDA(t1,t2:T):reachable(rel)(init)(t1) AND rel(t1,t2))
+
+  normalizing_normal_form : LEMMA
+    FORALL (init)(rel:(normalizing(init)))(t:(reachable(rel)(init))):
+      normal(rel)(t) OR EXISTS (nft:(normal(rel))) : TC(rel)(t,nft)
 
   IMPORTING structures@Maybe
 
@@ -79,16 +99,32 @@ BEGIN
     FORALL (n:nat) :
       none?(tr(n)) OR 
       IF some?(tr(n+1)) THEN rel(val(tr(n)),val(tr(n+1)))
-      ELSE NOT EXISTS (t:T): rel(val(tr(n)),t)
+      ELSE normal(rel)(val(tr(n)))
       ENDIF
+  
+  tc_iff_prefix_of_trace : LEMMA
+    FORALL(rel)(t1,t2:T):
+      TC(rel)(t1,t2) IFF
+      (EXISTS (tr:(traces(rel)),n:posnat):
+        (FORALL (i:upto(n)): some?(tr(i))) AND
+        val(tr(0)) = t1 AND
+        val(tr(n)) = t2)       
+
+  % termininating
 
   % Run is a trace from an initial set
   run(rel)(init) : PRED[(traces(rel))] =
     { tr:(traces(rel)) | some?(tr(0)) AND init(val(tr(0))) }
 
+  % Reachable prexix
+
   run_empty : LEMMA
     empty?(init) IFF empty?(run(rel)(init))    
        
+  % A prefix is a finite sequence
+  %prefix(tr:Trace)(fseq:finite_sequence[T]) : bool =
+  %  FORALL (i:below(length(fseq))): some?(tr(i)) AND val(tr(i)) = fseq(i)
+
   %    { t:T | init(t) OR EXISTS (t0:(init)) : TC(rel)(t0,t) }
 
   % If rel is terminating, the set of runs is empty because there are
