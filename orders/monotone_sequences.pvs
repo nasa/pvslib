@@ -9,7 +9,7 @@ BEGIN
 
   IMPORTING closure_ops[T]
 
-  n: VAR nat
+  k,n: VAR nat
   x, y: VAR T
   rel: VAR pred[[T, T]]
   seq: VAR sequence[T]
@@ -36,9 +36,42 @@ BEGIN
   descending_lem: LEMMA
     FORALL (seq: (descending?(lt))): preserves(seq, <, converse(lt))
 
+  ascending_converse_descending : LEMMA
+    ascending?(rel) = descending?(converse(rel))
+
+  descending_converse_ascending : LEMMA
+    descending?(rel) = ascending?(converse(rel))
+
   ascending_suffix : LEMMA
     FORALL (seq: (ascending?(rel)))(n:nat) :
       ascending?(rel)(suffix(seq,n))
+
+  % Non strict sequences are those that allow for finite reflexivity (unless rel is itself reflexive)
+  ascending_non_strict?(rel)(seq) : bool =
+    (FORALL n: rel(seq(n), seq(n + 1)) OR seq(n)=seq(n+1)) AND
+    (FORALL n: EXISTS (k:upfrom(n)): rel(seq(k),seq(k+1))) 
+
+  strict_from_rec(rel)(seq:(ascending_non_strict?(rel)))(n:nat) : RECURSIVE
+    { (k,x) |  x=seq(k) AND
+               (k > 0 IMPLIES rel(seq(k-1),seq(k))) } =
+    IF n = 0 THEN (0,seq(0))
+    ELSE
+      LET  (nk,nx) = strict_from_rec(rel)(seq)(n-1),
+           minj = min({j:above(nk) | rel(seq(j-1),seq(j))}) IN
+      (minj,seq(minj))
+    ENDIF
+  MEASURE n
+
+  strict_from_prop : LEMMA
+    FORALL (rel)(seq:(ascending_non_strict?(rel)))(n:nat) :
+      LET (k1,x1) = strict_from_rec(rel)(seq)(n),
+          (k2,x2) = strict_from_rec(rel)(seq)(n+1) IN
+        k1 < k2 AND
+	rel(seq(k1),seq(k2)) AND
+	FORALL (i:subrange(k1,k2-1)): seq(i)=seq(k1)
+
+  strict_from(rel)(seq:(ascending_non_strict?(rel))) : (ascending?(rel)) =
+    LAMBDA(i:nat):strict_from_rec(rel)(seq)(i)`2
 
   % subsequences
   ascending_subsequence: THEOREM
