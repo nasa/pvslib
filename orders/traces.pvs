@@ -101,6 +101,9 @@ BEGIN
     FORALL (ftr:FiniteTrace) :
       none?(ftr(length(ftr)))
 
+  at(ftr:FiniteTrace)(i:below(length(ftr))):T =
+    val(ftr(i))
+
   empty_trace : FiniteTrace = LAMBDA (i:nat) : None
 
   empty_trace_length : LEMMA
@@ -151,6 +154,11 @@ BEGIN
       terminating(rel) IFF
       FORALL (tr:(traces(rel))):finite_trace?(tr)
 
+  trel : VAR (terminating)
+
+  terminating_finite_traces_j : JUDGEMENT
+    (traces(trel)) SUBTYPE_OF (finite_trace?)
+
   last_of_finite_is_normal : LEMMA
     FORALL (rel)(tr:(traces(rel))):
       finite_trace?(tr) AND length(tr) > 0 IMPLIES
@@ -162,13 +170,21 @@ BEGIN
   run(rel)(init) : PRED[Trace] =
     { tr:Trace | traces(rel)(tr) AND some?(tr(0)) AND init(val(tr(0))) }
 
-  run_traces_j : JUDGEMENT
+  run_trace_j : JUDGEMENT
     (run(rel)(init)) SUBTYPE_OF (traces(rel))
+
+  superset_init_run : LEMMA
+    FORALL (rel,init)(rn:(run(rel)(init)))(s:set[T]):
+      subset?(init,s) IMPLIES
+      run(rel)(s)(rn)
 
   normalizing_iff_finite_traces : LEMMA
     FORALL (rel,init):
       normalizing(init)(rel) IFF
       FORALL (rn:(run(rel)(init))) : finite_trace?(rn)
+
+  terminating_finite_runs_j : JUDGEMENT
+    (run(trel)(init)) SUBTYPE_OF (finite_trace?)
 
   run_empty : LEMMA
     empty?(init) IFF empty?(run(rel)(init))
@@ -181,9 +197,28 @@ BEGIN
     FORALL (rel,init)(rn:(run(rel)(init))):
       some?(rn(0))
 
+  first(rel,init)(rn:(run(rel)(init))): T =
+    val(rn(0))
+
+  finite_run?(rel)(init)(rn:(run(rel)(init))) : bool =
+    finite_trace?(rn)
+
+  finite_run_finite_trace_j : JUDGEMENT
+    (finite_run?(rel)(init)) SUBTYPE_OF (finite_trace?)
+
+  pos_length_finite_run : LEMMA
+    FORALL (rel,init)(frn:(finite_run?(rel)(init))):
+      length(frn) > 0
+
+  last(rel,init)(frn:(finite_run?(rel)(init))): (normal(rel)) =
+    val(frn(length(frn)-1))
+
   run_all_reachable : LEMMA
     FORALL (rel,init)(tr:(run(rel)(init)))(n:nat) : some?(tr(n)) IMPLIES
       reachable(rel)(init)(val(tr(n)))
+
+  last_reachable_j : JUDGEMENT
+    last(rel,init)(frn:(finite_run?(rel)(init))) HAS_TYPE (reachable(rel)(init))
 
   reachable_prefix_of_trace : LEMMA
     FORALL (rel,init)(t:(reachable(rel)(init))):
@@ -192,16 +227,11 @@ BEGIN
          init(val(rn(0))) AND
          val(rn(n)) = t)
 
-  pos_length_finite_run : LEMMA
-    FORALL (rel,init)(rn:(run(rel)(init))):
-      finite_trace?(rn) IMPLIES
-      length(rn) > 0
-
-  normal_form_iff_run : LEMMA
+  normal_form_iff_last_of_run : LEMMA
     FORALL (rel,init)(t:T) :
       normal_form(rel)(init)(t) IFF
-      EXISTS (rn:(run(rel)(init))):
-        finite_trace?(rn) AND val(rn(length(rn)-1))=t
+      EXISTS (frn:(finite_run?(rel)(init))):
+        last(rel,init)(frn) = t
         
   % An inv_run is a predicate on t that has as parameters the run and the position in the
   % run where the invariant predicate holds. This allows for dependencies that are not
