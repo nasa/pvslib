@@ -1726,8 +1726,8 @@ sequent. Otherwise, it behaves as a (skip).")
 
 (defstep with-tccs (step &optional (fnums *)
 			 (tcc-step (extra-tcc-step))
-			 old?
-			 assert?)
+			 (assert? t)
+			 old?)
   (let ((no-tcc-step
 	 (if (and (not old?) assert?) '(then (flatten) (assert)) '(skip))))
     (with-fresh-labels
@@ -1744,9 +1744,9 @@ sequent. Otherwise, it behaves as a (skip).")
 	  (finalize no-tcc-step)))))))
   "[Extrategies] Applies STEP after introducing TCCs for the formulas
 in FNUMS. TCCs generated during the execution of the command are
-discharged with the proof command TCC-STEP. When OLD? is set to t,
-TCCs are not hidden when STEP is executed. This may cause problems if
-STEP explicitly refers to formula numbers in the sequent."
+discharged with the proof command TCC-STEP. The strategy applies (assert)
+after step, unless ASSERT? is set to nil. The option OLD? is provided for
+backward compatibility. When OLD? is set to t, TCCs are not hidden when STEP is executed. This may cause problems if STEP explicitly refers to formula numbers in the sequent."
   "Applying ~a assumings TCCs")
 	     
 ;;; Control flow
