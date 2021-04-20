@@ -1,54 +1,56 @@
-(defparameter *derivable-rews* '("derivable_id_lam"
-				 "derivable_const_lam"
-				 "derivable_add_lam"
-				 "derivable_scal1_lam"
-				 "derivable_scal2_lam"
-				 "derivable_mult_lam"
-				 "derivable_pow_lam"
-				 "derivable_neg_lam"
-				 "derivable_sub_lam"
-				 "derivable_sq_lam"
-				 "derivable_scald1_lam"
-				 "derivable_scald2_lam"
-				 "derivable_div_lam"))
+(defparameter *derivable-rews* '("analysis@derivatives_lam.derivable_id_lam"
+				 "analysis@derivatives_lam.derivable_const_lam"
+				 "analysis@derivatives_lam.derivable_add_lam"
+				 "analysis@derivatives_lam.derivable_scal1_lam"
+				 "analysis@derivatives_lam.derivable_scal2_lam"
+				 "analysis@derivatives_lam.derivable_mult_lam"
+				 "analysis@derivatives_lam.derivable_pow_lam"
+				 "analysis@derivatives_lam.derivable_neg_lam"
+				 "analysis@derivatives_lam.derivable_sub_lam"
+				 "analysis@derivatives_lam.derivable_sq_lam"
+				 "analysis@derivatives_lam.derivable_scald1_lam"
+				 "analysis@derivatives_lam.derivable_scald2_lam"
+				 "analysis@derivatives_lam.derivable_div_lam"))
 
-(defparameter *deriv-rews* '("deriv_id_lam"
-			     "deriv_const_lam"
-			     "deriv_add_lam"
-			     "deriv_scal1_lam"
-			     "deriv_scal2_lam"
-			     "deriv_mult_lam"
-			     "deriv_pow_lam"
-			     "deriv_neg_lam"
-			     "deriv_sub_lam"
-			     "deriv_sq_lam"
-			     "deriv_scald1_lam"
-			     "deriv_scald2_lam"
-			     "deriv_div_lam"))
+(defparameter *deriv-rews* '("analysis@derivatives_lam.deriv_id_lam"
+			     "analysis@derivatives_lam.deriv_const_lam"
+			     "analysis@derivatives_lam.deriv_add_lam"
+			     "analysis@derivatives_lam.deriv_scal1_lam"
+			     "analysis@derivatives_lam.deriv_scal2_lam"
+			     "analysis@derivatives_lam.deriv_mult_lam"
+			     "analysis@derivatives_lam.deriv_pow_lam"
+			     "analysis@derivatives_lam.deriv_neg_lam"
+			     "analysis@derivatives_lam.deriv_sub_lam"
+			     "analysis@derivatives_lam.deriv_sq_lam"
+			     "analysis@derivatives_lam.deriv_scald1_lam"
+			     "analysis@derivatives_lam.deriv_scald2_lam"
+			     "analysis@derivatives_lam.deriv_div_lam"))
 
-(defparameter *derivable-ops* '("o"
+(defparameter *derivable-ops* '("function_props.o"
 				"real_fun_ops.+"
 				"real_fun_ops.-"
 				"real_fun_ops.*"
 				"real_fun_ops./"
 				"real_fun_ops.inv"))
 
-(defhelper derivable__ (fnum names rws)
+(defhelper derivable__ (fnum names rws point)
   (let ((ops   *derivable-ops*)
-	(qfnum (list 'quote fnum))
-	(expr  (extra-get-formula fnum))
-	(deriv (is-function-expr expr '("derivable?")))
-	(name  (when (and deriv (is-const-decl-expr (argument expr)))
-		 (expr2str (argument expr))))
-	(expnd (unless (member name names :test #'equal)
-		 name)))
+	(qfnum  (list 'quote fnum))
+	(expr   (extra-get-formula fnum))
+	(deriv  (is-function-expr expr '("derivable?")))
+	(comprw (when deriv (if point "analysis@chain_rule.comp_derivable_point" "analysis@chain_rule.comp_derivable_fun")))
+	(fderiv (when deriv (if point (args1 expr) (argument expr))))
+	(name   (when (and deriv (is-const-decl-expr fderiv))
+		  (expr2str fderiv)))
+	(expnd  (unless (member name names :test #'equal)
+		  name)))
     (when deriv
       (when expnd (expand expnd fnum))
       (mapstep@ #'(lambda(x)`(expand ,x ,qfnum)) ops)
       (try (rewrites rws fnum)
-	   (derivable__$ 1 names rws)
-	   (try (rewrite "comp_derivable_fun" fnum)
-		(derivable__$ 1 names rws)
+	   (derivable__$ 1 names rws point)
+	   (try (rewrite comprw fnum)
+		(derivable__$ 1 names rws point)
 		(skip)))))
   "Internal strategy. DO NOT USE, use derivable instead"
   "")
@@ -56,22 +58,26 @@
 (defstep derivable (&optional fnum use)
   (let ((nqn   (no-qualified-name "analysis@strategies.AnalysisStrategies__"))
 	(names (append (enlist-it use) (list "sin" "cos" "exp")))
-	(rws   (append *derivable-rews*
+	(rws0  (append *derivable-rews*
 		       (mapcar #'(lambda (x) (format nil "derivable_~a" x)) names))))
     (if nqn 
 	(printf "This strategy requires theory ~a to be imported in the current context" nqn)
-      (let ((fn   (if fnum (extra-get-fnum fnum)
-		    (extra-get-fnum '(? + "derivable?"))))
-	    (expr (and fn (> fn 0) (extra-get-formula fn))))
+      (let ((fn    (if fnum (extra-get-fnum fnum)
+		     (extra-get-fnum '(? + "derivable?"))))
+	    (expr  (and fn (> fn 0) (extra-get-formula fn))))
 	(if (not (is-function-expr expr '("derivable?")))
 	    (printf "Formula of the form derivable?(...) must appear in the consequent")
-	  (derivable__$ fn names rws)))))
+	  (let ((point (when expr (tuple-expr? (argument expr))))
+		(rws   (when expr (if point
+				      (mapcar #'(lambda (x) (format nil "~a_point" x)) rws0)
+				    rws0))))
+	    (derivable__$ fn names rws point))))))
   "Discharges a formula of the form derivable?(f) in the consequent, where f
 is a function of type [real->real]. If FNUM is not provided, it tries to
 discharge the first formula derivable?(f) occurring in the consequent. USE is a list
 of function names appearing in f that will not be expanded by the strategy. For every NAME in
-USE, the strategy assumes the existence of a lemma derivable_NAME that proves
-derivable?(NAME)"
+USE, the strategy assumes the existence of lemmas derivable_NAME and derivable_NAME_point that prove
+derivable?(NAME) and derivable?(NAME,x), respectively"
   "Discharging derivable?(f)~@[ in ~a~]")
 
 (defstrat differentiable (&optional fnum use)
@@ -102,38 +108,51 @@ derivable?(NAME)"
   "")
 
 (defstep deriv (&optional f (fnums *) use)
-  (let ((nqn (no-qualified-name "analysis@strategies.AnalysisStrategies__"))
-	(names (append (enlist-it use) (list "sin" "cos" "exp")))
-	(rws   (append *deriv-rews*
-		       (mapcar #'(lambda (x) (format nil "derivative_~a" x)) names))))
+  (let ((nqn    (no-qualified-name "analysis@strategies.AnalysisStrategies__"))
+	(names  (append (enlist-it use)
+			(list "sin" "cos" "exp")))
+	(nmrws  (mapcar #'(lambda (x) (format nil "derivative_~a" x)) names))
+	(usrws  (append (mapcar #'(lambda (x) (format nil "derivative_~a" x)) (enlist-it use))
+			(list "expt_x0" "expt_x1")))
+	(rws    (append *deriv-rews* nmrws)))
     (if nqn
 	(printf "This strategy requires theory ~a to be imported in the current context" nqn)
       (let ((fun   (if f (extra-get-expr f)
-		     (extra-get-expr `(~ * "deriv(%1)"))))
+		     (extra-get-expr `(~ ,fnums "deriv(%1)"))))
+	    (fn    (unless f (extra-get-fnum `(? ,fnums "deriv(%1)"))))
 	    (drvbl (format nil "analysis@derivatives.derivable?(~a)" fun))
 	    (drv   (format nil "analysis@derivatives.deriv(~a)" fun)))
 	(if (not fun)
 	    (printf "Formula of the form deriv(...) must appear in the sequent")
 	  (with-fresh-labels
-	   ((fnum!) (fnums! fnums))
+	   ((fnum!) (fnums! fnums) (fn! fn))
 	   (spread
 	    (with-tccs (case drvbl))
 	    ((with-fresh-names@
 	      (d_)
 	      (name-label d_ drv :label fnum! :dir rl)
 	      (deriv__$ fnum! names rws fun)
-	      (let ((fns (extra-get-fnums fnums!)))
-		(when fns
-		  (replace fnum! fns)
-		  (beta fns)
-		  (rewrites ("expt_x0" "expt_x1") fns))))
+	      (let ((lmbd (let* ((nfn  (extra-get-fnum fn!)) 
+				 (expr (when (and nfn (> nfn 0)) (extra-get-formula fn!))))
+			    (and expr
+				 (infix-equation? expr)
+				 (lambda-expr? (args2 expr))
+				 nfn))))
+		(then
+		 (replace fnum! fnums!)
+		 (beta fnums!)
+		 (when lmbd
+		   (decompose-equality fn!)
+		   (label fnums! lmbd))
+		 (rewrites usrws fnums!)
+		 (real-props fnums!))))
 	     (derivable))))))))
   "Computes the derivative of F and introduces the hypotheses derivable?(F) and deriv(F) = F', 
 where F is a function of type [real->real]. The derivative is replaced in the formulas in FNUMS. 
 If F is not provided, it looks for the first one occurring in formula of the form deriv(F).  
 USE is a list of function names appearing in F that will not be expanded by the strategy. For every 
-NAME in USE, the strategy assumes the existence of a lemma derivable_NAME that proves
-derivable?(NAME) and lemma derivative_NAME that provides the derivative of NAME."
+NAME in USE, the strategy assumes the existence of lemma derivable_NAME that proves derivable?(NAME)
+and lemma derivative_NAME that provides the derivative of NAME in the form deriv(NAME)=LAMBDA(x):.."
   "Computing deriv~@[(~a)~]")
 
 (defstrat derivative (&optional f (fnums *) use)
