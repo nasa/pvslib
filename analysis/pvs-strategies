@@ -44,6 +44,8 @@
 (defparameter *deriv-lemmas* '("expt_x0"
 			       "expt_x1"))
 
+(defparameter *deriv-assumptions* '("deriv_domain" "not_one_element"))
+
 ;; association list where the data is used to check dependencies needed by the strategy, when
 ;; the constant is not defined in analysts
 (defparameter *deriv-exclude* '(("sq")
@@ -175,14 +177,16 @@ from the context."
 			   (mapcar #'(lambda (x) (format nil "~a[~a].~a"
 							 (car x) module (cdr x))) *deriv-rews*)
 			   (mapcar #'(lambda (x) (format nil "~a.derivative_~a" (car x) (cdr x))) *deriv-builtin*)
-			   usrws)))
+			   usrws))
+		  (dlms   (mapcar #'(lambda (x) (format nil "~a[~a]" x module)) *deriv-assumptions*))
+		  (xxx    (format t "~a - ~a" drv dlms)))
 	      (with-fresh-labels
 	       ((fnum!) (fnums! fnums) (fn! fn))
 	       (spread
-		(with-tccs (case drvbl))
+		(with-tccs (case drvbl) :tcc-step (skip))
 		((with-fresh-names@
 		  (d_)
-		  (with-tccs (name-label d_ drv :label fnum! :dir rl))
+		  (with-tccs (name-label d_ drv :label fnum! :dir rl) :tcc-step (skip))
 		  (deriv__$ fnum! names rws module fun)
 		  (let ((lmbd (let* ((nfn  (extra-get-fnum fn!)) 
 				     (expr (when (and nfn (> nfn 0)) (extra-get-formula fn!))))
@@ -198,8 +202,8 @@ from the context."
 		       (label fnums! lmbd))
 		     (rewrites usrws fnums!)
 		     (real-props fnums!))))
-		 (derivable)))))
-	      (printf "Formula of the form deriv(...) must appear in the sequent")))))
+		 (else (derivable 1) (rewrites dlms 1))))))
+	  (printf "Formula of the form deriv(...) must appear in the sequent")))))
     "Computes the derivative of F and introduces the hypotheses derivable?(F) and deriv(F) = F', 
 where F is a function of type [real->real]. If F is not provided,  the strategy finds the first
 one occurring in formula of the form deriv(F). The derivative is replaced in the formulas in FNUMS. 
