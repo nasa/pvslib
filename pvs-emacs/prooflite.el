@@ -52,7 +52,7 @@ for formulas that are already proved."
 	   (format "(install-prooflite-scripts-from-prl-file \"%s\" \"%s\" nil)" theory prl-filename)))))
     (unless pvs-error
       (pvs-send-and-wait
-       (format "(install-prooflite-scripts \"%s\" \"%s\" 0 nil)" theory file theory)))
+       (format "(install-prooflite-scripts \"%s\" \"%s\" 0 nil)" file theory)))
     (unless pvs-error
       (pvs-message "Finished scripts installation."))))
 
@@ -99,7 +99,7 @@ default proofs even if formulas are already proved."
 	   (format "(install-prooflite-scripts-from-prl-file \"%s\" \"%s\" t)" theory prl-filename)))))
     (unless pvs-error
       (pvs-send-and-wait
-       (format "(install-prooflite-scripts \"%s\" \"%s\" 0 t)" theory file theory)))
+       (format "(install-prooflite-scripts \"%s\" \"%s\" 0 t)" file theory)))
     (unless pvs-error
       (pvs-message "Finished scripts installation."))))
 
