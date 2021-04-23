@@ -44,8 +44,8 @@
 (defparameter *deriv-lemmas* '("expt_x0"
 			       "expt_x1"))
 
-(defparameter *deriv-assumptions* '(("analysis@deriv_domain_def" . "deriv_domain")
-				    ("analysis@deriv_domain_def" . "not_one_element")))
+(defparameter *deriv-assumptions* '(("analysis@deriv_domain_def" . "deriv_domain?")
+				    ("analysis@deriv_domain_def" . "not_one_element?")))
 
 ;; association list where the data is used to check dependencies needed by the strategy, when
 ;; the constant is not defined in analysts
@@ -92,8 +92,18 @@
 
 (defun get-case-assumption-deriv (module)
   (format nil "~{~a~^ AND ~}"
-	  (mapcar #'(lambda (x) (format nil "~a[~a].~a?" (car x) module (cdr x)))
+	  (mapcar #'(lambda (x) (format nil "~a[~a].~a" (car x) module (cdr x)))
 		  *deriv-assumptions*)))
+
+(defhelper deriv-domain__ (module)
+  (let ((noe (format nil "analysis@deriv_domain_def[~a].deriv_domain_not_one_element" module))
+	(dd  (format nil "deriv_domain[~a]" module)))
+    (spread
+     (splash 1)
+     ((rewrite noe)
+      (finalize (rewrite dd)))))
+  "Internal strategy. DO NOT USE, use derivable instead"
+  "")
 
 (defstep derivable (&optional fnum use exclude lemmas domain)
   (let ((nqn   (no-qualified-name "analysis@strategies.AnalysisStrategies__"))
@@ -123,9 +133,7 @@
 		  (relabel assmps! -1)
 		  (flatten)
 		  (derivable__$ fnum! names rws point module))
-		 (let ((dlms (mapcar #'(lambda (x) (format nil "~a[~a]" (cdr x) module))
-				     *deriv-assumptions*)))
-		   (rewrites dlms 1))))))
+		 (deriv-domain__$ module)))))
 	  (printf "Formula of the form derivable?(...) must appear in the consequent")))))
   "Discharges a formula of the form derivable?(f) in the consequent, where f
 is a function of type [real->real].
@@ -151,12 +159,12 @@ from the context."
   "Same as derivable")
 
 (defun get-deriv-fun (fnums)
-  (or (extra-get-expr `(~ ,fnums "deriv(%1)"))
-      (extra-get-expr `(~ ,fnums "deriv[%](%1)"))))
+  (or (extra-get-expr `(~ ,fnums "deriv[%](%1)"))
+      (extra-get-expr `(~ ,fnums "deriv(%1)"))))
 
 (defun get-deriv-expr (fnums)
-  (or (extra-get-expr `(~ ,fnums "deriv"))
-      (extra-get-expr `(~ ,fnums "deriv[%]"))))
+  (or (extra-get-expr `(~ ,fnums "deriv[%]"))
+      (extra-get-expr `(~ ,fnums "deriv"))))
 
 (defhelper deriv__ (fnum names rws module &optional fun)
   (let ((ops   *derivable-ops*)
@@ -171,11 +179,11 @@ from the context."
       (try-branch
        (rewrites rws fnum)
        ((then (beta fnum) (real-props fnum) (deriv__$ fnum names rws module))
-	(derivable))
+	(then (hide fnum) (derivable 1)))
        (try-branch
 	(rewrite chrw fnum)
 	((then (expand "*" fnum) (deriv__$ fnum names rws module))
-	 (derivable))
+	 (then (hide fnum) (derivable 1)))
 	(skip)))))
   "Internal strategy. DO NOT USE, use deriv instead"
   "")
@@ -232,9 +240,7 @@ from the context."
 			(rewrites usrws fnums!)
 			(real-props fnums!))))
 		    (derivable 1))))
-		 (let ((dlms (mapcar #'(lambda (x) (format nil "~a[~a]" (cdr x) module))
-				     *deriv-assumptions*)))
-		   (rewrites dlms 1))))))
+		 (deriv-domain__$ module)))))
 	  (printf "Formula of the form deriv(...) must appear in the sequent")))))
     "Computes the derivative of F and introduces the hypotheses derivable?(F) and deriv(F) = F', 
 where F is a function of type [real->real]. If F is not provided,  the strategy finds the first
