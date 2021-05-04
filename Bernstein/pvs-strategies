@@ -424,9 +424,9 @@
 
 ;;;; STRATEGIES
 
-(defstrat multipoly__ (pvspoly rel name vars)
+(defhelper multipoly__ (pvspoly rel polyname vars)
   (let ((poly (get-multivar-polynomial pvspoly vars))
-	(msg  (when (not poly)
+	(msg  (unless poly
 		(format
 		 nil
 		 "Expression doesn't seem to be a polynomial inequality on variable~:[~;s~] ~{~a~^,~}."
@@ -439,51 +439,43 @@
 	    (poly  (lambda-poly (mapcar #'cdr (cadr poly))))
 	    (mpoly (format nil "mk_mpoly(~a,~a,~a,~a~@[,reals.~a~])"
 			   poly deg terms coeff rel)))
-	(name-label name mpoly :hide? t))))
-  "[Bernstein] Internal strategy")
+	(name-label polyname mpoly :hide? t))))
+  "[Bernstein] Internal strategy"
+  "")
 
-(defstep multipolynomial (poly &optional vars (bounds? t) (equiv? t) (name "P__"))
-  (if (check-name name)
-      (printf "Name ~a already defined, please provide a fresh name for representing the polynomial"
-	      name)
-    (let ((expr    (extra-get-expr poly))
-	  (rel     (is-neq-relation expr))
-	  (pvspoly (cond (rel (let ((num (extra-get-number-from-expr (args2 expr))))
-				(if (and num (equal num 0)) (args1 expr)
-				  (mk-application '- (args1 expr) (args2 expr)))))
-			 ((is-number-expr expr) expr)))
-	  (vars    (and pvspoly (or (enlist-it vars) (variables-in-poly pvspoly))))
-	  (msg     (when (null vars)
-		     (format nil
-			     "Expression doesn't seem to be a polynomial or a polynomial inequality."))))
-      (if msg
-	  (printf msg)
-	(let ((lvarsname (format nil "vars_~a" name))
-	      (nvars     (length vars))
-	      (lvars     (lambda-list vars))
-	      (label     (format nil "~a:" name))
-	      (casestr   (format nil "~a = mpoly_eval(~a,~a)(~a)" pvspoly name nvars lvarsname)))
-	  (then
-	   (name-label lvarsname lvars :hide? t)
-	   (try (multipoly__ pvspoly rel name vars)
-		(let ((varsname  (format nil "vs~a" name)))
-		  (try-branch (case casestr)
-			      ((when bounds?
-				 (multivariables vars :name varsname)
-				 (rewrite lvarsname :dir rl))
-			       (then (hide-all-but 1)
-				     (when equiv? (multipoly-eq__ name)))
-			       (skip))
-			      (reveal label)))
-		(skip)))))))
-  "[Bernstein] Introduces a multivariate polynomial structure named NAME whose evaluation is
-equivalent to the polynomial POLY on VARS. If NAME is not provided a new name is generated.
-The variables of the polynomial are inferred when VARS is nil. If equiv? is nil, the strategy
-does not try to prove the equivalence between the original polynomial and its Bernstein
-representation"
-  "[Bernstein] Introducing a multivariate polynomial structure")
+(defhelper multipolynomial__ (poly vars equiv polyname varsname vsname)
+  (let ((expr    (extra-get-expr poly))
+	(rel     (is-neq-relation expr))
+	(pvspoly (cond (rel (let ((num (extra-get-number-from-expr (args2 expr))))
+			      (if (and num (equal num 0)) (args1 expr)
+				(mk-application '- (args1 expr) (args2 expr)))))
+		       ((is-number-type (type expr)) expr)))
+	(vars    (when pvspoly (or (enlist-it vars) (variables-in-poly pvspoly)))))
+    (when vars
+      (let ((nvars     (length vars))
+	    (lvars     (lambda-list vars))
+	    (label     (format nil "~a:" polyname))
+	    (casestr   (format nil "~a = mpoly_eval(~a,~a)(~a)" pvspoly polyname nvars varsname)))
+	(then
+	 (name-label varsname lvars :hide? t)
+	 (try (multipoly__$ pvspoly rel polyname vars)
+	      (try-branch (case casestr)
+			  ((then
+			    (multivariables__$ vars vsname)
+			    (rewrite varsname :dir rl))
+			   (then
+			    (hide-all-but 1)
+			    (when equiv? (multipoly-eq__$ polyname varsname vsname)))
+			   (skip))
+			  (reveal label))
+	      (skip))))))
+  "[Bernstein] Internal strategy. Introduces a multivariate polynomial structure named POLYNAME whose evaluation is
+equivalent to the polynomial POLY on VARS.The variables of the polynomial are inferred when VARS
+is nil. If equiv? is nil, the strategy does not try to prove the equivalence between the original
+polynomial and its Bernstein representation. VARSNAME and VSNAME are names of variables structures."
+  "")
 
-(defstrat multivars__ (fms name vars)
+(defhelper multivars__ (fms vsname vars)
   (let ((vars   (get-intervars fms vars))
 	(unvars (find-unbound-vars vars))
 	(msg    (when unvars
@@ -496,180 +488,210 @@ representation"
 	    (iepts   (lambda-interval-ipts vars))
 	    (bdpts   (lambda-interval-bpts vars))
 	    (mvars   (format nil "mk_mvars(~a,~a,~a,~a,~a)" (length vars) lb ub iepts bdpts)))
-	(name-label name mvars :hide? t))))
-  "[Bernstein] Internal strategy")
+	(name-label vsname mvars :hide? t))))
+  "[Bernstein] Internal strategy"
+  "")
 
-(defstep multivariables (&optional vars (name "V__"))
-  (if (check-name name)
-      (printf "Name ~a already defined, please provide a fresh name for representing the variables"
-	      name)
-    (let ((vars     (enlist-it vars))
-	  (fms      (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
-      (try (multivars__ fms name vars)
-	   (let ((vars     (or vars (get-hash-keys *varbpts*)))
-		 (lvars    (lambda-list vars))
-		 (casestr  (format nil "mvars_between?(~a)(~a)" name lvars)))
-	     (branch (case casestr)
-		     ((skip)
-		      (multivars-bet__ name)
-		      (skip))))
-	   (skip))))
-  "[Bernstein] Introduces a multivariable structure named NAME"
-  "[Bernstein] Introducing multivariable structure")
+(defhelper multivariables__ (vars vsname)
+  (let ((vars (enlist-it vars))
+	(fms  (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
+    (try (multivars__$ fms vsname vars)
+	 (let ((vars    (or vars (get-hash-keys *varbpts*)))
+	       (lvars   (lambda-list vars))
+	       (casestr (format nil "mvars_between?(~a)(~a)" vsname lvars)))
+	   (branch (case casestr)
+		   ((skip)
+		    (multivars-bet__$ vsname)
+		    (skip))))
+	 (skip)))
+  "[Bernstein] Internal strategy. Introduces a multivariable structure for VARS named VSNAME"
+  "")
 
-(defstrat multipoly-eq__ (name)
-  (let ((varsname  (format nil "vs~a" name))
-	(lvarsname (format nil "vars_~a" name))
-	(npoly     (freshname "mp"))
-	(ndeg      (freshname "md"))
-	(ncoeff    (freshname "mc"))
-	(poly      (format nil "~a`mpoly" name))
-	(deg       (format nil "~a`mdeg" name))
-	(coeff     (format nil "~a`mcoeff" name)))
-    (then
-     (name-replace npoly poly)
-     (name-replace ndeg  deg)
-     (name-replace ncoeff coeff)
-     (expand* name varsname)
+(defhelper multipoly-eq__ (polyname varsname vsname)
+  (let ((poly     (format nil "~a`mpoly" polyname))
+	(deg      (format nil "~a`mdeg" polyname))
+	(coeff    (format nil "~a`mcoeff" polyname)))
+    (with-fresh-names
+     ((mp__ poly) (md__ deg) (mc__ coeff))
+     (expand* polyname vsname)
      (expand "multipoly_eval")
      (apply (repeat (expand "sigma")))
      (expand "polyproduct_eval")
-     (apply (repeat (expand* "product" lvarsname)))
-     (expand ncoeff :assert? none)
-     (expand name :assert? nil)
-     (expand ndeg :assert? none)
-     (expand name :assert? nil)
+     (apply (repeat (expand* "product" varsname)))
+     (expand mc__ :assert? none)
+     (expand polyname :assert? nil)
+     (expand md__ :assert? none)
+     (expand polyname :assert? nil)
      (expand "polynomial" :assert? none)
-     (expand npoly :assert? none)
-     (expand name :assert? nil)
+     (expand mp__ :assert? none)
+     (expand polyname :assert? nil)
      (apply (repeat (expand "sigma" :assert? nil)))
      (apply (repeat (rewrite "expt_x1")))
      (assert)
      (grind)))
   "[Bernstein] Internal strategy"
-  )
+  "")
 
-(defstrat multivars-bet__ (name)
+(defhelper multivars-bet__ (vsname)
   (then
    (expand* "boxbetween?" "interval_between?")
    (skosimp* :preds? t)
-   (expand name)
+   (expand vsname)
    (repeat (lift-if 1))
    (ground))
-  "[Bernstein] Internal strategy")
+  "[Bernstein] Internal strategy"
+  "")
 
-(defstep minmax (poly &optional vars (precision "0.01") (depth 100)
-		      vardir (equiv? t) (name "Pm__"))
-  (if (check-name name)
-      (printf "Name ~a already defined, please provide a fresh name for representing the polynomial"
-	      name)
-    (let ((vardir (or vardir "MaxVarMinDir"))
-	  (expr (format nil "multipoly_minmax(~a,vs~a,~a,~a,~a)"
-			name name depth vardir precision)))
-      (try (multipolynomial poly vars :equiv? equiv? :name name)
-	   (eval-expr expr)
-	   (skip))))
-  "[Bernstein] Find the minimum and maximum, within +-PRECISION, of a multivariate polynomial on
-VARS. The option DEPTH specifies a maximum depth. The option VARDIR is an heuristic for
-selecting variables and direction when subdividing the range of the variables, e.g., MaxVarMinDir,
-MaxVarMaxDir,AltVarLeftRight, AltVarRightLeft (see theory Bernstein/vardirselector.pvs).
+(defstep bernstein-minmax (poly &optional vars (precision 2) (depth 100)
+				vardir (equiv? t))
+  (let ((nqn (no-qualified-name "Bernstein@strategies.BernsteinStrategy__")))
+    (if nqn 
+	(printf "This strategy requires theory ~a to be imported in the current context" nqn)
+      (with-fresh-names
+       ((Pmm__) (Varsmm__) (Vsmm__))
+       (let ((prec   (expt 10 (- precision)))
+	     (sprec  (1+ precision))
+	     (vardir (or vardir "MaxVarMinDir"))
+	     (vsnvs  (format nil "~a`numvars" Vsmm__))
+	     (expr   (format nil "multipoly_minmax(~a,~a,~a,~a,~a)"
+			     Pmm__ Vsmm__ depth vardir prec)))
+	 (try (multipolynomial__ poly vars equiv? Pmm__ Varsmm__ Vsmm__)
+	      (with-fresh-labels
+	       ((bb! -1)(mpe! -2) (sp!))
+	       (eval-expr expr)
+	       (lemma "multipoly_minmax_sound")
+	       (label sp! -1)
+	       (inst? -1)
+	       (spread
+		(split)
+		((then
+		  (replaces -2)
+		  (expand "sound_poly_fin?")
+		  (flatten)
+		  (hide (-2 -3 -4))
+		  (expand "forall_X_poly_between")
+		  (inst -1 Varsmm__)
+		  (eval-expr vsnvs)
+		  (replaces -1)
+		  (replaces mpe! :dir rl)
+		  (spread
+		   (split -1)
+		   ((then
+		     (flatten)
+		     (decimalize -1 sprec)
+		     (decimalize -2 sprec)
+		     (delete bb!))
+		    (then
+		     (lemma "boxbetween_eq_bnd")
+		     (inst? -1 :where sp!)
+		     (inst? -1 :where bb!)
+		     (assert)
+		     (eval-formula)))))
+		 (eval-formula))))
+	      (printf "Expression doesn't seem to be a polynomial or a polynomial inequality"))))))
+  "[Bernstein] Find the minimum and maximum of a multivariate polynomial on
+VARS, whithin PRECISION decimals. The option DEPTH specifies a maximum depth.
+The option VARDIR is an heuristic for selecting variables and direction when
+subdividing the range of the variables, e.g., MaxVarMinDir, MaxVarMaxDir,
+AltVarLeftRight, AltVarRightLeft (see theory Bernstein/vardirselector.pvs).
 If VARDIR is nil, an appropriate method is automatically selected. If equiv? is nil, the strategy does
 not try to prove the equivalence between the original polynomial and its Bernstein representation."
-  "[Bernstein] Finding the minimum and maximum of a polynomial"
-  )
+  "[Bernstein] Finding the minimum and maximum of a polynomial")
 
-(defstep bernstein (&optional (fnum 1) vars (depth 100) vardir (equiv? t) (name "Pb__"))
-  (if (check-name name)
-      (printf "Name ~a already defined, please provide a fresh name for representing the polynomial"
-	      name)
-    (then (beta)
-	  (let ((fnum    (car (extra-get-fnums fnum)))
-		(fm      (extra-get-formula fnum))
-		(quant   (cond ((forall-expr? fm) 1)
-			       ((exists-expr? fm) -1))) ;; forall == quant > 0, exists == quant < 0
-		(proof   (or (not quant) (iff (> fnum 0) (> quant 0)))) ;; proof=false : find counterexample
-		(exprs   (cond ((exists-expr? fm) (reverse-conjuncts (expression fm)))
-			       ((and (forall-expr? fm) (implication? (expression fm)))
-				(cons (args2 (expression fm))
-				      (reverse-conjuncts (args1 (expression fm)))))))
-		(fms     (if quant (cdr exprs)
-			   (mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
-		(expr    (if quant (car exprs) fm))
-		(rel     (if (iff proof (> fnum 0)) (is-neq-relation expr)
-			   (neg-relation (is-neq-relation expr))))
-		(vardir  (or vardir
-			     (if (member rel '(> >=))
-				 "a2l__MaxVarMinDir"
-			       "a2l__MaxVarMaxDir")))
-		(pvspoly (when rel
-			   (let ((num (extra-get-number-from-expr (args2 expr))))
-			     (if (and num (equal num 0)) (args1 expr)
-			       (mk-application '- (args1 expr) (args2 expr))))))
-		(vars    (when rel
-			   (or (enlist-it vars)
-			       (if quant (mapcar #'(lambda (x) (format nil "~a" (id x))) (bindings fm))
-				 (variables-in-poly pvspoly)))))
-		(msg     (when (not vars)
-			   (format nil "Formula ~a doesn't seem to be a polynomial inequality." fnum))))
-	    (when fm
-	      (if msg
-		  (printf msg)
-		(bernstein__ fnum quant proof fms vars rel pvspoly depth vardir equiv? name))))))
+(defstep bernstein (&optional (fnum 1) vars (depth 100) vardir (equiv? t))
+  (let ((nqn (no-qualified-name "Bernstein@strategies.BernsteinStrategy__")))
+    (if nqn 
+	(printf "This strategy requires theory ~a to be imported in the current context" nqn)
+      (with-fresh-names
+       ((Pb__) (Varsb__) (Vsb__))
+       (beta)
+       (let ((fnum    (car (extra-get-fnums fnum)))
+	     (fm      (extra-get-formula fnum))
+	     (quant   (cond ((forall-expr? fm) 1)
+			    ((exists-expr? fm) -1))) ;; forall == quant > 0, exists == quant < 0
+	     (proof   (or (not quant) (iff (> fnum 0) (> quant 0)))) ;; proof=false : find counterexample
+	     (exprs   (cond ((exists-expr? fm) (reverse-conjuncts (expression fm)))
+			    ((and (forall-expr? fm) (implication? (expression fm)))
+			     (cons (args2 (expression fm))
+				   (reverse-conjuncts (args1 (expression fm)))))))
+	     (fms     (if quant (cdr exprs)
+			(mapcar #'(lambda (fn) (extra-get-formula fn)) (extra-get-fnums '-))))
+	     (expr    (if quant (car exprs) fm))
+	     (rel     (if (iff proof (> fnum 0)) (is-neq-relation expr)
+			(neg-relation (is-neq-relation expr))))
+	     (vardir  (or vardir
+			  (if (member rel '(> >=))
+			      "MaxVarMinDir"
+			    "MaxVarMaxDir")))
+	     (pvspoly (when rel
+			(let ((num (extra-get-number-from-expr (args2 expr))))
+			  (if (and num (equal num 0)) (args1 expr)
+			    (mk-application '- (args1 expr) (args2 expr))))))
+	     (vars    (when rel
+			(or (enlist-it vars)
+			    (if quant (mapcar #'(lambda (x) (format nil "~a" (id x))) (bindings fm))
+			      (variables-in-poly pvspoly)))))
+	     (msg     (when (not vars)
+			(format nil "Formula ~a doesn't seem to be a polynomial inequality." fnum))))
+	 (when fm
+	   (if msg
+	       (printf msg)
+	     (bernstein__$ fnum quant proof fms vars rel pvspoly depth vardir equiv? Pb__ Varsb__ Vsb__)))))))
   "[Bernstein] Proves polynomial inequality FNUM using Bernstein's basis on VARS for DEPTH levels
 of recursion. The option VARDIR is an heuristic for selecting variables and direction when
-subdividing the range of the variables, e.g., a2l__MaxVarMinDir, a2l__MaxVarMaxDir,
-a2l__AltVarLeftRight, a2l__AltVarRightLeft (see theory Bernstein/vardirselector.pvs). If VARDIR
+subdividing the range of the variables, e.g., MaxVarMinDir, MaxVarMaxDir,
+AltVarLeftRight, AltVarRightLeft (see theory Bernstein/vardirselector.pvs). If VARDIR
 is nil, an appropriate method is automatically selected. If equiv? is nil, the strategy does not
 try to prove the equivalence between the original polynomial and its Bernstein representation."
   "[Bernstein] Proving polynomial inequality using Bernstein's basis...")
 
-(defstrat bernstein__ (fnum quant proof fms vars rel pvspoly depth vardir equiv? polyname)
+(defhelper bernstein__ (fnum quant proof fms vars rel pvspoly depth vardir equiv? polyname varsname vsname)
   (with-fresh-labels
    ((bp! fnum))
-   (let ((msgvars  (format nil "variables (: ~{~a~^, ~} :)" vars))
-	 (varsname (format nil "vs~a" polyname))
-	 (sko      (and quant proof))
-	 (inst     (and quant (not proof)))
-	 (bps      (format nil "a2l__multipoly_strategy(~a,~a,~a,~a,~:[false~;true~])"
-			   polyname varsname depth vardir proof)))
+   (let ((msgvars (format nil "variables (: ~{~a~^, ~} :)" vars))
+	 (sko     (and quant proof))
+	 (inst    (and quant (not proof)))
+	 (bps     (format nil "multipoly_strategy(~a,~a,~a,~a,~:[false~;true~])"
+			  polyname vsname depth vardir proof)))
      (try
-      (multivars__ fms varsname vars)
-      (try (multipoly__ pvspoly rel polyname vars)
+      (multivars__$ fms vsname vars)
+      (try (multipoly__$ pvspoly rel polyname vars)
 	   (spread
 	    (eval-expr bps :quiet? t)
 	    ((let ((result    (args2 (extra-get-formula -1)))
 		   (isunknown (and (constructor-name-expr? result) (equal (id result) '|Unknown|)))
 		   (istrue    (and (constructor-name-expr? result) (equal (id result) '|IsTrue|)))
-		   (isfalse   (and (not isunknown) (not istrue))))
+		   (isfalse   (and (not isunknown) (not istrue)))
+		   (lenvars   (length vars)))
 	       (if isunknown
 		   (printf "Inequality could not be proved or disproved. Try a depth higher than ~a."
 			   depth)
 		 (if (and istrue (not inst))
-		     (let ((newvars   (if sko (mapcar #'(lambda (x) (format nil "~a__" x))
-						      vars) vars))
-			   (lvars     (lambda-list newvars))
-			   (lvarsname (format nil "vars_~a" polyname)))
-		       (then
-			(lemma "a2l__multipoly_strategy_true")
-			(inst? -1)
-			(assert)
-			(branch (split -1)
-				((then
-				  (hide -2)
-				  (relabel bp! -1)
-				  (when sko (skolem bp! newvars) (flatten))
-				  (expand "forall_X_poly_interval")
-				  (name-label lvarsname lvars :hide? t)
-				  (inst -1 lvarsname)
-				  (branch (split -1)
-					  ((then
-					    (hide-all-but bp!)
-					    (when equiv? (multipoly-eq__ polyname)))
-					   (then
-					    (hide-all-but bp!)
-					    (expand lvarsname)
-					    (multivars-bet__ varsname)))))
-				 (eval-formula)))))
+		     (with-fresh-names
+		      (nvars__ :list lenvars)
+		      (let ((newvars   (if sko nvars__ vars))
+			    (lvars     (lambda-list newvars)))
+			(then
+			 (lemma "multipoly_strategy_true")
+			 (inst? -1)
+			 (assert)
+			 (branch (split -1)
+				 ((then
+				   (hide -2)
+				   (relabel bp! -1)
+				   (when sko (skolem bp! newvars) (flatten))
+				   (expand "forall_X_poly_interval")
+				   (name-label varsname lvars :hide? t)
+				   (inst -1 varsname)
+				   (branch (split -1)
+					   ((then
+					     (hide-all-but bp!)
+					     (when equiv? (multipoly-eq__$ polyname varsname vsname)))
+					    (then
+					     (hide-all-but bp!)
+					     (expand varsname)
+					     (multivars-bet__$ vsname)))))
+				  (eval-formula))))))
 		   (if (and isfalse (not inst))
 		       (commentf "Counterexample has been found with ~a." msgvars)
 		     (when isfalse
@@ -687,6 +709,7 @@ try to prove the equivalence between the original polynomial and its Bernstein r
 		   (grind))))
 	   (skip))
       (skip))))
-  "[Bernstein] Internal strategy")
+  "[Bernstein] Internal strategy"
+  "")
 
 

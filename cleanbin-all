@@ -1,7 +1,4 @@
-#!/bin/bash
-
-# default cleaning mode
-CLEANOPT="--clean-only"
+#!/bin/sh
 
 if [ ! -z "$PVS_DIR" ]; then
     provethem="$PVS_DIR/provethem"
@@ -31,120 +28,43 @@ SYNOPSIS
   cleanbin-all <options>
 
 DESCRIPTION
-  
-  By default, it iterates over all the libraries which are reachable from every 
-  directory mentioned in the PVS_LIBRARY_PATH environment variable. 
+  This script wraps provethem to provide a specific kind of run. By default, it removes 
+  .pvscontext and the binary files from the pvsbin folder in each library listed in the 
+  nasalib.all file.
 
-  A library is considered reachable in a given directory <dir> if it is one of its 
-  direct subfolders and: (1) there is a text file named all-theories in <dir> and
-  the library is mentioned there or (2) there is no such a file in <dir>. The scope 
-  of application of cleanbin-all can be restricted using the options --after, --before,
-  --but, --do, --from, and --to detailed below. The order implicitly referred to by all 
-  these options is the one induced by the applicable all-theories file or the default 
-  order imposed by the operating system, when no all-theories file exists.
+  To supersede this particular configuration, the same options accepted by provethem can
+  be used on this script.
 
-OPTIONS
-  --bin           remove .pvscontext and binary files (default).
-  --all           remove .pvscontext and all files in the pvsbin folders.
-
-  --clearpath     clean the libraries in the current path only
-  --addpath       clean over PVS_LIBRARY_PATH and the current path
-  
-  --after=<dir>   prove all libraries after <dir>, exclusive
-  --before=<dir>  prove all libraries before <dir>, exclusive
-  --but=<dir1>,..,<dirn>  do not process libraries <dir1>,...,<dirn>
-  --do=<dir1>,..,<dirn>   process libraries <dir1>,...,<dirn>
-  --from=<dir>    prove all libraries from <dir>, inclusive.
-  --to=<dir>      prove all libraries to <dir>, inclusive.
-
-  -h|--help       print this message
-  --version       print version information and exit
+  The list of libraries to be processed is read from the file 'all-libraries' if there is no
+  'nasalib.all' file in the current folder.
 
 SEE ALSO
   provethem -- for iterating proveit on a list of directories
 "
 }
 
-ADDITIONALARGS=
-
-while [ $# -gt 0 ]
+for opt in "$@"
 do
-  case $1 in
-    -h|-help|--help)    
+    if [ $opt = "--help" -o $opt = "-help" -o $opt = "-h" ]; then
 	usage
-	exit 0;;
-    -version|--version)     
-	readVersion
-	echo $VERSION
-	exit 0;;
-    --all)
-	CLEANOPT="--clean-all";;
-    --bin)
-	CLEANOPT="--clean-only";;
-    --clearpath)
-	PVS_LIBRARY_PATH=`pwd`;;
-    --addpath)
-	PVS_LIBRARY_PATH=$PVS_LIBRARY_PATH:`pwd`;;
-    # valid options
-    --after=*|-after=*\
-	|--before=*|-before=*\
-	|--but=*|-but=*\
-	|--do=*|-do=*\
-	|--from=*|-from=*\
-	|--to=*|-to=*)
-	ADDITIONALARGS="$ADDITIONALARGS $1";;	
-    --after|-after\
-	|--before|-before\
-	|--but|-but\
-	|--do|-do\
-	|--from|-from\
-	|--to|-to)
-	if [[ $2 == -* ]]; then
-	    if [[ $1 =~ ^-[^-].*$ ]]; then
-		echo "Warning: missing values for $1 option (expected syntax is $1 <values>)"
-	    else
-		echo "Warning: missing values for $1 option (expected syntax is $1=<values>)"
-	    fi;
+	exit 0
+    fi
+done
+
+all_theories_file="nasalib.all"
+if [ ! -f $all_theories_file ]; then 
+    all_theories_file="all-libraries";
+    if [ ! -f $all_theories_file ]; then 
+	all_theories_file="all-theories";
+	if [ -f $all_theories_file ]; then
+	    echo "Warning: all-theories is no longer supported as default input file name, please rename it to all-libraries."
 	else
-	    ADDITIONALARGS="$ADDITIONALARGS $1 $2"
-	    shift
-	fi;;
-    # invalid options
-    *)
-	echo "Warning: omitting unrecognized option $1";;
-  esac
-  shift 
-done 
-
-
-if [ ! -x $provethem ]; then
-    provethem=`which provethem`
+	    echo "Error: input file not found.";
+	    exit 1;
+	fi;
+    fi
 fi
 
-function clean_here {
-    cd $1
-    if [ -f nasalib.all ]; then
-	$provethem $CLEANOPT $ADDITIONALARGS nasalib.all
-    else
-	if ! [ -f all-theories ]; then
-	    # this script assumes that every folder is a pvs library of interest
-	    for i in $(ls -d */); do
-		echo -e ${i%%/};
-	    done >> $1/all-theories
-	    $provethem $CLEANOPT $ADDITIONALARGS all-theories
-	    rm all-theories
-	else
-	    $provethem $CLEANOPT $ADDITIONALARGS all-theories
-	fi;
-    fi;
-}
-
 if [ "$provethem" ]; then
-    while read -d ':' p; do
-	echo -e
-	echo -e "Cleaning '$p' ..."
-	clean_here "`eval echo $p`"	
-    done <<< "$PVS_LIBRARY_PATH:"
-else
-  echo "Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH"
+  $provethem --action-name="Cleaning" --clean-only "$@" $all_theories_file
 fi

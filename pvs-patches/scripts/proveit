@@ -12,6 +12,9 @@
 # is claimed in the United States under Title 17, U.S.Code. All Other
 # Rights Reserved.
 #
+# Mariano Moscato (04/26/2021)
+# National Institute of Aerospace
+#
 # Script for batch proving in PVS 
 #  
 
@@ -28,15 +31,15 @@ readVersion() {
     fi
 }
 
-# Extension for proof status summary file
-EXT=.summary
 
-# PVS directory of binary files
-PVSBIN=pvsbin
+EXT=.summary # Extension for proof status summary file
+
+PVSBIN=pvsbin # PVS directory of binary files
 LISPFORCE=t
 LISPIMPORT=nil
 LISPSCRIPTS=t
 LISPWRITESCRIPTS=nil
+LISPAUTOTOP=nil
 LISPTRACES=nil
 LISPTXTPROOFS=nil
 LISPTEXPROOFS=nil
@@ -85,7 +88,7 @@ all_opt() {
     fi
     LISPIMPORT=t
     LISPSCRIPTS=nil
-    LISPDEPENDENCIES=t
+    LISPDEPENDENCIES=relative
   fi
 }
 
@@ -99,15 +102,15 @@ compile_infile_name() {
   if [ -d $ARG ]; then
     PVSCONTEXT=$ARG
     if [ -z "$OUTFILE" ]; then
-      OUTFILE=$ARG$EXT
+	OUTFILE=$ARG$EXT
     fi
     PVSFILE=`basename $TOP .pvs`
-    if [ -f $PVSCONTEXT/$PVSFILE.pvs ]; then
+    if [ -f $PVSCONTEXT/$PVSFILE.pvs -o "$LISPAUTOTOP" = "t" ]; then
 	all_opt
     else
 	FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
     fi
-    LISPDEPENDENCIES=t
+    LISPDEPENDENCIES=relative
   # If  <file>, set context to its dirname and pvsfile to its base name
   else
     PVSCONTEXT=$(cd "$(dirname $ARG)"; pwd -P)
@@ -134,9 +137,9 @@ compile_infile_name() {
 		    exit 1
 		fi;;
 	    *)  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
-		if [ -z "$NOFILE" ]; then
+		if [ -z "$NOFILE" -a "$LISPAUTOTOP" != "t" ]; then
 		    echo "Error: File $FILENOTFOUND not found"
-		    exit;
+		    exit 1;
 		fi;;
 	esac
     fi
@@ -166,11 +169,12 @@ compile_outfile_names() {
     if [ "$BASEOUT" = $base ]; then
       base=$BASEOUT$EXT
     fi
-    OUTFILE=$dir/$base
-    LOGFILE=$dir/$BASEOUT.log
+    if [ "$dir" ]; then
+	OUTFILE=$dir/$base
+	LOGFILE=$dir/$BASEOUT.log
+    fi
     if [ "$LISPTYPECHECK" = "t" ]; then 
 	OUTFILE=$OUTFILE-tc
-	LOGFILE=$LOGFILE
     fi
 }
 
@@ -206,18 +210,10 @@ cleanup() {
 	  fi
       fi   
       if [ "$LOGFILE" ]; then
-	  if [ "$OUTDIR" ]; then
-	      LOGFILE_RELATIVE_PATH="$OUTDIR/$LOGFILE"
-	  else 
-	      LOGFILE_RELATIVE_PATH="$LOGFILE"
-	  fi
+	  LOGFILE_RELATIVE_PATH="$LOGFILE"
       fi
       if [ "$OUTFILE" ]; then
-	  if [ "$OUTDIR" ]; then
-	      OUTFILE_RELATIVE_PATH="$OUTDIR/OUTFILE"
-	  else 
-	      OUTFILE_RELATIVE_PATH="$OUTFILE"
-	  fi
+	  OUTFILE_RELATIVE_PATH="$OUTFILE"
       fi
       if [ -z "$QUIET" ]
       then
@@ -279,7 +275,8 @@ OPTIONS
    --clean-all         just remove .pvscontext and all files in the pvsbin folder 
                        (do not typecheck nor prove)
    -d|--dir <dir>      use <dir> as default directory of summary files
-   --dependencies      compute theory dependencies and save them in pvsbin/<file>.dep.
+   --dependencies [relative|fullpath]  compute theory dependencies and save them in 
+                       pvsbin/<file>.dep. 
    --default-script <proof script> default prooflite script to be tried on unfinished branches
    --disable <o1,..,on> disable external oracles o1,...,on
    --disable-oracles   disable any external oracle
@@ -304,6 +301,7 @@ OPTIONS
    --txt               generate text proof files in directory pvstxt
    --no-txt            don't generate text proof files (default)
    -t|--top <topfile>  use <topfile>.pvs instead of top.pvs when the input is a directory
+   --generate-top      generate top file if it does not exist
    --timeout <secs>    timeout in seconds for each proof
    --traces            include proof traces in log file
    --no-traces         don't include proof traces in log file (default)
@@ -323,7 +321,7 @@ error_output() {
     sed -i.bak -n -e '/^<pvserror/,/^<\/pvserror/p'\
 	-e '/^Restored .*/d'\
 	-e '/^\*\*\* /p'\
-	-e '/^Typechecking/h'\
+	-e '/^Error/p'\
 	-e '/^Typechecking/ !{
                  /^Typecheck error/ {
                    p;g;p
@@ -333,16 +331,32 @@ error_output() {
                    /^PVS file .* is not/!H
                  }
               }'\
+	-e '/^Typechecking/h'\
 	-e '/Proof summary/,/Grand Totals/p' $OUTFILE 
     if [ -z "$QUIET" ]; then
 	cat $OUTFILE | \
-	    sed -e "s+^<pvserror msg=\"\(.*\)\">+\1 ($ARG)+" \
-            -e 's/"//g' -e '/^<\/pvserror>/d' \
+	    sed -e "s+^<pvserror msg=\"\(.*\)\">+Error: \1 ($ARG) +" \
+            -e 's/"//g' -e 's/<\/pvserror>//g' \
+	    -e 's/^Error/*** Error/gp'\
+	    -e 's/^\*\*\* Warning/*** Warning/gp'\
 	    -e '/^\*\*\*.*/d' 
     else
 	cat $OUTFILE | \
-	    sed -n -e "s+^<pvserror msg=\"\(.*\)\">+\1 ($ARG)+p" \
-                   -e "s/^\"\(.*\)\"$/\1/p" -e "/^Typecheck error/p"
+	    sed -n -e "s+^<pvserror msg=\"\(.*\)\">\"\(.*\)\"<\/pvserror>+Error: \1 ($ARG) \2 +p" \
+		-e 's/^Error/*** Error/gp'\
+		-e 's/^\*\*\* Warning/*** Warning/gp'\
+		-e "/^Typecheck error/p" \
+		-e '/Proof summary/h'\
+               -e '/Proof summary/ !{
+                    /unfinished/H
+                    /unchecked/H
+                    /untried/H
+                   }'\
+               -e '/Theory totals/ {
+                   H;g
+                   /\.\.\.\./p
+                  }'\
+               -e '/^Grand Totals:/p'
     fi
     if [ "$LOG" ]; then
 	mv -f $OUTFILE.bak $LOGFILE
@@ -355,6 +369,7 @@ error_output() {
 pvs_output() {
     sed -i.bak -n -e '/File .*\.pvs typechecked/p'\
         -e '/^\*\*\* /p'\
+	-e '/^Error/p'\
         -e '/Proof summary/,/Grand Totals/p' $OUTFILE
     cat $OUTFILE | quiet_output
     if [ "$LOG" ]; then
@@ -366,9 +381,11 @@ pvs_output() {
 
 # quiet output
 quiet_output() {
-    if [ -z "$QUIET" ]
+    if [ -z "$QUIET" ] || [ "$LISPTYPECHECK" = "t" ]
     then
 	sed -n -e '/File/p'\
+	       -e '/Warning/p'\
+	       -e '/Error/p'\
                -e '/Proof summary/h'\
                -e '/Proof summary/ !{
                     /unfinished/H
@@ -387,6 +404,8 @@ quiet_output() {
                   }'
     else
 	sed -n -e '/Proof summary/h'\
+	       -e '/Warning/p'\
+	       -e '/Error/p'\
                -e '/Proof summary/ !{
                     /unfinished/H
                     /unchecked/H
@@ -410,8 +429,6 @@ process_opts() {
 	    CLEAN=yes;;
         ~c|-no-clean|--no-clean)
 	    CLEAN=;;
-        -dep|--dep|-dependencies|--dependencies)
-	    LISPDEPENDENCIES=t;;
 	-f|-force|--force)   
 	    LISPFORCE=t;;
 	~f|-no-force|--no-force)   
@@ -453,7 +470,6 @@ process_opts() {
 	-v|-verbose|--verbose)
 	    QUIET=;;
 	--*)           
-	    usage
 	    echo "Error: $1 is not a valid option"
 	    exit 1;;
 	-*)
@@ -535,7 +551,7 @@ proveit() {
       compile_outfile_names
       cleanup
       
-      if [ "$FILENOTFOUND" ]; then
+      if [ "$FILENOTFOUND" -a "$LISPAUTOTOP" != "t" ]; then
 	  if [ -z "$CLEAN" ]; then
 	      echo "Error: File $FILENOTFOUND not found"
 	  fi
@@ -563,15 +579,18 @@ proveit() {
 	  if [ "$LISPIMPORT" = "t" ]; then
 	      echo "Proving chain of imported theories"
 	  fi 
-	  if [ "$LISPDEPENDENCIES" ]; then
-	      echo "Saving theory dependencies in directory pvsbin"
+	  if [ "$LISPDEPENDENCIES" != "nil" ]; then
+	      echo "Saving theory dependencies ($LISPDEPENDENCIES) in directory pvsbin"
 	  fi
 	  if [ "$LISPSCRIPTS" != "t" ]; then
 	      echo "ProofLite scripts won't be installed"
 	  fi 
 	  if [ "$LISPWRITESCRIPTS" = "t" ]; then
-	      echo "Proofs will be stored as ProofLite scripts in .prl files."
+	      echo "Proofs wish/ill be stored as ProofLite scripts in .prl files."
 	  fi 
+	  if [ "$LISPAUTOTOP" = "t" ]; then
+	      echo "Top file will be automatically generated."
+	  fi
 	  if [ "$LISPFORCE" != "t" ]; then
 	      echo "Proofs won't be forced"
 	  fi
@@ -600,7 +619,7 @@ proveit() {
 
       export PROVEITARG="$ARG"
       export PROVEITPVSCONTEXT="$PVSCONTEXT"
-      if [ -f $PVSCONTEXT/$PVSFILE.pvs ]; then
+      if [ -f $PVSCONTEXT/$PVSFILE.pvs -o "$LISPAUTOTOP" = "t" ]; then
 	  export PROVEITPVSFILE="$PVSFILE"
       else
  	  export PROVEITPVSFILE=""
@@ -610,6 +629,7 @@ proveit() {
       export PROVEITLISPWRITESCRIPTS="$LISPWRITESCRIPTS"
       export PROVEITLISPTRACES="$LISPTRACES"
       export PROVEITLISPFORCE="$LISPFORCE"
+      export PROVEITLISPAUTOTOP="$LISPAUTOTOP"
       export PROVEITLISPTYPECHECK="$LISPTYPECHECK"
       export PROVEITLISPTXTPROOFS="$LISPTXTPROOFS"
       export PROVEITLISPTEXPROOFS="$LISPTEXPROOFS"
@@ -625,6 +645,7 @@ proveit() {
       
       if [ "$DEBUG" ]; then
 	  readVersion
+	  echo "QUIET: $QUIET"
 	  echo "PROVEITVERSION: $VERSION"
 	  echo "OUTFILE: $OUTFILE"
 	  echo "LOGFILE: $LOGFILE"
@@ -636,6 +657,7 @@ proveit() {
 	  echo "PROVEITLISPWRITESCRIPTS: $PROVEITLISPWRITESCRIPTS"
 	  echo "PROVEITLISPTRACES: $PROVEITLISPTRACES"
 	  echo "PROVEITLISPFORCE: $PROVEITLISPFORCE" 
+	  echo "PROVEITLISPAUTOTOP: $LISPAUTOTOP"
 	  echo "PROVEITLISPTYPECHECK: $PROVEITLISPTYPECHECK"
 	  echo "PROVEITLISPTXTPROOFS: $PROVEITLISPTXTPROOFS"
 	  echo "PROVEITLISPTEXPROOFS: $PROVEITLISPTEXPROOFS"
@@ -652,24 +674,26 @@ proveit() {
 
       if [ $PVSTIMEOUT ]; then
 	  $PVSPATH/pvs -raw $PVSLISP -timeout $PVSTIMEOUT -E "(proveit)" > $OUTFILE
+	  ret_value=$?
       else
 	  $PVSPATH/pvs -raw $PVSLISP -E "(proveit)" > $OUTFILE
+	  ret_value=$?
       fi
 
-      PVSRESULT=$?
-      grep pvserror $OUTFILE > /dev/null
-      ERRORRESULT=$?
-      if [ $ERRORRESULT -eq 0 -o $PVSRESULT -ne 0 ]; then
+      if [ $ret_value -ne 0 ]; then
 	  error_output
-	  exit 1
+	  exit $ret_value 
       fi
       pvs_output
   fi
   reset_vars
+  return $ret_value;
 }
 
 # ... and go!
 #
+
+ret_value=0
 
 reset_vars
 while [ $# -gt 0 ]
@@ -717,6 +741,8 @@ do
     -t|-top|--top)           
 	  TOP=$2
 	  shift;;
+    -generate-top|--generate-top)           
+	  LISPAUTOTOP=t;;
     -Clean|--Clean)
 	echo "The option $1 is not longer supported. Please use --clean-all instead."
 	exit 1;;
@@ -756,6 +782,20 @@ do
 	    LISPAUTOFIX=$2
 	    shift
 	fi;;
+    -dep|--dep|-dependencies|--dependencies)
+	if echo $2 | grep -qE '^-.*$'; then
+	    # 'relative' by default
+	    LISPDEPENDENCIES=relative
+	elif echo $2 | grep -qE '^relative$'; then
+	    LISPDEPENDENCIES=relative
+	    shift
+	elif echo $2 | grep -qE '^fullpath$'; then
+	    LISPDEPENDENCIES=fullpath
+	    shift
+	else
+	    echo "Error: --dependencies option must be followed by the options 'relative' or 'fullpath'. (See proveit --help for details.)"
+	    exit 1
+	fi;;
     --timeout)
 	if echo $2 | grep -qE '^[0-9]+$'; then
 	    PVSTIMEOUT=$2
@@ -776,16 +816,19 @@ do
     *)     ARG=$1
  	   NOFILE=
            proveit
+	   ret_value=$?
   esac
   shift 
 done 
 if [ "$NOFILE" ]; then
   ARG=$TOP.pvs
   if [ -f $ARG -o "$CLEAN" = "only" ]; then
-    proveit
+      proveit
+      ret_value=$?
   else
-    usage
+      echo "[proveit] no file '$NOFILE'"
+      usage
   fi
 fi
 
-exit 0
+exit $ret_value;

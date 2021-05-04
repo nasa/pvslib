@@ -40,11 +40,8 @@ OPTIONS
   --from=<dir>             process all libraries from <dir>, inclusive
   --before=<dir>           process all libraries before <dir>, exclusive
   --to=<dir>               process all libraries to <dir>, inclusive
-  --reach-from=<lib>@<th>  print (only) every reachable theory from <lib@th>
-  --centered-in=<lib>      show only elements related directly to <lib> 
-  --closure=[lib|theory]   automatically grows the scope in order to 
-                           - (lib) include every library reachable from theories in it
-                           - (theory) zoom into those theories
+  --reach-from=<lib>[@<th>] only print every reachable theory from <lib> or <lib@th>
+  --centered-at=<lib>[@<th>] only print elements related to <lib> 
 
  FINE-GRAINED CONTROL
 
@@ -76,14 +73,14 @@ OPTIONS
 
  EXTRAS
 
-  --force                  force regeneration of .dep files
+  --dependencies           force regeneration of .dep files
   --help                   print this message
 
 DESCRIPTION
 
   This script builds a dot graph of library dependencies. 
 
-  If <file> is not provided, the file name all-theories is assumed.
+  If <file> is not provided, the file name all-libraries is assumed.
   Particular developments in <file> can be selected using the options: --do,
   --after, --before, --from, --to. The option --but unselect a list of developments.
   
@@ -95,13 +92,6 @@ DESCRIPTION
   that the each theory in those developments in represented by a node in the 
   dependency graph.
   
-  The --reach-from=<lib>@<th> option allows to print only the theories which are 
-  reachable from <lib>@<th>. Note, also, that <lib> will be added to the visible 
-  scope if not already part of it. Additionally, dependencygraph will zoom into 
-  <lib> as if it were mentioned in the --zoom option. Theories from other libraries 
-  are explicitly mentioned in the resulting graph only if they belong to a zoomed 
-  library, otherwise only the referenced library is mentioned.
-
 EOF
   exit;
 }
@@ -123,61 +113,67 @@ sub trim($)
 
 my $graph = Graph->new; 
 
-sub library_label {
-  my ($string,$short) = @_;
-  if ($short || ! $fullpath){
-    $string =~ s/^\/.*\/([^\/]+)$/$1/;
-  }
-  return $string;
-}
-
 sub collection_label($){
   my $lib = shift;
 
   print "[collection_label] lib $lib\n" if $debug;
   
   my $result = $lib;
-  if($fullpath){
-    $result =~ s/^(\/.*\/[^\/]+)\/[^\/]+$/$1/;
-  } else {
-    $result =~ s/^\/.*\/([^\/]+)\/[^\/]+$/$1/;
-  }
 
+  if ($fullpath) {
+    if ($lib =~ /^(.*\/[^\/]+)\/[^\/]+$/){
+      $result = $1;
+    } else {
+      print "WARNING full-path not found for library $lib, using relative path instead. Try regenerating dep file for $lib.\n";
+      $result =~ s/^(.+)\/[^\/]+$/$1/;
+    }
+  } else {
+    if ($lib=~/^.*\/([^\/]+)\/[^\/]+$/) {
+      $result = $1;
+    } else {
+      $result =~ s/^([^\/]+)\/[^\/]+$/$1/;
+    }
+  }
+  
   print "[collection_label] result $result\n" if $debug;
   
-  if (! $result) {
-    $result = getcwd; # it's a local library.
-    $result =~ s/^\/.*\/([^\/]+)$/$1/ if ! $fullpath;
-  }
   my $user_label = $collection_labels{$result};
   $result = $user_label if $user_label;
   return $result;
 }
 
-sub unqualify_library_name($) {
+sub lib_name($) {
   my $lib = shift;
+  my $result;
   if ( $lib =~/^.+\/([^\/]+)$/ ) {
-    return $1;
+    $result=$1;
   } else {
-    return $lib;
+    $result=$lib;
   }
+
+  print "[lib_name] lib $lib -> $result \n" if $debug;
+  
+  return $result;
 }
 
+# node_id is collection / library @ theory
 sub add_theory_vertex {
   my ($lib,$thy) = @_;
 
-  my $node_id = $lib."@".$thy;
+  my $node_id = "@".$thy;
+
+  if( $lib =~/.*\/([^\/]+\/[^\/]+)$/) {
+    $node_id = $1.$node_id;
+  } else {
+    $node_id = $lib.$node_id;
+  }  
 
   $graph->set_vertex_attribute($node_id,'label',$thy);
-  if ($fullpath) { 
-    $graph->set_vertex_attribute($node_id,'group',$lib);
-  } else {
-    $graph->set_vertex_attribute($node_id,'group',library_label($lib));
-  }
+  $graph->set_vertex_attribute($node_id,'group',$lib);
   $graph->set_vertex_attribute($node_id,'style','filled');
   $graph->set_vertex_attribute($node_id,'fillcolor','#e6f3ff');
 
-  return ($node_id eq $reach_from);
+  return $node_id;
 }
 
 sub add_library_vertex {
@@ -189,40 +185,76 @@ sub add_library_vertex {
 
   print "[add_library_vertex] group_label: $group_label\n" if $debug;
 
-  $graph->set_vertex_attribute($lib,'label',library_label($lib,true));
-  $graph->set_vertex_attribute($lib,'group',$group_label);
-  $graph->set_vertex_attribute($lib,'style','filled');
-  $graph->set_vertex_attribute($lib,'fillcolor','#fcfcd7');
-  $graph->set_vertex_attribute($lib,'shape','box');
+  my $node_id;
+  if( $lib =~/.*\/([^\/]+\/[^\/]+)$/) {
+    $node_id = $1;
+  } else {
+    $node_id = $lib;
+  }  
+
+  print "[add_library_vertex] id $node_id\n" if $debug;
+
+  $graph->set_vertex_attribute($node_id,'label',lib_name($lib));
+  $graph->set_vertex_attribute($node_id,'group',$group_label);
+  $graph->set_vertex_attribute($node_id,'style','filled');
+  $graph->set_vertex_attribute($node_id,'fillcolor','#fcfcd7');
+  $graph->set_vertex_attribute($node_id,'shape','box');
+
+  return $node_id;
 }
 
-sub add_edge {
+sub register_importing {
   my ($libsrc,$thysrc,$libtgt,$thytgt) = @_;
 
-  print "[add_edge] libsrc: $libsrc\n" if $debug;
-  print "[add_edge] thysrc: $thysrc\n" if $debug;
-  print "[add_edge] libtgt: $libtgt\n" if $debug;
-  print "[add_edge] thytgt: $thytgt\n" if $debug;
+  my $pivot_theory_found;
 
-  my $reach_from_theory_found=add_theory_vertex($libsrc,$thysrc);
-
-  my $uname = unqualify_library_name($libtgt);
-  if (grep(/^$uname$/,@zoomlist)) {
-    $reach_from_theory_found = add_theory_vertex($libtgt,$thytgt) || $reach_from_theory_found;
-    $graph->add_edge($libsrc."@".$thysrc,$libtgt."@".$thytgt);
+  print "[register_importing] libsrc: '$libsrc'\n" if $debug;
+  print "[register_importing] thysrc: '$thysrc'\n" if $debug;
+  print "[register_importing] libtgt: '$libtgt'\n" if $debug;
+  print "[register_importing] thytgt: '$thytgt'\n" if $debug;
+    
+  my $src_lib_name = lib_name($libsrc);
+  my $tgt_lib_name = lib_name($libtgt);
+  my $src_node_id;
+  my $tgt_node_id;
+  if (grep(/^$src_lib_name$/,@zoomlist)) {
+    $src_node_id = add_theory_vertex($libsrc,$thysrc) if ($showtop || $thysrc ne "$topfile");
+    print "[register_importing] pivot_library '$pivot_library'\n" if $debug;
+    my $test=$pivot_library eq substr($libsrc, -length($pivot_library));
+    print "[register_importing] reach_from test $test\n" if $debug;
+    $pivot_theory_found=($pivot_library eq substr($libsrc, -length($pivot_library)) && $pivot_theory eq $thysrc);
+    $pivot_library = $libsrc if ($pivot_theory_found);
+    if (grep(/^$tgt_lib_name$/,@zoomlist)) {
+      $tgt_node_id = add_theory_vertex($libtgt,$thytgt) if ($showtop || $thytgt ne "$topfile");
+      $pivot_theory_found=($pivot_library eq substr($libtgt, -length($pivot_library)) && $pivot_theory eq $thytgt);
+      $pivot_library = $libtgt if ($pivot_theory_found);
+      $graph->add_edge($src_node_id,$tgt_node_id) if ($showtop || ($thysrc ne "$topfile" && $thytgt ne "$topfile"));
+    } else {
+      $tgt_node_id = add_library_vertex($libtgt);
+      $pivot_theory_found=($pivot_library eq substr($libtgt, -length($pivot_library)) && $pivot_theory eq "");
+      $pivot_library = $libtgt if ($pivot_theory_found);
+      $graph->add_edge($src_node_id,$tgt_node_id);
+    }
   } else {
-    add_library_vertex($libtgt);
-    $graph->add_edge($libsrc."@".$thysrc,$libtgt);
+    $src_node_id = add_library_vertex($libsrc);
+    $pivot_theory_found=($pivot_library eq substr($libsrc, -length($pivot_library)) && $pivot_theory eq "");
+    $pivot_library = $libsrc if ($pivot_theory_found);
+    if (grep(/^$tgt_lib_name$/,@zoomlist)) {
+      $tgt_node_id = add_theory_vertex($libtgt,$thytgt) if ($showtop || $thytgt ne "$topfile");
+      $pivot_theory_found=($pivot_library eq substr($libtgt, -length($pivot_library)) && $pivot_theory eq $thytgt);
+      $pivot_library = $libtgt if ($pivot_theory_found);
+      $graph->add_edge($src_node_id,$tgt_node_id) if ($showtop || ($thysrc ne "$topfile" && $thytgt ne "$topfile"));
+    } else {
+      $tgt_node_id = add_library_vertex($libtgt);
+      $pivot_theory_found=($pivot_library eq substr($libtgt, -length($pivot_library)) && $pivot_theory eq "");
+      $pivot_library = $libtgt if ($pivot_theory_found);
+      if ($libsrc ne $libtgt) {
+	$graph->add_edge($src_node_id,$tgt_node_id);
+      }
+    }
   }
-
-  return $reach_from_theory_found;
-}
-
-sub add_libraries_edge {
-  my ($libsrc,$libtgt) = @_;
-  add_library_vertex($libsrc);
-  add_library_vertex($libtgt);
-  $graph->add_edge($libsrc,$libtgt);
+  
+  return $pivot_theory_found;
 }
 
 # Every vertex in the TARGET graph receive the attributes
@@ -256,17 +288,18 @@ GetOptions('dot'=>\$dot,
 	   'help'=>\$help,
 	   'top=s'=>\$top,
            'to=s'=>\$to,
-	   'force'=>\$force,
+	   'dependencies'=>\$force,
 	   'full-path'=>\$fullpath,
 	   'show-top'=>\$showtop,
 	   'reach-from=s'=>\$reach_from,
-	   'centered-in=s'=>\$centered_in,
+	   'centered-at=s'=>\$centered_at,
 	   'splines=s'=>\$splines,
-	   'closure=s'=>\$closure,
 	   'collection-label=s'=>\%collection_labels,
 	   'rankdir=s'=>\$rankdir) or exit 1;
 
 die("Error: unkonwn value for splines: $splines.\n") if $splines && ($splines ne "ortho")  && ($splines ne "none") && ($splines ne "line") && ($splines ne "false") && ($splines ne "polyline") && ($splines ne "curved") && ($splines ne "spline") && ($splines ne "true");
+
+die("Error: options --reach-from and --centered-at cannot be set simultaneausly.\n") if ($reach_from && $centered_at);
 
 $splines="spline" if !$splines;
 $rankdir="LR" if !$rankdir;
@@ -277,19 +310,31 @@ $from = deslash($from);
 $do = deslash(join(',',@do));
 $but = deslash(join(',',@but));
 $zoom = deslash(join(',',@zoom));
-my ($reach_from_library,$reach_from_theory) = split(/@/,$reach_from) if $reach_from;
+($pivot_library,$pivot_theory) = split(/@/,$reach_from) if $reach_from;
+($pivot_library,$pivot_theory) = split(/@/,$centered_at) if $centered_at;
 $svg = $svg || (!$dot && !$pdf);
 
+print "[main] pivot_library $pivot_library \n" if $debug;
+print "[main] pivot_theory $pivot_theory \n" if $debug;
 print "collection_labels @{[ %collection_labels ]}\n\n" if $debug;
+print "[main] fullpath $fullpath \n" if $debug;
 
 usage if $help;
 
 $file = shift;
 if (!$file) {
+  if ( -f 'all-libraries' ) {
+    $file = 'all-libraries';
+  } elsif ( -f 'all-theories' ) {
+    print "Warning: all-theories is no longer supported as default input file name, please rename it to all-libraries.\n";
     $file = 'all-theories';
+  } else {
+    die "Error: input file all-libraries not found.\n"
+  }
 } elsif ( ! -f $file ) {
-  die "File $file not found";
+    die "File $file not found\n";
 }
+
 die "$usageln\n" if shift; 
 
 @butlist = split /,/,$but;
@@ -335,15 +380,14 @@ if ($out) {
   $graphName .= "-zoom_$zooml" if $zooml;
   $graphName .= "-top_$top" if $top;
   $graphName .= "-rf_$reach_from" if $reach_from;
-  $graphName .= "-center_$centered_in" if $centered_in;
-  $graphName .= "-closure_$closure" if $closure;
+  $graphName .= "-center_$centered_at" if $centered_at;
   $graphName .= "-fullpath" if $fullpath;
 }
 $graphName =~ s/@/AT/g;
 
 $out = $path . $graphName;
 
-# Process input file (all-theories by default)
+# Process input file (all-libraries by default)
 #
 my $all = !($from || $after || @dolist || @zoomlist);
 my @all_libs;
@@ -351,6 +395,7 @@ while (<INFILE>) {
   $line = $_;
   $line =~ s/\#.*$//;
   $line = trim($line);
+  next if ($line =~ m/^ *-.*$/);
   if ($line) {
     @listline = split /:/,$line;
     $lib = trim($listline[0]);
@@ -363,7 +408,7 @@ while (<INFILE>) {
 	$all = 0;
       }
       if (!grep(/^$lib$/,@butlist) && 
-	  ($all || grep(/^$lib$/,@dolist) || grep(/^$lib$/,@zoomlist))) { 
+	  ($all || grep(/^$lib$/,@dolist))) { 
 	push(@targets,$lib);
       }
       if ($lib eq $after) {
@@ -378,16 +423,8 @@ while (<INFILE>) {
 }
 close(INFILE);
 
-if ($reach_from) {
-  push(@targets, $reach_from_library) if !grep(/^$reach_from_library$/,@targets);
-  push(@zoomlist, $reach_from_library) if !grep(/^$reach_from_library$/,@zoomlist);
-}
-
-$centered_in = "" if grep(/^$centered_in$/,@zoom);
-
-if ($centered_in) {
-  push(@targets, $centered_in) if !grep(/^$centered_in$/,@targets);
-  print "\ncentered_in $centered_in\n" if $debug;
+if ($centered_at) {
+  print "\ncentered_at $centered_at\n" if $debug;
   print "\nzoom @zoom\n" if $debug;
 }
 
@@ -404,9 +441,7 @@ print "\ntargets @targets \n" if $debug;
 my @libraries=@targets;
 
 
-$reach_from = getcwd."/".$reach_from if $reach_from;
-$centered_in = getcwd."/".$centered_in if $centered_in;
-
+# for each library in the list of targets (@libraries) process its .dep file.
 while (@libraries) {
   $lib = pop(@libraries);
 
@@ -420,80 +455,67 @@ while (@libraries) {
     } elsif (! -f "$lib/pvsbin/$topfile.dep") {
       print "File $lib/pvsbin/$topfile.dep not found. Generating it... ";
     }
-    my $prove_it_result = `proveit -T -i -q --dependencies $lib/$topfile`;      
+    my $prove_it_result = `proveit --dependencies -T -i -q $lib/$topfile`;      
     die("Error: could not generate dep file (reported error: $!)\n")
       if !defined($prove_it_result);
     print "done.\n";
   }
 
-  my $fullyQualifiedLibName = getcwd."/".$lib;
-  my $librarylabel = library_label($fullyQualifiedLibName);
+  my $current_library = "";
 
-  my $reach_from_theory_found=0;
+  my $pivot_theory_found;
   if (-f "$lib/pvsbin/$topfile.dep") {
     open(FILE,"$lib/pvsbin/$topfile.dep");
-    $zoom = grep(/^$lib$/,@zoomlist);
     while($line = <FILE>) {
-      if ($zoom) {
-	if ($line =~/(.+):(.*)/ && ($showtop || $1 ne "$topfile")) {
-	  
-	  add_theory_vertex($fullyQualifiedLibName,$1);
-	  
-	  if ($2) {
-	    my $lib=$fullyQualifiedLibName;
-	    my $from=$1;
-	    my $tos=$2;
-	    @tolist = split /,/,$tos;
-	    foreach $to (@tolist) {
-	      if ($to =~/^(.*\/)([^\/]+)\/([^\/]+)$/) { # if it has a slash, it is a fully qualified name
-
-		my $uname = unqualify_library_name($1.$2);
-		if ($closure) {
-		  if (!grep(/^$uname$/,@libraries) && !grep(/^$uname$/,@libraries) && grep(/^$uname$/,@all_libs)) {
-		    push(@libraries, $uname);
-		    if ($closure eq "theory" && !grep(/^$uname$/,@zoomlist)) {
-		      push(@zoomlist, $uname);
-		    }
-		  } 
-		}
-
-		$reach_from_theory_found = add_edge($lib,$from,$1.$2,$3) || $reach_from_theory_found;
-	      } else {
-		$reach_from_theory_found = add_edge($lib,$from,$lib,$to) || $reach_from_theory_found;
+      if ($current_library eq "") {
+	if ($line =~/^([^,]+)\/[^,]+,/) {
+	  $current_library = $1;
+	} else {
+	  die "ERROR cannot recognize path for lib $lib when processing $lib/pvsbin/$topfile.dep.\n";
+	}
+	print "[main] first line: current_library $current_library\n" if $debug;
+      } elsif ($line =~/(.+):(.*)/) {
+	# The lines that contains a colon register importing relations between theories.
+	if ($2) {
+	  print "[main] from $1\n" if $debug;
+	  my $from=$1;
+	  my $tos=$2;
+	  @tolist = split /,/,$tos;
+	  foreach $to (@tolist) {
+	    print "[main] to $to \n" if $debug;
+	    if($from =~/(.+)\/([^\/]+)/) {
+	      my $fromLibrary=$1;
+	      my $fromTheory=$2;
+	      if($to =~/(.+)\/([^\/]+)/) {
+		my $toLibrary=$1;
+		my $toTheory=$2;
+		$pivot_theory_found = register_importing($fromLibrary,$fromTheory,$toLibrary,$toTheory) || $pivot_theory_found;
 	      }
 	    }
-	  }
+	  }	    
 	}
-      } elsif ($line =~/(.+)\/$/) {
-	# omit path-only library entry in the dep file
-      } elsif ($line =~/(.+)\/$lib\/([^\/]+)$/) {
-	# add vertex in case the library is not connected to any other
-	add_library_vertex($fullyQualifiedLibName);
-      } elsif ($line =~/^(\/.+)\//) {
-	my $destlib = unqualify_library_name($1);
-	print "-> destlib $destlib \n" if $debug;
-
-	# if the destination is zoomed
-	if (grep(/^$destlib$/,@zoomlist)) {
-	  if ($line =~/(.+):(.*)/ && ($showtop || $2 ne "$topfile")) {
-	    add_theory_vertex($fullyQualifiedLibName,$2);
-	  }
-	} elsif ($closure) {
-	  if (!grep(/^$destlib$/,@libraries) && grep(/^$destlib$/,@all_libs)) {
-	    push(@libraries, $destlib);
-	    push(@zoomlist, $destlib) if ($closure eq "theory") && !grep(/^$destlib$/,@zoomlist);
-	  } 
-	}
-	add_libraries_edge($fullyQualifiedLibName,$1);
       }
     } 
     close FILE;
   } else {
     die "File $lib/pvsbin/$topfile.dep not found\n";
   }
-  die("ERROR in --reach-from option value: theory '$reach_from' is not visible.\n".
-      "(HINT: Doublecheck spelling and values for --do, --from, --to, --but options and check if the .dep files are up-to-date.)\n")
-    if ($reach_from && ($lib eq $reach_from_library) && !$reach_from_theory_found);
+  print "[main] pivot_theory_found: '$pivot_theory_found'\n" if $debug;
+  print "[main] ((\$reach_from || \$centered_at) && (\$lib eq \$pivot_library) && !\$pivot_theory_found): '$test'\n" if $debug;
+  my $test=(($reach_from || $centered_at) && ($lib eq $pivot_library) && !$pivot_theory_found);
+  print "[main] ((\$reach_from || \$centered_at) && (\$lib eq \$pivot_library) && !\$pivot_theory_found): '$test'\n" if $debug;
+  if (($reach_from || $centered_at) && ($lib eq $pivot_library) && !$pivot_theory_found) {
+    my $option_name = "--reach-from";
+    $option_name = "--centered_at" if $centered_at;
+    die("ERROR in $option_name option value: element '$pivot_from' is not visible.\n".
+	"(HINT: Doublecheck spelling and values for --do, --from, --to, --but, -zoom options ".
+	"and check if the .dep files are up-to-date.)\n");
+  } else {
+    print "[main] pivot_library: $pivot_library\n" if $debug;
+    print "[main] pivot_theory: $pivot_theory\n" if $debug;
+    print "[main] reach_from: $reach_from\n" if $debug;
+    print "[main] reach_from: $reach_from\n" if $debug;
+  }
 }
 
 # Add graphs attributes
@@ -505,23 +527,30 @@ $graph->set_graph_attribute('concentrate',true);
 # Print dot file
 #
 my $writer = Graph::Writer::Dot->new(cluster => 'group');
-if ($reach_from || $centered_in) {
+if ($reach_from || $centered_at) {
+
+  my $pivot_from=$pivot_library;
+  $pivot_from=$pivot_library."@".$pivot_theory if $pivot_theory;
 
 #  print "\ngraph $graph \n" if $debug;
-
   
   # Compute Shortest Path Tree from $reach_from node.
   my @reachables;
-  @reachables = $graph->all_successors($reach_from) if $reach_from; 
-  @reachables = $graph->neighbours($centered_in) if $centered_in;
+  @reachables = $graph->all_successors($pivot_from); 
+  push(@reachables,$graph->all_predecessors($pivot_from)) if $centered_at;
+  # my @bla = ($pivot_from);
+  # my $radius = 2;
+  # print "[main] @bla , $radius\n" if $debug;
+  # $graph = $graph->subgraph_by_radius(@bla,$radius) if $centered_at;
 
-  print "centered_in $centered_in \n" if $debug;
-  print "reachables @reachables \n" if $debug;
+  print "[main] centered_at: $centered_at \n" if $debug;
+  print "[main] reach_from: $reach_from\n" if $debug;
+  print "[main] pivot_from: $pivot_from\n" if $debug;
+  print "[main] reachables: @reachables \n" if $debug;
   
-  push(@reachables, $reach_from) if $reach_from;
-  push(@reachables, $centered_in) if $centered_in;
+  push(@reachables, $pivot_from);
 
-  $graph->set_vertex_attribute($centered_in,'fillcolor','#f7e28d') if $centered_in;
+  $graph->set_vertex_attribute($pivot_from,'fillcolor','#f7e28d') if $centered_at;
   
   my $tree = $graph->subgraph(\@reachables);
 

@@ -3,16 +3,17 @@ use Getopt::Long;
 
 $usageln = "find-all [--help | <option>* ] <regexpr>";
 
-$provethem = "$ENV{'PVS_DIR'}/provethem";
+$provethempath = "$ENV{'PVS_DIR'}";
 
-if (! -x $provethem) {
-  $provethem = `which provethem`;
+if (! -x $provethempath) {
+  $provethempath = `which provethem`;
+  $provethempath =~ s/\/[^\/]*$/\//;
 }
 
-die "Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH\n" if !$provethem;
+die "Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH\n" if !$provethempath;
 
 sub readVersion() {
-  $VERSION = `$provethem --version`;
+  $VERSION = `$provethempath/provethem --version;`;
   $VERSION =~ s/^(.*)[\r\n]*$/\1/;
 }
 
@@ -32,11 +33,11 @@ DESCRIPTION
   directory. 
 
   A library is considered reachable in a given directory <dir> if it is one of its 
-  direct subfolders and there is a text file named all-theories in <dir> and
+  direct subfolders and there is a text file named all-libraries in <dir> and
   the library is mentioned there. The scope of application of find-all can be 
   restricted using the options --after, --before, --but, --do, --from, and --to 
   detailed below. The order implicitly referred to by all these options is the one 
-  induced by the applicable all-theories file.
+  induced by the applicable all-libraries file.
 
 OPTIONS
 
@@ -54,7 +55,7 @@ OPTIONS
 
   --help            print this message
 EOF
-    exit;
+    exit 0;
 }
 
 GetOptions('after=s'=>\$after,
@@ -68,7 +69,7 @@ GetOptions('after=s'=>\$after,
 	   'pvs'=>\$pvs,
 	   'strategies'=>\$strategies,
 	   'attachments'=>\$attachments,
-           'test'=>\$test,
+           'dry-run'=>\$dryrun,
            'version'=>\$version
     ) or exit 1;
 
@@ -78,8 +79,10 @@ if ($version) {
   exit;
 }
 
-usage if $help;
+usage() if $help;
+
 $what = shift;
+
 die "$usageln\n" if !$what || shift; 
 
 $options = "";
@@ -89,7 +92,7 @@ $options .= "--but=$but " if $but;
 $options .= "--do=$do " if $do;
 $options .= "--from=$from " if $from;
 $options .= "--to=$to " if $to;
-$options .= "--test " if $test;
+$options .= "--dry-run " if $dryrun;
 
 $files = "";
 $files .= " *.prf" if $prf;
@@ -98,10 +101,16 @@ $files .= " pvs-attachments" if $attachments;
 $files .= " *.pvs" if !$files || $pvs;
 
 $file='';
-$file='all-theories'  if ( -f "all-theories" );
-$file='nasalib.all' if ( -f "nasalib.all" );
+if ( -f "all-libraries" ) {
+  $file='all-libraries';
+} elsif ( -f "nasalib.all" ) {
+  $file='nasalib.all';
+} elsif ( -f "all-theories" ) {
+  print "Warning: all-theories is no longer supported as default input file name, ",
+    "please rename it to all-libraries.\n";
+  $file='all-theories';
+} else {
+  die "Error: neither all-libraries nor nasalib.all file found.\n";
+}
 
-die "Error: neither all-theories nor nasalib.all file found.\n" if (! $file);
-
-$command = `$provethem $options--execute \"ls $files 1> /dev/null 2>&1 && grep -n --exclude orphaned-proofs.prf -e '$what' $files\" $file`;
-print "$command\n";
+system("$provethempath/provethem --ret-val-label=\"1=NOT FOUND\" --ret-val-label=\"0=FOUND\" --act=\"Finding\" $options --execute \"cd %DIR%; ls $files 1> /dev/null 2>&1 && grep -n --exclude orphaned-proofs.prf -e '$what' $files\" $file");

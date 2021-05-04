@@ -30,7 +30,7 @@ SYNOPSIS
 DESCRIPTION
   
   Applies dependencygraph over all the libraries in the current directory that are
-  listed in the all-theories file. 
+  listed in the all-libraries file. 
 
   The option -no-iterate provokes the generation of a graph for the whole collection.
 
@@ -38,13 +38,13 @@ DESCRIPTION
   collection. When in iterative mode, the scope of application can be controlled using 
   the options --after, --before, --but, --do, --from, and --to detailed below. The order 
   implicitly referred to by all these options is the one induced by the applicable 
-  all-theories file.
+  all-libraries file.
 
   This command also accepts all the parameters accepted by dependencygraph.
 
 OPTIONS
 
-  --force         force regeneration of .dep files
+  --dependencies  force regeneration of .dep files
 
   --no-iterate    generate graph for the whole collection instead of
   		  iterating on each library
@@ -83,8 +83,8 @@ do
 	readVersion
 	echo $VERSION
 	exit 0;;
-    -force|--force)
-	FORCE=--force;;
+    -dep|-d|--dependencies)
+	FORCE=--dependencies;;
     --collection-label=*)
 	COLLECTIONLABEL="$COLLECTIONLABEL $1";;
     -no-iterate|--no-iterate)
@@ -126,6 +126,16 @@ do
   shift 
 done
 
+if [ -f all-libraries ]; then
+    INPUT_FILE="all-libraries"
+elif [ -f all-theories ]; then
+    echo "Warning: all-theories is no longer supported as default input file name, please rename it to all-libraries."
+    INPUT_FILE="all-theories"
+else
+    echo "Error: input file not found.";
+    exit 1;
+fi
+
 if [ "$provethem" ]; then
     NASALIBPATH=$(pvs -raw -E '(let ((msg (extra-pvs-nasalib))) (format t "~%NASALIBPATH ~a~%" msg)(bye))' -v 0 -batch | sed -nE 's#NASALIBPATH (.*)/$#\1#p')
     NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)$#\1#p')
@@ -133,11 +143,10 @@ if [ "$provethem" ]; then
 	echo "-- Dry run --"
     fi
     if [ "$NOITERATE" ]; then
-	$DRYRUN $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL --svg --rankdir=TB --collection-label="$NASALIBDIR=NASALib" --collection-label="lib=PVS Prelude" --splines=ortho all-theories
+	$DRYRUN $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL --svg --rankdir=TB --collection-label="$NASALIBDIR=NASALib" --collection-label="lib=PVS Prelude" --splines=ortho $INPUT_FILE
     else
-	$DRYRUN $provethem $ADDITIONALARGS --execute "cd ..; $NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL $ZOOMORCENTER --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR% $ADDITIONALDGARGS; mv %DIR%.svg %DIR%/"
+	$DRYRUN $provethem $ADDITIONALARGS --execute "$NASALIBPATH/dependencygraph $FORCE $COLLECTIONLABEL $ZOOMORCENTER --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=ortho --out=%DIR% $ADDITIONALDGARGS $INPUT_FILE; mv %DIR%.svg %DIR%/" --act="Graphing" $INPUT_FILE
     fi
 else
   echo "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH"
 fi
-
