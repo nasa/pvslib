@@ -9,6 +9,9 @@ Domains with a distance metric, continuity and uniform continuity.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./metric_space-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

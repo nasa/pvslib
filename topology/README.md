@@ -9,6 +9,9 @@ Continuity, homeomorphisms, connected and compact spaces, Borel sets/functions.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./topology-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

@@ -4,6 +4,9 @@ This library contains a denotational semantics of Answer Set Programming.
 
 ## Highlights
 
+
+![dependency graph](./ASP-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Gilberto Perez, University of La Coruña, Spain
 * Felicidad Aguado, University of La Coruña, Spain

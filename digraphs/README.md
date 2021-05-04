@@ -16,6 +16,9 @@ system (none, temporary, permanent)
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./digraphs-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Andreia Avelar Borges, University of Brasilia, Brazil
 * Jon Sjogren, Department of Defense, USA

@@ -28,6 +28,9 @@ See MetiTarski's documentation for information about using a different EADM.
 
 The files `METIT-LICENSE.txt` and `Z3-LICENSE.txt` in `NASALib/MetiTarski/dist` contains MetiTarski's and z3's license of use, respectively.
 
+
+![dependency graph](./MetiTarski-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA

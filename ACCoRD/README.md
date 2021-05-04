@@ -10,6 +10,9 @@ Airborne Coordinated Conflict Resolution and Detection (**ACCoRD**) is a framewo
 
 For details see: https://shemesh.larc.nasa.gov/fm/ACCoRD/
 
+
+![dependency graph](./ACCoRD-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

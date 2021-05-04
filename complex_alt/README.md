@@ -10,6 +10,9 @@ This alternative formulation of the complex numbers integrates with the standard
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./complex_alt-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * Anthony Narkawicz, NASA, USA

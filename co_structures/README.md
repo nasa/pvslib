@@ -9,6 +9,9 @@ Sequences of countable length defined as co-algebraic datatypes.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./co_structures-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Jerry James, Utah State University, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

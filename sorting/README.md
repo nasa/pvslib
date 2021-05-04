@@ -11,6 +11,9 @@ Popular sorting algorithms as Bubble Sort, Quick Sort, Merge Sort, Insertion Sor
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./sorting-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Thiago Mendonça Ferreira Ramos, University of Brasilia, Brazil
 * Ariane Alves Almeida, University of Brasilia, Brazil

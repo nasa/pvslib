@@ -11,6 +11,9 @@ As a matter of taste, this formalization allows the somewhat more elegant formul
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./complex-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * Anthony Narkawicz, NASA, USA

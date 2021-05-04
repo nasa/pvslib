@@ -52,6 +52,9 @@ The rest of the parameters are as in `aa-numerical`.
 
 See examples of use in `examples@affine_examples`.
 
+
+![dependency graph](./affine_arith-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

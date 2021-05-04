@@ -193,6 +193,9 @@ sys	0m8.613s
 ````
 _Configuration:_ macOS 10.13.6, 2.7 GHz i7, 16 GB 2133 MHz LPDDR3.
 
+
+![dependency graph](./float-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
 * [Paul Miner](http://shemesh.larc.nasa.gov/people/psm), NASA, USA

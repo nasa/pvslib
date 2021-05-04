@@ -9,6 +9,9 @@ Exact real arithmetic including trig functions.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./exact_real_arith-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

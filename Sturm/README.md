@@ -45,6 +45,9 @@ If `dont-fail?` is set to t, strategy skips instead of failing when sequent cann
 
 See examples of use in `examples@sturm_examples`.
 
+
+![dependency graph](./Sturm-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

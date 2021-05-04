@@ -14,6 +14,9 @@ A Formal Theory of Cooperative TU-Games, DOI 10.1007/978-3-642-04820-3_8, Pages 
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./TU_Games-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Érik Martin-Dorel](http://erik.martin-dorel.org/), U. Montpellier 2 & U. of Perpignan (formerly), France
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

@@ -9,6 +9,9 @@ Limits, continuity, and derivatives of vector functions.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./vect_analysis-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

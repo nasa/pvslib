@@ -10,6 +10,9 @@ This formalization includes properties and definitions about orders, such as abs
 | --- | --- | --- | --- |
 |Schroeder-Bernstein Theorem |`orders@set_antinsymmetric`|`inj_inj_bij`| Jerry James |
 
+
+![dependency graph](./orders-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Alfons Geser, HTWK Leipzig, Germany
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA

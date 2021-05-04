@@ -29,6 +29,9 @@ Main contributions:
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./reals-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [Ben Di Vito](http://shemesh.larc.nasa.gov/people/bld), NASA, USA

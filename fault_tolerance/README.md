@@ -7,6 +7,9 @@
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./fault_tolerance-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Alfons Geser, HTWK Leipzig, Germany
 * [Jeff Maddalon](http://shemesh.larc.nasa.gov/people/jmm), NASA, USA

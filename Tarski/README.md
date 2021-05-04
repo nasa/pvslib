@@ -46,6 +46,9 @@ When `timing?` is set to t, strategy prints timing information of the ground eva
 See examples of use in `examples@tarski_examples`.
 
 
+
+![dependency graph](./Tarski-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

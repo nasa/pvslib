@@ -9,6 +9,9 @@ This library contains formalizations of different termination criteria, such as:
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./CCG-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Andreia Avelar Borges, University of Brasilia, Brazil
 * [Mauricio Ayala-Rincón](http://www.mat.unb.br/~ayala), University of Brasilia, Brazil

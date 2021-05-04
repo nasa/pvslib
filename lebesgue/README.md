@@ -9,6 +9,9 @@ Lebesgue integral with connection to Riemann Integral.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./lebesgue-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

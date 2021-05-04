@@ -10,6 +10,9 @@ The results are expressed on a simple functional language called `PVS0`.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./PVS0-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * Andreia Avelar Borges, University of Brasilia, Brazil

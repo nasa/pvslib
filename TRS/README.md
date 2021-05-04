@@ -15,6 +15,9 @@ Term rewrite systems and Robinson unification algorithm.
 |Church-Rosser Theorem |`TRS@results_confluence`|`CR_iff_Confluent`| André Galdino, Mauricio Ayala-Rincón |
 |Robinson Unification |`TRS@robinsonunification`|`completeness_robinson_unification_algorithm`| Andreia Avelar Borges, Mauricio Ayala-Rincón |
 
+
+![dependency graph](./TRS-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Andreia Avelar Borges, University of Brasilia, Brazil
 * André Galdino, Federal University of Goiás, Brazil

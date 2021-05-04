@@ -49,6 +49,9 @@ The following examples are automatically proved in PVS using the strategy (`bern
 
 More challenging problems are also included in `Bernstein@examples`.
 
+
+![dependency graph](./Bernstein-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

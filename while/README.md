@@ -10,6 +10,9 @@ The Programming Language "while" has been parameterized over the type of variabl
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./while-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

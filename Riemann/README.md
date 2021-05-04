@@ -21,6 +21,9 @@ If the sequent contains un expression of form `integral(A, B, EXPR)`, the strate
 The parameter `precision` is used to determine the size of the output interval and `breaks` indicates the number of regions to use in the Riemann sum. 
 In particular, the sum will use `2^breaks` regions.
 
+
+![dependency graph](./Riemann-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * Amer Tahat, Michigan Technological University, USA

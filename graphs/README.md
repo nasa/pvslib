@@ -12,6 +12,9 @@ Graph theory: connectedness, walks, trees, Menger's Theorem.
 |Menger's Theorem |`graphs@menger`|`hard_menger`| Jon Sjogren |
 |Ramsey's Theorem|`graphs@ramsey`|`ramseys_theorem`| Natarajan Shankar |
 
+
+![dependency graph](./graphs-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Ricky Butler](https://shemesh.larc.nasa.gov/people/rwb/), NASA, USA
 * Jon Sjogren, Department of Defense, USA

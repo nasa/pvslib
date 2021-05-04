@@ -12,6 +12,9 @@ Power series, comparison test, ratio test, Taylor's theorem.
 |Integral of a Power Series |`series@power_series_integ`|`integral_powerseries`|RB |
 |Sum of a Geometric Series |`series@series`|`geometric_sum`| RB |
 
+
+![dependency graph](./series-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK

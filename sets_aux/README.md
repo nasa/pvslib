@@ -10,6 +10,9 @@ Power sets, orders, cardinality over infinite sets. Includes functional and rela
 | --- | --- | --- | --- |
 |Denumerability of the Rational Numbers |`sets_aux@countable_set`|`countable_rat`| Jerry James |
 
+
+![dependency graph](./sets_aux-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK

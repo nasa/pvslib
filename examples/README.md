@@ -9,6 +9,9 @@ Examples of application of the functionality provided by the NASALib, such as st
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./examples-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA

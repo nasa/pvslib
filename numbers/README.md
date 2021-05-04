@@ -20,6 +20,9 @@ Results on Numbers Theory, including:
 |Infinitude of Primes |`numbers@infinite_primes`|`primes_infinite`|Ricky Butler |
 |Fundamental Theorem of Arithmetic  |`numbers@unique_factorization`|`Fundamental_Theorem_Arithmetic`| Ricky Butler|
 
+
+![dependency graph](./numbers-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Alfons Geser, HTWK Leipzig, Germany
 * Anthony Narkawicz, NASA, USA

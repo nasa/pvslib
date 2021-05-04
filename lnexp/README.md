@@ -9,6 +9,9 @@ Logarithm, exponential and hyperbolic functions.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./lnexp-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK

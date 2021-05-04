@@ -54,6 +54,9 @@ The rest of the parameters are as in `numerical`.
 
 See examples of use in `examples@interval_examples`.
 
+
+![dependency graph](./interval_arith-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

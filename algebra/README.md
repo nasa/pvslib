@@ -50,6 +50,9 @@ Main contributions:
 | Maximal ideals in Commutative Rings| `algebra@ring_with_one_maximal_ideal` | `maximal_ideal_charac`| Thaynara de Lima, Andréia Avelar, André Galdino and Mauricio Ayala-Rincón|  
 | Chinese Remainder Theorem for Rings| `algebra@chinese_remainder_theorem_rings` | `Chinese_Remainder_Theorem` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
 | Chinese Remainder Theorem for the Ring Z|`algebra@chinese_remainder_theorem_Z` | `Chinese_Remainder_Theorem_for_int` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+
+![dependency graph](./algebra-zoomed.svg "Dependency Graph")
+
 # Contributors
 * David Lester, Manchester University, UK & NIA, USA
 * [Ricky Butler](https://shemesh.larc.nasa.gov/people/rwb/), NASA, USA

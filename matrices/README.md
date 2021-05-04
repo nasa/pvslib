@@ -7,6 +7,9 @@
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./matrices-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkwicz, formerly NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

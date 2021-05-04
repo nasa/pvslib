@@ -7,6 +7,9 @@
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./linear_algebra-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [Heber Herencia-Zapana](http://www.nianet.org/resources/Research/Research-Staff/Heber-Herencia-Zapana/Heber-Herencia-Zapana.aspx), NIA, USA
 * Gilberto Perez, University of La Coruña, Spain

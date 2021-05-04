@@ -11,6 +11,9 @@ It is mainly based on "Fundamentals of Real Analysis" by Sterling K. Berberian (
 | --- | --- | --- | --- |
 |Fubini-Tonelli Lemmas  |`measure_integration@fubini_tonelli`|`fubini_tonelli_*`| David Lester |
 
+
+![dependency graph](./measure_integration-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

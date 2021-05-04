@@ -18,6 +18,9 @@ The file `fast_approx_props.pvs` holds lemmas verifying that the approximations 
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./fast_approx-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Aaron Dutle](http://shemesh.larc.nasa.gov/people/amd), NASA, USA

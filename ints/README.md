@@ -9,6 +9,9 @@ Integer division, gcd, mod, prime factorization, min, max.
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
 
+
+![dependency graph](./ints-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Alfons Geser, HTWK Leipzig, Germany
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA

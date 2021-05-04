@@ -2,12 +2,15 @@
 
 This library provides definitions and properties on diverse data structures.
 
-## Highlights
+<!-- ## Highlights
 
 ### Major theorems
 
 | Theorem | Location | PVS Name | Contributors |
 | --- | --- | --- | --- |
+-->
+
+![dependency graph](./structures-zoomed.svg "Dependency Graph")
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
@@ -22,5 +25,6 @@ This library provides definitions and properties on diverse data structures.
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
-# Dependencies
+# External Dependencies
 ![dependency graph](./structures.svg "Dependency Graph")
+

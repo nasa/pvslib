@@ -13,6 +13,9 @@ A Foundational Theory of Trigonometry, providing definitions, identities, approx
 |Pythagorean Property - Sine and Cosine |`trig@trig_basic`|`sin2_cos2`| David Lester |
 |Trig Identities: Sum and Diff of Two Angles |`trig@trig_basic`|`sin_plus`| David Lester |
 
+
+![dependency graph](./trig-zoomed.svg "Dependency Graph")
+
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Víctor Carreño](http://shemesh.larc.nasa.gov/people/vac), NASA, USA

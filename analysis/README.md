@@ -14,6 +14,9 @@ Real analysis, limits, continuity, derivatives, integrals.
 |Taylor's Theorem   |`analysis@taylors`|`Taylors`| icky Butler |
 |Heine Theorem and Multi-ary Variants |`analysis@uniform_continuity`|`Heine`| Anthony Narkawicz |
 
+
+![dependency graph](./analysis-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno/), SRI, USA

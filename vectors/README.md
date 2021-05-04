@@ -10,6 +10,9 @@
 | --- | --- | --- | --- |
 |Cauchy-Schwarz Inequality  |`vectors@vectors`|`cauchy_schwartz`| Ricky Butler |
 
+
+![dependency graph](./vectors-zoomed.svg "Dependency Graph")
+
 # Contributors
 * Anthony Narkawicz, NASA, USA
 * [Ben Di Vito](http://shemesh.larc.nasa.gov/people/bld), NASA, USA
