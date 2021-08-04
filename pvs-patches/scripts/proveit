@@ -25,7 +25,7 @@ PVSPATH=@PVSPATH@
 #
 
 readVersion() {
-    if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
+    if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
 	printf "PVS could not be located. Please double check PVS installation.\n"
 	exit 1;
     fi
@@ -59,6 +59,7 @@ DEBUG=
 OUTDIR=
 TOP=top
 NOFILE=yes
+BINARIESONLY=t
 
 reset_vars() {
   FILENOTFOUND=
@@ -318,10 +319,10 @@ SEE ALSO
 
 # Print error output
 error_output() {
-    sed -i.bak -n -e '/^<pvserror/,/^<\/pvserror/p'\
-	-e '/^Restored .*/d'\
-	-e '/^\*\*\* /p'\
-	-e '/^Error/p'\
+    sed -i.bak -n -e '/^<pvserror/,/^<\/pvserror/p' \
+	-e '/^Restored .*/d' \
+	-e '/^\*\*\* /p' \
+	-e '/^Error/p' \
 	-e '/^Typechecking/ !{
                  /^Typecheck error/ {
                    p;g;p
@@ -330,8 +331,8 @@ error_output() {
                    /^PVS file .* is not/h
                    /^PVS file .* is not/!H
                  }
-              }'\
-	-e '/^Typechecking/h'\
+              }' \
+	-e '/^Typechecking/h' \
 	-e '/Proof summary/,/Grand Totals/p' $OUTFILE 
     if [ -z "$QUIET" ]; then
 	cat $OUTFILE | \
@@ -358,6 +359,11 @@ error_output() {
                   }'\
                -e '/^Grand Totals:/p'
     fi
+    cat $OUTFILE.bak | sed  -n \
+			    -e 's/^Typechecking/*** Error occurred while typechecking/p' \
+			    -e 's/^Proving/*** Error occurred while proving/p' \
+			    -e 's/^Rerunning proof/*** Error occurred while rerunning proof/p' \
+	| tail -1
     if [ "$LOG" ]; then
 	mv -f $OUTFILE.bak $LOGFILE
     else
@@ -673,10 +679,10 @@ proveit() {
       fi
 
       if [ $PVSTIMEOUT ]; then
-	  $PVSPATH/pvs -raw $PVSLISP -timeout $PVSTIMEOUT -E "(proveit)" > $OUTFILE
+	  $PVSPATH/pvs -raw $PVSLISP -timeout $PVSTIMEOUT -E "(proveit)" > $OUTFILE 2>&1
 	  ret_value=$?
       else
-	  $PVSPATH/pvs -raw $PVSLISP -E "(proveit)" > $OUTFILE
+	  $PVSPATH/pvs -raw $PVSLISP -E "(proveit)" > $OUTFILE 2>&1
 	  ret_value=$?
       fi
 
