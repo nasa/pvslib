@@ -5,19 +5,20 @@ c_topological_sort[T: TYPE+]: THEORY
 %  search of the graph using a marking system with temporary and
 %  permanent marks.
 %  Contributed by:
-%  Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France 
+%  Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France
 
 %
 BEGIN
 
 
    IMPORTING c_dags[T]
-   G: VAR dag
+
+   G: VAR c_digraph
    x, y: VAR T
    n, k, i, j: VAR nat
    l: VAR list[T]
 
-   Vert(G): TYPE = (vert(G))
+   Vert(G): TYPE = vert(G)
    VertID(G): TYPE = below(size(G))
    Adjs(G, (n: VertID(G))): TYPE =
          {l: list[VertID(G)] |
@@ -99,7 +100,8 @@ BEGIN
    greater_marking(m1, m2: marking): bool =
        FORALL (node: T):
          (permanent?(m2(node)) IMPLIES permanent?(m1(node))) ∧
-          (temporary?(m1(node)) IMPLIES temporary?(m2(node)))
+          (temporary?(m1(node)) IMPLIES temporary?(m2(node))) ∧
+					(none?(m1(node)) IMPLIES none?(m2(node)))
 
    % Technical results
    greater_marking_update: LEMMA
@@ -120,43 +122,58 @@ BEGIN
   % Visit (depth-first) function                                               %
   % -------------------------------------------------------------------------- %
 
+   loop(G) : TYPE = {w: Walk(G) | NOT path?(G,w) }
+	 in_path?(G)(w: Walk(G), x) : bool = EXISTS (i: below(length(w))) : w`seq(i) = x
+	 is_dag(G) : bool = (FORALL (w: Walk(G)): path?(G,w))
+
    visit(G)
         (m: marking, l: (topperm_list(G, m)),
-         node_id:
-           {i: VertID(G) |
-              LET x = node(G)(i) IN
-                NOT permanent?(m(x)) ∧
-                 FORALL y:
-                   m(y) = temporary IMPLIES
-                    x = y ∨ (EXISTS (w: Walk(G)): from?(w, y, x))},
+         node_id: {id: VertID(G) | NOT permanent?(m(node(G)(id)))},
+         w:
+           {w: Walk(G) |
+              seq(w)(length(w) - 1) = node(G)(node_id) AND
+               FORALL (x: Vert(G)):
+                 temporary?(m(x)) IFF in_path?(G)(w, x)},
          adjs:
            {k: Adjs(G, node_id) |
               FORALL (x: VertID(G)):
                 edge?(G)(node(G)(node_id), node(G)(x)) IMPLIES
                  member(x, k) ∨ permanent?(m(node(G)(x)))}): RECURSIVE
-         {res: [marking, list[Vert(G)]] |
-            LET (mp, lp) = res IN
-              LET node = node(G)(node_id) IN
-                topperm_list(G, mp)(lp) ∧
-                 greater_marking(mp, m) ∧
-                  suffix?(l, lp) ∧
-                   permanent?(mp(node)) ∧
-                    FORALL x:
-                      member(x, lp) IMPLIES
-                       NOT member(x, l) IMPLIES
-                        (x = node ∨
-                          EXISTS (w: Walk(G)): from?(w, node, x))} =
+         {res: [loop(G) + [marking, list[Vert(G)]]] |
+            CASES res
+              OF IN_1(loop): TRUE,
+                 IN_2(res):
+                   (LET (mp, lp) = res IN
+                      LET node = node(G)(node_id) IN
+                        topperm_list(G, mp)(lp) ∧
+                         greater_marking(mp, m) ∧
+                          suffix?(l, lp) ∧
+                           permanent?(mp(node)) ∧
+                            (FORALL x:
+                              member(x, lp) IMPLIES
+                               NOT member(x, l) IMPLIES
+                                (x = node ∨
+                                  EXISTS (w: Walk(G)): from?(w, node, x))) ∧
+																	nth[T](lp, 0) = node)
+              ENDCASES} =
      LET node = node(G)(node_id) IN
        CASES adjs
-         OF null: (m WITH [node := permanent], cons(node, l)),
+           OF null: IN_2(m WITH [node := permanent], cons(node, l)),
             cons(child_id, adjsp):
               LET child = node(G)(child_id) IN
-                CASES m(child) OF permanent: visit(G)(m, l, node_id, adjsp)
-                  ELSE LET (mp, lp) =
-                             visit(G)
+                CASES m(child)
+                  OF permanent: visit(G)(m, l, node_id, w, adjsp),
+                     temporary: IN_1(add1(w, child)),
+                     none:
+                       CASES visit(G)
                                   (m WITH [child := temporary], l,
-                                   child_id, nth(adjs(G), child_id))
-                         IN visit(G)(mp, lp, node_id, adjsp)
+                                   child_id, add1(w, child),
+                                   nth(adjs(G), child_id))
+                         OF IN_1(loop): IN_1(loop),
+                            IN_2(res):
+                              LET (mp, lp) = res IN
+                                visit(G)(mp, lp, node_id, w, adjsp)
+                         ENDCASES
                   ENDCASES
          ENDCASES
       MEASURE lex3(size(G) + 1 - perm_count(data(G), m),
@@ -171,28 +188,37 @@ BEGIN
    topological_sort_aux(G)
                        (n: below(size(G)), m: non_temporary_marking,
                         l: (topperm_list(G, m))): RECURSIVE
-         {res: [non_temporary_marking, list[Vert(G)]] |
-            LET (mp, lp) = res IN
-              topperm_list(G, mp)(lp) ∧
-               greater_marking(mp, m) ∧
-                suffix?(l, lp) ∧
-                 FORALL (i: upto(n)): member(node(G)(i), lp)} =
+         {res: [loop(G) + [non_temporary_marking, list[Vert(G)]]] |
+            CASES res
+              OF IN_1(loop): TRUE,
+                 IN_2(res):
+                   LET (mp, lp) = res IN
+                     topperm_list(G, mp)(lp) ∧
+                      greater_marking(mp, m) ∧
+                       suffix?(l, lp) ∧
+                        FORALL (i: upto(n)): member(node(G)(i), lp)
+              ENDCASES} =
      LET node = node(G)(n) IN
        CASES m(node)
          OF permanent:
-              IF n = 0 THEN (m, l)
+              IF n = 0 THEN IN_2(m, l)
               ELSE topological_sort_aux(G)(n - 1, m, l)
               ENDIF
-         ELSE IF n = 0
-                THEN visit(G)
+         ELSE (CASES visit(G)
                           (m WITH [node := temporary], l, n,
-                           nth(adjs(G), n))
-              ELSE LET (mp, lp) =
-                         visit(G)
-                              (m WITH [node := temporary], l, n,
-                               nth(adjs(G), n))
-                     IN topological_sort_aux(G)(n - 1, mp, lp)
-              ENDIF
+                           gen_seq1(G, node), nth(adjs(G), n))
+                 OF IN_1(loop): IN_1(loop),
+                    IN_2(res):
+                      IF (n = 0)
+                        THEN IN_2(res)::
+                               [loop(G) +
+                                [non_temporary_marking, list[Vert(G)]]]
+                      ELSE LET (mp, lp) = res IN
+                             topological_sort_aux(G)(n - 1, mp, lp)::
+                               [loop(G) +
+                                [non_temporary_marking, list[Vert(G)]]]
+                      ENDIF
+                 ENDCASES)
          ENDCASES
       MEASURE n
 
@@ -201,26 +227,29 @@ BEGIN
        no_repetitions?(l1) IMPLIES
         (FORALL x: member(x, l1) IMPLIES member(x, l2)) IMPLIES length(l2) >= length(l1)
 
-   topological_sort(G): {res: [non_temporary_marking, list[Vert(G)]] |
-                           LET (m, l) = res IN
-                             topperm_list(G, m)(l) ∧
-                              length(l) = size(G) ∧
-                               FORALL (i: below(size(G))):
-                                 member(node(G)(i), l)} =
-       IF (size(G) = 0) THEN (empty_marking, null)
+   topological_sort(G): {res:
+                           [loop(G) + [non_temporary_marking, list[Vert(G)]]] |
+                           CASES res
+                             OF IN_1(loop): NOT is_dag(G),
+                                IN_2(res):
+                                  LET (m, l) = res IN
+                                    topperm_list(G, m)(l) ∧ length(l) = size(G) ∧
+                                    FORALL (i: below(size(G))): member(node(G)(i), l)
+                             ENDCASES} =
+       IF (size(G) = 0) THEN IN_2(empty_marking, null)
        ELSE topological_sort_aux(G)(size(G) - 1, empty_marking, null)
        ENDIF
 
-  % -------------------------------------------------------------------------- %
-  % Topological ordering theorem                                               %
-  % -------------------------------------------------------------------------- %
+  % % -------------------------------------------------------------------------- %
+  % % Topological ordering theorem                                               %
+  % % -------------------------------------------------------------------------- %
 
-   topological_ordering(G): TYPE =
-         {f: (bijective?[(vert(G)), below(size(G))]) |
-            FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) < f(y)}
+  %  topological_ordering(G : dag): TYPE =
+  %        {f: (bijective?[(vert(G)), below(size(G))]) |
+  %           FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) < f(y)}
 
-   topological_sort_exists: THEOREM
-     FORALL G: EXISTS (f: topological_ordering(G)): TRUE
+  %  topological_sort_exists: THEOREM
+  %    FORALL (G: dag): EXISTS (f: topological_ordering(G)): TRUE
 
 
 END c_topological_sort
@@ -231,7 +260,7 @@ BEGIN
 
    IMPORTING c_topological_sort[nat]
 
-   G1: dag = (# data:= (:0, 1, 2, 3, 4, 5, 6, 7, 8:),
+   G1: c_digraph = (# data:= (:0, 1, 2, 3, 4, 5, 6, 7, 8:),
                 adjs := (:
 		        (:1:),       %0
 			(: :),       %1
