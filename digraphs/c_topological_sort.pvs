@@ -5,12 +5,9 @@ c_topological_sort[T: TYPE+]: THEORY
 %  search of the graph using a marking system with temporary and
 %  permanent marks.
 %  Contributed by:
-%  Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France
-
+%  Clément Blaudeau, Inria, France and EPFL, Switzerland and Ecole Polytechnique, France
 %
 BEGIN
-
-
    IMPORTING c_dags[T]
 
    G: VAR c_digraph
@@ -24,10 +21,15 @@ BEGIN
          {l: list[VertID(G)] |
             FORALL (x: VertID(G)):
               member(x, l) IMPLIES edge?(G)(node(G)(n), node(G)(x))}
+   is_dag(G): bool = (FORALL (w: Walk(G)): path?(G, w))
+	 in_path?(G)(w: Walk(G), x): bool =
+      EXISTS (i: below(length(w))): w`seq(i) = x
 
   % -------------------------------------------------------------------------- %
   % Marking of a digraph                                                       %
   % -------------------------------------------------------------------------- %
+
+  % When visiting the graph, marks are left to identify already visited nodes
 
    mark: DATATYPE
           BEGIN
@@ -44,6 +46,9 @@ BEGIN
   % -------------------------------------------------------------------------- %
   % Counting temporary and permanent marks inside a marking                    %
   % -------------------------------------------------------------------------- %
+
+  % To prove the termination of the `visit` function, a count of marked (both
+	% permanent and temporary) nodes is used
 
    temp_count((l: list[T]), m): nat = length(filter[T](l, temporary? o m))
    perm_count((l: list[T]), m): nat = length(filter[T](l, permanent? o m))
@@ -77,31 +82,20 @@ BEGIN
      FORALL (l: list[T]), (m: marking): perm_count(l, m) <= length(l)
 
   % -------------------------------------------------------------------------- %
-  % Topological lists                                                          %
-  % -------------------------------------------------------------------------- %
-
-   permanent_list?(G, m)(l: list[Vert(G)]): bool =
-       FORALL x: member(x, l) IFF permanent?(m(x))
-   permanent_list(G, m): TYPE = (permanent_list?(G, m))
-
-   topological_list?(G)(l: list[Vert(G)]): bool =
-       FORALL (i: below(length(l))), x:
-         (EXISTS (w: Walk(G)): from?(w, nth(l, i), x)) IMPLIES
-          (EXISTS (j: below(length(l))): x = nth(l, j) ∧ j >= i)
-
-   topperm_list(G, m)(l: list[Vert(G)]): bool =
-       permanent_list?(G, m)(l) ∧
-        topological_list?(G)(l) ∧ no_repetitions?[T](l)
-
-  % -------------------------------------------------------------------------- %
   % Comparison of markings                                                     %
   % -------------------------------------------------------------------------- %
+
+  % As the marking gets updated during the visit of the graph, some properties
+	% must be conserved : permanent marks are maintained, no new temporary marks
+	% are made and no new node is left unmarked. A marking m1 greater than a
+	% marking m2 basically have the same marks, only with some temporary ones
+	% changed into permanent ones.
 
    greater_marking(m1, m2: marking): bool =
        FORALL (node: T):
          (permanent?(m2(node)) IMPLIES permanent?(m1(node))) ∧
           (temporary?(m1(node)) IMPLIES temporary?(m2(node))) ∧
-					(none?(m1(node)) IMPLIES none?(m2(node)))
+           (none?(m1(node)) IMPLIES none?(m2(node)))
 
    % Technical results
    greater_marking_update: LEMMA
@@ -117,14 +111,43 @@ BEGIN
          NOT permanent?(m2(x)) IMPLIES
           permanent?(m1(x)) IMPLIES perm_count(l, m1) > perm_count(l, m2)
 
+  % -------------------------------------------------------------------------- %
+  % Topological lists                                                          %
+  % -------------------------------------------------------------------------- %
+
+  % During the visit of the graph, nodes are added to a list once all the other
+	% reachable nodes have already been marked permanently. Topological lists
+	% capture the necessary properties
+
+  % Link between a list and a marking
+   permanent_list?(G, m)(l: list[Vert(G)]): bool =
+       FORALL x: member(x, l) IFF permanent?(m(x))
+   permanent_list(G, m): TYPE = (permanent_list?(G, m))
+
+  % Key property: all reachable nodes (with non-trivial walks) are somewhere
+	% higher in the list.
+   topological_list?(G)(l: list[Vert(G)]): bool =
+       FORALL (i: below(length(l))), x:
+         (EXISTS (w: Walk(G)): from?(w, nth(l, i), x) ∧ w`length >= 2) IMPLIES
+          (EXISTS (j: below(length(l))): x = nth(l, j) ∧ j > i)
+
+  % Topological lists also have no repetitions
+   topperm_list(G, m)(l: list[Vert(G)]): bool =
+       permanent_list?(G, m)(l) ∧
+        topological_list?(G)(l) ∧ no_repetitions?[T](l)
 
   % -------------------------------------------------------------------------- %
   % Visit (depth-first) function                                               %
   % -------------------------------------------------------------------------- %
 
-   loop(G) : TYPE = {w: Walk(G) | NOT path?(G,w) }
-	 in_path?(G)(w: Walk(G), x) : bool = EXISTS (i: below(length(w))) : w`seq(i) = x
-	 is_dag(G) : bool = (FORALL (w: Walk(G)): path?(G,w))
+  % The heart of the topological sort is the visit function. Its return type is
+	% a sum between a walk and a pair (marking, topological list). If the visit
+	% function returns a walk, its an explicit loop of the graph.
+
+   loop(G): TYPE = {w: Walk(G) | NOT path?(G, w)}
+
+  % The body of the visit function is simple, but the type constraints capture
+	% the necessary invariants, which are subtle.
 
    visit(G)
         (m: marking, l: (topperm_list(G, m)),
@@ -145,20 +168,18 @@ BEGIN
                  IN_2(res):
                    (LET (mp, lp) = res IN
                       LET node = node(G)(node_id) IN
-                        topperm_list(G, mp)(lp) ∧
-                         greater_marking(mp, m) ∧
-                          suffix?(l, lp) ∧
-                           permanent?(mp(node)) ∧
-                            (FORALL x:
+                           topperm_list(G, mp)(lp) ∧ greater_marking(mp, m)
+                         ∧ suffix?(l, lp) ∧ permanent?(mp(node))
+                         ∧ (FORALL x:
                               member(x, lp) IMPLIES
                                NOT member(x, l) IMPLIES
                                 (x = node ∨
-                                  EXISTS (w: Walk(G)): from?(w, node, x))) ∧
-																	nth[T](lp, 0) = node)
+                                  EXISTS (w: Walk(G)): from?(w, node, x)))
+                         ∧ (nth[T](lp, 0) = node))
               ENDCASES} =
      LET node = node(G)(node_id) IN
        CASES adjs
-           OF null: IN_2(m WITH [node := permanent], cons(node, l)),
+         OF null: IN_2(m WITH [node := permanent], cons(node, l)),
             cons(child_id, adjsp):
               LET child = node(G)(child_id) IN
                 CASES m(child)
@@ -184,6 +205,10 @@ BEGIN
   % -------------------------------------------------------------------------- %
   % Topological_sort (recursive call of visit function on all nodes)           %
   % -------------------------------------------------------------------------- %
+
+  % The visit function does the topological sort of all the subgraph reachable
+	% from a given node. To get a sort of the whole graph, an auxiliary function
+	% recursively calls the visit function on unmarked nodes
 
    topological_sort_aux(G)
                        (n: below(size(G)), m: non_temporary_marking,
@@ -227,6 +252,9 @@ BEGIN
        no_repetitions?(l1) IMPLIES
         (FORALL x: member(x, l1) IMPLIES member(x, l2)) IMPLIES length(l2) >= length(l1)
 
+   % The topological_sort function output either an explicit loop, or a list of
+	 % the nodes in a topological order
+
    topological_sort(G): {res:
                            [loop(G) + [non_temporary_marking, list[Vert(G)]]] |
                            CASES res
@@ -241,24 +269,49 @@ BEGIN
        ENDIF
 
   % % -------------------------------------------------------------------------- %
-  % % Topological ordering theorem                                               %
+  % % Topological ordering definition and theorems                               %
   % % -------------------------------------------------------------------------- %
 
-   topological_ordering(G : c_digraph): TYPE =
-         {f: (bijective?[(vert(G)), below(size(G))]) |
-            FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) < f(y)}
+  % The definition of topological ordering of a graph: a bijective function
+	% decreasing along edges
+   topological_ordering?(G: c_digraph)(f: [vert(G) -> below(size(G))]): bool =
+       bijective?(f) AND
+        FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) < f(y)
 
+  % Topological orderings are also decreasing along paths (by induction)
+   topological_ordering_path: LEMMA
+     FORALL G,
+            (f: (topological_ordering?(G))),
+            (n: nat), (w: Walk(G)), (i, j: below(length(w))):
+       (i + n + 1 = j IMPLIES f(w`seq(i)) < f(w`seq(j)))
+
+  % If the topological_sort function succeeds, the indexes of the topological
+	% list provide a topological ordering function
+   topological_sort_is_topological_ordering: THEOREM
+     FORALL G:
+       IN?_2(topological_sort(G)) IMPLIES
+        topological_ordering?(G)
+                             ((LAMBDA (x: (vert(G))):
+                                 idx(OUT_2(topological_sort(G))`2, x)))
+
+  % Main theorem: a graph admits a topological ordering iff it is a dag
    topological_sort_exists: THEOREM
-     FORALL (G: c_digraph): is_dag(G) IFF (EXISTS (f: topological_ordering(G)) : TRUE)
+     FORALL G:
+       is_dag(G) IFF
+        (EXISTS (f: [vert(G) -> below(size(G))]):
+           topological_ordering?(G)(f))
 
 
 END c_topological_sort
 
 
+
+
 c_topological_sort_example: THEORY
 BEGIN
-
    IMPORTING c_topological_sort[nat]
+
+	 % A theory to test the topological sort, for instance with PVSio
 
    % DAG, we expect an ordering
    G1: c_digraph = (# data:= (:0, 1, 2, 3, 4, 5, 6, 7, 8:),
@@ -287,7 +340,5 @@ BEGIN
 			(:8:),       %7
 			(:1:)        %8
 		:) #)
-
-
 
 END c_topological_sort_example
