@@ -25,6 +25,22 @@ BEGIN
 	 in_path?(G)(w: Walk(G), x): bool =
       EXISTS (i: below(length(w))): w`seq(i) = x
 
+  % % -------------------------------------------------------------------------- %
+  % % Topological ordering definition and lemma                               %
+  % % -------------------------------------------------------------------------- %
+
+  % A topological ordering: a bijective function decreasing along edges
+   topological_ordering?(G: c_digraph)(f: [vert(G) -> below(size(G))]): bool =
+       bijective?(f) AND
+        FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) > f(y)
+
+  % Topological orderings are also decreasing along paths (by induction)
+   topological_ordering_path: LEMMA
+     FORALL G,
+            (f: (topological_ordering?(G))),
+            (n: nat), (w: Walk(G)), (i, j: below(length(w))):
+       (i + n + 1 = j IMPLIES f(w`seq(i)) > f(w`seq(j)))
+
   % -------------------------------------------------------------------------- %
   % Marking of a digraph                                                       %
   % -------------------------------------------------------------------------- %
@@ -103,7 +119,8 @@ BEGIN
        greater_marking(m WITH [x := permanent], m)
    greater_marking_temp_count: LEMMA
      FORALL (l: list[T]) (m1, m2: marking):
-       greater_marking(m1, m2) IMPLIES temp_count(l, m1) <= temp_count(l, m2)
+       greater_marking(m1, m2) IMPLIES
+        temp_count(l, m1) <= temp_count(l, m2)
    greater_marking_perm_count: LEMMA
      FORALL (l: list[T]) (m1, m2: marking) (x: T):
        greater_marking(m1, m2) IMPLIES
@@ -128,8 +145,8 @@ BEGIN
 	% higher in the list.
    topological_list?(G)(l: list[Vert(G)]): bool =
        FORALL (i: below(length(l))), x:
-         (EXISTS (w: Walk(G)): from?(w, nth(l, i), x) ∧ w`length >= 2) IMPLIES
-          (EXISTS (j: below(length(l))): x = nth(l, j) ∧ j > i)
+         (EXISTS (w: Walk(G)): from?(w, nth(l, i), x) ∧ w`length >= 2)
+          IMPLIES (EXISTS (j: below(length(l))): x = nth(l, j) ∧ j > i)
 
   % Topological lists also have no repetitions
    topperm_list(G, m)(l: list[Vert(G)]): bool =
@@ -168,14 +185,16 @@ BEGIN
                  IN_2(res):
                    (LET (mp, lp) = res IN
                       LET node = node(G)(node_id) IN
-                           topperm_list(G, mp)(lp) ∧ greater_marking(mp, m)
-                         ∧ suffix?(l, lp) ∧ permanent?(mp(node))
-                         ∧ (FORALL x:
-                              member(x, lp) IMPLIES
-                               NOT member(x, l) IMPLIES
-                                (x = node ∨
-                                  EXISTS (w: Walk(G)): from?(w, node, x)))
-                         ∧ (nth[T](lp, 0) = node))
+                        topperm_list(G, mp)(lp) ∧
+                         greater_marking(mp, m) ∧
+                          suffix?(l, lp) ∧
+                           permanent?(mp(node)) ∧
+                            (FORALL x:
+                               member(x, lp) IMPLIES
+                                NOT member(x, l) IMPLIES
+                                 (x = node ∨
+                                   EXISTS (w: Walk(G)): from?(w, node, x)))
+                             ∧ (nth[T](lp, 0) = node))
               ENDCASES} =
      LET node = node(G)(node_id) IN
        CASES adjs
@@ -250,56 +269,26 @@ BEGIN
    member_length: LEMMA
      FORALL (l1, l2: list[T]):
        no_repetitions?(l1) IMPLIES
-        (FORALL x: member(x, l1) IMPLIES member(x, l2)) IMPLIES length(l2) >= length(l1)
+        (FORALL x: member(x, l1) IMPLIES member(x, l2)) IMPLIES
+         length(l2) >= length(l1)
 
-   % The topological_sort function output either an explicit loop, or a list of
-	 % the nodes in a topological order
 
-   topological_sort(G): {res:
-                           [loop(G) + [non_temporary_marking, list[Vert(G)]]] |
-                           CASES res
-                             OF IN_1(loop): NOT is_dag(G),
-                                IN_2(res):
-                                  LET (m, l) = res IN
-                                    topperm_list(G, m)(l) ∧ length(l) = size(G) ∧
-                                    FORALL (i: below(size(G))): member(node(G)(i), l)
-                             ENDCASES} =
-       IF (size(G) = 0) THEN IN_2(empty_marking, null)
-       ELSE topological_sort_aux(G)(size(G) - 1, empty_marking, null)
+   % The topological_sort function output either an explicit loop, or a topological sort
+   topological_sort(G): {res: [loop(G) + (topological_ordering?(G))] |
+                           IN?_2(res) ⇔ is_dag(G)} =
+       IF (size(G) = 0) THEN IN_2(LAMBDA (x: Vert(G)): 0)
+       ELSE CASES topological_sort_aux(G)(size(G) - 1, empty_marking, null)
+              OF IN_1(loop): IN_1(loop)::[loop(G) + (topological_ordering?(G))],
+                 IN_2(res):
+                   LET (m, l) = res IN
+                     IN_2(LAMBDA (x: Vert(G)): size(G) - idx(l,x))::[loop(G) + (topological_ordering?(G))]
+              ENDCASES
        ENDIF
 
-  % % -------------------------------------------------------------------------- %
-  % % Topological ordering definition and theorems                               %
-  % % -------------------------------------------------------------------------- %
-
-  % The definition of topological ordering of a graph: a bijective function
-	% decreasing along edges
-   topological_ordering?(G: c_digraph)(f: [vert(G) -> below(size(G))]): bool =
-       bijective?(f) AND
-        FORALL (x, y: (vert(G))): edge?(G)(x, y) IMPLIES f(x) < f(y)
-
-  % Topological orderings are also decreasing along paths (by induction)
-   topological_ordering_path: LEMMA
-     FORALL G,
-            (f: (topological_ordering?(G))),
-            (n: nat), (w: Walk(G)), (i, j: below(length(w))):
-       (i + n + 1 = j IMPLIES f(w`seq(i)) < f(w`seq(j)))
-
-  % If the topological_sort function succeeds, the indexes of the topological
-	% list provide a topological ordering function
-   topological_sort_is_topological_ordering: THEOREM
-     FORALL G:
-       IN?_2(topological_sort(G)) IMPLIES
-        topological_ordering?(G)
-                             ((LAMBDA (x: (vert(G))):
-                                 idx(OUT_2(topological_sort(G))`2, x)))
-
-  % Main theorem: a graph admits a topological ordering iff it is a dag
+  % Main theorem: a graph is a dag iff it admits a topological ordering
    topological_sort_exists: THEOREM
      FORALL G:
-       is_dag(G) IFF
-        (EXISTS (f: [vert(G) -> below(size(G))]):
-           topological_ordering?(G)(f))
+       is_dag(G) IFF (EXISTS (f: (topological_ordering?(G))): TRUE)
 
 
 END c_topological_sort
