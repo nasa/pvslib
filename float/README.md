@@ -51,9 +51,9 @@ The theory hierarchy is shown below. The arrows depicts importing relations.
 
 ```mermaid
 graph LR;
-  single[ieee754_single]-->top;
-  double[ieee754_double]-->top;
-  top[ieee754_top]-->oper[ieee754_<op>];
+  single["ieee754_single"]-->top;
+  double["ieee754_double"]-->top;
+  top["ieee754_top"]-->oper["ieee754_<op>"];
   oper-->ieee754_semantics;
   ieee754_semantics-->ieee754_data;
   ieee754_semantics-->ieee754_domain;
@@ -139,14 +139,14 @@ library. The interpretation is performed by levels as depicted in the diagram be
 ```mermaid
 graph TD;
 
-top[extended_float_top];
-atop[ieee754_top];
+top["extended_float_top"];
+atop["ieee754_top"];
 op["extended_float_<op>"];
 aop["ieee754_<op>"];
 rounding["extended_float_rounding"];
-sem[ieee754_semantics];
+sem["ieee754_semantics"];
 base["extended_float"];
-data[ieee754_data];
+data["ieee754_data"];
 
 subgraph high level formalization;
 top-->op;
@@ -160,19 +160,19 @@ aop-->sem;
 sem-->data;
 end
 
-sid[single__interprets__ieee754_data];
+sid["single__interprets__ieee754_data"];
 sid-->|"[2,24,149]"|base;
 sid-->data;
 
-sis[single__interprets__ieee754_semantics];
+sis["single__interprets__ieee754_semantics"];
 sis-->|"[2,24,149]"|rounding;
 sis-->sem;
 
-sio[single__interprets__ieee754_<op>];
+sio["single__interprets__ieee754_<op>"];
 sio-->|"[2,24,149]"|op;
 sio-->aop;
 
-sit[single__interprets__ieee754_top];
+sit["single__interprets__ieee754_top"];
 sit-->|"[2,24,149]"|top;
 sit-->atop;
 ```
