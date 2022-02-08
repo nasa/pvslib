@@ -173,7 +173,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Ariane Alves Almeida, University of Brasilia, Brazil
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA
 * Ben Di Vito, NASA (retired), USA
-* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
+* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), formerly at NASA, USA
 * Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France 
 * Concepción Vidal, University of La Coruña, Spain
 * David Griffioen,CWI, The Netherlands
