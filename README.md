@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http:/
 
 # Libraries
 
-Currently, NASALib consists of 53 libraries and includes almost 30K lemmas.
+Currently, NASALib consists of 53 libraries and includes 30K lemmas.
 
 | Library  | Description | 
 | --- | --- | 
