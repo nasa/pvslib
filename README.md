@@ -38,7 +38,6 @@ Currently, NASALib consists of 53 libraries and includes almost 30K lemmas.
 | [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols. |
 | [float](./float/README.md) | Floating point numbers and arithmetic. |
 | [graphs](./graphs/README.md) | Graph theory. |
-| [groups](./groups/README.md) | Group theory. |
 | [interval_arith](./interval_arith/README.md) | Interval arithmetic and numerical approximations. Includes automated strategies numerical for computing numerical approximations and interval for checking satisfiability and validity of simply quantified real-valued formulas. This development includes a formalization of Allen interval temporal logic. |
 | [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max. |
 | [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral. |
@@ -118,6 +117,8 @@ $ git clone http://github.com/nasa/pvslib nasalib
 The command above will put a copy of the library in the directory `<pvsdir>/nasalib`.
 
 ### Major Recent Changes
+
+* **The library `groups` is now deprecated**. The `group` library was [integrated into `algebra`](../../commit/b48b961e205f2294883c85cddc271e42610204d7) . A symbolic link is still provided for backward compatibility, but its use is discouraged. Every mention to `groups` should be replaced by `algebra`.
 
 * **The library `trig_fnd` is now deprecated**. It's still provided for backward compatibility, but it should be replaced by `trig`.  The new library `trig`, which used to be axiomatic, is now foundational. However, in contrast to `trig_fnd`, trigonometric definitions are based on infinite series, rather than integrals. This change considerably reduces the type-checking of theories involving trigonometric functions. The change from `trig_fnd` to `trig` should not have a major impact in your formal developments since names of definitions and lemmas are the same. However, theory importing may be slightly different.
 
