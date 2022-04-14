@@ -1,0 +1,119 @@
+LTL_semantics[State: TYPE+]: THEORY
+  BEGIN
+
+  IMPORTING LTL[State]
+
+  cnst(b:bool)(s:State): bool = b
+  CNST(b:bool): (atom?) = ATOM(cnst(b))
+
+  TT : MACRO (atom?) = CNST(TRUE)
+  FF : MACRO (atom?) = CNST(FALSE)
+ 
+  Trace: TYPE = ARRAY[nat -> State] 
+  
+  semantic_rel(f:LTL)(trace:Trace)(t:nat): RECURSIVE bool =
+    (atom?(f) AND p(f)(trace(t)))
+    OR
+    (and?(f) AND
+        semantic_rel(be1(f))(trace)(t) AND semantic_rel(be2(f))(trace)(t))
+    OR
+    (or?(f) AND
+       (semantic_rel(be1(f))(trace)(t) OR semantic_rel(be2(f))(trace)(t)))
+    OR
+    (not?(f) AND NOT semantic_rel(be(f))(trace)(t))
+    OR
+    (xor?(f) AND
+        ((semantic_rel(be1(f))(trace)(t) AND NOT semantic_rel(be2(f))(trace)(t)) OR
+        (NOT semantic_rel(be1(f))(trace)(t) AND semantic_rel(be2(f))(trace)(t))))
+    OR
+    (xnor?(f) AND
+        ((semantic_rel(be1(f))(trace)(t) AND semantic_rel(be2(f))(trace)(t)) OR
+        (NOT semantic_rel(be1(f))(trace)(t) AND NOT semantic_rel(be2(f))(trace)(t))))
+    OR 
+    (implies?(f) AND
+        (semantic_rel(be1(f))(trace)(t) IMPLIES semantic_rel(be2(f))(trace)(t)))
+    OR 
+    (equiv?(f) AND
+        (semantic_rel(be1(f))(trace)(t) IFF semantic_rel(be2(f))(trace)(t)))
+    %----------------------%
+    %        FUTURE        %
+    %----------------------%
+    OR
+    (next?(f) AND semantic_rel(be(f))(trace)(t+1))  
+    OR
+    (finally?(f) AND
+      EXISTS(t_0:nat): t_0 >= t AND semantic_rel(be(f))(trace)(t_0))
+    OR 
+    (finally_bd?(f) AND
+      EXISTS(t_0:nat): t_0 ## shiftIntNat(t,interval(f)) AND semantic_rel(be(f))(trace)(t_0))
+    OR 
+    (globally?(f) AND 
+      FORALL(t_0:nat): t_0 >= t IMPLIES semantic_rel(be(f))(trace)(t_0))
+    OR 
+    (globally_bd?(f) AND 
+      (FORALL(t_0:nat): t_0 ## shiftIntNat(t,interval(f))
+                        IMPLIES semantic_rel(be(f))(trace)(t_0)))
+    OR
+    (until?(f) AND 
+      (EXISTS(t_0: nat): t_0 >= t AND semantic_rel(be2(f))(trace)(t_0) AND 
+      (FORALL(t_1: below(t_0)): t_1 >= t IMPLIES semantic_rel(be1(f))(trace)(t_1))))
+    OR
+    (weak_until?(f) AND 
+      % (FORALL(t_0:nat): (t_0 >= t AND NOT semantic_rel(be1(f))(trace)(t_0)) IMPLIES
+      %   (EXISTS(t_1:upto(t_0)): t_1 >= t AND semantic_rel(be2(f))(trace)(t_1))))
+      ((EXISTS(t_0: nat): t_0 >= t AND semantic_rel(be2(f))(trace)(t_0) AND 
+        (FORALL(t_1: below(t_0)): t_1 >= t IMPLIES semantic_rel(be1(f))(trace)(t_1)))
+        OR FORALL(t_1:nat): t_1 >= t IMPLIES semantic_rel(be1(f))(trace)(t_1)))
+    OR 
+    (release?(f) AND
+      % (FORALL(t_0:nat): (t_0 >= t IMPLIES semantic_rel(be2(f))(trace)(t_0)) OR
+      %   EXISTS (t_1:below(t_0)): t_1 >= t AND semantic_rel(be1(f))(trace)(t_1)))
+      ((EXISTS(t_0: nat): t_0 >= t AND semantic_rel(be1(f))(trace)(t_0) AND 
+        (FORALL(t_1: upto(t_0)): t_1 >= t IMPLIES semantic_rel(be2(f))(trace)(t_1)))
+        OR FORALL(t_1:nat): t_1 >= t IMPLIES semantic_rel(be2(f))(trace)(t_1)))
+    OR
+    (strong_release?(f) AND
+      (EXISTS(t_0: nat): t_0 >= t AND semantic_rel(be1(f))(trace)(t_0) AND 
+        (FORALL(t_1: upto(t_0)): t_1 >= t IMPLIES semantic_rel(be2(f))(trace)(t_1))))
+    OR
+    %------------------%
+    %       PAST       %
+    %------------------%
+    (previous?(f) AND IF t = 0 THEN FALSE ELSE semantic_rel(be(f))(trace)(t-1) ENDIF)
+    OR
+    (zeta?(f) AND IF t = 0 THEN TRUE ELSE semantic_rel(be(f))(trace)(t-1) ENDIF)
+    OR 
+    (historically?(f) AND 
+      (FORALL(t_0:nat): t_0 <= t IMPLIES semantic_rel(be(f))(trace)(t_0)))
+    OR
+    (historically_bd?(f) AND 
+        IF upperBound?(interval(f)`ub)
+        THEN (FORALL(t_0:nat):(t_0 >= t-value(interval(f)`ub) AND t_0 <= t-value(interval(f)`lb))
+                        IMPLIES semantic_rel(be(f))(trace)(t_0))
+        ELSE (FORALL(t_0:nat):(t_0 <= t-value(interval(f)`lb)) IMPLIES semantic_rel(be(f))(trace)(t_0))
+        ENDIF)
+    OR
+    (once?(f) AND 
+      EXISTS(t_0:upto(t)):  semantic_rel(be(f))(trace)(t_0))
+    OR
+    (once_bd?(f) AND 
+        IF upperBound?(interval(f)`ub)
+        THEN (EXISTS(t_0:nat):(t_0 >= t-value(interval(f)`ub) AND t_0 <= t-value(interval(f)`lb))
+                        AND semantic_rel(be(f))(trace)(t_0))
+        ELSE (EXISTS(t_0:nat):(t_0 <= t-value(interval(f)`lb)) AND semantic_rel(be(f))(trace)(t_0))
+        ENDIF)
+    OR
+    (since?(f) AND 
+      (EXISTS(t_0: nat): t_0 <= t AND semantic_rel(be2(f))(trace)(t_0) AND 
+        (FORALL(t_1: upto(t)): t_1 > t_0 IMPLIES semantic_rel(be1(f))(trace)(t_1))))
+    OR
+    (triggered?(f) AND
+      FORALL(t_0:upto(t)): (NOT semantic_rel(be2(f))(trace)(t_0)) IMPLIES 
+        (EXISTS(t_1: upto(t)): t_0 < t_1 AND semantic_rel(be1(f))(trace)(t_1)))
+
+  MEASURE f  BY <<
+    
+  equiv(f1: LTL,f2:LTL) : bool =
+  semantic_rel(f1) = semantic_rel(f2)
+
+END LTL_semantics
