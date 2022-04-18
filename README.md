@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http:/
 
 # Libraries
 
-Currently, NASALib consists of 53 libraries and includes 30K lemmas.
+Currently, NASALib consists of 54 libraries, containing ~30K proven formulas.
 
 | Library  | Description | 
 | --- | --- | 
@@ -43,6 +43,7 @@ Currently, NASALib consists of 53 libraries and includes 30K lemmas.
 | [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral. |
 | [linear_algebra](./linear_algebra/README.md) | Linear algebra. |
 | [lnexp](./lnexp/README.md) |  Logarithm, exponential and hyperbolic functions. & Foundational definitions of logarithm, exponential and hyperbolic functions. |
+| [LTL](./LTL/README.md) | Linear Temporal Logic |
 | [matrices](./matrices/README.md) | Executable specification of MxN matrices. This library includes computation of inverse and basic matrix operations such as addition and multiplication. |
 | [measure_integration](./measure_integration/README.md) | Sigma algebras, measures, Fubini-Tonelli Lemmas. |
 | [MetiTarski](./MetiTarski/README.md) | Integration of MetiTarski, an automated theorem prover for real-valued functions. |
@@ -181,6 +182,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
 * Dragan Stosic, Ireland
 * [Érik Martin-Dorel](http://erik.martin-dorel.org/), U. Montpellier 2 & U. of Perpignan (formerly), France
+* Esther Conrad, NASA, USA
 * Felicidad Aguado, University of La Coruña, Spain
 * Flavio L.C. de Moura, University of Brasilia, Brazil
 * [Gilles Dowek](https://who.rocq.inria.fr/Gilles.Dowek/index-en.html), INRIA, France
@@ -196,6 +198,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * John Siratt, formerly at University of Arkansas at Little Rock, USA
 * Katherine Cordwell, CMU, USA
 * Kristin Rozier, formerly at NASA, USA
+* [Laura Titolo](https://lauratitolo.github.io/), NIA & NASA, USA
 * [Lee Pike](http://corp.galois.com/lee-pike), formerly at Galois, USA
 * [Marco A. Feliú](https://www.nianet.org/directory/research-staff/marco-feliu/), NIA, USA
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA, USA
@@ -244,4 +247,4 @@ Enjoy it.
 
 [The NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
 
-Contact: [César A. Muñoz (NASA)](http://shemesh.larc.nasa.gov/people/cam)
+Contact: [Mariano Moscato](http://marianomoscato.github.io)
