@@ -30,6 +30,9 @@ The semantic relation is defined with the function semantic_rel(f)(trace)(t) tha
 
 Several semantics properties and equivalences for the future (resp. past) time operators can be found in LTL_future_prop (resp. LTL_past_prop) file. These properties include basic Boolean manipulations, DeMorgan law, dualities, idempotence, and alternative definitions, among others.
 
+# Internal Structure
+![dependency graph](./LTL-zoomed.svg "Internal Structure")
+
 # Contributors
 * Esther Conrad, NASA, USA
 * [Laura Titolo](https://lauratitolo.github.io/), NIA & NASA, USA
@@ -38,4 +41,4 @@ Several semantics properties and equivalences for the future (resp. past) time o
 * [Laura Titolo](https://lauratitolo.github.io/), NIA & NASA, USA
 
 # Dependencies
-![dependency graph](./complex_alt.svg "Dependency Graph")
+This library does not depend on any external theory.
