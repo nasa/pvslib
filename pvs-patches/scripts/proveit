@@ -31,6 +31,7 @@ readVersion() {
     fi
 }
 
+PVS_RETURN_VALUE_MISSED_FORMS=142 # PVS' return value indicating missed (ie, not proved) formulas
 
 EXT=.summary # Extension for proof status summary file
 
@@ -101,49 +102,54 @@ all_opt() {
 compile_infile_name() {
   # If <dir>, set context to <dir> and pvsfile to top.pvs
   if [ -d $ARG ]; then
-    PVSCONTEXT=$ARG
-    if [ -z "$OUTFILE" ]; then
-	OUTFILE=$ARG$EXT
-    fi
-    PVSFILE=`basename $TOP .pvs`
-    if [ -f $PVSCONTEXT/$PVSFILE.pvs -o "$LISPAUTOTOP" = "t" ]; then
-	all_opt
-    else
-	FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
-    fi
-    LISPDEPENDENCIES=relative
-  # If  <file>, set context to its dirname and pvsfile to its base name
+      PVSCONTEXT=$ARG
+
+      if [ -z "$OUTFILE" ]; then
+	  # if ARG contains a slash, it is replaced by '-' since PVS does not
+	  # accept library names containing that symbol ('-').
+	  OUTFILE=`echo $ARG | sed "s#/#-#g" `
+	  OUTFILE=$OUTFILE$EXT
+      fi
+
+      PVSFILE=`basename $TOP .pvs`
+      if [ -f $PVSCONTEXT/$PVSFILE.pvs -o "$LISPAUTOTOP" = "t" ]; then
+	  all_opt
+      else
+	  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
+      fi
+      LISPDEPENDENCIES=relative
+      # If  <file>, set context to its dirname and pvsfile to its base name
   else
-    PVSCONTEXT=$(cd "$(dirname $ARG)"; pwd -P)
-    PVSFILE=`basename $ARG .pvs`
-    if [ ! -f $PVSCONTEXT/$PVSFILE.pvs ]; then
-	case $ARG in
-	    *@*) predir=`echo $ARG | sed -e "s/\([^@]*\)@.*/\1/"`
-		THFS=`echo $ARG | sed -e "s/[^@]*@//"`
-		if [ -z "$predir" ]; then
-		    PVSCONTEXT=$(pwd -P)
-		else 
-		    if [ -d "$predir" ]; then
-			PVSCONTEXT=$predir
-		    else
-			echo "Error: $predir is not a directory"
-			exit 1
-		    fi
-		fi
-		if [ "$THFS" ]; then
-		    PVSFILE=$THFS
+      PVSCONTEXT=$(cd "$(dirname $ARG)"; pwd -P)
+      PVSFILE=`basename $ARG .pvs`
+      if [ ! -f $PVSCONTEXT/$PVSFILE.pvs ]; then
+	  case $ARG in
+	      *@*) predir=`echo $ARG | sed -e "s/\([^@]*\)@.*/\1/"`
+		   THFS=`echo $ARG | sed -e "s/[^@]*@//"`
+		   if [ -z "$predir" ]; then
+		       PVSCONTEXT=$(pwd -P)
+		   else 
+		       if [ -d "$predir" ]; then
+			   PVSCONTEXT=$predir
+		       else
+			   echo "Error: $predir is not a directory"
+			   exit 1
+		       fi
+		   fi
+		   if [ "$THFS" ]; then
+		       PVSFILE=$THFS
 		    THEORIES=`echo $THFS | sed -e "s/\..*,/,/g" -e "s/\..*//"`
-		else
-		    echo "Error: At least one theory has to be specified in $ARG"
-		    exit 1
-		fi;;
-	    *)  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
-		if [ -z "$NOFILE" -a "$LISPAUTOTOP" != "t" ]; then
-		    echo "Error: File $FILENOTFOUND not found"
-		    exit 1;
-		fi;;
-	esac
-    fi
+		   else
+		       echo "Error: At least one theory has to be specified in $ARG"
+		       exit 1
+		   fi;;
+	      *)  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
+		  if [ -z "$NOFILE" -a "$LISPAUTOTOP" != "t" ]; then
+		      echo "Error: File $FILENOTFOUND not found"
+		      exit 1;
+		  fi;;
+	  esac
+      fi
   fi
 }
 
@@ -177,6 +183,7 @@ compile_outfile_names() {
     if [ "$LISPTYPECHECK" = "t" ]; then 
 	OUTFILE=$OUTFILE-tc
     fi
+
 }
 
 # Translate a list l1,...,ln into (l1 .. ln)
@@ -686,7 +693,7 @@ proveit() {
 	  ret_value=$?
       fi
 
-      if [ $ret_value -ne 0 ]; then
+      if [ $ret_value -ne 0 ] && [ $ret_value -ne $PVS_RETURN_VALUE_MISSED_FORMS ]; then
 	  error_output
 	  exit $ret_value 
       fi
