@@ -24,12 +24,17 @@ PVSPATH=@PVSPATH@
 # Nothing below this line should need modification
 #
 
-readVersion() {
-    if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
-	printf "PVS could not be located. Please double check PVS installation.\n"
+if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
+    TYPE_OUTPUT=`type pvs`;
+    if [ $? -eq 0 ]; then
+	PVSPATH="" # pvs is in the system path, then no path information is needed
+    else
+	printf "Error: PVS could not be located. Add it to the system path or run install-scripts in the PVS folder.\n"
 	exit 1;
     fi
-}
+else
+    PVSPATH=$PVSPATH/
+fi
 
 PVS_RETURN_VALUE_MISSED_FORMS=142 # PVS' return value indicating missed (ie, not proved) formulas
 
@@ -234,8 +239,6 @@ cleanup() {
 # Help print command
 #
 usage() {
-    readVersion
-    
     echo "NAME
   proveit $VERSION -- runs PVS in batch mode
 
@@ -277,6 +280,7 @@ OPTIONS
    --auto-fix [<num>]  try sibling proofs on unfinished branchs (<num> is the maximum 
                        acceptable distance between the current branch and the sibling 
                        which proof is to be tried; default value is 2)
+   --backup-summaries  backup summary files instead of replacing them (disable by default)
    -c|--clean          remove .pvscontext and binary files in the pvsbin folder before proving
    -C|--clean-only     just remove .pvscontext and binary files in the pvsbin folder 
                        (do not typecheck nor prove)
@@ -562,6 +566,22 @@ proveit() {
 	  LOG=y
       fi
       compile_outfile_names
+
+      if [ $BACKUP_SUMMARIES ]; then
+	  # if $OUTFILE already exists, save it as old version
+	  if [ -f "$OUTFILE" ]; then
+	      OUTFILEBAK=`dirname $OUTFILE`"/"`basename $OUTFILE $EXT`"."`ls -lUD "%y%m%d%H%M%S" $OUTFILE | awk '{print $6}'`$EXT
+	      if [ -z "$QUIET" ]; then echo "Warning: Backing up $OUTFILE as $OUTFILEBAK"; fi
+	      mv $OUTFILE $OUTFILEBAK
+	  fi
+	  if [ "$LOG" ] && [ -f "$LOGFILE" ]; then
+	      LOGEXT=".log"
+	      LOGFILEBAK=`dirname $LOGFILE`"/"`basename $LOGFILE $LOGEXT`"."`ls -lUD "%y%m%d%H%M%S" $LOGFILE | awk '{print $6}'`$LOGEXT
+	      if [ -z "$QUIET" ]; then echo "Warning: Backing up $LOGFILE as $LOGFILEBAK"; fi
+	      mv $LOGFILE $LOGFILEBAK
+	  fi
+      fi
+
       cleanup
       
       if [ "$FILENOTFOUND" -a "$LISPAUTOTOP" != "t" ]; then
@@ -571,7 +591,7 @@ proveit() {
 	  exit 1
       fi
       
-      echo Processing $ARG. Writing output to file $OUTFILE
+      echo "Processing $ARG. Writing output to file $OUTFILE"
       if [ "$LOG" ]; then
 	  echo "Logging PVS information in $LOGFILE"
       fi
@@ -657,7 +677,6 @@ proveit() {
       export PROVEITLISPDEFAULTPROOFSCRIPT="$LISPDEFAULTPROOFSCRIPT"
       
       if [ "$DEBUG" ]; then
-	  readVersion
 	  echo "QUIET: $QUIET"
 	  echo "PROVEITVERSION: $VERSION"
 	  echo "OUTFILE: $OUTFILE"
@@ -684,7 +703,7 @@ proveit() {
 	  echo "PROVEITLISPRETRYWITHTCCS: $PROVEITLISPRETRYWITHTCCS"
 	  echo "PROVEITLISPDEFAULTPROOFSCRIPT: $PROVEITLISPDEFAULTPROOFSCRIPT"
       fi
-
+      
       if [ $PVSTIMEOUT ]; then
 	  TIMEOUTARG="-timeout $PVSTIMEOUT"
       else
@@ -692,10 +711,10 @@ proveit() {
       fi
 
       if [ "$DEBUG" ]; then
-	  echo "About to run: $PVSPATH/pvs -raw $PVSLISP $TIMEOUTARG -E \"(proveit)\" > $OUTFILE 2>&1"
+	  echo "About to run: ""$PVSPATH""pvs -raw $PVSLISP $TIMEOUTARG -E \"(proveit)\" > $OUTFILE 2>&1"
       fi
-
-      $PVSPATH/pvs -raw $PVSLISP $TIMEOUTARG -E "(proveit)" > $OUTFILE 2>&1
+      
+      "$PVSPATH"pvs -raw $PVSLISP $TIMEOUTARG -E "(proveit)" > $OUTFILE 2>&1
       ret_value=$?
       
       if [ "$DEBUG" ]; then
@@ -727,7 +746,6 @@ do
 	  usage
 	  exit 0;;
     -version|--version)
-	  readVersion
 	  echo $VERSION
 	  exit 0;;
     .*) 
@@ -761,10 +779,10 @@ do
       fi
 	  shift;;
     -t|-top|--top)           
-	  TOP=$2
-	  shift;;
+	TOP=$2
+	shift;;
     -generate-top|--generate-top)           
-	  LISPAUTOTOP=t;;
+	LISPAUTOTOP=t;;
     -Clean|--Clean)
 	echo "The option $1 is not longer supported. Please use --clean-all instead."
 	exit 1;;
@@ -777,13 +795,15 @@ do
 	BINARIESONLY=
 	CLEAN=only;;
     -o|-out|--out)           
-	  if [ -d "$2" ]; then
-	      echo "Error: $2 is a directory"
-	      exit 1
-          else
- 	      OUTFILE=$2
-	  fi
-	  shift;;
+	if [ -d "$2" ]; then
+	    echo "Error: $2 is a directory"
+	    exit 1
+        else
+ 	    OUTFILE=$2
+	fi
+	shift;;
+    --backup-summaries)
+	BACKUP_SUMMARIES=t;;
     -p|-prelude-ext|--prelude-ext) 
 	  PRELUDEXT=`append $2 $PRELUDEXT`
 	  shift;;
@@ -796,8 +816,7 @@ do
 	  ENABLE=`append $2 $ENABLE`
 	  shift;;
     --retry-with-tccs)
-	LISPRETRYWITHTCCS=t
-	shift;;
+	LISPRETRYWITHTCCS=t;;
     --auto-fix)
 	LISPAUTOFIX=2
 	if echo $2 | grep -qE '^[+-]?[0-9]+$'; then
