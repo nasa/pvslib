@@ -36,14 +36,16 @@ $PROVEIT="$PVSPATH/proveit";
 
 $usageln = "Usage: provethem [--help | <option> ...] <file>";
 
-sub readVersion() {
-  die "PVS could not be located. Please double check PVS installation.\n" if (system("type $PROVEIT > /dev/null 2>&1"));
-  $VERSION = `$PVSPATH/pvs -raw -E '(format t "~&~%PROOFLITEVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PROOFLITEVERSION`;
-  $VERSION =~ s/^.*PROOFLITEVERSION (.*)[\r\n]*$/\1/;
+# If PROVEIT cannot be located, the execution is aborted
+if (system("type $PROVEIT > /dev/null 2>&1")) {
+  if (system("type proveit > /dev/null 2>&1")) {
+    die "Error: the proveit script could not be located. Add it to the system path or run install-scripts in the PVS folder.\n" ;
+  } else {
+    $PROVEIT="proveit";
+  }
 }
 
 sub usage() {
-  readVersion;
   print <<EOF;
 provethem $VERSION -- runs proveit on several libraries
 
@@ -58,7 +60,7 @@ $usageln
 
   --top <th>              use <th>.pvs instead of top.pvs as top theory  
 
-  --force                 force iteratelibs to go even if there is a proveit error
+  --force                 force provethem to go even if there is a proveit error
 
   --lisp <lisp>           specify lisp version; <lisp> is one of allegro,cmulisp
 			  
@@ -156,7 +158,6 @@ $top = "top" if !$top;
 
 
 if ($version) {
-  readVersion;
   print "$VERSION\n";
   exit 0;
 }
@@ -236,7 +237,7 @@ if (!$file) {
     # Finally, print the list into the all-libraries file.
     open (all_libraries_file,">$file");
     my $datestring = localtime();
-    print all_libraries_file "# This file was generated automatically by iterateblis on $datestring \n";
+    print all_libraries_file "# This file was generated automatically by provethem on $datestring \n";
     print all_libraries_file join("\n",@all_libraries), "\n";
     close(all_libraries_file);
 
@@ -474,7 +475,9 @@ sub iteratelibs(){
 	      print "DRY-RUN: $command\n";
 	    } else {
 	      print "Executing shell \"$command\".\n" if $verbose;
-	      $beginln = sprintf "%-25s",$lib;
+	      $max_libname_size=length($lib)+5;
+	      $max_libname_size=25 if ($max_libname_size < 20);
+	      $beginln = sprintf "%-".$max_libname_size."s",$lib;
 	      $beginln .= "$act... ";
 	      print $beginln;
 	      my $fail_msg;
@@ -513,7 +516,7 @@ sub iteratelibs(){
 		} else {
 		  print DARK RED $status; 
 		}
-		$fail_msg .= "($fail)" if $verbose;
+		$fail_msg .= " (return value: $fail)" if $verbose;
 		if ($fail_msg) {
 		  print "]\n*** $fail_msg\n";
 		  $summary .= "$beginln$status: $fail_msg]\n";
