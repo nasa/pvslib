@@ -1,0 +1,97 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: Ana Cristina Rocha Oliveira(*)
+%          Mauricio Ayala-Rincon(*)
+%          Maribel Fernandez(**)
+%          (*)Universidade de Brasilia, (**)King's College London
+% Last modified: 27 April 2015
+% This is the main subtheory of the theory Nominal Unification
+% Here, a functional specification of nominal unification is
+% given and formalised its soundness and correcteness.
+% 
+%                >>>> This is the top theory <<<<
+%
+% Comments reference Definitions, Lemmas and Theorems from the accompaining report
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+nominalunif: THEORY
+BEGIN
+	IMPORTING substitution,
+		  structure_extra[[variable,term]]
+
+	Delta, Nabla: VAR fresh_context
+	sigma, gamma, theta: VAR Sub
+	t, s, u: VAR term
+	X: VAR variable
+
+% Two terms are unifiable if there is a solution (Delta, sigma)
+% that makes them alpha-equivalent.
+% Definition 4.1
+unifiable?(t, s): bool =
+   EXISTS(Delta, sigma): 
+   alpha(Delta)(Subs(sigma)(t), Subs(sigma)(s))
+
+% A unifier is a unification solution to unifiable terms.
+% Definition 4.1
+unifier(t, (s | unifiable?(t,s)))(Delta,sigma): bool =
+   alpha(Delta)(Subs(sigma)(t), Subs(sigma)(s))
+
+   	solve1, solve2: VAR [fresh_context, Sub, bool]
+
+% Concatenation of contexts and substitutions/
+% conjunction of booleans (concatenating triplets).
+x(solve1, solve2): [fresh_context, Sub, bool] =
+   IF solve1`3 AND solve2`3
+      THEN (append(solve1`1, solve2`1),append(solve1`2, solve2`2), TRUE)
+      ELSE ((::), Id, FALSE)
+   ENDIF
+
+% The function unify produces the most general unifier to unifiable
+% terms and returns fail (False) to non-unifiable terms.
+% Definition 4.2
+unify(t,s): RECURSIVE [fresh_context, Subs_unif(t,s), bool] =
+   IF susp?(s) AND NOT occurs(V(s), t)
+      THEN ((::),(:(V(s),ext(reverse(p(s)))(t)):),TRUE)
+      ELSE
+   CASES t OF
+   	 at(a): ((::),Id,s=at(a)),
+	 *(pm,X): IF NOT occurs(X,s) THEN ((::),(:(X,ext(reverse(pm))(s)):),TRUE)
+	 	     ELSE LET SOL = alpha?(pm * X, s) IN
+		     	  (SOL`1,Id,SOL`2) ENDIF,
+	 unit: ((::),Id,s=unit),
+	 pair(t1,t2): IF NOT pair?(s) THEN ((::), Id, FALSE) 
+	 	      	 ELSE LET (Delta1, sig1, b1) = unify(t1,term1(s)),
+			      	  (Delta2, sig2, b2) = unify(Subs(sig1)(t2),Subs(sig1)(term2(s))),
+			      	  (Delta3, b3) = fresh_subs?(sig2, Delta1) IN
+			          x((Delta2,sig2,b2), (Delta3,sig1, b1 AND b3)) ENDIF,
+	 abs(a,bd): IF NOT abs?(s) THEN ((::), Id, FALSE)
+		       ELSIF a = abstr(s)
+			     THEN unify(bd, body(s))
+			     ELSE LET (Delta1, sig, b1) = unify(bd, ext((:(a,abstr(s)):))(body(s))),
+				      (Delta2, b2) = fresh?(a, Subs(sig)(body(s))) IN
+				      x((Delta2, Id, b2), (Delta1, sig, b1)) ENDIF,
+ 	 app(f,ag): IF NOT app?(s) OR f /= sym(s) THEN ((::), Id, FALSE)
+		       ELSE unify(ag, arg(s)) ENDIF
+   ENDCASES ENDIF
+   MEASURE lex2(card(Vars(t,s)), depth(t))
+
+% Soundness of unify.
+unify_sound: LEMMA % Lemma 4.10
+   LET (Delta, sig, b) = unify(t, s) IN
+   b => alpha(Delta)(Subs(sig)(t), Subs(sig)(s))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Partial order over pairs (Context x substitution).
+less((Delta, sigma), (Nabla,gamma)): bool = % Definition 4.11
+   EXISTS theta:
+   fresh_subs(Nabla)(theta, Delta) AND
+   FORALL X : alpha(Nabla)(Subs(append(theta,sigma))((::)*X), Subs(gamma)((::)*X))
+
+% Completeness of unify.
+unify_complete: THEOREM % Theorem 4.12
+   LET (Nabla, gamma, b) = unify(t, s) IN
+   alpha(Delta)(Subs(sigma)(t), Subs(sigma)(s)) 
+   IMPLIES b AND less(Nabla, gamma, Delta, sigma)
+
+END nominalunif

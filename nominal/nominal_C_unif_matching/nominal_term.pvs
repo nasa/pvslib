@@ -1,0 +1,170 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: Gabriel Ferreira Silva (*) 
+%          Ana Cristina Rocha Oliveira(*)
+%          Mauricio Ayala-Rincon(*)
+%          Daniele Nantes Sobrinho (*) 
+%          Maribel Fernandez(**)
+%          (*)Universidade de Brasilia, (**)King's College London
+% Last modified: 21 March 2019
+% This subtheory contains specifications and formalisations
+% of nominal terms.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%% Nominal Terms %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Nominal terms grammar: atoms, suspended variables, unit, pairs,
+% abstractions, applications, and commutative applications respectively.
+term[atom : TYPE+, perm : TYPE+, variable : TYPE+, symbol : TYPE+, commutative_symbol: TYPE+ ]: DATATYPE WITH SUBTYPES plain, pair
+	  BEGIN
+	      at (a: atom): atom?: plain
+
+	      * (p: perm, V: variable): susp?: plain
+
+	      unit: unit? : plain
+
+	      pair (term1: term, term2: term): pair? : pair
+
+	      abs (abstr: atom, body: term): abs? : plain
+
+	      app (sym: symbol, arg: term): app? : plain
+
+	      % commutative functions - they necessarily take a pair. That is why we distinguish subtypes plain and pair.  
+	      c_app (c_sym: commutative_symbol, c_arg: pair): c_app? : plain
+
+	  END term
+	  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_term: THEORY
+ BEGIN
+
+% variables as natural numbers
+variable: TYPE = nat
+  X, Y: VAR variable
+
+% function symbols as strings
+symbol: TYPE = string
+commutative_symbol: TYPE = string
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+IMPORTING atoms,
+	  term[atom, perm, variable, symbol, commutative_symbol]
+
+  pi, pi1, pi2: VAR perm
+          t, s: VAR term
+	  a, b: VAR atom
+	  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Homomorphic extension of action of permutations over terms
+ext(pi)(t): RECURSIVE term =
+   CASES t OF
+         at(a): at(act(pi)(a)),
+   	 *(pm, v): *(append(pi, pm), v),
+	 unit: unit,
+   	 pair(t1,t2): pair(ext(pi)(t1),ext(pi)(t2)),
+   	 abs(ab, bd): abs(act(pi)(ab), ext(pi)(bd)),
+   	 app(sl, ag): app(sl, ext(pi)(ag)),
+	 c_app(sl, ag): c_app(sl, pair(ext(pi)(term1(ag)), ext(pi)(term2(ag))))	
+  ENDCASES
+MEASURE t BY <<
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The null permutation is identity over terms.
+ext_identity: LEMMA
+   ext((::))(t) = t
+
+% Applying an append of two permutations to terms is equal 
+% to apply one by one.
+ext_append: LEMMA
+   ext(append(pi1,pi2))(t) = ext(pi1)(ext(pi2)(t))
+
+  
+% permutations do not change the structure of terms.
+ext_preserves_type: LEMMA
+  ord(ext(pi)(t)) = ord(t)
+
+   
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Depth of terms.
+depth(t): RECURSIVE nat =
+   CASES t OF
+   	 at(a): 0,
+	 *(pm,v): 0,
+	 unit: 0,
+	 pair(t1,t2): 1 + max(depth(t1), depth(t2)),
+	 abs(a,bd): 1 + depth(bd),
+	 app(sl,ag): 1 + depth(ag),
+	 c_app(sl, ag): 1 + depth(ag)
+   ENDCASES
+   MEASURE t BY <<
+
+% Permutations do not change the depth of terms.
+ext_preserves_depth: LEMMA
+   depth(ext(pi)(t)) = depth(t)
+
+
+% size of terms
+size(t): RECURSIVE nat =
+   CASES t OF
+   	 at(a): 1,
+	 *(pm,v): 1,
+	 unit: 1,
+	 pair(t1,t2): 1 + size(t1) + size(t2),
+	 abs(a,bd): 1 + size(bd),
+	 app(sl,ag): 1 + size(ag),
+	 c_app(sl, ag): 1 + size(ag)
+   ENDCASES
+   MEASURE t BY <<
+
+% Permutations do not change the size of a term 
+ext_preserves_size: LEMMA
+    size(ext(pi)(t)) = size(t)
+
+% size(t) >= 1
+size_gt_1: LEMMA
+    size(t) >= 1 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% "occurs" verify if X occurs inside the term t.
+occurs(X, t): RECURSIVE bool =
+   CASES t OF
+   	 at(a): FALSE,
+	 *(pm,v): X=v,
+	 unit: FALSE,
+	 pair(t1,t2): occurs(X,t1) OR occurs(X,t2),
+	 abs(a,bd): occurs(X,bd),
+	 app(sl,ag): occurs(X,ag),
+	 c_app(sl, ag): occurs(X, ag)
+	 
+   ENDCASES
+   MEASURE t BY <<
+
+% Permutations do not change the occurence of variables in a term.
+ext_preserves_occurs: LEMMA
+   occurs(X,ext(pi)(t)) = occurs(X,t)
+
+% "Vars" computes the set of variables in a term.
+Vars(t): RECURSIVE finite_set[variable] =
+   CASES t OF
+   	 at(a): emptyset,
+	 *(pm,v): singleton(v),
+	 unit: emptyset,
+	 pair(t1,t2): union(Vars(t1),Vars(t2)),
+	 abs(a,bd): Vars(bd),
+	 app(sl,ag): Vars(ag),
+	 c_app(sl, ag): Vars(ag)
+   ENDCASES
+   MEASURE t BY <<
+
+% Permutations do not change the set of variables of a term.
+ext_preserves_Vars: LEMMA
+   Vars(ext(pi)(t)) = Vars(t)
+
+% The variable X is the set of variables of a term iff
+% X occurs in such term.
+Vars_occurs: LEMMA
+   Vars(t)(X) = occurs(X,t)
+
+END nominal_term

@@ -1,0 +1,148 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: Ana Cristina Rocha Oliveira(*)
+%          Mauricio Ayala-Rincon(*)
+%          Maribel Fernandez(**)
+%          (*)Universidade de Brasilia, (**)King's College London
+% Last modified: 27 April 2015
+% This subtheory contains specifications and formalisations
+% of nominal alpha-equivalence.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+alpha_equivalence: THEORY
+BEGIN
+
+	IMPORTING freshness
+
+	Delta,Nabla: VAR fresh_context
+	t, s,t1,t2,t3: VAR term
+	X: VAR variable
+	pi,pi1,pi2: VAR perm
+	l,l1,l2: VAR list[atom]
+	a: VAR atom
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Delta derivates alpha-equivalence between t and s or
+% t and s are alpha-equivalent under Delta.
+% Definition 3.4
+alpha(Delta)(t, s): RECURSIVE bool =
+   CASES t OF
+   	 at(a): s=at(a),
+	 *(pm,v): susp?(s) AND v = V(s) AND 
+	 	  (FORALL(a:(ds(pm,p(s)))): member((a,v),Delta)),
+	 unit: s=unit,
+	 pair(t1,t2): pair?(s) AND alpha(Delta)(t1,term1(s)) AND
+	 	      alpha(Delta)(t2,term2(s)),
+	 abs(a,bd): abs?(s) AND
+	 	    IF a = abstr(s) THEN alpha(Delta)(bd,body(s))
+		       ELSE fresh(Delta)(a, body(s)) AND
+		       	    alpha(Delta)(bd, ext((:(a,abstr(s)):))(body(s)))
+		    ENDIF,
+	 app(sl,ag): app?(s) AND sl=sym(s) AND
+	 	     alpha(Delta)(ag, arg(s))
+   ENDCASES
+   MEASURE t BY <<
+
+% alpha-equivalence preserves depth of terms.
+alpha_depth: LEMMA
+   alpha(Delta)(t,s) => depth(t)=depth(s)
+
+% If the action of two permutations are the same, they produce
+% alpha-equivalent terms when applied to one term.
+alpha_ext_invariance: LEMMA
+   act(pi1) = act(pi2) => alpha(Delta)(ext(pi1)(t), ext(pi2)(t))
+
+% If the action of two permutations are the same, then alpha-equivalence
+% is invariant when applying them to the term on the left-hand side
+% in a alpha-equivalence judgement.
+alpha_ext_invariance_left: LEMMA
+   act(pi1) = act(pi2) =>
+      (alpha(Delta)(ext(pi1)(t), s) = alpha(Delta)(ext(pi2)(t), s))
+
+% The same as above on the right-hand side.
+alpha_ext_invariance_right: LEMMA 
+   act(pi1) = act(pi2) =>
+      (alpha(Delta)(t, ext(pi1)(s)) = alpha(Delta)(t, ext(pi2)(s)))
+
+% A term is alpha-equivalent to itself.
+alpha_reflexivity: LEMMA % Lemma 3.11
+   alpha(Delta)(t,t)
+
+% alpha-equivalence preserves freshness.
+alpha_preserves_fresh: LEMMA % Lemma 3.5
+   alpha(Delta)(t,s) => (fresh(Delta)(a,t) = fresh(Delta)(a,s))
+
+% Permutations preserves alpha-equivalence.
+ext_preserves_alpha: LEMMA % Lemma 3.7
+   alpha(Delta)(ext(pi)(t),ext(pi)(s)) = alpha(Delta)(t,s)
+
+% Alternation of a permutation and its reverse to the terms
+% in an alpha-equivalence judgement.
+ext_reverse_alpha: LEMMA % Lemma 3.6
+   alpha(Delta)(ext(pi)(t),s) = alpha(Delta)(t,ext(reverse(pi))(s))
+
+% If the difference set of two permutations are fresh in a term, then 
+% the result of applying them to such term are alpha-equivalent terms.
+alpha_fresh_invariance: LEMMA % Lemma 3.8
+   (FORALL(a:(ds(pi1,pi2))):fresh(Delta)(a,t))
+	IMPLIES alpha(Delta)(ext(pi1)(t), ext(pi2)(t))
+
+% The converse result from previous lemma.
+alpha_ds_fresh: LEMMA 
+   alpha(Delta)(ext(pi1)(t), ext(pi2)(t))
+	IMPLIES (FORALL(a:(ds(pi1,pi2))):fresh(Delta)(a,t))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% alpha-equivalence is a transitive relation.
+alpha_transitive: LEMMA % Lemma 3.9
+   alpha(Delta)(t1, t2) & alpha(Delta)(t2,t3)
+   	IMPLIES alpha(Delta)(t1,t3)
+
+% alpha-equivalence is a symmetric relation.
+alpha_symmetric: LEMMA % Lemma 3.11
+   alpha(Delta)(t, s) = alpha(Delta)(s, t)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Enlarging contexts preserves alpha-equivalence.
+alpha_weakening: LEMMA
+   (FORALL(ax:[atom,variable]): member(ax,Delta) => member(ax,Nabla))
+    AND alpha(Delta)(t, s) => alpha(Nabla)(t, s)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Function that computes the minimal context that derivates
+% t and s alpha-equivalent.
+alpha?(t, s): RECURSIVE [fresh_context,bool] =
+   CASES t OF
+   	 at(a): ((::) ,s = at(a)),
+	 *(pm,X): IF susp?(s) AND X = V(s)
+	 	     THEN (fc(DS(pm,p(s)),X), TRUE)
+		     ELSE ((::),FALSE) ENDIF,
+	 unit: ((::), s=unit),
+	 pair(t1,t2): IF pair?(s) 
+	 	      	 THEN x(alpha?(t1,term1(s)), alpha?(t2, term2(s)))
+			 ELSE ((::),FALSE) ENDIF,
+	 abs(a,bd): IF NOT abs?(s) 
+	 	       THEN ((::),FALSE)
+		       ELSIF a = abstr(s)
+	 	       	     THEN alpha?(bd, body(s))
+		       	     ELSE x(fresh?(a, body(s)),
+		       	     	  alpha?(bd,ext((:(a,abstr(s)):))(body(s))))
+		    ENDIF,
+	 app(f,ag): IF app?(s) AND f=sym(s)
+		       THEN alpha?(ag,arg(s))
+		       ELSE ((::), FALSE) ENDIF
+   ENDCASES
+   MEASURE t BY <<
+
+% Soundness of alpha?
+alpha?_is_alpha: LEMMA
+   alpha?(t, s) = (Delta, TRUE) IMPLIES alpha(Delta)(t, s)
+
+% Completeness of alpha?
+alpha?_complete: LEMMA
+   LET (Delta,b) = alpha?(t, s) IN
+   alpha(Nabla)(t, s) IMPLIES b AND 
+   FORALL a,X: member((a,X),Delta) => member((a,X),Nabla)
+
+END alpha_equivalence

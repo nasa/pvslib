@@ -1,0 +1,365 @@
+% Authors:
+%		Gabriel Ferreira Silva (*)
+% 		Mauricio Ayala-Rincón (*)
+% 		Daniele Nantes Sobrinho (*)
+% 		Maribel Fernandez (**)
+%		(*) - University of Brasília			(**) - King's College London
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+equality: THEORY
+BEGIN
+	IMPORTING term_properties, list_theory[args], list_theory[term], more_list_theory_props[term]
+
+t, t1, t2, t3, s, s1: VAR term
+args1, args2, args3, args4: VAR args
+lst_args1, lst_args2: VAR list[args]
+sym, f: VAR string
+
+i, j, n: VAR nat
+coef, lst_nat: VAR list[nat]
+
+
+equal?(t, s): RECURSIVE bool =
+    CASES t OF
+        const(a): s = const(a),
+
+	variable(X): s = variable(X), 
+	
+	unit: s = unit, 
+	
+	pair(t1, t2): pair?(s) AND equal?(t1, term1(s)) AND equal?(t2, term2(s)),
+
+	app(sym, arg): app?(s) AND sym = f_sym(s) AND num_arg(arg) = num_arg(arg(s)) AND equal?(arg, arg(s)),
+
+	ac_app(sym, arg):
+	   LET n = num_arg(sym, t) IN
+	   ac_app?(s) AND sym = ac_sym(s) AND
+	   EXISTS i, j: 
+	   i > 0 AND i <= n AND j > 0 AND j <= n AND 
+	   equal?(select(sym, t)(i), select(sym, s)(j)) AND 
+	   equal?(delete(sym, t)(i), delete(sym, s)(j))
+    ENDCASES
+MEASURE size(t) 
+
+% test if two list of arguments are equal
+equal?(args1, args2): RECURSIVE bool =
+    IF null?(args1) THEN null?(args2)
+    ELSIF null?(args2) THEN FALSE
+    ELSE LET t = car(args1), s = car(args2) IN
+    	 equal?(t, s) AND equal?(cdr(args1), cdr(args2))
+    ENDIF
+MEASURE args1 BY << 
+
+% test if args1 and args2 are permutations of each other, where the notion of equality is
+% given by equal?
+perm?(args1, args2): RECURSIVE bool =
+    IF null?(args1) THEN null?(args2)
+    ELSE EXISTS (i: below[length(args1)]), (j: below[length(args2)]):
+    	 equal?(nth(args1, i), nth(args2, j)) AND
+	 perm?(remove(args1, i), remove(args2, j))
+    ENDIF
+MEASURE length(args1) 
+
+% receives two lists of arguments, "lst_args1" and "lst_args2"
+% lst_args1 = [args11 ... args1n] and lst_args2 = [args21 ... args2n] 
+perm?(lst_args1, lst_args2): bool =
+    perm?(flatten(lst_args1), flatten(lst_args2)) 
+
+% returns true if args2 is simply a reordering of args1
+reorder?(args1, args2): RECURSIVE bool =
+    IF null?(args1) THEN null?(args2)
+    ELSE EXISTS (i: below[length(args1)]), (j: below[length(args2)]):
+    	 nth(args1, i) = nth(args2, j) AND
+	 reorder?(remove(args1, i), remove(args2, j))
+    ENDIF
+MEASURE length(args1) 
+    
+%%%%%%%%%%%%%%% Theorem
+equal?_len: LEMMA 
+    equal?(args1, args2) IMPLIES length(args1) = length(args2) 
+
+equal?_num_arg: LEMMA 
+    equal?(t, s) IMPLIES num_arg(f, t) = num_arg(f, s) 
+
+equal?_num_arg2: LEMMA 
+    equal?(t, s) IMPLIES num_arg(t) = num_arg(s) 
+
+equal?_append: LEMMA 
+    equal?(args1, args2) AND equal?(args3, args4) IMPLIES
+    equal?(append(args1, args3), append(args2, args4))
+
+equal?_get_repeat_lst: LEMMA 
+    equal?(t, s) IMPLIES equal?(get_repeat_lst(t, n), get_repeat_lst(s, n))
+
+equal?_get_lst_mult: LEMMA 
+    equal?(args1, args2) IMPLIES
+    equal?(get_lst_mult(args1, coef), get_lst_mult(args2, coef))
+
+equal?_ref: LEMMA
+    equal?(t, t) 
+
+equal?_sym: LEMMA 
+    equal?(t, s) IMPLIES equal?(s, t) 
+
+equal?_ac: LEMMA
+    are_ac?(t, s, f) AND equal?(t, s) IMPLIES
+    FORALL i:
+        i > 0 AND i <= num_arg(f, t) IMPLIES
+        EXISTS j: 
+	   j > 0 AND j <= num_arg(f, t) AND 
+	   equal?(select(f, t)(i), select(f, s)(j)) AND
+	   equal?(delete(f, t)(i), delete(f, s)(j))
+	   
+equal?_trans: LEMMA 
+    equal?(t1, t2) AND equal?(t2, t3) IMPLIES equal?(t1, t3) 
+
+equal?_equiv: LEMMA
+    equivalence?[term](equal?)
+    
+equal?_select_delete: LEMMA
+    equal?(t, s) IMPLIES EXISTS i, j:
+    nice_ind?((: i+1, j+1:), num_arg(f, t)) AND
+    equal?(select(f, t)(i+1), select(f, s)(j+1)) AND
+    equal?(delete(f, t)(i+1), delete(f, s)(j+1))
+
+equal?_vars: LEMMA  
+    equal?(t, s) IMPLIES vars(t) = vars(s)
+
+perm?_len: LEMMA
+    perm?(args1, args2) IMPLIES length(args1) = length(args2) 
+    
+perm?_append: LEMMA
+    perm?(args1, args2) AND perm?(args3, args4) IMPLIES
+    perm?(append(args1, args3), append(args2, args4))
+
+perm?_append2: LEMMA
+    perm?(args1, args2) AND perm?(args3, args4) IMPLIES
+    perm?(append(args1, args3), append(args4, args2))
+
+perm?_ref: LEMMA
+    perm?(args1, args1)
+
+perm?_sym: LEMMA
+    perm?(args1, args2) IMPLIES perm?(args2, args1) 
+
+% essentially the same as perm?_sym, just to allow us to use the command "rewrite" 
+perm?_sym2: LEMMA
+    perm?(args1, args2) = perm?(args2, args1) 
+
+perm?_trans_aux: LEMMA
+     perm?(args1, args2) IMPLIES
+     FORALL i:
+        i < length(args1) IMPLIES
+        EXISTS j:
+	   j < length(args2) AND
+	   equal?(nth(args1, i), nth(args2, j)) AND
+	   perm?(remove(args1, i), remove(args2, j))
+	   
+perm?_trans: LEMMA
+    perm?(args1, args2) AND perm?(args2, args3) IMPLIES perm?(args1, args3)
+
+perm?_append3: LEMMA 
+    perm?(args4, append(args2, args3)) IMPLIES 
+    perm?(append(args1, args4), append(args2, append(args1, args3)))
+
+equal?_perm: LEMMA
+    equal?(args1, args2) IMPLIES perm?(args1, args2) 
+
+perm?_equiv_same_count?: LEMMA
+    perm?(args1, args2) IFF same_count?(args1, args2, equal?)
+
+perm?_get_common: LEMMA
+    LET (bool1, ind1) = pos?(t, args1, equal?),
+        (bool2, ind2) = pos?(t, args2, equal?) IN
+    bool1 AND bool2 IMPLIES
+    perm?(get_common(args1, args2, equal?),
+    	  cons(nth(args1, ind1), get_common(remove(args1, ind1), remove(args2, ind2), equal?)))
+
+perm?_get_common_sym: LEMMA
+    perm?(get_common(args1, args2, equal?), get_common(args2, args1, equal?))
+
+perm?_remove_common_get_common: LEMMA
+    perm?(args1, append(remove_common(args1, args2, equal?), get_common(args1, args2, equal?)))
+
+perm?_get_lst_mult_count_elem: LEMMA
+    LET (new_args, new_coef) = count_elem(args1, coef, args2, equal?) IN
+    length(args1) = length(coef) IMPLIES
+    perm?(append(args2, get_lst_mult(args1, coef)), get_lst_mult(new_args, new_coef))
+
+perm?_get_lst_mult_count_elem_cor: LEMMA
+    LET (new_args, new_coef) = count_elem(null, null, args1, equal?) IN
+    perm?(args1, get_lst_mult(new_args, new_coef))
+
+ac_perm_args: LEMMA
+    are_ac?(t, s, sym) AND equal?(t, s) IMPLIES perm?(get_args(sym)(t), get_args(sym)(s))
+
+ac_perm_args2: LEMMA
+    equal?(t, s) IMPLIES perm?(get_args(f)(t), get_args(f)(s))
+   
+perm_args_ac: LEMMA
+    perm?(get_args(sym)(t), get_args(sym)(s)) AND are_ac?(t, s, sym) IMPLIES equal?(t, s) 
+
+perm_args_ac_well_formed: LEMMA 
+   perm?(get_args(f)(t), get_args(f)(s)) AND well_formed?(t) AND well_formed?(s)
+   IMPLIES equal?(t, s)
+
+perm_args_ac2: LEMMA
+    are_ac?(t, s, f) AND equal?(t, s) IMPLIES perm?(get_args(f)(t), get_args(f)(s)) 
+
+perm?_map_get_args: LEMMA
+    perm?(args1, args2) IMPLIES
+    perm?(map(get_args(f))(args1), map(get_args(f))(args2))
+     
+perm?_get_args_flatten: LEMMA
+    perm?(args1, args2) IMPLIES
+    perm?(flatten(map(get_args(f))(args1)), flatten(map(get_args(f))(args2)))
+
+perm?_get_ac_from_args_equal?: LEMMA
+    perm?(args1, args2) IMPLIES
+    equal?(get_ac_from_args(f)(args1), get_ac_from_args(f)(args2))
+
+perm_get_ac_from_args: LEMMA
+    perm?(args1, args2) IMPLIES 
+    perm?(get_args(f)(get_ac_from_args(f)(args1)), get_args(f)(get_ac_from_args(f)(args2)))
+
+equal_map_count_get_args: LEMMA
+    equal?(args1, args2) IMPLIES
+    map(count(t, equal?))(map(get_args(f))(args1)) = map(count(t, equal?))(map(get_args(f))(args2))
+
+count_get_args_remove_aux: LEMMA
+   n < length(args1) IMPLIES
+   count(t, get_args(f)(nth(args1, n)), equal?) +
+   count(t, flatten(map(get_args(f))(remove(args1, n))), equal?) =
+   count(t, flatten(map(get_args(f))(args1)), equal?)
+
+count_get_args_remove: LEMMA
+   n < length(flatten(lst_args1)) IMPLIES 
+   count(t, flatten(map(get_args(f))(remove(flatten(lst_args1), n))), equal?) +
+   count(t, get_args(f)(nth(flatten(lst_args1), n)), equal?) =
+   count(t, flatten(map(get_args(f))(flatten(lst_args1))), equal?)
+
+% size2, reorder equality
+reorder_ref: LEMMA
+   reorder?(args1, args1)
+
+reorder_get_args_gt0: LEMMA
+   nice_ind?(i, num_arg(f, t)) AND num_arg(f, t) > 1 IMPLIES 
+   reorder?(get_args(f)(t), cons(select(f, t)(i), get_args(f)(delete(f, t)(i))))
+   
+size2_cons_remove: LEMMA
+   i < length(args1) IMPLIES
+   sum(map(size2)(args1)) = sum(map(size2)(cons(nth(args1, i), remove(args1, i))))
+   
+size2_reorder: LEMMA
+   reorder?(args1, args2) IMPLIES 
+   sum(map(size2)(args1)) = sum(map(size2)(args2))
+   
+equal_size2: LEMMA
+   equal?(t, s) IMPLIES size2(t) = size2(s) 
+
+perm?_size2: LEMMA
+   perm?(args1, args2) IMPLIES sum(map(size2)(args1)) = sum(map(size2)(args2))
+
+% this functions rely on the fact that equal? is an equivalence relation, and therefore are put after those lemmas
+% indicates whether args1 and args2 have the same arguments
+no_common_args?(args1, args2): bool =
+    FORALL t:
+       (count(t, args1, equal?) >= 1 IMPLIES count(t, args2, equal?) = 0) AND
+       (count(t, args2, equal?) >= 1 IMPLIES count(t, args1, equal?) = 0) 
+
+% receives AC functions "t" and "s", headed by a function symbol "f"
+% returns terms t* and s* where we remove the common elements
+remove_common(t, s, f): [term, term] =
+    LET
+    args1 = get_args(f)(t), args2 = get_args(f)(s),
+    no_common_args1 = remove_common(args1, args2, equal?),
+    no_common_args2 = remove_common(args2, args1, equal?) IN
+    (get_ac_from_args(f)(no_common_args1), get_ac_from_args(f)(no_common_args2))
+
+% True if a term equal to s (mod AC) is a member of args
+member_ac(s, args1): bool = EXISTS t: equal?(s, t) AND member(t, args1)
+
+% syntactic sugar 
+count(t, s, f): nat = count(t, get_args(f)(s), equal?)
+
+% necessary to express count_vec as a curried version
+count(s, f)(t): nat = count(s, t, f)
+
+% applies count to every argument of args1
+count_vec(args1, f)(s): RECURSIVE list[nat] =
+   IF null?(args1) THEN null
+   ELSE LET t1 = car(args1) IN cons(count(s, t1, f), count_vec(cdr(args1), f)(s))
+   ENDIF
+MEASURE args1 BY << 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% lemmas 
+% count
+count_size2_ge: LEMMA
+   (FORALL t1: count(t1, args1, equal?) >= count(t1, args2, equal?))
+   IMPLIES sum(map(size2)(args1)) >= sum(map(size2)(args2))
+   
+count_eq2: LEMMA 
+   equal?(t, t1) IMPLIES count(s, t, f) = count(s, t1, f)
+
+count_eq3: LEMMA  
+   equal?(s, s1) IMPLIES count(s, t, f) = count(s1, t, f)
+
+count_vec_len: LEMMA
+    length(count_vec(args1, f)(s)) = length(args1) 
+ 
+count_vec_append: LEMMA
+    count_vec(append(args1, args2), f)(s) = append(count_vec(args1, f)(s), count_vec(args2, f)(s))
+
+count_vec_equiv: LEMMA
+    map(count(t, equal?))(map(get_args(f))(args1)) = count_vec(args1, f)(t)
+
+count_vec_nth: LEMMA
+    i < length(args1) IMPLIES 
+    nth(count_vec(args1, f)(t), i) = count(t, nth(args1, i), f)
+
+count_vec_perm_aux: LEMMA  
+    j < length(args1) IMPLIES 
+    sum(count_vec(args1, f)(t)) = count(t, nth(args1, j), f) + sum(count_vec(remove(args1, j), f)(t))
+
+count_vec_perm: LEMMA 
+    perm?(args1, args2) IMPLIES sum(count_vec(args1, f)(t)) = sum(count_vec(args2, f)(t))
+
+count_vec_get_repeat_lst: LEMMA 
+    sum(count_vec(get_repeat_lst(s, n), f)(t)) = count(t, s, f) * n
+
+count_vec_get_lst_mult: LEMMA 
+    sum(count_vec(get_lst_mult(args1, coef), f)(t)) = dot_product(count_vec(args1, f)(t), coef)
+
+count_vec_map: LEMMA 
+    count_vec(args1, f)(t) = map(count(t, f))(args1)
+
+% member_ac, count_elem2
+member_ac_perm: LEMMA 
+    perm?(args1, args2) IMPLIES member_ac(s, args1) = member_ac(s, args2)
+
+member_ac_count_elem2: LEMMA 
+    perm?(args1, args2) AND (EXISTS s: member(s, args2) AND equal?(t, s))  IMPLIES
+    member_ac(t, count_elem2(args1, equal?)`1)
+
+vars_count_elem2: LEMMA 
+    vars(count_elem2(args1, equal?)`1) = vars(args1)
+
+no_pair_ac_count_elem2: LEMMA 
+    no_pair_ac?(f, count_elem2(args1, equal?)`1) = no_pair_ac?(f, args1)
+
+var_lst_dif_elem: LEMMA 
+   dif_elem?[nat](lst_nat, =) IFF dif_elem?(var_lst(lst_nat), equal?)
+
+well_formed_count_elem2: LEMMA 
+   well_formed?(args1) IMPLIES well_formed?(count_elem2(args1, equal?)`1) 
+
+% remove_common, no_common_args
+remove_common_no_common: LEMMA 
+   no_common_args?(args1, args2) IMPLIES remove_common(args1, args2, equal?) = args1  
+
+remove_common_sym: LEMMA 
+   remove_common(t, s, f)`1 = remove_common(s, t, f)`2 AND
+   remove_common(t, s, f)`2 = remove_common(s, t, f)`1
+
+END equality
