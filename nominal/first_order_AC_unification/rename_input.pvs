@@ -1,0 +1,224 @@
+% Authors:
+%		Gabriel Ferreira Silva (*)
+% 		Mauricio Ayala-Rincón (*)
+% 		Daniele Nantes Sobrinho (*)
+% 		Maribel Fernandez (**)
+%		(*) - University of Brasília			(**) - King's College London
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+rename_input: THEORY
+BEGIN 
+      IMPORTING apply_ac_step, more_list_theory_props
+
+nice_input: TYPE = {input: [unif_prb, sub, finite_set[variable]] | nice_input?(input)}
+X, Y: VAR variable
+t, s: VAR term
+f: VAR string 
+n: VAR nat
+args: VAR args
+
+input, input_, input1, input1_, input2: VAR nice_input 
+fixed_vars, FV, V, V_, V1, V1_: VAR finite_set[variable]
+lst_V, lst_V_: VAR list[variable]
+rho: VAR renaming
+dio: VAR dio_matrix
+lst_args: VAR list[args]
+
+sig, sig1, sig_, sig1_: VAR sub
+
+P, P1, P2, P_, P1_, Pc, Pc_, Pu, Pu_, Pu1, Pu1_, Ps, Ps_, Ps1, Ps1_: VAR unif_prb
+
+renamed_inputs?(input, input_, fixed_vars, rho): bool = 
+   LET (unif_prb, sigma, V) = input,
+       (unif_prb_, sigma_, V_) = input_ IN 
+   unif_prb_ = apply_sub(rho, unif_prb) AND equal_syn?(sigma_, append(rho, sigma), fixed_vars)
+   AND (select_greater[nat](V) <= select_greater[nat](V_)) AND subset?(fixed_vars, V)
+   AND subset?(dom(rho), V) AND subset?(vars(img(rho)), V_) AND
+   (FORALL X:
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V))
+   
+renamed_inputs?(input, input_, fixed_vars): bool =
+   EXISTS rho: 
+       renamed_inputs?(input, input_, fixed_vars, rho)
+
+
+%%% LEMMAS
+ren_input_null: LEMMA 
+   renamed_inputs?(input, input_, fixed_vars) IMPLIES (null?(input`1) IFF null?(input_`1))
+
+ren_input_choose: LEMMA  
+   renamed_inputs?(input, input_, fixed_vars, rho) IMPLIES 
+   choose_unif_pair(input_`1)`1 = apply_sub(rho, choose_unif_pair(input`1)`1) AND 
+   choose_unif_pair(input_`1)`2 = apply_sub(rho, choose_unif_pair(input`1)`2)
+
+ren_equal_aux: LEMMA  
+   (FORALL X:
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V)) AND
+    subset?(vars(t), V) AND subset?(vars(s), V) AND equal?(subs(rho)(t), subs(rho)(s))
+    IMPLIES equal?(t, s)
+    
+ren_equal: LEMMA  
+    renamed_inputs?(input, input_, fixed_vars, rho) AND
+    member(t, input`1) AND member(s, input`1) AND 
+    equal?(subs(rho)(t), subs(rho)(s)) IMPLIES equal?(t, s)
+
+ren_input_append: LEMMA  
+    nice_input?(append(Pu, Ps), sig, V) AND nice_input?(append(Pu_, Ps_), sig_, V_)
+    AND length(Pu) = length(Pu_) IMPLIES 
+    (renamed_inputs?((append(Pu, Ps), sig, V), (append(Pu_, Ps_), sig_, V_), fixed_vars, rho)
+    IFF (renamed_inputs?((Ps, sig, V), (Ps_, sig_, V_), fixed_vars, rho) AND
+         renamed_inputs?((Pu, sig, V), (Pu_, sig_, V_), fixed_vars, rho)))
+
+renaming_mem_aux: LEMMA 
+   (FORALL X:
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V)) AND 
+    member(Y, V) AND subset?(vars(t), V) IMPLIES 
+   (member(Y, vars(t)) IFF (var?(subs(rho)(Y)) AND member(V(subs(rho)(Y)), vars(subs(rho)(t)))))
+    
+renaming_mem: LEMMA 
+    renamed_inputs?(input, input_, fixed_vars, rho) AND 
+    member(variable(X), input`1) AND member(t, input`1) 
+    IMPLIES
+    (member(X, vars(t)) IFF (var?(subs(rho)(X)) AND member(V(subs(rho)(X)), vars(subs(rho)(t)))))
+
+ren_input_inst: LEMMA  
+    LET sig1 = cons((X, t), null), sig1_ = cons((V(subs(rho)(X)), subs(rho)(t)), null),
+        (P, sig, V) = input, (P_, sig_, V_) = input_ IN 
+    subset?(P1, P) AND P1_ = apply_sub(rho, P1) AND 
+    NOT member(X, vars(t)) AND member(variable(X), P) AND member(t, P) AND 
+    renamed_inputs?(input, input_, fixed_vars, rho)
+    IMPLIES 
+    renamed_inputs?((apply_sub(sig1, P1), append(sig1, sig), V), 
+                   (apply_sub(sig1_, P1_), append(sig1_, sig_), V_), fixed_vars)
+
+ren_input_choose2: LEMMA 
+    LET (P, sig, V) = input, (P_, sig_, V_) = input_,
+        P1 = choose_unif_pair(P)`2, P1_ = choose_unif_pair(P_)`2 IN 
+    renamed_inputs?(input, input_, fixed_vars, rho) IMPLIES  
+    renamed_inputs?((P1, sig, V), (P1_, sig_, V_), fixed_vars, rho)
+
+% TODO: I altered this lemma, and I may need to change the proof of 
+% unification_alg_lemma that uses it
+ren_input_decompose: LEMMA    
+    LET (P, sig, V) = input, (P_, sig_, V_) = input_,
+        (up, P1) = choose_unif_pair(P), (up_, P1_) = choose_unif_pair(P_),
+	(t, s) = up, (t_, s_) = up_ IN 
+    (app?(t) AND app?(s) AND f_sym(t) = f_sym(s) AND
+    app?(t_) AND app?(s_) AND f_sym(t_) = f_sym(s_) AND
+    renamed_inputs?(input, input_, fixed_vars, rho)) AND NOT null?(P) IMPLIES 
+    LET P2 = decompose(arg(t), arg(s))`1, P2_ = decompose(arg(t_), arg(s_))`1 IN 
+    renamed_inputs?((append(P2, P1), sig, V), (append(P2_, P1_), sig_, V_), fixed_vars, rho)
+
+% renamed_input for the nextInput case in ApplyAC
+%
+% (P1, sig) = instantiate_step(P, null, null)
+% P1 = apply_sub(sig, P*) AND subset?(P*, P)
+    
+ren_input_elim_com_arg: LEMMA  
+    renamed_inputs?(input, input_, FV, rho) AND 
+    member(t, input`1) AND member(s, input`1) IMPLIES 
+    elim_com_arg(subs(rho)(t), subs(rho)(s), f)`1 = subs(rho)(elim_com_arg(t, s, f)`1) AND 
+    elim_com_arg(subs(rho)(t), subs(rho)(s), f)`2 = elim_com_arg(t, s, f)`2 AND
+    elim_com_arg(subs(rho)(t), subs(rho)(s), f)`3 = elim_com_arg(t, s, f)`3
+
+ren_solve_ac_sec_proj_vars: LEMMA  
+   LET V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))),
+       V1_ = vars(sec_proj(solve_ac(subs(rho)(t), subs(rho)(s), lst_V_, f))),
+       Z = select_greater[nat](lst_V), Z1 = select_greater[nat](finset2list[nat](V1)),
+       Z_ = select_greater[nat](lst_V_), Z1_ = select_greater[nat](finset2list[nat](V1_)) IN 
+       NOT null?(solve_ac(t, s, lst_V, f)) AND
+       renamed_inputs?(input, input_, FV, rho) AND member(t, input`1) AND member(s, input`1)
+       IMPLIES Z1 - Z + Z_ = Z1_ 
+
+ren_get_pre_new_args: LEMMA   
+    select_greater[nat](lst_V) <= select_greater[nat](lst_V_) AND n + 1 >= length(dio) IMPLIES
+    LET rho = shift(lst_V, lst_V_, n) IN 
+    get_pre_new_args(map(subs(rho))(lst_args), dio, lst_V_)`1 =
+    map(subs(rho))(get_pre_new_args(lst_args, dio, lst_V)`1)
+
+ren_dio_matrix2ac: LEMMA 
+    LET rho1 = shift(lst_V, lst_V_, n) IN 
+    (select_greater[nat](lst_V) <= select_greater[nat](lst_V_) AND 
+    disjoint?(dom(rho1), vars(args)) AND subset?(dom(rho), V) AND
+    subset?(vars(img(rho)), V_) AND n+1 >= length(dio)) AND
+    list2set(lst_V) = V AND list2set(lst_V_) = V_ 
+    IMPLIES 
+    dio_matrix2ac_sol(subs(rho)(args), lst_V_, f)(dio)`1 = 
+    apply_sub(append(rho, rho1), dio_matrix2ac_sol(args, lst_V, f)(dio)`1)
+
+ren_input_vars_sec_proj: LEMMA 
+    LET V1_ = vars(sec_proj(solve_ac(subs(rho)(t), subs(rho)(s), lst_V_, f))),
+    V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))) IN 
+    select_greater[nat](lst_V) <= select_greater[nat](lst_V_) AND
+    renamed_inputs?(input, input_, FV, rho) AND member(t, input`1) AND member(s, input`1)
+    IMPLIES select_greater[nat](V1) <= select_greater[nat](V1_)
+
+ren_input_solve_ac: LEMMA 
+    LET V1_ = vars(sec_proj(solve_ac(subs(rho)(t), subs(rho)(s), lst_V_, f))),
+    V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))) IN 
+    (nice_input?(append(Pu, Ps), sig, V) AND nice_input?(append(Pu_, Ps_), sig_, V_) AND 
+    renamed_inputs?((append(Pu, Ps), sig, V), (append(Pu_, Ps_), sig_, V_), FV, rho) AND 
+    length(Pu) = length(Pu_) AND NOT null?(Pu) AND t = car(Pu)`1 AND s = car(Pu)`2 AND 
+    list2set(lst_V) = V AND list2set(lst_V_) = V_ AND are_ac?(t, s, f) AND 
+    member(Pc_, first_proj(solve_ac(subs(rho)(t), subs(rho)(s), lst_V_, f)))) IMPLIES 
+    EXISTS Pc:
+       member(Pc, first_proj(solve_ac(t, s, lst_V, f))) AND 
+       renamed_inputs?((append(cdr(Pu), append(Pc, Ps)), sig, V1) ,
+       		       (append(cdr(Pu_), append(Pc_, Ps_)), sig_, V1_), FV)
+       AND length(Pc) = length(Pc_)
+
+ren_input_inst_step: LEMMA  
+    LET (P, sig, V) = input, (P_, sig_, V_) = input_ IN 
+    renamed_inputs?((P, sig, V), (P_, sig_, V_), FV, rho) AND
+    subset?(P2, P) AND  
+    sig1  = instantiate_step(P2, null, null)`2 AND 
+    sig1_ = instantiate_step(apply_sub(rho, P2), null, null)`2 AND 
+    subset?(P1, P) AND P1_ = apply_sub(rho, P1) IMPLIES 
+    renamed_inputs?((apply_sub(sig1, P1), append(sig1, sig), V),
+    		    (apply_sub(sig1_, P1_), append(sig1_, sig_), V_), FV, rho)
+		    
+% use P2 = Pc and P1 as 1. Pu, 2. Ps 3. subset of Pc. 
+ren_input_inst_step_cor: LEMMA  
+    LET (P1, sig1, fail) = instantiate_step(Pc, null, null),
+         sig1_ = instantiate_step(apply_sub(rho, Pc), null, null)`2 IN
+    nice_input?(append(Pu, append(Pc, Ps)), sig, V) AND 
+    nice_input?(append(Pu_, append(Pc_, Ps_)), sig_, V_) AND 
+    renamed_inputs?((append(Pu, append(Pc, Ps)), sig, V), (append(Pu_, append(Pc_, Ps_)), sig_, V_),
+    		    FV, rho)
+    AND length(Pu) = length(Pu_) AND length(Pc) = length(Pc_) IMPLIES 
+    renamed_inputs?((append(apply_sub(sig1, Pu), append(P1, apply_sub(sig1, Ps))), append(sig1, sig), V),
+                    (append(apply_sub(sig1_, Pu_), append(apply_sub(rho, P1), apply_sub(sig1_, Ps_))),
+		    			    	 append(sig1_, sig_), V_), FV, rho)
+
+     
+ren_input_next_input: LEMMA 
+    nice_input?(append(Pu, Ps), sig, V) AND nice_input?(append(Pu_, Ps_), sig_, V_) AND 
+    renamed_inputs?((append(Pu, Ps), sig, V), (append(Pu_, Ps_), sig_, V_), FV) AND
+    next_input?((Pu_, Ps_, sig_, V_), (Pu1_, Ps1_, sig1_, V1_)) AND
+    member(input2, apply_ac_step((Pu1_, Ps1_, sig1_, V1_))) AND length(Pu) = length(Pu_)
+    IMPLIES 
+    EXISTS Pu1, Ps1, sig1, V1: 
+       next_input?((Pu, Ps, sig, V), (Pu1, Ps1, sig1, V1)) AND
+       renamed_inputs?((append(Pu1, Ps1), sig1, V1), (append(Pu1_, Ps1_), sig1_, V1_), FV) 
+       AND length(Pu1) = length(Pu1_)
+
+% renamed inputs for the applyAC case 
+ren_input_apply_ac: LEMMA  
+    nice_input?(append(Pu, Ps), sig, V) AND nice_input?(append(Pu_, Ps_), sig_, V_)
+    AND renamed_inputs?((append(Pu, Ps), sig, V), (append(Pu_, Ps_), sig_, V_), FV) AND
+    member(input1_, apply_ac_step(Pu_, Ps_, sig_, V_)) AND length(Pu) = length(Pu_)
+    IMPLIES EXISTS input1:
+      member(input1, apply_ac_step(Pu, Ps, sig, V)) AND
+      renamed_inputs?(input1, input1_, FV)
+    
+ren_input_apply_ac_cor: LEMMA  
+    renamed_inputs?(input, input_, FV) AND
+    member(input1_, apply_ac_step(input_`1, null, input_`2, input_`3))
+    IMPLIES EXISTS input1:
+       member(input1, apply_ac_step(input`1, null, input`2, input`3))
+       AND renamed_inputs?(input1, input1_, FV)
+
+
+
+END rename_input
