@@ -443,7 +443,7 @@
 		 :format-arguments (list filename))
 	(let ((top-theories (collect-top-theories)))
 	  (when top-theories
-	    (if (get-theory theoryname)
+	    (if (gethash (intern theoryname) (current-pvs-theories))
 		(error 'top-already-exists
 		       :format-control "theory ~a already exists in the workspace"
 		       :format-arguments (list theoryname))
