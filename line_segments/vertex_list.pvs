@@ -1,0 +1,187 @@
+%% -----------------------------------------------------------------------------
+%% vertex_list.pvs              Dependable Computing
+%% Theory for lists (sequences) of vertices.
+%% -----------------------------------------------------------------------------
+
+%% Theories used to formalize polygons and other geometric structures
+%% can make use of the definitions and properties of vertex lists
+%% provided here. The main characteristic of interest is that all
+%% points on the list are unique, i.e., mutually unequal.
+
+vertex_list: THEORY
+  BEGIN
+
+  IMPORTING vectors_cross_2d;
+
+  uniq_vertex_seq?(f: finseq[point_2d]): bool =
+    (f`length > 0) AND
+    FORALL(i: below(f`length), j: {n: below(f`length) | n /= i}):
+      f`seq(i) /= f`seq(j);
+  uniq_vertex_seq: NONEMPTY_TYPE = (uniq_vertex_seq?);
+
+  uniq_vertex_seq_alt?(f: finseq[point_2d]): bool =
+    (f`length > 0) AND
+    FORALL(i: below(f`length-1), j: {n: below(f`length) | n > i}):
+      f`seq(i) /= f`seq(j);
+
+  uniq_vertex_seq_alt?_same_as_uniq_vertex_seq: LEMMA
+    FORALL(f: finseq[point_2d]):
+      uniq_vertex_seq?(f) = uniq_vertex_seq_alt?(f);
+
+  singleton_seq_is_uniq: LEMMA
+    FORALL(p: point_2d):
+      LET f: finseq[point_2d] =
+        (# length := 1, seq := LAMBDA(i: below(1)): p #) IN
+      uniq_vertex_seq?(f);
+
+  singleton_seq(p: point_2d): {uvs: uniq_vertex_seq | uvs`length = 1} =
+    (# length := 1, seq := LAMBDA(i: below(1)): p #);
+
+  uniq_vertex_seq_with_empty?(f: finseq[point_2d]): bool =
+    FORALL(i: below(f`length), j: {n: below(f`length) | n /= i}):
+      f`seq(i) /= f`seq(j);
+  uniq_vertex_seq_with_empty: NONEMPTY_TYPE = (uniq_vertex_seq_with_empty?);
+
+  empty_seq_is_uniq_vertex_seq_with_empty: LEMMA
+    uniq_vertex_seq_with_empty?(empty_seq[point_2d]);
+
+  % Curried function useful for iterating over points in a vertex list
+  in_vertex_seq?(f: finseq[point_2d]): pred[point_2d] =
+    LAMBDA(p: point_2d):
+      EXISTS(i: below(f`length)): f`seq(i) = p;
+
+  % Curried function useful for creating type of points not in sequence
+  not_in_vertex_seq?(f: finseq[point_2d]): pred[point_2d] =
+    LAMBDA(p: point_2d):
+      NOT(EXISTS(i: below(f`length)): f`seq(i) = p);
+
+  append_to_uniq_vertex_seq(s: uniq_vertex_seq_with_empty,
+                            p: (not_in_vertex_seq?(s))): uniq_vertex_seq =
+    (# length := s`length + 1,
+       seq    := LAMBDA(i: upto(s`length)):
+                   IF i < s`length THEN
+                     s`seq(i)
+                   ELSE
+                     p
+                   ENDIF
+     #);
+
+  uniq_vertex_list?(num_vertices: nonneg_int)
+                   (vertices: [below(num_vertices) -> point_2d]): bool =
+    FORALL(i: below(num_vertices), j: {n: below(num_vertices) | n /= i}):
+      vertices(i) /= vertices(j);
+  uniq_vertex_list(num_vertices: nonneg_int): NONEMPTY_TYPE =
+    (uniq_vertex_list?(num_vertices));
+
+  uniq_seq_is_uniq_list: LEMMA
+    FORALL(s: uniq_vertex_seq): uniq_vertex_list?(s`length)(s`seq);
+
+  AUTO_REWRITE+ uniq_seq_is_uniq_list;
+
+  uniq_vertex_list_alt?(num_vertices: nonneg_int,
+                        vertices: [below(num_vertices) -> point_2d]): bool =
+    FORALL(i: below(num_vertices-1), j: {n: below(num_vertices) | n > i}):
+      vertices(i) /= vertices(j);
+
+  uniq_vertex_list_alt?_same_as_uniq_vertex_list: LEMMA
+    FORALL(num_vertices: nonneg_int,
+           vertices: [below(num_vertices) -> point_2d]):
+      uniq_vertex_list?(num_vertices)(vertices) =
+      uniq_vertex_list_alt?(num_vertices, vertices);
+
+  % Rotate a sequence of points forward by n positions.
+  
+  rotated_vertices(len: posnat)
+                  (s: uniq_vertex_list(len), n: nat): uniq_vertex_list(len) =
+    LAMBDA (i: below(len)): s(rem(len)(i + n))
+
+  vertex_list_prefix(len: posnat)
+                    (s: uniq_vertex_list(len), n: below(len)):
+		    uniq_vertex_list(n + 1) =
+    LAMBDA (i: below(n + 1)): s(i)
+
+  % Following are various properties of finite sequences specialized
+  % to sequences of points.
+
+  singleton_seq_length: LEMMA
+    FORALL (p: point_2d): singleton_seq(p)`length = 1
+
+  singleton_seq_first: LEMMA
+    FORALL (p: point_2d): singleton_seq(p)`seq(0) = p
+
+  concat_empty_seq: LEMMA
+    FORALL (s: finseq[point_2d]): s o empty_seq = s
+
+  subseq2_empty_seq: LEMMA
+    FORALL (s: finseq[point_2d], i: nat): s ^^ (i, i) = empty_seq
+
+  subseq_full_seq: LEMMA
+    FORALL (s: finseq[point_2d]):
+      s`length > 0 IMPLIES s ^ (0, s`length - 1) = s
+
+  subseq2_full_seq: LEMMA
+    FORALL (s: finseq[point_2d]): s ^^ (0, s`length) = s
+
+  subseq2_length: LEMMA
+    FORALL (s: finseq[point_2d], m, n: nat):
+      m <= n AND n <= s`length IMPLIES (s ^^ (m, n))`length = n - m
+
+  subseq_split: LEMMA
+    FORALL (s: finseq[point_2d]), (i, j: below(s`length - 1)):
+      i <= j IMPLIES
+        s ^ (i, j+1) = s ^ (i, j) o singleton_seq(s`seq(j+1))
+
+  subseq_same_seq: LEMMA
+    FORALL (s: finseq[point_2d]), (i, j: below(s`length)):
+      j <= i IMPLIES (s ^ (0, i))`seq(j) = s`seq(j)
+
+  subseq_concat_left: LEMMA
+    FORALL (s, x, y: finseq[point_2d]), (i: below(s`length)):
+      s = (x o y) AND i = x`length - 1 IMPLIES
+        s ^ (0, i) = x
+
+  subseq_concat_seq_left: LEMMA
+    FORALL (s, x, y: finseq[point_2d]),
+           (i: below(s`length)), (j: below(x`length)):
+      s = (x o y) AND j <= i IMPLIES
+        (s ^ (0, i))`seq(j) = x`seq(j)
+
+  concat_length: LEMMA
+    FORALL (x, y: finseq[point_2d]):
+      (x o y)`length = x`length + y`length
+
+  concat_singleton_seq: LEMMA
+    FORALL (s: finseq[point_2d]), (p: point_2d), (n: nat):
+      n = s`length IMPLIES (s o singleton_seq(p))`seq(n) = p
+
+  concat_singleton_left: LEMMA
+    FORALL (s: finseq[point_2d]), (p: point_2d), (n: nat):
+      (singleton_seq(p) o s)`seq(0) = p
+
+  length_concat_left: LEMMA
+    FORALL (s, x, y: finseq[point_2d]):
+      s = (x o y) AND s`length = x`length IMPLIES s = x
+
+  find_seq_index(v: point_2d, S: finseq[point_2d], i: upto(S`length)):
+                RECURSIVE upto(S`length) =
+    IF i = 0 THEN S`length
+      ELSIF S`seq(i - 1) = v THEN i - 1
+      ELSE find_seq_index(v, S, i - 1)
+    ENDIF MEASURE i
+
+  find_seq_index_member: LEMMA
+    FORALL (v: point_2d, S: finseq[point_2d], i: nat):
+      i <= S`length IMPLIES
+        LET index = find_seq_index(v, S, i) IN
+          index /= S`length IMPLIES S`seq(index) = v
+
+  find_seq_index_missing: LEMMA
+    FORALL (v: point_2d, S: finseq[point_2d], i: nat):
+      i <= S`length AND 0 < S`length AND find_seq_index(v, S, i) = S`length
+        IMPLIES FORALL (j: below(i)): S`seq(j) /= v
+
+  % AUTO_REWRITE+ singleton_seq_length, singleton_seq_first, concat_length,
+  %               subseq2_empty_seq, subseq2_full_seq, subseq2_length,
+  % 		concat_singleton_seq, concat_singleton_left
+
+END vertex_list

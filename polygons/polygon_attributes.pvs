@@ -1,0 +1,234 @@
+%% -----------------------------------------------------------------------------
+%% polygons_attribuets.pvs            Dependable Computing
+%% Theory to formalize various traits of polygon edges and their angles.
+%% -----------------------------------------------------------------------------
+
+% This theory formalizes the minimum separation distance between edges
+% and adds lemmas for determining vertex order
+
+polygon_attributes: THEORY
+  BEGIN
+
+  IMPORTING line_segments@between_rays
+  IMPORTING line_segments@nearest_segment_points
+  IMPORTING topleft_vertex
+
+  IMPORTING finite_sets@finite_sets_minmax
+  IMPORTING vectors@perpendicular_2D
+  IMPORTING orders@finite_types
+
+
+  % For every polygon there exists a constant D_min that bounds the
+  % distance between any vertex v and any point on any edge not
+  % adjacent to (incident on) v. First define the minimum distance
+  % of v to an edge e, which is either the perpendicular distance of
+  % v to e or the distance from v to one of the endpoints of e.
+
+  min_edge_sep_vertex(G: simple_polygon_2d, i: below(G`num_vertices),
+                      j: {j: below(G`num_vertices) |
+		          j /= i AND j /= prev_index(G, i)}): posreal =
+    LET e = edges_of_polygon(G)(j),
+        v = e`p2 - e`p1,
+        vtx = G`vertices(i),
+  	t_min = (vtx - e`p1) * v / sqv(v) IN
+      IF t_min < 0 THEN norm(vtx - e`p1)
+        ELSIF t_min > 1 THEN norm(vtx - e`p2)
+        ELSE norm(e`p1 + t_min * v - vtx)
+      ENDIF
+
+  % The precise value of D_min is specified by this function.  It is
+  % often difficult to work with.  Its main purpose is to prove
+  % the existence TCC for min_edge_sep.
+  
+  min_edge_separation(G: simple_polygon_2d): posreal =
+    min[posreal, <=](
+        {v_min: posreal |
+         EXISTS (i, j: below(G`num_vertices)):
+           j /= i AND j /= prev_index(G, i) AND
+           v_min = min_edge_sep_vertex(G, i, j)})
+
+  min_edge_sep_vertex_le_dist_to_vtx: LEMMA
+    FORALL (G: simple_polygon_2d, i, j: below(G`num_vertices)):
+      j /= i and j /= prev_index(G, i) IMPLIES
+        FORALL (p: point_2d):
+          point_on_segment?(p, edges_of_polygon(G)(j))
+            IMPLIES min_edge_sep_vertex(G, i, j) <= norm(G`vertices(i) - p)
+
+  min_edge_separation_is_min: LEMMA
+    FORALL (G: simple_polygon_2d, i, j: below(G`num_vertices)):
+      j /= i and j /= prev_index(G, i) IMPLIES
+        FORALL (p: point_2d):
+          point_on_segment?(p, edges_of_polygon(G)(j))
+            IMPLIES min_edge_separation(G) <= norm(G`vertices(i) - p)
+
+  % This function formalizes the existence of a posreal value for
+  % the minimum edge separation distance, although it's not necessarily
+  % a tight bound. This function can be used where any bound will do,
+  % not necessarily the precise one.
+
+  min_edge_sep(G: simple_polygon_2d):
+    { D_min: posreal |
+      FORALL (i, j: below(G`num_vertices)):
+        j /= i and j /= prev_index(G, i) IMPLIES
+          FORALL (p: point_2d):
+            point_on_segment?(p, edges_of_polygon(G)(j))
+              IMPLIES D_min <= norm(G`vertices(i) - p)}
+
+  % The precise separation distance is at least as great as the
+  % loose bound.
+  min_edge_sep_le_min_edge_separation: LEMMA
+    FORALL (G: simple_polygon_2d):
+      min_edge_sep(G) <= min_edge_separation(G)
+
+  separation_distance_bounds_edge_length: LEMMA
+    FORALL (G: simple_polygon_2d, e: (edge_of_polygon?(G))):
+      min_edge_sep(G) <= length(e)
+
+  % This lemma shows that min_edge_sep can serve as a lower bound on
+  % the distance between any two points on any two non-adjacent edges.
+  min_edge_sep_all_points: LEMMA
+    FORALL (G: simple_polygon_2d, i, j: below(G`num_vertices),
+            p, q: point_2d):
+      j /= i AND j /= prev_index(G, i) AND j /= next_index(G, i) AND
+      point_on_segment?(p, edges_of_polygon(G)(i)) AND
+      point_on_segment?(q, edges_of_polygon(G)(j))
+        IMPLIES min_edge_sep(G) <= norm(p - q)
+
+  % This scaled value is used in other definitions to derive sufficiently
+  % small separation distances for various purposes.
+  scaled_min_edge_sep(G: simple_polygon_2d): posreal =  min_edge_sep(G) / 3
+
+
+  % The minimum CCW angle between adjacent edges is relevant for later
+  % definitions.  We don't compute it directly.  Instead, we collect a
+  % set of sine values for the edge angles, then derive a minimum value
+  % from that set.  We use the cross product of normalized vectors to get
+  % sines. In the process, we filter out angles greater than pi/2 by
+  % setting their sine values to 1.
+  
+  sines_of_edge_angles(G: simple_polygon_2d): finite_set[real] =
+    { a: real |
+      EXISTS (i: below(G`num_vertices)):
+        LET u = G`vertices(prev_index(G, i)),
+            v = G`vertices(i),
+            w = G`vertices(next_index(G, i)),
+	    cos_a = ^(u - v) * ^(w - v),
+	    sin_a = cross(^(u - v), ^(w - v))
+	IN a = IF sin_a < 0 OR cos_a < 0 THEN 1 ELSE sin_a ENDIF}
+
+  sines_of_edge_angles_nonempty: LEMMA
+    FORALL (G: simple_polygon_2d):
+      NOT empty?[real](sines_of_edge_angles(G))
+
+  % The sine value needed for specifying bounds is half the minimum.
+
+  min_edge_angle_sine(G: simple_polygon_2d): {a: posreal | a <= 1/2} =
+    min[real, <=](sines_of_edge_angles(G)) / 2
+
+  edge_angle_sine_sq_bound: LEMMA
+    FORALL (G: simple_polygon_2d):
+      1 > sq(min_edge_angle_sine(G))
+
+  outward_edge_offset_dist(G: simple_polygon_2d): posreal =
+    scaled_min_edge_sep(G) * min_edge_angle_sine(G)
+
+  % Used in proofs where a bounded perpendicular distance from the midpoint
+  % of an edge is needed.
+  midpoint_offset_dist(G: simple_polygon_2d): posreal =
+    min_edge_sep(G) * min_edge_angle_sine(G) / 3
+
+  % Same as previous definition except that CCW angles are on the
+  % inside of a CCW polygon's edges.
+  
+  sines_of_inward_edge_angles(G: simple_polygon_2d): finite_set[real] =
+    { a: real |
+      EXISTS (i: below(G`num_vertices)):
+        LET u = G`vertices(next_index(G, i)),
+            v = G`vertices(i),
+            w = G`vertices(prev_index(G, i)),
+	    cos_a = ^(u - v) * ^(w - v),
+	    sin_a = cross(^(u - v), ^(w - v))
+	IN a = IF sin_a < 0 OR cos_a < 0 THEN 1 ELSE sin_a ENDIF}
+
+  sines_of_inward_edge_angles_nonempty: LEMMA
+    FORALL (G: simple_polygon_2d):
+      NOT empty?[real](sines_of_inward_edge_angles(G))
+
+  min_inward_edge_angle_sine(G: simple_polygon_2d): {a: posreal | a <= 1/2} =
+    min[real, <=](sines_of_inward_edge_angles(G)) / 2
+
+  inward_edge_offset_dist(G: simple_polygon_2d): posreal =
+    scaled_min_edge_sep(G) * min_inward_edge_angle_sine(G)
+
+  % This value represents a distance from each vertex that is safe for
+  % defining miter points that will not intersect any edges.
+  in_out_edge_offset_dist(G: simple_polygon_2d): posreal =
+    min(inward_edge_offset_dist(G), outward_edge_offset_dist(G))
+
+  in_out_offset_lt_min_edge_sep: LEMMA
+    FORALL (G: simple_polygon_2d):
+      in_out_edge_offset_dist(G) < min_edge_sep(G)
+
+
+  % To determine whether a point lies between the rays induced by two
+  % edges, we differentiate the inward and outward cases.  The inward
+  % case uses the same ccw logic as the outward case after first
+  % swapping the edges and their endpoints.
+  
+  point_between_edges?(outward: bool, G: simple_polygon_2d,
+                       i: below(G`num_vertices))(p: point_2d): bool =
+    LET s = edges_of_polygon(G)(prev_index(G, i)),
+        e = edges_of_polygon(G)(i)
+    IN IF outward THEN between_rays?(s, e)(p)
+                  ELSE between_rays?(reverse_segment(e), reverse_segment(s))(p)
+       ENDIF
+
+  % The vertices of a polygon are in CCW order if the topmost, leftmost
+  % vertex v and its adjacent edges have a leftward vector from v
+  % lying between them according to the outward between-ness criterion.
+  
+  ccw_vertex_order?(G: simple_polygon_2d): bool =
+    LET i = topleft_vertex_idx(G),
+        r = (# x := 1, y := 0 #)
+    IN point_between_edges?(true, G, i)(G`vertices(i) - r)
+
+  ccw_simple_polygon: TYPE = (ccw_vertex_order?)
+
+  ccw_imp_cross_topleft_edges_neg: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), s, e: segment_2d):
+      i = topleft_vertex_idx(G) AND
+      s = edges_of_polygon(G)(prev_index(G, i)) AND
+      e = edges_of_polygon(G)(i) AND
+      ccw_vertex_order?(G)
+        IMPLIES cross(s`p1 - s`p2, e`p2 - e`p1) < 0
+
+  cross_topleft_edges_neg_imp_ccw: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), s, e: segment_2d):
+      i = topleft_vertex_idx(G) AND
+      s = edges_of_polygon(G)(prev_index(G, i)) AND
+      e = edges_of_polygon(G)(i) AND
+      cross(s`p1 - s`p2, e`p2 - e`p1) < 0
+        IMPLIES ccw_vertex_order?(G)
+
+  ccw_eqv_cross_topleft_edges_neg: LEMMA
+    FORALL (G: simple_polygon_2d):
+      LET i = topleft_vertex_idx(G),
+          s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i)
+      IN ccw_vertex_order?(G) IFF
+         cross(s`p1 - s`p2, e`p2 - e`p1) < 0
+
+  nearby_pt_between_edges_not_on_perim: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, i: below(G`num_vertices)):
+    LET s = edges_of_polygon(G)(prev_index(G, i)),
+        e = edges_of_polygon(G)(i)
+    IN between_rays?(s, e)(p) AND norm(p - e`p1) < min_edge_separation(G)
+        IMPLIES NOT point_on_polygon_perimeter?(G)(p)
+
+  miter_point_between_edges: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET mp = miter_point(G`vertices(i), G`vertices(prev_index(G, i)),
+ 	                   G`vertices(next_index(G, i)), d)
+      IN point_between_edges?(true, G, i)(mp)
+
+END polygon_attributes

@@ -1,0 +1,566 @@
+%% -----------------------------------------------------------------------------
+%% vertex_injection.pvs              Dependable Computing
+%% Theory to formalize vertex injection concepts.
+%% -----------------------------------------------------------------------------
+
+vertex_injection : THEORY
+
+  BEGIN
+
+  % To implement and prove properties of algorithms such as Polygon
+  % Merge, it is helpful to introduce a polygon transformation based
+  % on the notion of "vertex injection". In this concept, two polygons
+  % A and B are examined for points where their edges intersect. At
+  % each intersection point, the two intersecting edges are "injected"
+  % with new vertices, thereby splitting these edges into two shorter
+  % ones. The process yields two derived polygons Am and Bm, where each
+  % has the same perimeter points as A and B, but a larger number of
+  % vertices and edges.
+
+  % The definitions and lemmas of this theory provide the basic
+  % formalization, which can be imported and extended by other theories.
+
+  IMPORTING polygons@polygon_attributes
+  IMPORTING finite_sets@finite_sets_minmax[posreal, <=]
+  IMPORTING finite_sets@finite_sets_minmax[real, <=]
+  IMPORTING finite_sets@finite_sets_inductions[point_2d]
+  IMPORTING structures@seq_pigeon
+
+  AUTO_REWRITE+ singleton_seq_length, singleton_seq_first, concat_length,
+                subseq2_empty_seq, subseq2_full_seq, subseq2_length,
+		concat_singleton_seq, concat_singleton_left
+
+  AUTO_REWRITE+ is_point_on_seg_equiv, is_point_on_seg_equiv_2,
+                vertex_neq_next, vertex_neq_prev,
+                vertices_diff_next_nonzero, vertices_diff_prev_nonzero
+
+  % This function yields a set of points on segment e that corresponds
+  % to all the places where e intersects the edges of polygon B. It
+  % also includes the first endpoint of e but not the second endpoint
+  % because that endpoint appears in the set for the next edge. The
+  % idea is that this set of points will be used to define new edges
+  % for the injected polygon.
+  
+  injected_edge(e: segment_2d, B: simple_polygon_2d):
+               {Q: finite_set[point_2d] |
+	           FORALL (p: (Q)): is_point_on_segment?(e)(p)} =
+    {p: point_2d |
+     p /= e`p2 AND
+       (p = e`p1 OR
+        EXISTS (s: (edge_of_polygon?(B))):
+          IF are_segments_overlapping?(e)(s)
+             THEN % p is an endpoint of the overlapping subsegment of e and s
+		  p = min_overlap_point(e, s) OR p = max_overlap_point(e, s)
+             ELSE % p is the intersection of e and s if it lies on both
+                  point_on_segment?(p, e) AND point_on_segment?(p, s)
+          ENDIF)}
+
+  % This recursive function gives an alternative method for constructing
+  % injection points. It produces a sequence of such points.
+  injected_edge_seq_rec(e: segment_2d,
+                        P: {Q: finite_set[point_2d] |
+	                       FORALL (u: (Q)): point_on_segment?(u, e)}):
+                       RECURSIVE {R: finseq[point_2d] |
+		                  R`length = card(P)} =
+    IF empty?(P)
+      THEN empty_seq
+    ELSIF card(P) = 1  % empty?(rest(P))
+      THEN singleton_seq(choose(P))
+      ELSE LET u = choose(P),
+               S = injected_edge_seq_rec(e, rest(P)),
+	       L = S`length,
+               A = {j: below(L) | norm(u - e`p1) <= norm(S`seq(j) - e`p1)},
+               i = IF empty?(A) THEN L
+	                        ELSE min_nat[below(L)].min(A)
+		   ENDIF
+	   IN S^^(0, i) o singleton_seq(u) o S^^(i, L)
+    ENDIF
+    MEASURE card(P)
+
+  % Properties of the recursive function
+  injected_edge_seq_props: LEMMA
+    FORALL (e: segment_2d,
+            P: finite_set[point_2d],
+	    S: finseq[point_2d]):
+      (FORALL (u: point_2d): P(u) IMPLIES point_on_segment?(u, e)) AND
+      S = injected_edge_seq_rec(e, P) IMPLIES
+        S`length = card(P) AND
+        (FORALL (v: point_2d):
+	    P(v) IMPLIES EXISTS (i: nat): i < S`length AND v = S`seq(i)) AND
+        (FORALL (i: nat): i < S`length IMPLIES member(S`seq(i), P)) AND
+        (FORALL (i: nat, j: below(i)):
+           i < S`length IMPLIES norm(S`seq(j) - e`p1) < norm(S`seq(i) - e`p1))
+
+  % Given a set of intersection points for edge e, produce a sequence of
+  % injected vertices in the proper order.
+  injected_edge_seq(e: segment_2d,
+                    P: {Q: finite_set[point_2d] |
+	                   FORALL (u: (Q)): is_point_on_segment?(e)(u)}):
+    {S: finseq[point_2d] |
+     S`length = card(P) AND
+     (FORALL (v: (P)): EXISTS (i: below(S`length)): v = S`seq(i)) AND
+     (FORALL (i: below(S`length)): member(S`seq(i), P)) AND
+     (FORALL (i: below(S`length), j: below(i)):
+        norm(S`seq(j) - e`p1) < norm(S`seq(i) - e`p1))}
+
+  % This recursive function yields a sequence of all the injected
+  % vertices for polygon A.
+  injected_vertices(A, B: simple_polygon_2d,
+                    index: upto(A`num_vertices)): RECURSIVE finseq[point_2d] =
+    IF index = 0
+       THEN empty_seq
+       ELSE LET e = edges_of_polygon(A)(index - 1) IN
+              injected_vertices(A, B, index - 1) o
+	        injected_edge_seq(e, injected_edge(e, B))
+    ENDIF
+    MEASURE index
+
+  % These are auxiliary functions that formalize different aspects
+  % of the injected vertex list.
+
+  % This function yields a sequence of sequences.
+  seq_injected_edge_seq(A, B: simple_polygon_2d):
+    {S: finseq[finseq[point_2d]] |
+     S`length = A`num_vertices AND
+       FORALL (i: below(A`num_vertices)):
+         LET e = edges_of_polygon(A)(i) IN
+           S`seq(i) = injected_edge_seq(e, injected_edge(e, B))}
+
+  % This function concatenates and flattens the sequence of sequences
+  % into a single sequence.
+  reduce_seq_injected_seq(A, B: simple_polygon_2d,
+                          index: upto(A`num_vertices)):
+         RECURSIVE finseq[point_2d] =
+    LET S = seq_injected_edge_seq(A, B) IN
+    IF index = 0
+       THEN empty_seq
+       ELSE reduce_seq_injected_seq(A, B, index - 1) o
+	      seq_injected_edge_seq(A, B)`seq(index - 1)
+    ENDIF
+    MEASURE index
+
+  num_injected_edge_vertices(A, B: simple_polygon_2d,
+                             i: upto(A`num_vertices)): RECURSIVE nat =
+    IF i = 0
+       THEN 0
+       ELSE num_injected_edge_vertices(A, B, i - 1) +
+	      card(injected_edge(edges_of_polygon(A)(i - 1), B))
+    ENDIF
+    MEASURE i
+
+  % Provides a sequence of index values indicating where each of the
+  % original edges fall in the injected vertex list.
+  injected_edge_indices(A, B: simple_polygon_2d): finseq[nat] =
+    (# length := A`num_vertices + 1,
+       seq := LAMBDA (i: upto(A`num_vertices)):
+                num_injected_edge_vertices(A, B, i)
+     #)
+
+
+  % Following are various properties of the vertex injection functions.
+  % Most are not significant. They represent incremental results needed
+  % to establish that the new vertices create a valid polygon and that
+  % the edges are sub-edges of the original polygon.
+
+  % Many of the lemmas are expressed in terms of polygons A and B but
+  % yield a result only for A. These can be instantiated in the reverse
+  % order of B and A to yield results for B.
+  
+  length_injected_vertices_bound: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k <= A`num_vertices IMPLIES
+        k <= injected_vertices(A, B, k)`length
+
+  injected_edge_nonempty: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k < A`num_vertices IMPLIES
+        nonempty?(injected_edge(edges_of_polygon(A)(k), B))
+  
+  % Each original edge contributes at least one edge to the injected list.
+  length_injected_vertices_incr: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k < A`num_vertices IMPLIES
+        injected_vertices(A, B, k)`length <
+	injected_vertices(A, B, k + 1)`length
+  
+  length_injected_vertices_ordered: LEMMA
+    FORALL (A, B: simple_polygon_2d, j, k: nat):
+      j < k AND k <= A`num_vertices IMPLIES
+        injected_vertices(A, B, j)`length <
+	injected_vertices(A, B, k)`length
+
+  len_injected_vert_eq_num_inj_vert: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k <= A`num_vertices IMPLIES
+        injected_vertices(A, B, k)`length =
+	num_injected_edge_vertices(A, B, k)
+
+  injected_edge_indices_eq_len_inj_vert: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k <= A`num_vertices IMPLIES
+        injected_vertices(A, B, k)`length =
+	injected_edge_indices(A, B)`seq(k)
+
+  injected_edge_indices_incr: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k < A`num_vertices IMPLIES
+	injected_edge_indices(A, B)`seq(k) <
+	injected_edge_indices(A, B)`seq(k + 1)
+
+  injected_edge_indices_ordered: LEMMA
+    FORALL (A, B: simple_polygon_2d, j, k: nat):
+      j < k AND k <= A`num_vertices IMPLIES
+	injected_edge_indices(A, B)`seq(j) <
+	injected_edge_indices(A, B)`seq(k)
+
+  injected_vertices_subseq: LEMMA
+    FORALL (A, B: simple_polygon_2d, j, k, last: nat):
+      0 < j AND j <= k AND k <= A`num_vertices AND
+      last = injected_vertices(A, B, j)`length - 1
+        IMPLIES injected_vertices(A, B, j) =
+                injected_vertices(A, B, k) ^ (0, last)
+
+  injected_vertices_tail_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, k: nat):
+      k <= A`num_vertices AND i < injected_vertices(A, B, k)`length
+        IMPLIES injected_vertices(A, B, k)`seq(i) =
+                injected_vertices(A, B, A`num_vertices)`seq(i)
+
+  injected_vert_seq_fns_equiv: LEMMA
+    FORALL (A, B: simple_polygon_2d, k: nat):
+      k <= A`num_vertices IMPLIES
+        reduce_seq_injected_seq(A, B, k) = injected_vertices(A, B, k)
+
+  inj_edge_seq_len_eq_diff_inj_indices: LEMMA
+    FORALL (A, B: simple_polygon_2d, j: nat):
+      j < A`num_vertices IMPLIES
+        seq_injected_edge_seq(A, B)`seq(j)`length =
+          injected_edge_indices(A, B)`seq(1 + j) -
+          injected_edge_indices(A, B)`seq(j)
+
+  injected_vert_seq_elements_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, k: nat):
+      k <= A`num_vertices AND
+      i < injected_vertices(A, B, k)`length IMPLIES
+        EXISTS (j: below(k), m, n: nat):
+	  m = injected_edge_indices(A, B)`seq(j) AND
+	  n = injected_edge_indices(A, B)`seq(j+1) AND
+	  m <= i AND i < n AND
+          injected_vertices(A, B, j+1)`seq(i) =
+            seq_injected_edge_seq(A, B)`seq(j)`seq(i - m)
+
+  % Index values for e's injected edge sequence are related to those
+  % of the full sequence.
+  injected_edge_seq_elements_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d, j: below(A`num_vertices), i: nat):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          s = edges_of_polygon(A)(j),
+          L = injected_vertices(A, B, j)`length,
+          Q = injected_edge_seq(s, injected_edge(s, B)) IN
+        i < IV`length AND i >= L AND i < Q`length + L
+          IMPLIES IV`seq(i) = Q`seq(i - L)
+
+  % Every injected vertex is on the original edge.
+  member_injected_edge_on_segment: LEMMA
+    FORALL (v: point_2d, e: segment_2d, B: simple_polygon_2d):
+      member(v, injected_edge(e, B))
+        IMPLIES point_on_segment?(v, e)
+
+  length_injected_edge_seq_pos: LEMMA
+    FORALL (e: segment_2d, A, B: simple_polygon_2d, j: nat):
+      j < A`num_vertices AND e = edges_of_polygon(A)(j)
+        IMPLIES injected_edge_seq(e, injected_edge(e, B))`length > 0
+
+  injected_vertices_length_max: LEMMA
+    FORALL (A, B: simple_polygon_2d, i: nat):
+      i <= A`num_vertices AND
+      injected_vertices(A, B, i)`length =
+      injected_vertices(A, B, A`num_vertices)`length
+        IMPLIES A`num_vertices = i
+
+  injected_vertices_distinct: LEMMA
+    FORALL (e: segment_2d, A, B: simple_polygon_2d,
+            S: finite_set[point_2d], Q: finseq[point_2d], k: nat):
+      k < A`num_vertices AND e = edges_of_polygon(A)(k) AND
+      subset?(S, injected_edge(e, B)) AND Q = injected_edge_seq(e, S)
+        IMPLIES FORALL (i, j: below(Q`length)):
+	          Q`seq(i) = Q`seq(j) IMPLIES i = j
+
+  member_injected_index_exists: LEMMA
+    FORALL (v: point_2d, e: segment_2d, A, B: simple_polygon_2d,
+            S: finite_set[point_2d], Q: finseq[point_2d], i, k: nat):
+      k < A`num_vertices AND e = edges_of_polygon(A)(k) AND
+      S = injected_edge(e, B) AND member(v, S) AND
+      Q = injected_edge_seq(e, S)
+        IMPLIES find_seq_index(v, Q, Q`length) < Q`length
+
+  member_injected_edge_index: LEMMA
+    FORALL (v: point_2d, e: segment_2d, A, B: simple_polygon_2d,
+            S: finite_set[point_2d], Q: finseq[point_2d], j: nat):
+      j < A`num_vertices AND e = edges_of_polygon(A)(j) AND
+      subset?(S, injected_edge(e, B)) AND Q = injected_edge_seq(e, S)
+        IMPLIES (member(v, S) IFF
+                 EXISTS (i: nat): i < Q`length AND v = Q`seq(i))
+
+  injected_edge_seq_starts_with_p1: LEMMA
+    FORALL (e: segment_2d, A, B: simple_polygon_2d, j: nat):
+      j < A`num_vertices AND e = edges_of_polygon(A)(j)
+        IMPLIES injected_edge_seq(e, injected_edge(e, B))`seq(0) = e`p1
+
+  injected_vertex_p1_is_seq_element: LEMMA
+    FORALL (A, B: simple_polygon_2d, j, k: nat):
+      j < k AND k <= A`num_vertices
+        IMPLIES edges_of_polygon(A)(j)`p1 =
+                  injected_vertices(A, B, k)`seq
+                    (injected_vertices(A, B, j)`length)
+
+  injected_vertex_in_injected_edge: LEMMA
+    FORALL (v: point_2d, A, B: simple_polygon_2d, k: nat):
+      k <= A`num_vertices IMPLIES
+        ((EXISTS (i: nat):
+           i < injected_vertices(A, B, k)`length AND
+           injected_vertices(A, B, k)`seq(i) = v) IFF
+         (EXISTS (j: nat):
+            j < k AND member(v, injected_edge(edges_of_polygon(A)(j), B))))
+
+  injected_vertex_in_injected_edge_2: LEMMA
+    FORALL (v: point_2d, A, B: simple_polygon_2d, i, k: nat):
+      k <= A`num_vertices AND
+      i < injected_vertices(A, B, k)`length AND
+      injected_vertices(A, B, k)`seq(i) = v
+        IMPLIES
+          EXISTS (j: nat):
+            j < k AND member(v, injected_edge(edges_of_polygon(A)(j), B))
+
+  edge_seq_point_distinct: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d,
+	    IV: finseq[point_2d], i, j, k: nat):
+      k < A`num_vertices AND IV = injected_vertices(A, B, k) AND
+      e = edges_of_polygon(A)(k) AND
+      i < IV`length AND j >= IV`length AND
+      j < injected_edge_seq(e, injected_edge(e, B))`length + IV`length
+        IMPLIES IV`seq(i) /=
+                  injected_edge_seq(e, injected_edge(e, B))`seq(j - IV`length)
+
+  all_injected_vertices_distinct: LEMMA
+    FORALL (A, B: simple_polygon_2d, IV: finseq[point_2d], k: nat):
+      k <= A`num_vertices AND IV = injected_vertices(A, B, k)
+        IMPLIES FORALL (i, j: below(IV`length)):
+	          IV`seq(i) = IV`seq(j) IMPLIES i = j
+
+  injected_vertex_on_original_edge: LEMMA
+    FORALL (A, B: simple_polygon_2d, j: below(A`num_vertices), i: nat):
+      i >= injected_edge_indices(A, B)`seq(j) AND
+      i < injected_edge_indices(A, B)`seq(j + 1)
+        IMPLIES point_on_segment?(injected_vertices(A, B, j+1)`seq(i),
+                                  edges_of_polygon(A)(j))
+
+  injected_edge_subsegment_of_original: LEMMA
+    FORALL (A, B: simple_polygon_2d, s: segment_2d):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          Am = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        edge_of_polygon?(Am)(s)
+          IMPLIES EXISTS (j: below(A`num_vertices)):
+		    subsegment?(s, edges_of_polygon(A)(j))
+
+  point_on_injected_on_original: LEMMA
+    FORALL (A, B: simple_polygon_2d, s: segment_2d, p: point_2d):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          Am = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        edge_of_polygon?(Am)(s) AND point_on_segment?(p, s)
+	  IMPLIES EXISTS (j: below(A`num_vertices)):
+  	            point_on_segment?(p, edges_of_polygon(A)(j))
+
+  injected_p2_in_injected_edge_set: LEMMA
+    FORALL (A, B: simple_polygon_2d, i: nat):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          next = IF i = IV`length - 1 THEN 0 ELSE i + 1 ENDIF IN
+        i < IV`length IMPLIES
+ 	  EXISTS (j: below(A`num_vertices)):
+            injected_edge(edges_of_polygon(A)(j), B)(IV`seq(next))
+
+  point_on_injected_edge_on_original: LEMMA
+    FORALL (A, B: simple_polygon_2d, p: point_2d, i: nat):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          C = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        i < IV`length AND point_on_segment?(p, edges_of_polygon(C)(i))
+          IMPLIES EXISTS (j: below(A`num_vertices)):
+  	            point_on_segment?(p, edges_of_polygon(A)(j))
+
+  % When index values satisfy constraints, each injected vertex
+  % appears in the proper vertex sequence.
+  point_in_injected_edge_seq_index: LEMMA
+    FORALL (A, B: simple_polygon_2d, Q: finseq[point_2d], e: segment_2d,
+	    v: point_2d, j: below(A`num_vertices), i, l: nat):
+      j < A`num_vertices AND
+      e = edges_of_polygon(A)(j) AND
+      i < injected_vertices(A, B, j + 1)`length AND
+      l = injected_vertices(A, B, j)`length AND
+      v = injected_vertices(A, B, A`num_vertices)`seq(i) AND
+      point_on_segment?(v, e) AND v /= e`p2 AND
+      Q = injected_edge_seq(e, injected_edge(e, B))
+        IMPLIES EXISTS (m: below(Q`length)): v = Q`seq(m) AND i = l + m
+
+  % This lemma places the index of each injected vertex within a range.
+  injected_vertex_on_edge_index_bounds: LEMMA
+    FORALL (A, B: simple_polygon_2d, 
+            j: below(A`num_vertices), i, k: nat, v: point_2d):
+      k <= A`num_vertices AND j < k AND
+      i < injected_vertices(A, B, k)`length AND
+      v /= edges_of_polygon(A)(j)`p2 AND
+      v = injected_vertices(A, B, A`num_vertices)`seq(i) AND
+      point_on_segment?(v, edges_of_polygon(A)(j))
+        IMPLIES i >= injected_vertices(A, B, j)`length AND
+                i < injected_vertices(A, B, j+1)`length
+
+  injected_vertex_on_edge_index_bounds_all: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            j: below(A`num_vertices), i: nat, v: point_2d):
+      j < A`num_vertices AND
+      i < injected_vertices(A, B, A`num_vertices)`length AND
+      v = injected_vertices(A, B, A`num_vertices)`seq(i) AND
+      point_on_segment?(v, edges_of_polygon(A)(j))
+        IMPLIES IF v /= edges_of_polygon(A)(j)`p2
+                  THEN i >= injected_vertices(A, B, j)`length AND
+                       i < injected_vertices(A, B, j+1)`length
+                ELSIF j = A`num_vertices - 1
+                  THEN i = 0
+                  ELSE i = injected_vertices(A, B, j+1)`length
+		ENDIF
+
+  injected_vertices_length_rollover: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, j: nat):
+        LET IV = injected_vertices(A, B, A`num_vertices),
+            Am = (# num_vertices := IV`length, vertices := IV`seq #) IN
+          i < A`num_vertices AND
+  	  j < injected_vertices(A, B, i+1)`length AND
+          j = Am`num_vertices - 1
+            IMPLIES i = A`num_vertices - 1
+
+  injected_p2_on_same_original_edge: LEMMA
+    FORALL (A, B: simple_polygon_2d, IV: finseq[point_2d], i, j, next: nat):
+      j < A`num_vertices AND
+      IV = injected_vertices(A, B, A`num_vertices) AND
+      i < IV`length AND
+      next = IF i = IV`length - 1 THEN 0 ELSE i + 1 ENDIF AND
+      point_on_segment?(IV`seq(i), edges_of_polygon(A)(j)) AND
+      IV`seq(i) /= edges_of_polygon(A)(j)`p2
+          IMPLIES point_on_segment?(IV`seq(next), edges_of_polygon(A)(j))
+
+  next_injected_vertex_on_edge: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, j: nat):
+        LET IV = injected_vertices(A, B, A`num_vertices),
+            Am = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        i < A`num_vertices AND
+	j >= injected_vertices(A, B, i)`length AND
+	j < injected_vertices(A, B, i+1)`length % AND
+          IMPLIES
+             point_on_segment?(IV`seq(next_index(Am, j)),
+	                       edges_of_polygon(A)(i)) AND
+             norm(IV`seq(j) - A`vertices(i)) <
+               norm(IV`seq(next_index(Am, j)) - A`vertices(i))
+
+  normalized_edge_endpoint_diffs_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, j: nat):
+        LET IV = injected_vertices(A, B, A`num_vertices),
+            Am = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        i < A`num_vertices AND
+	j >= injected_vertices(A, B, i)`length AND
+	j < injected_vertices(A, B, i+1)`length
+          IMPLIES
+            ^(edges_of_polygon(Am)(j)`p2 - edges_of_polygon(Am)(j)`p1) =
+            ^(edges_of_polygon(A)(i)`p2 - edges_of_polygon(A)(i)`p1)
+
+  injected_edge_p1_neq_original_p2: LEMMA
+    FORALL (A, B: simple_polygon_2d, Am: polygon_2d, IV: finseq[point_2d],
+	    i: below(A`num_vertices), j: nat, s, e: segment_2d):
+      IV = injected_vertices(A, B, A`num_vertices) AND
+      Am = (# num_vertices := IV`length, vertices := IV`seq #) AND
+      j < IV`length AND
+      s = edges_of_polygon(A)(i) AND
+      e = edges_of_polygon(Am)(j) AND
+      subsegment?(e, s)
+        IMPLIES e`p1 /= s`p2
+
+  injected_edge_has_same_dir_as_original: LEMMA
+    FORALL (A, B: simple_polygon_2d, Am: polygon_2d, IV: finseq[point_2d],
+	    i: below(A`num_vertices), j: nat, s, e: segment_2d):
+      IV = injected_vertices(A, B, A`num_vertices) AND
+      Am = (# num_vertices := IV`length, vertices := IV`seq #) AND
+      j < IV`length AND
+      s = edges_of_polygon(A)(i) AND
+      e = edges_of_polygon(Am)(j) AND
+      subsegment?(e, s)
+        IMPLIES ^(s`p2 - s`p1) = ^(e`p2 - e`p1)
+
+  injected_edge_p2_neq_original_p1: LEMMA
+    FORALL (A, B: simple_polygon_2d, Am: polygon_2d, IV: finseq[point_2d],
+	    i: below(A`num_vertices), j: nat, s, e: segment_2d):
+      IV = injected_vertices(A, B, A`num_vertices) AND
+      Am = (# num_vertices := IV`length, vertices := IV`seq #) AND
+      j < IV`length AND
+      s = edges_of_polygon(A)(i) AND
+      e = edges_of_polygon(Am)(j) AND
+      subsegment?(e, s)
+        IMPLIES e`p2 /= s`p1
+
+  nonlast_injected_vertex_index: LEMMA
+    FORALL (A, B: simple_polygon_2d, Am: polygon_2d, IV: finseq[point_2d],
+	    i: below(A`num_vertices), j: nat, s, e: segment_2d):
+      IV = injected_vertices(A, B, A`num_vertices) AND
+      Am = (# num_vertices := IV`length, vertices := IV`seq #) AND
+      j < IV`length AND
+      s = edges_of_polygon(A)(i) AND
+      e = edges_of_polygon(Am)(j) AND
+      ^(s`p2 - s`p1) = ^(e`p2 - e`p1) AND
+      subsegment?(e, s)
+        IMPLIES s`p2 = e`p2 OR j + 1 < IV`length
+
+  injected_edge_endpoint_or_interior: LEMMA
+    FORALL (A, B: simple_polygon_2d, p: point_2d, i: nat):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          C = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        i < IV`length AND point_on_segment?(p, edges_of_polygon(C)(i))
+          IMPLIES EXISTS (j: below(A`num_vertices)):
+  	            point_on_segment?(p, edges_of_polygon(A)(j)) AND
+                    (segment_endpoint?(edges_of_polygon(A)(j))(p) OR
+	             FORALL (k: below(A`num_vertices)):
+		       point_on_segment?(p, edges_of_polygon(A)(k))
+		         IMPLIES k = j)
+
+  overlapping_injected_edges_are_equal: LEMMA
+    FORALL (A, B: simple_polygon_2d, s, e: segment_2d):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          C = (# num_vertices := IV`length, vertices := IV`seq #) IN
+        are_segments_overlapping?(s)(e) AND
+        edge_of_polygon?(C)(s) AND edge_of_polygon?(C)(e)
+          IMPLIES s = e
+
+  same_injected_edge_imp_no_crossings: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            q: point_2d, i, j: nat, k: below(A`num_vertices)):
+      LET IV = injected_vertices(A, B, A`num_vertices),
+          C = (# num_vertices := IV`length, vertices := IV`seq #) IN
+      i < IV`length AND j < IV`length AND
+      subsegment?(edges_of_polygon(C)(i), edges_of_polygon(A)(k)) AND
+      subsegment?(edges_of_polygon(C)(j), edges_of_polygon(A)(k)) AND
+      point_on_segment?(q, edges_of_polygon(C)(i)) AND
+      point_on_segment?(q, edges_of_polygon(C)(j))
+        IMPLIES
+          i = j OR segment_endpoint?(edges_of_polygon(C)(i))(q)
+
+  % The new edges created by injected vertices do not cross each other.
+  injected_vertex_edges_do_not_cross: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      LET IV = injected_vertices(A, B, A`num_vertices) IN
+        polygon_edges_do_not_cross?((# num_vertices := IV`length,
+                                       vertices := IV`seq #))
+
+  % The vertex list created by the injection process leads to a new
+  % polygon satisfying the constraints of the simple_polygon type.
+  injected_vertices_form_simple_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      LET IV = injected_vertices(A, B, A`num_vertices) IN
+        simple_polygon_2d?((# num_vertices := IV`length, vertices := IV`seq #))
+
+  END vertex_injection

@@ -1,0 +1,273 @@
+%% -----------------------------------------------------------------------------
+%% nearest_segment_points.pvs          Dependable Computing
+%% Formalization of the result that the minimum distance between points
+%% on two non-intersecting line segments occurs at an endpoint.
+%% -----------------------------------------------------------------------------
+
+nearest_segment_points : THEORY
+
+  BEGIN
+
+  IMPORTING perp_crossings
+
+  % Following are lemmas used to prove the cases in the proof of
+  % endpoint_nearest_point_between_segments (end of this theory).
+  % These lemmas represent the geometric relationships that resulted
+  % from a case analysis of the possible ways that two segments
+  % can be oriented with respect to one another.
+
+  % Judgements copied from segments_2d:
+
+  endpoint_diff_nonzero_1: JUDGEMENT
+    FORALL (s: segment_2d): s`p2 - s`p1 HAS_TYPE Nz_vector
+
+  endpoint_diff_nonzero_2: JUDGEMENT
+    FORALL (s: segment_2d): s`p1 - s`p2 HAS_TYPE Nz_vector
+
+  sqv_segment_posreal: JUDGEMENT
+    FORALL (s: segment_2d): sqv(s`p2 - s`p1) HAS_TYPE posreal
+  
+  norm_segment_posreal: JUDGEMENT
+    FORALL (s: segment_2d): norm(s`p2 - s`p1) HAS_TYPE posreal
+
+  % Subcase for 1b
+  dropped_perp_after_extension_no_intersect_subcase: LEMMA
+    FORALL(s, e: segment_2d, q, lc, pxs: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           are_segments_intersecting_alt?(s, e)) IMPLIES
+        LET closest_s_endpt =
+          IF norm(val(line_crossing(s, e)) - s`p1) <
+               norm(val(line_crossing(s, e)) - s`p2)
+          THEN s`p1 ELSE s`p2 ENDIF IN
+        LET closest_e_endpt =
+          IF norm(closest_s_endpt - e`p1) < norm(closest_s_endpt - e`p2)
+          THEN e`p1 ELSE e`p2 ENDIF IN
+        (extending_s_crosses_e(s, e) AND
+	 point_on_segment?(q, e) AND
+	 find_perp_ray_line_crossing(s, q) = pxs AND
+	 val(line_crossing(s, e)) = lc AND
+         find_perp_ray_crossing(e, closest_s_endpt) = None) IMPLIES
+           EXISTS (c: real): pxs = lc + c * (closest_s_endpt - lc) AND c < 1
+
+  % For case 1a
+  dropped_perp_after_extension_intersect: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           extending_s_crosses_e(e, s)) IMPLIES
+        LET closest_s_endpt =
+          IF norm(val(line_crossing(s, e)) - s`p1) <
+               norm(val(line_crossing(s, e)) - s`p2)
+          THEN s`p1 ELSE s`p2 ENDIF IN
+        (find_perp_ray_crossing(e, closest_s_endpt) /= None) IMPLIES
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+            norm(val(find_perp_ray_crossing(e, closest_s_endpt)) -
+                 closest_s_endpt) <= norm(p - q);
+
+  % For case 1b
+  dropped_perp_after_extension_no_intersect_endpts_closest: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           are_segments_intersecting_alt?(s, e)) IMPLIES
+        LET closest_s_endpt =
+          IF norm(val(line_crossing(s, e)) - s`p1) <
+               norm(val(line_crossing(s, e)) - s`p2)
+          THEN s`p1 ELSE s`p2 ENDIF IN
+        LET closest_e_endpt =
+          IF norm(closest_s_endpt - e`p1) < norm(closest_s_endpt - e`p2)
+          THEN e`p1 ELSE e`p2 ENDIF IN
+        (extending_s_crosses_e(s, e) AND
+         find_perp_ray_crossing(e, closest_s_endpt) = None) IMPLIES
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+            norm(closest_e_endpt - closest_s_endpt) <= norm(p - q);
+
+  % For case 2 when collinear
+  nonoverlapping_collinear_closest_at_endpoints: LEMMA
+    FORALL(s, e: segment_2d):
+      collinear?(s, e) IMPLIES
+        are_segments_intersecting_alt?(s, e) OR
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+  	    norm(nearest_endpoints(s, e)`2 - nearest_endpoints(s, e)`1) <=
+	      norm(p - q);
+
+  % For case 2a
+  dropped_perp_with_no_extension_no_intersect_base: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           extending_s_crosses_e(s, e) OR
+           extending_s_crosses_e(e, s)) AND
+      (s`p1, e`p1) = nearest_endpoints(s, e) AND
+      find_perp_ray_crossing(e, s`p1) = None AND
+      find_perp_ray_crossing(s, e`p1) = None IMPLIES
+        FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+          norm(e`p1 - s`p1) <= norm(p - q);
+
+  % The lemma above assumes the closest pair of endpoints occurs at
+  % (s`p1, e`p1). This lemma uses that one to handle the general case.
+  dropped_perp_with_no_extension_no_intersect: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           extending_s_crosses_e(s, e) OR
+           extending_s_crosses_e(e, s)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+        LET (s_closest_endpt, e_closest_endpt) = nearest_endpoints(s, e) IN
+        find_perp_ray_crossing(e, s_closest_endpt) = None AND
+        find_perp_ray_crossing(s, e_closest_endpt) = None IMPLIES
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+            norm(e_closest_endpt - s_closest_endpt) <= norm(p - q);
+
+  % For case 2b
+  dropped_perp_from_e_with_no_extension_intersect: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           extending_s_crosses_e(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+        LET e_closest_endpt =
+              IF norm(xing_pt - e`p1) < norm(xing_pt - e`p2)
+              THEN e`p1 ELSE e`p2 ENDIF IN
+        find_perp_ray_crossing(s, e_closest_endpt) /= None IMPLIES
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+            norm(val(find_perp_ray_crossing(s, e_closest_endpt)) -
+	         e_closest_endpt) <= norm(p - q);
+
+  % For case 2b
+  %% After changes, this lemma has become nearly identical to
+  %% dropped_perp_after_extension_intersect.
+  dropped_perp_from_s_with_no_extension_intersect: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e) OR
+           extending_s_crosses_e(e, s)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+        LET s_closest_endpt =
+              IF norm(xing_pt - s`p1) < norm(xing_pt - s`p2)
+              THEN s`p1 ELSE s`p2 ENDIF IN
+        find_perp_ray_crossing(e, s_closest_endpt) /= None IMPLIES
+          FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+            norm(val(find_perp_ray_crossing(e, s_closest_endpt)) -
+	         s_closest_endpt) <= norm(p - q);
+
+  % For case 3b
+  parallel_nonoverlapping_segs_closest_at_endpts: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      NOT overlapping?(s, e) IMPLIES
+        FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+          norm(nearest_endpoints(s, e)`1 - nearest_endpoints(s, e)`2)
+            <= norm(p - q);
+
+  % For case 3a
+  parallel_overlapping_segs_closest_at_perps: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s)), r: (point_on_segment?(s))):
+      find_perp_ray_crossing(e, r) /= None IMPLIES
+        FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+          norm(val(find_perp_ray_crossing(e, r)) - r) <= norm(p - q);
+
+  % The next four lemmas are provided to round out two subcases needed
+  % in the proof of endpoint_nearest_point_between_segments.
+  % Assumes s`p1, e`p1 are closest to the crossing point, but
+  % s`p2, e`p1 are the endpoints having minimum distance to each other.
+  endpoint_nearest_point_btw_segs_subcase_base: LEMMA
+    FORALL (s, e: segment_2d,
+            p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+	  norm(s`p2 - e`p1) <= norm(s`p1 - e`p1) AND
+	  norm(s`p1 - xing_pt) < norm(s`p2 - xing_pt) AND
+	  norm(e`p1 - xing_pt) < norm(e`p2 - xing_pt)
+  	    IMPLIES
+	      find_perp_ray_crossing(e, s`p2) = None OR
+	      extending_s_crosses_e(s, e) OR
+	      extending_s_crosses_e(e, s) OR
+	      are_segments_intersecting_alt?(s, e) OR
+	      (EXISTS (v: (segment_endpoint?(s))), (r: point_2d):
+	         point_on_segment?(r, e) AND norm(r - v) <= norm(p - q)) OR
+	      (EXISTS (v: (segment_endpoint?(e))), (r: point_2d):
+	         point_on_segment?(r, s) AND norm(r - v) <= norm(p - q))
+
+  % Assumes s`p1, e`p1 are closest to the crossing point, but
+  % s`p2, e`p2 are the endpoints having minimum distance to each other.
+  endpoint_nearest_point_btw_segs_subcase_base_2: LEMMA
+    FORALL (s, e: segment_2d,
+            p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+	  is_nearest_endpoint_pair?((s`p2, e`p2), s, e) AND
+	  norm(s`p1 - xing_pt) < norm(s`p2 - xing_pt) AND
+	  norm(e`p1 - xing_pt) < norm(e`p2 - xing_pt)
+  	    IMPLIES
+	      find_perp_ray_crossing(e, s`p2) = None OR
+	      extending_s_crosses_e(s, e) OR
+	      extending_s_crosses_e(e, s) OR
+	      are_segments_intersecting_alt?(s, e) OR
+	      (EXISTS (v: (segment_endpoint?(s))), (r: point_2d):
+	         point_on_segment?(r, e) AND norm(r - v) <= norm(p - q)) OR
+	      (EXISTS (v: (segment_endpoint?(e))), (r: point_2d):
+	         point_on_segment?(r, s) AND norm(r - v) <= norm(p - q))
+		     
+  endpoint_nearest_point_between_segments_subcase_s: LEMMA
+    FORALL (s, e: segment_2d,
+            p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+	LET s_closest_endpt = nearest_endpoints(s, e)`1,
+	    xing_pt = val(line_crossing(s, e)) IN
+	  s_closest_endpt =
+	    IF norm(xing_pt - s`p1) < norm(xing_pt - s`p2) THEN s`p1
+	      ELSE s`p2
+	    ENDIF OR
+	  find_perp_ray_crossing(e, s_closest_endpt) = None OR
+	  extending_s_crosses_e(s, e) OR
+	  extending_s_crosses_e(e, s) OR
+	  are_segments_intersecting_alt?(s, e) OR
+	  (EXISTS (v: (segment_endpoint?(s))), (r: point_2d):
+	     point_on_segment?(r, e) AND norm(r - v) <= norm(p - q)) OR
+	  (EXISTS (v: (segment_endpoint?(e))), (r: point_2d):
+	     point_on_segment?(r, s) AND norm(r - v) <= norm(p - q))
+
+  endpoint_nearest_point_between_segments_subcase_e: LEMMA
+    FORALL (s, e: segment_2d,
+            p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+	LET e_closest_endpt = nearest_endpoints(s, e)`2,
+	    xing_pt = val(line_crossing(s, e)) IN
+	  e_closest_endpt =
+	    IF norm(xing_pt - e`p1) < norm(xing_pt - e`p2) THEN e`p1
+	      ELSE e`p2
+	    ENDIF OR
+	  find_perp_ray_crossing(s, e_closest_endpt) = None OR
+	  extending_s_crosses_e(s, e) OR
+	  extending_s_crosses_e(e, s) OR
+	  are_segments_intersecting_alt?(s, e) OR
+	  (EXISTS (v: (segment_endpoint?(s))), (r: point_2d):
+	     point_on_segment?(r, e) AND norm(r - v) <= norm(p - q)) OR
+	  (EXISTS (v: (segment_endpoint?(e))), (r: point_2d):
+	     point_on_segment?(r, s) AND norm(r - v) <= norm(p - q))
+
+  % This is a condition stating that two arbitrary points on two
+  % non-intersecting segments have a distance between them bounded by
+  % the distance from one of the endpoints to the other segment. In
+  % other words, the minimum distance from one segment to another
+  % always occurs at a segment endpoint, although it can occur
+  % between other pairs of points as well.
+
+  nearest_endpoint_cond(s, e: segment_2d, p, q: point_2d): bool =
+      point_on_segment?(p, s) AND point_on_segment?(q, e)
+        IMPLIES
+          (EXISTS (u: point_2d):
+              point_on_segment?(u, s) AND point_on_segment?(u, e)) OR
+          (EXISTS (v: (segment_endpoint?(s))), (r: point_2d):
+             point_on_segment?(r, e) AND norm(r - v) <= norm(p - q)) OR
+          (EXISTS (v: (segment_endpoint?(e))), (r: point_2d):
+             point_on_segment?(r, s) AND norm(r - v) <= norm(p - q))
+
+  % This is the lemma whose proof shows that the condition above
+  % always holds.
+  endpoint_nearest_point_between_segments: LEMMA
+    FORALL (s, e: segment_2d, p, q: point_2d):
+      nearest_endpoint_cond(s, e, p, q)
+
+  endpoint_nearest_between_reverse_segments: LEMMA
+    FORALL (s, ss, e, ee: segment_2d, p, q: point_2d):
+      (ss = s OR ss = reverse_segment(s)) AND
+      (ee = e OR ee = reverse_segment(e)) AND
+      nearest_endpoint_cond(ss, ee, p, q)
+        IMPLIES nearest_endpoint_cond(s, e, p, q)
+
+  END nearest_segment_points

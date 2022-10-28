@@ -42,6 +42,7 @@ Currently, NASALib consists of 54 libraries, containing ~30K proven formulas.
 | [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max. |
 | [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral. |
 | [linear_algebra](./linear_algebra/README.md) | Linear algebra. |
+| [line_segments](./line_segments/README.md) | 2-dimensional line segments |
 | [lnexp](./lnexp/README.md) |  Logarithm, exponential and hyperbolic functions. & Foundational definitions of logarithm, exponential and hyperbolic functions. |
 | [LTL](./LTL/README.md) | Linear Temporal Logic |
 | [matrices](./matrices/README.md) | Executable specification of MxN matrices. This library includes computation of inverse and basic matrix operations such as addition and multiplication. |
@@ -50,6 +51,8 @@ Currently, NASALib consists of 54 libraries, containing ~30K proven formulas.
 | [metric_space](./metric_space/README.md) | Domains with a distance metric, continuity and uniform continuity. |
 | [numbers](./numbers/README.md) | Elementary number theory. |
 | [orders](./orders/README.md) | Abstract orders, lattices, fix points. |
+| [polygons](./polygons/README.md) | 2-dimensional polygons |
+| [polygon_merge](./polygon_merge/README.md) | Merge of 2-dimensional polygons without generating holes |
 | [power](./power/README.md) | Generalized Power function (without ln/exp). |
 | [probability](./probability/README.md) | Probability theory. |
 | [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts. |

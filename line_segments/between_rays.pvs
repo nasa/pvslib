@@ -1,0 +1,363 @@
+%% -----------------------------------------------------------------------------
+%% between_rays.pvs          Dependable Computing
+%% Definitions and properties about angular "between-ness" for
+%% segments and points.
+%% -----------------------------------------------------------------------------
+
+between_rays : THEORY
+
+  BEGIN
+
+  IMPORTING segments_2d_props;
+  IMPORTING structures@Maybe[point_2d];
+  IMPORTING vectors@lines_2D;
+  IMPORTING vectors@perpendicular_2D;
+  IMPORTING vectors@closest_approach_2D;
+
+%  AUTO_REWRITE+ norm_diff_pos
+  
+  % Given that segments s = (u, v) and e = (v, w) share the common
+  % endpoint v, determine if a point p is "between" the rays that originate
+  % at v and are collinear with the segments. This is based on an angular
+  % "sweep" from (u, v) toward (v, w) in the counter-clockwise direction.
+  
+  between_rays?(s, e: segment_2d)(p: point_2d): bool =
+    LET u = s`p1, v = e`p1, w = e`p2,
+        uv = u - v, pv = p - v, wv = w - v IN
+    IF cross(uv, wv) < 0
+      THEN cross(uv, pv) > 0 OR cross(wv, pv) < 0    % wide angle case
+      ELSE cross(uv, pv) > 0 AND cross(wv, pv) < 0
+    ENDIF
+
+  % We provide a variant of this function for the case where the first
+  % point of each segment is the common one.
+  % Segments s = (u, v) and e = (u, w) share the common point u.
+  
+  point_between_rays?(s, e: segment_2d)(p: point_2d): bool =
+    LET u = s`p1, v = s`p2, w = e`p2,
+        vu = v - u, pu = p - u, wu = w - u IN
+    IF cross(vu, wu) < 0
+      THEN cross(vu, pu) > 0 OR cross(wu, pu) < 0    % wide angle case
+      ELSE cross(vu, pu) > 0 AND cross(wu, pu) < 0
+    ENDIF
+
+  % First is a set of properties about between_rays? and supporting
+  % relationships.
+
+  leftward_point_not_on_ray_of_edge: LEMMA
+    FORALL (p: point_2d, e: segment_2d):
+      p`x < e`p1`x AND e`p1`x <= e`p2`x IMPLIES
+        NOT point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1))
+
+  same_line_between_rays: LEMMA
+    FORALL (p, q, r: point_2d, v: vector_2d, d1, d2: posreal):
+      p /= q AND q /= r AND
+      between_rays?((# p1 := p, p2 := q #),
+                    (# p1 := q, p2 := r #))(q + d1 * v)
+        IMPLIES between_rays?((# p1 := p, p2 := q #),
+                              (# p1 := q, p2 := r #))(q + d2 * v)
+
+  collinear_segments_between_rays: LEMMA
+    FORALL (s, e: segment_2d, p, q, r: point_2d, c, d: posreal):
+      s`p2 = e`p1 AND between_rays?(s, e)(r) AND
+      p = s`p2 - c * ^(s`p2 - s`p1) AND q = e`p1 + d * ^(e`p2 - e`p1)
+        IMPLIES between_rays?((# p1 := p, p2 := s`p2 #),
+                              (# p1 := e`p1, p2 := q #))(r)
+
+  scaled_vector_between_rays: LEMMA
+    FORALL (s, e: segment_2d, v: vector_2d, d: posreal):
+      between_rays?(s, e)(e`p1 + v)
+        IMPLIES between_rays?(s, e)(e`p1 + d * v)
+
+  scaled_vector_between_rays_neg: LEMMA
+    FORALL (s, e: segment_2d, v: vector_2d, d: negreal):
+      between_rays?(s, e)(e`p1 - v)
+        IMPLIES between_rays?(s, e)(e`p1 + d * v)
+
+  segment_interior_points_all_between: LEMMA
+    FORALL (s, e: segment_2d, p, q, v: point_2d):
+      cross(s`p1 - v, e`p2 - v) >= 0 AND v = s`p2 AND v = e`p1 AND
+      between_rays?(s, e)(p) AND between_rays?(s, e)(q) AND p /= q
+        IMPLIES FORALL (u: point_2d):
+	          point_on_segment?(u, (# p1 := p, p2 := q #))
+                    IMPLIES between_rays?(s, e)(u)
+
+  segment_interior_points_all_bounded: LEMMA
+    FORALL (p, q, v: point_2d, d: nnreal):
+      norm(p - v) <= d AND norm(q - v) <= d AND p /= q
+        IMPLIES FORALL (u: point_2d):
+	          point_on_segment?(u, (# p1 := p, p2 := q #))
+                    IMPLIES norm(u - v) <= d
+
+  segment_interior_points_all_norms_pos: LEMMA
+    FORALL (p, q, v: point_2d):
+      norm(p - v) > 0 AND norm(q - v) > 0 AND
+      p /= q AND ^(p - v) /= ^(v - q)
+        IMPLIES FORALL (u: point_2d):
+	          point_on_segment?(u, (# p1 := p, p2 := q #))
+                    IMPLIES norm(u - v) > 0
+
+  on_ray_right_side_imp_on_segment: LEMMA
+    FORALL (u, v, w: point_2d, e: segment_2d):
+      u /= v AND point_on_arb_ray?(w, u, ^(v - u)) AND
+      point_on_segment?(w, e) AND
+      off_right_side?(u, e) AND off_right_side?(v, e)
+        IMPLIES point_on_segment?(v, (# p1 := u, p2 := w #))
+
+  % Next is a set of properties for point_between_rays?
+
+  between_rays_equiv: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p2 = e`p1 IMPLIES
+        (between_rays?(s, e)(p) IFF
+         point_between_rays?(reverse_segment(s), e)(p))
+  
+  point_between_rays_equiv: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 IMPLIES
+        (point_between_rays?(s, e)(p) IFF
+         between_rays?(reverse_segment(s), e)(p))
+  
+  point_between_rays_irreflexive: LEMMA
+    FORALL (p: point_2d, e: segment_2d):
+      NOT point_between_rays?(e, e)(p)
+  
+  point_on_neg_ray_between_pos_rays_1: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d, d: negreal):
+      s`p1 = e`p1 AND p = s`p1 + d * ^(s`p2 - s`p1) AND
+      cross(s`p2 - s`p1, e`p2 - e`p1) > 0
+        IMPLIES point_between_rays?(e, s)(p)
+  
+  point_on_neg_ray_between_pos_rays_2: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d, d: negreal):
+      s`p1 = e`p1 AND p = s`p1 + d * ^(s`p2 - s`p1) AND
+      cross(s`p2 - s`p1, e`p2 - e`p1) < 0
+        IMPLIES point_between_rays?(s, e)(p)
+  
+  point_between_rays_antisymmetric: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND point_between_rays?(s, e)(p)
+        IMPLIES NOT point_between_rays?(e, s)(p)
+
+  % This second kind of antisymmetry identifies the possible cases for
+  % how a point p can be positioned between or lie on one of the rays.
+  point_between_rays_antisymmetric_2: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 IMPLIES
+        point_between_rays?(s, e)(p) OR
+        point_between_rays?(e, s)(p) OR
+        point_on_arb_ray?(p, s`p1, ^(s`p2 - s`p1)) OR
+        point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1)) OR
+        point_on_arb_ray?(s`p2, e`p1, ^(e`p2 - e`p1))
+  
+  between_rays_antisymmetric_2: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p2 = e`p1 IMPLIES
+        between_rays?(s, e)(p) OR
+        between_rays?(reverse_segment(e), reverse_segment(s))(p) OR
+        point_on_arb_ray?(p, s`p2, ^(s`p1 - s`p2)) OR
+        point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1)) OR
+        point_on_arb_ray?(s`p1, e`p1, ^(e`p2 - e`p1))
+
+  extend_between_rays_left: LEMMA
+    FORALL (s, e, h: segment_2d, u: point_2d):
+      s`p2 = e`p1 AND s`p2 = h`p1 AND
+      between_rays?(s, h)(u) AND between_rays?(s, e)(h`p2)
+        IMPLIES between_rays?(s, e)(u)
+
+  on_segment_not_between_rays: LEMMA
+    FORALL (s, e: segment_2d, p: point_2d):
+      s`p2 = e`p1 AND (point_on_segment?(p, s) OR point_on_segment?(p, e))
+        IMPLIES NOT between_rays?(s, e)(p)
+  
+  on_segment_btw_rays_imp_all_btw: LEMMA
+    FORALL (p, q: point_2d, s, e, h: segment_2d):
+      s`p2 = e`p1 AND e`p1 = h`p1 AND q /= h`p1 AND
+      point_on_segment?(p, h) AND point_on_segment?(q, h) AND
+      between_rays?(s, e)(p)
+        IMPLIES between_rays?(s, e)(q)
+
+  between_rays_rotate_left: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      LET u = s`p1, v = s`p2, vp = (# p1 := v, p2 := p #),
+          re = reverse_segment(e) IN
+        e`p1 = v AND p /= v IMPLIES
+          (between_rays?(s, e)(p) IFF between_rays?(re, vp)(u))
+  
+  between_rays_rotate_right: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      LET w = e`p2, v = s`p2, pv = (# p1 := p, p2 := v #),
+          rs = reverse_segment(s) IN
+        e`p1 = v AND p /= v IMPLIES
+          (between_rays?(s, e)(p) IFF between_rays?(pv, rs)(w))
+  
+  point_between_rays_rotate_left: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      LET u = s`p1, v = s`p2, up = (# p1 := u, p2 := p #) IN
+        e`p1 = u AND p /= u IMPLIES
+          (point_between_rays?(s, e)(p) IFF point_between_rays?(e, up)(v))
+  
+  point_between_rays_rotate_right: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      LET w = e`p2, u = s`p1, up = (# p1 := u, p2 := p #) IN
+        e`p1 = u AND p /= u IMPLIES
+          (point_between_rays?(s, e)(p) IFF point_between_rays?(up, s)(w))
+
+  point_between_rays_with_overlap: LEMMA
+    FORALL (p, q: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND q /= e`p1 AND
+      point_on_segment?(q, e) AND
+      point_between_rays?(s, (# p1 := e`p1, p2 := q #))(p)
+        IMPLIES point_between_rays?(s, e)(p)
+
+  between_rays_both_angles_narrow: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND point_between_rays?(s, e)(p) AND
+      cross(s`p2 - s`p1, e`p2 - e`p1) > 0
+        IMPLIES cross(s`p2 - s`p1, p - s`p1) > 0
+  
+  between_rays_both_angles_wide: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND point_between_rays?(s, e)(p) AND
+      cross(s`p2 - s`p1, p - e`p1) < 0
+        IMPLIES cross(s`p2 - s`p1, e`p2 - e`p1) < 0
+  
+  point_between_rays_not_on_rays: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND point_between_rays?(s, e)(p)
+        IMPLIES NOT (point_on_arb_ray?(p, s`p1, ^(s`p2 - s`p1)) OR
+                     point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1)) OR
+                       point_on_arb_ray?(s`p2, e`p1, ^(e`p2 - e`p1)))
+  
+  on_ray_also_point_between_rays: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND
+      point_between_rays?(s, e)(p) AND
+      point_on_arb_ray?(h`p2, s`p1, ^(s`p2 - s`p1))
+        IMPLIES point_between_rays?(h, e)(p)
+
+  point_between_imp_pos_crosses: LEMMA
+    FORALL (p: point_2d, a, b: segment_2d):
+      a`p1 = b`p1 AND 
+      point_between_rays?(a, b)(p)
+        IMPLIES cross(p - b`p1, b`p2 - b`p1) > 0 OR
+                cross(b`p2 - b`p1, a`p2 - a`p1) > 0
+
+  point_between_imp_pos_crosses_2: LEMMA
+    FORALL (p: point_2d, a, b: segment_2d):
+      a`p1 = b`p1 AND 
+      point_between_rays?(a, b)(p)
+        IMPLIES cross(a`p2 - a`p1, p - a`p1) > 0 OR
+	        cross(b`p2 - b`p1, a`p2 - a`p1) > 0
+
+  point_btw_rays_imp_opp_side_crossing: LEMMA
+    FORALL (p: point_2d, a, b, c: point_2d):
+      a /= b AND a /= c AND cross(c - a, b - a) > 0 AND
+      point_between_rays?((# p1 := a, p2 := c #), (# p1 := a, p2 := b #))(p)
+        IMPLIES EXISTS (q: point_2d):
+	          point_on_segment?(q, (# p1 := b, p2 := c #)) AND
+	          point_on_arb_ray?(q, a, ^(p - a))
+
+  on_segment_or_between_rays: LEMMA
+    FORALL (u, v: point_2d, e: segment_2d):
+      u = v OR point_on_segment?(u, e) OR
+      cross(e`p1 - u, e`p2 - u) >= 0 OR
+      (EXISTS (w: point_2d):
+         point_on_segment?(w, e) AND point_on_arb_ray?(w, u, ^(v - u))) OR
+      point_between_rays?((# p1 := u, p2 := e`p1 #),
+                          (# p1 := u, p2 := e`p2 #))(v)
+
+  % Given two or more instances of point_between_rays? holding among two
+  % or more segments, it is often possible to infer that additional cases
+  % of point_between_rays? hold. Various combinations are expressed in
+  % the following lemmas.
+
+  interpolate_point_between_rays: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(s, h)(e`p2)
+        IMPLIES point_between_rays?((# p1 := h`p1, p2 := p #), h)(e`p2)
+  
+  interpolate_point_between_rays_rev: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(s, h)(e`p2)
+        IMPLIES point_between_rays?(h, (# p1 := h`p1, p2 := p #))(s`p2)
+  
+  interpolate_point_between_rays_2: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND
+      point_between_rays?(s, h)(p) AND
+      NOT point_between_rays?(s, e)(p) AND
+      NOT point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1))
+        IMPLIES point_between_rays?(e, h)(p)
+  
+  interpolate_point_between_rays_3: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(h, s)(p)
+        IMPLIES point_between_rays?(s, e)(h`p2)
+  
+  interpolate_point_between_rays_3_rev: LEMMA
+    FORALL (p: point_2d, s, e, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(e, h)(p)
+        IMPLIES point_between_rays?(s, e)(h`p2)
+  
+  interpolate_point_between_rays_4: LEMMA
+    FORALL (p, q: point_2d, s, e: segment_2d):
+      s`p1 = e`p1 AND s`p1 /= p AND s`p1 /= q AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(e, s)(q)
+        IMPLIES point_between_rays?((# p1 := s`p1, p2 := p #), s)(q)
+  
+  interpolate_point_between_rays_5: LEMMA
+    FORALL (p: point_2d, s, g, h: segment_2d):
+      s`p1 = g`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, g)(p) AND
+      point_between_rays?(g, h)(p)
+        IMPLIES point_between_rays?(s, h)(p)
+  
+  interpolate_point_between_rays_6: LEMMA
+    FORALL (p: point_2d, s, e, g, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = g`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(g, h)(p) AND
+      point_between_rays?(g, s)(p) AND
+      point_between_rays?(e, h)(p)
+        IMPLIES point_between_rays?(s, h)(p)
+  
+  interpolate_point_between_rays_7: LEMMA
+    FORALL (p: point_2d, s, e, g, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = g`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, e)(p) AND
+      point_between_rays?(g, h)(p) AND
+      point_between_rays?(g, s)(p)
+        IMPLIES point_between_rays?(s, h)(p) OR
+                point_between_rays?(h, e)(p)
+  
+  interpolate_point_between_rays_8: LEMMA
+    FORALL (p: point_2d, s, e, g, h: segment_2d):
+      s`p1 = e`p1 AND s`p1 = g`p1 AND s`p1 = h`p1 AND h`p1 /= p AND
+      point_between_rays?(s, g)(p) AND
+      point_between_rays?(s, g)(h`p2) AND
+      point_between_rays?(s, g)(e`p2) AND
+      point_between_rays?(e, h)(p)
+        IMPLIES point_between_rays?(e, h)(g`p2) OR
+                point_between_rays?((# p1 := h`p1, p2 := p #), g)(h`p2)
+
+  % A miter point is a special type of point derived from three dissimilar
+  % points u,v,w. The miter point lies between the rays extrapolated from
+  % the segments (u,v) and (w,v).
+  miter_point_between_segments: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)},
+            d: posreal):
+      between_rays?((# p1 := u, p2 := v #), (# p1 := v, p2 := w #))
+                   (miter_point(v, u, w, d))
+
+  END between_rays

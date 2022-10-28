@@ -1,0 +1,479 @@
+%% -----------------------------------------------------------------------------
+%% polygon_miter_sequences.pvs              Dependable Computing
+%% Theory containing properties of miter point sequences that are
+%% derived from polygons.
+%% -----------------------------------------------------------------------------
+
+polygon_miter_sequences : THEORY
+
+  BEGIN
+
+  % Theory miter_point_sequences defines miter point sequences from
+  % sequences of endpoints satisfying mild constraints. Here we apply
+  % and specialize those results to miter point sequences derived
+  % from polygons and their vertices.
+
+  IMPORTING reverse_polygons
+  IMPORTING line_segments@miter_point_sequences
+
+  % To carry out our development and to lay the groundwork for the
+  % formalization found in theory polygon_membership, we first need
+  % to introduce some concepts about rightward crossings. Given a point p
+  % and polygon G, we wish to characterize the points and edges where a
+  % rightward ray starting at p intersects the edges of G.
+
+  % When a rightward ray intersects G at a vertex, two edges are thereby
+  % intersected. This definition selects the index of one of the two
+  % that is useful for later results.
+
+  vertex_crossing_index(G: simple_polygon_2d, i: below(G`num_vertices)):
+  	               below(G`num_vertices) =
+    LET s = edges_of_polygon(G)(prev_index(G, i)),
+        e = edges_of_polygon(G)(i),
+        u = s`p1, v = e`p1, w = e`p2
+    IN IF u`y = v`y THEN i
+       ELSIF v`y = w`y THEN prev_index(G, i)
+       ELSIF u`y < v`y AND w`y < v`y THEN
+         IF cross(u - v, w - v) > 0 THEN prev_index(G, i) ELSE i ENDIF
+       ELSIF u`y > v`y AND w`y > v`y THEN
+         IF cross(u - v, w - v) < 0 THEN prev_index(G, i) ELSE i ENDIF
+       ELSIF v`y < w`y THEN i
+       ELSE prev_index(G, i)
+       ENDIF
+
+  % This definition choose the edge for the leftmost crossing in the
+  % rightward direction from point p. When the crossing is a vertex,
+  % it uses the definition above to choose the appropriate edge.
+
+  rightward_crossing_index(G: simple_polygon_2d,
+                           p: (has_rightward_crossings?(G))):
+		          below(G`num_vertices) =
+    LET q = leftmost_intersection_point(G, p),
+        i = find_index_any(G, q)
+    IN IF q = G`vertices(i) THEN vertex_crossing_index(G, i) ELSE i ENDIF
+
+  rightward_crossing_index_reverse: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      rightward_crossing_index(reverse_polygon(G), p) =
+      prev_index(G, rev_polygon_index(G, rightward_crossing_index(G, p)))
+
+  % Using the edge selection logic above, the chosen edge cannot be a
+  % horizontal edge.
+  crossed_edge_rising_or_falling: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET e = edges_of_polygon(G)(rightward_crossing_index(G, p)) IN
+        segment_rising?(e) OR segment_falling?(e)
+
+  leftmost_intersection_on_crossed_edge: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET e = edges_of_polygon(G)(rightward_crossing_index(G, p)),
+          q = leftmost_intersection_point(G, p)
+      IN point_on_segment?(q, e)
+
+  % Several lemmas focus on the case when the crossed edge is falling.
+
+  crossing_within_falling_edge_y_range: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET e = edges_of_polygon(G)(rightward_crossing_index(G, p)) IN
+        segment_falling?(e) IMPLIES e`p2`y <= p`y AND p`y <= e`p1`y
+
+  cross_horiz_seq_with_falling_edge_pos: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET e = edges_of_polygon(G)(rightward_crossing_index(G, p)) IN
+        segment_falling?(e) IMPLIES
+	  cross(p - e`p1, e`p2 - e`p1) > 0
+
+  between_edges_at_falling_edge_vertex: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p),
+          e = edges_of_polygon(G)(i),
+          q = leftmost_intersection_point(G, p)
+      IN q = G`vertices(i) AND segment_falling?(e) IMPLIES
+	   point_between_edges?(true, G, i)(p)
+
+  crossing_falling_off_right_side: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p),
+          e = edges_of_polygon(G)(i),
+          q = leftmost_intersection_point(G, p)
+      IN segment_falling?(e) IMPLIES off_right_side?(p, e)
+
+  % The miniseq definitions are specialized to polygon edges.
+  three_pt_miniseq_in_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      three_point_miniseq?(G`vertices(prev_index(G, i)), G`vertices(i))
+			  (G`vertices(next_index(G, i)))
+
+  four_pt_miniseq_in_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      four_point_miniseq?(G`vertices(prev_index(G, i)), G`vertices(i),
+                          G`vertices(next_index(G, i)))
+			 (G`vertices(next_index(G, next_index(G, i))))
+
+  % These lemmas also specialize endpoint sequence results to polygons.
+  polygon_vertex_seq_single_loop: LEMMA
+    FORALL (G: simple_polygon_2d):
+      single_loop_back_seq?((# length := G`num_vertices + 1,
+                               seq := LAMBDA (i: upto(G`num_vertices)):
+                                        G`vertices(rem(G`num_vertices)(i))
+                             #))
+
+  polygon_vertex_seq_intercept_eq_0: LEMMA
+    FORALL (G: simple_polygon_2d):
+      0 = loop_back_intercept((# length := G`num_vertices + 1,
+                                 seq := LAMBDA (i: upto(G`num_vertices)):
+                                           G`vertices(rem(G`num_vertices)(i))
+                               #))
+
+  % Turn the vertices of polygon G into an endpoint sequence.
+  polygon_vertex_seq(G: simple_polygon_2d): edge_parallel_endpoint_seq =
+    (# length := G`num_vertices + 1,
+       seq := LAMBDA (i: upto(G`num_vertices)):
+                G`vertices(rem(G`num_vertices)(i))
+     #)
+
+  % A polygon only loops back at the inital vertex.
+  polygon_vertex_seq_intercept: LEMMA
+    FORALL (G: simple_polygon_2d):
+      loop_back_intercept(polygon_vertex_seq(G)) = 0
+
+  % A few more lemmas specializing endpoint sequence results to polygons.
+  min_seg_separation_eq_min_edge_separation: LEMMA
+    FORALL (G: simple_polygon_2d):
+      min_seg_separation(polygon_vertex_seq(G)) = min_edge_separation(G)
+
+  max_miter_offset_lt_min_edge_sep: LEMMA
+    FORALL (G: simple_polygon_2d):
+      max_miter_offset(polygon_vertex_seq(G)) < min_edge_separation(G)
+
+  three_pt_offset_dist_in_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices),
+            d: miter_seq_offset_dist(polygon_vertex_seq(G))):
+      three_point_offset_dist?(G`vertices(prev_index(G, i)), G`vertices(i),
+ 			       G`vertices(next_index(G, i)))(d)
+
+  four_pt_offset_dist_in_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices),
+            d: miter_seq_offset_dist(polygon_vertex_seq(G))):
+      four_point_offset_dist?(G`vertices(prev_index(G, i)), G`vertices(i),
+                              G`vertices(next_index(G, i)),
+			      G`vertices(next_index(G, next_index(G, i))))(d)
+
+  polygon_miter_point_seq_element: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, G: simple_polygon_2d,
+            d: miter_seq_offset_dist(S), i: below(G`num_vertices)):
+      S = polygon_vertex_seq(G) IMPLIES
+        closed_miter_point_seq(S, d)`seq(i) =
+          miter_point(G`vertices(i), G`vertices(prev_index(G, i)),
+	              G`vertices(next_index(G, i)), d)
+
+  % Equivalence of segments from a sequence of polygon vertices with
+  % the polygon perimeter.
+  point_on_perim_iff_on_vertex_seq: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_on_polygon_perimeter?(G)(p) IFF
+      point_on_segment_seq?(p, polygon_vertex_seq(G))
+
+  min_seg_sep_le_edge_length: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, G: simple_polygon_2d,
+            e: segment_2d, i: below(G`num_vertices)):
+      S = polygon_vertex_seq(G) AND e = edges_of_polygon(G)(i)
+        IMPLIES min_segment_sep(S) <= norm(e`p2 - e`p1)
+
+  min_miter_sine_le_vertex_sine: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, G: simple_polygon_2d,
+            i: below(G`num_vertices)):
+      S = polygon_vertex_seq(G) IMPLIES
+        min_miter_sine(S) <=
+  	  half_angle_vsin(^(G`vertices(prev_index(G, i)) - G`vertices(i)),
+                          ^(G`vertices(next_index(G, i)) - G`vertices(i)))
+
+  % A convenience definition
+  vertex_miter_point(G: simple_polygon_2d, i: below(G`num_vertices),
+                     d: posreal): point_2d =
+    miter_point(G`vertices(i),
+                G`vertices(prev_index(G, i)),
+                G`vertices(next_index(G, i)),
+                d)
+
+  % Points on the segment from miter point to a perimeter point are
+  % not themselves on the perimeter.
+  seg_from_miter_point_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, q: point_2d,
+            i: below(G`num_vertices), d: posreal):
+      LET S = polygon_vertex_seq(G),
+	  mp = miter_point(G`vertices(i),
+                           G`vertices(prev_index(G, i)),
+                           G`vertices(next_index(G, i)),
+			   d)
+       IN d <= max_miter_offset(S) AND
+          point_on_segment?(q, edges_of_polygon(G)(i))
+            IMPLIES
+              FORALL (r: point_2d):
+	        point_on_segment?(r, (# p1 := mp, p2 := q #)) AND r /= q
+	          IMPLIES NOT point_on_polygon_perimeter?(G)(r)
+
+  % A closed miter point sequence derived from the vertices of polygon G
+  % is itself a polygon that encircles G or a polygon that fits just inside
+  % of G. In both cases, it does not intersect the perimeter of G.
+  miter_point_seqs_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d, d: posreal):
+      LET S = polygon_vertex_seq(G)  
+       IN d <= max_miter_offset(S) AND
+          point_on_segment_seq?(p, closed_miter_point_seq(S, d))
+            IMPLIES NOT point_on_polygon_perimeter?(G)(p)
+
+  miter_point_in_polygon_miter_seg_seq: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET S = polygon_vertex_seq(G),
+	  mp = miter_point(G`vertices(i),
+                           G`vertices(prev_index(G, i)),
+                           G`vertices(next_index(G, i)),
+			   d)
+       IN d <= max_miter_offset(S) IMPLIES
+            point_on_segment_seq?(mp, closed_miter_point_seq(S, d))
+
+  miter_point_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices),
+            mp: point_2d, d: posreal):
+      d <= max_miter_offset(polygon_vertex_seq(G)) AND
+      mp = vertex_miter_point(G, i, d)
+        IMPLIES NOT point_on_polygon_perimeter?(G)(mp)
+
+  % This bound limits how close a miter point can be found to its
+  % corresponding vertex.
+  miter_point_dist_to_vertex_bound: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET H  = polygon_vertex_seq(G),
+          mp = vertex_miter_point(G, i, d)
+      IN d <= max_miter_offset(H) IMPLIES
+           norm(mp - G`vertices(i)) <= d / min_miter_sine(H)
+
+  % This predicate stipulates that the points on endpoint sequence S
+  % cannot lie on the perimeter of G.
+  contact_free_path?(G: simple_polygon_2d)(S: segment_endpoint_seq): bool =
+    FORALL (r: point_2d):
+      NOT (point_on_segment_seq?(r, S) AND point_on_polygon_perimeter?(G)(r))
+
+  contact_free_path_excl?(G: simple_polygon_2d, q: point_2d)
+                         (S: segment_endpoint_seq): bool =
+    FORALL (r: point_2d):
+      r = q OR
+      NOT (point_on_segment_seq?(r, S) AND point_on_polygon_perimeter?(G)(r))
+
+  % Some properties of contact-free paths
+
+  singleton_contact_free_path: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      point_on_polygon_perimeter?(G)(p) OR
+      contact_free_path?(G)(singleton_endpoint_seq(p))
+
+  append_contact_free_paths: LEMMA
+    FORALL (G: simple_polygon_2d, X, Y: segment_endpoint_seq):
+      X`seq(X`length - 1) = Y`seq(0) AND
+      contact_free_path?(G)(X) AND contact_free_path?(G)(Y)
+        IMPLIES contact_free_path?(G)(append_segment_seqs(X, Y))
+
+  append_contact_free_paths_excl: LEMMA
+    FORALL (G: simple_polygon_2d, q: point_2d, X, Y: segment_endpoint_seq):
+      X`seq(X`length - 1) = Y`seq(0) AND
+      contact_free_path?(G)(X) AND contact_free_path_excl?(G, q)(Y)
+        IMPLIES contact_free_path_excl?(G, q)(append_segment_seqs(X, Y))
+
+  % The entire miter point sequence does not contact polygon G.
+  polygon_miter_pt_seq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, d: posreal):
+      LET S = polygon_vertex_seq(G) IN
+        d <= max_miter_offset(S) IMPLIES
+          contact_free_path?(G)(closed_miter_point_seq(S, d))
+
+  polygon_miter_pt_subseq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, j: upto(G`num_vertices), i: upto(j),
+            d: posreal):
+      LET S = polygon_vertex_seq(G) IN
+        d <= max_miter_offset(S) IMPLIES
+          contact_free_path?(G)(closed_miter_point_seq(S, d) ^ (i, j))
+
+  polygon_miter_pt_subseq_pair_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), j: below(i),
+            d: posreal):
+      LET S = polygon_vertex_seq(G) IN
+        d <= max_miter_offset(S) IMPLIES
+	  LET M = closed_miter_point_seq(S, d),
+	      M1 = M ^ (i, G`num_vertices),
+	      M2 = M ^ (0, j)
+          IN contact_free_path?(G)(append_segment_seqs(M1, M2))
+
+  % Four lemmas to handle cases for proofs of later lemmas.
+
+  below_left_falling_seg_point_right: LEMMA
+    FORALL (p, u, v: point_2d, s, e: segment_2d):
+      u /= s`p1 AND u /= s`p2 AND
+      e = (# p1 := u, p2 := s`p2 #) AND
+      cross(u - s`p1, s`p2 - s`p1) > 0 AND
+      cross(p - s`p1, s`p2 - s`p1) > 0 AND
+      point_between_rays?((# p1 := u, p2 := s`p1 #), e)(p) AND
+      s`p2`y < p`y AND p`y < s`p1`y AND p`y < u`y AND
+      p`y = v`y AND point_on_segment?(v, e)
+        IMPLIES p`x < v`x
+
+  above_left_falling_seg_point_right: LEMMA
+    FORALL (p, u, v: point_2d, s: segment_2d):
+      u /= s`p1 AND u /= s`p2 AND
+      cross(u - s`p1, s`p2 - s`p1) > 0 AND
+      cross(p - s`p1, s`p2 - s`p1) > 0 AND
+      point_between_rays?((# p1 := u, p2 := s`p1 #),
+                          (# p1 := u, p2 := s`p2 #))(p) AND
+      s`p2`y < p`y AND p`y < s`p1`y AND p`y > u`y AND
+      p`y = v`y AND point_on_segment?(v, (# p1 := u, p2 := s`p1 #))
+        IMPLIES p`x < v`x
+
+  on_seg_from_miter_pt_to_endpoint: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            d: posreal):
+      LET H = polygon_vertex_seq(G),
+          q = leftmost_intersection_point(G, p),
+	  i = rightward_crossing_index(G, p),
+	  e = edges_of_polygon(G)(i)
+      IN d <= max_miter_offset(H) AND segment_falling?(e) IMPLIES
+           LET mp = vertex_miter_point(G, i, d) IN
+  	     point_between_rays?((# p1 := mp, p2 := e`p1 #),
+ 	                         (# p1 := mp, p2 := e`p2 #))(p) AND
+             q /= e`p1 AND q /= e`p2  IMPLIES
+	       EXISTS (u, v: point_2d):
+                 segment_endpoint?(e)(u) AND
+	         point_on_segment?(v, (# p1 := p, p2 := q #)) AND
+	         point_on_segment?(v, (# p1 := mp, p2 := u #)) AND
+		 p`x < v`x AND v`x < q`x AND
+		 e`p2`y < v`y AND v`y < e`p1`y
+
+  on_seg_from_miter_pt_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            d: posreal):
+      LET H = polygon_vertex_seq(G),
+          q = leftmost_intersection_point(G, p),
+	  i = rightward_crossing_index(G, p),
+	  e = edges_of_polygon(G)(i)
+      IN d <= max_miter_offset(H) AND segment_falling?(e) AND
+         q /= e`p1 AND q /= e`p2 IMPLIES
+           LET mp = vertex_miter_point(G, i, d) IN
+  	     point_between_rays?((# p1 := mp, p2 := e`p1 #),
+ 	                         (# p1 := mp, p2 := e`p2 #))(p) % AND
+               IMPLIES EXISTS (S: segment_endpoint_seq):
+  	                 S`seq(0) = p AND S`seq(S`length - 1) = mp AND
+                         contact_free_path?(G)(S)
+
+  % If p has a rightward crossing on G passing through vertex q,
+  % there exists a segment endpoint sequence S starting at p and
+  % ending in the miter point for the leftmost edge crossed from p.
+  % S does not intersect G's perimeter.
+  vertex_to_miter_pt_seq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            i: below(G`num_vertices), d: posreal):
+      LET H = polygon_vertex_seq(G),
+          q = leftmost_intersection_point(G, p)
+      IN d <= max_miter_offset(H) AND q = G`vertices(i) AND
+         segment_falling?(edges_of_polygon(G)(i)) AND
+	 i = rightward_crossing_index(G, p)  IMPLIES
+           LET mp = miter_point(G`vertices(i),
+                                G`vertices(prev_index(G, i)),
+                                G`vertices(next_index(G, i)),
+	 	  	        d)
+           IN p = mp OR p`y = mp`y OR
+              EXISTS (S: segment_endpoint_seq):
+  	        S`seq(0) = p AND S`seq(S`length - 1) = mp AND
+                contact_free_path?(G)(S)
+
+  next_vtx_to_miter_pt_subcase_zero: LEMMA
+    FORALL (m, p, q, r, u, v: point_2d, k: posreal):
+      q = (# x := 0, y := 0 #) AND
+      m /= q AND m /= v AND q /= v AND u /= q AND u /= r AND
+      p`y = 0 AND p`x < q`x AND 0 < v`y AND m`y < 0 AND
+      norm(m - v) <= norm(v) / 6 AND
+      k <= min(norm(p), norm(v) / 6) / 2 AND
+      u = (# x := -k, y := 0 #) AND
+      r = k * ^(m) AND k < norm(m) AND
+      cross(v, m) > 0
+        IMPLIES FORALL (y: point_2d):
+	          point_on_segment?(y, (# p1 := u, p2 := r #)) IMPLIES
+		    EXISTS (z: point_2d):
+		      point_on_segment?(z, (# p1 := v, p2 := q #)) AND
+		      point_on_segment?(y, (# p1 := m, p2 := z #)) AND y /= z
+
+  next_vtx_to_miter_pt_subcase: LEMMA
+    FORALL (m, p, q, r, u, v: point_2d, k: posreal):
+      m /= q AND m /= v AND q /= v AND u /= q AND u /= r AND
+      p`y = q`y AND p`x < q`x AND q`y < v`y AND m`y < p`y AND
+      norm(m - v) <= norm(q - v) / 6 AND
+      k <= min(norm(q - p), norm(q - v) / 6) / 2 AND
+      u = q - (# x := k, y := 0 #) AND
+      r = q + k * ^(m - q) AND k < norm(m - q) AND
+      cross(v - q, m - q) > 0
+        IMPLIES FORALL (y: point_2d):
+	          point_on_segment?(y, (# p1 := u, p2 := r #)) IMPLIES
+		    EXISTS (z: point_2d):
+		      point_on_segment?(z, (# p1 := v, p2 := q #)) AND
+		      point_on_segment?(y, (# p1 := m, p2 := z #)) AND y /= z
+
+  next_vtx_to_miter_pt_seq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            i: below(G`num_vertices), d: posreal):
+      LET H = polygon_vertex_seq(G),
+          q = leftmost_intersection_point(G, p)
+      IN d <= max_miter_offset(H) AND q = G`vertices(next_index(G, i)) AND
+         segment_falling?(edges_of_polygon(G)(i)) AND
+	 i = rightward_crossing_index(G, p)  IMPLIES
+           LET mp = vertex_miter_point(G, i, d)
+           IN p = mp OR p`y = mp`y OR
+              EXISTS (S: segment_endpoint_seq):
+  	        S`seq(0) = p AND S`seq(S`length - 1) = mp AND
+                contact_free_path?(G)(S)
+
+  nonvertex_to_miter_pt_seq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            d: posreal):
+      LET H = polygon_vertex_seq(G),
+          q = leftmost_intersection_point(G, p),
+	  i = rightward_crossing_index(G, p),
+	  e = edges_of_polygon(G)(i)
+      IN d <= max_miter_offset(H) AND segment_falling?(e) AND
+         point_on_segment?(q, e) IMPLIES
+           LET  mp = vertex_miter_point(G, i, d) IN
+             p = mp OR q = G`vertices(i) OR
+	     q = G`vertices(next_index(G, i)) OR
+             EXISTS (S: segment_endpoint_seq):
+  	       S`seq(0) = p AND S`seq(S`length - 1) = mp AND
+               contact_free_path?(G)(S)
+
+  rightward_crossing_falling_edge_cases: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i),
+          u = s`p1, v = e`p1, w = e`p2
+      IN v = leftmost_intersection_point(G, p) AND
+         segment_falling?(e) AND
+	 rightward_crossing_index(G, p) = i
+           IMPLIES u`y = v`y OR
+                   u`y < v`y AND cross(u - v, w - v) < 0
+
+  % This lemma expresses the general case that if p has a rightward crossing
+  % on G, there exists a segment endpoint sequence S starting at p and
+  % ending in the miter point for the leftmost edge crossed from p.
+  % S does not intersect G's perimeter.
+  path_to_miter_pt_seq_contact_free: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            d: posreal):
+      LET i = rightward_crossing_index(G, p),
+	  H = polygon_vertex_seq(G)
+      IN d <= max_miter_offset(H) AND
+         segment_falling?(edges_of_polygon(G)(i)) IMPLIES
+           LET mp = miter_point(G`vertices(i),
+                                G`vertices(prev_index(G, i)),
+                                G`vertices(next_index(G, i)),
+	 	  	        d)
+           IN EXISTS (S: segment_endpoint_seq):
+  	        S`seq(0) = p AND S`seq(S`length - 1) = mp AND
+                contact_free_path?(G)(S)
+
+  END polygon_miter_sequences

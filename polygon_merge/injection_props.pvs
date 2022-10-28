@@ -1,0 +1,407 @@
+%% -----------------------------------------------------------------------------
+%% injection_props.pvs              Dependable Computing
+%% Additional properties of the vertex injection process.
+%% -----------------------------------------------------------------------------
+
+injection_props : THEORY
+
+  BEGIN
+
+  % This theory extends the results in vertex_injection by adding various
+  % properties of injected polygons. Some relate the injected polygons
+  % Am and Bm to the originals A and B. Other lemmas express properties
+  % about edge intersections.
+
+  IMPORTING polygons@polygon_membership
+  IMPORTING vertex_injection
+
+  % Polygons can be merged only if they satisfy this merge pre-condition.
+  % There must exist at least one common point in the interiors of both
+  % polygons. It is possible that one is contained completely within
+  % the other.
+  
+  merge_pre_condition(A: simple_polygon_2d): pred[simple_polygon_2d] =
+    LAMBDA (B: simple_polygon_2d):
+      EXISTS (p: point_2d):
+        point_in_polygon?(p, A) AND point_in_polygon?(p, B)
+
+  merge_pre_condition_symmetric: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      merge_pre_condition(A)(B) IFF merge_pre_condition(B)(A)
+
+  % This predicate is satisfied when polygon C is the injected form of
+  % polygon A.
+  inject_post_condition?(A, B: simple_polygon_2d)(C: simple_polygon_2d): bool =
+    C = (# num_vertices := injected_vertices(A, B, A`num_vertices)`length,
+           vertices := injected_vertices(A, B, A`num_vertices)`seq #)
+
+  % Returns the injected forms of polygons A and B in which vertices are
+  % injected into A where its edges cross B and vertices are injected
+  % into B where its edges cross A.
+  
+  inject_vertices_into_polygon(A: simple_polygon_2d,
+                               B: (merge_pre_condition(A))):
+   [(inject_post_condition?(A, B)), (inject_post_condition?(B, A))];
+
+  % Several lemmas state relationships between edges of polygon A and
+  % those of its injected form Am.
+
+  vertex_on_edge_in_injected_edge_set: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, i, j: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	j < A`num_vertices AND i < Am`num_vertices AND
+	s = edges_of_polygon(Am)(i) AND e = edges_of_polygon(A)(j) AND
+	point_on_segment?(s`p1, e) AND s`p1 /= e`p2
+	  IMPLIES member(s`p1, injected_edge(e, B))
+
+  point_on_injected_segment: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A)),
+            p: point_2d, i, j: nat):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        i < A`num_vertices AND j = injected_vertices(A, B, i)`length AND
+        edges_of_polygon(A)(i)`p1 =
+          injected_vertices(A, B, A`num_vertices)`seq(j) AND
+        point_on_segment?(p, edges_of_polygon(A)(i))
+          IMPLIES EXISTS (e: (edge_of_polygon?(Am))): point_on_segment?(p, e)
+
+  A_vertex_is_Am_vertex: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND vertex?(A)(p)
+	  IMPLIES vertex?(Am)(p)
+
+  injected_vertex_index_in_range: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, i, j: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	j < A`num_vertices AND i < Am`num_vertices AND
+	s = edges_of_polygon(Am)(i) AND e = edges_of_polygon(A)(j) AND
+	point_on_segment?(s`p1, e) AND (s`p1 = e`p1 OR s`p2 = e`p2)
+	  IMPLIES i >= injected_vertices(A, B, j)`length AND
+		  i < injected_vertices(A, B, j+1)`length
+
+  injected_p2_eq_imp_p1_on_segment: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              i: below(A`num_vertices), j: below(Am`num_vertices),
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND s`p2 = e`p2 AND
+        s = edges_of_polygon(A)(i) AND e = edges_of_polygon(Am)(j)
+	  IMPLIES point_on_segment?(e`p1, s)
+
+  % Edges from A and B that overlap one another represent special cases
+  % that need to be addressed appropriately.
+
+  edge_overlaps_with_another?(s: segment_2d,
+                              A: simple_polygon_2d): bool =
+    EXISTS (e: (edge_of_polygon?(A))): are_segments_overlapping?(s)(e)
+
+  no_crossings_between_overlap_endpoints: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            s, e: segment_2d, i: below(B`num_vertices)):
+        edge_of_polygon?(A)(s) AND e = edges_of_polygon(B)(i) AND
+	are_segments_overlapping?(s)(e) IMPLIES
+          LET p = min_overlap_point(s, e), q = max_overlap_point(s, e) IN
+	    NOT EXISTS (r: point_2d, j: below(B`num_vertices)):
+	          i /= j AND r /= p AND r /= q AND
+		  point_on_segment?(r, edges_of_polygon(B)(j)) AND
+	          point_on_segment?(r, (# p1 := p, p2 := q #))
+
+  injected_vertex_on_edge_imp_subsegment: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, j: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	j < A`num_vertices AND edge_of_polygon?(Am)(s) AND
+        e = edges_of_polygon(A)(j) AND
+	point_on_segment?(s`p1, e) AND s`p1 /= e`p2
+	  IMPLIES subsegment?(s, e)
+
+  injected_edge_same_dir_as_original: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              i: below(A`num_vertices), j: below(Am`num_vertices),
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	s = edges_of_polygon(A)(i) AND
+        e = edges_of_polygon(Am)(j) AND
+        (s`p1 = e`p1 OR s`p2 = e`p2)
+          IMPLIES ^(s`p2 - s`p1) = ^(e`p2 - e`p1)
+
+  % Polygon A and its injected form Am partition sets of points on
+  % the 2D plane in the same way. Sets of interior, exterior and
+  % perimeter points are identical for both A and Am.
+
+  injected_perimeter_points_same: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (point_on_polygon_perimeter?(A)(p) IFF
+           point_on_polygon_perimeter?(Am)(p))
+
+  injected_interior_points_same: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (point_in_polygon?(p, A) IFF point_in_polygon?(p, Am))
+
+  injected_exterior_points_same: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (point_outside_polygon?(p, A) IFF point_outside_polygon?(p, Am))
+
+  % In addition, the topleft vertex of A is the same as that of Am.
+  % The vertex index, however, can be different in each.
+
+  injected_topleft_vertex_same: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          A`vertices(topleft_vertex_idx(A)) =
+	  Am`vertices(topleft_vertex_idx(Am))
+
+  % Injected polygons have special properties when it comes to where
+  % intersections between Am and Bm can occur. These definitions help
+  % characterize those conditions. If an edge from Am and one from Bm
+  % are overlapping, they are either the same segment or the reverse
+  % of each other. Otherwise, the edges can only intersect at their
+  % endpoints.
+
+  same_edge_or_vertex_intersection?(s, e: segment_2d): bool =
+    IF are_segments_overlapping?(s)(e)
+       THEN s = e OR s = reverse_segment(e)
+       ELSE FORALL (p: point_2d):
+              point_on_segment?(p, s) AND point_on_segment?(p, e)
+                IMPLIES segment_endpoint?(s)(p) AND segment_endpoint?(e)(p)
+    ENDIF
+
+  same_edge_or_vertex_intersection_symm: LEMMA
+    FORALL (s, e: segment_2d):
+      same_edge_or_vertex_intersection?(s, e) IFF
+      same_edge_or_vertex_intersection?(e, s)
+
+  only_vertex_intersections?(G, H: simple_polygon_2d,
+                             e: (edge_of_polygon?(H))): bool =
+    FORALL (s: (edge_of_polygon?(G))):
+      IF are_segments_overlapping?(s)(e)
+         THEN s = e OR s = reverse_segment(e)
+         ELSE FORALL (p: point_2d):
+                point_on_segment?(p, s) AND point_on_segment?(p, e)
+                  IMPLIES segment_endpoint?(s)(p) AND segment_endpoint?(e)(p)
+      ENDIF
+
+  only_vertex_intersections_symm: LEMMA
+    FORALL (G, H: simple_polygon_2d):
+      (FORALL (e: (edge_of_polygon?(H))):
+         only_vertex_intersections?(G, H, e)) IMPLIES
+      FORALL (s: (edge_of_polygon?(G))):
+        only_vertex_intersections?(H, G, s)
+
+  only_vertex_intersections_reverse: LEMMA
+    FORALL (G, H: simple_polygon_2d, s: segment_2d):
+      edge_of_polygon?(reverse_polygon(H))(s) AND
+      only_vertex_intersections?(G, H, reverse_segment(s)) IMPLIES
+        only_vertex_intersections?(reverse_polygon(G), reverse_polygon(H), s)
+
+  % These concepts can also be applied to point sequences. 
+
+  seq_only_vertex_intersections?(V: {V: finseq[point_2d] |
+                                        FORALL (i: below(V`length - 1)):
+					  V`seq(i) /= V`seq(i + 1)},
+                                 H: simple_polygon_2d,
+                                 e: (edge_of_polygon?(H))): bool =
+    FORALL (i: below(V`length - 1)):
+      LET s = (# p1 := V`seq(i), p2 := V`seq(i + 1) #) IN
+        same_edge_or_vertex_intersection?(s, e)
+
+  only_vertex_int_seq_imp_polygon: LEMMA
+    FORALL (V: {V: finseq[point_2d] |
+                   FORALL (i: below(V`length - 1)): V`seq(i) /= V`seq(i + 1)},
+            G, H: simple_polygon_2d,
+            e: (edge_of_polygon?(H))):
+      seq_only_vertex_intersections?(V, H, e) AND
+      V`length = G`num_vertices + 1 AND
+      (V ^ (0, V`length - 2))`seq = G`vertices AND
+      V`seq(V`length - 1) = G`vertices(0)
+        IMPLIES only_vertex_intersections?(G, H, e)
+
+  % If all edges of A are edges of B, then the converse must also hold.
+  % In other words, they have the same perimeters.
+
+  edges_included_imp_edge_sets_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (s: segment_2d):
+         edge_of_polygon?(A)(s) IMPLIES edge_of_polygon?(B)(s))
+      IMPLIES
+        A`num_vertices = B`num_vertices AND
+	FORALL (e: segment_2d):
+          edge_of_polygon?(B)(e) IMPLIES edge_of_polygon?(A)(e)
+
+  % If all edges of A are edges of B, then the polygons have the
+  % same vertices, although not necessarily list in the same order.
+
+  edges_included_imp_vertex_sets_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (s: segment_2d):
+         edge_of_polygon?(A)(s) IMPLIES edge_of_polygon?(B)(s))
+      IMPLIES FORALL (i: below(A`num_vertices)):
+                EXISTS (j: below(B`num_vertices)):
+                  A`vertices(i) = B`vertices(j)
+
+  % If all edges of A are edges of B, then the vertices of A must be
+  % a rotated list of the vertices of B
+
+  edges_included_imp_rotated_vertices: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (s: segment_2d):
+         edge_of_polygon?(A)(s) IMPLIES edge_of_polygon?(B)(s))
+      IMPLIES EXISTS (n: nat):
+                A`vertices = rotated_vertices(B`num_vertices)(B`vertices, n)
+
+  % If all edges of A are edges of B, their topleft vertices are the same.
+  edges_included_imp_topleft_eq: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (s: segment_2d):
+         edge_of_polygon?(A)(s) IMPLIES edge_of_polygon?(B)(s))
+      IMPLIES A`vertices(topleft_vertex_idx(A)) =
+              B`vertices(topleft_vertex_idx(B))
+
+  % If all edges of A are edges of B, then either they're both CCW or
+  % both CW.
+
+  edges_included_imp_ccw_eqv: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (s: segment_2d):
+         edge_of_polygon?(A)(s) IMPLIES edge_of_polygon?(B)(s))
+      IMPLIES (ccw_vertex_order?(A) IFF ccw_vertex_order?(B))
+
+  outer_polygon_has_pt_left_of_inner_perim: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (p: point_2d):
+         point_on_polygon_perimeter?(A)(p)
+	   IMPLIES point_outside_polygon?(p, B)) AND
+      (EXISTS (u: point_2d): point_in_polygon?(u, A) AND
+         (point_in_polygon?(u, B) OR point_on_polygon_perimeter?(B)(u)))
+      IMPLIES EXISTS (q: point_2d):
+	        vertex?(A)(q) AND
+	        FORALL (r: point_2d):
+	          point_on_polygon_perimeter?(B)(r) IMPLIES q`x < r`x
+
+  % Several consequences of vertex injection
+
+  inject_vertices_into_polygon_comm: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        merge_pre_condition(A)(B) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+          IMPLIES (Bm, Am) = inject_vertices_into_polygon(B, A)
+
+  intersections_only_at_vertices: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(A)(s) AND edge_of_polygon?(B)(e) AND
+	NOT are_segments_overlapping?(s)(e) AND
+	point_on_segment?(p, s) AND point_on_segment?(p, e)
+	  IMPLIES
+            vertex?(Am)(p) AND vertex?(Bm)(p)
+
+  injected_intersections_only_at_endpoints: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	NOT are_segments_overlapping?(s)(e) AND
+	point_on_segment?(p, s) AND point_on_segment?(p, e)
+	  IMPLIES
+            segment_endpoint?(s)(p) AND segment_endpoint?(e)(p)
+
+  injected_intersections_only_at_vertices: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	NOT are_segments_overlapping?(s)(e) AND
+	point_on_segment?(p, s) AND point_on_segment?(p, e)
+	  IMPLIES
+            vertex?(Am)(p) AND vertex?(Bm)(p)
+
+  overlapping_injected_edge_p1_is_MOP: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	are_segments_overlapping?(s)(e)
+	  IMPLIES s`p1 = min_overlap_point(s, e)
+
+  overlapping_injected_edge_p2_is_MOP: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	are_segments_overlapping?(s)(e)
+	  IMPLIES s`p2 = max_overlap_point(s, e)                  
+
+  overlapping_edges_share_endpoints: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	are_segments_overlapping?(s)(e)
+	  IMPLIES IF ^(s`p2 - s`p1) = ^(e`p2 - e`p1)
+                    THEN s`p1 = e`p1 AND s`p2 = e`p2
+ 	            ELSE s`p1 = e`p2 AND s`p2 = e`p1
+                  ENDIF
+
+  injected_polygons_contained: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (polygon_contained?(A, B) IFF polygon_contained?(Am, Bm)) AND
+          (polygon_contained?(B, A) IFF polygon_contained?(Bm, Am))
+
+  injected_overlaps_equal: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	are_segments_overlapping?(s)(e)
+	  IMPLIES s = e OR s = reverse_segment(e)
+
+  injected_only_vertex_intersections: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (FORALL (e: (edge_of_polygon?(Bm))):
+             only_vertex_intersections?(Am, Bm, e)) AND
+          (FORALL (s: (edge_of_polygon?(Am))):
+             only_vertex_intersections?(Bm, Am, s))
+
+  injected_p2_on_ray_imp_edges_eq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	s`p1 = e`p1 AND point_on_arb_ray?(s`p2, e`p1, ^(e`p2 - e`p1))
+	  IMPLIES s = e
+
+  injected_p1_on_ray_imp_edges_eq_rev: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) AND
+	s`p1 = e`p2 AND point_on_arb_ray?(e`p1, s`p1, ^(s`p2 - s`p1))
+	  IMPLIES reverse_segment(s) = e
+
+  END injection_props
