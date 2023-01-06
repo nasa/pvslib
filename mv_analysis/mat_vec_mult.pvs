@@ -1,0 +1,184 @@
+mat_vec_mult
+		: THEORY
+
+  BEGIN
+
+  % ASSUMING
+   % assuming declarations
+  % ENDASSUMING
+
+ IMPORTING vector_arithmetic
+ IMPORTING norms
+
+%--------------------------------------------
+%  MatrixMN is subtype of FullMatrix
+%--------------------------------------------
+
+MN_full: JUDGEMENT
+     FORALL(m,n:nat, A:MatrixMN(m,n)):
+     A HAS_TYPE FullMatrix
+
+MN_rc: LEMMA
+     FORALL(m,n:nat, A:MatrixMN(m,n)):
+     rows(A)=m AND columns(A)=n
+     OR
+     rows(A)=0 AND columns(A)=0
+
+
+%--------------------------------------------
+%  Matrix equality facts
+%--------------------------------------------
+
+entry_extensionality: LEMMA
+ FORALL(A,B:FullMatrix):
+ A=B
+ IFF
+ (columns(A) = columns(B) AND rows(A) = rows(B))
+ AND (FORALL(i:below(max(rows(A),rows(B))),j:below(max(columns(A),columns(B)))):
+   entry(A)(i,j) = entry(B)(i,j))
+
+row_extensionality: LEMMA
+ FORALL(A,B:FullMatrix):
+ A=B
+ IFF
+ (columns(A) = columns(B) AND rows(A) = rows(B))
+ AND FORALL(i:below(max(rows(A),rows(B)))):
+   row(A)(i) = row(B)(i)
+
+column_extensionality: LEMMA
+ FORALL(A,B:FullMatrix):
+ A=B
+ IFF
+ (columns(A) = columns(B) AND rows(A) = rows(B))
+ AND FORALL(i:below(max(columns(A),columns(B)))):
+   col(A)(i) = col(B)(i)
+
+%--------------------------------------------
+%  The cdr of a FullMatrix
+%  is a FullMatrix 
+%--------------------------------------------
+
+cdr_columns: LEMMA
+ FORALL(A:{AA:FullMatrix| cons?(AA) AND cons?(cdr(AA))}):
+ columns(A) = columns(cdr(A))
+
+cdr_columns_full: LEMMA
+ FORALL(A:{AA:FullMatrix| cons?(AA)}):
+ FORALL (i,j:below(length(cdr(A)))):
+ length(nth(cdr(A),i)) = length(nth(cdr(A),j))
+
+%--------------------------------------------
+%  Define matrix vector multiplication
+%--------------------------------------------
+
+matvec(m:nat,n:nat, A:MatrixMN(m,n),
+ v:VectorN(n)): 
+  RECURSIVE VectorN(m) =
+  IF m=0
+   THEN null
+  ELSE
+   cons(car(A)*v, matvec(m-1,n, cdr(A), v))
+  ENDIF
+  MEASURE
+  m
+
+;*(A:FullMatrix,v:VectorN(columns(A))):
+ VectorN(rows(A)) =
+ matvec(rows(A),columns(A),A,v)
+
+matv_test: LEMMA
+ matvec(3,0, (: null[real], null[real], null[real] :), null) =  (: 0, 0, 0:)
+
+matv_nth: LEMMA
+ FORALL(A:FullMatrix,
+ v:VectorN(columns(A)),i:below(rows(A))):
+  nth(A*v,i)
+  = row(A)(i)*v
+
+max_a(A:FullMatrix):
+RECURSIVE nnreal
+= IF rows(A) = 0 OR columns(A)=0
+THEN 0
+ELSE
+max(max(abs(car(A))),max_a(cdr(A)))
+ENDIF
+MEASURE rows(A)
+
+max_a_max: LEMMA
+ FORALL(A:FullMatrix,
+j:below(columns(A)),i:below(rows(A))):
+ abs(nth(nth(A,i),j)) <= max_a(A)
+
+max_a_row: LEMMA
+ FORALL(A:{AA:FullMatrix | columns(AA)>0},
+ v:VectorN(columns(A)),i:below(rows(A))):
+ abs(row(A)(i)*v) <= columns(A)*max_a(A)*norm_inf(columns(A))(v)
+
+matv_norm_inf: LEMMA
+  FORALL(A:{AA:FullMatrix | columns(AA)>0}, v:VectorN(columns(A))):
+  norm_inf(rows(A))(A*v)
+  <=
+  columns(A) * max_a(A) * norm_inf(columns(A))(v)
+
+%--------------------------------------------
+%  Matrix vector multiplication can be
+%  seen as matrix matrix mult
+%--------------------------------------------
+
+vec2mat(v:Vector):
+ RECURSIVE MatrixMN(length(v), min(length(v),1))
+ = IF v = null THEN
+  null[list[real]]
+ ELSE
+ cons((: car(v) :), vec2mat(cdr(v)))
+ ENDIF
+ MEASURE
+ length(v)
+
+vec2mat_id: LEMMA
+ FORALL(v:Vector):
+  col(vec2mat(v))(0) = v
+
+matv_matmat: LEMMA
+  FORALL(A:FullMatrix,v:VectorN(columns(A))):
+  A*v = col(A * vec2mat(v))(0)
+
+vec2mat_mult: LEMMA
+  FORALL(A:FullMatrix,v:VectorN(columns(A))):
+  columns(A)>0 IMPLIES
+  vec2mat(A*v) = A * vec2mat(v)
+  
+%--------------------------------------------
+%  Matrix vector multiplication arithmetic 
+%--------------------------------------------
+
+matv_dist_sum: LEMMA
+ FORALL(A:FullMatrix, v1,v2:VectorN(columns(A))):
+ A*(v1+v2) = A*v1 + A*v2
+
+matv_dist_scal: LEMMA
+ FORALL(A:FullMatrix, v:VectorN(columns(A)),
+ c:real):
+ A*(c*v) = c*(A*v)
+
+matv_dist_sub: LEMMA
+ FORALL(A:FullMatrix, v1,v2:VectorN(columns(A))):
+ A*(v1 - v2) = A*v1 - A*v2
+
+matv_asso: LEMMA
+  FORALL(A:{AA:FullMatrix| columns(AA)>0},
+  B:{BB:FullMatrix | rows(BB) = columns(A) AND columns(BB)>0},
+  v:VectorN(columns(B))):
+  A*(B*v) = (A*B)*v
+
+matv_add_zero: LEMMA
+  FORALL(A:{AA:FullMatrix| columns(AA)>0 AND rows(AA)>0},
+  B:{BB:FullMatrix | rows(BB) = columns(A) AND columns(BB)>0},
+  y1: VectorN(rows(A)), y2:VectorN(columns(B)), y3:VectorN(columns(A))):
+  y1 - (A * B * y2) =  y1  -   (A * y3) +  A * (y3 - B * y2)
+
+matv_zerovec: LEMMA
+  FORALL(A:FullMatrix):
+  A*zero_vec(columns(A)) = zero_vec(rows(A))
+  
+  END mat_vec_mult

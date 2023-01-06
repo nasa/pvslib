@@ -1,0 +1,576 @@
+vector_arithmetic %Greetings
+                  : THEORY
+		  
+%	              June 2018 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%|     These are some useful     |%
+%|     lemmas and definitions    |%
+%|          about vectors        |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----     %
+   BEGIN
+%     -----%
+   
+%--------------------------------------------
+%% Importing the matrices@matrices library
+%  It has *some* good things, and defines
+%  VectorN(m)
+
+%% Importing structured@listn[real]
+%  to use (cons?)
+
+%% Importing reas@sigma[nat] to relate dot
+%  product to sums
+%--------------------------------------------
+
+ IMPORTING matrices@matrices
+ IMPORTING structures@listn[ real ]
+ IMPORTING reals@sigma[ nat ]
+
+%--------------------------------------------
+%% A well_founded lemma to help with tccs
+%--------------------------------------------
+
+wf_1: LEMMA well_founded?(LAMBDA (x: (cons?), y: (cons?)):
+     restrict
+     [[list[real], list[real]],
+     [(cons?[real]), (cons?[real])], boolean]
+     (<<)(x, y)) ;
+
+%--------------------------------------------
+%% Define the zero vector and the unit vectors
+%--------------------------------------------
+
+zero_vec( m: nat ): RECURSIVE VectorN( m ) =
+     IF m = 0
+     THEN null
+     ELSE
+     cons( 0 , zero_vec( m-1 ) )
+     ENDIF MEASURE m ;
+
+zero_vec0: LEMMA
+     FORALL( m: nat, v: VectorN( m ) ):
+     v=zero_vec( m ) IFF
+     FORALL(i: below(m)): nth(v,i)=0 ;
+
+nth_zero: LEMMA
+     FORALL ( m: nat ):
+     FORALL ( i: below( m ) ):
+     nth(zero_vec( m ), i ) = 0 ;
+
+% @QED zero_cdr proved by lmwhite3 on Wed, 04 May 2022 13:45:20 GMT
+zero_cdr: LEMMA    
+     FORALL(m:posnat): cdr(zero_vec(m)) = zero_vec(m-1)
+
+% @QED every_zero proved by lmwhite3 on Thu, 28 Apr 2022 14:17:28 GMT
+every_zero: LEMMA
+     FORALL(n:nat):
+     every[number]
+	         (LAMBDA (x: number):
+	                 number_field_pred(x) AND real_pred(x) AND rational_pred(x)
+	             AND integer_pred(x) AND (x >= 0))
+	         (zero_vec(n))
+
+constant_vec(c: real, m: nat ):
+     RECURSIVE VectorN( m ) =
+     IF m = 0
+     THEN null
+     ELSE
+     cons( c , constant_vec(c, m-1 ) )
+     ENDIF MEASURE m ;
+
+e( m: nat, i: { ii: nat | ii < m }):
+     RECURSIVE VectorN( m ) =
+     IF m = 0 
+     THEN null
+     ELSIF i > 0 
+     THEN cons( 0 , e( m-1 , i-1 ) )
+     ELSIF i = 0
+     THEN cons( 1 , zero_vec( m-1 ) )
+     ELSE
+     zero_vec( m )
+     ENDIF MEASURE m ;
+
+e_cdr: LEMMA FORALL( m:posnat, i:below(m)):
+     i>0 IMPLIES
+     cdr(e(m,i)) = e(m-1,i-1) ;
+
+nth_e: LEMMA FORALL( m:nat, i:below(m)):
+     FORALL(j:below(m)):
+     (j=i IMPLIES nth(e(m,i),j) = 1)
+     AND
+     (j /= i IMPLIES  nth(e(m,i),j) = 0) ;
+
+% @QED every_e proved by lmwhite3 on Mon, 24 Jan 2022 16:54:37 GMT
+every_e: LEMMA
+    FORALL(n: nat, k: { ii: nat | ii < n }):
+        every[number]
+	         (LAMBDA (x: number):
+	                 number_field_pred(x) AND real_pred(x) AND rational_pred(x)
+	             AND integer_pred(x) AND (x >= 0))
+	         (e(n, k))
+
+e_not_zero: LEMMA FORALL(m:nat, i:below(m)):
+     e(m, i) /= zero_vec(m) ;
+
+%--------------------------------------------
+%% Test exicutability 
+%--------------------------------------------
+
+test_zero1: LEMMA zero_vec( 3 ) = (: 0, 0, 0 :) ;
+test_zero2: LEMMA zero_vec( 4 ) /= (: 1, 0, 0, 0:) ;
+
+test_e1: LEMMA e( 2, 0 ) = (: 1, 0 :)
+test_e2: LEMMA e( 9, 3 ) = (: 0, 0, 0, 1, 0, 0, 0, 0, 0 :) ;
+test_e3: LEMMA e( 9, 8 ) = (: 0, 0, 0, 0, 0, 0, 0, 0, 1 :) ;
+
+test_constant_vec1: LEMMA constant_vec( 2 , 3 )
+     = (: 2, 2, 2 :) ;
+test_constant_vec2: LEMMA FORALL (c:real):
+     constant_vec( c , 3 ) = (: c, c, c :) ;
+
+%--------------------------------------------
+%% Define entrywise >= and <=
+%--------------------------------------------
+
+greater?( l1, l2: ( cons? ) ): RECURSIVE bool
+     = IF cdr( l2 ) = null AND cdr( l1 ) = null
+     THEN car( l1 ) > car( l2 )
+     ELSIF cdr( l1 ) = null OR cdr( l2 ) = null
+     THEN FALSE
+     ELSE ( car( l1 ) > car( l2 ) )
+     AND greater?( cdr( l1 ) , cdr( l2 ) )
+     ENDIF MEASURE l1 by << ;
+     
+>(l1, l2: (cons?)): bool = greater?( l1, l2) ;
+
+greater_eq?( l1, l2: ( cons? ) ): RECURSIVE bool
+     = IF cdr( l2 ) = null AND cdr( l1 ) = null
+     THEN car( l1 ) >= car( l2 ) 
+     ELSIF cdr( l1 ) = null OR cdr( l2 ) = null
+     THEN FALSE
+     ELSE ( car( l1 ) >= car( l2 ) )
+     AND greater_eq?(cdr( l1 ) , cdr( l2 ) )
+     ENDIF MEASURE l1 by << ;
+
+>=(l1, l2: (cons?)): bool = greater_eq?( l1, l2) ;
+
+less?( l1, l2: ( cons? ) ): RECURSIVE bool
+     = IF cdr( l2 ) = null AND cdr( l1 ) = null
+     THEN car( l1 ) < car( l2 ) 
+     ELSIF cdr( l1 ) = null OR cdr( l2 ) = null
+     THEN FALSE
+     ELSE ( car( l1 ) < car( l2 ) )
+     AND less?( cdr( l1 ) , cdr( l2 ) )
+     ENDIF MEASURE l1 by << ;
+
+<(l1, l2: (cons?)): bool = less?( l1, l2) ;
+
+less_eq?( l1, l2: ( cons? ) ): RECURSIVE bool
+     = IF cdr( l2 ) = null AND cdr( l1 ) = null
+     THEN car( l1 ) <= car( l2 )
+     ELSIF cdr( l1 ) = null OR cdr( l2 ) = null
+     THEN FALSE
+     ELSE ( car( l1 ) <= car( l2 ) )
+     AND less_eq?( cdr( l1 ) , cdr( l2 ) )
+     ENDIF MEASURE l1 by << ;
+
+<=(l1, l2: (cons?)): bool = less_eq?( l1, l2) ;
+
+%--------------------------------------------
+%% Test exicutability 
+%--------------------------------------------
+
+g_1: LEMMA zero_vec( 3 ) > (: -1, -1, -10 :) ;
+ge_1: LEMMA greater_eq?(zero_vec( 3 ),(: 0, -9, -1000 :)) ;
+l_1: LEMMA NOT less?(zero_vec( 3 ), (: -1, -1, -10 :) ) ;
+
+%--------------------------------------------
+%% This is a smorgasbord of vector properties
+%  that come in handy 
+%--------------------------------------------
+
+%--------------------------------------------
+%% Things with cdr and car
+%--------------------------------------------
+cdr_scal: LEMMA
+     FORALL ( c: real, ll: (cons?) ):
+     cdr( c * ll ) = c * cdr( ll ) ;
+
+cdr_sub: LEMMA
+     FORALL ( l1, l2: (cons?) ):
+     cdr( l1 - l2 ) = cdr( l1 )-cdr( l2 ) ;
+
+cdr_add: LEMMA
+     FORALL ( l1, l2: (cons?) ):
+     cdr( l1 + l2 ) = cdr( l1 )+cdr( l2 ) ;
+
+car_scal: LEMMA
+     FORALL ( c:real, ll: (cons?) ):
+     car( c * ll ) = c * car( ll ) ;
+	  
+car_sub: LEMMA
+     FORALL ( l1, l2: (cons?) ):
+     car( l1 - l2 ) = car( l1 ) - car( l2 ) ;
+
+neg_1_scal: LEMMA
+     FORALL ( ll: (cons?) ):
+     cons( -1 * ( -1 * car( ll ) ),
+     scal( -1, scal( -1 , cdr( ll ) ) ) )
+     = ll ;
+
+%--------------------------------------------
+%% Adding commutes 
+%--------------------------------------------
+
+add_commute: LEMMA
+     FORALL (l1,l2: (cons?)):
+     l1+l2=l2+l1 ;
+     
+%--------------------------------------------
+%% Fundamental Subtraction identity 
+%--------------------------------------------
+
+sub_idx: LEMMA
+     FORALL (l1,l2: (cons?)):
+     l1-l2 = l1+ (-1*l2)
+
+     
+%--------------------------------------------
+%% Associativity proporties
+%--------------------------------------------
+
+asso_1_scal: LEMMA
+     FORALL (ll: (cons?), a, b:real):
+     scal( a, scal( b, ll ) ) = scal( b, scal( a, ll ) ) ;
+
+scal_asso: LEMMA
+     FORALL (l1,l2: (cons?), c:nzreal):
+     (l1 * (c * l2 )) = c * (l1*l2)
+
+asso_v: LEMMA
+     FORALL ( c1, c2: real, ll: (cons?) ):
+     c1 * ( c2 * ll ) = ( c1 * c2 ) * ll ;
+
+asso_dot: LEMMA
+     FORALL ( c: real, l1, l2: (cons?)):
+     (c * l1) * l2 = c * (l1 * l2) ;
+
+asso_add: LEMMA
+     FORALL (l1,l2,l3: (cons?)):
+     (length(l1) = length(l2) AND length(l2) = length(l3))
+     IMPLIES
+     l1+l2+l3 = l1 + (l2+l3)
+
+asso_sub_commute: LEMMA
+     FORALL (l1,l2,l3: (cons?)):
+     (length(l1) = length(l2) AND length(l2) = length(l3))
+     IMPLIES
+     l1 - l3 + l2 = l1 + (l2-l3)
+
+%--------------------------------------------
+%% Canceling properties
+%--------------------------------------------
+
+scal_cancel: LEMMA
+     FORALL (l1,l2: (cons?), c:nzreal):
+    length(l1)=length(l2) IMPLIES
+     (c*l1 = c*l2 IMPLIES l1=l2) ;
+
+add_zero: LEMMA
+     FORALL (l1,l2: (cons?)):
+     length(l1)=length(l2) IMPLIES
+     (l1+l2=l2
+     IFF
+     l1=zero_vec(length(l1))) ;
+
+zero_id: LEMMA
+     FORALL (l1: list):
+     l1+zero_vec(length(l1))=l1 ;
+
+scal_zero: LEMMA
+     FORALL (c:real,m:nat):
+     c*zero_vec(m) = zero_vec(m) ;
+
+dot_zero: LEMMA
+     FORALL (l: (cons?), m:nat):
+     l*zero_vec(m) = 0 ;
+
+zero_mult: LEMMA
+     FORALL (c:real,l:(cons?)):
+     c /= 0 AND l /= zero_vec(length(l))
+     IMPLIES c*l /= zero_vec(length(l)) ;
+
+add_cancel: LEMMA
+     FORALL (l1,l2,l3: (cons?)):
+     length(l1)=length(l2) AND length(l3)=length(l1) AND l1+l2 = l3+l2
+     IMPLIES
+     l1=l3 ;
+
+sub_zero: LEMMA
+     FORALL(l: (cons?)):
+     l-zero_vec(length(l)) = l ; 
+
+mult_zero: LEMMA
+     FORALL(l: (cons?)):
+     0*l=zero_vec(length(l)) ;
+
+add_zero_trick: LEMMA
+     FORALL ( l1, l2, l3: (cons?) ):
+     length( l1 ) = length( l2 )
+     AND length( l2 ) = length( l3 )
+     IMPLIES l1 - l2 + (l2 - l3) = l1 - l3 ;
+
+diff_zero: LEMMA
+     FORALL ( m: nat, l1, l2: (cons?) ):
+     length( l1 ) = length( l2 )
+     IMPLIES ( l1 - l2 = zero_vec( m )
+     IMPLIES
+     l1 = l2 ) ;
+
+add_zero_imp_eq: LEMMA
+     FORALL ( m: nat, l1, l2: (cons?) ):
+     length( l1 ) = length( l2 )
+     IMPLIES ( l1 + l2 = zero_vec( m )
+     IMPLIES
+     l1 = (-1)*l2 ) ;
+
+one_idx: LEMMA
+     FORALL(l:(cons?)):
+     1*l=l ;
+
+zero_scal: LEMMA
+     FORALL(l:(cons?), c: nzreal ):
+     c*l = zero_vec(length(l))
+     IMPLIES
+     l = zero_vec(length(l)) ;
+
+sub_self: LEMMA FORALL (l1:(cons?)):
+     l1-l1 = zero_vec(length(l1)) ;
+
+sub_sandwich: LEMMA FORALL(l1,l2:(cons?)):
+     length(l1) = length(l2)
+     IMPLIES
+     (l1+l2-l1) = l2 ;
+
+sub_equal_id: LEMMA FORALL(l1,l2:(cons?)):
+     length(l1)=length(l2)
+     IMPLIES
+     l1+l2-l2=l1 ;
+
+sub_equal_id1: LEMMA FORALL(l1,l2:(cons?)):
+     length(l1)=length(l2)
+     IMPLIES
+     l1-l2+l2=l1 ;
+
+
+%--------------------------------------------
+%% Distribution lemmas
+%--------------------------------------------
+
+neg_1: LEMMA
+     FORALL ( l1, l2: ( cons? ) ):
+     -1 * ( l1 - l2 ) = l2 - l1 ;
+
+dist_1: LEMMA
+     FORALL ( c: real, l1, l2: (cons?)):
+     c * ( l1 - l2 ) = c * l1 - c * l2 ;
+
+dist: LEMMA
+     FORALL ( c: real, l1, l2: (cons?)):
+     c * ( l1 + l2 ) = c * l1 + c * l2 ;
+
+dist_scalar: Lemma
+      FORALL ( c1,c2: real, ll: (cons?)):
+     (c1+c2) * ll = c1 * ll + c2 * ll ;
+
+dist_scalar_sub: Lemma
+      FORALL ( c1,c2: real, ll: (cons?)):
+     (c1-c2) * ll = c1 * ll - c2 * ll ;
+
+dist_list: LEMMA
+     FORALL (l1,l2,l3: (cons?)):
+     l1*(l2+l3)=l1*l2+l1*l3 ;
+
+nth_dist: LEMMA FORALL(l:(cons?), c:real):
+     FORALL (i: below(length(l))):
+     nth(c*l,i) = c*nth(l,i) ;
+
+nth_sum: LEMMA FORALL (l1,l2:(cons?)):
+     length(l1)=length(l2) IMPLIES
+     FORALL (i:below(length(l1))):
+     nth(l1+l2,i) = nth(l1,i) + nth(l2,i) ;
+
+nth_subtract: LEMMA FORALL (l1,l2:(cons?)):
+     length(l1)=length(l2) IMPLIES
+     FORALL (i:below(length(l1))):
+     nth(l1-l2,i) = nth(l1,i) - nth(l2,i)
+
+sub_dist: LEMMA
+     FORALL (l1,l2,l3: (cons?)):
+     (length(l1)=length(l2) AND length(l2)=length(l3)) IMPLIES
+     l1 - (l2+l3) = l1-l2-l3 ;
+
+%--------------------------------------------
+%% The dot product is linear
+%--------------------------------------------
+
+dot_linear: LEMMA
+     FORALL (l1,l2,l3: (cons?), c:real ):
+     l1*(l2+c*l3)= l1*l2+c*l1*l3 ;
+
+%--------------------------------------------
+%% Relating the dot product to sums
+%--------------------------------------------
+
+dot_short(u,v: (cons?),i:below(min(length(u),length(v)))):
+     Recursive real =
+     IF i=0
+     THEN car(u)*car(v)
+     ELSE nth(u,i)*nth(v,i) + dot_short(u,v,i-1)
+     ENDIF MEASURE i ;
+
+F_sum(u , v:(cons?))(i:nat):
+     real =
+     IF i < min(length(u),length(v))
+     THEN nth(u,i)*nth(v,i)
+     ELSE 0
+     ENDIF ;
+     
+dot_short_is_sig: LEMMA FORALL(u,v: (cons?)):
+     FORALL( i:below(min(length(u),length(v)))):
+     dot_short(u,v,i) = sigma(0,i,F_sum(u,v)) ;
+
+
+F_shift: LEMMA FORALL(u,v:(cons?)):
+     (cons?(cdr(u)) AND cons?(cdr(v))) IMPLIES
+     FORALL (i: subrange(0, min(length(u),length(v)))):
+     F_sum(cdr(u),cdr(v))(i)=F_sum(u,v)(i+1) ;
+
+F_sum_shift: LEMMA FORALL(u,v: (cons?)):
+     (cons?(cdr(u)) AND cons?(cdr(v))) IMPLIES
+     sigma(1,min(length(u),length(v)),F_sum(u,v))
+     = sigma(0, min(length(cdr(u)),length(cdr(v))), F_sum(cdr(u),cdr(v))) ;
+
+dot_is_sig: LEMMA FORALL(u,v:(cons?)):
+     u*v = sigma(0,min(length(u),length(v)),F_sum(u,v)) ;
+
+dot_is_sig2: LEMMA FORALL(u,v:(cons?)):
+     u*v = sigma(0,min(length(u)-1,length(v)-1),F_sum(u,v)) ;
+     
+dot_short_is_dot: LEMMA FORALL(u,v:(cons?)):
+     length(u)=length(v) IMPLIES
+     dot_short(u,v,length(u)-1) = u*v ;
+
+dot_is_sigma: LEMMA FORALL(u,v:(cons?)):
+     length(u) = length(v)
+     IMPLIES
+     u*v = sigma(0,length(u)-1,LAMBDA(i:nat): IF i < length(u) THEN  nth(u,i) * nth(v,i) ELSE 0 ENDIF)
+
+%--------------------------------------------
+%% Dot product with zero_vec and e(n,i)
+%--------------------------------------------
+
+dot_prod_zero: LEMMA
+ FORALL(n:nat,v:list[real]):
+ v*zero_vec(n) = 0
+
+dot_prod_e: LEMMA
+ FORALL(n:nat,i:below(n),v:{vv:list | length(vv) > i}):
+ v*e(n,i) = nth(v,i)
+ 
+     
+%--------------------------------------------
+%% Dot product cancelation property 
+%--------------------------------------------
+
+dot_equality: LEMMA FORALL(u,v: (cons?)):
+     (length(u) = length(v)
+     AND (FORALL(w:(cons?)):
+     u*w=v*w))
+     IMPLIES
+     u=v ;
+
+dot_equality1: LEMMA FORALL(u,v: (cons?)):
+     (length(u) = length(v)
+     AND (FORALL(w:VectorN(length(u))):
+     u*w=v*w))
+     IMPLIES
+     u=v ;
+
+dot_equality_e: LEMMA FORALL(u,v:(cons?)):
+     (length(u) = length(v)
+     AND
+     FORALL(i:below(length(u))):
+     u*e(length(u),i) = v * e(length(u),i))
+     IMPLIES
+     u=v
+
+%--------------------------------------------
+%% More dot product properties
+%--------------------------------------------
+
+dot_scalar1: LEMMA
+     FORALL(l1,l2:(cons?), c:real):
+     l1*(c*l2) = c*(l1*l2) ;
+
+dot_dist: LEMMA
+     FORALL(l1,l2,l3:(cons?)):
+     l1*(l2+l3) = l1*l2+l1*l3 ;
+
+dot_dist_sub: LEMMA
+     FORALL(l1,l2,l3:(cons?)):
+     (length(l1)=length(l2) AND length(l2)=length(l3))
+     IMPLIES
+     l1*(l2-l3) = l1*l2-l1*l3 ;
+
+%--------------------------------------------
+%% big cancelation lemma
+%--------------------------------------------
+
+quad_cancel: LEMMA FORALL(l1,l2,l3: (cons?)):
+   (length(l1)= length(l2) AND length(l2)=length(l3))
+   IMPLIES
+   l1-l2-(l3-l2) = l1-l3
+
+quad_cancel_plus: LEMMA FORALL(l1,l2,l3: (cons?)):
+   (length(l1)= length(l2) AND length(l2)=length(l3))
+   IMPLIES
+   (l1-l2)+(l2-l3) = l1-l3
+
+quad_move: LEMMA FORALL(l1,l2,l3,l4: (cons?)):
+   (length(l1)= length(l2) AND length(l2)=length(l3)) AND length(l3)=length(l4)
+   IMPLIES
+   (l1+l2)-(l3+l4) = l1-l3 + (l2-l4)
+
+quad_cancel_p_m: LEMMA FORALL(l1,l2,l3: (cons?)):
+   (length(l1)= length(l2) AND length(l2)=length(l3))
+   IMPLIES
+   (l1+l2)-(l1+l3) = l2-l3
+
+quad_cancel_tail: LEMMA FORALL(l1,l2,l3: (cons?)):
+   (length(l1)= length(l2) AND length(l2)=length(l3))
+   IMPLIES
+   l1 - l2 = l1 - l2 - l3 + l3
+
+
+%--------------------------------------------
+%% Comes in handy for
+%  convex combination lemmas
+%--------------------------------------------
+
+add_sub_zero: LEMMA FORALL(u: (cons?), c:real):
+     c*u = u+(c-1)*u 
+
+; -(v:Vector): VectorN(length(v)) = -1*v
+
+
+%________________________________________________________
+ % "No person ever wetted clay and then left it,
+ %      as if there would be bricks by chance and fortune."
+ %      	     	   	    	   -Plutarch
+
+  %---  ~The End~  ---% 
+  END vector_arithmetic
+

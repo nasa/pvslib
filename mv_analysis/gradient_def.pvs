@@ -1,0 +1,206 @@
+gradient_def   [n:posnat ] % Good Afternoon
+%% n - partial derivative of f: Rn -> R
+		: THEORY
+
+%	              Aug 2018 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%|      Defines the gradient     |%
+%|   show relationship between   |%
+%|   gradient and the partials   |%
+%| gradeint and the frechet der  |%
+%| and properties of constraints |%
+%|    that are differentiable    |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%--------------------------------------------
+%% Importing partials to define the gradient
+
+%% Importing fundamental_constrained_optimization[n]
+%  to have lovely constraints and functions that treat
+%  constraints like lists
+%--------------------------------------------
+
+  IMPORTING partial_def[n]
+  IMPORTING fundamentals_constrained_optimization[n]
+  
+%--------------------------------------------
+%% Define ghost gradient
+%--------------------------------------------
+
+gradientp?(D: (deriv_domain_e_partial?), f: vec2real_f )( p: (D) ): bool 
+     = FORALL ( i: below( n ) ):
+     init_partial?(e(n,i),D,f)(p)
+
+gradientD?( D: (deriv_domain_e_partial?) )( f: vec2real_f ): bool
+     = FORALL ( p : ( D ) ):
+     gradientp?(D, f )( p );
+
+%--------------------------------------------
+%% differentiable means that ghost gradient exists
+%--------------------------------------------
+
+diffp_imp_gradp: LEMMA FORALL(D: (deriv_domain_e_partial?),
+     p:(D),f: vec2real_f):
+     differentiable?(D,f,p) IMPLIES gradientp?(D,f)(p)
+
+diffD_imp_gradD: LEMMA FORALL(D:(deriv_domain_e_partial?),
+     f:(differentiableD?(D))):
+     gradientD?(D)(f)
+
+%--------------------------------------------
+%% vector of first j partials, to show connection
+%  between gradient and partials
+%--------------------------------------------
+
+partials( D: (deriv_domain_e_partial?), j: below( n ),
+     f: ( gradientD?( D ) ))
+     (p: ( D ) ):
+     RECURSIVE {v:Vector|length(v) = j+1 AND
+     FORALL(i: subrange(n-j-1,n-1)): nth(v,i-n+j+1) = partial(i,D,f)(p)}
+     = IF j = 0
+     THEN (: partial(n-1,D,f)(p) :)
+     ELSE
+     cons( partial( n-(j+1),D,f)(p), partials(D,j-1,f)(p))
+     ENDIF MEASURE j ;
+
+partials_length: LEMMA FORALL(D: (deriv_domain_e_partial?), j: below( n ),
+     f: (gradientD?( D )), p: ( D )):
+     length(partials(D, j, f)(p)) = j+1 ; 
+  
+%--------------------------------------------
+%% define what the gradient is
+%--------------------------------------------
+
+gradient( D: (deriv_domain_e_partial?), f: (gradientD?( D )))
+     (p: ( D )):
+     VectorN(n) =
+     partials( D , n-1, f)
+     ( p )
+
+gradient( D: (deriv_domain_e_partial?))(f: (differentiableD?( D )))
+     (p: ( D )):
+     VectorN(n) =
+     partials( D , n-1, f)
+     ( p )
+
+grad_nth: LEMMA FORALL(D:(deriv_domain_e_partial?), f:(gradientD?(D)), p:(D)):
+     FORALL(i: below(n)):
+     nth(gradient(D,f)(p),i) = partial(i,D,f)(p)
+
+%--------------------------------------------
+%% relationship between gradient and partials
+%  dotted with vector directional_deriv_sum_partials
+%--------------------------------------------
+     
+directional_deriv_pre2: LEMMA FORALL(D:(deriv_domain_e_partial?),
+     v:VectorN(n),  f: (differentiableD?(D)), p:(D)):
+     FORALL(i: below(n)):
+     dot_short(gradient(D,f)(p),v,i) = sigma(0,i, F_partials(D,v,f)(p))
+
+directional_deriv_is_grad: LEMMA FORALL(D:(deriv_domain_all_direction?),
+     v:VectorN(n), f: (differentiableD?(D))):
+     FORALL(p:(D)):
+     gradient(D,f)(p)*v = directional_deriv(v, D, f)(p)
+
+directional_deriv_is_init_partial: LEMMA FORALL(D:(deriv_domain_all_partial?),
+     v:VectorN(n), f: (differentiableD?(D))):
+     FORALL(p:(D)):
+     gradient(D,f)(p)*v = init_partial(v, D, f)(p)
+
+directional_deriv_is_e_partial: LEMMA FORALL(D:(deriv_domain_e_partial?),
+ f: (differentiableD?(D))):
+     FORALL(p:(D),i:below(n)):
+     gradient(D,f)(p)*e(n,i) = init_partial(e(n,i), D, f)(p)
+
+%--------------------------------------------
+%% Frechet derivative dotted with a vector
+%  is the gradeint dotted with the vector
+%  weakened assumption on domain
+%--------------------------------------------
+
+der_f_gradient_dot_e: LEMMA FORALL( D:(deriv_domain_e_partial?),	  
+     f: (differentiableD?(D)), i:below(n)):
+     FORALL(p: (D)):
+     der_f(D)(f)(p)*e(n,i) = gradient(D,f)(p)*e(n,i)
+
+der_f_is_grad_e: LEMMA FORALL(D:(deriv_domain_e_partial?), f: (differentiableD?(D))):
+     der_f(D)(f) = gradient(D)(f)
+
+%--------------------------------------------
+%% Frechet derivative dotted with a vector
+%  is the gradeint dotted with the vector 
+%--------------------------------------------
+der_f_gradient_dot: LEMMA FORALL( D:(deriv_domain_all_partial?),
+     f: (differentiableD?(D)), v:VectorN(n)):
+     FORALL(p: (D)):
+     der_f(D)(f)(p)*v = gradient(D,f)(p)*v
+
+der_f_is_grad: LEMMA FORALL(D:(deriv_domain_all_partial?)):
+     der_f(D) = gradient(D)
+
+%--------------------------------------------------
+%%  Test lemma
+%--------------------------------------------------
+
+%partials_constant: LEMMA FORALL(c:real, j: below( n )):
+%    partials(LAMBDA( v: VectorN( n )): TRUE, j,
+%     constant_vec2real(c)) = zero_funct(j+1) ; 
+ 
+%gradient_constant: LEMMA FORALL( c: real ):
+%     gradient(LAMBDA( v: VectorN( n )): TRUE,
+%     constant_vec2real(c))
+%     = zero_funct( n )
+
+%--------------------------------------------------
+%% Gradientable constraints and properties of
+%  various functions of gradientable constraints
+%  Should have some sort of equivalent theory for
+%  constraints that are Frechet differentiable
+%--------------------------------------------------
+
+constraint_grad?(D: (deriv_domain_e_partial?), m: nat)(constraint:
+     constraints( m )): bool
+     = FORALL (i: below(m)):
+     gradientD?(D)(nth(m,constraint,i))
+
+grad_append: LEMMA FORALL(D: (deriv_domain_e_partial?), m1,m2:nat, eq_constraints: (constraint_grad?(D,m1)), ineq_constraints: (constraint_grad?(D, m2))):
+     constraint_grad?(D, m1+m2)(append(m1,m2,eq_constraints,ineq_constraints))
+
+grad_filter: LEMMA FORALL(D: (deriv_domain_e_partial?), m:nat, c: (constraint_grad?(D,m)), P: pred[vec2real_f]):
+     constraint_grad?(D, length(filter(m,c,P)))(filter_fun(m,c, P))
+
+grad_active: LEMMA FORALL(D: (deriv_domain_e_partial?), m1,m2:nat, eq_constraints: (constraint_grad?(D,m1)),ineq_constraints: (constraint_grad?(D,m2)), v: {vv: VectorN(n) | feasible?(m1,m2,
+     eq_constraints, ineq_constraints)(vv) AND D(vv)}):
+     constraint_grad?(D, m1 + length(filter(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ))))(active_constraints( m1, m2,
+     eq_constraints,
+     ineq_constraints,
+     v))
+     
+active_grad: LEMMA FORALL (D:(deriv_domain_e_partial?), m1,m2: nat, eq_constraints: (constraint_grad?(D, m1)),
+     ineq_constraints: (constraint_grad?(D, m2)), v: {vv: VectorN(n) | feasible?(m1,m2,
+     eq_constraints, ineq_constraints)(vv) AND D(vv)}):
+     FORALL (i: below(m1 + length(filter(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ))))):
+     gradientD?(D)(nth( m1 + length(filter(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ))),
+     active_constraints( m1, m2,
+     eq_constraints,
+     ineq_constraints,
+     v),i))
+
+
+%________________________________________________________
+ % "The ignorance of the world often makes people
+ %     believe that life should be black and white
+ %     – that you must choose sides –
+ %     and so the world of colourful gradients
+ %     goes unadmired."
+ %	       	  	       	         - A.J. Darkholme
+
+  %  ~The End~   %
+  End gradient_def

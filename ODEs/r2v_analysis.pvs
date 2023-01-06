@@ -1,0 +1,271 @@
+r2v_analysis [ d :[ real -> bool ] ]  % Welcome
+% d - domain of the functions r2v
+
+		: THEORY
+
+%Created by                     JTS
+%	 	           Jan 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This defines the basic	 |%
+%| analysis tools for r2v that   |%
+%| are the trivial extensions of |%
+%| single variable analysis      |%
+%| tools. This includes		 |%
+%| definitions and properties	 |%
+%| of entry-wise deriviatives,   |%
+%| intergrals, and continuity.   |%  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last updated	           Jan 2020
+
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%% Assume that the domain is nonempty, connected, and has more than
+%  one element. These assumptions are overkill for continuity 
+%-------------------------------------------------------------------------
+
+  ASSUMING
+  
+    IMPORTING analysis@deriv_domain_def[(d)]
+      non_empty : ASSUMPTION nonempty?(d)
+      connected : ASSUMPTION connected?[(d)]
+      not_one_element : ASSUMPTION not_one_element?[(d)]
+      
+  ENDASSUMING
+  
+ %This assumption ensures that d is a derivative domain
+ deriv_domain: LEMMA
+  deriv_domain?[(d)]
+
+%-------------------------------------------------------------------------
+%% Importing fundamental theorem, to have integrals, derivatives,
+%  continuity of real functions
+%% Importing multivariate continuity that uses norms
+%% Importing r2v_def to have basic r2v properties
+%-------------------------------------------------------------------------
+
+ IMPORTING analysis@fundamental_theorem[(d)]
+ IMPORTING mv_analysis@continuity_multivar
+
+ IMPORTING r2v_def[(d)]
+
+%-------------------------------------------------------------------------
+%% Define entrywise derivable and derivative
+%-------------------------------------------------------------------------
+
+ derivable?(f:r2v): bool =
+  FORALL(i:{ ii:nat | ii < length(f) }):
+   derivable?(nth(f, i))
+
+ deriv(f:(derivable?)):
+  RECURSIVE { ff:r2v | length(ff) = length(f) } =
+  IF null?(f)
+   THEN LAMBDA(x:(d)): null[real]
+  ELSE
+   cons(deriv(car(f)), deriv(cdr(f)))
+  ENDIF
+  MEASURE length(f)
+
+ deriv_nth: LEMMA
+  FORALL(f:(derivable?),
+  i:{ ii:nat | ii < length(f) }):
+    nth(deriv(f), i) = deriv(nth(f, i))
+    
+%-------------------------------------------------------------------------
+%% Define entrywise integrable and integral on [a,b]
+%-------------------------------------------------------------------------
+
+ integrable?(a:(d), b:{ bb:(d) | bb > a }, f:r2v): bool =
+  FORALL(i:{ii:nat| ii < length(f)}):
+   integrable?(a, b, nth(f, i))
+
+ integral(a:(d), b:{ bb:(d) | bb > a },
+ f:{ ff:r2v | integrable?(a, b, ff) }):
+  RECURSIVE VectorN(length(f)) =
+  IF null?(f)
+   THEN null[real]
+  ELSE
+   cons(integral(a, b, car(f)), integral(a, b, cdr(f)))
+  ENDIF
+  MEASURE length(f)
+
+ int_nth: LEMMA
+   FORALL(a:(d), b:{ bb:(d) | bb > a },
+   f:{ ff:r2v | integrable?(a, b, ff) },
+   i:{ ii:nat | ii < length(f) }):
+    nth(integral(a, b, f), i)
+     = integral(a, b, nth(f, i))
+
+%-------------------------------------------------------------------------
+%% Define entrywise Integrable and Integral for general a and b
+%-------------------------------------------------------------------------
+
+ Integrable?(a, b:(d), f:r2v): bool =
+ FORALL(i:{ ii:nat| ii < length(f) }):
+   Integrable?(a, b, nth(f, i))
+
+ Integral(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) }):
+   RECURSIVE VectorN(length(f)) =
+ IF null?(f)
+   THEN null[real]
+ ELSE
+   cons(Integral(a, b, car(f)), Integral(a, b, cdr(f)))
+ ENDIF
+ MEASURE length(f)
+
+ Int_nth: LEMMA
+   FORALL(a, b:(d),
+   f:{ ff:r2v | Integrable?(a, b, ff) },
+   i:{ ii:nat | ii < length(f) }):
+    nth(Integral(a, b, f), i)
+    = Integral(a, b, nth(f, i))
+
+%-------------------------------------------------------------------------
+%% The Integral from a to a is zero
+%-------------------------------------------------------------------------
+
+ Int_zero: LEMMA
+   FORALL(a:(d), f:r2v):
+    Integral(a, a, f)
+    = zero_vec(length(f))
+
+%-------------------------------------------------------------------------
+%% Integral and integral agree when b > a
+%-------------------------------------------------------------------------
+
+ Int_int: LEMMA
+   FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) }):
+    b > a
+     IMPLIES
+      Integral(a, b, f) = integral(a, b, f)
+   
+%-------------------------------------------------------------------------
+%% The sum, difference, and scalar multiple of two Integrable functions 
+%  is Integrable
+%-------------------------------------------------------------------------
+
+ Integrable_sum: LEMMA
+   FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+   g:{ gg:r2v | Integrable?(a, b, gg) AND length(gg) = length(f) }):
+     Integrable?(a, b, f + g)
+
+ Int_sum: LEMMA
+  FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+  g:{ gg:r2v | Integrable?(a, b, gg) AND length(gg) = length(f) }):
+    Integral(a, b, f + g)
+     = Integral(a, b, f) + Integral(a, b, g)
+
+ Integrable_diff: LEMMA
+  FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+  g:{ gg:r2v | Integrable?(a, b, gg) AND length(gg) = length(f) }):
+   Integrable?(a,b,f - g)
+
+ Int_diff: LEMMA
+  FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+  g:{ gg:r2v | Integrable?(a, b, gg) AND length(gg) = length(f) }):
+   Integral(a, b, f - g)
+    = Integral(a, b, f) - Integral(a, b, g)
+
+ Integrable_const: LEMMA
+  FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+  C:real):
+   Integrable?(a, b, LAMBDA(x:(d)): C * f(x))
+
+ Integral_const: LEMMA
+  FORALL(a, b:(d), f:{ ff:r2v | Integrable?(a, b, ff) },
+  C:real ):
+   Integral(a, b, LAMBDA(x:(d)): C * f(x))
+    = C * Integral(a, b, f)
+
+%-------------------------------------------------------------------------
+%% Define entrywise continuity
+%-------------------------------------------------------------------------
+
+ continuous?(f:r2v):  bool =
+  FORALL(i:{ ii:nat | ii < length(f) }):
+   continuous?[(d)](nth(f, i))
+
+%-------------------------------------------------------------------------
+%% Continuous entrywise is the same as continuous as a vector
+%-------------------------------------------------------------------------
+
+ cont_entry_v: LEMMA
+  FORALL(y: { yy:r2v | continuous?(yy) AND cons?(yy) }):
+   contD?[1](LAMBDA(x:VectorN(1)): d(car(x)), length(y))
+     (LAMBDA(x: { xx:VectorN(1) | d(car(xx)) }): y(car(x)))
+
+ cont_v_entry: LEMMA
+   FORALL(y: { yy:r2v | cons?(yy) }):
+    contD?[1](LAMBDA(x:VectorN(1)): d(car(x)), length(y))
+     (LAMBDA(x: { xx:VectorN(1) | d(car(xx)) }): y(car(x)))
+      IMPLIES continuous?(y)
+      
+
+%-------------------------------------------------------------------------
+%% A continuous function can be lifted to a continuous function from
+% R1 to R1 (with list input and output). This should go in Multi-var
+% cont. A similar version of this lemma exists in the multi-variate library
+% in "continuity multivar"
+%-------------------------------------------------------------------------
+
+ cont_triv: LEMMA
+  FORALL(f:[(d)->real]):
+   continuous?(f) IFF
+   contD?[1](LAMBDA(v:VectorN(1)): d(car(v)),1)
+    (LAMBDA (v: { vv: VectorN(1) | d(car(vv)) }):
+     (: f(car(v)) :))
+
+%-------------------------------------------------------------------------
+%% A continuous function composed with a norm is still continuous
+%-------------------------------------------------------------------------
+
+ cont_nn_comp: LEMMA
+  FORALL(n:posnat,
+   y:{ yy:r2v_n(n) | continuous?(yy) },
+    nn:(norm?(n))):
+     continuous?[(d)](LAMBDA(x:(d)): nn(y(x)))
+
+%-------------------------------------------------------------------------
+%% The difference between entrwise continuous function is continuous
+%-------------------------------------------------------------------------
+
+ cont_sub: LEMMA
+  FORALL(n:posnat, f, g:{ ff:r2v_n(n) | continuous?(ff) }):
+   continuous?(LAMBDA(x:(d)): f(x) - g(x))
+    
+%-------------------------------------------------------------------------
+%% continuity implies integrability
+%-------------------------------------------------------------------------
+
+ cont_int: LEMMA
+  FORALL(f:r2v): continuous?(f) IMPLIES
+   FORALL(a:(d), b:{ bb:(d) | bb > a }):
+    integrable?(a, b, f)
+
+ cont_Int: LEMMA
+  FORALL(f:r2v): continuous?(f) IMPLIES
+   FORALL(a, b:(d)):
+    Integrable?(a, b, f)
+
+%-------------------------------------------------------------------------
+%% Integral is continuous
+%-------------------------------------------------------------------------
+
+ Int_cont: LEMMA
+  FORALL(f:{ ff:r2v | continuous?(ff) },
+   a:(d)):
+    continuous?(LAMBDA(x:(d)): Integral(a, x, f))
+
+%-------------------------------------------------------------------------
+%% derivability implies continuity
+%-------------------------------------------------------------------------
+
+ der_cont: LEMMA
+  FORALL(f:r2v): derivable?(f) IMPLIES
+     continuous?(f)
+
+  %~~~    End  ~~%     
+  END r2v_analysis

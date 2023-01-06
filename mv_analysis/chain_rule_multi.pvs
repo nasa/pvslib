@@ -1,0 +1,202 @@
+chain_rule_multi   [n, m1, m2:posnat ]
+		: THEORY
+
+  BEGIN
+
+
+IMPORTING convergence_vec2vec
+IMPORTING mat_vec_mult
+
+%	             April 2021 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| The multivariate chain rule   |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%--------------------------------------------
+%% For functions
+%  f: Rm1 -> Rm2
+%  g: Rn -> Rm1
+%  define composition
+%  f o g : Rn -> Rm2
+
+%% Note: vec2vec[a](b) means Ra -> Rb
+%--------------------------------------------
+
+comp(f:vec2vec[m1](m2),
+ g:vec2vec[n](m1)): vec2vec[n](m2)
+ =
+ LAMBDA(p:VectorN(n)):
+ f(g(p))
+
+; o(f:vec2vec[m1](m2),g:vec2vec[n](m1)):
+ vec2vec[n](m2)
+ = comp(f,g)
+
+%--------------------------------------------
+%% To show the chain rule, there is a meadley
+%  of inequalities that must be shown
+
+% Note: der_f[b](a,D,p)(f): MatrixMN (a,b)
+%       matvec[b](a,A,x): VectorN(a),
+%	  A: MatrixMN(a,b)
+%         x: VectorN(b)
+%--------------------------------------------
+
+pre_chain_addzero_triag: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1), p:{p:(Dg)| Df(g(p))}, h:{hh:(NQ(Dg,p))| Df(g(p+hh)) }):
+ (differentiable?[m1](m2,Df,f,g(p))AND
+ differentiable?[n](m1,Dg,g,p))
+ IMPLIES
+ norm_inf(m2)(comp(f,g)(p+h)-comp(f,g)(p)
+  - ((der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g)) * h))
+  <=  norm_inf(m2)(comp(f,g)(p+h)-comp(f,g)(p) -
+   der_f[m1](m2,Df,g(p))(f)*(g(p+h)-g(p))) 
+   +  norm_inf(m2)(der_f[m1](m2,Df,g(p))(f) * (g(p+h)-g(p) - der_f[n](m1,Dg,p)(g) * h))
+
+pre_chain_bound: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1), p:{p:(Dg)| Df(g(p))}):
+ (differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ IMPLIES
+ EXISTS(M:posreal):
+ FORALL(h:{hh:(NQ(Dg,p))| Df(g(p+hh)) }):
+ norm_inf(m2)(comp(f,g)(p+h)-comp(f,g)(p)
+  - ((der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g)) * h))
+  <=  norm_inf(m2)(comp(f,g)(p+h)-comp(f,g)(p) -
+   der_f[m1](m2,Df,g(p))(f)*(g(p+h)-g(p))) 
+   +  M * norm_inf(m1)((g(p+h)-g(p) - der_f[n](m1,Dg,p)(g) * h))
+
+g_diff_Meps2_bound: LEMMA
+ FORALL(
+ Dg:(deriv_domain?[n]),
+ g:vec2vec[n](m1), p:(Dg)):
+ differentiable?[n](m1,Dg,g,p)
+ IMPLIES
+ FORALL(epsilon,M:posreal):
+ EXISTS(delta:posreal):
+ FORALL(h:{hh:(NQ(Dg,p))| hh /= zero_vec(n) }):
+ norm_inf(n)(h) < delta IMPLIES
+  M * norm_inf(m1)((g(p+h)-g(p) - der_f[n](m1,Dg,p)(g) * h)) / norm_inf(n)(h) < epsilon / 2
+
+f_diff_Meps2_bound: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ g:vec2vec[n](m1),
+ f:vec2vec[m1](m2), p:{p:(Dg)| Df(g(p))}):
+ (differentiable?[n](m1,Dg,g,p) AND differentiable?[m1](m2,Df,f,g(p)))
+ IMPLIES
+ FORALL(epsilon:posreal):
+ EXISTS(delta:posreal):
+ FORALL(h:{hh:(NQ(Dg,p))| Df(g(p+hh)) AND hh /= zero_vec(n) }):
+ norm_inf(n)(h) < delta IMPLIES
+  norm_inf(m2)(comp(f,g)(p+h)-comp(f,g)(p) -
+   der_f[m1](m2,Df,g(p))(f)*(g(p+h)-g(p))) / norm_inf(n)(h) < epsilon / 2
+
+
+comp_dom(Df:(deriv_domain?[m1]),Dg:(deriv_domain?[n]),
+ g:vec2vec[n](m1)):
+ [VectorN(n) -> bool]
+ = LAMBDA(p:VectorN(n)): Dg(p) AND Df(g(p))
+
+chain_rule_multi: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1), p:{p:(Dg)| Df(g(p))}):
+ ((differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ AND
+ deriv_domain?[n](comp_dom(Df,Dg,g)))
+ IMPLIES
+ differentiable?[n](m2,comp_dom(Df,Dg,g),comp(f,g),p)
+
+chain_rule_multi_subdom: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1),
+ D:(deriv_domain_sub?(comp_dom(Df,Dg,g))), p:(D)):
+ (differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ IMPLIES
+ differentiable?[n](m2,D,comp(f,g),p)
+
+chain_rule_multi_der: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1), p:{p:(Dg)| Df(g(p))}):
+ ((differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ AND
+ deriv_domain?[n](comp_dom(Df,Dg,g)))
+ IMPLIES
+ der_p?(m2,comp_dom(Df,Dg,g),p,comp(f,g))(der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g))
+
+chain_rule_multi_der_subdom: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1),
+ D:(deriv_domain_sub?(comp_dom(Df,Dg,g))), p:(D)):
+ (differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ IMPLIES
+ der_p?(m2,D,p,comp(f,g))(der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g))
+
+
+%--------------------------------------------
+%% Chain rule below
+%--------------------------------------------
+
+chain_rule_multi_der_is: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1), p:{p:(Dg)| Df(g(p))}):
+ ((differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p))
+ AND
+ deriv_domain_e_partial?[n](comp_dom(Df,Dg,g)))
+ IMPLIES
+ der_f[n](m2,comp_dom(Df,Dg,g),p)(comp(f,g)) = der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g)
+
+
+chain_rule_multi_der_is_subdom: LEMMA
+ FORALL(
+ Df:(deriv_domain?[m1]),
+ Dg:(deriv_domain?[n]),
+ f:vec2vec[m1](m2),
+ g:vec2vec[n](m1),
+ D:(deriv_domain_sub?(comp_dom(Df,Dg,g))), p:(D)):
+ ((differentiable?[m1](m2,Df,f,g(p))
+ AND
+ differentiable?[n](m1,Dg,g,p)
+ AND
+ deriv_domain_e_partial?[n](D)))
+ IMPLIES
+ der_f[n](m2,D,p)(comp(f,g)) = der_f[m1](m2,Df,g(p))(f) * der_f[n](m1,Dg,p)(g)
+
+ %~~~ The End    ~~~%
+ END chain_rule_multi

@@ -1,0 +1,242 @@
+ODE_solution_existence_uniqueness    % Welcome
+      	     	: THEORY
+%Created by                     JTS
+%	 	           Jan 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This theory shows that a      |%
+%| first order ODE initial value |%
+%| problem, where the            |%
+%| function is Lipschitz in the  |%
+%| second variable and continuous|%
+%| in the first variable.        |%
+%| This is known as the          |%
+%| Picard Lindel\:{o}f Theorem   |%	
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last Updated	           Jan 2020
+
+%-----     %
+ BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%% Importing continuous_function_complete_rho to have that the
+%  continuous function space is complete on a closed interval
+%% Importing interval_def to have closed intervals
+%% Importing ODE_psi_contraction to have that psi is a contraction
+%-------------------------------------------------------------------------
+
+ IMPORTING continuous_function_complete_rho
+ IMPORTING interval_def
+ IMPORTING ODE_psi_contraction
+ IMPORTING restrict_ode
+ IMPORTING analysis@derivatives_subtype
+
+%-------------------------------------------------------------------------
+%% Define Psi that goes from the space of continous functions on a
+%  closed interval d into itself. Is is the same as psi.
+%-------------------------------------------------------------------------
+
+ Psi(d:(closed_interval?), n:posnat, f:{ff: od_f[d](n) |
+  Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n))(y:S[d](n)):
+  S[d](n)
+   = psi[d](n, car(d_b[d]), y0, y, f)
+
+%-------------------------------------------------------------------------
+%% Psi is a contraction
+%-------------------------------------------------------------------------
+
+ Psi_contract: LEMMA
+  FORALL(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+   Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n)):
+    contraction?
+    [S[d](n), rho[d](n, 2 * Lip_c[d](n)(f) + 1, norm_inf(n)), fullset[S[d](n)]]
+    (Psi(d, n, f, y0))
+
+%-------------------------------------------------------------------------
+%% Psi has a fixed point
+%-------------------------------------------------------------------------
+
+ Psi_fixed_point: LEMMA
+  FORALL(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+   Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n)):
+   (EXISTS (x_star: S[d](n)): Psi(d, n, f, y0)(x_star) = x_star AND
+    (FORALL (y: S[d](n)): Psi(d, n, f, y0)(y) = y IMPLIES y = x_star) AND
+    (FORALL (x: S[d](n)):
+    metric_converges_to[S[d](n),rho[d](n, 2 * Lip_c[d](n)(f) + 1, norm_inf(n))]
+    (fun_iter[S[d](n), rho[d](n, 2 * Lip_c[d](n)(f) + 1, norm_inf(n)),
+    fullset[S[d](n)]](Psi(d, n, f, y0))(x), x_star)))
+
+%-------------------------------------------------------------------------
+%% The ODE has a unique solution, and there is an iteration that converges
+%  to it 
+%-------------------------------------------------------------------------
+
+ init_unique_solution: LEMMA
+  FORALL(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+   Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n)):
+    EXISTS(y:{yy:r2v_n[d](n) | derivable?[d](yy)}):
+    ((ivt_s_unique?[d](n, car(d_b[d]), f, y0)(y)
+     AND
+     Psi(d, n, f, y0)(y) = y)
+     AND
+     (FORALL (x: S[d](n)):
+     metric_converges_to[S[d](n),rho[d](n, 2 * Lip_c[d](n)(f) + 1, norm_inf(n))]
+     (fun_iter[S[d](n), rho[d](n, 2 * Lip_c[d](n)(f) + 1, norm_inf(n)),
+     fullset[S[d](n)]](Psi(d, n, f, y0))(x), y)))
+
+%-------------------------------------------------------------------------
+%% The ODE has a unique solution, this is the version that does not
+%  include anything about the iteration
+%  Picard-Lindelöf Theorem
+%-------------------------------------------------------------------------
+
+ unique_solution: LEMMA
+  FORALL(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+   Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n)):
+    EXISTS(y:{yy:r2v_n[d](n) | derivable?[d](yy)}):
+    ivt_s_unique?[d](n, car(d_b[d]), f, y0)(y)
+
+%-------------------------------------------------------------------------
+%% This function returns the solution to an ODE
+%-------------------------------------------------------------------------
+
+ ode_sol(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+  Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)})(y0:VectorN(n)):
+   {yy:r2v_n[d](n) | derivable?[d](yy)
+   AND ivt_s_unique?[d](n, car(d_b[d]), f, y0)(yy)}
+
+%-------------------------------------------------------------------------
+%% If the ODE function is Lipschitz on a larger interval, then the solution
+%  of the ODE can be extended to that larger interval, and it will agree
+%  with the solution on the smaller interval 
+%-------------------------------------------------------------------------
+
+ ode_sol_extend: LEMMA
+  FORALL(n:posnat, a:real, b:{bb:real| bb>a}, c:{cc:real| cc >= b},
+  f:{ff: od_f[(closed_interval(a,c))](n) |
+   Lip_d?[(closed_interval(a,c))](n)(ff)
+   AND
+   cont_d?[(closed_interval(a,c))](n)(ff)}, y0:VectorN(n)):
+    (LAMBDA(t:(closed_interval(a,b))): ode_sol(closed_interval(a,c),n,f)(y0)(t)) =
+   ode_sol(closed_interval(a,b),n,
+   restrict[(closed_interval(a,c)),(closed_interval(a,b))](n,f))(y0)
+
+
+%-------------------------------------------------------------------------
+%% Define Lipschitz on every closed interval [a,b] for b>a and a fixed a
+%-------------------------------------------------------------------------
+
+Lip_hp?(a:real, n:posnat)(f:od_f[(hp(a))](n)): bool =
+  FORALL(b:{bb:real| bb > a}):
+  Lip_d?[(closed_interval(a,b))](n)(restrict[(hp(a)),(closed_interval(a,b))](n,f))
+
+ ode_sol_restrict_hp: LEMMA
+   FORALL(n:posnat, a:real,  f: {ff: od_f[(hp(a))](n)
+	  | cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a, n)(ff)}, y:({yy: (derivable?[(hp(a))]) |length(yy)=n})):
+	  od_sol?[(hp(a))](n,a,f)(y) IMPLIES
+	  FORALL(b:{bb:real| bb>a}): od_sol?[(closed_interval(a,b))](n,a,
+	  restrict[(hp(a)),(closed_interval(a,b))](n,f))(LAMBDA(t:(closed_interval(a,b))): y(t))
+
+% unique_solution_restrict: LEMMA
+%  FORALL(d:(closed_interval?), n:posnat, f: {ff: od_f[d](n) |
+%   Lip_d?[d](n)(ff) AND cont_d?[d](n)(ff)}, y0:VectorN(n)):
+%    EXISTS(y:{yy:r2v_n[d](n) | derivable?[d](yy)}):
+%    FORALL(sd:{dd:(closed_interval?)| (car[real](d_b[(dd)])) = (car[real](d_b[(d)])) }):
+%    ivt_s_unique?[d](n, car(d_b[(sd)]), restrict[(d),(sd)](n,f), y0)(LAMBDA(t:(sd)): y(t))
+
+ unique_solution_restrict: LEMMA
+  FORALL(a:real,c:{cc:real| cc > a}, n:posnat, f:{ff: od_f[closed_interval(a,c)](n) |
+   Lip_d?[closed_interval(a,c)](n)(ff) AND cont_d?[closed_interval(a,c)](n)(ff)}, y0:VectorN(n)):
+   EXISTS(y:{yy:r2v_n[closed_interval(a,c)](n) | derivable?[closed_interval(a,c)](yy)}):
+    FORALL(b:{bb:real| c>= bb AND bb >a}):
+     ivt_s_unique?[closed_interval(a,b)](n, a,
+     (LAMBDA(x:(closed_interval(a,b)),v:VectorN(n)): f(x,v)), y0)
+     (LAMBDA(t:(closed_interval(a,b))): y(t))
+% ivt_s_unique?[sd](n, car(d_b[d]), restrict[(d),(sd)](n, f), y0)(LAMBDA(t:(sd)): y(t))
+%-------------------------------------------------------------------------
+%% This equality of functions will be used in the ode_deriv_lemma
+%  this is trivial, but the (decompose-equality) in the proof would not
+%  exicute in the ode_sol_deriv lemma
+%-------------------------------------------------------------------------
+
+ci_lambda_eq: LEMMA
+  FORALL(a:real, n:posnat, f:od_f[(hp(a))](n), x:(hp(a)), x2:{xx:real| hp(a)(xx+x)}):
+  (1 + ceiling(x2 + x)) = ( 1 + ceiling(x)) IMPLIES 
+(LAMBDA (x_1: (closed_interval(a, 1 + ceiling(x2 + x))),
+               v: VectorN(n)) -> VectorN(n):
+         f(x_1, v))
+       =
+       (LAMBDA (x_1: (closed_interval(a, 1 + ceiling(x))),
+                v: VectorN(n)) -> VectorN(n):
+          f(x_1, v))
+
+%-------------------------------------------------------------------------
+%% Show the solution of and odes with a function that is Lip_hp
+%  is derivable 
+%-------------------------------------------------------------------------
+
+ode_sol_derivable: LEMMA
+  FORALL (a: real, n: posnat,
+          f: {ff: od_f[(hp(a))](n)
+	  | cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a, n)(ff)},
+          y0: VectorN(n)):
+   derivable?[(hp(a))]
+   (LAMBDA (t: (hp(a))):
+   ode_sol(closed_interval(a, ceiling(t) + 1), n,
+   restrict[(hp(a)), (closed_interval(a, 1 + ceiling(t)))]
+   (n, f))(y0)(t))
+
+ode_sol_deriv: LEMMA
+  FORALL (a: real, n: posnat,
+          f: {ff: od_f[(hp(a))](n)
+	  | cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a, n)(ff)},
+          y0: VectorN(n), x:(hp(a))):
+   deriv[(hp(a))]
+   (LAMBDA (t: (hp(a))):
+   ode_sol(closed_interval(a, ceiling(t) + 1), n,
+   restrict[(hp(a)), (closed_interval(a, 1 + ceiling(t)))]
+   (n, f))(y0)(t))(x) = deriv[closed_interval(a, ceiling(x) + 1)](ode_sol(closed_interval(a, ceiling(x) + 1), n,
+   restrict[(hp(a)), (closed_interval(a, 1 + ceiling(x)))]
+   (n, f))(y0))(x)
+
+ode_sol_init: LEMMA
+  FORALL (a: real, n: posnat,
+          f: {ff: od_f[(hp(a))](n)
+	  | cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a, n)(ff)},
+          y0: VectorN(n)):
+   (LAMBDA (t: (hp(a))):
+   ode_sol(closed_interval(a, ceiling(t) + 1), n,
+   restrict[(hp(a)), (closed_interval(a, 1 + ceiling(t)))]
+   (n, f))(y0)(t))(a) = y0
+%-------------------------------------------------------------------------
+%% Show existance and uniqueness on halfplane
+%  Picard-Lindelöf Theorem
+%-------------------------------------------------------------------------
+
+sol_uniq_hp: LEMMA
+  FORALL (a: real, n: posnat,
+    f:{ff: od_f[(hp(a))](n) |
+    cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a, n)(ff)},
+    y0: VectorN(n)):
+          ivt_s_unique?[(hp(a))]
+              (n, a, f, y0)
+              (LAMBDA (t: (hp(a))):
+                 ode_sol(closed_interval(a, ceiling(t) + 1), n,
+                         restrict
+                             [(hp(a)), (closed_interval(a, 1 + ceiling(t)))]
+                             (n, f))
+                        (y0)(t))
+
+
+%-------------------------------------------------------------------------
+%% This is the solution on a half-plane, if the ODE function
+%  is Lipschitz on all closed intervals starting where the halfplane
+%  starts
+%-------------------------------------------------------------------------
+
+ ode_sol(a:real ,n:posnat, f:{ff: od_f[(hp(a))](n) | cont_d?[(hp(a))](n)(ff) AND Lip_hp?(a,n)(ff)})(y0:VectorN(n)):
+   {yy: (derivable?[(hp(a))])| ivt_s_unique?[(hp(a))](n, a, f, y0)(yy) } = 
+  LAMBDA(t:(hp(a))): ode_sol(closed_interval(a,ceiling(t)+1),n, restrict[(hp(a)),(closed_interval(a,ceiling(t)+1))](n,f))(y0)(t)
+  
+  %~~~                 END         ~~~%
+  END ODE_solution_existence_uniqueness

@@ -1,0 +1,666 @@
+fundamentals_constrained_optimization  [ n: posnat ] %Hei!
+%%n - optimizing f: D -> R where D is subset of Rn
+		: THEORY
+		
+%	              June 2018 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%|  These are the fundamentals   |%
+%| of constrained optimization   |%
+%|     Defining global/local     |%
+%|         max/min               |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%--------------------------------------------
+%% Importing unconstrained_local_extrema[ n ]
+%  and unconstrained_global_extrema[ n ]
+%  to have definitions of extrema
+
+%% Importing domain_vec2real_def[n]
+%  to have domains and constraints
+%--------------------------------------------	
+
+IMPORTING unconstrained_local_extrema[ n ]
+IMPORTING unconstrained_global_extrema[ n ]
+IMPORTING domain_vec2real_def[n]
+   
+%--------------------------------------------
+%% Define the nth, car, cdr of a constraint.
+%  constraint2vector turns constraint
+%  into vector of functions
+%--------------------------------------------
+
+nth( m: nat, c: constraints(m), i:below( m ) ):
+     vec2real_f =
+     LAMBDA(v:VectorN(n)): nth(c(v),i)
+
+
+car(m: posnat, c: constraints(m)):
+     vec2real_f =
+     LAMBDA(v:VectorN(n)): car(c(v))
+car_v(m: posnat, c: constraints(m)):
+     constraints(1) =
+     LAMBDA(v:VectorN(n)): (: car(c(v)) :)
+
+cdr(m: posnat, c: constraints( m ) ):
+     constraints( m-1 ) =
+     LAMBDA ( v: VectorN( n ) ): cdr( c( v ) )
+
+append(m1,m2:nat, c1: constraints(m1), c2: constraints(m2)):
+     constraints(m1+m2) =
+     LAMBDA( v: VectorN( n ) ): append( c1(v), c2(v))
+
+
+constraint2vector(m: nat, c:constraints(m)):
+     RECURSIVE listn[vec2real_f]( m ) =
+     IF m = 0
+     THEN null
+     ELSE cons( car( m, c),
+     constraint2vector(m-1, cdr( m, c ) ) )
+     ENDIF MEASURE m
+
+%--------------------------------------------
+%% Filter function for constraints. Note output
+%  is not of contraint type
+%--------------------------------------------
+filter(m: nat, c: constraints(m), P: pred[vec2real_f]):
+     list[vec2real_f]
+     = filter(constraint2vector(m,c),P)
+     
+%--------------------------------------------
+%% Add a constraint to a constraint with cons
+%--------------------------------------------
+
+cons_f(m:posnat, f:vec2real_f, c: constraints(m-1)):
+     constraints(m) =
+     LAMBDA ( v: VectorN( n ) ): cons( f(v), c(v))
+
+%--------------------------------------------
+%% Take a list of functions and make a constraint
+%  function
+%--------------------------------------------
+
+listfuns2fun(v: list[vec2real_f])(d : VectorN(n)):
+     RECURSIVE list =
+     IF v = null 
+     THEN null
+     ELSE cons( car(v)(d),
+     listfuns2fun(cdr(v))(d))
+     ENDIF MEASURE v by <<
+
+listfuns_length: LEMMA FORALL(v:list[vec2real_f], x:VectorN(n)):
+      length(listfuns2fun(v)(x)) = length(v)
+
+%--------------------------------------------
+%% Make a constraint function from a filter
+%--------------------------------------------
+
+filter_fun(m:nat,c:constraints(m), P:pred[vec2real_f]):
+     constraints(length(filter(m,c,P))) =
+     listfuns2fun(filter(m,c,P))
+
+filter_fun_filter: LEMMA FORALL( D: domain, m: nat, c: constraints(m), P:pred[vec2real_f]):
+     FORALL(i: below(length(filter(m,c,P)))):
+     nth(length(filter(m, c, P)),filter_fun(m,c,P),i)
+     = nth(filter(m,c,P),i)
+
+%filter_cdr: LEMMA
+%     FORALL(m:posnat,c:constraints(m),P:pred[vec2real_f]):
+%     cons?[vec2real_f[n]](filter(m, c, P)) IMPLIES
+%     cdr(filter(m,c,P)) = filter(m-1,cdr(m,c),P)
+
+%--------------------------------------------
+%% Relationship between nth of a filter and the
+%  original list. Some of these lemmas can probably
+%  be deleted
+%--------------------------------------------
+
+T: Type
+
+filter_nth: LEMMA forall ( L :list[T], P: [T->bool]):
+     LET FL = filter(L,P)  IN 
+       cons?(FL) IMPLIES
+      FORALL (i:below(length(FL))):
+      EXISTS (j: below(length(L))):
+        nth(FL, i) = nth(L,j)
+
+filter_2nth: LEMMA forall ( L :list[T], P: [T->bool]):
+     LET FL = filter(L,P)  IN 
+      FORALL (i:below(length(FL))):
+      EXISTS (j: below(length(L))):
+        nth(FL, i) = nth(L,j)
+
+filter_nth2: LEMMA forall ( L :list[vec2real_f], P: [vec2real_f->bool]):
+     LET FL = filter(L,P)  IN 
+       cons?(FL) IMPLIES
+      FORALL (i:below(length(FL))):
+      EXISTS (j: below(length(L))):
+        nth(FL, i) = nth(L,j)
+
+filter_2nth2: LEMMA forall ( L :list[vec2real_f], P: [vec2real_f->bool]):
+     LET FL = filter(L,P)  IN 
+      FORALL (i:below(length(FL))):
+      EXISTS (j: below(length(L))):
+        nth(FL, i) = nth(L,j)
+
+%filter_nth3: LEMMA
+%     FORALL(m:nat, c:constraints(m), P:pred[vec2real_f]):
+%     FORALL(i: below(length(filter(m,c,P)))):
+%     EXISTS(j: below(m)):
+%     nth(length(filter(m,c,P)),filter_fun(m,c,P),i) = nth(m,c,j)
+     
+%--------------------------------------------
+%% some useful facts about listfuns2fun and nth
+%  for constarints
+%--------------------------------------------
+   
+%eslf2f_length: LEMMA
+%     FORALL (v: list[vec2real_f], d:VectorN(n)):
+%     length(listfuns2fun(v)(d)) = length(v)
+     
+c2v_nth: LEMMA FORALL(D:domain, m:nat, c:constraints(m), i: below(m)):
+     nth(m,c,i) = nth(constraint2vector(m,c),i)
+     
+%--------------------------------------------
+%% listfuns2fun output type for
+%  a special case of input
+%--------------------------------------------
+
+listfuns2fun(m:nat,
+     v: {vv: list[vec2real_f] | length(vv) = m}):
+     [VectorN(n) ->
+     VectorN( m )] =
+     listfuns2fun(v)
+     
+%--------------------------------------------
+%% Define a feasible point 
+%--------------------------------------------
+
+sat_eq_constraint?( m: nat,
+     eq_constraints: constraints( m ))( v: VectorN(n) ):
+     bool =
+     FORALL ( i: below( m ) ):
+     nth( eq_constraints( v ), i ) = 0 ;
+
+sat_ineq_constraint?( m: nat,
+     ineq_constraints: constraints( m ) )( v: VectorN(n) ):
+     bool =
+     FORALL ( i: below( m ) ):
+     nth( ineq_constraints( v ), i ) >= 0 ;
+     
+feasible?(m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )( v: VectorN( n ) ):
+     bool =
+     sat_eq_constraint?( m1, eq_constraints )( v )
+     AND sat_ineq_constraint?( m2, ineq_constraints )( v ) ;
+
+feasible_prob?(m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) ):
+     bool =
+     EXISTS (v: VectorN( n )):
+     feasible?(m1, m2,
+     eq_constraints, ineq_constraints)
+     ( v )
+
+infeasible_prob? (m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) ):
+     bool = NOT feasible_prob?(m1, m2,
+     eq_constraints,
+     ineq_constraints)
+
+%--------------------------------------------
+%% some useful facts about satisfying
+%  constraints
+%--------------------------------------------
+
+sat_eq_1: LEMMA FORALL ( m: nat, eq_constraints:
+     constraints( m ), v: VectorN( n ) ):
+     sat_eq_constraint? ( m, eq_constraints )( v )
+     IFF eq_constraints( v ) = zero_vec( m ) ;
+
+sat_ineq_1: LEMMA FORALL ( m: posnat, ineq_constraints:
+     constraints( m ), v: VectorN( n ) ):
+     sat_ineq_constraint? ( m, ineq_constraints )( v )
+     IFF
+     greater_eq?( ineq_constraints( v ), zero_vec( m ) ) ;
+
+%--------------------------------------------	
+%%Global max/min
+%--------------------------------------------
+
+is_glob_minimizer?( m1, m2: nat,
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n )):
+     bool =
+     ( D( v )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( ( D( v2 )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v2 ) )
+     IMPLIES
+     (f(v)<= f(v2))) ;
+
+is_glob_min?( m1, m2: nat, c: real,
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ))
+     ( v: VectorN( n ) ):
+     bool =
+     (D(v)
+     AND feasible?(m1,m2,
+     eq_constraints,ineq_constraints )( v ) )
+     AND FORALL (v2: VectorN(n)):
+     (D(v2)
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints )( v2 ) )
+     IMPLIES c <= f(v2)
+
+is_glob_maximizer?( m1, m2: nat,
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n )):
+     bool =
+     ( D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( ( D( v2 )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v2 ) )
+     IMPLIES
+     ( f( v2 ) <= f( v ) ) ) ;
+
+is_glob_max?( m1, m2: nat, c: real, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ))
+     ( v: VectorN( n ) ):
+     bool =
+     (D( v )
+     AND feasible?(m1,m2,
+     eq_constraints,ineq_constraints )( v ) )
+     AND FORALL (v2: VectorN(n)):
+     (D( v2 )
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints )( v2 ) )
+     IMPLIES f( v2 ) <= c
+	
+%--------------------------------------------
+%% Test lemmas to enjoy
+%--------------------------------------------
+
+%(1) if there are no constraints then every point is feasible 
+trivial_eq: LEMMA FORALL ( m: nat, v: VectorN( n ),
+     eq_constraints: constraints( m ) ):
+     ( FORALL ( i:below( m ) ):
+     nth( eq_constraints( v ), i ) = 0 )
+     IMPLIES  sat_eq_constraint?( m, eq_constraints )( v )
+
+%(2) 4 is a global minimizer of x^2 on the domain (-inf,-2) U (2, inf)
+x_square: LEMMA ( n = 1 ) IMPLIES
+     FORALL (m1, m2 :nat,
+     v: VectorN(1),
+     square_f: [VectorN(1)->real],
+     ineq_constraints: constraints(1),
+     eq_constraints: constraints(0)):
+     (m1=0
+     AND m2=1
+     AND v=(: 2 :)
+     AND
+     FORALL (v: VectorN(1)):
+     square_f(v) = nth(v,0) * nth(v,0)
+     AND ineq_constraints(v) = (: abs(nth(v,0))-2  :)
+     AND eq_constraints(v) = (: :))
+     IMPLIES is_glob_minimizer?(m1, m2,
+     square_f,(LAMBDA(v: VectorN(1)): TRUE),
+     eq_constraints, ineq_constraints)(v)
+
+%--------------------------------------------
+%% Define local max/min
+% in terms of the all norms
+%--------------------------------------------
+
+is_loc_minimizer?( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n ) ): bool =
+     ( D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL(nn:(norm?(n))): (EXISTS (epsilon: real):
+     FORALL (v2: VectorN(n)):
+     (D(v2)
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints)(v2)
+     AND nn(v-v2)< epsilon)
+     IMPLIES f(v)<= f(v2)) ;
+	
+is_loc_min?( m1, m2: nat, f: vec2real_f,
+     D:domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(c: real): bool =
+     FORALL (nn:(norm?(n))):
+     (EXISTS ( epsilon: real, v: VectorN( n ) ):
+     ( f( v ) = c
+     AND D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v2 )
+     AND nn( v - v2 )< epsilon )
+     IMPLIES f( v ) <= f( v2 ))
+
+is_loc_maximizer?( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n ) ): bool =
+     ( D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL (nn:(norm?(n))): (EXISTS (epsilon: real):
+     FORALL (v2: VectorN(n)):
+     (D(v2)
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints)(v2)
+     AND nn(v-v2)< epsilon)
+     IMPLIES f(v2)<= f(v))
+     
+is_loc_max?( m1, m2: nat, f: vec2real_f,
+     D:domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(c: real): bool =
+     FORALL (nn:(norm?(n))):(
+     EXISTS ( epsilon: real, v: VectorN( n ) ):
+     ( f( v ) = c
+     AND D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v2 )
+     AND nn( v - v2 )< epsilon )
+     IMPLIES f( v2 ) <= f( v ))
+
+%--------------------------------------------
+%% Define local max/min
+% in terms of the a norm
+%--------------------------------------------
+
+is_loc_minimizer?(nn:(norm?(n)))( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n ) ): bool =
+     ( D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND  (EXISTS (epsilon: real):
+     FORALL (v2: VectorN(n)):
+     (D(v2)
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints)(v2)
+     AND nn(v-v2)< epsilon)
+     IMPLIES f(v)<= f(v2)) ;
+	
+is_loc_min?(nn:(norm?(n)))( m1, m2: nat, f: vec2real_f,
+     D:domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(c: real): bool =
+     (EXISTS ( epsilon: real, v: VectorN( n ) ):
+     ( f( v ) = c
+     AND D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v2 )
+     AND nn( v - v2 )< epsilon )
+     IMPLIES f( v ) <= f( v2 ))
+
+is_loc_maximizer?(nn:(norm?(n)))( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )
+     ( v: VectorN( n ) ): bool =
+     ( D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND  (EXISTS (epsilon: real):
+     FORALL (v2: VectorN(n)):
+     (D(v2)
+     AND feasible?(m1, m2,
+     eq_constraints, ineq_constraints)(v2)
+     AND nn(v-v2)< epsilon)
+     IMPLIES f(v2)<= f(v))
+     
+is_loc_max?(nn:(norm?(n)))( m1, m2: nat, f: vec2real_f,
+     D:domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(c: real): bool =
+     (
+     EXISTS ( epsilon: real, v: VectorN( n ) ):
+     ( f( v ) = c
+     AND D( v )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v ) )
+     AND FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v2 )
+     AND nn( v - v2 )< epsilon )
+     IMPLIES f( v2 ) <= f( v ))
+
+%--------------------------------------------
+%% choice of norm
+%  doesn't matter for local extrema
+%--------------------------------------------
+
+loc_minimizer_equiv: LEMMA FORALL( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),v:VectorN(n)):
+     (EXISTS(nn:(norm?(n))):
+     is_loc_minimizer?(nn)(m1,m2,f,D,eq_constraints,ineq_constraints)(v))
+     IFF
+     is_loc_minimizer?(m1,m2,f,D,eq_constraints,ineq_constraints)(v) ;
+
+loc_min_equiv: LEMMA FORALL( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),c:real):
+     (EXISTS(nn:(norm?(n))):
+     is_loc_min?(nn)(m1,m2,f,D,eq_constraints,ineq_constraints)(c))
+     IFF
+     is_loc_min?(m1,m2,f,D,eq_constraints,ineq_constraints)(c) ;
+
+loc_maximizer_equiv: LEMMA FORALL( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),v:VectorN(n)):
+     (EXISTS(nn:(norm?(n))):
+     is_loc_maximizer?(nn)(m1,m2,f,D,eq_constraints,ineq_constraints)(v))
+     IFF
+     is_loc_maximizer?(m1,m2,f,D,eq_constraints,ineq_constraints)(v)
+
+loc_max_equiv: LEMMA FORALL( m1, m2: nat, f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),c:real):
+     (EXISTS(nn:(norm?(n))):
+     is_loc_max?(nn)(m1,m2,f,D,eq_constraints,ineq_constraints)(c))
+     IFF
+     is_loc_max?(m1,m2,f,D,eq_constraints,ineq_constraints)(c)
+
+%--------------------------------------------
+%% Define strict and isolated minimizers
+% in terms of the infinity norm
+%---------------------------------------------
+
+is_strict_loc_minimizer?(nn:(norm?(n)))( m1, m2 :nat,
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(v: VectorN( n )): bool =
+     ( D( v )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v ) )
+     AND EXISTS ( epsilon: real ):
+     FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints )( v2 )
+     AND nn( v-v2 )< epsilon
+     AND v /= v2 )
+     IMPLIES f( v ) < f( v2 ) 
+
+is_isolated_loc_minimizer?(nn:(norm?(n)))( m1, m2 :nat,
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ) )(v: VectorN( n )): bool =
+     ( D( v )
+     AND feasible?( m1, m2, eq_constraints,
+     ineq_constraints )( v ) )
+     AND EXISTS ( epsilon: real ):
+     FORALL ( v2: VectorN( n ) ):
+     ( D( v2 )
+     AND feasible?( m1, m2,
+     eq_constraints, ineq_constraints)( v2 )
+     AND nn( v - v2 ) < epsilon )
+     IMPLIES ( f( v ) <= f( v2 )
+     AND ( is_loc_minimizer?(nn)( m1, m2,
+     f, D,
+     eq_constraints, ineq_constraints )( v2 )
+     IMPLIES v = v2 ) )
+
+%---------------------------------------------
+%% Isolated implies strict
+%---------------------------------------------
+
+isolated_implies_strict: LEMMA
+     FORALL(nn:(norm?(n)), m1, m2 :nat, v: VectorN(n),
+     f: vec2real_f, D: domain,
+     eq_constraints: constraints(m1),
+     ineq_constraints: constraints(m2)):
+     is_isolated_loc_minimizer?(nn)(m1, m2,
+     f, D, eq_constraints, ineq_constraints)(v)
+     IMPLIES is_strict_loc_minimizer?(nn)(m1, m2,
+     f, D, eq_constraints, ineq_constraints)(v)
+
+%---------------------------------------------
+%% Active constraints
+%---------------------------------------------
+
+active_ineq?( m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) },
+     i: below( m2 ) ):
+     bool = nth( ineq_constraints( v ),i ) = 0
+
+active_ineq?( m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints,ineq_constraints )( vv ) ) } )
+     ( constraint: vec2real_f ):
+     bool = ( constraint( v ) = 0 )
+     AND EXISTS ( i: below( m2 ) ) :
+     nth(m2, ineq_constraints, i ) = constraint
+
+active_eq?( m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) },
+     i: below( m1 ) ):
+     bool = nth( eq_constraints( v ), i ) = 0
+
+inactive_ineq?( m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) },
+     i: below( m2 ) ):
+     bool = NOT active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v,i )
+
+inactive_eq?( m1, m2: nat,
+     eq_constraints: constraints( m1 ),
+     ineq_constraints: constraints( m2 ),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) },
+     i: below( m1 ) ):
+     bool = NOT active_eq?( m1, m2,
+     eq_constraints, ineq_constraints, v, i )
+
+
+lst2real: LEMMA FORALL(l: list[vec2real_f], i:below(length(l))):
+     nth(l,i) = nth(length(l),listfuns2fun(l),i)
+
+
+active_constraints( m1, m2: nat,
+     eq_constraints: constraints(m1),
+     ineq_constraints: constraints(m2),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) } ):
+     constraints(m1 + length(filter(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ))))  =
+     append(m1,length(filter(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ))), eq_constraints,
+     filter_fun(m2, ineq_constraints, active_ineq?( m1, m2,
+     eq_constraints, ineq_constraints, v ) ) )
+
+%---------------------------------------------
+%% count zeros in a list
+%---------------------------------------------
+
+countzeroidx(n:nat, l: list):
+     RECURSIVE list[nat] =
+     IF l = null
+     THEN null	  
+     ELSIF car(l) = 0
+     THEN cons( n, countzeroidx(n+1, cdr(l)))
+     ELSE
+     countzeroidx(n+1, cdr(l))
+     ENDIF MEASURE l by <<
+
+ex_idx: LEMMA
+     countzeroidx(0,(:1,0,2,0:)) = (:1,3:)
+
+active_ineq_constraint( m1, m2: nat,
+     eq_constraints: constraints(m1),
+     ineq_constraints: constraints(m2),
+     v: { vv: VectorN( n ) |
+     ( feasible?( m1, m2, eq_constraints, ineq_constraints )( vv ) ) } ):
+     list =
+     countzeroidx(0,ineq_constraints(v))
+
+%---------------------------------------------
+% Equality constraints are always active
+%---------------------------------------------
+
+%Eq_active: LEMMA FORALL(m1, m2 :nat, eq_constraints: constraints(m1), ineq_constraints: con%straints(m2),
+%	   v: {vv: VectorN(n) | (feasible?(m1, m2, vv, eq_constraints, ineq_constraints))},
+%	   i: below(m1)):
+%	   active_eq?(m1, m2, eq_constraints, ineq_constraints, v, i)
+
+%Eq_inactive: LEMMA FORALL(m1, m2 :nat, eq_constraints: constraints(m1), ineq_constraints: c%onstraints(m2),
+%	   v: {vv: VectorN(n) | (feasible?(m1, m2, vv, eq_constraints, ineq_constraints))},
+%	   i: below(m1)):
+%	   NOT inactive_eq?(m1, m2, eq_constraints, ineq_constraints, v, i)
+
+%________________________________________________________
+ % "Problems are hidden opportunities,
+ %     and constraints can actually boost creativity."
+ %      	    	                   -Martin Villeneuve
+ 
+ %---           ~The End~            ---%
+ END fundamentals_constrained_optimization

@@ -1,0 +1,283 @@
+norms  % Aloha 
+       : THEORY
+       
+%	              June 2018 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%|      Here we define norm,      |%
+%|        max,entry sum, abs      |%
+%|       With an exicutable       |%
+%|  inf-norm, 1-norm (2-norm)^2   |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%--------------------------------------------
+%% Importing cauchy_schwarz, to help with
+%  proving 2-norm stuff.
+%--------------------------------------------
+
+IMPORTING cauchy_schwarz
+
+%--------------------------------------------
+%% Define norm
+%--------------------------------------------
+
+norm?( m: posnat )( rho: [ ( cons? ) -> nonneg_real ] ): bool =
+     ( FORALL ( v1: VectorN( m ) ):
+     rho( v1 ) >= 0 )
+     AND ( FORALL ( v1: VectorN( m ), c: real ):
+     rho( c * v1 ) = abs( c ) * rho( v1 ) )
+     AND ( FORALL ( v1: VectorN( m ) ):
+     ( rho( v1 ) = 0 IFF v1 = zero_vec( m ) ) )
+     AND ( FORALL ( v1, v2: VectorN( m ) ):
+     rho( v1 + v2 ) <= rho( v1 ) + rho( v2 ) ) ;
+	
+%--------------------------------------------
+%% Define max, entrywise multiplication,
+%  sum of entries, pointwise absolute value
+%--------------------------------------------
+
+max( ll: ( cons? ) ): RECURSIVE real =
+     IF length( ll ) = 1	
+     THEN car( ll )
+     ELSE
+     max( car( ll ), max( cdr( ll ) ) )
+     ENDIF Measure length(ll)
+
+max_nth: LEMMA FORALL( ll: (cons?)):
+     EXISTS (i:below(length(ll))):
+     max(ll)=nth(ll,i)
+
+entry_mult( l1, l2: ( cons? ) ):
+     RECURSIVE ( cons? ) =
+     IF length( l1 ) = 1
+     THEN (: car( l1 ) * car( l2 ) :)
+     ELSIF  length( l2 ) = 1
+     THEN (: car( l1 ) * car( l2 ) :)
+     ELSE
+     cons( car( l1 ) * car( l2 ),
+     entry_mult( cdr( l1 ), cdr( l2 ) ) )
+     ENDIF
+     Measure length(l1)+length(l2)
+	 
+entry_sum( ll: ( cons? ) ): RECURSIVE real =
+     IF length( ll ) = 1
+     THEN car( ll )
+     ELSE car( ll ) + entry_sum( cdr( ll ) )
+     ENDIF MEASURE length(ll) ;
+
+abs( ll: ( cons? ) ): RECURSIVE
+     { l: list | length( l ) = length( ll ) } =
+     IF length( ll ) = 1
+     THEN cons( abs( car( ll ) ), null )
+     ELSE cons( abs( car( ll ) ), abs( cdr( ll ) ) )
+     ENDIF Measure length(ll) ;
+
+abs_nth: LEMMA FORALL( ll: (cons?)):
+     FORALL (i:below(length(ll))):
+     abs(nth(ll,i)) = nth(abs(ll),i)
+%--------------------------------------------
+%% Test exicutability of max, abs,
+%  sum, entry mult 
+%--------------------------------------------
+
+test_max_1: LEMMA max((:-3 ,-4 ,1 :)) = 1 ;
+test_abs_1: LEMMA abs((:-3 ,-4 ,1 :)) = (: 3, 4, 1 :) ;
+test_sum: LEMMA entry_sum( (: -1 , -10 , 4 :) ) = -7 ;
+test_entry_mult: LEMMA entry_mult((: -1 , -2 , 4 :),
+     (: -1 , -2 , 4 :) ) = (: 1 , 4 , 16 :);
+test_entry_mult_2: LEMMA entry_mult((: -1 , -2 :),
+     (: -1 , -2 , 4 :) ) = (: 1 , 4 :);
+
+%--------------------------------------------
+%% These are some tasteful lemmas that help
+%  with proving the inf-norm is an norm
+%--------------------------------------------
+
+abs_max_lists: LEMMA
+     FORALL ( ll: ( cons? ), c: real ):
+     max( abs( c * ll ) ) =
+     abs( c ) * max( abs( ll ) ) ;
+
+abs_pos: LEMMA
+     FORALL ( ll: ( cons? ) ):
+     max( abs( ll ) ) >= 0 ;
+
+abs_zero: LEMMA
+     FORALL ( ll: ( cons? ) ):
+     max( abs( ll ) ) = 0
+     IFF EXISTS( m : posnat ): ll
+     = zero_vec( m ) ;
+
+abs_max_triag: LEMMA
+     FORALL ( l1, l2: ( cons? ) ):
+     length( l1 ) = length( l2 ) IMPLIES
+     max( abs( l1 + l2 ) ) <=
+     max( abs( l1 ) ) + max( abs( l2 ) ) ;
+
+%--------------------------------------------
+%% These are some tasteful lemmas that help
+%  with proving the one-norm is an norm
+%--------------------------------------------
+
+sum_abs_pos: LEMMA
+     FORALL ( ll: ( cons? ) ):
+     entry_sum( abs( ll ) ) >= 0 ;
+
+sum_abs_lists: LEMMA
+     FORALL ( ll: ( cons? ), c: real ):
+     entry_sum( abs( c * ll ) ) =
+     abs( c ) * entry_sum( abs( ll ) ) ;
+
+sum_abs_zero: LEMMA
+     FORALL ( ll: ( cons? ) ):
+     entry_sum( abs( ll ) ) = 0 IFF
+     EXISTS ( m:posnat ): ll = zero_vec( m ) ;
+
+sum_abs_triag: LEMMA
+     FORALL ( l1, l2: ( cons? ) ): length( l1 ) = length( l2 )
+     IMPLIES entry_sum( abs( l1 + l2 ) )
+     <= entry_sum( abs( l1 ) ) + entry_sum( abs( l2 ) ) ;
+
+%--------------------------------------------
+%%Define the inf-norm, 1-norm
+% and the 2-norm squred (for exicutabiity)
+%--------------------------------------------
+
+norm_inf: [ ( cons? ) -> nonneg_real ]
+     = LAMBDA( ll: ( cons? ) ):
+     max( abs( ll ) ) ;
+norm_inf ( m:posnat ): ( norm?( m ) )
+     = norm_inf ;
+
+norm_1: [ ( cons? ) -> nonneg_real ]
+     = LAMBDA( ll: ( cons? ) ):
+     entry_sum( abs( ll ) ) ;
+norm_1 ( m:posnat ): ( norm?( m ) )
+     = norm_1 ;
+
+norm_2sq( ll: ( cons? ) ): nonneg_real
+     = ll*ll ;
+
+norm_2 (m:posnat): (norm?( m ) )
+     = LAMBDA(v:(cons?)): sqrt(norm_2sq(v)) ;
+
+%--------------------------------------------
+%% Useful recursian for inf-norm and one-norm
+%--------------------------------------------
+
+norm_inf_recurse: LEMMA FORALL(m:posnat):
+      FORALL(u:VectorN(m)):
+      IF m>1
+      THEN norm_inf(m)(u) = max(abs(car(u)),norm_inf(m-1)(cdr(u)))
+      ELSE
+      norm_inf(m)(u) = abs(car(u))
+      ENDIF ;
+
+norm_one_recurse: LEMMA FORALL(m:posnat):
+     FORALL(u:VectorN(m)):
+     IF m>1
+     THEN norm_1(m)(u) = abs(car(u))+norm_1(m-1)(cdr(u))
+      ELSE
+      norm_1(m)(u) = abs(car(u))
+      ENDIF ;
+
+%--------------------------------------------
+%%Test exicutability of norms
+%--------------------------------------------
+
+test_abs: LEMMA
+     norm_inf( (: -1 , -10 , 4 :) ) = 10 ;
+test_1: LEMMA
+     norm_1( (: -1 , -10 , 4 :) ) = 15 ;
+test_2sq: LEMMA
+     norm_2sq( (: -1 , -10 , 4 :) ) = 117 ;
+
+%--------------------------------------------
+%%The grand finale of exicutability
+%--------------------------------------------
+
+big_kahuna: LEMMA
+     max( (: abs( 5-3*
+     norm_inf( (: -1 , -10 , 4 :)
+     + (: 5 , 7 , 2 :))) , 4:))
+     = 13 ;
+
+
+%--------------------------------------------
+%% Useful facts of norms
+%--------------------------------------------
+
+norm_inf_constant: LEMMA FORALL(m: posnat, c: real):
+     norm_inf(m)(constant_vec(c, m)) = abs(c)
+
+norm_reflex: LEMMA FORALL(m:posnat, nn:(norm?(m)),
+     v1,v2:VectorN(m)):
+     nn(v1-v2)=nn(v2-v1)
+
+reverse_triag: LEMMA FORALL(m:posnat, u,v:VectorN(m),
+     nn:(norm?(m))):
+     abs(nn(u)-nn(v)) <= nn(u-v)
+
+norm_inf_nth: LEMMA FORALL(ll: (cons?)):
+     EXISTS(i:below(length(ll))):
+     norm_inf(ll) = abs(nth(ll,i))
+
+norm_inf_nth_m: LEMMA FORALL(m:posnat, u: VectorN(m)):
+     EXISTS(i:below(m)):
+     norm_inf(m)(u)
+     =abs(nth(u,i))
+
+norm_inf_nth_ineq: LEMMA FORALL(ll:(cons?)):
+     FORALL (i:below(length(ll))):
+     norm_inf(ll)
+     >= abs(nth(ll,i))
+
+norm_inf_nth_ineq_m: LEMMA FORALL(m:posnat, u:VectorN(m)):
+     FORALL (i:below(m)):
+     norm_inf(m)(u)
+     >= abs(nth(u,i))
+
+norm_inf_canc: LEMMA
+     FORALL(m:posnat, v1,v2,v3:VectorN(m)):
+     norm_inf(m)((v1-v2)+(v2-v3)) = norm_inf(m)(v1-v3)
+
+%--------------------------------------------
+%% norm_inf of e(n,i)
+%--------------------------------------------
+
+norm_inf_e:LEMMA FORALL(n:nat,i:below(n)):
+ norm_inf(n)(e(n,i)) = 1
+
+norm_inf_e_scal:LEMMA FORALL(n:nat,i:below(n),c:real):
+ norm_inf(n)(c*e(n,i)) = abs(c)
+
+%--------------------------------------------
+%% Dot product max inequality
+%--------------------------------------------
+
+dot_max_ineq: LEMMA FORALL(u,v:(cons?)):
+ length(v) = length(u) IMPLIES 
+ abs(v*u) <= length(v)*norm_inf(v)*norm_inf(u)
+ 
+
+dot_equality_delta: LEMMA FORALL(u,v: (cons?),delta:posreal):
+     (length(u) = length(v)
+     AND (FORALL(w:{ww:VectorN(length(u))| norm_inf(length(u))(ww)<delta}):
+     u*w=v*w))
+     IMPLIES
+     u=v ;
+
+
+%________________________________________________________
+ % "Originality implies being bold enough to go beyond
+ %      accepted norms."
+ %      	     	   	    	   -Anthony Storr
+
+  %The End% 
+  END norms
+
+
+

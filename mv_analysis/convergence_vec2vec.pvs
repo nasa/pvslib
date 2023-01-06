@@ -1,0 +1,318 @@
+convergence_vec2vec   [ n: posnat ] %Welcome
+%n - input dimension of function
+
+		: THEORY
+		
+%	             April 2020 JTS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%rt
+%| Define convergence for        %|
+%| function from Rn to Rm        %|
+%| including differentiability   %|
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%		
+
+%-----     %
+  BEGIN
+%     -----%
+
+IMPORTING vector_sequences[n]
+IMPORTING norms_equiv_general
+IMPORTING mat_vec_mult
+IMPORTING derivative_domain_multi[n]
+%IMPORTING init_partial_def[n]
+IMPORTING gradient_def[n]
+
+
+nth(m:posnat,f:vec2vec(m),i:{ii:nat| ii<m}): vec2real_f = LAMBDA(p:VectorN(n)): nth(f(p),i)
+cdr(m:posnat,f:vec2vec(m))(p:VectorN(n)): VectorN(m-1) = cdr(f(p))
+%--------------------------------------------
+%% Define difference quotient
+%--------------------------------------------
+
+NQ(m:posnat, f:vec2vec(m), p: VectorN(n), T: MatrixMN(m,n))(h : VectorN(n)):
+     real = IF h /= zero_vec(n) THEN norm_inf(m)(f(p + h) - f(p)- T * h)/ norm_inf(n)(h)
+     ELSE 0
+     ENDIF
+  
+differentiable?(m:posnat, D:(deriv_domain?), f:vec2vec(m), p:(D)):
+     bool = EXISTS(T:  MatrixMN(m,n)):
+     convergence_zero?(NQ(D,p), NQ(m, f, p, T), zero_vec(n))
+
+%--------------------------------------------
+%% cdr of diff function is diff 
+%--------------------------------------------
+
+diff_nth_cdr: LEMMA
+ FORALL(m:posnat,D:(deriv_domain?),
+ f: vec2vec(m), p:(D)):
+ (FORALL (i: below(m)): differentiable?(D, nth(m, f, i), p))
+ IMPLIES
+ FORALL (i: below(m - 1)):
+ differentiable?[n](D, nth(m - 1, cdr(m, f), i), p)
+
+%--------------------------------------------
+%% define Frechet differentiability on a domain
+%--------------------------------------------
+
+differentiableD?(m:posnat,D:(deriv_domain?))(f:vec2vec(m)):
+     bool = FORALL(p:(D)):
+     differentiable?(m,D,f,p)
+
+%--------------------------------------------
+%% Connected derivatives of f:Rn -> Rm to
+%  derivatives of f_i :Rn -> Rm for i
+%  between 0 and n-1
+%--------------------------------------------
+
+every_mat: LEMMA
+  FORALL(m:posnat,T:MatrixMN(m,n)):
+    every[list[number]]
+      (LAMBDA (x1: list[number]):
+        every[number]
+          (LAMBDA (x: number):
+            number_field_pred(x) AND real_pred(x))
+              (x1)
+               AND length[real](x1) = n)
+                 (T)
+
+pre_der(m:posnat, D:(deriv_domain?), p:(D), f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiable?(D,nth(m,ff,i), p))}):
+  RECURSIVE   MatrixMN(m,n) =
+  IF m=1 THEN
+  (: der_f(D,p)(nth(m,f,0)) :)
+  ELSE
+ cons[VectorN(n)]( der_f(D,p)(nth(m,f,0)) , pre_der(m-1, D, p, cdr(m,f)))
+  ENDIF
+  MEASURE m
+
+
+pre_der(m:posnat, D:(deriv_domain?), f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiableD?(D)(nth(m,ff,i)))}):
+  RECURSIVE  [(D) ->  MatrixMN(m,n)] =
+  IF m=1 THEN
+  LAMBDA(p:(D)): (: der_f(D)(nth(m,f,0))(p) :)
+  ELSE
+  LAMBDA(p:(D)): cons[VectorN(n)]( der_f(D)(nth(m,f,0))(p) , pre_der(m-1, D, cdr(m,f))(p))
+  ENDIF
+  MEASURE m
+
+pre_der_nth: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?), f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiableD?(D)(nth(m,ff,i)))},i:below(m)):
+ (LAMBDA(p:(D)): nth(pre_der(m,D,f)(p),i)) = (LAMBDA(p:(D)): der_f(D)(nth(m,f,i))(p) )
+
+pre_der_nth_grad: LEMMA
+  FORALL(m:posnat, D:(deriv_domain_all_partial?), f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiableD?(D)(nth(m,ff,i)))},i:below(m)):
+ (LAMBDA(p:(D)): nth(pre_der(m,D,f)(p),i)) =  gradient(D)(nth(m,f,i))
+
+pre_der_nth_p: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?), p:(D), f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiable?(D,nth(m,ff,i), p))},i:below(m)):
+ nth(pre_der(m,D,p,f),i) = der_f(D,p)(nth(m,f,i)) 
+
+del_ch(m:posnat, D:(deriv_domain?),
+  f:(differentiableD?(D)))(p:(D),eps:posreal):
+    posreal = choose({delta:posreal |
+      FORALL(x: {xx: (NQ(D,p))| xx /= zero_vec(n)}): norm_inf(n)(x-zero_vec(n)) < delta
+	    IMPLIES abs(NQ(f, der_f(D)(f)(p), p)(x) ) < eps})
+
+del_all(m:posnat, D:(deriv_domain?),
+  f:{ff:vec2vec(m) | FORALL(i:below(m)): differentiableD?(D)(nth(m,ff,i))})
+  (p:(D),eps:posreal):
+   RECURSIVE posreal =
+    IF m=1 THEN
+      del_ch(m,D,nth(m,f,0))(p,eps)
+    ELSE
+      min(del_ch(m,D,nth(m,f,0))(p,eps), del_all(m-1,D,cdr(m,f))(p,eps))
+    ENDIF
+    MEASURE
+    m
+    
+del_ch_p(m:posnat, D:(deriv_domain?),
+  p:(D), f:{ff: vec2real_f | 
+  differentiable?(D,ff,p)})(eps:posreal):
+    posreal = choose({delta:posreal |
+      FORALL(x: {xx: (NQ(D,p))| xx /= zero_vec(n)}): norm_inf(n)(x-zero_vec(n)) < delta
+	    IMPLIES abs(NQ(f, der_f(D,p)(f), p)(x) ) < eps})
+
+del_all_p(m:posnat, D:(deriv_domain?),p:(D),
+  f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiable?(D,nth(m,ff,i), p))})
+  (eps:posreal):
+   RECURSIVE posreal =
+    IF m=1 THEN
+      del_ch_p(m,D,p,nth(m,f,0))(eps)
+    ELSE
+      min(del_ch_p(m,D,p,nth(m,f,0))(eps), del_all_p(m-1,D,p,cdr(m,f))(eps))
+    ENDIF
+    MEASURE
+    m
+    
+del_nth: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?),
+  f:{ff:vec2vec(m) | FORALL(i:below(m)): differentiableD?(D)(nth(m,ff,i))},
+  p:(D),eps:posreal,i:below(m)):
+   FORALL(x: {xx: (NQ(D,p))| xx /= zero_vec(n)}):
+    norm_inf(n)(x-zero_vec(n)) < del_all(m,D,f)(p,eps)
+     IMPLIES abs(NQ(nth(m,f,i), der_f(D)(nth(m,f,i))(p), p)(x) ) < eps
+
+del_nth_p: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?), p:(D),
+  f:{ff:vec2vec(m) | (FORALL(i:below(m)):
+  differentiable?(D,nth(m,ff,i), p))},
+  eps:posreal,i:below(m)):
+   FORALL(x: {xx: (NQ(D,p))| xx /= zero_vec(n)}):
+    norm_inf(n)(x-zero_vec(n)) < del_all_p(m,D,p,f)(eps)
+     IMPLIES abs(NQ(nth(m,f,i), der_f(D,p)(nth(m,f,i)), p)(x) ) < eps
+
+derivable_nth_mat: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?),
+  f:vec2vec(m)):
+  differentiableD?(m,D)(f)
+  IFF
+  (FORALL(i:below(m)):
+  differentiableD?(D)(nth(m,f,i)))
+
+derivable_nth_mat_point: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?),
+  f:vec2vec(m),p:(D)):
+  differentiable?(m,D,f,p)
+  IFF
+  (FORALL(i:below(m)):
+  differentiable?(D,nth(m,f,i), p))
+
+
+%--------------------------------------------
+%% function that returns Frechet derivative
+%--------------------------------------------
+
+der_f(m:posnat,D:(deriv_domain?))(f:(differentiableD?(m,D))):
+     {TT: [(D) ->  MatrixMN(m,n)] | FORALL(p:(D)):
+     convergence_zero?(NQ(D,p), NQ(m, f, p, TT(p)), zero_vec(n))}
+     = pre_der(m, D, f)
+
+der_f(m:posnat, D:(deriv_domain?), p:(D))
+ (f:{ff : vec2vec(m) | differentiable?(m,D,ff,p)}):
+ {T: MatrixMN(m,n) |
+ convergence_zero?(NQ(D,p), NQ(m, f, p, T), zero_vec(n))}
+     = pre_der(m, D, p, f)
+
+conv_zero_nth: LEMMA
+FORALL(m:posnat, D:(deriv_domain?), f:vec2vec(m), p:(D), T:{TT: MatrixMN(m,n) |
+     convergence_zero?(NQ(D,p), NQ(m, f, p, TT), zero_vec(n))}):
+     (FORALL(i:below(m)):
+     convergence_zero?(NQ(D,p),NQ(nth(m,f,i),nth(T,i),p), zero_vec(n)))
+
+der_f_unique: LEMMA
+FORALL(m:posnat, D:(deriv_domain_e_partial?), f:vec2vec(m), p:(D), T:{TT: MatrixMN(m,n) |
+     convergence_zero?(NQ(D,p), NQ(m, f, p, TT), zero_vec(n))}):
+     T = pre_der(m,D,p,f)
+
+%-------------------------------------------
+%% Inequality of derivable function 
+%--------------------------------------------
+
+pre_diff_cont: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?), p:(D),
+   f:{ff:vec2vec(m) | differentiable?(m,D,ff,p)}):
+   EXISTS(M,del:posreal):
+   FORALL(h:{hh:(NQ(D,p))|
+   hh /= zero_vec(n) AND norm_inf(n)(hh)<del}):
+   norm_inf(m)(f(p+h)-f(p))
+   <
+   M * norm_inf(n)(h)
+
+diff_cont: LEMMA
+  FORALL(m:posnat, D:(deriv_domain?), p:(D),
+   f:{ff:vec2vec(m) | differentiable?(m,D,ff,p)}):
+   contp?(D,m)(f,p)
+
+%--------------------------------------------
+%% Define a derivative, since derivative
+%  might not be unique
+%--------------------------------------------
+
+der_p?(m:posnat, D:(deriv_domain?), p:(D),
+   f:{ff:vec2vec(m) | differentiable?(m,D,ff,p)})
+   (T:  MatrixMN(m,n)):
+   bool
+   =
+  convergence_zero?(NQ(D,p), NQ(m, f, p, T), zero_vec(n))
+
+der?(m:posnat, D:(deriv_domain?),
+   f:{ff:vec2vec(m) | differentiableD?(m,D)(ff)})
+   (df:[(D) -> MatrixMN(m,n)]):
+   bool
+   =
+   FORALL(p:(D)):
+   der_p?(m,D,p,f)(df(p))
+
+%--------------------------------------------
+%% pre_der is der
+%--------------------------------------------
+
+pre_der_der_p: LEMMA
+ FORALL(m:posnat, D:(deriv_domain?),
+  f:vec2vec(m),p:(D)):
+  differentiable?(m,D,f,p)
+  IMPLIES
+  der_p?(m,D,p,f)(pre_der(m, D, p, f))
+
+
+%--------------------------------------------
+%% The derivative can be partitioned by nth 
+%--------------------------------------------
+
+der_nth_mat_point: LEMMA
+  FORALL(m:posnat, D:(deriv_domain_e_partial?),
+  f:vec2vec(m),p:(D)):
+  differentiable?(m,D,f,p)
+  IMPLIES
+  FORALL(i:below(m)): nth(der_f(m,D,p)(f),i) = 
+  der_f(D,p)(nth(m,f,i))
+
+
+%--------------------------------------------
+%% The derivative is unique in the case that
+%  n=0
+%--------------------------------------------
+
+%der_unique_p_1: LEMMA
+% FORALL(m:posnat, D:(deriv_domain?), p:(D),
+%   f:{ff:vec2vec(m) | differentiable?(m,D,ff,p)},
+%   T1,T2:MatrixMN(m,n)):
+%   (n=1 AND (der_p?(m,D,p,f)(T1) AND der_p?(m,D,p,f)(T2)))
+%   IMPLIES
+%   T1=T2
+
+%der_unique_1: LEMMA
+% FORALL(m:posnat, D:(deriv_domain?),
+%   f:{ff:vec2vec(m) | differentiableD?(m,D)(ff)},
+%   df1,df2:[(D) -> MatrixMN(m,n)]):
+%   (n=1 AND (der?(m,D,f)(df1) AND der?(m,D,f)(df2)))
+%   IMPLIES
+%   df1=df2
+
+
+%--------------------------------------------
+%% Derivable on subdomain
+%--------------------------------------------
+
+derivable_subtype: LEMMA 
+ FORALL(m:posnat, U:(deriv_domain?), D:(deriv_domain_sub?(U)),
+  f:vec2vec(m), p:(D)):
+   differentiable?(m,U,f,p)
+   IMPLIES
+   differentiable?(m,D,f,p)
+
+der_subtype: LEMMA 
+ FORALL(m:posnat, U:(deriv_domain?), D:(deriv_domain_sub?(U)) | deriv_domain_e_partial?(D) ,
+  f:vec2vec(m), p:(D)):
+   differentiable?(m,U,f,p)
+   IMPLIES
+   der_f(m, D, p)(f)
+   =
+   der_f(m, U, p)(f)
+
+
+  END convergence_vec2vec
