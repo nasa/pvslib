@@ -1,0 +1,1156 @@
+dynamic_logic : THEORY
+ % Welcome
+
+%-------------------------------------------------------------------------% 
+%-------------------------------------------------------------------------%
+%| dynamic_logic: The rewrites and rules of dL written as PVS lemmas	 |%
+%-------------------------------------------------------------------------%
+% Created							   Aug 2020
+% 							       JTS,LW,CM,SB
+%-------------------------------------------------------------------------%
+%-------------------------------------------------------------------------%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%%--------------------------------------------
+%%Importing several theories
+%%--------------------------------------------
+
+  IMPORTING substitution,
+   	    differentiation,
+            more_derivative_props,
+            structures@for_examples,
+            reals@reals_safe_ops,
+	    chain_rule_re,
+	    ODEs_equiv,
+	    ODEs@linear_ode_1D,
+            continuity_props,
+	    fresh_props,
+	    bounded_star_semantics,
+	    bound_variables_def
+	    
+%%--------------------------------------------
+%%Define variables 
+%%--------------------------------------------
+
+  l,m: VAR Assigns
+  j,k: VAR nat
+  re:  VAR RealExpr
+  r :  VAR real
+
+  Gamma,Delta : VAR Formulas
+  P,Q,J,R     : VAR BoolExpr
+  A,B         : VAR HP
+  i           : VAR nat
+  qQ          : VAR QBoolExpr
+  nnP         : VAR NormNQBool
+  Progress    : VAR RealExpr
+  re1,re2     : VAR RealExpr
+  
+
+  Qe,Pe : VAR [RealExpr->BoolExpr]
+  Re : VAR [RealExpr->BoolExpr]
+  Ae : VAR [RealExpr->HP]
+  C : VAR [BoolExpr -> BoolExpr]
+  QRe : VAR [ RealExpr -> RealExpr]
+
+
+%%--------------------------------------------
+%%Preliminary lemmas about ASSIGN
+%%--------------------------------------------
+
+ %^nope
+  assign0_prop : LEMMA
+    FORALL (envi,envo:Environment) :
+      semantic_rel(ASSIGN(null))(envi)(envo) IFF envo = envi 
+ %^nope
+ assign_assign_sub : LEMMA
+    FORALL(envi,envo: Environment) :
+      semantic_rel(ASSIGN(l))(envi)(envo) IMPLIES envo = assign_sub(l)(envi)
+ %^nope
+  assign_sub_assign : LEMMA
+    FORALL(envi: Environment) :
+      semantic_rel(ASSIGN(l))(envi)(assign_sub(l)(envi))
+
+%%--------------------------------------------
+%%Define dL Sequent
+%%--------------------------------------------
+
+  dlSequent(Gamma,Delta): bool =
+     FORALL (env: Environment):
+       (FORALL (i:below(length(Gamma))): nth(Gamma,i)(env)) IMPLIES
+     (EXISTS (j:below(length(Delta))): nth(Delta,j)(env))
+
+  % This version is better for strategies since avoid the quantifications
+  ;|-(Gamma,Delta): bool = 
+    FORALL (env: Environment):
+      (LET ng=length(Gamma) IN
+       ng = 0 OR iterate_left[bool](0,ng-1,LAMBDA(i:below(ng)):
+                 nth(Gamma,i)(env),AND)) IMPLIES
+      (LET nd=length(Delta) IN
+       nd > 0 AND iterate_left[bool](0,nd-1,LAMBDA(i:below(nd)):
+                  nth(Delta,i)(env),OR))
+
+  dlSequent_equiv : LEMMA
+    (Gamma |- Delta) IFF dlSequent(Gamma,Delta)
+
+%%--------------------------------------------
+%% Automatic conversion
+%%--------------------------------------------
+
+  BoolExpr2seq(P:BoolExpr): MACRO bool = (: :) |- (: P :)
+
+ CONVERSION BoolExpr2seq
+ 
+%-------------------------------------------------------------------------
+%% Begin Propositional dL rules
+%-------------------------------------------------------------------------
+
+%% NOT
+
+  % notR
+  %    P,Gamma |- Delta
+  % -------------------------
+  %   Gamma |- NOT P,Delta
+  dl_notR: LEMMA
+    FORALL (Gamma,Delta)(P):
+    (cons(P,Gamma) |- Delta) IMPLIES
+    (Gamma |- cons(NOT P,Delta))
+
+  % notL
+  %     Gamma |- P,Delta
+  % -------------------------
+  %   NOT P,Gamma |- Delta
+  dl_notL: LEMMA
+    FORALL (Gamma,Delta)(P):
+    (Gamma |- cons(P,Delta)) IMPLIES
+    (cons(NOT P,Gamma) |- Delta)
+
+
+%% AND
+
+  % andR
+  %   Gamma |- P,Delta        Gamma |- Q,Delta
+  % ---------------------------------------------
+  %         Gamma |- P /\ Q,Delta
+  dl_andR : LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (Gamma |- cons(P,Delta)) AND
+      (Gamma |- cons(Q,Delta)) IMPLIES
+      (Gamma |- cons(P AND Q,Delta))
+
+  % andL
+  %     P,Q,Gamma |- Delta 
+  % -------------------------
+  %    P /\ Q,Gamma |- Delta
+  dl_andL : LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (cons(P,(cons(Q,Gamma))) |- Delta) IMPLIES
+      (cons(P AND Q,Gamma) |- Delta)
+
+
+%% OR
+
+  % orR
+  %   Gamma |- P,Q,Delta
+  % -----------------------
+  %  Gamma |- P \/ Q,Delta
+  dl_orR: LEMMA
+    FORALL (Gamma,Delta)(P,Q): 
+      (Gamma |- cons(P,cons(Q,Delta))) IMPLIES
+      (Gamma |- cons(P OR Q,Delta))
+
+  % orL
+  %  P,Gamma |- Delta      Q,Gamma |- Delta
+  % ----------------------------------------
+  %        P \/ Q,Gamma |- Delta
+  dl_orL: LEMMA
+    FORALL (Gamma,Delta)(P,Q): 
+      (cons(P,Gamma) |- Delta) AND (cons(Q,Gamma) |- Delta) IMPLIES
+      (cons(P OR Q,Gamma) |- Delta)
+
+
+%% IMPLY
+
+  % impliesR
+  %    P,Gamma |- Q,Delta
+  % -------------------------
+  %   Gamma |- P -> Q,Delta
+  dl_impliesR: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (cons(P,Gamma) |- cons(Q,Delta)) IMPLIES
+      (Gamma |- cons(P IMPLIES Q,Delta))
+
+  % impliesL
+  %  Gamma |- P,Delta    Q,Gamma |- Delta
+  % ---------------------------------------
+  %     P->Q,Gamma |- Delta
+  dl_impliesL: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (Gamma |- cons(P,Delta)) AND (cons(Q,Gamma) |- Delta) IMPLIES
+      (cons(P IMPLIES Q,Gamma) |- Delta)
+
+
+%% EQUIV
+
+  % equivR
+  %    P,Gamma |- Q,Delta  AND  Q,Gamma |- P,Delta
+  % -----------------------------------------------
+  %   Gamma |- (P <-> Q),Delta
+  % @QED dl_equivR proved by lmwhite3 on Fri, 16 Sep 2022 15:55:55 GMT
+  dl_equivR: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (cons(P,Gamma) |- cons(Q,Delta)) AND (cons(Q,Gamma) |- cons(P,Delta))  IMPLIES
+      (Gamma |- cons(P IFF Q,Delta))
+
+  % equivL
+  %  (P /\ Q),Gamma |- Delta   ( NOT P /\ NOT Q),Gamma |- Delta
+  % ---------------------------------------
+  %     (P<->Q),Gamma |- Delta
+  dl_equivL: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+      (cons(P AND Q,Gamma) |- Delta) AND (cons(NOT P AND NOT Q,Gamma) |- Delta) IMPLIES
+      (cons(P IFF Q,Gamma) |- Delta)
+
+
+%% ID
+
+  % DDL strategy: dl-axiom
+  % axiom
+  dl_axiom : LEMMA
+    FORALL (Gamma,Delta):
+    cons(P,Gamma) |- cons(P,Delta)
+    
+%% TRUE
+
+  % trueR
+  %   
+  %  -----------------------
+  %   Gamma |- TRUE,Delta      
+  dl_trueR : LEMMA
+    FORALL (Gamma,Delta):
+      Gamma |- cons(DLTRUE,Delta)
+
+  % trueL
+  %     Gamma |- Delta
+  %  -----------------------
+  %   TRUE,Gamma |- Delta      
+  dl_trueL : LEMMA
+    FORALL (Gamma,Delta):
+     (Gamma |- Delta) IMPLIES
+     (cons(DLTRUE,Gamma) |- Delta)
+
+
+%% FALSE
+
+  % falseR
+  %    Gamma |- Delta      
+  %  -----------------------
+  %   Gamma |- FALSE,Delta      
+  dl_falseR : LEMMA
+    FORALL (Gamma,Delta):
+     (Gamma |- Delta) IMPLIES
+     (Gamma |- cons(DLFALSE,Delta))
+
+  % falseL
+  %   
+  %  -----------------------
+  %   FALSE,Gamma |- Delta      
+  dl_falseL : LEMMA
+    FORALL (Gamma,Delta):
+      cons(DLFALSE,Gamma) |- Delta
+
+%% CUT
+
+  % cut
+  %  P,Gamma |- Delta    Gamma |- P,Delta
+  % -----------------------------------
+  %       Gamma |- Delta
+  dl_cut: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (cons(P,Gamma) |- Delta) AND
+     (Gamma |- cons(P,Delta)) IMPLIES
+     (Gamma |- Delta)
+
+  % DDL strategy: dl-weak
+  % weakeningR
+  %  Gamma |- P,Delta  /\ P => Q
+  % ------------------------------
+  %      Gamma |- Q,Delta
+  dl_weakR: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+     (Gamma |- cons(P,Delta)) AND (P |- Q) IMPLIES
+     (Gamma |- cons(Q,Delta))
+
+  % weakeningL
+  %  P,Gamma |- Delta /\ P => Q
+  % ------------------------------
+  %      Q,Gamma |- Delta
+  dl_weakL: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+     (cons(P,Gamma) |- Delta) AND (Q |- P) IMPLIES
+     (cons(Q,Gamma) |- Delta)
+
+%-------------------------------------------------------------------------
+%% END Propositional dL rules
+%-------------------------------------------------------------------------
+
+%-------------------------------------------------------------------------
+%% BEGIN Quantifier sequent calculus proof rules
+%-------------------------------------------------------------------------
+
+%% ALL
+
+  % forallR
+  %    Gamma |- qQ(X),Delta  
+  % ---------------------------------- X is a fresh-constant
+  %   Gamma |- Forall(x):qQ(x),Delta
+  dl_forallR : LEMMA
+    FORALL (Gamma,Delta)(qQ):
+    (FORALL (X:real) : (Gamma |- cons(qQ(X),Delta))) IMPLIES
+    (Gamma |- cons(DLFORALL(qQ),Delta))
+
+  % forallL
+  %    qQ(r),Gamma |- Delta  
+  % ---------------------------------
+  %   Forall(x):qQ(x),Gamma |- Delta
+  dl_forallL : LEMMA
+    FORALL (Gamma,Delta)(qQ,r):
+    (cons(qQ(r),Gamma) |- Delta) IMPLIES
+    (cons(DLFORALL(qQ),Gamma) |- Delta)
+
+%% EXISTS
+
+  % existsR
+  %    Gamma |- qQ(r),Delta  
+  % ---------------------------------- 
+  %   Gamma |- Exists(x):qQ(x),Delta
+  dl_existsR : LEMMA
+    FORALL (Gamma,Delta)(qQ,r):
+    (Gamma |- cons(qQ(r),Delta)) IMPLIES
+    (Gamma |- cons(DLEXISTS(qQ),Delta))
+
+  % existsL
+  %    qQ(X),Gamma |- Delta  
+  % --------------------------------- X is a fresh-constant
+  %   Exists(x:real):qQ(x),Gamma |- Delta
+  dl_existsL : LEMMA
+    FORALL (Gamma,Delta)(qQ):
+    (FORALL (X:real) : (cons(qQ(X),Gamma) |- Delta)) IMPLIES
+    (cons(DLEXISTS(qQ),Gamma) |- Delta)
+
+  % existsrR
+  %    Gamma |- Qe(re),Delta  
+  % ---------------------------------- 
+  %   Gamma |- Exists(X):Qe(X),Delta
+  dl_existsrR : LEMMA
+    FORALL (Gamma,Delta)(Qe,re):
+    (Gamma |- cons(Qe(re),Delta)) IMPLIES
+    (Gamma |- cons(DLEXISTSR(Qe),Delta))
+
+  % existsrRf
+  %    Gamma |- Qe(re),Delta  
+  % ---------------------------------- 
+  %   Gamma |- Exists(X):Qe(X),Delta
+  dl_existsrRf : LEMMA
+    FORALL (Gamma,Delta)(Qe,i,re):
+    ((Gamma |- cons(Qe(re),Delta)) AND fresh?(re)(i)) IMPLIES
+    (Gamma |- cons(DLEXISTSRf(Qe,i),Delta))
+
+  % existsrL
+  %    Qe(X),Gamma |- Delta  
+  % --------------------------------- X is a fresh-constant
+  %   Exists(x:RealExpr):Qe(x),Gamma |- Delta
+  dl_existsrL : LEMMA
+    FORALL (Gamma,Delta)(Qe):
+    (FORALL (X:RealExpr) : (cons(Qe(X),Gamma) |- Delta)) IMPLIES
+    (cons(DLEXISTSR(Qe),Gamma) |- Delta)
+
+%-------------------------------------------------------------------------
+%% END Quantifier sequent calculus proof rules
+%-------------------------------------------------------------------------
+
+%-------------------------------------------------------------------------
+%% Begin Structural rules
+%-------------------------------------------------------------------------
+  
+  % i is 1-indexed to be directly used in strategies
+  move_to_head_rec(Delta)(i:subrange(1,length(Delta)),acc:Formulas) : RECURSIVE Formulas =
+    IF i=1 THEN cons(car(Delta),append(acc,cdr(Delta)))
+    ELSE move_to_head_rec(cdr(Delta))(i-1,append(acc,(: car(Delta) :)))
+    ENDIF
+    MEASURE i
+
+  move_to_head_rec_nth
+  : RECURSIVE JUDGEMENT
+    move_to_head_rec(Delta)(i:subrange(1,length(Delta)),acc:Formulas)
+    HAS_TYPE { Delta_: Formulas | length(Delta_) = length(Delta) + length(acc) AND
+    	       	       		  FORALL(j:below(length(Delta_)))
+    	       	      	       	  : nth(Delta_,j)
+				    = IF    j = 0             THEN nth(Delta, i-1)
+				      ELSIF j < length(acc)+i THEN nth(append(acc,Delta), j-1)
+				   	                      ELSE nth(Delta, j-length(acc)) ENDIF }
+
+  IMPORTING structures@more_list_props
+
+  % This simplifies some strategies
+  is_dlfnum(i,Delta) : bool =
+    i > length(Delta)
+
+  % i is 1-indexed to be directly used in strategies
+  move_to_head(i,Delta) : Formulas =
+    IF i <= 1 OR is_dlfnum(i,Delta) THEN Delta
+    ELSE move_to_head_rec(Delta)(i,null)
+    ENDIF
+
+  move_to_head_length
+  : LEMMA
+    length(move_to_head(i,Delta)) = length(Delta)
+
+  move_to_head_car
+  : LEMMA
+    FORALL(Delta, (i: subrange(1,length(Delta))))
+    : nth(move_to_head(i,Delta),0) = nth(Delta,i-1)
+ 
+  move_to_head_first_half
+  : LEMMA
+    1 < i AND i <= length(Delta) AND
+    1 <= j AND j < i
+    IMPLIES nth(move_to_head(i,Delta),j) = nth(Delta,j-1)
+ 
+  move_to_head_second_half
+  : LEMMA
+    1 < i AND i <= length(Delta) AND
+    i <= j AND j < length(Delta)
+    IMPLIES nth(move_to_head(i,Delta),j) = nth(Delta,j)
+
+  % MoveR
+  % Gamma |- P1,..,Pi,..,Pn
+  % -----------------------
+  % Gamma |- Pi, P1,...,Pn
+  dl_moveR : LEMMA
+    (Gamma |- move_to_head(i,Delta)) IMPLIES
+    (Gamma |- Delta)
+
+  % MoveL
+  % P1,..,Pi,..,Pn |- Delta
+  % -----------------------
+  % Pi, P1,...,Pn |- Delta
+  dl_moveL :  LEMMA
+    (move_to_head(i,Gamma) |- Delta) IMPLIES
+    (Gamma |- Delta)
+
+%% HIDE
+
+  % hideR
+  %  Gamma |- Delta
+  % ----------------
+  % Gamma |- P,Delta
+  dl_hideR: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (Gamma |- Delta) IMPLIES
+     (Gamma |- cons(P,Delta))
+
+  % hideL
+  %  Gamma |- Delta
+  % ----------------
+  %  P,Gamma |- Delta
+  dl_hideL: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (Gamma |- Delta) IMPLIES
+     (cons(P,Gamma) |- Delta)
+
+%-------------------------------------------------------------------------
+%% End Structural rules
+%-------------------------------------------------------------------------
+
+%-------------------------------------------------------------------------
+%% Begins Hybrid program rewrites
+%-------------------------------------------------------------------------
+
+  % boxd
+  % Strategy: (dl-boxd)
+  % [A]P <->  not <A>(not P)
+  dl_boxd: LEMMA
+    ALLRUNS(A,P) = NOT SOMERUNS(A, NOT P)
+
+%% ASSIGN
+
+  % Assign with box 
+  % [...,x_i:=e_i,...]P <-> P/{ ..., x_i <-- e_i, ...}
+  dl_assignb: LEMMA
+    ALLRUNS(ASSIGN(l),P) = SUB(l)(P)
+
+  % for dynamic_logic
+  dl_assignb_restricted
+  : COROLLARY
+    FORALL(qQ,qP: QBoolExpr, Z: [real->MapExprInj])
+    : DLFORALL(LAMBDA (x: real): DLIMPLIES(qQ(x), ALLRUNS(ASSIGN(Z(x)), qP(x))))
+      = DLFORALL(LAMBDA (x: real): DLIMPLIES(qQ(x), SUB(Z(x))(qP(x))))
+
+  % Assign with diamond
+  % <...,x_i:=e_i,...>P <-> P { ..., x_i <-- e_i, ...}
+  dl_assignd: LEMMA
+    SOMERUNS(ASSIGN(l),P) = SUB(l)(P)
+
+
+%% TEST
+
+  % Test with box
+  % [?Q]P <-> (Q -> P)
+  dl_testb: LEMMA
+    ALLRUNS(TEST(Q),P) = (Q IMPLIES P)
+
+  dl_testb_true: COROLLARY
+    ALLRUNS(TEST(DLTRUE),P) = P
+
+  % Test with diamond
+  % <?Q>P <-> (Q /\ P)
+  dl_testd: LEMMA
+    SOMERUNS(TEST(Q),P) = (Q AND P)   
+
+  dl_testd_true: COROLLARY
+    SOMERUNS(TEST(DLTRUE),P) = P   
+
+%% CHOICE 
+    
+  % Choice with box
+  % [A U B]P <-> [A]P /\ [B]P
+  dl_choiceb: LEMMA
+    ALLRUNS(UNION(A,B),P) = (ALLRUNS(A,P) AND ALLRUNS(B,P))
+
+  % Choice with diamond
+  % <A U B>P <-> <A>P \/ <B>P
+  dl_choiced: LEMMA
+    SOMERUNS(UNION(A,B),P) = (SOMERUNS(A,P) OR SOMERUNS(B,P))
+
+%% COMPOSE
+    
+  % Compose with box
+  % [A;B]P <-> [A][B]P
+  dl_composeb: LEMMA
+    ALLRUNS(SEQ(A,B),P) = ALLRUNS(A,ALLRUNS(B,P))
+
+  % Compose with diamond
+  % <A;B>P <-> <A><B>P\
+  dl_composed: LEMMA
+    SOMERUNS(SEQ(A,B),P) = SOMERUNS(A,SOMERUNS(B,P))
+
+
+%% ITERATE
+
+  % Iterate box
+  %  [A*]P <-> P /\ [A][A*]P
+  % @QED dl_iterateb proved by lmwhite3 on Thu, 15 Sep 2022 19:03:49 GMT
+  dl_iterateb: LEMMA
+    ALLRUNS(STAR(A),P) = DLAND(P,ALLRUNS(A,ALLRUNS(STAR(A),P)))
+
+  % Iterate diamond
+  %  <A*>P <-> P \/ <A><A*>P
+  % @QED dl_iterated proved by lmwhite3 on Mon, 19 Sep 2022 16:38:18 GMT
+  dl_iterated: LEMMA
+    SOMERUNS(STAR(A),P) = DLOR(P,SOMERUNS(A,SOMERUNS(STAR(A),P)))
+
+  % Any operator with a box
+  % [any(x_i,qQ)]P <-> forall(X): qQ(X) -> [x_i := X]P
+  dl_anyb: LEMMA
+    ALLRUNS(ANY(i,qQ),P) =
+    DLFORALL(LAMBDA(X:real):(qQ(X) IMPLIES SUB((:(i,cnst(X)):))(P)))
+
+  % Any operator with a diamond
+  % <any(x_i,qQ)>P <-> exists(X:real): qQ(X) /\  [x_i := X]P
+  dl_anyd: LEMMA
+    SOMERUNS(ANY(i,qQ),P) =
+    DLEXISTS(LAMBDA(X:real):(qQ(X) AND SUB((:(i,cnst(X)):))(P)))
+    
+  % Box with AND
+  % [A](P /\ Q) <-> [A]P /\ [A]Q
+  dl_boxand: LEMMA
+    ALLRUNS(A,DLAND(P,Q)) = DLAND(ALLRUNS(A,P),ALLRUNS(A,Q))
+
+  % diamondOr
+  % <A>(P \/ Q) <-> <A>P \/ <A>Q
+  dl_diamondOr: LEMMA
+    SOMERUNS(A,DLOR(P,Q)) = DLOR(SOMERUNS(A,P),SOMERUNS(A,Q))
+
+  % Iterate arrow box
+  %  [A*]P <-> P /\ [A*][A]P
+  % @QED dl_iteratearrowb proved by lmwhite3 on Fri, 30 Sep 2022 21:47:26 GMT
+  dl_iteratearrowb: LEMMA
+    ALLRUNS(STAR(A),P) = DLAND(P,ALLRUNS(STAR(A),ALLRUNS(A,P)))
+
+  % Star star box
+  % [A*; A*]P <-> [A*]P
+  % @QED dl_starstarb proved by lmwhite3 on Fri, 30 Sep 2022 20:52:36 GMT
+  dl_starstarb: LEMMA
+  ALLRUNS(SEQ(STAR(A),STAR(A)),P) = ALLRUNS(STAR(A),P)
+
+%% I 
+
+  % iterate Id box
+  %  [a*]P <-> P /\ [a*](P->[a]P)
+  dl_iterateIb: LEMMA
+  ALLRUNS(STAR(A),P) = DLAND(P,ALLRUNS(STAR(A),(DLIMPLIES(P,ALLRUNS(A,P)))))
+
+
+%-------------------------------------------------------------------------
+%% End Hybrid program rewrites
+%-------------------------------------------------------------------------
+
+%-------------------------------------------------------------------------
+%% Begin Hybrid program rules
+%-------------------------------------------------------------------------
+
+%% Mb
+  
+  %     P -> Q
+  % ------------------
+  %  [a]P -> [a]Q
+  dl_impliesallrunsb: LEMMA
+  (P IMPLIES Q)
+  IMPLIES
+  (Gamma |- cons(ALLRUNS(A,P) IMPLIES ALLRUNS(A,Q), Delta))
+  
+
+%% Md
+  
+  %     P -> Q
+  % ------------------
+  %  <a>P -> <a>Q
+  dl_impliesallrunsd: LEMMA
+  (P IMPLIES Q)
+  IMPLIES
+  (Gamma |- cons(SOMERUNS(A,P) IMPLIES SOMERUNS(A,Q), Delta))
+
+
+%% K 
+
+  % distribute hp box
+  %  [a](P->Q) -> ([a]P->[a]Q)
+  dl_distimpliesb: LEMMA
+  (Gamma |- cons(ALLRUNS(A, P IMPLIES Q),Delta))
+  IMPLIES
+  (Gamma |- cons(ALLRUNS(A,P) IMPLIES ALLRUNS(A,Q), Delta))
+
+
+%% Gb
+
+  % const
+  %  |- P
+  % -------------------
+  %  |- [A]P
+  dl_const: LEMMA
+    FORALL (A)(P):
+      ( (  (: :) |- (: P :)) IMPLIES ( (: :) |- (: ALLRUNS(A,P) :) ))
+
+%% Gd
+
+  % const
+  %  |- <A>DLTRUE AND P
+  % -------------------
+  %  |- <A>P
+  dl_constd: LEMMA
+    FORALL (A)(P):
+      ( (  (: :) |- (: DLAND(SOMERUNS(A,DLTRUE),P) :)) IMPLIES ( (: :) |- (: SOMERUNS(A,P) :) ))
+
+
+  %  p
+  % -------------------
+  % [A]p
+dl_V: LEMMA 
+  (FORALL(i:below(length(BV(A)))): fresh?(P)(nth(BV(A),i))) IMPLIES
+  ((Gamma |- (cons(P,Delta))) IMPLIES (Gamma |- cons(ALLRUNS(A,P),Delta)))
+
+  %  p
+  % -------------------
+  % <A>p
+dl_Vd: LEMMA 
+  (FORALL(i:below(length(BV(A)))): fresh?(P)(nth(BV(A),i))) IMPLIES
+  ((Gamma |- (cons(DLAND(SOMERUNS(A,DLTRUE),P),Delta))) IMPLIES (Gamma |- cons(SOMERUNS(A,P),Delta)))
+  
+
+  % bool const
+  dl_bool_const: LEMMA
+   FORALL (Gamma,Delta)(A)(b:bool):
+      ( cons(DLBOOL(b),Gamma) |- ( cons(ALLRUNS(A,DLBOOL(b)),Delta)) )
+
+
+%-------------------------------------------------------------------------
+%% END Axiomatization (dL Axioms, proven in PVS) (not done!) 
+%-------------------------------------------------------------------------
+
+
+  %=R
+  dl_subr: LEMMA
+  (cons(val(i)=re,Gamma) |- cons(SUB((:(i,re):))(Q),Delta))
+  IMPLIES
+  (cons(val(i)=re,Gamma) |- cons(Q,Delta))
+
+  %=L
+  dl_subl: LEMMA
+  (cons(val(i)=re,cons(SUB((: (i,re):))(P), Gamma)) |- Delta)
+  IMPLIES
+  (cons(val(i)=re,cons(P,Gamma)) |- Delta)
+
+  dl_subf: LEMMA
+  FORALL(i:nat | (fresh?(re)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i))):
+  ((cons(val(i)=re, Gamma)) |- cons(P, Delta))
+  IMPLIES
+  (Gamma |- cons(SUB((: (i,re) :))(P), Delta))
+  
+%-------------------------------------------------------------------------
+%% END Propositional sequent calculus proof rules
+%-------------------------------------------------------------------------
+
+
+
+
+
+%-------------------------------------------------------------------------
+%% BEGIN stuff used in dl strats
+%-------------------------------------------------------------------------
+
+  % Used in strategy: dl-monob
+  % weak implication for box
+  %       Q |- P
+  % ----------------------
+  %    [A]Q |- [A]P
+  dl_weak_impliesb: LEMMA
+    FORALL (A)(P,Q):
+      ( Q |- P ) IMPLIES
+      (ALLRUNS(A,Q) |- ALLRUNS(A,P)) 
+
+  % Used in strategy: dl-monod
+  % weak implication for diamnod
+  %       Q |- P
+  % ----------------------
+  %    <A>Q |- <A>P
+  dl_weak_impliesd: LEMMA
+    FORALL (A)(P,Q):
+      ( Q |- P ) IMPLIES
+      (SOMERUNS(A,Q) |- SOMERUNS(A,P)) 
+
+  % weak implication with exists for box
+  %     Exists(X):Qe(X) |- P
+  % ------------------------------------------
+  %  Exists(X):[Ae(X)]Qe(X) |- Exits(X):[Ae(X)]P
+  dl_weak_impliesbE: LEMMA
+    FORALL (Ae)(P,Qe):
+      ( DLEXISTSR(Qe) |- P  ) IMPLIES
+      ( DLEXISTSR(LAMBDA (X:RealExpr): ALLRUNS(Ae(X),Qe(X)))
+        |-
+        DLEXISTSR(LAMBDA (X:RealExpr): ALLRUNS(Ae(X),P)) )
+    
+  % weak implication with exists for diamond
+  %     Exists(X):Qe(X) |- P
+  % ------------------------------------------
+  %  Exists(X):<Ae(X)>Qe(X) |- Exits(X):<Ae(X)>P
+  dl_weak_impliesdE: LEMMA
+    FORALL (Ae)(P,Qe):
+      ( DLEXISTSR(Qe) |- P  ) IMPLIES
+      ( DLEXISTSR(LAMBDA (X:RealExpr): SOMERUNS(Ae(X),Qe(X)))
+        |-
+        DLEXISTSR(LAMBDA (X:RealExpr): SOMERUNS(Ae(X),P)) )
+
+
+  % Differential auxiliary
+  %  Gamma |- Exists(X):Qe(X),Delta   Exists(X):Qe(X) |- P
+  %  Qe(X),Gamma |- (X' = a(x) + b(x)) AND ([x'=f(x),X'=a(x)X+b(x) /\ R]Qe(X)),Delta
+  % ------------------------------------------------------------———————
+  %          Gamma |- [x'=f(x) /\ R]P, Delta
+  dl_differential_auxiliary: LEMMA
+    FORALL (Q:(ddl_dom?))(Gamma,Delta:Formulas)(P:BoolExpr)(ode:ODEs)
+     (a,b:(cont_re?(Q)),G:BoolExpr)( i:(fresh_li?(ode)) | fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i)):
+       ((EXISTS(re:RealExpr | fresh?(re)(i) ): cons(val(i)=re, Gamma)
+        |-
+	cons(ALLRUNS(DIFF( cons( (i, a*val(i)+b), ode),Q),G), Delta))
+	AND ((: G :) |- (: P :))) AND ( Gamma |- (: P :))
+        IMPLIES
+         (Gamma |-  cons(ALLRUNS(DIFF(ode,Q),P), Delta))
+
+
+
+%-------------------------------------------------------------------------
+%% END stuff used in dl strats
+%-------------------------------------------------------------------------
+
+
+%-------------------------------------------------------------------------
+%% BEGIN dLSequent calculus proof rules
+%-------------------------------------------------------------------------
+
+%% LOOP
+
+  % Induction loop
+  % (Gamma |- J,Delta)     (J |- P)     (J |- [A]J)
+  % -----------------------------------------------
+  %             Gamma |- [A*]P,Delta
+
+
+
+  dl_bounded_loop
+  : LEMMA
+    FORALL (n:nat)(J)(A):
+      (J |- ALLRUNS(A,J))
+      IMPLIES (J |- ALLRUNS(BSTAR(A,n),J))
+
+  dl_loop
+  : LEMMA
+    FORALL (Gamma,Delta)(J,P)(A):
+      (Gamma |- cons(J,Delta)) AND
+      (J |- P) AND
+      (J |- ALLRUNS(A,J)) IMPLIES
+      (Gamma |- cons(ALLRUNS(STAR(A),P),Delta))
+
+
+%% GENERALIZE
+
+  % Used in strategy: dl-mono
+  % Monotonicity for box (left)
+  %  ([A]Q,Gamma |- Delta)      (P |- Q)
+  % -----------------------------------
+  %         [A]P,Gamma |- Delta
+  dl_MbL: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(A):
+      (cons(ALLRUNS(A,Q),Gamma) |- Delta) AND
+      (P |- Q) IMPLIES
+      (cons(ALLRUNS(A,P),Gamma) |- Delta)
+
+  % Used in strategy: dl-mono
+  % Monotonicity for box (rigth)
+  %  (Gamma |- [A]Q,Delta)      (Q |- P)
+  % -----------------------------------
+  %         Gamma |- [A]P,Delta
+  dl_MbR: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(A):
+      (Gamma |- cons(ALLRUNS(A,Q),Delta)) AND
+      (Q |- P) IMPLIES
+      (Gamma |- cons(ALLRUNS(A,P),Delta))
+
+  % Used in strategy: dl-monod
+  % Monotonicity for diamond (left)
+  % (<A>Q,Gamma |- Delta)      (P |- Q)
+  % -----------------------------------
+  %         <A>P,Gamma |- Delta
+  dl_MdL: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(A):
+      (cons(SOMERUNS(A,Q),Gamma) |- Delta) AND
+      (P |- Q) IMPLIES
+      (cons(SOMERUNS(A,P),Gamma) |- Delta)
+
+  % Used in strategy: dl-monod
+  % Monotonicity for diamond (right)
+  % (Gamma |- <A>Q,Delta)      (Q |- P)
+  % -----------------------------------
+  %         Gamma |- <A>P,Delta
+  dl_MdR: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(A):
+      (Gamma |- cons(SOMERUNS(A,Q),Delta)) AND
+      (Q |- P) IMPLIES
+      (Gamma |- cons(SOMERUNS(A,P),Delta))
+
+  % MonotonicityWithExists for box (right)
+  % (Gamma |- Exists(X):[Ae(X)]Qe(X),Delta)    (Exists(X):Qe(X) |- P)
+  % -------------------------------------------------------------------
+  %         Gamma |- Exists(X):[Ae(X)]P,Delta
+  dl_MEbR: LEMMA
+    FORALL (Gamma,Delta)(P,Qe)(Ae):
+      (Gamma |- cons(DLEXISTSR(LAMBDA (X:RealExpr): ALLRUNS(Ae(X),Qe(X))),Delta)) AND
+      (DLEXISTSR(Qe) |-  P ) IMPLIES
+      (Gamma |- cons(DLEXISTSR(LAMBDA (X:RealExpr): ALLRUNS(Ae(X),P)),Delta))
+
+  % MonotonicityWithExistsAnd for box (right)
+  % (Gamma |- Exists(X):Re(X) AND [Ae(X)]Qe(X),Delta)    (Exists(X):Qe(X) |- P)
+  % -------------------------------------------------------------------
+  %         Gamma |- Exists(X): Re(X) AND [Ae(X)]P,Delta
+  dl_MEbRA: LEMMA
+  FORALL (Gamma,Delta)(P,Qe,Re)(Ae):
+  (Gamma |- cons(DLEXISTSR(LAMBDA (X:RealExpr): Re(X) AND ALLRUNS(Ae(X),Qe(X))),Delta)) AND
+  (DLEXISTSR(Qe) |-  P ) IMPLIES
+  (Gamma |- cons(DLEXISTSR(LAMBDA (X:RealExpr): Re(X) AND ALLRUNS(Ae(X),P)),Delta))
+
+
+%% DISCRETEGHOST
+      
+  % DDL strategy: dl-ghost
+  % Discrete ghost
+  % Gamma |- [ x := re ] P,Delta
+  % ---------------------------
+  %  Gamma |- [A]P,Delta
+  dl_discrete_ghost: LEMMA
+    FORALL (Gamma,Delta)(A)(P)(re):
+      (Gamma |- cons(DLFORALL(LAMBDA (x:real): DLIMPLIES((cnst(x) = re),ALLRUNS(A,P))),Delta)) IMPLIES
+      (Gamma |- cons(ALLRUNS(A,P),Delta))
+
+
+%% AND/OR
+
+  % DDL strategy: dl-andb
+  % AND with box 
+  %  Gamma |- [A]P,Delta      Gamma |-  [A]R,Delta
+  %  -----------------------------------------------
+  %       Gamma |- [A](P /\ R),Delta
+  dl_andb: LEMMA
+    FORALL (Gamma,Delta)(P,R):
+      (Gamma |- cons(ALLRUNS(A,P),Delta)) AND 
+      (Gamma |- cons(ALLRUNS(A,R),Delta)) IMPLIES 
+      (Gamma |- cons(ALLRUNS(A,DLAND(P,R)),Delta))
+
+  % DDL strategy: dl-andb
+  % AND with box 
+  %       Gamma |- [A](P /\ R),Delta
+  %  -----------------------------------------------
+  %       Gamma |- [A]P,Delta  
+  dl_andf: LEMMA
+    FORALL (Gamma,Delta)(P,R):
+     (Gamma |- cons(ALLRUNS(A,DLAND(P,R)),Delta))
+      IMPLIES
+       (Gamma |- cons(ALLRUNS(A,P),Delta))
+
+  % DDL strategy: dl-orb
+  % OR with box
+  %  Gamma |- (P \/ R),Delta    P |- [A]P   R |- [A]R
+  %  -----------------------------------------------------------
+  %       Gamma |- [A](P \/ R),Delta
+  dl_orb: LEMMA
+    FORALL (Gamma,Delta)(P,R):
+      (Gamma |- cons(DLOR(P,R),Delta)) AND
+      (P |- ALLRUNS(A,P)) AND 
+      (R |- ALLRUNS(A,R)) IMPLIES 
+      (Gamma |- cons(ALLRUNS(A,DLOR(P,R)),Delta))
+
+
+%-------------------------------------------------------------------------
+%% END dLSequent calculus proof rules
+%-------------------------------------------------------------------------
+
+
+
+%-------------------------------------------------------------------------
+%% BEGIN   Derived rules
+%-------------------------------------------------------------------------
+
+%% COHIDE
+
+  % hide-restR
+  %  Gamma |- P
+  % ----------------
+  % Gamma |- P,Delta
+  dl_hide_restR: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (Gamma |- P) IMPLIES
+     (Gamma |- cons(P,Delta))
+
+  % hide-restL
+  %   P |- Delta
+  % ----------------
+  %  P,Gamma |- Delta
+  dl_hide_restL: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (P |- Delta) IMPLIES
+     (cons(P,Gamma) |- Delta)
+
+  % hide-restLR
+  %       P |- Q
+  % ----------------
+  % P,Gamma |- Q,Delta
+  dl_hide_restLR: LEMMA
+    FORALL (Gamma,Delta)(P):
+     (P |- Q) IMPLIES
+     (cons(P,Gamma) |- cons(Q,Delta))
+  
+%% EQUIV
+
+  % commute R
+  %  Gamma |- (P IFF Q),Delta
+  % ------------------------------
+  %  Gamma |- (Q IFF P),Delta
+  dl_commuteEquivR: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+     (Gamma |- cons(DLIFF(P,Q),Delta)) IMPLIES
+     (Gamma |- cons(DLIFF(Q,P),Delta))
+
+  % commute L
+  %  (P IFF Q),Gamma |- Delta
+  % ------------------------------
+  %  (Q IFF P),Gamma |- Delta
+  dl_commuteEquivL: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+     (cons(DLIFF(P,Q),Gamma) |- Delta) IMPLIES
+     (cons(DLIFF(Q,P),Gamma) |- Delta)
+
+  % equivify R
+  %  Gamma |- (P IFF Q),Delta
+  % ------------------------------
+  %  Gamma |- (P IMPLIES Q),Delta
+  dl_equivifyR: LEMMA
+    FORALL (Gamma,Delta)(P,Q):
+     (Gamma |- cons(DLIFF(P,Q),Delta)) IMPLIES
+     (Gamma |- cons(DLIMPLIES(P,Q),Delta))
+%-------------------------------------------------------------------------
+%% END   Derived rules
+%-------------------------------------------------------------------------
+%-------------------------------------------------------------------------
+%% BEGIN Differential equation sequent calculus proof rules
+%-------------------------------------------------------------------------
+
+%% DW
+
+
+  % DDL strategy: dl-diffweak
+  % Differential Weakening
+  %      (Q |- Pa)
+  % ---------------------------------
+  % (Gamma |- [x' = f(x) & Q]P,Delta
+  dl_dW: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(ode:ODEs):
+      (Q |- P) IMPLIES
+      (Gamma |- cons(ALLRUNS(DIFF(ode,Q),P),Delta))
+
+
+% DDL strategy: ddl-diffinit
+  % Differential init evolve
+  %    (Gamma, Q |- [x'= f(x) & Q]P, Delta)
+  % ----------------------------------------
+  %     (Gamma |- [x'=f(x) & Q]P, Delta)
+  dl_dinit: LEMMA
+    FORALL (Gamma,Delta)(P,Q)(ode:ODEs):
+      (cons(Q,Gamma) |- cons(ALLRUNS(DIFF(ode,Q),P),Delta)) IMPLIES 
+      (Gamma |- cons(ALLRUNS(DIFF(ode,Q),P),Delta))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction with equality
+  %   Q  |- re1'{ x' <-- f(x)} = re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %       re1 = re2 |- [x'=f(x) /\ Q](re1 = re2)
+  dl_dI_eq: LEMMA
+   FORALL (P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) = SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     (re1 = re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 = re2))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction with inequality
+  %   Q  |- re1'{ x' <-- f(x)} = re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %       re1 /= re2 |- [x'=f(x) /\ Q](re1 /= re2)
+  dl_dI_neq: LEMMA
+   FORALL (P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) = SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     (re1 /= re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 /= re2))
+
+  % Used in strategy: dl-diffinv
+  %   Q  |- re1'{ x' <-- f(x)} <= re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %       re1 <= re2 |- [x'=f(x) /\ Q](re1 <= re2)
+  dl_dI_le: LEMMA
+   FORALL  (P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) <= SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     (re1 <= re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 <= re2))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction with strictly less than
+  %   Q  |- re1'{ x' <-- f(x)} <= re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %       re1 < re2 |- [x'=f(x) /\ Q](re1 < re2)
+  dl_dI_lt: LEMMA
+   FORALL(P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) <= SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     (re1 < re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 < re2))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction with greater than or equal to
+  %   Q  |- re1'{ x' <-- f(x)} >= re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %       re1 >= re2 |- [x'=f(x) /\ Q](re1 >= re2)
+  dl_dI_ge: LEMMA
+   FORALL(P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) >= SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     ( re1 >= re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 >= re2))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction with strictly greater than 
+  %   Q  |- re1'{ x' <-- f(x)} >= re2'{ x' <-- f(x)}
+  %  -------------------------------------------------
+  %      re1 > re2 |- [x'=f(x) /\ Q](re1 > re2)
+  dl_dI_gt: LEMMA
+   FORALL(P:(ddl_dom?))(ode:ODEs)(re1,re2:(diff_re?(max_var(ode),P)))(Q):
+     (Q |- (SUB_DIFTRe(P,ode)(re1) >= SUB_DIFTRe(P,ode)(re2))) IMPLIES
+     ( re1 > re2 |- ALLRUNS(DIFF(ode,DLAND(P,Q)),re1 > re2))
+
+  % Used in strategy: dl-diffinv
+  % Differential Induction without Gamma,Delta
+  %          Q |- P'{ x' <-- f(x)} 
+  % ------------------------------------------------
+  %          P |- [x'=f(x) & Q]P
+  dl_dI_lite: LEMMA
+    FORALL  (P:(ddl_dom?))(nnP,Q)(ode:ODEs):
+      derivable_M_nqbool?(max_var(ode),P)(nnP) AND
+      ( Q |- SUB_DIFT(P,ode)(nnP) ) IMPLIES
+      ( nqb_to_be(nnP) |- ALLRUNS(DIFF(ode,DLAND(P,Q)),nqb_to_be(nnP)))
+
+%% DI
+
+
+  % DDL strategy: dl-diffinv
+  % Differential Induction
+  % (Q,Gamma |- P,Delta)     Q |- P'{ x' <-- f(x)} 
+  % ------------------------------------------------
+  %        (Gamma |- [x'=f(x) & Q]P,Delta
+  dl_dI: LEMMA
+    FORALL  (P:(ddl_dom?))(Gamma,Delta)(nnP,Q)(ode:ODEs):
+      derivable_M_nqbool?(max_var(ode),P)(nnP) AND
+      ( cons(Q,Gamma) |- cons(nqb_to_be(nnP),Delta) ) AND
+      ( Q |- SUB_DIFT(P,ode)(nnP) ) IMPLIES
+      ( Gamma |- cons(ALLRUNS(DIFF(ode,DLAND(P,Q)),nqb_to_be(nnP)),Delta) )
+
+  dl_dI_dlTRUE: LEMMA
+    FORALL (Gamma,Delta)(nnP,Q)(ode:ODEs):
+      derivable_M_nqbool?(max_var(ode),DLTRUE)(nnP) AND
+      ( cons(Q,Gamma) |- cons(nqb_to_be(nnP),Delta) ) AND
+      ( Q |- SUB_DIFT(DLTRUE,ode)(nnP) ) IMPLIES
+      ( Gamma |- cons(ALLRUNS(DIFF(ode,Q),nqb_to_be(nnP)),Delta) )
+
+%% DC
+
+
+  % DDL strategy: ddl-diffcase
+  % Differential Cut
+  % (Gamma |- [x'=f(x) & Q]R,Delta)     (Gamma |- [x'=f(x) & (Q /\ R)]P,Delta)
+  % -------------------------------------------------------------------------------
+  %                 (Gamma |- [x'=f(x) & Q]P,Delta
+  %
+  dl_dC: LEMMA
+    FORALL (Gamma,Delta)(P,Q,R)(ode:ODEs):
+      (Gamma |- cons(ALLRUNS(DIFF(ode,Q),R),Delta)) AND
+      (Gamma |- cons(ALLRUNS(DIFF(ode,Q AND R),P),Delta)) IMPLIES
+      (Gamma |- cons(ALLRUNS(DIFF(ode,Q),P),Delta))
+
+
+%% DG
+
+
+  % Differential ghost
+  % Gamma |- Exists(X):[x'=f(x),X'=a(x)X+b(x) /\ P]Q,Delta
+  % -------------------------------------------------------------
+  %     Gamma |- [x'=f(x) /\ P]Q
+
+  dl_differential_ghost: LEMMA
+        FORALL (Q:(ddl_dom?))(Gamma,Delta:Formulas)(P:BoolExpr)(ode:ODEs)
+     (a,b:(cont_re?(Q)),G:BoolExpr)(i:(fresh_li?(ode)) | fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i)):
+        (Gamma
+        |-
+	cons(DLEXISTSRf(LAMBDA(re:RealExpr): ALLRUNS(SEQ(ASSIGN((:(i,re):)),DIFF( cons( (i, a*val(i)+b), ode),Q)),G),i), Delta))
+	AND ((: G :) |- (: P :)) AND ( Gamma |- (: P :))
+        IMPLIES
+         (Gamma |-  cons(ALLRUNS(DIFF(ode,Q),P), Delta))
+
+
+%% DL solution is in dl_solution.pvs
+
+%-------------------------------------------------------------------------
+%% END Differential equation sequent calculus proof rules
+%-------------------------------------------------------------------------
+
+END dynamic_logic

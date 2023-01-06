@@ -1,0 +1,389 @@
+dl_solution : THEORY
+ % Welcome!
+
+%-------------------------------------------------------------------------% 
+%-------------------------------------------------------------------------%
+%| dl_solution: Develops the preliminary information for the dl-solve	 |%
+%|   rule. To be moved to dynamic logic and hp_def most likely           |%
+%-------------------------------------------------------------------------%
+% Created							   Aug 2022
+% 								     JTS,MM
+% Last Updated							  Sept 2022
+%      								        JTS
+%-------------------------------------------------------------------------%
+%-------------------------------------------------------------------------%
+
+%-----     %
+  BEGIN
+%     -----%
+
+  IMPORTING analysis@derivatives,
+           % substitution,
+           % more_derivative_props,
+           % structures@for_examples,
+           % reals@reals_safe_ops,
+	   % chain_rule_re,
+	   % ODEs_equiv,
+	   % ODEs@linear_ode_1D,
+           % continuity_props,
+	   % fresh_props
+	    dynamic_logic
+%%--------------------------------------------
+
+%%--------------------------------------------
+%%Define variables
+%%--------------------------------------------
+
+  l,m: VAR Assigns
+  j,k: VAR nat
+  re:  VAR RealExpr
+  r :  VAR real
+
+  Gamma,Delta : VAR Formulas
+  P,Q,J,R     : VAR BoolExpr
+  A,B         : VAR HP
+  i           : VAR nat
+  qQ          : VAR QBoolExpr
+  Progress    : VAR RealExpr
+  re1,re2     : VAR RealExpr
+
+  Qe : VAR [RealExpr->BoolExpr]
+  Re : VAR [RealExpr->BoolExpr]
+  Ae : VAR [RealExpr->HP]
+  
+%%--------------------------------------------
+%%Define solves, which is solution_odes with
+%  the initial condition
+%%--------------------------------------------
+%solves
+
+solves?(R: BoolExpr)(D: (dd?))(ode: ODEs)
+  (y: [below(length(ode)) -> [real -> [Environment ->real]]]): bool =
+    FORALL(envi: (R)): solution_odes?(D, ode, envi)
+      (LAMBDA(i: below(length(ode))): LAMBDA(r: real): y(i)(r)(envi))
+
+%solves u mean y is the unique solution
+
+solves_u?(R: BoolExpr)(D: (dd?))(ode: ODEs)
+  (y: [below(length(ode)) -> [real -> [Environment ->real]]]): bool =
+    FORALL(envi: (R)): solution_odes_u?(D, ode, envi)
+      (LAMBDA(i: below(length(ode))): LAMBDA(r: real): y(i)(r)(envi))
+
+%%--------------------------------------------
+%% nnreal as a predicate
+%%--------------------------------------------
+
+nnreal?(r: real): bool = (r >= 0)
+
+%%--------------------------------------------
+%% zip_sol will take an ode, a 'solution' y
+%  and zip them together into a MapExprInj
+%  which will correspond to the Assignments
+%  made in dl-solve.
+%%--------------------------------------------
+
+init_zip_sol(ode:ODEs,
+  y:[below(length(ode)) -> [real -> [Environment ->real]]],t:real,
+  %% accumulator with inductive hypothesis in type
+  acc:{a: MapExprInj | length(a) <= length(ode)
+       AND FORALL(i:below(length(a))): nth(a,i) =
+           (nth(ode,i+(length(ode)-length(a)))`1, y(i + (length(ode)-length(a)))(t))}): RECURSIVE
+  %% output is 'zipped'
+  {a: MapExprInj | length(a)  = length(ode) AND
+   FORALL(i:below(length(a))): nth(a,i) = (nth(ode,i)`1, y(i)(t))}  =
+     IF length(acc) = length(ode) THEN acc
+       ELSE
+        LET ll: MapExprInj = cons( (nth(ode,length(ode)-( length(acc)+1))`1,
+	                            y(length(ode)-(length(acc)+1))(t)), acc)
+	IN
+          init_zip_sol(ode, y, t, ll)
+     ENDIF
+     MEASURE length(ode)-length(acc)
+
+%%--------------------------------------------
+%% Test init_zip_sol
+%  It won't evaluate, but can expand all the way
+%  with grind
+%%--------------------------------------------
+
+zip_sol_test: LEMMA
+(init_zip_sol( (: (0, cnst(5)) :),
+(LAMBDA(i:below(1)):
+  LAMBDA(r:real):
+    val(0)+cnst(5)+cnst(r)), 5, null) =
+    cons((0, val(0) + cnst(5) + cnst(5)), null))
+    
+%%--------------------------------------------
+%% Define zs - zip sol
+%%--------------------------------------------
+
+zs(ode:ODEs,y:[below(length(ode)) -> [real -> [Environment ->real]]])(t:real):
+ MapExprInj =
+ init_zip_sol(ode,y,t,null)
+
+%%--------------------------------------------
+%% map_inj property of zs
+%%--------------------------------------------
+
+map_inj_zs: LEMMA
+  FORALL(ode:ODEs, t:real, i:nat,
+  y:[below(length(ode)) -> [real -> [Environment ->real]]]):
+  not_in_map(ode)(i)
+  IFF
+  not_in_map(zs(ode,y)(t))(i)
+
+%%--------------------------------------------
+%% Solution axiom in not Dl-format
+%%--------------------------------------------
+
+solution_domain_ax_ode: LEMMA
+ FORALL(ode:ODEs,
+ y:[below(length(ode)) -> [real -> [Environment ->real]]]): 
+ solves_u?(R)(hp(0))(ode)(y)
+ IMPLIES
+ ( ((: R :) |-
+ (: ALLRUNS(DIFF( ode , Q ), P) :))
+ IFF
+ FORALL(env: (R), t:nnreal):
+ (FORALL(s:nnreal | s<=t):
+ Q( assign_sub(zs(ode,y)(s))(env)) )
+ IMPLIES
+ P( assign_sub(zs(ode,y)(t))(env) ))
+				    
+%%--------------------------------------------
+%% Solution axiom (rule?) in dl-format
+%%--------------------------------------------
+
+dl_solution_domain_iff: LEMMA
+FORALL(ode:ODEs,  y: (solves_u?(R)(hp(0))(ode))):
+  LET
+  ASSIGN_s = LAMBDA(s:real): ASSIGN(zs(ode,y)(s))
+  IN
+    (( (: R :) |- (: ALLRUNS(DIFF(ode, Q), P) :))
+    IFF
+    ((: R :) |-
+      (: DLFORALL(UPTO(ASSIGN_s,Q)(P)) :)))
+
+%%--------------------------------------------
+%% Solution axiom (rule?) in dl-format,
+%  forward direction
+%%--------------------------------------------
+
+dl_solution_domain: LEMMA
+FORALL(ode:ODEs,  y: (solves_u?(R)(hp(0))(ode))):
+  LET
+  ASSIGN_s = LAMBDA(s:real): ASSIGN(zs(ode,y)(s))
+  IN
+((: R :) |-
+      (: DLFORALL(UPTO(ASSIGN_s,Q)(P)) :))
+ IMPLIES
+( (: R :) |- (: ALLRUNS(DIFF(ode, Q), P) :))
+
+%%--------------------------------------------
+%% Solution axiom for single variable as in cheat
+%  sheat 
+%%--------------------------------------------
+
+solution_domain_ax: LEMMA
+ FORALL(y:[below(1) -> [real -> [ Environment -> real]]]): 
+ solves_u?(R)(hp(0))((: (i, re1) :))(y)
+ IMPLIES
+ ( ((: R :) |-
+ (: ALLRUNS(DIFF( (: (i, re1) :), Q ), P) :))
+ IFF
+ FORALL(env: (R), t:nnreal):
+ LET yenv(i:below(1))(r:real): real = y(i)(r)(env)
+ IN
+ (FORALL(s:nnreal | s<=t):
+ Q(env WITH [ i:= yenv(0)(s)]))
+ IMPLIES
+ P(env WITH [ i := yenv(0)(t)]))
+
+%%--------------------------------------------
+%%  Linear solution (cnst), non dl-version
+%%--------------------------------------------
+
+solution_domain_ax_lin: LEMMA
+ FORALL(m:real): 
+ ( ((: R :) |-
+ (: ALLRUNS(DIFF( (: (i, cnst(m)) :), Q ), P) :))
+ Iff
+ FORALL(env: (R), t:nnreal):
+ (FORALL(s:nnreal | s<=t):
+ Q(env WITH [ i:= env(i) + m*s]))
+ IMPLIES
+ P(env WITH [ i := env(i) + m*t]))
+
+%%--------------------------------------------
+%%  Linear solution (val not in map),
+%   non dl-version
+%%--------------------------------------------
+
+solution_domain_ax_lin_val: LEMMA
+ FORALL(j:nat):
+ i /= j IMPLIES (
+ ( ((: R :) |-
+ (: ALLRUNS(DIFF( (: (i, val(j)) :), Q ), P) :))
+ IFF
+ FORALL(env: (R), t:nnreal):
+ (FORALL(s:nnreal | s<=t):
+ Q(env WITH [ i:= env(i) + val(j)(env)*s]))
+ IMPLIES
+ P(env WITH [ i := env(i) + val(j)(env)*t])))
+
+%%--------------------------------------------
+%%  Quadratic solution, non dl-version
+%%--------------------------------------------
+
+solution_domain_ax_quad: LEMMA
+ FORALL(j:nat | NOT j = i, m:real): 
+ ( ((: R :) |-
+ (: ALLRUNS(DIFF( (: (i, cnst(m)), (j, val(i)) :), Q ), P) :))
+ Iff
+ FORALL(env: (R), t:nnreal):
+ (FORALL(s:nnreal | s<=t):
+ Q(env WITH [ i := env(i) + m*s] WITH [ j := env(j) + env(i)*s + m * s^2 /2] ))
+ IMPLIES
+ P(env WITH [ i := env(i) + m*t] WITH [ j := env(j) + env(i)*t + m * t^2 /2]))
+
+%%--------------------------------------------
+%%  Testing in_map executability
+%%--------------------------------------------
+
+in_map_test: LEMMA
+ in_map((: (1, cnst(5)), (5, cnst(10)), (3, cnst(2)) :))(3) AND
+ NOT  in_map((: (1, cnst(5)), (5, cnst(10)), (3, cnst(2)) :))(30)
+
+%%--------------------------------------------
+%%  Get_index (executable?)
+%%--------------------------------------------
+
+get_index(l: MapExprInj)(j: (in_map(l))): RECURSIVE {n:below(length(l)) | nth(l,n)`1 = j} =
+IF car(l)`1 = j THEN 0
+ELSE 1 + get_index(cdr(l))(j)
+ENDIF
+MEASURE length(l)
+
+%%--------------------------------------------
+%%Quad_cnst means j is the quadratic part
+% of another variable
+%%--------------------------------------------
+
+quad_cnst?(l: MapExprInj)(j: (in_map(l)) ): bool =
+(EXISTS(c3:real): nth(l,get_index(l)(j))`2 = cnst(c3))
+OR (EXiSTS(c4:real,j4:nat):  (nth(l,get_index(l)(j))`2 = cnst(c4) + val(j4) AND NOT in_map(l)(j4)))
+
+%%--------------------------------------------
+%%Cnst_lins means every derivative is a constant
+% or linear (so quadratic solution)
+%%--------------------------------------------
+
+cnst_lins?(l: MapExprInj): bool =
+FORALL(i: below(length(l))):
+(EXISTS(c:real): nth(l,i)`2 = cnst(c))
+OR
+(EXISTS(c2,j2:nat): nth(l,i)`2 = cnst(c2) + val(j2) AND
+((NOT in_map(l)(j2)) OR quad_cnst?(l)(j2)))
+
+cnst_val_0: LEMMA
+FORALL(j:nat):
+cnst(0) + val(j) = val(j)
+
+cnst_val_com: LEMMA
+FORALL(c,j:nat):
+val(j) + cnst(c) = cnst(c) + val(j)
+
+val_inj: LEMMA
+FORALL(i,j:nat):
+ val(i) = val(j)
+ IFF
+ i = j 
+
+%%--------------------------------------------
+%%Cnst_lins means every derivative is a constant
+% or linear (so quadratic solution)
+%%--------------------------------------------
+
+in_map_ex(l)(i:nat): RECURSIVE bool =
+IF null?(l) THEN FALSE
+ELSE car(l)`1 = i or in_map_ex(cdr(l))(i)
+ENDIF
+MEASURE length(l)
+
+in_map_ex_eq: LEMMA
+FORALL(l):
+in_map(l) = in_map_ex(l)
+
+env_nat_shift(k:nat)(i:nat): real = i+k
+
+% change to env_cnst(c:real) (\LAM{}(i:nat) i+k)
+env_c(r:real)(i:nat): real = r
+
+  env_c_val
+  : LEMMA
+    FORALL(c:real, i: nat): val(i)(env_c(c)) = c
+
+get_val_cnst_id_ex(l:MapExprInj)(i:below(length(l)) |
+  EXISTS(j: (in_map(l)), c:real): nth(l,i)`1 /= j
+   AND nth(l,i)`2 = cnst(c) +  val(j)):
+   {vc: [below(length(l)), real] | vc`1 /= i
+   AND nth(l,i)`2 = cnst(vc`2) + val(nth(l,vc`1)`1)
+   AND (FORALL(c:real,m:below(length(l))): nth(l,i)`2 = cnst(c) + val(nth(l,m)`1) IMPLIES (m=vc`1 AND vc`2 = c))} =
+   (get_index(l)(nth(l,i)`2(env_nat_shift(0)) - nth(l,i)`2(env_c(0))), nth(l,i)`2(env_c(0)))
+
+is_cnst?(l: (cnst_lins?))(i:below(length(l))): bool =
+nth(l,i)`2(env_nat_shift(0)) = nth(l,i)`2(env_nat_shift(1))
+
+is_val_not_in_map?(l: (cnst_lins?))(i:below(length(l))): bool =
+(NOT is_cnst?(l)(i)) AND (NOT in_map_ex(l)(nth(l,i)`2(env_nat_shift(0)) - nth(l,i)`2(env_c(0))))
+
+Y_sol_ex(l:(cnst_lins?))(i:below(length(l)))(s:real): [Environment -> real] =
+IF is_cnst?(l)(i) OR is_val_not_in_map?(l)(i) THEN val(nth(l,i)`1) + nth(l,i)`2 * cnst(s)
+ELSE val(nth(l,i)`1) + (cnst(nth(l,i)`2(env_c(0))) + val(nth(l,get_val_cnst_id_ex(l)(i)`1)`1))*cnst(s) + nth(l,get_val_cnst_id_ex(l)(i)`1)`2* cnst(s)^2 / cnst(2)
+ENDIF
+
+cnst_lins_def: LEMMA
+FORALL(l:(cnst_lins?),k:below(length(l))):
+       ( EXISTS (j: (in_map(l)), c: real):
+          nth[MapExpr](l, k)`1 /= j AND
+           nth[MapExpr](l, k)`2 = (+[Environment])(cnst(c), val(j)))
+OR   is_cnst?(l)(k)
+OR   is_val_not_in_map?(l)(k)
+
+y_sol_Ex: LEMMA
+Y_sol_ex( (: (0,cnst(5)), (1,val(2)), (2, val(5)) :))(1) /=  Y_sol_ex( (: (0,cnst(5)), (1,val(2)), (2, val(5)) :))(2)
+
+cnst_lins_sol: LEMMA
+ FORALL(l:(cnst_lins?),R:BoolExpr,envi:(R)):
+ solution_odes?(hp(0), l, envi)
+                    (LAMBDA (i: below(length(l))):
+                       LAMBDA (r: real): Y_sol_ex(l)(i)(r)(envi))
+
+cnst_lins_sol_u: LEMMA
+  FORALL(R:BoolExpr,l:(cnst_lins?)):
+  solves_u?(R)(hp(0))(l)(Y_sol_ex(l))
+
+ solution_domain_ax_cnst_imp_zip: LEMMA
+FORALL(ode:(cnst_lins?)):
+LET
+Z = (zs(ode,Y_sol_ex(ode))),
+ASSIGN_s = LAMBDA(s:real): ASSIGN(Z(s))
+IN
+((: R :) |-
+      (: DLFORALL(UPTO(ASSIGN_s,Q)(P)) :))
+ IMPLIES
+( (: R :) |- (: ALLRUNS(DIFF(ode, Q), P) :))
+
+% less restrictive version of the lemma, used in strategies.
+solution_domain_ax_cnst_imp_zip_no_hyp: COROLLARY
+FORALL(ode:(cnst_lins?)):
+LET
+Z = (zs(ode,Y_sol_ex(ode))),
+ASSIGN_s = LAMBDA(s:real): ASSIGN(Z(s))
+IN
+((::) |-
+      (: DLFORALL(UPTO(ASSIGN_s,Q)(P)) :))
+ IMPLIES
+( (::) |- (: ALLRUNS(DIFF(ode, Q), P) :))
+
+  END dl_solution

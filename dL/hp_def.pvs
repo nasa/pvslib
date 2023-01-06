@@ -1,0 +1,226 @@
+hp_def : THEORY
+ % Hello There!
+ 
+%-------------------------------------------------------------------------% 
+%-------------------------------------------------------------------------%
+%| hp_def: Defines the building blocks of hybrid programs		 |%
+%|         such as the variables space, real functions on variables,     |%
+%|         and booleans on variables. Also contains some structures      |%
+%|	   that will be used when defining the HP data type   		 |%
+%-------------------------------------------------------------------------%
+% Created							   Aug 2020
+% 								  CM,SB,JTS
+% Last Updated							   Jul 2022
+%      								        JTS
+%-------------------------------------------------------------------------%
+%-------------------------------------------------------------------------%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%%--------------------------------------------
+Importing structures@more_list_props
+%%To have nice properties of lists
+%%--------------------------------------------
+
+%%--------------------------------------------
+%%Environment is state space
+% nat is index of variable
+% env(nat) is value of the variable
+%%--------------------------------------------
+
+  Environment : TYPE = [ nat -> real ]
+  
+%%--------------------------------------------
+%%Booleans on environments
+%%--------------------------------------------
+
+  BoolExpr    : TYPE = [ Environment -> bool ]
+  
+%%--------------------------------------------
+%%Boolean expressions over real numbers
+%%--------------------------------------------
+
+  QBoolExpr   : TYPE = [ real -> BoolExpr ]
+
+%%--------------------------------------------
+%%Real valued functions on values
+%%--------------------------------------------
+
+  RealExpr    : TYPE = [ Environment -> real ]
+  QRealExpr   : TYPE = [real -> [ Environment -> real ]]
+
+%%--------------------------------------------
+%%Building block of variable assignments MapExpr
+% nat is variable, RealExpr is assignment
+%%--------------------------------------------
+
+  MapExpr     : TYPE = [ nat, RealExpr ] 
+
+%%--------------------------------------------
+%%Injective map expression:
+% not using same variable twice in list of
+% variable assignments
+%%--------------------------------------------
+
+  mapexpr_inj( l : list[MapExpr] ): bool =
+    LET N = length( l ) IN
+      FORALL ( i: below( N ), j: subrange( i + 1, N - 1 ) ):
+            nth( l, i )`1 /= nth( l, j )`1
+
+  % cdr of injective mapexpr is injective mapexpr
+  mapexpr_inj_cons: LEMMA
+    FORALL(mapexpr: MapExpr, me: list[MapExpr]):
+    mapexpr_inj(cons(mapexpr, me))
+      IMPLIES mapexpr_inj(me)
+
+  % Injective mapexpr is injective
+  mapexpr_inj_eq : LEMMA
+    FORALL (l:list[MapExpr]):
+      mapexpr_inj(l) IFF
+        FORALL (i,j:below(length(l))): i /= j
+        IMPLIES nth(l,i)`1 /= nth(l,j)`1
+
+%%--------------------------------------------
+%%Define Assigns and ODEs
+% this will be how variables and assignments
+% are listed for discrete and continuous
+% evolutions
+%%--------------------------------------------
+
+  MapExprInj  : TYPE = (mapexpr_inj)
+  Assigns     : TYPE = MapExprInj
+  ODEs        : TYPE = MapExprInj
+
+  % null of MapExprInj type
+  null_MapExprInj: JUDGEMENT null[[nat,RealExpr]] HAS_TYPE MapExprInj
+
+  % cdr of MapExprInj is MapExprInj judgement
+  cdr_is_MapExprInj : JUDGEMENT
+    cdr(l:MapExprInj|cons?(l)) HAS_TYPE MapExprInj
+
+  % Any sublist of MapExprInj is a MapExprInj
+  sub_mapexpr_inj_is_mapexpr_inj
+  : LEMMA
+    FORALL(l2: MapExprInj, l1: list[MapExpr])
+    : sublist?(l1,l2) IMPLIES mapexpr_inj(l1) 
+ 
+%%--------------------------------------------
+%%Define in_map which variable is involved in
+% a MapExprInj
+%%--------------------------------------------
+
+  in_map(me:MapExprInj)(n:nat) : bool =
+    EXISTS (i:below(length(me))): nth(me,i)`1 = n
+
+  % A variable is in_map of a list means it is
+  % the first variable or in the cdr of the list
+  in_map_cons : LEMMA
+    FORALL(mapexpr: MapExpr, me: MapExprInj, i: (in_map(me))) :
+      mapexpr_inj(cons(mapexpr, me)) IMPLIES
+        (in_map(cons(mapexpr, me))(i) IFF mapexpr`1 /= i)
+	
+  %no variable is in the null map
+  in_map_null_false : LEMMA
+    FORALL(i: nat): in_map(null)(i) = FALSE    
+
+%%--------------------------------------------
+%% Define not_in_map which means variable is not
+%  used in MapExprInj
+%%--------------------------------------------
+
+  not_in_map(me:MapExprInj)(n:nat) : bool =
+    FORALL (i:below(length(me))): nth(me,i)`1 /= n
+
+%%--------------------------------------------
+%% Every variable is not in the null map
+%%--------------------------------------------
+
+  not_in_map_null : LEMMA
+    FORALL(i: nat): not_in_map(null)(i)
+
+%%--------------------------------------------
+%% index_of returns the index k of the variable
+%  i used in a MapExprInj
+%%--------------------------------------------
+
+  index_of(me:MapExprInj,i:(in_map(me)))(k:below(length(me))) : bool =
+     nth(me,k)`1 = i
+
+  index_of_j : JUDGEMENT
+    index_of(me:MapExprInj,i:(in_map(me))) HAS_TYPE (singleton?[below(length[MapExpr](me))])
+
+  expr(me: MapExprInj)(i: (in_map(me))): RealExpr =
+    LET k = the(index_of(me,i)) IN nth(me,k)`2
+
+  expr_car : LEMMA
+    FORALL(mapexpr: MapExpr, me: MapExprInj) :
+      mapexpr_inj(cons(mapexpr, me))
+      IMPLIES expr(cons(mapexpr, me))(mapexpr`1) = mapexpr`2
+
+  expr_not_car : LEMMA
+    FORALL(mapexpr: MapExpr, me: MapExprInj, i: (in_map(me))) :
+      mapexpr`1/=i AND mapexpr_inj(cons(mapexpr, me))
+      IMPLIES expr(cons(mapexpr, me))(i) = expr(me)(i)
+
+  null_is_MapExprInj : JUDGEMENT
+    null HAS_TYPE MapExprInj
+
+  % This simplifies some strategies
+  same_var(i,j:nat) : bool =
+    i=j
+
+  ZeroEnv(n:nat):real = 0 
+
+  val(n:nat)(env:Environment) : real = env(n)
+
+  cnst(r:real)(env:Environment) : real = r
+
+
+  CONVERSION cnst
+
+%-------------------------------------------------------------------------
+%% max variable of an ode
+%-------------------------------------------------------------------------
+
+  max_var_rec(ode:ODEs,mx:nat) : RECURSIVE nat =
+    IF null?(ode) THEN mx
+    ELSE max_var_rec(cdr(ode),max(mx,car(ode)`1))
+    ENDIF
+    MEASURE length(ode)
+
+  max_var_rec_pull: LEMMA
+    FORALL(ode:ODEs, mx:nat):
+    max(mx, max_var_rec(ode,0)) = max_var_rec(ode,mx)
+
+  max_var(ode:ODEs) : nat = max_var_rec(ode,0)
+
+ max_var_max: LEMMA
+   FORALL(ode:ODEs,i:below(length(ode))):
+   nth(ode,i)`1 <= max_var(ode)
+
+ max_var_exist: LEMMA
+   FORALL(ode:{oo:ODEs| cons?(oo)}):
+   EXISTS(i:below(length(ode))):
+   nth(ode,i)`1 = max_var(ode)
+
+ pigeon_map: LEMMA
+ FORALL(f:[nat -> nat],n:posnat):
+ (FORALL(i:below(n)):
+ f(i) < n-1)
+ IMPLIES
+ (EXISTS(j1:below(n), j2:{jj2:below(n) | jj2 /= j1}):
+ f(j1) = f(j2))
+
+ max_var_length: LEMMA
+ FORALL(ode:ODEs):
+ max_var(ode) >= length(ode)-1
+
+ nip_max_var: LEMMA
+ FORALL(ode:ODEs, i:above(max_var(ode))):
+ not_in_map(ode)(i)
+
+  NQB_REL : TYPE = {nqb_eq,nqb_neq,nqb_le,nqb_lt,nqb_ge,nqb_gt}
+
+END hp_def

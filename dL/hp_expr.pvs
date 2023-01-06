@@ -1,0 +1,220 @@
+hp_expr : THEORY
+BEGIN
+
+  IMPORTING analysis@strategies,
+	    analysis@table_of_integrals[real],
+	    HP,
+	    analysis@derivatives_subtype,
+	    ODEs@interval_def
+
+%-------------------------------------------------------------------------
+%% Define the size of an HP expression
+%-------------------------------------------------------------------------
+
+  size(hp: HP): RECURSIVE posnat
+  = CASES hp OF
+      ASSIGN(a) : 1,
+      DIFF(ode,be) : 1,
+      TEST(be) : 1, 
+      SEQ(stm1,stm2) : size(stm1) + size(stm2),
+      UNION(stm1,stm2) : size(stm1) + size(stm2),
+      STAR(stm) : 1+size(stm),
+      ANY(anyvar,anyset) : 1
+    ENDCASES
+  MEASURE hp BY <<
+
+%-------------------------------------------------------------------------
+%% Define the time domain that will be [0,b] or [0,infty)
+%-------------------------------------------------------------------------
+
+  dd?(D:[real->bool]): bool=
+   ((EXISTS(b:posreal):
+   D = closed_interval(0,b))
+    OR
+   D = hp(0))
+
+%-------------------------------------------------------------------------
+%% D of type (dd?) is a derivative domain, not one element, connected, and
+%  not empty
+%-------------------------------------------------------------------------
+
+  dd_deriv_domain: LEMMA
+   FORALL(D:(dd?)):
+    deriv_domain?[(D)]
+
+  dd_noe: LEMMA
+   FORALL(D:(dd?)):
+    not_one_element?[(D)]
+
+  dd_con: LEMMA
+   FORALL(D:(dd?)):
+    connected?[(D)]
+
+  dd_ne: LEMMA
+   FORALL(D:(dd?)):
+    nonempty?((D))
+
+%-------------------------------------------------------------------------
+%% (dd?) contains all closed intervals [0,r] where r is in D
+%-------------------------------------------------------------------------
+
+  dd_ci: LEMMA
+   FORALL(D:(dd?),r:{rr:(D)| rr /= 0},
+   x:(closed_interval(0,r))):
+    D(x)  
+  
+%-------------------------------------------------------------------------
+%% Define derivable and continious for the fs function,
+%  that will be the solution to the ODEs
+%-------------------------------------------------------------------------
+
+  derivable_odes?(D:(dd?), n:nat)
+    (fs:[below(n)->[real->real]]): bool =
+    FORALL(k:below(n)): derivable?[(D)](fs(k))
+    
+  continuous_odes?(D:[real->bool], n:nat)
+    (fs:[below(n)->[real->real]]): bool =
+    FORALL (k:below(n)) : continuous?[(D)](fs(k))
+
+%-------------------------------------------------------------------------
+%% Define env_at_t?, That describes the environment that agree with
+%  potential solution to the ODE, namely fs, in the variables that are
+%  used in the ODEs, and agrees with the initial environment in the other
+%  variables
+%-------------------------------------------------------------------------
+
+  env_at_t?(odes:ODEs, fs:[below(length(odes))->[real->real]],
+   envi:Environment,t:real)(env:Environment) : bool = 
+    (FORALL (i:(not_in_map(odes))) : envi(i) = env(i))
+    AND
+    (FORALL (k:below(length(odes))) : LET (i,re) = nth(odes,k) IN
+      fs(k)(t) = env(i))
+      
+%-------------------------------------------------------------------------
+%% There is a unique environement that is (env_at_t?), given a fs, odes,
+%  initial condition, and time t
+%-------------------------------------------------------------------------
+
+  env_at_t(odes:ODEs, fs:[below(length(odes))->[real->real]],
+   envi:Environment)(t:real):
+    %-Begin output type - the env_at_t is unique
+    {env:(env_at_t?(odes,fs,envi,t)) |
+    FORALL(env2:(env_at_t?(odes,fs,envi,t))): env = env2}
+    %-End output type
+     =
+     LAMBDA(i:nat):
+     IF not_in_map(odes)(i)
+       THEN envi(i)
+     ELSE 
+       fs(choose({kk:below(length(odes)) | (i,nth(odes,kk)`2) = nth(odes,kk)}))(t)
+     ENDIF
+
+%-------------------------------------------------------------------------
+%% Define what it means for fs to be a solution of an ODE
+%-------------------------------------------------------------------------
+
+  %-The derivative of fs is equal to the ODE evaluated at some environment
+  %-this is not the true solution at t, since the environment is not
+  %-env_at_t? at t
+  sol_at_t?(D:(dd?), odes:ODEs,
+   fs:(derivable_odes?(D,length(odes))), t:(D))
+    (env:Environment): bool =
+     FORALL (k:below(length(odes))):
+      LET (i,re) = nth(odes,k) IN
+       deriv[(D)](fs(k))(t) = re(env)
+
+  %-To be the solution on D, the derivative of fs
+  %-has to be equal to the ode functions evaluated at
+  %-every env_at_t? in D
+  solution_odes?(D:(dd?), odes:ODEs, envi:Environment)
+   (fs:[below(length(odes)) -> [real -> real]]) : bool =
+    derivable_odes?(D, length(odes))(fs) AND
+     env_at_t?(odes, fs, envi, 0)(envi) AND
+      FORALL (t:(D), env:(env_at_t?(odes, fs, envi, t))):
+       sol_at_t?(D, odes, fs, t)(env)
+
+  %-Define unique solution 
+  solution_odes_u?(D:(dd?), odes:ODEs, envi:Environment)
+   (fs:[below(length(odes)) -> [real -> real]]): bool =
+    solution_odes?(D, odes,envi)(fs)
+    AND
+    (FORALL(ff:[below(length(odes))->[real->real]],S:{SS:(dd?) |
+     FORALL(x:real): SS(x) IMPLIES D(x)}):
+     solution_odes?(S,odes,envi)(ff) IMPLIES
+      FORALL(i:below(length(odes)),t:(S)): ff(i)(t)=fs(i)(t))
+   
+%-------------------------------------------------------------------------
+%% What it means for envo to be an environment produced by
+%  an ODE, with initial condition envi. 
+%-------------------------------------------------------------------------
+
+  semantic_rel_diff(D:(dd?),odes:ODEs,P:BoolExpr,envi,envo:Environment) : bool = 
+    EXISTS (r:(D))(fs:(solution_odes_u?(D,odes,envi))) :
+      env_at_t?(odes,fs,envi,r)(envo) AND
+      FORALL (t:(D) | t <= r,env:(env_at_t?(odes,fs,envi,t))) :
+        P(env)
+
+%-------------------------------------------------------------------------
+%% Define semantics of hp program between an output environment
+%  and an input environment 
+%-------------------------------------------------------------------------
+
+  semantic_rel(hp:HP)(envi:Environment)(envo:Environment) : INDUCTIVE bool =
+    (assign?(hp) AND  LET l = assigns(hp) IN
+                      (FORALL (i:below(length(l))) :
+                        LET (k,re) = nth(l,i) IN 
+                        envo(k) = re(envi)) AND
+		        FORALL (i:(not_in_map(l))) :envo(i) = envi(i)) OR     
+    ((diff?(hp)) AND EXISTS(D:(dd?)): semantic_rel_diff(D,odes(hp),be(hp),envi,envo)) OR
+    (test?(hp) AND be(hp)(envi) AND envo = envi) OR
+    (seq?(hp) AND (EXISTS (env:Environment):
+                          semantic_rel(stm1(hp))(envi)(env) AND
+			  semantic_rel(stm2(hp))(env)(envo))) OR
+    (union?(hp) AND (semantic_rel(stm1(hp))(envi)(envo) OR semantic_rel(stm2(hp))(envi)(envo))) OR
+    (star?(hp) AND (envo = envi OR (EXISTS (env:Environment):semantic_rel(stm(hp))(envi)(env) AND
+                                    semantic_rel(hp)(env)(envo)))) OR
+    (any?(hp) AND (EXISTS(r:real): anyset(hp)(r)(envi) AND envo(anyvar(hp)) = r) AND
+    	      	  FORALL (i:nat | i /= anyvar(hp)) : envo(i) = envi(i))
+
+%-------------------------------------------------------------------------
+%% check the freshness of a vaiable index 
+%-------------------------------------------------------------------------
+
+  fresh?(re:RealExpr)(i:nat) : bool =
+    FORALL (env:Environment,r:real):
+    re(env) = re(env WITH [`i := r])
+
+  fresh?(be:BoolExpr)(i:nat) : bool =
+    FORALL (env:Environment,r:real):
+    be(env) = be(env WITH [`i := r])
+
+  fresh_li?(l:Assigns)(i:nat) : INDUCTIVE bool =
+    null?(l) OR
+    (car(l)`1 /= i AND fresh?(car(l)`2)(i) AND
+     fresh_li?(cdr(l))(i))
+
+  fresh_assign_nth: LEMMA
+  FORALL(l:Assigns,i:(fresh_li?(l)),j:below(length(l))):
+  nth(l,j)`1 /= i
+  AND
+  fresh?(nth(l,j)`2)(i)
+
+  fresh_mapexpr_inj: LEMMA
+  FORALL(l:  MapExprInj, i:(fresh_li?(l)),re:RealExpr):
+  mapexpr_inj(cons( (i,re), l))
+
+  fresh_mapexp_nth_2: LEMMA
+  FORALL(l:  MapExprInj, i:(fresh_li?(l)), k:below(length(l))):
+  fresh?(nth(l,k)`2)(i)
+
+  fresh_hp?(hp:HP)(i:nat) : INDUCTIVE bool =
+     (assign?(hp) AND  fresh_li?(assigns(hp))(i)) OR
+     (diff?(hp) AND fresh_li?(odes(hp))(i) AND fresh?(be(hp))(i)) OR
+     (test?(hp) AND fresh?(be(hp))(i)) OR
+     (seq?(hp) AND fresh_hp?(stm1(hp))(i) AND fresh_hp?(stm2(hp))(i)) OR
+     (union?(hp) AND fresh_hp?(stm1(hp))(i) AND fresh_hp?(stm2(hp))(i)) OR
+     (star?(hp) AND fresh_hp?(stm(hp))(i)) OR
+     (any?(hp) AND i /= anyvar(hp) AND FORALL(r:real): fresh?(anyset(hp)(r))(i))
+
+END hp_expr
+

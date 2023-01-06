@@ -1,0 +1,294 @@
+bool_expr : THEORY
+BEGIN
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Some basic boolean expressions and   |%
+%| functions where inputs are boolean   |%
+%| expressions.                         |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  IMPORTING hp_expr
+
+
+
+  DLBOOL(b:bool)(env:Environment) : bool = b
+
+  DLTRUE : MACRO BoolExpr = DLBOOL(TRUE)
+
+  DLFALSE : MACRO BoolExpr = DLBOOL(FALSE)
+
+  DIFF(odes:ODEs) : MACRO HP = DIFF(odes,DLTRUE)
+
+  %--------------------------------
+  %% Equalities and Inequalities
+  %--------------------------------
+
+  dl_eq(r1,r2:RealExpr)(env:Environment) : MACRO bool = (r1(env) = r2(env))
+  
+  ;=(r1,r2: RealExpr): BoolExpr = dl_eq(r1,r2)
+  DLEQ(r1,r2:RealExpr) : MACRO BoolExpr = (r1 = r2)
+
+  dl_neq(r1,r2:RealExpr)(env:Environment) : MACRO bool = (r1(env) /= r2(env))
+  ;/=(r1,r2: RealExpr): BoolExpr = dl_neq(r1,r2)
+  DLNEQ(r1,r2: RealExpr): MACRO BoolExpr = (r1 /= r2)
+
+  dl_le(r1,r2:RealExpr)(env:Environment) : MACRO bool = r1(env) <= r2(env)
+  ;<=(r1,r2:RealExpr) : BoolExpr = dl_le(r1,r2)
+  DLLE(r1,r2:RealExpr) : MACRO BoolExpr = r1 <= r2
+
+  dl_lt(r1,r2:RealExpr)(env:Environment) : MACRO bool = r1(env) < r2(env)
+  ;<(r1,r2:RealExpr) : BoolExpr = dl_lt(r1,r2)
+  DLLT(r1,r2:RealExpr) : MACRO BoolExpr = r1 < r2
+
+  dl_ge(r1,r2:RealExpr)(env:Environment) : MACRO bool = r1(env) >= r2(env)
+  ;>=(r1,r2:RealExpr) : BoolExpr = dl_ge(r1,r2) 
+  DLGE(r1,r2:RealExpr) : MACRO BoolExpr = r1 >= r2
+
+  dl_gt(r1,r2:RealExpr)(env:Environment) : MACRO bool = r1(env) > r2(env)
+  ;>(r1,r2:RealExpr) : BoolExpr = dl_gt(r1,r2)
+  DLGT(r1,r2:RealExpr) : MACRO BoolExpr = r1 > r2
+
+
+%--------------------------------
+%% Freshness of a variable index 
+%% in a BoolExpr list.
+%--------------------------------
+
+  Formulas : TYPE = list[BoolExpr]
+
+  fresh?(f:Formulas)(i:nat): RECURSIVE bool =
+  IF f = null THEN TRUE
+  ELSE fresh?(car(f))(i) AND fresh?(cdr(f))(i)
+  ENDIF
+  MEASURE f by <<
+
+  fresh_formula_nth: LEMMA
+  FORALL(f:Formulas,i:(fresh?(f)))(j:below(length(f))):
+  fresh?(nth(f,j))(i)
+
+  fresh_be_invar: LEMMA
+  FORALL(P:BoolExpr,envi,envo:Environment,k:nat):
+  (FORALL(m:upfrom(k)): envi(m) = envo(m)) AND (FORALL(i:below(k)): envi(i)/=envo(i) IMPLIES fresh?(P)(i)) 
+  IMPLIES
+  (P(envi) = P(envo))
+
+%-----------------------------------
+%% Connectives for BoolExpr and
+%% the definitions for DLFORALL,  
+%% DLEXISTS, ALLRUNS, SOMERUNS.
+%-----------------------------------
+
+  BoolExpr2list(P:BoolExpr): MACRO Formulas = (: P :)
+  
+  CONVERSION BoolExpr2list
+
+  DLOR(P,Q:BoolExpr)(env:Environment): bool =
+    P(env) OR Q(env)
+  ;OR(P,Q:BoolExpr): MACRO BoolExpr =
+    DLOR(P,Q)
+
+  DLAND(P,Q:BoolExpr)(env:Environment): bool =
+    P(env) AND Q(env)
+  ;AND(P,Q:BoolExpr): MACRO BoolExpr =
+    DLAND(P,Q)
+
+  DLNOT(P:BoolExpr)(env:Environment): bool =
+    NOT P(env)
+  ;NOT(P:BoolExpr): MACRO BoolExpr =
+    DLNOT(P)
+
+  DLIMPLIES(P,Q: BoolExpr)(env:Environment): bool =
+    P(env) IMPLIES Q(env)
+  ;IMPLIES(P,Q:BoolExpr): MACRO BoolExpr =
+    DLIMPLIES(P,Q)
+    
+  A_DLIMPLIES(P,Q:BoolExpr): bool =
+  FORALL(env:Environment):
+  DLIMPLIES(P,Q)(env)
+
+  ;=>(P,Q:BoolExpr): MACRO bool = A_DLIMPLIES(P,Q)
+
+  DLFORALL(qQ:QBoolExpr)(env:Environment): bool =
+    FORALL(x:real):qQ(x)(env)
+
+  DLFORALL_sub(P:[real -> bool ])(qQ: QBoolExpr)(env: Environment): bool =
+    FORALL(t:(P)): qQ(t)(env)
+    
+  DLEXISTS(qQ:QBoolExpr)(env:Environment): bool =
+    EXISTS(x:real):qQ(x)(env)
+
+  ALLRUNS(hp:HP,P:BoolExpr)(env:Environment): bool =
+    FORALL (envo:Environment): semantic_rel(hp)(env)(envo) IMPLIES
+      P(envo)
+
+  ALLRUNS_E(hp:HP,P:BoolExpr)(env:Environment): bool =
+    (EXISTS(envo:Environment ): semantic_rel(hp)(env)(envo)) AND
+    (FORALL (envo:Environment): semantic_rel(hp)(env)(envo) IMPLIES
+      P(envo))
+
+  SOMERUNS(hp:HP,P:BoolExpr)(env:Environment): bool =
+    EXISTS (envo:Environment): semantic_rel(hp)(env)(envo) AND P(envo)
+
+  QHP: TYPE =   [ real -> HP ]
+
+  UPTO(qhp:QHP,Q:BoolExpr)
+    (P:BoolExpr)(t:real):
+     BoolExpr = 
+       DLIMPLIES(DLAND(cnst(t) >= cnst(0),DLFORALL(LAMBDA(s:real):
+  DLIMPLIES(DLAND(cnst(s) >= cnst(0), cnst(t) >= cnst(s)),ALLRUNS(qhp(s),Q)))), ALLRUNS(qhp(t),P))
+
+%--------------------------------
+%% Boolean rules for rewriting
+%--------------------------------
+  P,Q : VAR BoolExpr
+  b   : VAR bool
+  A   : VAR HP
+
+  dl_not_not : LEMMA
+    (NOT (NOT P)) = P
+
+  dl_not_true : LEMMA
+    (NOT DLTRUE) = DLFALSE
+
+  dl_not_false : LEMMA
+    (NOT DLFALSE) = DLTRUE
+
+  dl_true_and: LEMMA
+    (DLTRUE AND P) = P
+
+  dl_and_true: LEMMA
+    (P AND DLTRUE) = P
+
+  dl_false_and: LEMMA
+    (DLFALSE AND P) = DLFALSE
+
+  dl_and_false: LEMMA
+    (P AND DLFALSE) = DLFALSE
+
+  dl_true_or: LEMMA
+    (DLTRUE OR P) = DLTRUE
+
+  dl_or_true: LEMMA
+    (P OR DLTRUE) = DLTRUE
+
+  dl_false_or: LEMMA
+    (DLFALSE OR P) = P
+
+  dl_or_false: LEMMA
+    (P OR DLFALSE) = P
+
+  dl_true_implies: LEMMA
+    (DLTRUE IMPLIES P) = P
+
+  dl_implies_true: LEMMA
+    (P IMPLIES DLTRUE) = DLTRUE
+
+  dl_false_implies: LEMMA
+    (DLFALSE IMPLIES P) = DLTRUE
+
+  dl_implies_false: LEMMA
+    (P IMPLIES DLFALSE) = (NOT P)
+
+  dl_forall_bool : LEMMA
+    DLFORALL(LAMBDA(x:real):DLBOOL(b)) = DLBOOL(b)
+
+  dl_exists_bool : LEMMA
+    DLEXISTS(LAMBDA(x:real):DLBOOL(b)) = DLBOOL(b)
+
+
+%------------------
+%% ABREVIATIONS
+%------------------
+  
+  SKIP : HP = TEST(DLTRUE)
+  FAIL : HP = TEST(DLFALSE)
+
+  IFT(testcnd:BoolExpr,action1:HP): MACRO HP = UNION(SEQ(TEST(testcnd),action1),TEST(DLNOT(testcnd)))
+  IFTE(testcnd:BoolExpr,action1:HP,action2:HP): MACRO HP = UNION(SEQ(TEST(testcnd),action1),SEQ(TEST(DLNOT(testcnd)),action2))
+
+  DLRANDOM(x:real): MACRO BoolExpr = DLTRUE
+
+  DLIFF(P,Q:BoolExpr): BoolExpr =
+   (P IMPLIES Q) AND (Q IMPLIES P)
+
+ ;IFF(P,Q:BoolExpr): MACRO BoolExpr =
+   DLIFF(P,Q)
+
+ 
+
+%----------------------------------------------------------------------------
+%% Existential quantifier over RealExpr (only for differential ghost rule)
+%----------------------------------------------------------------------------
+
+  DLEXISTSR(Qe:[RealExpr->BoolExpr])(env:Environment) : bool =
+    EXISTS (X:RealExpr) : Qe(X)(env)
+
+  DLEXISTSRf(Qe:[RealExpr->BoolExpr],i:nat)(env:Environment) : bool =
+    EXISTS (X:RealExpr | fresh?(X)(i) ) : Qe(X)(env)
+
+  DLFORALLR(Qe:[RealExpr->BoolExpr])(env:Environment) : bool =
+    FORALL (X:RealExpr) : Qe(X)(env)
+
+
+%--------------------------
+%% Non-Quatified Booleans
+%--------------------------
+
+  nqb_rel(rel:NQB_REL)(r1,r2:RealExpr) : BoolExpr =
+    CASES rel OF
+      nqb_eq  : DLEQ(r1,r2),
+      nqb_neq : DLNEQ(r1,r2),
+      nqb_le  : DLLE(r1,r2),
+      nqb_lt  : DLLT(r1,r2),
+      nqb_ge  : DLGE(r1,r2),
+      nqb_gt  : DLGT(r1,r2)
+    ENDCASES  
+
+  IMPORTING NQBool
+
+  nqb_to_be(nqbe:NQBool): RECURSIVE BoolExpr =
+    CASES nqbe OF
+      NQB_rel(rel,r1,r2) : nqb_rel(rel)(r1,r2),
+      NQB_AND(nqb1,nqb2) : nqb_to_be(nqb1) AND nqb_to_be(nqb2),
+      NQB_OR(nqb1,nqb2) : nqb_to_be(nqb1) OR nqb_to_be(nqb2),
+      NQB_NOT(nqb) : NOT nqb_to_be(nqb)
+    ENDCASES
+  MEASURE nqbe BY <<
+
+  % Non-quantified booleans without negations
+  nqb_normal?(nqbe:NQBool) : INDUCTIVE bool =
+    nqb_rel?(nqbe) OR
+    (nqb_and?(nqbe) AND nqb_normal?(nqb1(nqbe)) AND nqb_normal?(nqb2(nqbe))) OR
+    (nqb_or?(nqbe) AND nqb_normal?(nqb1(nqbe)) AND nqb_normal?(nqb2(nqbe)))
+
+  NormNQBool : TYPE = (nqb_normal?)
+
+  neg_rel(rel:NQB_REL) : NQB_REL =
+    CASES rel OF
+      nqb_eq  : nqb_neq,
+      nqb_neq : nqb_eq,
+      nqb_le  : nqb_gt,
+      nqb_lt  : nqb_ge,
+      nqb_ge  : nqb_lt,
+      nqb_gt  : nqb_le
+    ENDCASES  
+
+  normalize_rec(nqbe:NQBool,pos:bool) : RECURSIVE {nnqbe : NormNQBool |
+                                                   FORALL(env:Environment):
+						   nqb_to_be(nnqbe)(env) = (pos IFF nqb_to_be(nqbe)(env))} =
+     CASES nqbe OF
+      NQB_rel(rel,r1,r2) : IF pos THEN nqbe ELSE NQB_rel(neg_rel(rel),r1,r2) ENDIF,
+      NQB_AND(nqb1,nqb2) : IF pos THEN NQB_AND(normalize_rec(nqb1,true),normalize_rec(nqb2,true))
+      			   ELSE NQB_OR(normalize_rec(nqb1,false),normalize_rec(nqb2,false))
+			   ENDIF,
+      NQB_OR(nqb1,nqb2) :  IF pos THEN NQB_OR(normalize_rec(nqb1,true),normalize_rec(nqb2,true))
+      			   ELSE NQB_AND(normalize_rec(nqb1,false),normalize_rec(nqb2,false))
+			   ENDIF,
+      NQB_NOT(nqb)      :  normalize_rec(nqb,NOT pos)
+    ENDCASES
+  MEASURE nqbe BY <<
+
+  normalize(nqbe:NQBool) : {nnqbe : NormNQBool | nqb_to_be(nnqbe) = nqb_to_be(nqbe)} =
+    normalize_rec(nqbe,true)
+
+END bool_expr

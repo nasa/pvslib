@@ -1,0 +1,156 @@
+hp_props : THEORY
+BEGIN
+
+  IMPORTING bool_expr
+
+  x: nat = 0
+  y: nat = 1
+  v: nat = 2
+
+  %% x := a
+  assign1_prop : LEMMA
+   FORALL (a:RealExpr,envi,envo:Environment): 
+      LET
+        P0 : HP = ASSIGN((: (x,a) :))
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      envo = envi WITH [(x) := a(envi)]
+
+  %% y := b
+  assign1_prop_y : LEMMA
+   FORALL (b:RealExpr,envi,envo:Environment): 
+      LET
+        P0 : HP = ASSIGN((: (y,b) :))
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      envo = envi WITH [(y) := b(envi)]
+
+  %% x := a, y := b
+  assign_prop : LEMMA
+   FORALL (a,b:RealExpr,envi,envo:Environment): % x /= y IMPLIES 
+      LET
+        P0 : HP = ASSIGN((: (x,a), (y,b) :))
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      envo = envi WITH [(x) := a(envi), (y) := b(envi)]
+
+  %% y := b, x := a
+  assign_prop_yx : LEMMA
+   FORALL (a,b:RealExpr,envi,envo:Environment): % x /= y IMPLIES 
+      LET
+        P0 : HP = ASSIGN((: (y,b), (x,a) :))
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      envo = envi WITH [(x) := a(envi), (y) := b(envi)]
+
+  %% x := a, y := b <==> y := b, x := a
+  assign_comm : LEMMA 
+   FORALL (a,b:RealExpr,envi,envo:Environment): % x /= y IMPLIES
+      LET
+        P0 : HP = ASSIGN((: (x,a), (y,b) :)),
+	P1 : HP = ASSIGN((: (y,b), (x,a) :))
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      semantic_rel(P1)(envi)(envo) 
+
+  %% x := a U y := b
+  union_prop: LEMMA 
+    FORALL (a,b:RealExpr,envi,envo:Environment): 
+      LET
+	A1 : HP = ASSIGN((: (x,a) :)),
+	A2 : HP = ASSIGN((: (y,b) :)),
+	P0 : HP = UNION(A1,A2)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      (envo = envi WITH [(x) := a(envi)] OR envo = envi WITH [(y) := b(envi)])
+
+  %% x := a U x := a
+  union_prop_xx: LEMMA 
+    FORALL (a:RealExpr,envi,envo:Environment): 
+      LET
+	A1 : HP = ASSIGN((: (x,a) :)),
+	A2 : HP = ASSIGN((: (x,a) :)),
+	P0 : HP = UNION(A1,A2)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF envo = envi WITH [(x) := a(envi)]
+
+  %% x := a U x := a <==> x := a
+  union_id: LEMMA
+    FORALL (a:RealExpr,envi,envo:Environment): 
+      LET
+	A1 : HP = ASSIGN((: (x,a) :)),
+	A2 : HP = ASSIGN((: (x,a) :)),
+	P0 : HP = UNION(A1,A2)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      semantic_rel(A1)(envi)(envo)
+
+  %% x := a U y := b <==> y := b U x := a
+  union_comm: LEMMA
+    FORALL (a,b:RealExpr,envi,envo:Environment): 
+      LET
+	A1 : HP = ASSIGN((: (x,a) :)),
+	A2 : HP = ASSIGN((: (y,b) :)),
+	P0 : HP = UNION(A1,A2),
+	P1 : HP = UNION(A2,A1)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      semantic_rel(P1)(envi)(envo)
+
+  %% x := a; y := b
+  seq_prop: LEMMA 
+   FORALL (a,b:RealExpr, envi,envo: Environment):
+      LET
+	A1 : HP = ASSIGN( (: (x,a) :)),
+	A2 : HP = ASSIGN( (: (y,b) :)),
+	P0 : HP = SEQ(A1,A2)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF
+      LET enva = envi WITH [(x) := a(envi)] IN
+      envo = enva WITH [(y):= b(enva)]
+
+  %% ? b
+  test_prop : LEMMA
+    FORALL (b:BoolExpr,envi,envo:Environment): 
+      LET
+        P0 : HP = TEST(b)
+      IN
+      semantic_rel(P0)(envi)(envo) IFF (b(envi) AND envo=envi)
+
+  %% x' = c 
+  diff_prop: LEMMA
+   FORALL (c:real,be:BoolExpr,envi,envo:Environment):
+    LET
+      P0 : HP = DIFF((: (x,cnst(c)) :),be)
+    IN
+    semantic_rel(P0)(envi)(envo) IFF EXISTS (t:nnreal) :
+       FORALL(r:nnreal): r <= t IMPLIES
+          LET env = envi WITH [(x) := c*r + envi(x)] IN
+	  be(env) AND
+	  (r=0 IMPLIES env = envi) AND
+	  (r=t IMPLIES env = envo)
+	  
+  %% ( x:= x+1 )*
+  star_prop_imp: LEMMA
+    FORALL (c:real, envi,envo: Environment):
+      LET
+        P0 : HP = STAR( ASSIGN( (: (x, LAMBDA(env:Environment): env(x) + 1) :) ) )
+      IN
+        semantic_rel(P0)(envi)(envo) IMPLIES
+        (envo(x) >= envi(x) AND FORALL(i:nat) : i /= x IMPLIES envo(i) = envi(i))
+
+  %% x := 0 ; (?(x < 10); x:= x+1 )*
+  star2_prop_imp: LEMMA
+    FORALL (c:real, envi,envo: Environment):
+      LET
+        P0 : HP = ASSIGN( (: (x, cnst(0)) :) ),
+        P1 : HP = TEST( val(x) < cnst(10) ),
+        P2 : HP = ASSIGN( (: (x, LAMBDA(env:Environment): env(x) + 1) :) ),
+        P3 : HP = STAR(SEQ(P1,P2)),
+        P4 : HP = SEQ(P0,P3)
+      IN
+        semantic_rel(P4)(envi)(envo) IMPLIES
+        (0 <= envo(x) AND envo(x) <= 10 AND
+	 FORALL(i:nat) : i /= x IMPLIES envo(i) = envi(i))
+
+END hp_props

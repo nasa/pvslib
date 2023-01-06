@@ -1,0 +1,440 @@
+ODEs_equiv  % Welcome
+
+		: THEORY
+
+%Created by                     JTS
+%	 	           Feb 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Shows the equivalence of ODEs |%
+%| in the ODEs library and ODEs  |%
+%| in the DDL libary             |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last Updated	         April 2020
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%%Importing hp_expr to have the definition of ODEs in DDL
+
+%%Importing ODE_solution-existence_uniquess to have the PL-theorem for
+%  ODEs
+
+%%Imprting r2v_diff_extension to have a derivable extensions of functions
+%  that are derivable on a closed interval
+
+%%Importing derivative subtype to relate derivatives on different domains 
+%-------------------------------------------------------------------------
+
+IMPORTING hp_expr,
+          ODEs@ODE_solution_existence_uniqueness,
+          ODEs@r2v_diff_extension,
+          analysis@derivatives_subtype
+
+%-------------------------------------------------------------------------
+%%Re - Concatenates the real expressions in an ode to make a function from
+% [env -> VectorN(length(odes))]
+%-------------------------------------------------------------------------
+
+  Re(odes:ODEs)(env:Environment):
+    RECURSIVE VectorN(length(odes))
+    =
+    IF length(odes) = 0
+      THEN null
+    ELSE
+      LET
+        (i,re) = car(odes)
+      IN
+      cons( re(env), Re(cdr(odes))(env) )
+    ENDIF
+    MEASURE
+    length(odes)
+
+%-------------------------------------------------------------------------
+%%The nth element of Re is the nth real expression in an ode
+%-------------------------------------------------------------------------
+
+  Re_nth: LEMMA
+    FORALL(odes:ODEs, env:Environment,
+    k:below(length(odes))):
+    nth(Re(odes)(env), k) = nth(odes, k)`2(env)
+
+%-------------------------------------------------------------------------
+%%env_vec - extracts the variables used in an ode from an environemnt
+%-------------------------------------------------------------------------
+
+  env_vec(odes:ODEs)(env:Environment):
+    RECURSIVE VectorN(length(odes)) = 
+    IF length(odes) = 0
+       THEN null
+    ELSE
+       cons( env(car(odes)`1),
+       env_vec(cdr(odes))(env))
+    ENDIF
+    MEASURE length(odes)
+
+%-------------------------------------------------------------------------
+%%The nth element of env_vec is the nth variable of environment that is
+% used in the odes
+%-------------------------------------------------------------------------
+
+  env_vec_nth: LEMMA
+    FORALL(odes:ODEs, env:Environment):
+    FORALL(i:below(length(odes))):
+    nth(env_vec(odes)(env),i) = env( nth(odes,i)`1)
+
+%-------------------------------------------------------------------------
+%%r2v_2_fs transforms an derivable r2v (i.e. [real -> vec]) to an
+% derivable fs, which is [length(vec) -> [real -> real]].
+%-------------------------------------------------------------------------
+  
+  r2v_2_fs(d:(closed_interval?),
+    v:{rr:r2v[(d)] | derivable?(rr)})
+    (i:below(length(v)))(r:real): real
+    = ext_d[(d)](nth(v, i))(r)
+
+
+
+%-------------------------------------------------------------------------
+%%fs_2_r2v transforms an fs to a r2v
+%-------------------------------------------------------------------------
+  
+
+  fs_2_r2v(n:posnat, d:(closed_interval?),
+   (fs:[below(n) -> [real -> real]])):
+    RECURSIVE r2v_n[(d)](n) =
+    IF n=1
+       THEN LAMBDA(r:real): (: fs(0)(r) :)
+    ELSE
+       cons[(d)](fs(0),
+       fs_2_r2v(n-1,d,LAMBDA(i:below(n-1)):
+        LAMBDA(r:real): fs(i+1)(r))) 
+    ENDIF
+    MEASURE n
+
+%-------------------------------------------------------------------------
+%%fs_2_r2v transforms an fs to a r2v
+%-------------------------------------------------------------------------
+
+  fs_2_f2v_nth: LEMMA 
+    FORALL(n:posnat, d:(closed_interval?),
+    fs:[below(n) -> [real -> real]], i:below(n)):
+    nth(fs_2_r2v(n, d, fs), i) = fs(i)
+
+  fs_2_f2v_eq: LEMMA
+    FORALL(n:posnat,r:posreal,y:[real -> VectorN(n)],
+    fs:[below(n) -> [real -> real]]):
+    (derivable?[closed_interval(0,r)])(y) IMPLIES (
+    (LAMBDA (t: (closed_interval(0,r))): y(t)) =  fs_2_r2v(n, closed_interval(0,r),fs)
+    IFF
+    (FORALL( i :below(n), t:closed_interval(0,r)): fs(i)(t) = r2v_2_fs(closed_interval(0,r),y)(i)(t)))
+
+ % r2v_2_fs_derivable: LEMMA
+ %   FORALL(r:posreal,n:nat, y:[real -> VectorN(n)]):
+ %   (derivable?[closed_interval(0,r)])(y) IMPLIES 
+ %   derivable_odes?(closed_interval(0, r), length(y))
+ %                     (r2v_2_fs(closed_interval(0, r), y))
+
+%-------------------------------------------------------------------------
+%%env_at_r2v transform a env_at_t to a list instead of a function from
+% [nat -> real]
+%-------------------------------------------------------------------------
+
+  %make a env_at_t a list instead of a function from [nat -> real]
+%  env_t_r2v(odes:ODEs,fs:[below(length(odes))->[real->real]],envi:Environment)(t:real):
+%   RECURSIVE VectorN(length(odes)) =
+%   IF length(odes)=0 THEN
+%   null
+%   ELSE
+%   cons(env_at_t(odes,fs,envi)(t)(0), env_t_r2v(cdr(odes),LAMBDA(i:below(length(cdr(odes)))): fs(i+1),
+%   LAMBDA(i:nat): envi(i+1))(t))
+%   ENDIF
+%   MEASURE length(odes)
+
+%-------------------------------------------------------------------------
+%%Odes_f transforms an ode, with an initial condition, into an OD_f
+% function that is defined in the ODEs library
+%-------------------------------------------------------------------------
+
+  Odes_f(d: (closed_interval?), odes: ODEs, envi: Environment)
+    (t: (d), v: VectorN(length(odes))):
+    VectorN(length(odes))
+    =
+    Re(odes)
+    (env_at_t(odes, LAMBDA(i: below(length(odes))):
+    LAMBDA(r: real): nth(v, i), envi)(t))
+  
+%-------------------------------------------------------------------------
+%%Define continuity in the t variable of an ode, in terms of
+% continuity in the ODEs library 
+%-------------------------------------------------------------------------
+
+  cont_f?(odes:ODEs, envi:Environment, r:nnreal):
+    bool = length(odes) = 0
+    OR
+    (r = 0
+    OR
+    cont_d?[closed_interval(0,r)](length(odes))
+    (Odes_f(closed_interval(0,r),odes,envi)))
+
+%-------------------------------------------------------------------------
+%%Define Lipchitz of an ode in the ode variables,
+%  in terms of Lipchitz in the ODEs library 
+%-------------------------------------------------------------------------
+
+  Lip?(odes:ODEs,envi:Environment,r:nnreal):
+    bool = length(odes)=0
+    OR
+    (r=0
+    OR Lip_d?[closed_interval(0,r)](length(odes))
+       (Odes_f(closed_interval(0,r),odes,envi)))
+
+%-------------------------------------------------------------------------
+%%Define a constant function from [below(k) -> [real -> real]] that, for
+% each fixed i<k f(i) is a constant function 
+%-------------------------------------------------------------------------  
+
+  const?(k:nat)(f:[below(k)->[real->real]]):
+    bool =
+    FORALL(i:below(k)): EXISTS (c:real):
+    FORALL(x:real): f(i)(x)=c
+
+%-------------------------------------------------------------------------
+%%Define max_diff, which find the maximum absolute sum between two const?
+% functions
+%-------------------------------------------------------------------------  
+
+  max_diff(k:posnat)(y1,y2:(const?(k))): RECURSIVE
+    {x:nnreal| (FORALL(i:below(k),r:real): abs(y1(i)(r) - y2(i)(r)) <= x)
+    AND EXISTS(i:below(k)): x = abs(y1(i)(0) - y2(i)(0))}
+    = IF k=1 THEN  abs(y1(0)(0) - y2(0)(0))
+    ELSE max( abs(y1(0)(0) - y2(0)(0)), max_diff(k-1)((LAMBDA(i:below(k-1)): y1(i+1)), (LAMBDA(i:below(k-1)): y2(i+1))))
+    ENDIF
+    MEASURE k
+
+%-------------------------------------------------------------------------
+%%Relateing the infinity norm of two vectors y1 and y2 to
+% max_diff of their const? counterparts 
+%-------------------------------------------------------------------------  
+
+  max_diff_norm_inf: LEMMA
+    FORALL(k:posnat, y1, y2:VectorN(k)):
+    max_diff(k)
+    (LAMBDA (i: below(k)):
+     (LAMBDA (r: real): nth(y1, i)),
+      LAMBDA (i: below(k)):
+       (LAMBDA (r: real): nth(y2, i)))
+    = norm_inf(k)(y1 - y2)
+
+%-------------------------------------------------------------------------
+%% Define the cdr of a function [below(k) - [real -> real]] in the
+%-------------------------------------------------------------------------  
+  
+  cdr(k:posnat)(f:[below(k) -> [real -> real]]):
+  {ff:[below(k-1) -> [real -> real]] |
+  FORALL(i:below(k-1)): ff(i) = f(i+1)}
+  = LAMBDA(i:below(k-1)): f(i+1)
+
+%-------------------------------------------------------------------------
+%% The cdr of a constant function is constant
+%------------------------------------------------------------------------- 
+
+  cdr_const: LEMMA
+    FORALL(k:posnat, f:[below(k)->[real->real]]):
+    const?(k)(f) IMPLIES const?(k-1)(cdr(k)(f))
+
+%-------------------------------------------------------------------------
+%% Define  Lipchitz for an ode using the ddl library instead of the ODEs
+%  library
+%-------------------------------------------------------------------------
+
+  %-On the closed interval [0,r]-%
+  Lip_ODEs?(odes:ODEs, envi:Environment, r:nnreal):
+    bool =
+    length(odes) > 0 IMPLIES (
+    FORALL(k:below(length(odes))): EXISTS(L:nnreal):
+    FORALL(t:{tt:nnreal | tt <= r}):
+    FORALL(y1, y2:(const?(length(odes)))):
+    abs(nth(odes, k)`2(env_at_t(odes, y1, envi)(t))
+      - nth(odes,k)`2(env_at_t(odes,y2,envi)(t)))
+    <= L * max_diff(length(odes))(y1, y2))
+
+   %-On the interval [0,infty)
+   Lip_ODEs?(odes:ODEs, envi:Environment):
+   bool =
+   FORALL (r:nnreal):
+   Lip_ODEs?(odes,envi,r)
+
+   %-On (dd?)
+   Lip_ODEs?(D:(dd?),odes:ODEs, envi:Environment):
+   bool =
+   IF D = hp(0)
+   THEN Lip_ODEs?(odes, envi)
+   ELSE
+   Lip_ODEs?(odes, envi, car(cdr(d_b[(D)])))
+   ENDIF
+  
+%-------------------------------------------------------------------------
+%% The two definitions of Lipchitz (in DDL and in ODEs) are equivalent
+%-------------------------------------------------------------------------
+
+  Lip_DDL_ODEs: LEMMA
+    FORALL(odes:ODEs, envi:Environment, r:posreal):
+    Lip_ODEs?(odes, envi, r)
+    IFF
+    Lip?(odes, envi, r)
+  
+%-------------------------------------------------------------------------
+%% Define continuity of an ode using the ddl library instead of the ODEs
+%  library
+%-------------------------------------------------------------------------
+
+  %-At a point below r-%
+  cont_ODEs?(odes:ODEs,envi:Environment,r:nnreal)(t:{tt:nnreal | tt<= r}):
+    bool = FORALL(k:below(length(odes))):
+    FORALL(eps:posreal,y:(const?(length(odes)))):
+    EXISTS(del:posreal):
+    FORALL(t1:{tt:nnreal| tt<=r}):
+    abs(t1-t)< del
+    IMPLIES
+    abs(nth(odes,k)`2(env_at_t(odes,y,envi)(t1)) - nth(odes,k)`2(env_at_t(odes,y,envi)(t)))
+    < eps
+
+  %-On the closed interval [0,r]-%
+  cont_ODEs?(odes:ODEs,envi:Environment,r:nnreal):
+    bool = FORALL(t:{tt:nnreal | tt<= r}):
+    cont_ODEs?(odes,envi,r)(t)
+
+  %-At a point on the interval [0,infty)-%
+  cont_ODEs?(odes:ODEs,envi:Environment)(t:(hp(0))):
+    bool = FORALL(k:below(length(odes))):
+    FORALL(eps:posreal,y:(const?(length(odes)))):
+    EXISTS(del:posreal):
+    FORALL(t1:(hp(0))):
+    abs(t1-t)< del
+    IMPLIES
+    abs(nth(odes,k)`2(env_at_t(odes,y,envi)(t1)) - nth(odes,k)`2(env_at_t(odes,y,envi)(t)))
+    < eps
+  
+   %-On the half plane [0,infty) -%
+   cont_ODEs?(odes:ODEs,envi:Environment):
+    bool = FORALL(t:(hp(0))):
+    cont_ODEs?(odes,envi)(t)
+
+   %-On a (dd?)
+   cont_ODEs?(D:(dd?),odes:ODEs,envi:Environment):
+   bool =
+   IF D = hp(0)
+   THEN cont_ODEs?(odes,envi)
+   ELSE
+   cont_ODEs?(odes,envi, car(cdr(d_b[(D)])))
+   ENDIF
+    
+%-------------------------------------------------------------------------
+%% The two definitions of continuity (in DDL and in ODEs) are equivalent
+%-------------------------------------------------------------------------
+
+  %-On the closed interval [0,r]-%
+  cont_DDL_ODEs: LEMMA
+    FORALL(odes:ODEs, envi:Environment, r:nnreal):
+    cont_ODEs?(odes,envi,r)
+    IFF
+    cont_f?(odes,envi,r)
+
+  %-On the half plane [0,infty)
+  %cont_hp_DDL_ODEs: LEMMA
+  %  FORALL(odes:ODEs, envi:Environment, r:nnreal):
+  %  cont_ODEs?(odes,envi)
+  %  IFF
+  %  cont_f?(odes,envi,r)
+  %  cont_d?[(hp(a))](n)(ff)
+
+%-------------------------------------------------------------------------
+%% Solution of ODE in DDL is corresponds to solution in ODEs
+%-------------------------------------------------------------------------
+
+  %ivt_solution_odes: LEMMA
+  %%   FORALL(odes:ODEs, envi:Environment,
+   %   r:posreal, y: (derivable?[closed_interval(0,r)])):
+   %%   ivt_s?(length(odes), 0, Odes_f(closed_interval(0,r),
+   %   odes,envi),env_vec(odes)(envi))(y)
+   %   IMPLIES
+   %   solution_odes?(closed_interval(0,r),odes,envi)
+   %   (r2v_2_fs(closed_interval(0, r), y))
+  
+
+%-------------------------------------------------------------------------
+%% These lemmas are existance and uniqueness theorems for a solution
+%  of odes that are Lipschitz and continuous. The first lemma uses the
+%  definition of continuity and Lipchitz in ODEs, the second lemma uses
+%  the definition of continuity and Lipchitz in DDL, making it preferable
+%  when doing DDL related programming
+%-------------------------------------------------------------------------
+
+  diff_sol_Lip: LEMMA
+    FORALL(odes:ODEs, envi:Environment, r:posreal):
+    (cont_f?(odes, envi, r) AND Lip?(odes, envi, r))
+    IMPLIES
+    EXISTS(y:(derivable_odes?(closed_interval(0,r),length(odes)))):
+    solution_odes_u?(closed_interval(0,r), odes, envi)(y)
+
+  diff_sol_eq: LEMMA
+    FORALL (odes:ODEs,envi:Environment, r:posreal):
+    (cont_ODEs?(odes, envi, r)
+    AND
+    Lip_ODEs?(odes, envi, r))
+    IMPLIES 
+    EXISTS(fs:(derivable_odes?(closed_interval(0,r),length(odes)))):
+     solution_odes_u?(closed_interval(0,r), odes, envi)(fs)
+
+  ODEs_s?(D:(dd?),envi:Environment)(odes:ODEs): bool =
+   EXISTS(fs:(derivable_odes?(D,length(odes)))):
+      solution_odes_u?(D, odes, envi)(fs)
+
+  ODEs_s?(D:(dd?))(odes:ODEs): bool =
+  FORALL(envi:Environment):
+  ODEs_s?(D,envi)(odes)
+
+  fs_sol(D:(dd?), envi:Environment,
+   odes:(ODEs_s?(D,envi))):
+    (solution_odes_u?(D,odes,envi))
+
+  env_sol(D:(dd?), envi:Environment,
+   odes:(ODEs_s?(D,envi)))(t:(D)):
+    Environment =
+     env_at_t(odes,fs_sol(D,envi,odes),envi)(t)
+
+  ODEs_s_sub: LEMMA
+   FORALL(D:(dd?), envi:Environment, odes:(ODEs_s?(D,envi)),r:{rr:(D)| rr /= 0}):
+    ODEs_s?(D, envi)(odes)
+     IMPLIES
+      ODEs_s?((closed_interval(0, r)), envi)(odes)
+
+  fs_sol_sub: LEMMA
+    FORALL(D:(dd?), envi:Environment, odes:(ODEs_s?(D,envi)),r:{rr:(D)| rr /= 0} ,
+    k:below(length(odes)), x:(closed_interval(0,r))):
+      fs_sol(D,envi,odes)(k)(x) = fs_sol((closed_interval(0,r)), envi, odes)(k)(x)
+
+  env_sol_sub: LEMMA
+    FORALL(D:(dd?), envi:Environment, odes:(ODEs_s?(D,envi)),r:{rr:(D)| rr /= 0},
+    x:(closed_interval(0,r))):
+    env_sol(D, envi, odes)(x) =
+       env_sol((closed_interval(0, r)), envi, odes)(x)
+
+   solution_odes_sub: LEMMA
+   FORALL(D:(dd?),odes:ODEs,envi:Environment,fs:[below(length(odes)) -> [real -> real]],
+    S:{SS:(dd?) | FORALL(x:real): SS(x) IMPLIES D(x)}):
+     solution_odes?(D,odes,envi)(fs)
+     IMPLIES
+      solution_odes?(S,odes,envi)(fs)
+
+   solution_odes_subset: LEMMA
+   FORALL(D:(dd?),odes:ODEs,envi:Environment,fs:[below(length(odes)) -> [real -> real]],
+    S:{SS:(dd?) | FORALL(x:real): SS(x) IMPLIES D(x)}):
+     solution_odes_u?(D,odes,envi)(fs)
+     IMPLIES
+      solution_odes_u?(S,odes,envi)(fs)
+
+  %~~   End   ~% 
+  END ODEs_equiv

@@ -1,0 +1,97 @@
+bound_variables_def :  THEORY
+ % Sup!
+ 
+%-------------------------------------------------------------------------% 
+%-------------------------------------------------------------------------%
+%| bounded_variables_def: Defines bound varialbes in hybrid programs	 |%
+%|        		  with some nice properties  	    		 |%
+%-------------------------------------------------------------------------%
+% Created							   Nov 2022
+% 								     LW,JTS
+% Last Updated							   Nov 2022
+%      								         LW
+%-------------------------------------------------------------------------%
+%-------------------------------------------------------------------------%
+
+%-----     %
+  BEGIN
+%     -----%
+
+%%--------------------------------------------
+%%Importing bounded star semantics to have
+% bstar
+%%--------------------------------------------
+
+IMPORTING bounded_star_semantics
+
+%%--------------------------------------------
+%%Define bound variables on MapExprInj
+%%--------------------------------------------
+
+  bv_me(L:MapExprInj): RECURSIVE list[nat] = 
+  IF L = null THEN null
+  ELSE cons(car(L)`1, bv_me(cdr(L)))
+  ENDIF
+  MEASURE length(L)
+
+%%--------------------------------------------
+%%Define bound variables on Hybrid program
+%%--------------------------------------------
+
+  BV(h:HP): RECURSIVE list[nat] = 
+  IF assign?(h) THEN bv_me(assigns(h))
+  ELSIF diff?(h) THEN bv_me(odes(h))
+  ELSIF test?(h) THEN null
+  ELSIF (seq?(h) OR union?(h)) THEN append(BV(stm1(h)),BV(stm2(h)))
+  ELSIF star?(h) THEN BV(stm(h))
+  ELSIF any?(h) THEN (: anyvar(h) :)
+  ELSE null
+  ENDIF
+  MEASURE size(h)
+
+%%--------------------------------------------
+%%nth property of bound variables
+%%--------------------------------------------
+
+  bv_me_nth: LEMMA
+  FORALL(L:MapExprInj,j:below(length(L))): 
+  nth(L,j)`1 = nth(bv_me(L),j)
+
+%%--------------------------------------------
+%%Relationship with BV and fresh variables
+%%--------------------------------------------
+
+  BV_implies_not_fresh: LEMMA
+  FORALL(h:HP,j:nat):
+  (EXISTS(i:below(length(BV(h)))): j = nth(BV(h),i)) IMPLIES (NOT fresh_hp?(h)(j)) 
+
+%%--------------------------------------------
+%%Semantic rel propertiy of bound variables
+%%--------------------------------------------
+
+  BV_invar: LEMMA 
+  FORALL(a:HP,envi,envo:Environment,k:nat): 
+  semantic_rel(a)(envi)(envo) AND envi(k) /= envo(k)
+  IMPLIES
+  member(k, BV(a))
+
+%%--------------------------------------------
+%%Define bound variable as boolean
+%%--------------------------------------------
+
+ bv?(hp:HP)(i:nat): bool =
+ member(i,BV(hp))
+
+%%--------------------------------------------
+%%Does a map expression have a bound varialbe
+%%--------------------------------------------
+
+ bvs?(hp:HP)(me:MapExprInj): RECURSIVE bool =
+ IF null?(me) THEN FALSE
+ ELSE bv?(hp)(car(me)`1) OR bvs?(hp)(cdr(me))
+ ENDIF
+ MEASURE length(me)
+
+  
+  %~~~       The End  ~~%
+  END bound_variables_def

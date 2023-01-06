@@ -1,0 +1,462 @@
+chain_rule_re  % [ parameters ]
+		: THEORY
+  BEGIN
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Chain rule for real expressions |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+IMPORTING differentiation
+IMPORTING mv_analysis@lift_real_fun_def
+IMPORTING mv_analysis@convergence_vec2vec
+IMPORTING mv_analysis@partial_def
+
+shift_d(env:Environment): Environment =
+LAMBDA(i:nat): env(i+1)
+
+%-------------------------------------------------------------------------
+%% Take first k+1 entries of Environment
+%-------------------------------------------------------------------------
+
+env_2_vec(k:nat,env:Environment): RECURSIVE VectorN(k+1)
+ = IF k=0 THEN (: env(0) :)
+ ELSE cons(
+ env(0), env_2_vec(k-1,shift_d(env)))
+ ENDIF
+ MEASURE k
+
+%-------------------------------------------------------------------------
+%% nth property of env_2_vec
+%-------------------------------------------------------------------------
+
+env_2_vec_nth: LEMMA
+ FORALL(k:nat, env:Environment,i:below(k+1)):
+ nth(env_2_vec(k,env),i) = env(i)
+
+projv(k:nat,P:BoolExpr)(v:VectorN(k+1)): bool = 
+ EXISTS(env:(P)): env_2_vec(k,env) = v
+
+projv_dd: LEMMA
+ FORALL(k:nat, P:(ddl_dom?)):
+ deriv_domain?[k+1](projv(k,P))
+
+%-------------------------------------------------------------------------
+%% Projection equivalents between environemnt and vector for a connected
+%  domain P
+%-------------------------------------------------------------------------
+
+proj_projv: LEMMA
+FORALL(k:nat,P:(connected?), p: (projv(k,P)),
+ c:real, i:below(length(p))):
+  proj(i)(P)(c+nth(p,i))
+  IMPLIES
+  projv(k,P)(p + c * e(1+k,i))
+
+projv_proj: LEMMA
+FORALL(k:nat,P:(connected?), p: VectorN(k+1),
+ c:real, i:below(length(p))):
+  projv(k, P)(p + c * e( 1+k,i))
+  IMPLIES
+  proj(i)(P)(nth(p,i) + c )
+  
+
+%-------------------------------------------------------------------------
+%% If P is a dll_dom then it is a derivative domain in all the
+%  standard basis directions when projected down to Rk+1
+%-------------------------------------------------------------------------
+
+ddl_dom_dom_dir: LEMMA
+ FORALL (k: nat, i: below(k + 1), P: (ddl_dom?(i))):
+  deriv_domain_partial?[1 + k](e(1 + k, i))(projv(k, P))
+
+dd_e_partial: LEMMA
+FORALL(D:(dd?)):
+deriv_domain_e_partial?[1](lift_rd(D))
+
+%-------------------------------------------------------------------------
+%% Embed vector in environment 
+%-------------------------------------------------------------------------
+
+vec_2_env(k:nat,v:VectorN(k+1),env:Environment): Environment
+= LAMBDA(i:nat):
+IF i < k+1 THEN nth(v,i)
+ELSE env(i)
+ENDIF
+
+%-------------------------------------------------------------------------
+%% vec_2_env and env_2_vec identity properties
+%-------------------------------------------------------------------------
+
+vec_2_env_id: LEMMA
+FORALL(k:nat,env:Environment):
+vec_2_env(k,env_2_vec(k,env),env) = env
+
+env_2_vec_id: LEMMA
+FORALL(k:nat,env:Environment,v:VectorN(k+1)):
+env_2_vec(k,vec_2_env(k,v,env)) = v
+
+%-------------------------------------------------------------------------
+%% vec_2_env addition
+%-------------------------------------------------------------------------
+
+vec_2_env_plus: LEMMA
+FORALL(k:nat,v,w:VectorN(k+1),env:Environment,i:nat):
+IF i<k+1
+  THEN 
+  vec_2_env(k,(v+w),env)(i) = vec_2_env(k,v,env)(i) + vec_2_env(k,w,env)(i)
+  ELSE
+  vec_2_env(k,(v+w),env)(i) = env(i)
+ENDIF
+
+%-------------------------------------------------------------------------
+%% Transform a real expression into a vector input function
+%-------------------------------------------------------------------------
+
+vec_re(k:nat, env:Environment, re:RealExpr)(v:VectorN(k+1)):
+ real = 
+re(vec_2_env(k,v,env))
+
+differentiable_re_p?(k:nat, P:(ddl_dom?), env:(P))( re:RealExpr): bool =
+     differentiable?[k+1](projv(k,P),vec_re(k,env,re), env_2_vec(k,env))
+
+%-------------------------------------------------------------------------
+%% after_k?
+%-------------------------------------------------------------------------
+
+after_k?(k:nat)(env1:Environment)(env2:Environment): bool =
+  FORALL(i:above(k)): env1(i) = env2(i)
+
+diff_env_change: LEMMA
+  FORALL(k:nat, P:(ddl_dom?), env1:(P), env2: (P) | after_k?(k)(env1)(env2) , re: RealExpr):
+  differentiable?[k+1](projv(k,P),vec_re(k,env1,re), env_2_vec(k,env1))
+  IFF
+  differentiable?[k+1](projv(k,P),vec_re(k,env2,re), env_2_vec(k,env1))
+
+%-------------------------------------------------------------------------
+%% check if a real expression is differentiable
+%-------------------------------------------------------------------------
+
+diff_re?(k:nat, P:(ddl_dom?))(re:RealExpr): bool
+=    FORALL(env:(P)):
+     differentiable_re_p?(k,P,env)(re)
+
+diff_re_diff_mv: LEMMA
+ FORALL(k:nat,P:(ddl_dom?))(re:RealExpr):
+ diff_re?(k,P)(re)
+ IFF
+ (FORALL(env:(P)):
+ differentiableD?[1 + k](projv(k, P))(vec_re(k, env, re)))
+
+%-------------------------------------------------------------------------
+%% derivative of a real expression at an environment
+%--------------------------------------------------------------------------
+
+der_re_p(k:nat, P:(ddl_dom?), env:(P))(re:(differentiable_re_p?(k,P,env))): Environment =
+  vec_2_env(k,der_f(projv(k,P),env_2_vec(k,env))(vec_re(k,env,re)),env)
+
+der_re(k:nat,P:(ddl_dom?))(re:(diff_re?(k,P)))(env:Environment): Environment =
+IF P(env) THEN der_re_p(k,P,env)(re)
+ELSE env
+ENDIF
+
+der_re_grad: LEMMA
+ FORALL(k:nat, P:(ddl_dom?), env:(P),re:(diff_re?(k,P))):
+ der_re(k,P)(re)(env) = vec_2_env(k,gradient(projv(k,P),vec_re(k,env,re))(env_2_vec(k,env)),env)
+
+diff_re_init_partial: LEMMA
+FORALL (k: nat, P: (ddl_dom?), env: (P), re: (diff_re?(k, P)), i: below(k+1)):
+        init_partial?[1 + k](e(1 + k, i), projv(k, P))(vec_re(k, env, re))
+
+der_re_partial: LEMMA
+ FORALL(k:nat, P:(ddl_dom?), env:(P),re:(diff_re?(k,P)),i:below(k+1)):
+ der_re(k,P)(re)(env)(i) = partial[k+1](i,projv(k,P),vec_re(k,env,re))(env_2_vec(k,env))
+ 
+re_diff_mv: LEMMA
+ FORALL(k:nat, P:(ddl_dom?), re:RealExpr,
+env:(P)):
+differentiable_re_p?(k,P,env)(re)
+IFF
+differentiable?[k+1](1,projv(k,P), liftr(k+1,projv(k,P),vec_re(k,env,re)),env_2_vec(k,env))
+
+re_der_mv: LEMMA
+ FORALL(k:nat, P:(ddl_dom?), re:RealExpr, env:(P)):
+ differentiable_re_p?(k,P,env)(re)
+ IMPLIES
+ der_f[k+1](1,projv(k,P),env_2_vec(k,env))(liftr(k+1,projv(k,P),vec_re(k,env,re)))
+ = (: der_f(projv(k,P),env_2_vec(k,env))(vec_re(k,env,re)) :)
+ 
+re_diff_mv_ll: LEMMA
+ FORALL(D:(dd?), P:(ddl_dom?), p:(lift_rd(D)),envi:Environment,ode:(ODEs_s?(D,envi)), R:RealExpr):
+  P(env_sol(D, envi, ode)(car[real](p))) IMPLIES (
+ differentiable_re_p?(max_var(ode), P, env_sol(D, envi, ode)(car(p)))
+                          (R)
+ IFF
+ differentiable?[1 + max_var(ode)]
+          (1, projv(max_var(ode), P),
+           LAMBDA (v: VectorN(1 + max_var(ode))):
+             (: vec_re(max_var(ode), envi, R)(v) :),
+           liftl(1 + max_var(ode), D,
+                 LAMBDA (tt: (D)):
+                   env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt)))
+                (p)))
+
+re_der_mv_ll: LEMMA
+ FORALL(D:(dd?), P:(ddl_dom?), p:(lift_rd(D)),envi:Environment,ode:(ODEs_s?(D,envi)), R:RealExpr):
+  (P(env_sol(D, envi, ode)(car[real](p))) AND  differentiable_re_p?(max_var(ode), P, env_sol(D, envi, ode)(car(p)))(R)
+                         )IMPLIES
+   der_f[max_var(ode) + 1]
+            (1, projv(max_var(ode), P),
+             liftl(max_var(ode) + 1, D,
+                   (LAMBDA (tt: (D)):
+                      env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt))))
+                  (p))
+            (LAMBDA (v: VectorN(max_var(ode) + 1)):
+               (: vec_re(max_var(ode), envi, R)(v) :))
+    =  
+ (: der_f(projv(max_var(ode), P),
+               env_2_vec(max_var(ode), env_sol(D, envi, ode)(car(p))))
+              (vec_re(max_var(ode), env_sol(D, envi, ode)(car(p)), R)) :)
+
+%-------------------------------------------------------------------------
+%% WITH property of vec_2_env
+%-------------------------------------------------------------------------
+
+with_e_vec: LEMMA
+FORALL(k:nat,env:Environment,i:below(k+1),x:real,re:RealExpr,v:VectorN(k+1) ):
+ vec_2_env(k,v,env) WITH [(i) := nth(v,i)+x] = vec_2_env(k,v+x*e(k+1,i),env)
+
+%-------------------------------------------------------------------------
+%% Derivable real expression means partial deriv exists at a particular
+%  environment
+%-------------------------------------------------------------------------
+
+derivable_partial: LEMMA
+ FORALL(k:nat,i:below(k+1),P:(ddl_dom?(i)),env:(P),v:{vv:VectorN(k+1)| vec_2_env(k, vv, env) = env },re:RealExpr):
+   init_partial?[k+1](e(k+1,i), projv(k,P), vec_re(k,env,re))(v)
+   IFF
+   derivable?(i,P,vec_2_env(k,v,env))(re)
+
+%-------------------------------------------------------------------------
+%% Derivable real expression on domain P means partial deriv exists
+%  mean partial derivable 
+%-------------------------------------------------------------------------
+
+
+derivable_partial_D: LEMMA
+ FORALL(k:nat,i:below(k+1),P:(ddl_dom?(i)),re:RealExpr):
+   ((FORALL(env:(P)): init_partial?[k+1](e(k+1,i), projv(k,P))(vec_re(k,env,re))))
+   IFF
+   derivable?(i,P)(re)
+
+deriv_partial: LEMMA
+ FORALL(k:nat,i:below(k+1),P:(ddl_dom?(i)),env:(P),
+   v:{vv:VectorN(k+1)| vec_2_env(k, vv, env) = env },re:(derivable?(i,P))):
+  partial[k+1](i, projv(k,P), vec_re(k,env,re))(v) 
+  =
+  partial_diff(i,P)(re)(env)
+
+diff_re_derivable_partial: LEMMA 
+  FORALL (k: nat, P: (ddl_dom?), re: (diff_re?(k, P)),
+  i: below(k+1)):
+    derivable?(i, P)(re)
+
+diff_re_partialable_p: LEMMA
+   FORALL(k:nat, P:(ddl_dom?), re: RealExpr, env:(P)):
+   differentiable_re_p?(k, P,env)(re)
+   IMPLIES
+   FORALL(i:below(k+1)):
+   derivable?(i,P,env)(re)
+
+diff_re_derivable_up: LEMMA
+   FORALL(k:nat, P:(ddl_dom?), re: RealExpr):
+   diff_re?(k, P)(re) IMPLIES
+   derivable_up?(k,P)(re)
+
+der_re_partial_der: LEMMA
+ FORALL(k:nat, P:(ddl_dom?), env:(P),re:(diff_re?(k,P)),i:below(k+1)):
+ der_re(k,P)(re)(env)(i) =  partial_diff(i,P)(re)(env)
+
+der_ll_partial_der: LEMMA
+  FORALL(D:(dd?), P:(ddl_dom?), p:(lift_rd(D)), envi:Environment,ode:(ODEs_s?(D,envi)), R:RealExpr, i:below(1 + max_var(ode))):
+  (P(env_sol(D, envi, ode)(car[real](p))) AND  diff_re?(max_var(ode), P)(R)) IMPLIES
+  nth(der_f(projv(max_var(ode), P),
+               env_2_vec(max_var(ode), env_sol(D, envi, ode)(car(p))))
+              (vec_re(max_var(ode), env_sol(D, envi, ode)(car(p)), R)),i)
+   = partial_diff(i,P)(R)(env_sol(D, envi, ode)(car(p)))
+   
+	      
+
+%-------------------------------------------------------------------------
+%% Differentiable means partial exists 
+%-------------------------------------------------------------------------
+
+
+eq_re_comp: LEMMA
+ FORALL(D:(dd?),envi:Environment,  ode:(ODEs_s?(D,envi)), R:RealExpr):
+   (LAMBDA(tt:(D)):
+   R(env_sol(D,envi,ode)(tt)))
+   =
+   (LAMBDA(tt:(D)):
+   vec_re(max_var(ode), envi, R)(env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt))))
+
+env_sol_env2vec: LEMMA
+ FORALL(D: (dd?), P: (ddl_dom?), p: (lift_rd(D)),
+  envi: Environment, ode: (ODEs_s?(D, envi))):
+   (env_sol(D, envi, ode)(car(p))) =
+   (vec_2_env(max_var(ode),
+   env_2_vec(max_var(ode),
+   env_sol(D, envi, ode)(car[real](p))),
+   envi))
+
+e2v_diff_p: LEMMA
+ FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi))):
+ differentiable?[1](max_var(ode)+1,lift_rd(D),liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt)))),p)
+
+e2v_der_p: LEMMA
+ FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi)),i:below(max_var(ode)+1)):
+ nth(der_f[1](max_var(ode)+1,lift_rd(D),p)(liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt))))),i)
+ = 
+ der_f(lift_rd(D),p)(nth[1](max_var(ode)+1,liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt)))),i))
+
+e2v_der_p_not_in_map: LEMMA
+ FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi)),i:below(max_var(ode)+1)):
+ not_in_map(ode)(i) IMPLIES
+ nth(der_f[1](max_var(ode)+1,lift_rd(D),p)(liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt))))),i)
+ = 
+ (: 0 :)
+
+e2v_der_p_in_map: LEMMA
+ FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi)),i:below(max_var(ode)+1) | in_map(ode)(i)):
+ LET k = the(index_of(ode,i)),
+     fs = fs_sol(D,envi,ode) IN 
+ nth(der_f[1](max_var(ode)+1,lift_rd(D),p)(liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt))))),i)
+ = 
+ (: deriv[(D)](fs(k))(car(p)) :)
+
+e2v_der_p_in_map_ode: LEMMA
+ FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi)),i:below(max_var(ode)+1) | in_map(ode)(i)):
+ LET k = the(index_of(ode,i)),
+     re = expr(ode)(i),
+     fs = fs_sol(D,envi,ode) IN 
+ nth(der_f[1](max_var(ode)+1,lift_rd(D),p)(liftl(max_var(ode)+1,D,
+ (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt))))),i)
+ = 
+ (: re(env_sol(D,envi,ode)(car(p))) :) 
+
+%e2v_der_p: LEMMA
+% FORALL(D:(dd?), p:(lift_rd(D)), envi:Environment, ode:(ODEs_s?(D,envi))):
+% differentiable?[1](max_var(ode)+1,lift_rd(D),liftl(max_var(ode)+1,D,
+% (LAMBDA(tt:(D)):env_2_vec(max_var(ode),env_sol(D,envi,ode)(tt)))),p)
+
+e2v_re_diff_p: LEMMA
+ FORALL(D:(dd?), P:(ddl_dom?), p:(lift_rd(D)),
+  envi:Environment,  ode:(ODEs_s?(D,envi)), R:RealExpr):
+  ((FORALL(t:(D)): P(env_sol(D, envi, ode)(t))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(car(p)))(R)) IMPLIES
+  differentiable?[1](1,lift_rd(D),liftl(1,D,(LAMBDA(tt:(D)):
+   (: R(env_sol(D,envi,ode)(tt)) :) ) ),p)
+
+e2v_re_der_p: LEMMA
+FORALL(D:(dd?), P:(ddl_dom?), p:(lift_rd(D)),
+  envi:Environment,  ode:(ODEs_s?(D,envi)), R:RealExpr):
+  ((FORALL(t:(D)): P(env_sol(D, envi, ode)(t))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(car(p)))(R)) IMPLIES
+  der_f[1](1,lift_rd(D),p)(liftl(1,D,(LAMBDA(tt:(D)):
+   (: R(env_sol(D,envi,ode)(tt)) :) ) )) =
+   der_f[max_var(ode) + 1]
+            (1, projv(max_var(ode), P),
+             liftl(max_var(ode) + 1, D,
+                   (LAMBDA (tt: (D)):
+                      env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt))))
+                  (p))
+            (LAMBDA (v: VectorN(max_var(ode) + 1)):
+               (: vec_re(max_var(ode), envi, R)(v) :))
+         *
+   der_f[1](max_var(ode) + 1, lift_rd(D), p)
+             (liftl(max_var(ode) + 1, D,
+                    (LAMBDA (tt: (D)):
+                       env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt)))))
+
+re_diff_chain: LEMMA
+  FORALL(D:(dd?), envi:Environment, ode:(ODEs_s?(D,envi)), P:(ddl_dom?),
+  R:RealExpr, t:(D)):
+    ( (FORALL(tt:(D)): P(env_sol(D, envi, ode)(tt))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(t))(R))
+     IMPLIES
+     derivable?[(D)](LAMBDA(tt:(D)): R(env_sol(D,envi,ode)(tt)),t)
+
+init_re_der_chain: LEMMA
+  FORALL(D:(dd?), envi:Environment, ode:(ODEs_s?(D,envi)), P:(ddl_dom?),
+  R:RealExpr, t:(D)):
+    ( (FORALL(tt:(D)): P(env_sol(D, envi, ode)(tt))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(t))(R))
+     IMPLIES
+     deriv[(D)](LAMBDA(tt:(D)): R(env_sol(D,envi,ode)(tt)),t)  = car(car(der_f[max_var(ode) + 1]
+            (1, projv(max_var(ode), P),
+             liftl(max_var(ode) + 1, D,
+                   (LAMBDA (tt: (D)):
+                      env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt))))
+                  ( (: t :)))
+            (LAMBDA (v: VectorN(max_var(ode) + 1)):
+               (: vec_re(max_var(ode), envi, R)(v) :))
+         *
+   der_f[1](max_var(ode) + 1, lift_rd(D), (: t :))
+             (liftl(max_var(ode) + 1, D,
+                    (LAMBDA (tt: (D)):
+                       env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt)))))))
+
+init2_re_der_chain: LEMMA
+  FORALL(D:(dd?), envi:Environment, ode:(ODEs_s?(D,envi)), P:(ddl_dom?),
+  R:RealExpr, t:(D)):
+    ( (FORALL(tt:(D)): P(env_sol(D, envi, ode)(tt))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(t))(R))
+     IMPLIES
+     deriv[(D)](LAMBDA(tt:(D)): R(env_sol(D,envi,ode)(tt)),t)  = der_f(projv(max_var(ode), P),
+               env_2_vec(max_var(ode), env_sol(D, envi, ode)(t)))
+              (vec_re(max_var(ode), env_sol(D, envi, ode)(t), R)) 
+         *
+    col(der_f[1](max_var(ode) + 1, lift_rd(D), (: t :))
+             (liftl(max_var(ode) + 1, D,
+                    (LAMBDA (tt: (D)):
+                       env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt))))))(0)
+
+init3_re_der_chain: LEMMA
+  FORALL(D:(dd?), envi:Environment, ode:(ODEs_s?(D,envi)), P:(ddl_dom?),
+  R:RealExpr, t:(D) |  (FORALL(tt:(D)): P(env_sol(D, envi, ode)(tt))) AND differentiable_re_p?(max_var(ode), P, env_sol(D,envi,ode)(t))(R)):
+  LET A =  der_f(projv(max_var(ode), P),
+               env_2_vec(max_var(ode), env_sol(D, envi, ode)(t)))
+              (vec_re(max_var(ode), env_sol(D, envi, ode)(t), R)),
+      B = col(der_f[1](max_var(ode) + 1, lift_rd(D), (: t :))
+             (liftl(max_var(ode) + 1, D,
+                    (LAMBDA (tt: (D)):
+                       env_2_vec(max_var(ode), env_sol(D, envi, ode)(tt))))))(0),
+       sumf = (LAMBDA(i:nat): IF i > max_var(ode) THEN 0 ELSE nth(A,i)*nth(B,i) ENDIF) IN
+     deriv[(D)](LAMBDA(tt:(D)): R(env_sol(D,envi,ode)(tt)),t)  =  sigma(0,max_var(ode),sumf)
+
+
+  SUB_DIFTRe_sig: LEMMA
+  FORALL(D:(dd?),envi:Environment,  ode:(ODEs_s?(D,envi)), P:(ddl_dom?), R:(diff_re?(max_var(ode),P)), t:(D)):
+   (FORALL(tt:(D)): P(env_sol(D, envi, ode)(tt))) IMPLIES
+   SUB_DIFTRe(P,ode)(R)(env_sol(D,envi,ode)(t)) = deriv[(D)](LAMBDA(tt:(D)): R(env_sol(D,envi,ode)(tt)),t)
+
+  % Differentiable non-quantified boolean expressions
+  derivable_M_nqbool?(M:nat,P:(ddl_dom?))(nqbe:NQBool) : INDUCTIVE bool =
+     (nqb_rel?(nqbe) AND
+      diff_re?(M,P)(r1(nqbe)) AND diff_re?(M,P)(r2(nqbe))) OR
+     (nqb_and?(nqbe) AND derivable_M_nqbool?(M,P)(nqb1(nqbe)) AND
+                         derivable_M_nqbool?(M,P)(nqb2(nqbe))) OR
+     (nqb_or?(nqbe) AND derivable_M_nqbool?(M,P)(nqb1(nqbe)) AND
+                         derivable_M_nqbool?(M,P)(nqb2(nqbe))) OR
+     (nqb_not?(nqbe) AND derivable_M_nqbool?(M,P)(nqb(nqbe))) 
+
+  derivable_M_normalize_rec : LEMMA
+    FORALL (M:nat,P:(ddl_dom?))(nqbe:(derivable_M_nqbool?(M,P)))
+           (pos:bool) :
+        derivable_M_nqbool?(M,P)(normalize_rec(nqbe,pos))
+
+  derivable_M_normalize : LEMMA
+    FORALL (M:nat,P:(ddl_dom?))(nqbe:(derivable_M_nqbool?(M,P))) :
+        derivable_M_nqbool?(M,P)(normalize(nqbe))
+
+END chain_rule_re

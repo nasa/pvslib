@@ -1,0 +1,225 @@
+substitution : THEORY
+BEGIN
+
+  IMPORTING bool_expr,
+  	    bound_variables_def
+
+  Substitution : TYPE = MapExprInj
+
+  sigma,sigmap
+       : VAR Substitution
+  P,Q  : VAR BoolExpr
+  qP   : VAR QBoolExpr
+  A    : VAR HP
+  mp   : VAR MapExprInj
+  re,
+  re1,
+  re2  : VAR RealExpr
+  k    : VAR real
+  i,j  : VAR nat
+  l    : VAR Assigns
+  env  : VAR Environment
+  b    : VAR bool
+
+  assign_env(l:Assigns,envi,envo:Environment):
+    RECURSIVE Environment =
+    IF null?(l) THEN envo
+    ELSE LET n = car(l)`1,
+             r = car(l)`2(envi) IN
+         assign_env(cdr(l),envi,envo WITH [`n := r])
+    ENDIF
+  MEASURE length(l)
+
+  assign_sub(l)(env:Environment) : Environment =
+    assign_env(l,env,env)
+
+  SUB(sigma)(P)(env) : bool = P(assign_sub(sigma)(env))
+  
+  SUB_Re(sigma)(re)(env): real = re(assign_sub(sigma)(env))
+
+  SUB_MapExpr(sigma)(mp): RECURSIVE
+    {l:MapExprInj| length(mp) = length (l) AND
+                   FORALL (i:below(length(l))):
+		     LET (v1,e1) = nth(mp,i),
+		         (v2,e2) = nth(l,i) IN
+	             v1 = v2 AND e2 = SUB_Re(sigma)(e1)} =
+    CASES mp OF
+    null: null,
+    cons(a,tail): cons((a`1,SUB_Re(sigma)(a`2)), SUB_MapExpr(sigma)(tail)) 
+    ENDCASES
+    MEASURE length(mp)
+
+  IMPORTING structures@more_list_props
+
+  assign_env_(l_:Assigns,l:Assigns| mapexpr_inj(append(l_,l)),envi,envo:Environment):
+    RECURSIVE Environment =
+    IF null?(l) THEN envo
+    ELSE LET n = car(l)`1,
+             r = car(l)`2(envi) IN
+         assign_env_(snoc(l_,car(l)),cdr(l),envi,envo WITH [`n := r])
+    ENDIF
+  MEASURE length(l)
+
+  assign_env__alt_j : RECURSIVE JUDGEMENT
+    assign_env_(l_:Assigns,l:Assigns| mapexpr_inj(append(l_,l)),envi:Environment,envo:{ env: Environment
+    	     | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(k) = re(envi) ) })
+    HAS_TYPE { env: Environment
+    	     | LET l: Assigns = append(l_,l)
+	       IN ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN env(k) = re(envi) ) AND
+  	          FORALL (i:(not_in_map(l))) :env(i) = envo(i) }
+
+  assign_env_phantom_eq : LEMMA
+    FORALL( l:Assigns,
+    	    l_:Assigns| mapexpr_inj(append(l_,l)),
+    	    envi:Environment,
+	    envo:{ env: Environment
+    	      	   | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(k) = re(envi) ) } )
+    : assign_env(l,envi,envo) = assign_env_(l_,l,envi,envo)		   
+
+  assign_env_alt : LEMMA
+    FORALL(l:Assigns,envi:Environment,envo:Environment):
+      ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN assign_env(l,envi,envo)(k) = re(envi) )
+      AND
+      FORALL (i:(not_in_map(l))): assign_env(l,envi,envo)(i) = envo(i) 
+
+  assign_env_ext : LEMMA
+    FORALL (l: Assigns, envi, envo: [nat -> real]) :
+      assign_env(l, envi, envo)(i) = 
+      IF in_map(l)(i)
+      THEN expr(l)(i)(envi)
+      ELSE envo(i)
+      ENDIF
+
+  assign_sub_ext : LEMMA
+    FORALL(l:Assigns):
+      assign_sub(l)(env)(i) =
+      IF in_map(l)(i) THEN
+        expr(l)(i)(env)
+      ELSE
+        env(i)
+      ENDIF
+	
+  SUB_MapVar(l)(i) : RECURSIVE {re:RealExpr| FORALL(env:Environment): re(env) = SUB_Re(l)(val(i))(env)} =
+    IF null?(l) THEN val(i)
+    ELSIF same_var(car(l)`1,i) THEN car(l)`2
+    ELSE SUB_MapVar(cdr(l))(i)
+    ENDIF
+  MEASURE length(l)
+
+  % val(j)/sigma = if (j,e) in sigma then e else val(j)
+  dl_subre_val: LEMMA
+    SUB_Re(sigma)(val(j)) = SUB_MapVar(sigma)(j)
+
+  % k/sigma = k
+  dl_subre_const: LEMMA
+    SUB_Re(sigma)(cnst(k)) = cnst(k)
+
+  % (re1+re2)/sigma = re1/sigma + re2/sigma
+  dl_subre_plus : LEMMA
+    SUB_Re(sigma)(re1+re2) = SUB_Re(sigma)(re1) + SUB_Re(sigma)(re2)
+
+  % (re1-re2)/sigma = re1/sigma - re2/sigma
+  dl_subre_minus : LEMMA
+    SUB_Re(sigma)(re1-re2) = SUB_Re(sigma)(re1) - SUB_Re(sigma)(re2)
+
+  % (-re/sigma = -(re/sigma)
+  dl_subre_neg : LEMMA
+    SUB_Re(sigma)(-re) = -SUB_Re(sigma)(re)
+
+  % (re1*re2)/sigma = re1/sigma * re2/sigma
+  dl_subre_prod : LEMMA
+    SUB_Re(sigma)(re1*re2) = SUB_Re(sigma)(re1) * SUB_Re(sigma)(re2)
+
+  % (k*re)/sigma = k*(re/sigma)
+  dl_subre_prod_scal1 : LEMMA
+    SUB_Re(sigma)(k*re) = k*SUB_Re(sigma)(re)
+
+  % (re*k/sigma = (re/sigma)*k
+  dl_subre_prod_scal2 : LEMMA
+    SUB_Re(sigma)(re*k) = SUB_Re(sigma)(re)*k
+
+  % (re^n)/sigma = (re/sigma)^n
+  dl_subre_exp: LEMMA
+    SUB_Re(sigma)(re1^i) = (SUB_Re(sigma)(re1))^i
+
+  % DLBOOL(b)/sigma = DLBOOL(b)
+  dl_sub_bool: LEMMA
+    SUB(sigma)(DLBOOL(b)) = DLBOOL(b)
+
+  dl_sub_bool_restricted
+  : COROLLARY
+    FORALL(qQ: QBoolExpr,Z: [real -> MapExprInj],b:bool)
+    : DLFORALL(LAMBDA (x: real): DLIMPLIES(qQ(x), SUB(Z(x))(DLBOOL(b)))) = DLFORALL(LAMBDA (x: real): DLIMPLIES(qQ(x), DLBOOL(b)))
+
+  % (P AND Q)/sigma = (P/sigma) AND (Q/sigma) 
+  dl_sub_and: LEMMA
+    SUB(sigma)(DLAND(P,Q)) = DLAND(SUB(sigma)(P),SUB(sigma)(Q))
+
+  % (P OR Q)/sigma = (P/sigma) OR (Q/sigma) 
+  dl_sub_or: LEMMA
+    SUB(sigma)(DLOR(P,Q)) = DLOR(SUB(sigma)(P),SUB(sigma)(Q))
+
+  % (NOT P)/sigma = NOT (P/sigma) 
+  dl_sub_not: LEMMA
+    SUB(sigma)(DLNOT(P)) = DLNOT(SUB(sigma)(P))
+
+  % (P IMPLIES Q)/sigma = (P/sigma) IMPLIES (Q/sigma) 
+  dl_sub_implies: LEMMA
+    SUB(sigma)(DLIMPLIES(P,Q)) = DLIMPLIES(SUB(sigma)(P),SUB(sigma)(Q))
+
+  % (re1 >= re2)/sigma = re1/sigma >= re2/sigma
+  dl_sub_ge: LEMMA
+    SUB(sigma)(re1 >= re2) = SUB_Re(sigma)(re1) >= SUB_Re(sigma)(re2)
+
+  % (re1 > re2)/sigma = re1/sigma > re2/sigma
+  dl_sub_gt: LEMMA
+    SUB(sigma)(re1 > re2) = SUB_Re(sigma)(re1) > SUB_Re(sigma)(re2)
+
+  % (re1 <= re2)/sigma = re1/sigma <= re2/sigma
+  dl_sub_le: LEMMA
+    SUB(sigma)(re1 <= re2) = SUB_Re(sigma)(re1) <= SUB_Re(sigma)(re2)
+
+  % (re1 < re2)/sigma = re1/sigma < re2/sigma
+  dl_sub_lt: LEMMA
+    SUB(sigma)(re1 < re2) = SUB_Re(sigma)(re1) < SUB_Re(sigma)(re2)
+
+  % (re1 = re2)/sigma = (re1/sigma = re2/sigma)
+  dl_sub_eq: LEMMA
+    SUB(sigma)(re1=re2) = (SUB_Re(sigma)(re1) = SUB_Re(sigma)(re2))
+
+  % (re1 /= re2)/sigma = (re1/sigma /= re2/sigma)
+  dl_sub_neq: LEMMA
+    SUB(sigma)(re1 /= re2) = (SUB_Re(sigma)(re1) /= SUB_Re(sigma)(re2))
+
+  % (P IFF Q)/sigma = (P/sigma) IFF (Q/sigma) 
+  dl_sub_iff: LEMMA
+    SUB(sigma)(DLIFF(P,Q)) = DLIFF(SUB(sigma)(P),SUB(sigma)(Q))
+
+  IMPORTING structures@for_examples
+
+  dl_sub_allruns0_x_neq_y: LEMMA
+    FORALL (z:nat,x,y:nat,rey,re:RealExpr) :
+      LET A      = ASSIGN((: (y,rey) :)),
+         sigma  = (: (x,re) :),
+         sigmap = (: (x,val(z)) :) IN
+     x /= y AND z /= x AND z /= y AND fresh?(P)(z) IMPLIES
+      SUB(sigma)(ALLRUNS(A,P)) =
+      ALLRUNS(ASSIGN((: (z,re), (y,SUB_Re(sigma)(rey)) :)),SUB(sigmap)(P))
+
+  dl_sub_allruns_assign0_x_eq_y: LEMMA
+    FORALL (x,y:nat,rey,re:RealExpr) :
+      LET A      = ASSIGN((: (y,rey) :)),
+          sigma  = (: (x,re) :),
+          Ap     = ASSIGN((: (y,SUB_Re(sigma)(rey)) :)) IN
+      x = y IMPLIES
+      SUB(sigma)(ALLRUNS(A,P)) = ALLRUNS(Ap,P)
+
+  % SUB(forall(x:real):P)/sigma = forall(x:real)(P/sigma)
+  dl_sub_forall : LEMMA
+    SUB(sigma)(DLFORALL(qP)) = DLFORALL(LAMBDA(r:real):SUB(sigma)(qP(r)))
+
+  % SUB(exists(x:real):P)/sigma = exists(x:real)(P/sigma)
+  dl_sub_exists : LEMMA
+    SUB(sigma)(DLEXISTS(qP)) = DLEXISTS(LAMBDA(r:real):SUB(sigma)(qP(r)))
+
+END substitution

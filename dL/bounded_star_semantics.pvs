@@ -1,0 +1,111 @@
+bounded_star_semantics: THEORY
+BEGIN
+
+  IMPORTING hp_expr
+  IMPORTING orders@orders_nat
+  IMPORTING orders@lex2_generic[nat,HP]
+  %,lt_nat,HP_adt.<<]
+
+
+  %---------------------------------------------
+  %% semantic rel for a bounded number 'i' of
+  %% iterations of the program
+  %---------------------------------------------
+
+  semantic_rel_bounded_star(i: nat)(hp: HP)(envi: Environment)(envo: Environment): RECURSIVE bool
+  = CASES hp OF
+      SEQ(stm1,stm2) : EXISTS (env:Environment)
+      		       : semantic_rel_bounded_star(i)(stm1)(envi)(env) AND
+			 semantic_rel_bounded_star(i)(stm2)(env)(envo),
+      UNION(stm1,stm2) : semantic_rel_bounded_star(i)(stm1)(envi)(envo)
+      		       	 OR semantic_rel_bounded_star(i)(stm2)(envi)(envo),
+      STAR(stm)    : envo = envi
+      		     OR ( i>0 AND
+		     	  EXISTS (env:Environment)
+		          :semantic_rel(stm)(envi)(env) AND
+                           semantic_rel_bounded_star(i-1)(STAR(stm))(env)(envo) )
+      ELSE semantic_rel(hp)(envi)(envo)
+    ENDCASES
+  MEASURE (i,hp) BY lt_lex2(lt_nat,HP_adt.<<)
+
+  semantic_rel_bounded_star_inc: LEMMA
+  FORALL(hp:HP, envi,envo:Environment, i: nat)
+  : semantic_rel_bounded_star(i)(hp)(envi)(envo)
+     IMPLIES FORALL(j: upfrom(i)): semantic_rel_bounded_star(j)(hp)(envi)(envo)
+
+  semantic_rel_implies_bounded : LEMMA
+  FORALL(hp:HP, envi : Environment, envo : Environment)
+    : semantic_rel(hp)(envi)(envo)
+      IMPLIES EXISTS (i: nat): semantic_rel_bounded_star(i)(hp)(envi)(envo)
+
+  bounded_implies_semantic_rel : LEMMA
+  FORALL(hp:HP, envi : Environment, envo : Environment,i: nat)
+    : semantic_rel_bounded_star(i)(hp)(envi)(envo)
+      IMPLIES
+      semantic_rel(hp)(envi)(envo)
+
+  %----------------------------------------------------
+  %% Lemmas that relate the bounded iterations BSTAR
+  %% and the iteration HP STAR
+  %----------------------------------------------------
+
+  IMPORTING bool_expr
+
+  BSTAR(stm:HP,n:nat): RECURSIVE HP
+  = IF n=0 THEN TEST(DLTRUE)
+    ELSE UNION(SEQ(stm,BSTAR(stm,n-1)),BSTAR(stm,n-1)) ENDIF
+  MEASURE n
+
+  semantic_rel_bstar_reflexive
+  : LEMMA
+    FORALL(hp:HP, env: Environment, i: nat)
+    : semantic_rel(BSTAR(hp,i))(env)(env)
+
+  semantic_rel_bounded_bstar_semantic_rel_bstar
+  : LEMMA
+    FORALL(hp:HP, envi : Environment, envo : Environment, i: nat)
+    : semantic_rel_bounded_star(i)(STAR(hp))(envi)(envo)
+      IMPLIES semantic_rel(BSTAR(hp,i))(envi)(envo)
+
+  semantic_rel_star_bounded_star
+  : LEMMA
+    FORALL(hp:HP, envi : Environment, envo : Environment)
+    : semantic_rel(STAR(hp))(envi)(envo)
+      IMPLIES EXISTS (i: nat): semantic_rel(BSTAR(hp,i))(envi)(envo)
+
+  semantic_rel_star_bounded_star_con
+  : LEMMA
+    FORALL(hp:HP, envi : Environment, envo : Environment,i:nat)
+    :  semantic_rel(BSTAR(hp,i))(envi)(envo)
+       IMPLIES semantic_rel(STAR(hp))(envi)(envo)
+
+  semantic_rel_bounded_star_seq_switch: LEMMA
+  FORALL(stm:HP, envi,envo: Environment, i: nat):
+    semantic_rel(SEQ(stm,BSTAR(stm,i)))(envi)(envo) IFF 
+    semantic_rel(SEQ(BSTAR(stm,i),stm))(envi)(envo)
+
+  semantic_rel_star_seq_switch: LEMMA
+  FORALL(stm:HP, envi,envo: Environment):
+    semantic_rel(SEQ(stm,STAR(stm)))(envi)(envo) IFF 
+    semantic_rel(SEQ(STAR(stm),stm))(envi)(envo)
+
+  semantic_rel_bounded_star_iter: LEMMA
+  FORALL(hp:HP, env,envi,envo: Environment, i: nat):
+  (semantic_rel(BSTAR(hp,i))(envi)(env) AND semantic_rel(hp)(env)(envo))  
+    IMPLIES semantic_rel(BSTAR(hp,i+1))(envi)(envo)
+
+  semantic_rel_bounded_star_iter_con: LEMMA
+  FORALL(hp:HP, envi,envo: Environment, i:posnat):
+  semantic_rel(BSTAR(hp,i))(envi)(envo) IMPLIES 
+  semantic_rel(BSTAR(hp,i-1))(envi)(envo)
+  OR (EXISTS(env:Environment):
+  (semantic_rel(BSTAR(hp,i-1))(envi)(env) AND semantic_rel(hp)(env)(envo)))
+
+  semantic_rel_star_iter: LEMMA
+  FORALL(hp:HP, env,envi,envo: Environment):
+  (semantic_rel(STAR(hp))(envi)(env) AND semantic_rel(hp)(env)(envo))  
+    IMPLIES semantic_rel(STAR(hp))(envi)(envo)
+
+   
+
+END bounded_star_semantics

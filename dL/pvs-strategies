@@ -1,0 +1,2036 @@
+(defparameter *dl-auto-rws*
+  '("SKIP" "FAIL" "DLIFF" "DLRANDOM"
+    "dl_not_not" "dl_not_true" "dl_not_false"
+    "dl_true_and" "dl_and_true" "dl_false_and" "dl_and_false"
+    "dl_true_or" "dl_or_true" "dl_false_or" "dl_or_false"
+    "dl_true_implies" "dl_implies_true" "dl_false_implies" "dl_implies_false"
+    "dl_forall_bool" "dl_exists_bool"
+    "dl_assignb" "dl_assignd" "dl_anyb" "dl_anyd" "dl_composeb" "dl_composed"
+    "dl_choiceb" "dl_choiced" "dl_testb" "dl_testd" "dl_dualDirectb" "dl_dualDirectd"))
+
+(defparameter *dl-sub-rws*
+  '("dl_sub_ge" "dl_sub_gt" "dl_sub_le" "dl_sub_lt" "dl_sub_eq" "dl_sub_neq"
+    "dl_sub_and" "dl_sub_or" "dl_sub_not" "dl_sub_implies" "dl_sub_iff"
+    "dl_sub_allruns" "dl_sub_someruns" "dl_sub_forall" "dl_sub_exists"
+    "dl_subre_const" "dl_subre_plus" "dl_subre_neg" "dl_subre_minus"
+    "dl_subre_prod_scal1" "dl_subre_prod_scal2" "dl_subre_prod"
+    "dl_subre_exp" "dl_sub_bool" "dl_subre_lambda"
+    "dl_subre_val" "SUB_MapExpr"
+    ))
+
+(defparameter *dl-domain-rws*
+  '("dl_true_DDL" "dl_true_up_DDL"))
+
+(defparameter *dl-derup-rws*
+  '("dl_derivable_up_pow" "dl_derivable_up_sum" "dl_derivable_up_val" "dl_derivable_up_cnst" "dl_derivable_up_prod" "dl_derivable_up_minus" "dl_derivable_up_div"))
+(defparameter *dl-derup-operators*
+  '(^ + val cnst * - /))
+
+(defparameter *dl-diffre-rws*
+  '("diff_re_val" "diff_re_cnst" "diff_re_prod" "diff_re_sum" "diff_re_diff" "diff_re_div" "diff_re_pow"))
+(defparameter *dl-diffre-operators*
+  '(val cnst * + - / ^))
+
+(defparameter *dl-rels*
+  '("=" "/=" "<=" "<" ">=" ">"))
+
+(defparameter *dl-ops*
+  '("real_fun_ops.+" "real_fun_ops.-" "real_fun_ops.*" "real_fun_ops.^" "real_fun_ops./"))
+  
+(defparameter *dl-safeops-rws*
+  '(;; "div_safe_re" "sqrt_safe_re"
+    "div_safe_eq" "sqrt_safe_sq"))
+
+;;
+;; Load strategies defined in other files
+;;
+(defmacro load-other-strat-files (filename)
+  `(let ((file (merge-pathnames ,filename *load-truename*)))
+     (handler-case (load file)
+       (error (c) (format t "~&Error loading \"~a\".~%" file)))))
+
+(load-other-strat-files "dl-diffghost.lisp")
+(load-other-strat-files "dl-diffinv.lisp"  )
+(load-other-strat-files "dl-solve.lisp"    )
+(load-other-strat-files "dl-pp.lisp"       )
+
+(defstep dl-unroll (fnum)
+  (with-fresh-labels
+   ((fnum! fnum))
+   (flatten fnum!)
+   (repeat
+    (try-then
+     ((unroll fnum!)
+      (repeat (expand "nth" fnum!))))))
+  "Unrolls FOALL(n:below(length(...))):..."
+  "Unrolling FORALL(n:below(length(...))):...")
+
+(defun is-null-pvslist (expr)
+  (or (null-expr? expr)
+      (and (constructor-name-expr? expr)
+	   (equal (id expr) 'null))))
+
+;; Returns a pair, the first element states whether or not expr (a PVS list)
+;; is pretty-printable. The second element is the list of its elements.
+(defun pvslist2list (expr)
+  (if (is-function-expr expr "cons")
+      (let ((rest (pvslist2list (args2 expr))))
+	(cons (car rest) (cons (args1 expr) (cdr rest))))
+    (cons (is-null-pvslist expr) nil)))
+    
+;; Returns a list from expr (a PVS list)
+(defun pp-list (expr)
+  (cdr (pvslist2list expr)))
+
+;; Returns length of expr (a PVS list) 
+(defun pp-length (expr)
+  (if (is-function-expr expr "cons")
+      (1+ (pp-length (args2 expr)))
+    0))
+
+;; Returns nth-element of expr (a PVS list) 
+(defun pp-nth (expr n)
+  (when (is-function-expr expr "cons")
+    (if (= n 0) (args1 expr)
+      (pp-nth (args2 expr) (1- n)))))
+
+;; Finds cons of index and expr of first element of a PVS list that satisfies a test.
+;; lbdtest is a function of two parameters: an expression and a side, either -1 or 1. That function
+;; checks if an expression appears in the appropriate side.
+(defun dl-find (expr side lbdtest &optional (n 0))
+  (when (is-function-expr expr "cons")
+    (if (funcall lbdtest (args1 expr) side)
+	(cons n (args1 expr))
+      (dl-find (args2 expr) side lbdtest (1+ n)))))
+
+(defun dl-fnums-to-keep (expr side lbdtest &optional (n 0))
+  (when (is-function-expr expr "cons")
+    (let ((rest (dl-fnums-to-keep (args2 expr) side lbdtest (1+ n))))
+      (if (funcall lbdtest (args1 expr) side)
+	  (cons (* side n) rest)
+	rest))))
+
+;; Returns cons of formula number and DLL sequent in formula fnum
+;; (or nil iff fnum is not a DDL sequent)
+(defun is-dl-seq (fnum)
+  (let* ((fn   (if fnum (extra-get-fnum fnum)
+		 (extra-get-fnum '(? + "|-"))))
+	 (expr (when (and fn (> fn 0)) ;; @M3 #TODO double-check it's ok to stop forcing fnum to be positive
+		     ;; fn
+		 (extra-get-formula fn))))
+    (when (is-function-expr expr "|-")
+      (cons fn expr))))
+
+;; Side is either 1 or -1. Return cons of dlfnum and expression
+;; dlfnum is not nil
+(defun dl-fnum-side (lexpr dlfnum side lbdtest)
+  (if (numberp dlfnum)
+      (when (> (* dlfnum side) 0)
+	(let ((expr (pp-nth lexpr (1- (* side dlfnum)))))
+	  (when (and expr (funcall lbdtest expr side))
+	    (cons dlfnum expr))))
+    (let ((dlfn (cond ((equal dlfnum '-) -1)
+		      ((equal dlfnum '+) 1)
+		      (t 0))))
+      (when (>= (* dlfn side) 0)
+	(let* ((fnd (dl-find lexpr side lbdtest)))
+	  (when fnd
+	    (cons (* side (1+ (car fnd))) (cdr fnd))))))))
+
+;; Returns cons of formula number of DLL sequent that satisfies a test
+;; and expr of specified side, i.e., side = 0 is both sides, side < 0
+;; is left, and side > 0 is right
+(defun dl-fnum (dlseq dlfnum side lbdtest)
+  (when (and dlfnum (is-function-expr dlseq "|-"))
+    (let* ((ret (dl-fnum-side (if (>= side 0) (args2 dlseq) (args1 dlseq))
+			      dlfnum (sign side) lbdtest)))
+      (or ret
+	  (when (equal side 0)
+	    (dl-fnum-side (args1 dlseq) dlfnum -1 lbdtest))))))
+
+;; Increment dlfnum in the right direction
+(defun dlfnum-incr (dlfnum)
+  (if (< dlfnum 0)
+      (1- dlfnum)
+    (1+ dlfnum)))
+
+(defhelper dl-isdlfnum__ ()
+  (then
+   (expand "move_to_head" 1)
+   (let ((expr (extra-get-expr '(~ 1 "is_dlfnum(%,%)"))))
+     (when expr
+       (spread
+	(case expr)
+	((then (hide-all-but -1)
+	       (expand "is_dlfnum")
+	       (let ((n (number (args1 (extra-get-formula -1)))))
+		 (for n (expand "length")))
+	       (assert))
+	 (then (replaces 1)
+	       (repeat (expand "move_to_head_rec" 1))
+	       (repeat (expand "append" 1))))))))
+  "Internal strategy."
+  "")
+
+(defhelper dl-move__ (dlfn fn lem lbs pp? dont-fail?)
+  (then@ (lemma lem)
+	 (relabel lbs -1)
+	 (spread
+	  (inst? -1 :where fn)
+	  ((then
+	    (inst -1 dlfn)
+	    (spread
+	     (split -1)
+	     ((unless dont-fail? (fail))
+	      (dl-isdlfnum__$)))
+	    (when pp? (dl-pp 1)))
+	   (then
+	    (skosimp* 1)
+	    (eval-formula 1)))))
+  "Internal strategy. Applies applies lem, which is either dl_moveR or
+dl_moveL depending on fn."
+  "")
+
+(defstep dl-move (dlfnum &optional fnum (pp? t) dont-fail?)
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq))
+	(len   (when dlseq (cond ((< dlfnum 0)
+				  (pp-length (args1 (cdr dlseq))))
+				 ((> dlfnum 0)
+				  (pp-length (args2 (cdr dlseq)))))))
+	(dlfn  (when (numberp dlfnum) (abs dlfnum)))
+	(lem   (when len
+		 (cond ((and (> dlfnum 1) (<= dlfnum len)) "dl_moveR")
+		       ((and (> dlfn 1) (<= dlfn len)) "dl_moveL"))))
+	(lbs   (when lem (extra-get-labels fn))))
+    (when lem
+      (with-fresh-labels
+       ((fn! fn :delete))
+       (dl-move__$ dlfn fn! lem lbs pp? dont-fail?))))
+  "Moves to the head the DDL formula DLFNUM of a DDL sequent in formula FNUM.
+DDL formulas are 1-indexed. If DLFNUM is positive, it applies dl_moveR;
+otherwise, it applies dl_moveL. If FNUM is not provided, the first DDL sequent
+in the consequent is used. By default, the DDL sequent is pretty-printed unless
+PP? is set to nil."
+  "Moving DDL formula ~a of a DDL sequent to the head")
+
+(defun anyterm-lmbd (expr side) t)
+
+;; TODO move back to defhelper
+(defstep dl-lemma__ (lem dlfnum fnum &optional
+			   (finishing-step (skip)) inst-terms equiv? side ftest (pp? t) dont-fail?)
+  (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] lem ~a | dlfnum ~a (~a) | fnum ~a (~a) | %->>~a<<-~%"
+				  lem dlfnum (type-of dlfnum) fnum (type-of fnum) *ps*))
+	(dlseq (is-dl-seq fnum))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] dlseq --> ~a <--~%"  dlseq))
+	(fn    (car dlseq))
+	(dlfn  (when (and dlseq side)
+		 (let* ((sside (cond ((equal side '-) -1)
+				     ((equal side '+)  1)
+				     (t 0)))
+			(dfn (car (dl-fnum (cdr dlseq) dlfnum sside (or ftest #'anyterm-lmbd)))))
+		   (or dfn (when equiv? (car (dl-fnum (cdr dlseq) dlfnum sside #'anyterm-lmbd)))))))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] dlfn ~a ~%"  dlfn))
+	(insts (if (expr? inst-terms) (list inst-terms) inst-terms))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] fn ~a ~%"  fn))
+	(lbs   (extra-get-labels fn))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] lbs ~a ~%" lbs))
+	(lem   (let ((l (enlist-it lem)))
+		 (if (or (null dlfn)
+			 (equal (length l) 1)
+			 (< dlfn 0))
+		     (car l)
+		   (cadr l))))
+	(neq   (not equiv?))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] fn ~a side ~a dlfn ~a ~%" fn side dlfn))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] (and fn (or (null side) dlfn)) ~a ~%" (and fn (or (null side) dlfn))))
+	(doit  (and fn (or (null side) dlfn)))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] doit ~a ~%" doit))
+	)
+    (if doit
+      (then 
+       (with-fresh-labels
+	((fn! fn :delete? neq))
+	(with-fresh-names
+	 ((gamma_) (delta_))
+	 (when dlfn
+	   #+pvsdebug (let ((dummier (format t "~&[dl-lemma__] -1 ~%->> ~a <<-~%" *ps*))) (skip))
+	   (dl-move dlfn fn! :pp? nil :dont-fail? dont-fail?)
+	   #+pvsdebug (let ((dummier (format t "~&[dl-lemma__] 0 ~%->> ~a <<-~%" *ps*))) (skip))
+	   (let ((ctxf1 (when dlfn `(! ,fn! ,(if (> dlfn 0) 1 2)))) 
+		 (ctxf2 (when dlfn `(! ,fn! ,(if (> dlfn 0) 2 1) 2))))
+	     (then (name-label* (gamma_ ctxf1 delta_ ctxf2) :hide? t)
+		   (let ((xpr (extra-get-expr `(! ,fn! ,(if (> dlfn 0) 1 2))))
+			 (wh  (if (> dlfn 0) 2 1))
+			 (nm  (when (name-expr? xpr)
+				(format nil "~a" xpr))))
+		     (when nm (expand nm fn! wh))))))
+	 #+pvsdebug (let ((dummier (format t "~&[dl-lemma__] 1 ~%->> ~a <<-~%" *ps*))) (skip))
+	 (lemma lem)
+	 #+pvsdebug (let ((dummier (format t "~&[dl-lemma__] 2 ~%"))) (skip))
+	 (with-fresh-labels
+	  ((nfn! -1))
+	  (try
+	   (branch
+	    (then@
+	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 3: about to apply (inst? ~a :where ~a :polarity? ~a) ~%->> ~a <<-~%" nfn! fn! neq *ps*)))
+			  (skip))
+	     (inst? nfn! :where fn! :polarity? neq)	   
+	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 4 ~%->> ~a <<-~%" *ps*))) (skip))
+	     (when insts (inst nfn! :terms insts))
+	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 5 ~%->> ~a <<-~%" *ps*))) (skip)))
+	    (;; Main branch
+	     (then
+	      (relabel lbs nfn!)
+	      (if equiv?
+		 (try (replace nfn! fn! :hide? t)
+		      (then
+		       (relabel nfn! fn!)
+		       (expand* (gamma_ delta_))
+		       finishing-step)
+		      (unless dont-fail? (fail)))
+	       (try
+		(then
+		 #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 51 ~%->> ~a <<-~%" *ps*))) (skip))
+		 (replaces fn! :in nfn!)
+		 ;; #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 55 ~%->> ~a <<-~%" *ps*))) (skip))
+		 #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 6  ~%->> ~a <<-~%" *ps*))) (skip)))
+		(then
+		 (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 61 ~%")))
+		   (expand* (gamma_ delta_)))
+		 finishing-step
+		 (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 62 ~%")))
+		   (split nfn!))
+		 (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 621 ~%")))
+		   (skip)))
+		(unless dont-fail? (fail)))))
+	     ;; TCCs opened when instantiating the indicated lemma
+	     ;; @M3 #FR we already know the kind of TCCs we could need to prove, we could identify
+	     ;;         the kind of TCC and act accordingly.
+	     (then
+	      (relabel lbs nfn!)
+	      (hide-all-but 1)
+	      (else*$
+	       ;; TCC on cont_re? conditions
+	       (match "cont_re?(%%)(%%)" step (prove-cont_re-goal))
+	       ;; TCC for ddl_dom?(DLBOOL(TRUE))
+	       (match "ddl_dom?(DLBOOL(TRUE))" step (rewrite "dl_true_DDL"))
+	       ;; TCC for ddl_dom_upto?(i)(DLBOOL(TRUE))
+	       (match "ddl_dom_upto?(%%)(DLBOOL(TRUE))" step (rewrite "dl_true_up_DDL"))
+	       ;; TCC for fresh?
+	       (match$ "fresh_li?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
+	       (match$ "fresh?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
+	       ;; This TCC appears when instantiating ODEs as list of tuples
+	       (then
+		(skeep)
+		(eval-formula 1))
+	       ;; other TCCs
+	       (then
+		(let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 63 ~%")))
+		  (skosimp* 1))
+		(let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 64 ~%")))
+		  ;; (eval-formula 1)
+		  (then
+		   (expand* (gamma_ delta_)) ;;; #TODO if we don't expand these names, eval-formula does not end
+					   ;;;       maybe an issue of eval-formula and names from with-fresh-names?
+		   (eval-formula 1))))))))
+	   (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 7 ~%")))
+	     (when pp? (dl-pp nfn!)))
+	   (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 8 ~%")))
+	     (unless dont-fail? (label "**FAIL**" fn!)))))))
+       (when-label "**FAIL**" (fail)))
+      (warning "No suitable formula for given dL lemma.")))
+  "Internal strategy."
+  "Applying (dl-lemma__ ~s ~s ~s ~s (~{\"~a\"~}) ~s ~s ~s ~s ~s)")
+
+(defun dl-get-dlfnums (dlseq dlfnums &optional butfnums)
+  (when dlfnums
+    (let* ((expr     (cdr dlseq))
+	   (lena     (pp-length (args1 expr)))
+	   (lenc     (pp-length (args2 expr)))
+	   (negfnums (unless (equal dlfnums '+) (fromto (- lena) -1)))
+	   (posfnums (unless (equal dlfnums '-) (fromto lenc 1)))
+	   (allfnums (append posfnums negfnums))
+	   (fnumsl   (if (numberp dlfnums) (list dlfnums) dlfnums))
+	   (butl     (enlist-it butfnums)))
+      (loop for fnum in allfnums
+	    unless (or (member fnum butl)
+		       (and (listp fnumsl) (not (member fnum fnumsl))))
+	    collect fnum))))
+
+(defstep dl-hide (&optional (dlfnums *) but fnum (pp? t))
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (when fn
+      (let ((l   (dl-get-dlfnums dlseq dlfnums but)))
+	(mapstep #'(lambda (dlfnum)`(dl-lemma__$
+				     ("dl_hideL" "dl_hideR") ,dlfnum ,fn
+				     :side * :pp? ,pp?)) l))))
+  "Hides DDL formulas of a DDL sequent. The specific formulas
+to be hidden are those in DLFNUMS except those in BUT. Positive
+numbers specify formulas in the consequent. Negative numbers specify
+formulas in the antecedent. DLFNUM could also be the special symbols
+*, +, and -, which stand for all formulas, all postive formulas, and
+all negative formulas, respectively. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Hiding DDL formulas in ~a")
+
+(defstep dl-hiderest (&optional (dlfnums *) but fnum (pp? t))
+  (let ((dlseq (is-dl-seq fnum))
+        (fn    (car dlseq)))
+    (when fn
+      (let ((l   (dl-get-dlfnums dlseq dlfnums but)))
+        (mapstep #'(lambda (dlfnum)`(dl-lemma__$
+                                     ("dl_hide_restL" "dl_hide_restR") ,dlfnum ,fn
+                                     :side * :pp? ,pp?)) l))))
+  "Hides DDL formulas of a DDL sequent. The specific formulas
+to be hidden are those in DLFNUMS except those in BUT. Positive
+numbers specify formulas in the consequent. Negative numbers specify
+formulas in the antecedent. DLFNUM could also be the special symbols
+*, +, and -, which stand for all formulas, all postive formulas, and
+all negative formulas, respectively. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Hiding DDL formulas in ~a")
+
+
+(defstep dl-subs (&optional (hp? t))
+  (let ((rws  (append *dl-sub-rws* (when hp? (list "SUB_HP"))))
+	(expr '(~ + "same_var(%,%)")))
+    (repeat
+     (try-branch
+      (rewrite* rws)
+      ((repeat (try-then
+		((expand "SUB_MapVar")
+		 (repeat
+		  (try-then
+		   ((eval-expr expr)
+		    (replaces -1)))))))
+       (then (skosimp* 1)
+	     (eval-formula 1)))
+      (skip))))
+  "Internal strategy. Applies DDL substitution rules." 
+  "")
+
+;;
+;; Equality Tactics
+;;
+
+(defun dl-anyb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "ANY")))
+
+(defstep dl-anyb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_anyb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-anyb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_anyb to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_anyb to DDL formula ~a")
+
+(defun dl-anyd-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "ANY")))
+
+(defstep dl-anyd (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_anyd" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-anyd-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_anyd to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_anyd to DDL formula ~a")
+
+(defun dl-assignb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "ASSIGN")))
+
+(defstep dl-assignb (&optional (dlfnum *) fnum (hp? t) (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_assignb" dlfnum fnum
+	       (dl-subs$ hp?)
+	       :equiv? t
+	       :side *
+	       :ftest dl-assignb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_assignb to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_assignb to DDL formula ~a")
+
+(defun dl-assignd-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "ASSIGN")))
+
+(defstep dl-assignd (&optional (dlfnum *) fnum (hp? t) (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_assignd" dlfnum fnum
+	       (dl-subs$ hp?)
+	       :equiv? t
+	       :side *
+	       :ftest dl-assignd-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_assignd to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_assignd to DDL formula ~a")
+
+(defun dl-composeb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "SEQ")))
+
+(defstep dl-composeb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_composeb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-composeb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_composeb to DDL formula DLFNUM of DDL sequent
+in formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_composeb to DDL formula ~a")
+
+(defun dl-composed-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "SEQ")))
+
+(defstep dl-composed (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_composed" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-composed-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_composed to DDL formula DLFNUM of DDL sequent
+in formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_composed to DDL formula ~a")
+
+(defun dl-choiceb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "UNION")))
+
+(defstep dl-choiceb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_choiceb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-choiceb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_choiceb to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_choiceb to DDL formula ~a")
+
+(defun dl-choiced-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "UNION")))
+
+(defstep dl-choiced (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_choiced" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-choiced-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_choiced to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_choiced to DDL formula ~a")
+
+(defun dl-iterated-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "STAR")))
+
+(defstep dl-iterated (&optional (dlfnum *) (fnum *) (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_iterated" dlfnum fnum
+               :equiv? t
+               :side *
+	       :ftest dl-iterated-lmbd
+               :pp? pp?
+               :dont-fail? dont-fail?)
+  "Applies the lemma dl_iterated to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_iterated to DDL formula ~a")
+
+(defun dl-diamondOr-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args2 expr) "DLOR")))
+
+(defstep dl-diamondOr (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_diamondOr" dlfnum fnum
+               :equiv? t
+               :side *
+	       :ftest dl-diamondOr-lmbd
+               :pp? pp?
+               :dont-fail? dont-fail?)
+  "Applies the lemma dl_diamondOr to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_diamondOr to DDL formula ~a")
+
+(defun dl-testb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "TEST")))
+
+(defstep dl-testb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_testb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-testb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_testb to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_testb to DDL formula ~a")
+
+(defun dl-testd-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "TEST")))
+
+(defstep dl-testd (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_testbd" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-testd-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_testd to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_testd to DDL formula ~a")
+
+(defun dl-dualb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "DUAL")))
+
+(defstep dl-dualb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_dualDirectb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-dualb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_dualDirectb to DDL formula DLFNUM of DDL
+sequent in formula FNUM. If FNUM is not provided, the first DDL
+sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_dualDirectb to DDL formula ~a")
+
+(defun dl-duald-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "DUAL")))
+
+(defstep dl-duald (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_dualDirectd" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-duald-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_dualDirectd to DDL formula DLFNUM of DDL
+sequent in formula FNUM. If FNUM is not provided, the first DDL
+sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_dualDirectd to DDL formula ~a")
+
+;;
+;; Logical Tactics
+;;
+
+(defun dl-true-lmbd (expr &optional side)
+  (and (is-function-expr expr "DLBOOL")
+       (ps-eq *true* (args1 expr))))
+
+(defstep dl-trueR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_trueR" dlfnum fnum
+   :side +
+   :ftest dl-true-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_trueR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_trueR to DDL formula ~a")
+
+(defstep dl-trueL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_trueL" dlfnum fnum
+   :side -
+   :ftest dl-true-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_trueL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL sequent
+can be specified with the option DLFNUM. If FNUM is not provided, the first
+DDL sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_trueL to DDL formula ~a")
+
+(defun dl-false-lmbd (expr &optional side)
+  (and (is-function-expr expr "DLBOOL")
+       (ps-eq *false* (args1 expr))))
+
+(defstep dl-falseR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_falseR" dlfnum fnum
+   :side +
+   :ftest dl-false-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_falseR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_falseR to DDL formula ~a")
+
+(defstep dl-falseL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_falseL" dlfnum fnum
+   :side -
+   :ftest dl-false-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_falseL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL sequent
+can be specified with the option DLFNUM. If FNUM is not provided, the first
+DDL sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_falseL to DDL formula ~a")
+
+(defstep dl-andR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLAND"))))
+    (dl-lemma__$
+     "dl_andR" dlfnum fnum
+     :side +
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_andR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_andR to DDL formula ~a")
+
+(defstep dl-andL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLAND"))))
+    (dl-lemma__$
+     "dl_andL" dlfnum fnum
+     :side -
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_andL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL sequent
+can be specified with the option DLFNUM. If FNUM is not provided, the first
+DDL sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_andL to DDL formula ~a")
+
+(defstep dl-orR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLOR"))))
+    (dl-lemma__$
+     "dl_orR" dlfnum fnum
+     :side +
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_orR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_orR to DDL formula ~a")
+
+(defstep dl-orL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLOR"))))
+    (dl-lemma__$
+     "dl_orL" dlfnum fnum
+     :side -
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_orL to a DDL formula in the left hand side of
+a DDL sequent in formula FNUM. The specific formula in the DDL sequent
+can be specified with the option DLFNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_orL to DDL formula ~a")
+
+(defstep dl-impliesR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLIMPLIES"))))
+    (dl-lemma__$
+     "dl_impliesR" dlfnum fnum
+     :side +
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_impliesR to a DDL formula in the right hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_impliesR to DDL formula ~a")
+
+(defstep dl-impliesL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLIMPLIES"))))
+    (dl-lemma__$
+     "dl_impliesL" dlfnum fnum
+     :side -
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_impliesL to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_impliesL to DDL formula ~a")
+
+(defstep dl-notR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLNOT"))))
+    (dl-lemma__$
+     "dl_notR" dlfnum fnum
+     :side +
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_notR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_notR to DDL formula ~a")
+
+(defstep dl-notL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLNOT"))))
+    (dl-lemma__$
+     "dl_notL" dlfnum fnum
+     :side -
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_notL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_notL to DDL formula ~a")
+
+(defun dl-skolem-lmbd (expr side)
+  (if (> side 0)
+      (is-function-expr expr "DLFORALL")
+    (is-function-expr expr "DLEXISTS")))
+
+(defstep dl-skolem (&optional name (dlfnum *) fnum (pp? t) dont-fail?)
+  (if (check-name name)
+      (printf "Name ~a is not fresh" name)
+    (dl-lemma__$
+     ("dl_existsL" "dl_forallR") dlfnum fnum
+     (if name (skolem 1 name) (skosimp 1))
+     :side *
+     :ftest dl-skolem-lmbd
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Replaces the quantified variable in DDL formula DLFNUM with a new
+skolem constant NAME. NAME should be a fresh name. If no NAME is
+provided a fresh name is created. The formula DLFNUM appears in either
+the consequent, if quantifier is universal, or the antecedent, if
+quantifier is existential, of a DDL sequent in formula FNUM. If FNUM
+is not provided, the first DDL sequent in the consequent is used. By
+default, the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Introducing fresh name ~a to skolemize a universally quantified DDL formula")
+
+(defun dl-inst-lmbd (expr side)
+  (if (< side 0)
+      (is-function-expr expr "DLFORALL")
+    (is-function-expr expr "DLEXISTS")))
+
+(defstep dl-instt (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr term *real*)))
+    (when expr
+      (dl-lemma__$
+       ("dl_forallL" "dl_existsR") dlfnum fnum
+       :inst-terms expr
+       :side *
+       :ftest dl-inst-lmbd
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Instantiates the quantified variable in DDL formula DLFNUM with the
+real number expression TERM. TERM must be a real number
+expression. The formula DLFNUM appears in either the consequent, if
+quantifier is existential, or the antecedent, if quantifier is
+universal, of a DDL sequent in formula FNUM. If FNUM is not provided,
+the first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Instantiating an existentially quantified DDL formula with ~a")
+
+(defstep dl-forallR (&optional name (dlfnum +) fnum (pp? t) dont-fail?)
+  (if (check-name name)
+      (printf "Name ~a is not fresh" name)
+    (let ((dlseq (is-dl-seq fnum))
+	  (fn    (car dlseq))
+	  (ftest #'(lambda (expr side) (is-function-expr expr "DLFORALL")))
+	  (dlfn  (car (dl-fnum (cdr dlseq) dlfnum 1 ftest))))
+      (when dlfn
+	(dl-skolem name :dlfnum dlfn :fnum fn :pp? pp? :dont-fail? dont-fail?))))
+  "Applies the lemma dl_forallR to a DDL formula in the right hand
+side of a DDL sequent in formula FNUM. NAME should be a fresh name. If
+no NAME is provided a fresh name is created. The specific formula in
+the DDL sequent can be specified with the option DLFNUM. If FNUM is
+not provided, the first DDL sequent in the consequent is used. By
+default, the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_forallR~@[ using name ~a~]")
+
+(defstep dl-forallL (term &optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq))
+	(ftest #'(lambda (expr side) (is-function-expr expr "DLFORALL")))
+	(dlfn  (car (dl-fnum (cdr dlseq) dlfnum -1 ftest))))
+    (when dlfn
+      (dl-inst term :dlfnum dlfn :fnum fn :pp? pp? :dont-fail? dont-fail?)))
+  "Applies the lemma dl_forallL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM, where TERM is a real number
+expression. The specific formula in the DDL sequent can be specified
+with the option DLFNUM. If FNUM is not provided, the first DDL sequent
+in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_forallL using expression ~a")
+
+(defstep dl-existsR (term &optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq))
+	(ftest #'(lambda (expr side) (is-function-expr expr "DLEXISTS")))
+	(dlfn  (car (dl-fnum (cdr dlseq) dlfnum 1 ftest))))
+    (when dlfn
+      (dl-inst term :dlfnum dlfn :fnum fn :pp? pp? :dont-fail? dont-fail?)))
+  "Applies the lemma dl_existsR to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM, where TERM is a real number
+expression.  The specific formula in the DDL sequent can be specified
+with the option DLFNUM. If FNUM is not provided, the first DDL sequent
+in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_existsR using expression ~a")
+
+(defstep dl-existsL (&optional name (dlfnum -) fnum (pp? t) dont-fail?)
+  (if (check-name name)
+      (printf "Name ~a is not fresh" name)
+    (let ((dlseq (is-dl-seq fnum))
+	  (fn    (car dlseq))
+	  (ftest #'(lambda (expr side) (is-function-expr expr "DLEXISTS")))
+	  (dlfn  (car (dl-fnum (cdr dlseq) dlfnum -1 ftest))))
+      (when dlfn
+	(dl-skolem name :dlfnum dlfn :fnum fn :pp? pp? :dont-fail? dont-fail?))))
+  "Applies the lemma dl_existsL to a DDL formula in the left hand side
+of a DDL sequent in formula FNUM. NAME should be a fresh name. If no
+NAME is provided a fresh name is created. The specific formula in the
+DDL sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_existsL~@[ using name ~a~]")
+
+(defun dl-existsr-lmbd (expr &optional side)
+  (is-function-expr expr "DLEXISTSR"))
+
+(defstep dl-existsrR (term &optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr term "RealExpr")))
+    (when expr
+      (dl-lemma__$
+       "dl_existsrR" dlfnum fnum
+       :inst-terms expr
+       :side +
+       :ftest dl-existsr-lmbd
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the lemma dl_existsrR to a DDL formula in the right hand
+side of a DDL sequent in formula FNUM, where TERM is a RealExpr.  The
+specific formula in the DDL sequent can be specified with the option
+DLFNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_existsrR using expression ~a")
+
+(defstep dl-existsrL (&optional name (dlfnum -) fnum (pp? t) dont-fail?)
+  (if (check-name name)
+      (printf "Name ~a is not fresh" name)
+    (dl-lemma__$
+     "dl_existsrL" dlfnum fnum
+     (if name (skolem 1 name) (skosimp 1))
+     :side -
+     :ftest dl-existsr-lmbd
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_existsrL to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. NAME should be a fresh name. If
+no NAME is provided a fresh name is created. The specific formula in
+the DDL sequent can be specified with the option DLFNUM. If FNUM is
+not provided, the first DDL sequent in the consequent is used. By
+default, the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_existsrL~@[ using name ~a~]")
+
+(defstep dl-case (cut &optional fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr cut "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       "dl_cut" nil fnum
+       :inst-terms expr
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the rule dl_cut to the DDL sequent in formula FNUM using
+CUT as case formula. If FNUM is not provided, the first DDL sequent in
+the consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_cut with ~a")
+
+(defstep dl-axiom (&optional (dlfnum *) fnum)
+  (let ((dlseq  (is-dl-seq fnum))
+	(fn     (car dlseq))
+	(dlfen1 (when fn 
+		  (dl-fnum (cdr dlseq) dlfnum 0 #'anyterm-lmbd)))
+	(dlfn1  (car dlfen1))
+	(ftest  #'(lambda (expr side) (tc-eq expr (cdr dlfen1))))
+	(dlfn2 (when dlfn1 
+		 (car (dl-fnum (cdr dlseq)
+			       (if (< dlfn1 0) '+ '-)
+			       (- (sign dlfn1))
+			       ftest)))))
+    (when dlfn2
+      (with-fresh-labels
+       ((fn! fn))
+       (dl-move dlfn1 fn!)
+       (dl-move dlfn2 fn!)
+       (lemma "dl_axiom")
+       (inst? -1 :where fn!))))
+  "Use DDL lemma dl_axiom on a formula of a DDL sequent in formula
+FNUM. The specific formula in the DDL sequent can be specified with
+the option DLFNUM. If FNUM is not provided, the first DDL sequent in
+the consequent is used."
+  "Using axiom on a DDL formula in ~a")
+
+(defstep dl-weak (cut &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr cut "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       ("dl_weakL" "dl_weakR") dlfnum fnum
+       :inst-terms expr
+       :side *
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Weaken a DDL formula of a DDL sequent in formula FNUM. CUT is a
+case formula. The specific formula in the DDL sequent can be specified
+with the option DLFNUM. If FNUM is not provided, the first DDL sequent
+in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Weakening a DDL formula with ~a")
+
+(defun dl-allruns-lmbd (expr &optional side)
+  (is-function-expr expr "ALLRUNS"))
+
+(defstep dl-monob (cut &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr cut "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       ("dl_MbL" "dl_MbR") dlfnum fnum
+       :inst-terms expr
+       :side *
+       :ftest dl-allruns-lmbd 
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the rules dl_MbL/dlMbR to the DDL sequent in formula FNUM
+using CUT as case formula. The specific formula in the DDL sequent can
+be specified with the option DLFNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Applying rules dl_MbL/dlMbR with ~a")
+
+(defun dl-someruns-lmbd (expr &optional side)
+  (is-function-expr expr "SOMERUNS"))
+
+(defstep dl-monod (cut &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr cut "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       ("dl_MdL" "dlMdR") dlfnum fnum
+       :inst-terms expr
+       :side *
+       :ftest dl-someruns-lmbd 
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the rules dl_MdL/dlMdR to the DDL sequent in formula FNUM
+using CUT as case formula. The specific formula in the DDL sequent can
+be specified with the option DLFNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Applying rules dl_MdL/dlMdR with ~a")
+
+(defun dl-loop-lmbd (expr side)
+  (and (> side 0)
+       (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "STAR")))
+
+(defstep dl-loop (inv &optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr inv "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       "dl_loop" dlfnum fnum
+       :inst-terms expr
+       :side +
+       :ftest dl-loop-lmbd
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the rule dl_loop to a DDL formula in the right hand side of
+a DDL sequent in formula FNUM. INV is an invariant of the program.
+The specific formula in the DDL sequent can be specified with the
+option DLFNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_loop with invariant ~a to DDL formula ~a")
+
+(defun dl-andb-lmbd (expr side)
+  (and (> side 0)
+       (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args2 expr) "DLAND")))
+
+(defstep dl-andb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_andb" dlfnum fnum
+   :side +
+   :ftest dl-andb-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_andb to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_andb to DDL formula ~a")
+
+(defun dl-orb-lmbd (expr side)
+  (and (> side 0)
+       (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args2 expr) "DLOR")))
+
+(defstep dl-orb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_orb" dlfnum fnum
+   :side +
+   :ftest dl-orb-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the lemma dl_orb to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_orb to DDL formula ~a")
+
+(defstep dl-ghost (expr &optional name (dlfnum +) fnum (pp? t) dont-fail?)
+  (if (check-name name)
+      (printf "Name ~a is not fresh" name)
+    (let ((e (extra-get-expr expr "RealExpr")))
+      (when e
+	(try-then@
+	 ((dl-lemma__$
+	   "dl_discrete_ghost" dlfnum fnum
+	   :inst-terms e
+	   :side +
+	   :ftest dl-allruns-lmbd
+	   :pp? nil
+	   :dont-fail? dont-fail?)
+	  (dl-skolem name :pp? nil :dont-fail? dont-fail)
+	  (dl-impliesR :pp? t :dont-fail? dont-fail))
+	 (unless dont-fail? (fail))))))
+  "Introduces a discrete ghost meta-variable equal to EXPR in the
+right hand side of a DDL sequent in formula FNUM. The ghost
+meta-variable will be named NAME. If no NAME is provided a fresh name
+will be introduced. The specific formula in the DDL sequent can be
+specified with the option DLFNUM. If FNUM is not provided, the first
+DDL sequent in the consequent is used. By default, the DDL sequent is
+pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_discrete_ghost using
+x=~a, where x is a fresh meta-variable")
+
+;;
+;; Differential Tactics
+;;
+
+(defun dl-diff-lmbd (expr side)
+  (and (> side 0)
+       (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "DIFF")))
+
+(defstep dl-diffinit (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_dinit" dlfnum fnum
+   :side +
+   :ftest dl-diff-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the rule dl_dinit to a DDL formula in the right hand side
+of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_dinit to DDL formula ~a")
+
+(defstep dl-diffcase (cut &optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr cut "BoolExpr")))
+    (when expr
+      (dl-lemma__$
+       "dl_dC" dlfnum fnum
+       :inst-terms cut
+       :side +
+       :ftest dl-diff-lmbd
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  "Applies the rule dl_dC to a DDL formula in the right hand side of
+a DDL sequent in formula FNUM. CUT is a case formula. The
+specific formula in the DDL sequent can be specified with the option
+DLFNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_dC with case ~a to DDL formula ~a")
+
+;; JTS
+;; New and not working
+(defstep dl-derup () 
+  (let ((drup *dl-derup-rws*)) (rewrite* drup))
+  "Is it derivable_up?"
+  "Is it derivable_up?")
+
+;; New and not working
+(defstep dl-diffre () 
+  (let ((drup *dl-dift-rws*)) (rewrite* drup))
+  "Is it diff_re"
+  "Is it  diff_re")
+;;JTS
+
+;; TODO degrade to defhelper
+;; M3
+(defstep prove-derivable_up-goal ()
+  (let((dl-operators *dl-derup-operators*)
+       (dl-lemmas    *dl-derup-rws*)
+       (predicate-name "derivable_up?"))
+    (prove-predicate-on-re$ predicate-name dl-operators dl-lemmas))
+  "Try to close the branch if the current goal has a consequent of form derivable_up?(%1,%2)(%3)"
+  "Applying prove-derivable_up-goal helper")
+
+;; TODO degrade to defhelper
+;; M3
+(defstep prove-diff_re-goal ()
+  (let((dl-operators *dl-diffre-operators*)
+       (dl-lemmas *dl-diffre-rws*)
+       (predicate-name "diff_re?"))
+    (prove-predicate-on-re$ predicate-name dl-operators dl-lemmas))
+  "" "")
+
+;; #TODO degrade to defhelper @M3
+(defstep prove-cont_re-goal ()
+  (repeat (rewrite* ("cont_re_val" "cont_re_cnst" "cont_re_prod" "cont_re_pow" "cont_re_sum" "cont_re_diff" "cont_re_div")))
+  ""
+  "")
+
+;; #TODO degrade to defhelper @M3
+(defstep prove-fresh_re-goal ()
+  (branch
+   (then
+    (repeat (expand "fresh_li?"))
+    (repeat* (rewrites ("fresh_be_DLTRUE" "fresh_be_DLFALSE" "fresh_be_eq" "fresh_be_neq" "fresh_be_le" "fresh_be_lt" "fresh_be_ge" "fresh_be_gt" "fresh_be_or" "fresh_be_and" "fresh_be_implies" "fresh_be_not" "fresh_be_IFF") :fnums 1 :target-fnums 1))
+    (repeat* (rewrites ("fresh_re_val" "fresh_re_cnst" "fresh_re_prod" "fresh_re_pow" "fresh_re_exp" "fresh_re_sum" "fresh_re_minus" "fresh_re_div" "fresh_re_div_safe" "fresh_re_sqrt_safe") :fnums 1 :target-fnums 1))
+    (then (let ((there-is-a-fnum-1 (extra-get-fnum 1))) (if there-is-a-fnum-1 (hide-all-but 1) (skip)))
+	  (match$ "fresh?(%%)(%%)" step (then (rewrite "fresh?") (prove-fresh_re-goal$)))))
+   (;; to solve " x = G |- " and " |- x /= G" kind of goals 
+    (eval-formula *)))
+   ""
+  "")
+
+;; TODO degrade to defstrat
+;; M3
+(defstep prove-predicate-on-re (predicate dl-operators dl-lemmas)
+  (let ((match-str (format nil "~a(%1,%2)(%3)" predicate)))
+    (match$
+   + match-str
+   step 
+   (let ((lemma-name-per-operator (pairlis dl-operators dl-lemmas))
+	(arg (extra-get-expr "%3")))
+	  (if (application? arg)
+	      (let((arg-arity (length(arguments arg)))
+	 	   (diff-bound "%1")
+	 	   (domain     "%2")
+		   (op (id (operator arg)))
+		   (arg1 (format nil "~a" (args1 arg)))
+		   (lemma-name (cdr (assoc op lemma-name-per-operator))))
+		(if (= arg-arity 1)
+		    (if lemma-name
+			(then
+			 (lemma lemma-name)
+			 ;; (inst -1 diff-bound arg1 domain)
+			 (inst? -1)
+			 )
+		      (warning "Unexpected unary argument for ~a application: ~a" predicate arg))
+		  (let ((infix? (infix-application? arg))
+			(arg2 (format nil "~a" (args2 arg)))
+			(operator (format nil (if infix? "~a[Environment]" "~a") op)))
+		    (if (and lemma-name operator)
+			(then
+			 (lemma lemma-name)
+			 (branch
+			  (inst -1 diff-bound domain arg1 arg2)
+			  ((if (is-tcc-goal?)
+			       (then
+				(hide-all-but 1)
+				(prove-predicate-on-re$ predicate dl-operators dl-lemmas))
+			     (try (rewrite* ("real_fun_ops.scal_function"
+					     "real_fun_ops.scaldiv_function"))
+				  (then (expand "const_fun")
+					(expand "cnst")
+					(expand operator))
+				  (expand operator))))))
+		      (warning "Unexpected binary argument for ~a application: ~a" predicate arg)))))
+	    (let ((is-lambda? (lambda-expr? arg)))
+	      (if is-lambda?
+		  (let((lemma-name (cdr (assoc 'cnst lemma-name-per-operator))))
+		    (then
+		     (lemma lemma-name)
+		     (expand "cnst")
+		     (inst?)))
+	      (warning "Unexpected argument for ~a application: ~a" predicate arg)))))))
+  "Try to close the branch if the current goal has a consequent of form PREDICATE(%1,%2)(%3)"
+  "Applying prove-predicate-on-re helper")
+
+
+;; #TODO move to general library?
+(defun is-tcc-goal? (&optional (ps *ps*))
+  "Determines if PS is a goal generated from a TCC. PS default value is the current proofstate."
+  (typep *ps* 'tcc-proofstate))
+
+;; #TODO move to general library?
+(defstrat error (msg &rest msg-args)
+  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
+    (fail))
+  "Report error message and fails."
+  "")
+
+;; #TODO redefining unwind-protect, move to manip or rename
+(defstep unwind-protect (main-step cleanup-step)
+  (spread (case "id(true)")
+	  ((then (delete -1) (else main-step (then cleanup-step (fail))))
+	   (then cleanup-step (expand "id"))))
+  "[Manip] Invoke MAIN-STEP followed by CLEANUP-STEP, which is performed
+even if MAIN-STEP leads to a proof of the current goal."
+  "Invoking proof step with cleanup")
+
+
+;; #TODO move to general library?
+(defstrat warning (msg &rest msg-args)
+  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
+    (skip))
+  "Report error message and skips."
+  "")
+
+(defstrat with-verbosity (step quiet?)
+  (if quiet?
+      (let((old-*print-conversions* *print-conversions*)
+	   (dummy (setq *print-conversions* nil))
+	   (old-*rewrite-msg-off* *rewrite-msg-off*)
+	   (dummy (setq *rewrite-msg-off* t)))
+	(unwind-protect$
+	 step
+	 (let 
+	  ((lisp (setq *rewrite-msg-off* old-*rewrite-msg-off*))
+	   (lisp (setq *print-conversions* old-*print-conversions*)))
+	  (skip))))
+    step)
+  "Applies STEP with less user messages (no rewriting messages, no conversion messages, etc.)"
+  "")
+
+(defun dl-translate-rel (op)
+  (cond ((equal op '=) "nqb_eq")
+	((equal op '/=) "nqb_neq")
+	((equal op '<=) "nqb_le")
+	((equal op '<) "nqb_lt")
+	((equal op '>=) "nqb_ge")
+	((equal op '>) "nqb_gt")))
+
+(defun dl-translate2nqb (expr)
+  (when (expr? expr)
+    (cond ((is-function-expr expr "DLAND")
+	   (format nil "NQB_AND(~a,~a)"
+		   (dl-translate2nqb (args1 expr))
+		   (dl-translate2nqb (args2 expr))))
+	  ((is-function-expr expr "DLOR")
+	   (format nil "NQB_OR(~a,~a)"
+		   (dl-translate2nqb (args1 expr))
+		   (dl-translate2nqb (args2 expr))))
+	  ((is-function-expr expr "DLNOT")
+	   (format nil "NQB_NOT(~a)"
+		   (dl-translate2nqb (args1 expr))))
+	  ((is-function-expr expr *dl-rels*)
+	   (format nil "NQB_rel(~a,~a,~a)"
+		   (dl-translate-rel (id (operator expr)))
+		   (args1 expr) (args2 expr)))
+	  (t (error "~a is not supported" expr)))))
+
+
+
+(defstep dl-diffweak (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (dl-lemma__$
+   "dl_dW" dlfnum fnum
+   :side +
+   :ftest dl-diff-lmbd
+   :pp? pp?
+   :dont-fail? dont-fail?)
+  "Applies the rule dl_dW to a DDL formula in the right hand side of
+a DDL sequent in formula FNUM. The specific formula in the DDL sequent
+can be specified with the option DLFNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_dW to DDL formula ~a")
+
+;;
+;; Super-dupper Tactics
+;;
+
+(defhelper dl-step-side__ (fnum side step-id &optional n olen)
+  (let ((dlseq (is-dl-seq fnum))
+	(expr  (cdr dlseq))
+	#+pvsdebug (dummy (format t "~%[dl-step-side__] fnum ~a side ~a step-id ~a n ~a olen ~a expr ~a <<-~%" fnum side step-id n olen expr))
+	(len   (pp-length (if (< side 0) (args1 expr) (args2 expr))))
+	(n     (cond ((null n) len)
+		     (olen (+ n (- len olen)))
+		     (t n)))
+	(dlfn  (* side n)) 
+	(step  `(,step-id ,dlfn ,fnum))
+	(doit  (and (> n 0) (<= n len))))
+    (when doit
+      (try step
+	   (dl-step-side__$ fnum side step-id n len)
+	   (let ((nn (1- n)))
+	     (dl-step-side__$ fnum side step-id nn)))))
+  "Internal strategy."
+  "")
+
+(defstep dl-flattenR__ (dlfnum fnum)
+  (else*$
+   (dl-trueR dlfnum :fnum fnum :pp? nil)
+   (dl-falseR dlfnum :fnum fnum :pp? nil)
+   (dl-orR dlfnum :fnum fnum :pp? nil)
+   (dl-impliesR dlfnum :fnum fnum :pp? nil)
+   (dl-notR dlfnum :fnum fnum :pp? nil)
+   (dl-axiom dlfnum :fnum fnum))
+  "Internal strategy."
+  "")
+
+(defstep dl-flattenL__ (dlfnum fnum)
+  (else*$
+   (dl-falseL :fnum fnum :pp? nil)
+   (dl-trueL dlfnum :fnum fnum :pp? nil)
+   (dl-andL dlfnum :fnum fnum :pp? nil)
+   (dl-notL dlfnum :fnum fnum :pp? nil)
+   (dl-axiom dlfnum :fnum fnum))
+  "Internal strategy." 
+  "")
+
+(defstep dl-flatten (&optional fnum (pp? t) (quiet? t))
+  (let ((turn-rw-msg-on? (and quiet? (not *rewrite-msg-off*)))
+	(dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (when fn
+      (then
+       (when quiet? (rewrite-msg-off))
+       (with-fresh-labels
+	((fn! fn))
+	(then (dl-step-side__$ fn! 1 dl-flattenR__$)
+	      (dl-step-side__$ fn! -1 dl-flattenL__$)
+	      (when pp? (dl-pp fn!))))
+       (when turn-rw-msg-on? (rewrite-msg-on)))))
+  "Flattens a DDL sequent in formula FNUM. If FNUM is not provided,
+the first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Flattening DDL sequent~@[ in ~a~]")
+
+(defstep dl-ground (&optional fnum (pp? t))
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (when fn
+      (with-fresh-labels
+       ((fn! fn))
+       (repeat*
+	(else*$
+	 (dl-flatten :fnum fn! :pp? nil)
+	 (dl-andR :fnum fn! :pp? nil)
+	 (dl-orL :fnum fn! :pp? nil)
+	 (dl-impliesL :fnum fn! :pp? nil)))
+       (when pp? (dl-pp fn!)))))
+  "Grounds a DDL sequent in formula FNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Grounding DDL sequent~@[ in ~a~]")
+
+(defun exprs-grindable (exprs deep)
+  (or (null exprs)
+      (let ((expr (car exprs)))
+	(cond ((and deep
+		    (or (is-function-expr expr "DLAND")
+			(is-function-expr expr "DLOR")
+			(is-function-expr expr "DLNOT")
+			(is-function-expr expr "DLIMPLIES")))
+	       (exprs-grindable (append (arguments expr) (cdr exprs)) t))
+	      ((or (is-function-expr expr "DLBOOL")
+		   (is-function-expr expr *dl-rels*))
+	       (exprs-grindable (cdr exprs) deep))))))
+
+(defun is-dlseq-grindable (dlseq &optional deep)
+  (and (exprs-grindable (pp-list (args1 dlseq)) deep)
+       (exprs-grindable (pp-list (args2 dlseq)) deep)))
+
+(defstep dl-smt ()
+  (metit *)
+  "Applies DDL SMT Solver."
+  "Applying DDL SMT")
+
+(defhelper dl-grind__ (fn step)
+  (let ((rels      *dl-rels*)
+	(ops       *dl-ops*)
+	(saferws   *dl-safeops-rws*) 
+	(dlseq     (cdr (is-dl-seq fn)))
+	(is-grndbl (is-dlseq-grindable dlseq)))
+    (when is-grndbl
+      (with-focus-on
+       fn
+       (expand "|-")
+       (skosimp)
+       (repeat (expand "length"))
+       (expand "iterate_left")
+       (expand "for")
+       (repeat (expand "for_it"))
+       (repeat (expand "nth"))
+       (repeat (expand* :names rels))
+       (expand "qb_eval")
+       (expand* :names ops)
+       (expand* "val" "cnst")
+       (flatten)
+       ;; #TODO finishing steps proposed because of issue #24, double-check it works in the rest of the cases.
+       (ground)
+       (rewrite* saferws)
+       step
+       ;; (branch
+       ;; 	(rewrite* saferws)
+       ;; 	((then (ground)  step)
+       ;; 	 (then (hide 1)
+       ;; 	       (finalize (grind)))))
+       )))
+  "Internal strategy."
+  "")
+
+(defstep dl-grind (&optional fnum (finishing-step (dl-smt)) (pp? t))
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (then
+     ;; (match ? "%1 ^ %2" step (let ((isnum (number-expr? (extra-get-expr "%2")))) (when isnum (install-rewrites ("exponentitation.expt" "exponentitation.^"))))) ;; TODO remove
+     (install-rewrites ("exponentitation.expt" "exponentitation.^"))
+     (when fn
+       (with-fresh-labels
+	((fn! fn))
+	(dl-ground :fnum fn! :pp? nil)
+	(dl-grind__$ fn! finishing-step)
+	(when pp? (dl-pp fn!))))))
+  "Grinds a DDL sequent in formula FNUM. If FNUM is not provided, the
+first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Grinding DDL sequent~@[ in ~a~]")
+
+(defstep dl-auto__ (fnum)
+  (let ((arws  *dl-auto-rws*))
+    (try-branch
+     (rewrite* arws :target-fnums fnum)
+     ((dl-subs$)
+      (then
+       (skosimp*)
+       (eval-formula 1)))
+     (skip)))
+  "Internal strategy."
+  "Applying dl-auto__ helper")
+
+(defstep dl-assert (&optional fnum (level 0) (pp? t))
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (when fn
+      (then
+       (with-fresh-labels@
+	((fn! fn))
+	(repeat
+	 (else (dl-auto__$ fn!)
+	       (dl-flatten fn! :pp? nil)))
+	(when level
+	  (let ((dlseq (cdr (is-dl-seq fn!))))
+	    (when dlseq
+	      (if (and (equal level 0)
+		       (is-dlseq-grindable dlseq t))
+		  (dl-grind fn! :pp? nil)
+		(if (equal level 0)
+		    (try
+		     (make-dlseq-grindable)
+		     (dl-grind fn! :pp? nil)
+		     (skip))
+		  (if (equal level 1)
+		      (dl-ground fn! :pp? nil)
+		    (skip)))))))
+	(when pp? (else (dl-pp fn!) (fail)))))))
+  "Applies automatic tactic to DDL sequent in formula FNUM. If FNUM is
+not provided, the first DDL sequent in the consequent is used.  If
+LEVEL is set to 0 (default), tries to discharges the sequent using
+bi-directional rules. If LEVEL is set to 1, sequent is dl-grounded. If
+LEVEL is set to 2, sequent is dl-grinded.  If LEVEL is set to nil,
+only equivalence and flattening rules are applied. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Applying automatic tactic to DDL sequent~@[ in ~a~]")
+
+;; #TODO @M3 deftactic for dl-assert?
+(defhelper make-dlseq-grindable (&optional fnum)
+  (let ((dlseq (is-dl-seq fnum))
+	(fn    (car dlseq)))
+    (when fn
+      (let ((lexpr (args1 (cdr dlseq)))
+	    (dl-fnums-to-keep (append
+			       (dl-fnums-to-keep lexpr -1
+						(lambda (expr side) (exprs-grindable (list expr) nil))
+						1)
+			       (dl-get-dlfnums dlseq '+))))
+	(when dl-fnums-to-keep
+	  (dl-hide :but dl-fnums-to-keep :fnum fn)))))
+  ""
+  "")
+
+;;
+;; Help
+;;
+
+(defun dl-strhelp-rec (exprs dlfnum fltn splt grnd othr auto)
+  (if (null exprs)
+      (list fltn splt grnd othr auto)
+    (let ((expr (car exprs))
+	  (n1 (unless (equal (abs dlfnum) 1) dlfnum)))
+      (cond ((if (< dlfnum 0)  ;; Flatten
+		 (or (dl-true-lmbd expr)
+		     (dl-false-lmbd expr)
+		     (is-function-expr expr "DLAND")
+		     (is-function-expr expr "DLNOT"))
+	       (or
+		(dl-true-lmbd expr)
+		(dl-false-lmbd expr)
+		(is-function-expr expr "DLOR")
+		(is-function-expr expr "DLIMPLIES")
+		(is-function-expr expr "DLNOT")))
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum)
+			     (append fltn (list dlfnum))
+			     splt grnd othr auto))
+	    ((if (< dlfnum 0) ;; Split 
+		 (or (is-function-expr expr "DLOR")
+		     (is-function-expr expr "DLIMPLIES"))
+	       (is-function-expr expr "DLAND"))
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn
+			     (append splt (list dlfnum))
+			     grnd othr auto))
+	    ((is-function-expr expr *dl-rels*) ;; Grind
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt grnd othr auto))
+	    ((dl-skolem-lmbd expr dlfnum) ;; Skolem
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil
+			     (append othr (list (format nil "dl-skolem <name>~@[ ~a~]" n1)))
+			     auto))
+	    ((dl-inst-lmbd expr dlfnum) ;; Instantiation
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil
+			     (append othr (list (format nil "dl-inst <term>~@[ ~a~]" n1)))
+			     auto))
+	    ((dl-existsr-lmbd expr) ;; EXISTSR
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil
+			     (append othr (list
+					   (if (> dlfnum 0)
+					       (format nil "dl-existsrR <term>~@[ ~a~]" n1)
+					       (format nil "dl-existsrL <name>~@[ ~a~]" n1))))
+			     auto))
+	    ((dl-someruns-lmbd expr) ;; SOMERUNS
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil
+			     (append othr
+				     (list (format nil "dl-monod <case>~@[ ~a~]" n1)))
+			     auto))
+	    ((dl-allruns-lmbd expr) ;; ALLRUNS
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil
+			     (append othr
+				     (when (dl-diff-lmbd expr dlfnum)
+				       (list
+					(format nil "dl-diffinit~@[ ~a~]" n1)
+					(format nil "dl-diffweak~@[ ~a~]" n1)
+					(format nil "dl-diffinv~@[ ~a~]" n1)
+					(format nil "dl-diffghost <expr1> <expr2> <name> <case>~@[ ~a~]" n1)
+					(format nil "dl-diffcase <case>~@[ ~a~]" n1)))
+				     (when (dl-loop-lmbd expr dlfnum)
+				       (list (format nil "dl-loop <invariant>~@[ ~a~]" n1)))
+				     (when (dl-andb-lmbd expr dlfnum)
+				       (list (format nil "dl-andb~@[ ~a~]" n1)))
+				     (when (dl-orb-lmbd expr dlfnum)
+				       (list (format nil "dl-orb~@[ ~a~]" n1)))
+				     (list (format nil "dl-monob <case>~@[ ~a~]" n1))
+				     (when (> dlfnum 0)
+				       (list (format nil "dl-ghost <expr> <name>~@[ ~a~]" n1))))
+			     auto))
+	    ((or (dl-anyb-lmbd expr) (dl-anyd-lmbd expr)
+		 (dl-assignb-lmbd expr) (dl-assignd-lmbd expr)
+		 (dl-composeb-lmbd expr) (dl-composed-lmbd expr)
+		 (dl-choiceb-lmbd expr) (dl-choiced-lmbd expr)
+		 (dl-testb-lmbd expr) (dl-testd-lmbd expr)
+		 (dl-dualb-lmbd expr) (dl-duald-lmbd expr))
+	     (dl-strhelp-rec (cdr exprs) (dlfnum-incr dlfnum) fltn splt nil othr
+			     (append auto (list dlfnum))))))))
+
+;;
+
+(defun dl-strhelp (antc consq fnum)
+  (let* ((hlpl (dl-strhelp-rec antc -1 nil nil t nil nil))
+	 (hlpr (dl-strhelp-rec
+		consq 1 (nth 0 hlpl) (nth 1 hlpl) (nth 2 hlpl) (nth 3 hlpl) (nth 4 hlpl)))
+	 (fmf  (nth 0 hlpr)) 
+	 (fltn (when fmf
+		 (list
+		  (format nil "(dl-flatten~@[ :fnum ~a~]), to flatten formulas in {~{~a~^, ~}}"
+			  fnum fmf))))
+	 (fms  (nth 1 hlpr)) 
+	 (splt (when fms
+		 (list
+		  (format nil "(dl-ground~@[ :fnum ~a~]), to split formulas in {~{~a~^, ~}}"
+			  fnum fms))))
+	 (grnd  (when (nth 2 hlpr)
+		  (list (format nil "(dl-grind~@[ :fnum ~a~])" fnum))))
+	 (othr  (mapcar #'(lambda (str) (format nil "(~a~@[ :fnum ~a~])" str fnum))
+			(nth 3 hlpr)))
+	 (auto  (let ((l (nth 4 hlpr)))
+		  (when l
+		    (list
+		     (format
+		      nil
+		      "(dl-assert~@[ :fnum ~a~]~:[ :level nil~;~]), to solve formulas in {~{~a~^, ~}}"
+		      fnum fmf l)))))
+	 (axiom (loop for expr1 in antc
+		      thereis (find expr1 consq :test #'tc-eq))))
+    (append
+     (when axiom (list (format nil "(dl-axiom~@[ :fnum ~a~])" fnum)))
+     grnd fltn auto othr splt
+     (when fms
+       (list (format nil "(dl-hide <dlfnum>~@[ :fnum ~a~]), where <dlfnum> in {~{~a~^, ~}}, to avoid excessive splitting"
+		     fnum fms)))
+     (when (or antc antc)
+       (list (format nil "(dl-hide <dlfnum>~@[ :fnum ~a~]), where <dlfnum> is a DDL formula number, to hide unnecessary formulas" fnum)))
+     (list (format nil "(dl-weak <case> <dlfnum>~@[ :fnum ~a~]), to prove a stronger result" fnum))
+     (list (format nil "(dl-case <case>~@[ :fnum ~a~]), to proceed by case analysis" fnum)))))
+
+(defstrat dl-help (&optional fnum)
+  (let ((dlseq  (is-dl-seq fnum))
+	(fn     (car dlseq))
+	(antc   (when dlseq (pp-list (args1 (cdr dlseq)))))
+	(consq  (when dlseq (pp-list (args2 (cdr dlseq))))))
+    (when dlseq
+      (let ((strs (dl-strhelp antc consq fnum)))
+	(printf "Try one of the followig:~{~%  ~a~}" strs))))
+  "Prints suggested DDL strategies to make progress in the proof of
+DDL sequent in FNUM. If FNUM is not provided, the first DDL sequent in
+the consequent is used.")
+
+;;
+
+(defparameter *dl-fresh-rws*
+  '("fresh_re_cnst" "fresh_re_val" "fresh_re_sum" "fresh_re_minus" "fresh_re_prod" "fresh_re_pow" "fresh_re_div"))
+
+(defstrat dl-fresh-re-check ()
+  (let ((frws   *dl-fresh-rws*))
+       (then (rewrites frws) (repeat* (rewrites frws :fnums 1 ))))
+  "Checking if i is fresh in re"
+  "Checking if ~a is fresh in ~a")
+
+;;
+;; check a boolexpr is SA
+;; LMW
+
+(defparameter *bool-SA-rws*
+  '("not_atom" "or_atom" "and_atom" "atomic_be" "Re_sum" "Re_diff" "Re_prod" "Re_expt" "sf_iff_mp" "sf_val" "sf_cnst"))
+
+(defstrat bool-SA-check ()
+  (let ((boolws   *bool-SA-rws*))
+       (then (rewrites boolws) (repeat* (rewrites boolws :fnums 1 ))))
+  "Checking if BoolExpr defines an SA set"
+  "Checking if ~a defines an SA set")
+
+
+;;;; JTS additions
+(defun dl-instf-lmbd (expr side)
+    (is-function-expr expr "DLEXISTSRf"))
+
+(defstep dl-instf (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (let ((expr (extra-get-expr term "RealExpr")))
+     (then (lemma "dl_existsrRf")
+	  (branch (inst?) ((then (inst -1 expr)
+	  (assert)
+	  (hide 2)
+	  (spread (split) ((dl-pp) (prove-fresh_re-goal))))
+		    (then (skeep)(eval-formula 1))))))
+  ;  (when expr
+  ;    (dl-lemma__$
+  ;     ("dl_existsrRf") dlfnum fnum
+  ;    :inst-terms expr
+  ;    :side *
+  ;    :ftest dl-instf-lmbd
+  ;    :pp? pp?
+  ;    :dont-fail? dont-fail?)))
+  "Instantiates the quantified variable in DDL formula DLFNUM with the
+real number expression TERM. TERM must be a real number
+expression. The formula DLFNUM appears in either the consequent, if
+quantifier is existential, or the antecedent, if quantifier is
+universal, of a DDL sequent in formula FNUM. If FNUM is not provided,
+the first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Instantiating an existentially quantified DDL formula with ~a")
+;  (then (branch (lemma "dl_existsrRf")
+;		  ( (then 
+;	  (inst?)
+;	  (inst -1 expr)
+;	  (assert)
+;	  (hide 2)
+;	  (spread (split) ((dl-pp)(prove-fresh_re-goal) )))
+;		    (then (skeep)(eval-formula 1))))))
+
+
+
+(defun dl-subf-lmbd (expr &optional side)
+   (is-function-expr expr "SUB")
+    )
+
+(defstep dl-subf (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_subf" dlfnum fnum
+	       :side *
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_composeb to DDL formula DLFNUM of DDL sequent
+in formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_composeb to DDL formula ~a")
+
+(defstep dl-inst (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (try  (match "DLEXISTSRf" step  (dl-instf term dlfnum fnum pp? dont-fail?)) (then (dl-composeb)(dl-assignb)(dl-subf)) (dl-instt term dlfnum fnum pp? dont-fail?))
+  ;(let ((expr (extra-get-expr term *real*)))
+  ;  (when expr
+  ;    (dl-lemma__$
+  ;     ("dl_forallL" "dl_existsR") dlfnum fnum
+   ;    :inst-terms expr
+    ;   :side *
+    ;   :ftest dl-inst-lmbddl0
+    ;   :pp? pp?
+    ;   :dont-fail? dont-fail?))))
+  "Instantiates the quantified variable in DDL formula DLFNUM with the
+real number expression TERM. TERM must be a real number
+expression. The formula DLFNUM appears in either the consequent, if
+quantifier is existential, or the antecedent, if quantifier is
+universal, of a DDL sequent in formula FNUM. If FNUM is not provided,
+the first DDL sequent in the consequent is used. By default, the DDL
+sequent is pretty-printed unless PP? is set to nil."
+  "Instantiating an existentially quantified DDL formula with ~a")
+
+
+
+(defstep dl-boxd (&optional (dlfnum *) (fnum *) (pp? t) dont-fail? (dir rl))
+  (then (lemma "dl_boxd") (inst? -1 :where fnum) (replace -1 fnum :dir dir)  (hide -1))
+  "Applies the lemma dl_boxd to DDL formula DLFNUM of DDL sequent in
+formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_boxd to DDL formula ~a")
+
+
+(defun dl-iterateb-lmbd (expr &optional side)
+  (and (is-function-expr expr "ALLRUNS")
+       (is-function-expr (args1 expr) "STAR")))
+
+(defstep dl-iterateb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_iterateb" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-iterateb-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl_iterateb to DDL formula DLFNUM of DDL sequent
+in formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_iterateb to DDL formula ~a")
+
+(defun dl-iterated-lmbd (expr &optional side)
+  (and (is-function-expr expr "SOMERUNS")
+       (is-function-expr (args1 expr) "STAR")))
+
+(defstep dl-iterated (&optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (dl-lemma__$ "dl_iterated" dlfnum fnum
+	       :equiv? t
+	       :side *
+	       :ftest dl-iterated-lmbd
+	       :pp? pp?
+	       :dont-fail? dont-fail?)
+  "Applies the lemma dl-iterated to DDL formula DLFNUM of DDL sequent
+in formula FNUM. If FNUM is not provided, the first DDL sequent in the
+consequent is used. By default, the DDL sequent is pretty-printed
+unless PP? is set to nil."
+  "Applying lemma dl_iterated to DDL formula ~a")
+
+
+(defstep dl-iffR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLIFF"))))
+    (then (dl-lemma__$
+     "dl_equivR" dlfnum fnum
+     :side +
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?)
+	  (dl-pp)))
+  "Applies the lemma dl_equivR to a DDL formula in the right hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_equivR to DDL formula ~a")
+
+(defstep dl-iffL (&optional (dlfnum -) fnum (pp? t) dont-fail?)
+  (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLIFF"))))
+    (dl-lemma__$
+     "dl_equivL" dlfnum fnum
+     :side -
+     :ftest ftest
+     :pp? pp?
+     :dont-fail? dont-fail?))
+  "Applies the lemma dl_equivL to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_equivL to DDL formula ~a")
+
+(defstep dl-Gb (&optional (dlfnum *) (fnum *) (pp? t) dont-fail?)
+ (then (lemma "dl_const") (inst? -1 :where fnum) (assert) (hide 2))
+  "Applies the lemma dl_const to a DDL formula in the right hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_const to DDL formula ~a")
+
+(defstep dl-Gd (&optional (dlfnum *) (fnum *) (pp? t) dont-fail?)
+ (then (lemma "dl_constd") (inst? -1 :where fnum) (assert) (hide 2))
+  "Applies the lemma dl_constd to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_constd to DDL formula ~a")
+
+
+(defstep dl-K (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+      (dl-lemma__$
+       "dl_distimpliesb" dlfnum fnum
+       :side +
+       :pp? pp?
+       :dont-fail? dont-fail?)
+       "Applies the lemma dl_distimpliesb to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+       "Applying lemma dl_distimpliesb to DDL formula ~a")
+
+
+(defun dl-Mb-lmbd (expr &optional side)
+(is-function-expr expr "DLIMPIES")
+)
+
+(defstep dl-Mb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+      (dl-lemma__$
+       "dl_impliesallrunsb" dlfnum fnum
+       :side +
+       :pp? pp?
+       :dont-fail? dont-fail?)
+       "Applies the lemma dl_impliesallrunsb to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+       "Applying lemma dl_impliesallrunsb to DDL formula ~a")
+
+(defun dl-Md-lmbd (expr &optional side)
+(is-function-expr expr "DLIMPLIES")
+)
+
+(defstep dl-Md (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+      (dl-lemma__$
+       "dl_impliesallrunsd" dlfnum fnum
+       :side +
+       :pp? pp?
+       :dont-fail? dont-fail?)
+       "Applies the lemma dl_impliesallrunsd to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+  "Applying lemma dl_impliesallrunsd to DDL formula ~a")
+
+
+(defstep dl-Vb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+      (then (dl-lemma__$
+       "dl_V" dlfnum fnum
+       :side +
+       :pp? pp?
+       :dont-fail? dont-fail?) (match "BV(%1)" step (eval-expr "BV(%1)"))
+       (replace -1) (hide -1) (unroll) (prove-fresh_re-goal$))
+       "Applies the lemma dl_V to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+       "Applying lemma dl_V to DDL formula ~a")
+
+(defstep dl-Vd (&optional (dlfnum +) fnum (pp? t) dont-fail?)
+      (then (dl-lemma__$
+       "dl_Vd" dlfnum fnum
+       :side +
+       :pp? pp?
+       :dont-fail? dont-fail?) (match "BV(%1)" step (eval-expr "BV(%1)"))
+       (replace -1) (hide -1) (unroll) (prove-fresh_re-goal$))
+       "Applies the lemma dl_Vd to a DDL formula in the left hand
+side of a DDL sequent in formula FNUM. The specific formula in the DDL
+sequent can be specified with the option DLFNUM. If FNUM is not
+provided, the first DDL sequent in the consequent is used. By default,
+the DDL sequent is pretty-printed unless PP? is set to nil."
+       "Applying lemma dl_Vd to DDL formula ~a")

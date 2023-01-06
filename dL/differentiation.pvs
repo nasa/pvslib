@@ -1,0 +1,695 @@
+differentiation: THEORY
+
+%Rules of differentiations extended to Real Expressions [env -> real]
+
+%-----     %
+  BEGIN
+%     -----%
+
+  IMPORTING substitution,
+            analysis@derivatives[real],
+	    structures@for_iterate[RealExpr],
+            reals@reals_safe_ops,
+	    lnexp@expt,
+	    ODEs@exp_analysis,
+	    analysis@deriv_domain_def,
+	    analysis@chain_rule,
+	    ODEs_equiv
+
+%-------------------------------------------------------------------------
+%% Define the projection of P to the real number line
+%  by the ith variable
+%-------------------------------------------------------------------------
+
+  proj(i:nat)(P:BoolExpr)(r:real): bool = 
+    EXISTS(env:(P)): env(i) = r
+
+%-------------------------------------------------------------------------
+%% Define derivative domain, connected, nonempty, and
+%  not_one_element in the ith variable 
+%-------------------------------------------------------------------------
+
+  deriv_domain?(i:nat)(P:BoolExpr): bool =
+    deriv_domain?[(proj(i)(P))]
+
+  right?(i:nat)(P:BoolExpr): bool =
+    FORALL(e:posreal,x:(proj(i)(P))):
+    EXISTS(y:{yy: posreal | proj(i)(P)(x+yy)}):
+    abs(y)<e
+
+  right_dd_i: LEMMA
+    FORALL(P:BoolExpr,i:nat):
+    right?(i)(P)
+    IMPLIES
+    deriv_domain?(i)(P)
+  
+  del_neigh_all?(i:nat)(P:BoolExpr): bool =
+    del_neigh_all?[(proj(i)(P))]
+
+  deriv_domain?(P:BoolExpr): bool =
+     FORALL(i:nat): deriv_domain?(i)(P)
+
+  right?(P:BoolExpr): bool =
+     FORALL(i:nat): right?(i)(P)
+
+  right_dd: LEMMA
+    FORALL(P:BoolExpr):
+    right?(P)
+    IMPLIES
+    deriv_domain?(P)
+    
+  between?(env1,env2:Environment)(env:Environment): bool
+    = FORALL(i:nat):
+    (env1(i) <= env(i) AND env(i) <= env2(i))
+    OR (env2(i) <= env(i) AND env(i) <= env1(i))
+
+  connected?(P:BoolExpr): bool =
+    FORALL(env1,env2:(P), env3:(between?(env1,env2))):
+    P(env3)
+
+  connection_proj: LEMMA
+   FORALL(P:BoolExpr, i:nat,
+   x: (proj(i)(P)), y: (proj(i)(P)) | y > x):
+   connected?(P) IMPLIES
+   FORALL(z:real | x<z AND z< y):
+   proj(i)(P)(z)
+
+  nonempty?(i:nat)(P:BoolExpr): bool =
+    nonempty?(proj(i)(P))
+
+ 
+  nonempty?(P:BoolExpr): bool =
+    FORALL(i:nat): nonempty?(i)(P)
+
+  not_one_element?(i:nat)(P:BoolExpr): bool =
+    not_one_element?[(proj(i)(P))]
+
+  right_ne_i: LEMMA
+    FORALL(P:BoolExpr,i:nat):
+    right?(i)(P)
+    IMPLIES
+    not_one_element?(i)(P)
+
+  not_one_element?(P:BoolExpr): bool =
+    FORALL(i:nat): not_one_element?(i)(P)
+
+  right_ne: LEMMA
+    FORALL(P:BoolExpr):
+    right?(P)
+    IMPLIES
+   not_one_element?(P)
+
+  ddl_dom?(i:nat)(P:BoolExpr): bool =
+    connected?(P)
+    AND
+    not_one_element?(i)(P)
+
+  ddl_dom_upto?(M:nat)(P:BoolExpr): bool =
+    connected?(P)
+    AND
+    FORALL(i:upto(M)): not_one_element?(i)(P)
+
+  ddl_dom?(P:BoolExpr): bool =
+  connected?(P)
+  AND
+  FORALL(i:nat): not_one_element?(i)(P)
+
+  ddl_dom_upto: LEMMA
+    FORALL(M:nat, i:upto(M), P:BoolExpr):
+    ddl_dom_upto?(M)(P)
+    IMPLIES ddl_dom?(i)(P)
+
+  ddl_dom_weak: LEMMA
+    FORALL(P:BoolExpr,i:nat):
+    ddl_dom?(P)
+    IMPLIES (ddl_dom?(i)(P)
+    AND
+    ddl_dom_upto?(i)(P))
+
+  ddl_dom_dd: LEMMA
+    FORALL(i:nat, P:BoolExpr):
+    ddl_dom?(i)(P)
+    IMPLIES deriv_domain?[(proj(i)(P))]
+
+  ddl_dom__upto_dd: LEMMA
+    FORALL(M:nat, P:BoolExpr):
+    ddl_dom_upto?(M)(P)
+    IMPLIES
+    FORALL(i:upto(M)):
+    deriv_domain?[(proj(i)(P))]
+
+  ddl_dom_noe: LEMMA
+  FORALL (i: nat, P: (ddl_dom?(i))):
+        not_one_element?[(proj(i)(P))]
+
+   dl_true_DDL: LEMMA
+   ddl_dom?(DLBOOL(TRUE)) = TRUE
+
+   % @QED dl_true_up_DDL proved by lmwhite3 on Mon, 12 Sep 2022 17:44:31 GMT
+   dl_true_up_DDL: LEMMA
+   FORALL(i:nat):
+   ddl_dom_upto?(i)(DLBOOL(TRUE))
+
+  % DDL_DOM_TYPE: TYPE = (ddl_dom?)
+  % 
+  % dl_true_D: JUDGEMENT
+  % DLBOOL(TRUE) HAS_TYPE  DDL_DOM_TYPE
+
+%-------------------------------------------------------------------------
+%% Define derivable in the ith variable at a point and on a derivative
+%  domain P
+%-------------------------------------------------------------------------
+
+  derivable?(i:nat, P:(ddl_dom?(i)), env:(P))
+    (re:RealExpr): bool =
+    derivable?[(proj(i)(P))]
+    ((LAMBDA(x:(proj(i)(P))): re(env WITH [(i) := x])), env(i))
+
+  derivable?(i:nat, P:(ddl_dom?(i)))
+    (re:RealExpr): bool =
+    FORALL(env:(P)):
+    derivable?(i,P,env)(re)
+
+  derivable_up?(M:nat, P:(ddl_dom_upto?(M)))(re:RealExpr):
+    bool = 
+    FORALL(i:upto(M)):
+    derivable?(i,P)(re)
+
+  derivable?(P:(ddl_dom?))(re:RealExpr):
+    bool =
+    FORALL(i:nat):
+    derivable?(i,P)(re)
+
+%-------------------------------------------------------------------------
+%% Define variables
+%-------------------------------------------------------------------------
+
+  P,Q: VAR BoolExpr
+  A: VAR HP
+  r1,r2: VAR RealExpr
+  i,j,N: VAR nat
+  k,n:VAR real
+
+%-------------------------------------------------------------------------
+%% Define the general exponential function for real expressions
+%-------------------------------------------------------------------------
+
+  hathat_diff_real: LEMMA FORALL(a:posreal,n,m:real):
+    a^^m/a^^n = a^^(m-n)
+
+  expt(r:RealExpr, x:real)(env:Environment): real =
+   IF r(env) <= 0 THEN 0
+   ELSE r(env)^^x
+   ENDIF
+
+  ;^^(r:RealExpr,x:real): RealExpr = expt(r,x)
+
+  sqrt_hathat: LEMMA
+  FORALL(a:posreal):
+  a^^(1/2) = sqrt(a)
+
+  sqrt_hathat_neg: LEMMA
+  FORALL(a:posreal):
+  a^^(-1/2) = 1/sqrt(a)
+
+%-------------------------------------------------------------------------
+%% The general exponential function agrees with the expoenential function
+%-------------------------------------------------------------------------
+
+  expt_exp_equiv: LEMMA
+    FORALL(r:RealExpr, env:Environment):
+    (r(env) > 0) IMPLIES 
+    (r ^^ N)(env) = (r^N)(env) 
+  
+%-------------------------------------------------------------------------
+%% Define div_safe_re and sqrt_safe_re
+%-------------------------------------------------------------------------
+
+  div_safe_re(r1,r2): RealExpr = div_safe(r1,r2)
+  abs_re(r1): RealExpr = abs(r1)
+  sqrt_safe_re(r1): RealExpr = sqrt_safe(r1)
+
+%-------------------------------------------------------------------------
+%% Define the partial derivative of a real expression. Make it zero outside
+%  of domain of interest so the partial derivaive is also a real expression
+%-------------------------------------------------------------------------
+
+  partial_diff(i:nat, P:(ddl_dom?(i)))
+    (re:(derivable?(i,P))):
+    RealExpr =
+    LAMBDA (env: Environment):
+    IF P(env)
+    THEN deriv[(proj(i)(P))]
+      (LAMBDA (x:(proj(i)(P))): re(env WITH [(i) := x]),env(i))
+    ELSE 0
+    ENDIF
+    
+%-------------------------------------------------------------------------
+%% Properties of partial derivatives
+%-------------------------------------------------------------------------
+
+  %the constant function is partial differentiable
+  dl_derivable_const: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(cnst(k))
+    
+  %the partial derivative of a constant function is 0   
+  dl_partial_const : LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    partial_diff(i, P)(cnst(k)) = cnst(0)
+
+  %the cnst function is partial differentiable
+  dl_derivable_up_cnst : LEMMA
+    FORALL(P:(ddl_dom_upto?(i))):
+    derivable_up?(i, P)(cnst(k))
+
+  %the val function is partial differentiable
+  dl_derivable_val : LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i, P)(val(j))
+
+  %the val function is partial differentiable
+  dl_derivable_up_val : LEMMA
+    FORALL(P:(ddl_dom_upto?(i))):
+    derivable_up?(i, P)(val(j))
+    
+
+
+  %the partial of the val function is 1 or 0
+  dl_partial_val : LEMMA
+    FORALL(P:(ddl_dom?(i)), env:(P)):
+    partial_diff(i, P)(val(j))(env) =
+    IF same_var(i,j) THEN cnst(1)(env)
+    ELSE cnst(0)(env) ENDIF
+
+  %the sum of two partial differentiable functions
+  % is partial differentiable
+  dl_derivable_plus: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    derivable?(i,P)(r1 + r2)
+    
+  %the partial derivative of the sum of two functions
+  % is the sum of the partial derivatives
+  dl_partial_plus: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    partial_diff(i, P)(r1 + r2)
+    = partial_diff(i,P)(r1) + partial_diff(i,P)(r2)
+
+    %the sum function is partial differentiable
+  dl_derivable_up_sum : LEMMA
+    FORALL(P:(ddl_dom_upto?(i)),re1,re2: (derivable_up?(i, P))):
+    derivable_up?(i, P)(re1 + re2)
+
+  %the product of two partial derivable functions
+  % is partial derivable
+  dl_derivable_mult: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    derivable?(i,P)(r1 * r2)
+
+  %the product rule for partial derivatives
+  dl_partial_mult: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    partial_diff(i, P)(r1 * r2)
+    = partial_diff(i,P)(r1) * r2 + r1 * partial_diff(i,P)(r2)
+
+  %the product function is partial differentiable
+  dl_derivable_up_prod : LEMMA
+    FORALL(P:(ddl_dom_upto?(i)), re1,re2: (derivable_up?(i, P))):
+    derivable_up?(i, P)(re1*re2)
+
+
+
+  %the difference of partial differentiable functions
+  % is partial differentiable
+  dl_derivable_minus: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    derivable?(i,P)(r1 - r2)
+    
+  %the partial derivative of the difference of two functions
+  % is the difference of the partial derivatives
+  dl_partial_minus: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) AND derivable?(i,P)(r2)
+    IMPLIES
+    partial_diff(i, P)(r1 - r2)
+    = partial_diff(i,P)(r1) - partial_diff(i,P)(r2)
+
+  %the minus function is partial differentiable
+  dl_derivable_up_minus : LEMMA
+    FORALL(P:(ddl_dom_upto?(i)),re1,re2: (derivable_up?(i, P))):
+    derivable_up?(i, P)(re1 - re2)
+
+  %the negative scalar of a partial differentiable function
+  % is partial differentiable
+  dl_derivable_negative: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1)
+    IMPLIES
+    derivable?(i,P)(-r1)
+
+  %the partial derivative of the negative scalar multiple
+  % of a function is the negative of the partial derivative
+  % of the function 
+  dl_partial_negative: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    derivable?(i,P)(r1) 
+    IMPLIES
+    partial_diff(i, P)(-r1)
+    = -partial_diff(i,P)(r1)
+
+  dl_derivable_pow: LEMMA
+    FORALL(P:(ddl_dom?(i)),p:nat):
+    derivable?(i,P)(r1) 
+    IMPLIES
+    derivable?(i,P)(r1^p)
+
+  %the power function is partial differentiable
+  dl_derivable_up_pow : LEMMA
+    FORALL(P:(ddl_dom_upto?(i)), re: (derivable_up?(i, P)),p:nat):
+    derivable_up?(i, P)(re ^ p )
+  
+  %the quotient of two partial derivable functions
+  % is partial derivable when the denominator is
+  % never zero
+  dl_derivable_div: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    ((derivable?(i,P)(r1) AND derivable?(i,P)(r2)) AND
+    (FORALL(env:Environment): P(env) IMPLIES r2(env) /= 0))
+    IMPLIES
+    derivable?(i,P)(div_safe(r1, r2))
+
+  %the quotient rule for partial derivatives
+  dl_partial_div: LEMMA
+    FORALL(P:(ddl_dom?(i))):
+    ((derivable?(i,P)(r1) AND derivable?(i,P)(r2)) AND
+    (FORALL(env:Environment): P(env) IMPLIES r2(env) /= 0))
+    IMPLIES
+    partial_diff(i, P)(div_safe(r1,r2))
+    =  div_safe(partial_diff(i,P)(r1) * r2 -  r1 *partial_diff(i,P)(r2), r2*r2)
+
+ %the div_safe function is partial differentiable
+  dl_derivable_up_div : LEMMA
+    FORALL(P:(ddl_dom_upto?(i)),re1,re2: (derivable_up?(i, P))):
+    (FORALL(env:Environment): P(env) IMPLIES re2(env) /= 0)
+    IMPLIES
+    derivable_up?(i, P)(div_safe(re1, re2))
+
+  %the composition of two partial derivatives functions
+  % is partial derivable at a point, as long as the
+  % image of the point in the first function is
+  % in the domain of the second function 
+  dl_derivable_comp_point: LEMMA
+    FORALL(P:(ddl_dom?(i)),  env: (P),
+    D: {DD : [real->bool] | deriv_domain?[(DD)]},
+    f:[real->real]):
+    (derivable?(i,P,env)(r1) AND ((FORALL(env1:(P)): D(r1(env1)))
+    AND
+    derivable?[(D)](f,r1(env))))   IMPLIES
+    derivable?(i,P,env)(f o r1)
+    
+  %the composition of two partial derivatives functions
+  % is partial derivable as long as the image of the first
+  % function is in the domain of the second
+  dl_derivable_comp: LEMMA
+    FORALL(P:(ddl_dom?(i)),  env: (P),
+    D: {DD : [real->bool] | deriv_domain?[(DD)]},
+    f:[real->real]):
+    (derivable?(i,P)(r1) AND ((FORALL(env1:(P)): D(r1(env1)))
+    AND
+    FORALL(env1:(P)):
+    derivable?[(D)](f,r1(env1))))   IMPLIES
+    derivable?(i,P)(f o r1)
+
+  %the chain rule for partial derivatives
+  dl_partial_chain: LEMMA
+    FORALL(P:(ddl_dom?(i)),
+    env: (P),
+    D: {DD : [real->bool] | deriv_domain?[(DD)]},
+    f:[real->real]):
+    (derivable?(i,P)(r1) AND ((FORALL(env1:(P)): D(r1(env1)))
+    AND
+    FORALL(env1:(P)):
+    derivable?[(D)](f,r1(env1))))
+    IMPLIES
+   partial_diff(i,P)(f o r1) = LAMBDA(env:Environment): IF P(env) THEN deriv[(D)](f,r1(env))*partial_diff(i,P)(r1)(env)
+   ELSE 0 ENDIF
+
+  %a partial derivable function
+  % raised to a power is
+  % partial derivable
+  dl_derivable_exp: LEMMA
+   FORALL(P:(ddl_dom?(i))):
+   ((FORALL(env:Environment): P(env) IMPLIES r1(env)>0)
+   AND derivable?(i,P)(r1))
+   IMPLIES
+   derivable?(i,P)(r1 ^^ n)
+
+  %the power rule for partial
+  % derivatives
+  dl_partial_exp: LEMMA
+   FORALL(P:(ddl_dom?(i))):
+   ((FORALL(env:Environment): P(env) IMPLIES r1(env)>0)
+   AND derivable?(i,P)(r1))
+   IMPLIES
+   partial_diff(i, P)(r1 ^^ n) =
+   n * r1^^(n-1) * partial_diff(i,P)(r1)
+
+  %the square root of a partial derivable
+  % function is partial derivable
+  dl_derivable_sqrt: LEMMA
+   FORALL(P:(ddl_dom?(i))):
+   ((FORALL(env:Environment): P(env) IMPLIES r1(env)>0)
+   AND derivable?(i,P)(r1))
+   IMPLIES
+   derivable?(i,P)(sqrt_safe_re(r1))
+
+  %the power rule for the square root
+  dl_partial_sqrt: LEMMA
+   FORALL(P:(ddl_dom?(i))):
+   ((FORALL(env:Environment): P(env) IMPLIES r1(env)>0)
+   AND derivable?(i,P)(r1))
+   IMPLIES
+   partial_diff(i, P)(sqrt_safe_re(r1)) =
+   cnst(1/2) * div_safe_re(1,sqrt_safe_re(r1)) * partial_diff(i,P)(r1)
+   
+%-------------------------------------------------------------------------
+%% A sequence of real expressions
+%-------------------------------------------------------------------------
+
+   ddtn: VAR [nat->RealExpr]
+
+%-------------------------------------------------------------------------
+%% A non-tail recursive way of finding the sum of real expressions
+%-------------------------------------------------------------------------
+
+   sum_it(low:nat,
+   high:{n:nat| low <= n},
+   ddtn)(env:Environment): real =
+   sum_it(low,high,LAMBDA(i:nat): ddtn(i)(env))
+
+%-------------------------------------------------------------------------
+%% Dift_Re is the inner product of the the M partial derivatives of a real
+%  expression, with the first M elements of a sequence of real expressions
+%  Note: if the real expression is not partial derivative, that entry is
+%  zero
+%-------------------------------------------------------------------------
+
+   DIFT_Re(M:nat, P:(ddl_dom?),
+     re:RealExpr)(ddtn): RealExpr  = 
+     sum_it(0 ,M, LAMBDA (i:nat):
+     IF derivable?(i,P)(re)
+     THEN partial_diff(i,P)(re) * ddtn(i)
+     ELSE
+     0
+     ENDIF)
+
+%-------------------------------------------------------------------------
+%% Define equality for real expressions
+%-------------------------------------------------------------------------
+
+   eq(P:BoolExpr)(r1,r2): bool
+   = (LAMBDA(env:(P)): r1(env))
+     = (LAMBDA(env:(P)): r2(env))
+
+%-------------------------------------------------------------------------
+%% Recursive relationship between DIFT_Re function with last entry of
+%  inner product
+%-------------------------------------------------------------------------
+
+   DIFT_last: LEMMA
+     FORALL(M:posnat, P:(ddl_dom?),
+     re:RealExpr):
+     DIFT_Re(M,P,re)(ddtn) = DIFT_Re(M-1,P,re)(ddtn) +
+     IF derivable?(M,P)(re)
+     THEN partial_diff(M,P)(re) * ddtn(M)
+     ELSE
+     0
+     ENDIF
+
+%-------------------------------------------------------------------------
+%% Properties of differentiation for DIFT_Re function
+%-------------------------------------------------------------------------
+
+   %DIFT_Re of the val function is 0,
+   % when considering val(i) when i>M
+   dl_dift_val_zero: LEMMA
+     FORALL(M:nat, i:{i:nat | i>M},
+     P:(ddl_dom?)):
+     DIFT_Re(M,P,val(i))(ddtn)=cnst(0)
+
+   %DIFT_Re of the val function
+   % is ddtn(i) when i<=M
+   dl_dift_val_P: LEMMA
+     FORALL(M:nat, i:{i:nat| i<=M},
+     P:(ddl_dom?)):
+     eq(P)(DIFT_Re(M,P,val(i))(ddtn),ddtn(i))
+
+   dl_dift_val: LEMMA
+     FORALL(M:nat, i:{i:nat| i<=M}):
+     DIFT_Re(M,DLTRUE,val(i))(ddtn) = ddtn(i)
+
+   %DIFT_re of a constant function is
+   %0
+   dl_dift_const: LEMMA
+     FORALL(M:nat,P:(ddl_dom?)):
+     DIFT_Re(M,P,cnst(k))(ddtn) = cnst(0)
+
+   %DIFT_re of a sum of two real
+   % expressions is the sum of DIFT_re
+   % of each of them 
+   dl_dift_plus: LEMMA
+     FORALL(M:nat,P:(ddl_dom?)):
+     derivable_up?(M,P)(r1) AND
+     derivable_up?(M,P)(r2) IMPLIES (
+     DIFT_Re(M,P,r1 + r2)(ddtn) =
+     DIFT_Re(M,P, r1)(ddtn) + DIFT_Re(M, P, r2)(ddtn))
+
+   dl_dift_minus: LEMMA
+     FORALL(M:nat,P:(ddl_dom?)):
+     (derivable_up?(M,P)(r1) AND
+     derivable_up?(M,P)(r2)) IMPLIES (
+     DIFT_Re(M,P,r1 - r2)(ddtn)
+     =
+     DIFT_Re(M,P,r1)(ddtn) - DIFT_Re(M,P,r2)(ddtn))
+
+   dl_dift_negative: LEMMA
+     FORALL(M:nat,P:(ddl_dom?)):
+     DIFT_Re(M,P,-r1)(ddtn) =  -DIFT_Re(M,P,r1)(ddtn) 
+
+   dl_dift_mult: LEMMA
+     FORALL(M:nat, P:(ddl_dom?)):
+     (derivable_up?(M,P)(r1) AND
+     derivable_up?(M,P)(r2)) IMPLIES
+     DIFT_Re(M, P, r1 * r2)(ddtn)
+     =
+     DIFT_Re(M, P, r1)(ddtn) * r2 + r1 * DIFT_Re(M, P, r2)(ddtn)
+
+   dl_dift_divsafe: LEMMA
+     FORALL(M:nat, P:(ddl_dom?)):
+     ((derivable_up?(M,P)(r1) AND
+     derivable_up?(M,P)(r2)) AND
+     (FORALL(env:Environment): P(env) IMPLIES r2(env) /= 0))
+     IMPLIES
+     DIFT_Re(M,P, div_safe_re(r1,r2))(ddtn)
+     =
+     div_safe_re(r2*DIFT_Re(M,P,r1)(ddtn) - r1*DIFT_Re(M,P,r2)(ddtn),(r2*r2))
+
+   dl_dift_exp: LEMMA
+     FORALL(M:nat, P:(ddl_dom?)):
+     (derivable_up?(M,P)(r1) AND
+     (FORALL (env: Environment): P(env) IMPLIES r1(env) > 0) )
+     IMPLIES
+     DIFT_Re(M,P,r1 ^^ n)(ddtn) =  n*r1^^(n-1) * DIFT_Re(M,P,r1)(ddtn)
+
+   dl_dift_pow: LEMMA
+     FORALL(ddtn: [nat->RealExpr], r1: RealExpr, jj:posnat, M:nat, P:(ddl_dom?)):
+     derivable_up?(M,P)(r1) IMPLIES
+     DIFT_Re(M,P,r1 ^ jj)(ddtn) =  jj*r1^(jj-1) * DIFT_Re(M,P,r1)(ddtn)
+
+   dl_dift_sqrt: LEMMA
+     FORALL(M:nat, P:(ddl_dom?)):
+     (derivable_up?(M,P)(r1) AND
+     (FORALL (env: Environment): P(env) IMPLIES r1(env) > 0) )
+     IMPLIES
+     DIFT_Re(M,P, sqrt_safe_re(r1))(ddtn)
+     =
+     cnst(1/2) * div_safe_re(cnst(1),sqrt_safe_re(r1)) * DIFT_Re(M,P,r1)(ddtn)
+
+   ddt(ode:ODEs)(x:nat) : RECURSIVE RealExpr =
+     IF null?(ode) THEN 0
+     ELSIF same_var(car(ode)`1,x) THEN car(ode)`2
+     ELSE ddt(cdr(ode))(x)
+     ENDIF
+     MEASURE length(ode)
+
+   ddt_not_in_map: LEMMA
+   FORALL(ode:ODEs,x:(not_in_map(ode))):
+   ddt(ode)(x) = 0
+
+   ddt_in_map: LEMMA
+   FORALL(ode:ODEs,x:(in_map(ode))):
+   LET k = the(index_of(ode,x)) IN
+   ddt(ode)(x) = nth(ode,k)`2
+
+   re_plus_cnst0: LEMMA
+    r1 + cnst(0) = r1
+
+   cnst0_plus_re: LEMMA
+    cnst(0) + r1 = r1
+
+   re_minus_cnst0: LEMMA
+    r1 - cnst(0) = r1
+
+   cnst0_minus_re: LEMMA
+    cnst(0) - r1 = -r1
+
+   re_prod_cnst0: LEMMA
+    r1*cnst(0) = cnst(0)
+
+   cnst0_prod_re: LEMMA
+    cnst(0)*r1 = cnst(0)
+
+    sqrt_safe_sq: LEMMA
+    FORALL(y:real): y >= 0 IMPLIES sqrt_safe(y)*sqrt_safe(y) = y  
+
+   SUB_DIFTRe(P:(ddl_dom?),ode:ODEs)(R:RealExpr): RealExpr =
+     DIFT_Re(max_var(ode), P, R)(ddt(ode))
+
+  ODEs_P?(D:(dd?),P:(ddl_dom?))(odes:ODEs): bool =
+  ODEs_s?(D)(odes)
+  AND
+  FORALL(env:Environment):
+  FORALL(t:(D)):
+  P(env_sol(D,env,odes)(t))
+
+   DIFT(M:nat,P:(ddl_dom?), nnQ:NormNQBool)(ddtn): RECURSIVE BoolExpr =
+     CASES nnQ OF
+       NQB_rel(rel,r1,r2) :
+         IF rel=nqb_le OR rel=nqb_lt THEN
+           DIFT_Re(M,P,r1)(ddtn) <= DIFT_Re(M,P,r2)(ddtn)
+         ELSIF rel=nqb_ge OR rel=nqb_gt THEN
+           DIFT_Re(M,P,r1)(ddtn) >= DIFT_Re(M,P,r2)(ddtn)
+         ELSE
+           DIFT_Re(M,P,r1)(ddtn) = DIFT_Re(M,P,r2)(ddtn)
+         ENDIF,
+       NQB_AND(nqb1,nqb2) :
+         DIFT(M,P,nqb1)(ddtn) AND DIFT(M,P,nqb2)(ddtn),
+       NQB_OR(nqb1,nqb2) :
+         DIFT(M,P,nqb1)(ddtn) AND DIFT(M,P,nqb2)(ddtn)
+     ENDCASES
+     MEASURE nnQ BY LAMBDA(nnQ1,nnQ2:NormNQBool):nnQ1 << nnQ2
+
+   SUB_DIFT(P:(ddl_dom?), ode:ODEs)(nnQ:NormNQBool): BoolExpr =
+     DIFT(max_var(ode),P,nnQ)(ddt(ode))
+
+END differentiation
