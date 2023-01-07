@@ -240,9 +240,9 @@
    (format nil
 	   "~&|~a|~a ~a|~a|~a|~%"
 	   decl-id
-	   (cond ((string= proof-status "unfinished") ":exclamation:")
-		 ((string= proof-status "untried") ":grey_question:")
-		 ((prefix? "proved" proof-status) ":white_check_mark:"))
+	   (cond ((string= proof-status "unfinished") "❌")
+		 ((string= proof-status "untried") "✴")
+		 ((prefix? "proved" proof-status) "✅"))
 	   proof-status
 	   decision-procedure 
 	   (if time
@@ -443,65 +443,19 @@
 ;;
 ;;
 
-(defun proveit ()
-  (let* ((proveitversion 
-		    (or (environment-variable "PROVEITVERSION") (format nil "proveit ~a" *prooflite-version*)))
-	 (context (environment-variable "PROVEITPVSCONTEXT"))
-	 (proveitarg (environment-variable "PROVEITARG"))
-	 (pvsfile (let ((name (environment-variable "PROVEITPVSFILE")))
-		    (when (and name (string/= name "")) name)))
-	 (import (let ((envstr (environment-variable "PROVEITLISPIMPORT")))
-		   (when envstr (read-from-string envstr))))
-	 (scripts (let ((envstr (environment-variable "PROVEITLISPSCRIPTS")))
-		    (when envstr (read-from-string envstr))))
-	 (write-scripts (let ((envstr (environment-variable "PROVEITLISPWRITESCRIPTS")))
-		    (when envstr (read-from-string envstr))))
-	 (traces (let ((envstr (environment-variable "PROVEITLISPTRACES")))
-		   (when envstr (read-from-string envstr))))
-	 (force (let ((envstr (environment-variable "PROVEITLISPFORCE")))
-		  (when envstr (read-from-string envstr))))
-	 (autotop (let ((envstr (environment-variable "PROVEITLISPAUTOTOP")))
-		    (when envstr (read-from-string envstr))))
-	 (typecheckonly (let ((envstr (environment-variable "PROVEITLISPTYPECHECK")))
-			  (when envstr (read-from-string envstr))))
-	 (txtproofs (let ((envstr (environment-variable "PROVEITLISPTXTPROOFS")))
-		      (when envstr (read-from-string envstr))))
-	 (texproofs (let ((envstr (environment-variable "PROVEITLISPTEXPROOFS")))
-		      (when envstr (read-from-string envstr))))
-	 (preludext (remove-duplicates
-			(let ((envstr (environment-variable "PROVEITLISPPRELUDEXT")))
-			  (when envstr (read-from-string envstr)))
-		      :test #'string=))
-	 (disable (remove-duplicates 
-		      (let ((envstr (environment-variable "PROVEITLISPDISABLE")))
-			(when envstr (read-from-string envstr)))
-		    :test #'string=))
-	 (enable (remove-duplicates
-		     (let ((envstr (environment-variable "PROVEITLISPENABLE")))
-		       (when envstr (read-from-string envstr)))
-		   :test #'string=))
-	 (auto-fix? (let ((envstr (environment-variable "PROVEITLISPAUTOFIX")))
-		      (when envstr (read-from-string envstr))))
-	 (default-proof (let ((envstr (environment-variable
-				       "PROVEITLISPDEFAULTPROOFSCRIPT")))
-			  (when envstr (read-from-string envstr))))
-	 (thfs (thfs2list (let ((envstr (environment-variable "PROVEITLISPTHFS")))
-			    (when envstr (read-from-string envstr)))))
-	 (theories (remove-duplicates
-		       (let ((envstr (environment-variable "PROVEITLISPTHEORIES")))
-			 (when envstr (read-from-string envstr)))
-		     :test #'string=))
-	 (dependencies (environment-variable "PROVEITLISPDEPENDENCIES"))
-	 (alternative-summary-mode (environment-variable "PROVEITLISPALTSUMMARIESMODE"))
-	 (*print-readably* nil)
+(defmacro read-from-environment-variable (var-name)
+  `(let ((envstr (environment-variable ,var-name)))
+     (when envstr (read-from-string envstr))))
+
+(defun proveit-on
+    (proveitversion context proveitarg pvsfile import scripts write-scripts
+		    traces force autotop typecheckonly txtproofs texproofs preludext
+		    disabled-oracles enabled-oracles auto-fix? default-proof thfs theories
+		    dependencies alternative-summary-mode debug-mode-on? outdir outbasename)
+  (let* ((*print-readably* nil)
 	 (*noninteractive* t)
 	 (*pvs-verbose* (if traces 3 2))
 	 (proveit-return-value 0)
-	 (debug-mode-on? (environment-variable "DEBUG"))
-	 (outdir (let ((name (environment-variable "PROVEITLISPOUTDIR")))
-		   (when (and name (string/= name "")) name)))
-	 (outbasename (let ((name (environment-variable "PROVEITLISPOUTBASENAME")))
-			(when (and name (string/= name "")) name)))
 	 (current-timestamp (now-today)))
     (handler-bind
 	((error #'(lambda (cnd)
@@ -534,7 +488,7 @@
       (when default-proof
 	(setq *proof-for-unexpected-branches* default-proof)
 	(format  t "*** Using default proof for open branches: ~a~%" default-proof))
-      (extra-disable-oracles-but disable enable)
+      (extra-disable-oracles-but disabled-oracles enabled-oracles)
       (let ((orcls (extra-list-oracles)))
 	(when orcls 
 	  (format  t "*** Trusted Oracles~%")
@@ -644,7 +598,52 @@
 	    (dolist (theory pvstheories)
 	      (write-all-prooflite-scripts-to-file (format nil "~a" (id theory)))))))
       #+pvsdebug (format t "~&[proveit-init.proveit] proveit-return-value ~a~%" proveit-return-value)
-      (bye proveit-return-value)))) 
+      (bye proveit-return-value))))
+
+(defun proveit ()
+  (let* ((proveitversion 
+		    (or (environment-variable "PROVEITVERSION") (format nil "proveit ~a" *prooflite-version*)))
+	 (context (environment-variable "PROVEITPVSCONTEXT"))
+	 (proveitarg (environment-variable "PROVEITARG"))
+	 (pvsfile (let ((name (environment-variable "PROVEITPVSFILE")))
+		    (when (and name (string/= name "")) name)))
+	 (import (read-from-environment-variable "PROVEITLISPIMPORT"))
+	 (scripts (read-from-environment-variable "PROVEITLISPSCRIPTS"))
+	 (write-scripts (read-from-environment-variable "PROVEITLISPWRITESCRIPTS"))
+	 (traces (read-from-environment-variable "PROVEITLISPTRACES"))
+	 (force (read-from-environment-variable "PROVEITLISPFORCE"))
+	 (autotop (read-from-environment-variable "PROVEITLISPAUTOTOP"))
+	 (typecheckonly (read-from-environment-variable "PROVEITLISPTYPECHECK"))
+	 (txtproofs (read-from-environment-variable "PROVEITLISPTXTPROOFS"))
+	 (texproofs (read-from-environment-variable "PROVEITLISPTEXPROOFS"))
+	 (preludext (remove-duplicates
+			(read-from-environment-variable "PROVEITLISPPRELUDEXT")
+		      :test #'string=))
+	 (disabled-oracles (remove-duplicates 
+		      (read-from-environment-variable "PROVEITLISPDISABLE")
+		    :test #'string=))
+	 (enabled-oracles (remove-duplicates
+		     (read-from-environment-variable "PROVEITLISPENABLE")
+		   :test #'string=))
+	 (auto-fix? (read-from-environment-variable "PROVEITLISPAUTOFIX"))
+	 (default-proof (let ((envstr (environment-variable
+				       "PROVEITLISPDEFAULTPROOFSCRIPT")))
+			  (when envstr (read-from-string envstr))))
+	 (thfs (thfs2list (read-from-environment-variable "PROVEITLISPTHFS")))
+	 (theories (remove-duplicates
+		       (read-from-environment-variable "PROVEITLISPTHEORIES")
+		     :test #'string=))
+	 (dependencies (environment-variable "PROVEITLISPDEPENDENCIES"))
+	 (alternative-summary-mode (environment-variable "PROVEITLISPALTSUMMARIESMODE"))
+	 (debug-mode-on? (environment-variable "DEBUG"))
+	 (outdir (let ((name (environment-variable "PROVEITLISPOUTDIR")))
+		   (when (and name (string/= name "")) name)))
+	 (outbasename (let ((name (environment-variable "PROVEITLISPOUTBASENAME")))
+			(when (and name (string/= name "")) name))))
+    (proveit-on proveitversion context proveitarg pvsfile import scripts write-scripts
+		traces force autotop typecheckonly txtproofs texproofs preludext
+		disabled-oracles enabled-oracles auto-fix? default-proof thfs theories
+		dependencies alternative-summary-mode debug-mode-on? outdir outbasename))) 
 
 (defun collect-top-theories ()
   (let ((files-in-dir
