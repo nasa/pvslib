@@ -1,0 +1,450 @@
+arithmetic_poly  % Welcome
+		: THEORY
+
+% Last Update              Oct 2019
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This defines polynomial       |%
+%| arithmatic, with useful       |%
+%| properties                    |% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:          J. Tanner Slagel
+
+%-----     %
+  BEGIN
+%     -----%
+
+%----------------------------------------------------------------------
+%%Importing eval_poly, to prove properties of arithmetic with eval
+% and standard form. 
+%----------------------------------------------------------------------
+
+IMPORTING eval_poly
+
+%----------------------------------------------------------------------
+%%Define polynomial arithmetic 
+%----------------------------------------------------------------------
+
+%----------------------------------------------------------------------
+%Initial addition
+%----------------------------------------------------------------------
+
+init_polyplus(f, g:Polynomial): RECURSIVE
+  {ff:Polynomial | length(ff) = max(length(f), length(g))} =
+  IF null?(f)
+    THEN g    
+  ELSIF null?(g)
+    THEN f
+  ELSE
+    cons(car(f) + car(g), init_polyplus(cdr(f), cdr(g)))
+  ENDIF
+  MEASURE length(f)
+ 
+%----------------------------------------------------------------------
+%Scaler multiplication
+%----------------------------------------------------------------------
+
+init_polyscale(r:real, f:Polynomial): RECURSIVE
+  {ff:Polynomial | length(ff) = length(f)} =
+  IF null?(f)
+    THEN f
+  ELSE
+    cons( r*car(f),init_polyscale(r,cdr(f)))
+  ENDIF
+  MEASURE length(f)
+ 
+%----------------------------------------------------------------------
+%Initial multiplication
+%----------------------------------------------------------------------
+
+init_polymult(f, g:Polynomial): RECURSIVE
+ %begin output type
+  {ff:Polynomial| (null?(f) OR null?(g) IMPLIES length(ff) = 0)
+  AND ((NOT null?(f) AND NOT null?(g))
+  IMPLIES length(ff) = length(f) + length(g) - 1)}
+ %end output type
+  =
+  IF null?(f) OR null?(g)
+    THEN null
+  ELSIF length(f)=1
+    THEN init_polyscale(car(f), g)
+  ELSE
+    init_polyplus(init_polyscale(car(f), g),
+    init_polymult(cdr(f), cons(0, g)))
+  ENDIF
+  MEASURE length(f)
+
+%----------------------------------------------------------------------
+%Initial exponentiation 
+%----------------------------------------------------------------------
+
+init_polyexp(f:Polynomial, k:nat): RECURSIVE
+ %begin output type
+  {ff:Polynomial| (null?(f) IMPLIES
+  length(ff) = 0)
+  AND ((cons?(f) AND k=0) IMPLIES
+  length(ff) = 1)
+  AND ((cons?(f) AND k>0) IMPLIES
+  length(ff) = length(f) * k - (k - 1))}
+ %end output type
+  =
+  IF null?(f)
+    THEN null
+  ELSIF k = 0
+    THEN (: 1 :)
+  ELSE
+     init_polymult(f, init_polyexp(f, k - 1))
+  ENDIF
+  MEASURE k
+
+%----------------------------------------------------------------------
+%Initial subtraction
+%----------------------------------------------------------------------
+
+init_polysub(f, g: Polynomial):
+  {ff:Polynomial| length(ff) = max(length(f), length(g))}
+  =
+  init_polyplus(f, init_polyscale(-1, g))
+
+%----------------------------------------------------------------------
+%%Addition is associative 
+%----------------------------------------------------------------------
+
+assoc_init_polyplus: LEMMA
+  FORALL (f, g, h:Polynomial):
+  init_polyplus(init_polyplus(f, g), h) =
+  init_polyplus(f, init_polyplus(g, h))
+
+%----------------------------------------------------------------------
+%Properties of scaler multiplication
+%----------------------------------------------------------------------
+
+poly_scale_assoc: LEMMA
+ FORALL (r1, r2:real, f: Polynomial):
+   init_polyscale(r1, init_polyscale(r2, f)) =
+   init_polyscale(r1 * r2, f)
+
+poly_scale_dist1: LEMMA
+ FORALL (r:real, f, g:Polynomial):
+   init_polyscale(r, init_polyplus(f, g)) =
+   init_polyplus(init_polyscale(r, f), init_polyscale(r, g))
+
+poly_scale_dist2: LEMMA
+ FORALL (r1, r2:real, f:Polynomial):
+   init_polyscale(r1 + r2, f) =
+   init_polyplus(init_polyscale(r1, f), init_polyscale(r2, f))
+
+poly_scale_mult1: LEMMA
+ FORALL (r:real, f, g:Polynomial):
+   init_polyscale(r, init_polymult(f, g)) =
+   init_polymult(init_polyscale(r, f), g)
+
+poly_scale_one: LEMMA
+ FORALL (f:Polynomial):
+   init_polyscale(1, f) = f
+
+%----------------------------------------------------------------------
+%Properties of last with arithmetic 
+%----------------------------------------------------------------------
+
+last_plus: LEMMA
+ FORALL(f:(cons?),
+ g:{gg:Polynomial| length(gg)=length(f)}):
+   last(init_polyplus(f, g)) = last(f) + last(g)
+
+last_plus1: LEMMA
+ FORALL(f:(cons?),
+ g:{gg:Polynomial| length(gg)>length(f)}):
+   last(init_polyplus(f, g)) = last(g)
+
+last_scale: LEMMA
+ FORALL(c:real,g:{ff:Polynomial| cons?(ff)}):
+   c * last(g) = last(init_polyscale(c, g))
+
+last_mult: LEMMA
+ FORALL(f,g:{ff:Polynomial| cons?(ff)}):
+   last(f) * last(g) = last(init_polymult(f, g))
+
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+%% Arithmetic in standard form
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+ 
+polyplus(f, g:Polynomial): (standard_form?) =
+ standard_form(init_polyplus(f, g))
+ 
+polyscale(r:real, f:Polynomial): (standard_form?) =
+ standard_form(init_polyscale(r, f))
+
+polymult(f, g:Polynomial): (standard_form?) = 
+ standard_form(init_polymult(f, g))
+ 
+standard_polymult: LEMMA FORALL(f, g:(standard_form?)):
+ standard_form?(init_polymult(f, g))
+
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+%% Properties of addition
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+
+reflex_init: LEMMA
+ FORALL (f, g:Polynomial):
+   init_polyplus(f, g) = init_polyplus(g, f)
+
+reflex_init1: LEMMA
+ FORALL (f, g:Polynomial):
+   polyplus(f, g) = polyplus(g, f)
+
+add_car: LEMMA
+ FORALL(f,g:{ff:Polynomial| cons?(ff)}):
+   car(init_polyplus(f, g)) = car(f) + car(g)
+
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+%% Properties of multiplication
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+
+mult_car: LEMMA
+ FORALL (f, g:{ff:Polynomial | cons?(ff)}):
+   car(init_polymult(f, g)) = car(f) * car(g)
+
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+%%Define zero polynomial
+%——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–——–
+
+zero_p(n:nat): RECURSIVE {f:Polynomial | length(f) = n} =
+ IF n = 0
+   THEN null
+ ELSE
+   cons(0, zero_p(n - 1))
+ ENDIF
+ MEASURE n
+
+zero_eval: LEMMA
+ FORALL(n:nat, x:real, deg: upfrom(n-1), acc:real):
+   init_eval(zero_p(n), deg, acc)(x) = acc
+
+last_zero: LEMMA
+ FORALL(n:posnat):
+   last(zero_p(n)) = 0
+
+chop_zero: LEMMA
+ FORALL(n:posnat):
+   chop(zero_p(n)) = zero_p(n - 1)
+
+standard_zero: LEMMA
+ FORALL (n:nat):
+   standard_form(zero_p(n)) = null
+
+zero_p_props: LEMMA
+ FORALL(n:posnat):
+   last(zero_p(n)) = 0
+
+zero_p_props1: LEMMA
+ FORALL(n:posnat):
+   chop(zero_p(n)) = zero_p(n-1)
+
+zero_p_init_polyplus: LEMMA
+ FORALL(f: Polynomial):
+ FORALL(i:nat):
+   i<= length(f) IMPLIES
+     init_polyplus(zero_p(i),f) = f
+
+zero_p_scal: LEMMA
+ FORALL(g: Polynomial):
+   init_polyscale(0,g) = zero_p(length(g))
+
+zero_p_scal1: LEMMA
+ FORALL(r:real, i:nat):
+  init_polyscale(r,zero_p(i)) = zero_p(i)
+
+zero_p_mult: LEMMA
+ FORALL(i:posnat, g: {gg:Polynomial| cons?(gg)}):
+   init_polymult(zero_p(i), g)
+   =
+   zero_p(i + length(g) - 1)
+
+zero_p_multr: LEMMA
+ FORALL(i:posnat, g: {gg:Polynomial| cons?(gg)}):
+   init_polymult(g,zero_p(i))
+   =
+   zero_p(i + length(g) - 1)
+
+cons_init_poly_plus: LEMMA
+ FORALL (r:real, f,g: Polynomial):
+  cons(r,init_polyplus(f, g))
+  =
+  init_polyplus(cons(r, f), cons(0, g))
+
+poly_mult_cons: LEMMA
+ FORALL (f,g:{gg:Polynomial | cons?(gg)}):
+   cons?(init_polymult(f, g)) IMPLIES 
+   cons(0, init_polymult(f, g))
+   =
+   init_polymult(cons(0, f),g)
+
+chop_last_equiv: LEMMA
+ FORALL(f,g: {ff:Polynomial| cons?(ff)}):
+   (last(f) = last(g) AND chop(f) = chop(g))
+   IFF
+   f=g
+
+standard_null: LEMMA
+ FORALL(n: nat, f:{ff:Polynomial | length(ff)=n}):
+   null?(standard_form(f))
+   IFF
+   f=zero_p(n)
+
+standard_form_polyscale: LEMMA
+ FORALL (r:real, f:Polynomial):
+ standard_form(init_polyscale(r, f))
+ =
+ standard_form(init_polyscale(r, standard_form(f)))
+
+chop_plus: LEMMA FORALL (f:{ff:Polynomial | NOT standard_form?(ff)}, g:Polynomial):
+polyplus(f,g)=polyplus(chop(f),g)
+
+
+standard_eliminatel: LEMMA FORALL(f,g:Polynomial):
+polyplus(f,g) = standard_form(init_polyplus(standard_form(f),g))
+
+standard_eliminater: LEMMA FORALL(f,g:Polynomial):
+polyplus(f,g) = standard_form(init_polyplus(f,standard_form(g)))
+
+standard_eliminate1: LEMMA FORALL(f,g:Polynomial):
+polyplus(f,g) = standard_form(init_polyplus(standard_form(f),standard_form(g)))
+
+standard_eliminate_multl: LEMMA FORALL(f,g:Polynomial):
+polymult(f,g) = standard_form(init_polymult(standard_form(f),g))
+
+standard_eliminate_multr: LEMMA FORALL(f,g:Polynomial):
+polymult(f,g) = standard_form(init_polymult(f,standard_form(g)))
+
+standard_eliminate_mult1: LEMMA FORALL(f,g:Polynomial):
+polymult(f,g) = standard_form(init_polymult(standard_form(f),standard_form(g)))
+
+standard_polymult2: LEMMA FORALL(f,g:Polynomial):
+ standard_form(init_polymult(f,g)) = init_polymult(standard_form(f),standard_form(g))
+
+%eval_add
+%init_eval_add: LEMMA FORALL(f,g:Polynomial,deg:upfrom(length(init_polyplus(f,g))-1),acc1,acc2:real):
+%init_eval(init_polyplus(f,g),deg,acc1+acc2) = init_eval(f,deg,acc1) + init_eval(g,deg,acc2)
+
+
+%% Show polynomial over ring is ring
+
+Poly_one: (standard_form?) = standard_form((:1:))
+Poly_zero: {tt: Polynomial |
+               standard_form?(tt)} = null[real]
+
+assocpr_init: LEMMA
+ FORALL(t1,t2,t3:Polynomial):
+  init_polyplus(init_polyplus(t1,t2),t3)=init_polyplus(t1,init_polyplus(t2,t3))
+
+assocpr1_init: LEMMA
+ FORALL(t1,t2,t3:Polynomial):
+  init_polyplus(init_polyplus(t1,t2),t3)=init_polyplus(init_polyplus(t1,t3),t2)
+
+assocpr2_init: LEMMA
+ FORALL(t1,t2,t3:Polynomial):
+  init_polyplus(t1,init_polyplus(t2,t3))=init_polyplus(t2,init_polyplus(t1,t3))
+
+assocpr3_init: LEMMA
+ FORALL(t1,t2,t3,t4:Polynomial):
+  init_polyplus(init_polyplus(t1,t2),init_polyplus(t3,t4))=init_polyplus(init_polyplus(t1,t3),init_polyplus(t2,t4))
+
+%% Assoc +
+assocpr: LEMMA
+ FORALL(t1,t2,t3:(standard_form?)):
+  polyplus(polyplus(t1,t2),t3)=polyplus(t1,polyplus(t2,t3))
+
+
+poly_plus_mult1: LEMMA
+FORALL (f,g,h:Polynomial):
+init_polyplus(init_polymult(f,h),init_polymult(g,h)) = init_polymult(init_polyplus(f,g),h)
+
+poly_plus_mult2: LEMMA
+FORALL (f,g,h:Polynomial):
+init_polyplus(init_polymult(f,g),init_polymult(f,h)) = init_polymult(f,init_polyplus(g,h))
+
+%% Abelian +
+abelianpr_init: LEMMA
+    FORALL(t1,t2: Polynomial): init_polyplus(t1,t2) = init_polyplus(t2,t1)
+
+abelianpr: LEMMA
+    FORALL(t1,t2: (standard_form?)): polyplus(t1,t2) = polyplus(t2,t1)
+
+assocmultpr_init: LEMMA
+    FORALL (t1,t2,t3: Polynomial): init_polymult(t1,init_polymult(t2,t3))= init_polymult(init_polymult(t1,t2),t3)
+
+%% Assoc *
+assocmultpr: LEMMA
+    FORALL (t1,t2,t3: (standard_form?)): polymult(polymult(t1,t2),t3)= polymult(t1,polymult(t2,t3))
+
+
+%% Iden *
+
+
+%% Distributive
+distl: LEMMA
+    FORALL(t1,t2,t3:(standard_form?)): polymult(t1,polyplus(t2,t3)) = polyplus(polymult(t1,t2),polymult(t1,t3))
+
+distr: LEMMA
+    FORALL(t1,t2,t3:(standard_form?)): polymult(polyplus(t1,t2),t3) = polyplus(polymult(t1,t3),polymult(t2,t3))
+
+
+
+
+
+eval_add: LEMMA FORALL(f,g:Polynomial):
+eval(init_polyplus(f,g)) = eval(f)+eval(g)
+
+%eval_scal
+init_eval_scal: LEMMA FORALL(x,r:real,f:Polynomial,deg:upfrom(length(f)-1),acc:real):
+init_eval(init_polyscale(r,f),deg,r*acc)(x) = init_eval(f,deg,acc)(x)*r 
+
+%eval_scal
+eval_scale: LEMMA FORALL(x,r:real,f:Polynomial):
+ eval(init_polyscale(r,f))(x) = eval(f)(x)*r
+
+%
+eval_sub: LEMMA FORALL(f,g:Polynomial):
+eval(init_polysub(f,g)) = eval(f)-eval(g)
+
+sub_zerop: LEMMA FORALL(f:Polynomial, g:{gg:Polynomial|length(gg)=length(f)}):
+init_polysub(f,g) = zero_p(length(f)) IFF f=g
+
+
+
+%init_polyscale means polynomial_scale
+%init_polyscale_prod: LEMMA FORALL(c:real, f:Polynomial):
+%polynomial(const_fun(c)*list2array[real](0)(init_polyscale(c,f)), max(length(f)-1,0)) = list2array[real](0)(init_polysc(ale(c,f))
+
+
+%init_polymult means polynomial_prod
+%init_polymult_prod: LEMMA FORALL(f,g:Polynomial):
+%polynomial_prod(list2array[real](0)(f),max(length(f)-1,0),list2array[real](0)(g),max(length(g)-1,0)) = list2array[real](0)(init_po%lymult(f,g))
+
+%prod is same for prod for poly functions
+%mult_equiv: LEMMA FORALL(f,g:Polynomial):
+%eval(init_polymult(f,g)) = polynomial(polynomial_prod(list2array[real](0)(f),max(length(f)-1,0),list2array[real](0)(g),max(length(%g)-1,0)),max(length(g)-1,0)+max(length(f)-1,0))
+
+%eval_prod
+eval_prod: LEMMA FORALL(f,g:Polynomial,x:real):
+ eval(init_polymult(f,g))(x) = eval(f)(x)*eval(g)(x)
+
+eval_zero: LEMMA FORALL(f:Polynomial):
+f=zero_p(length(f)) IFF (eval(f) = LAMBDA(x:real): 0 )
+
+%eval_equiv
+eval_eq: LEMMA FORALL(f:Polynomial,g: {gg:Polynomial| length(gg) = length(f)}):
+f=g IFF eval(f) = eval(g)
+
+%mult_commute
+mult_commute: LEMMA FORALL(f,g:Polynomial):
+ init_polymult(f,g) = init_polymult(g,f)
+
+
+%Properties of init_polyexp
+
+even_exp: LEMMA FORALL(f:Polynomial, n:nat):
+FORALL(x:real): eval(init_polyexp(f,2*n))(x) >= 0
+
+
+END arithmetic_poly

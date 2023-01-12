@@ -1,0 +1,123 @@
+eval_MultPoly  % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This is defining evaluations |%
+%| of a Multivariate Polynomial  |%
+%| with useful properties.       |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:                       LW
+
+% *** This corresponds to a small amount of section
+%     2.1 in the paper, namely the discription
+%     of evaluation and partial evaluation****
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------
+%%Importing the definition of polynomial
+% and standard form 
+%-------------------------------------------
+
+IMPORTING matrices@matrices,
+          arithmetic_MultPoly
+
+%-------------------------------------------
+%%Define replace
+%-------------------------------------------
+
+replace(l:list[nat], n:below(length(l)))(m:nat): RECURSIVE list[nat] = 
+  IF l = null
+    THEN null
+  ELSIF n=0
+    THEN cons(m,cdr(l)) 
+  ELSE 
+    cons(car(l),replace(cdr(l), n-1)(m))
+  ENDIF
+  MEASURE length(l)
+
+%-------------------------------------------
+%%Replace length
+%-------------------------------------------
+
+length_replace: LEMMA 
+  FORALL (l:list[nat], n:below(length(l)), m:nat): length(l) = length(replace(l,n)(m))
+
+%-------------------------------------------
+%% Define partial evaluation of monomial.
+%% The inputs will be a monomial, 
+%% a list of variable indices (list[nat]),
+%% and a list of reals. The monomial will
+%% be evaluted for the variables with the
+%% given indices in the list. 
+%-------------------------------------------
+
+eval(m:monomial, index:list[nat])
+ (vals:list[real] | length(vals)=length(index)): 
+RECURSIVE monomial =
+  IF index = null 
+    THEN m
+  ELSIF car(index) >= length(m`alpha)
+    THEN eval(m,cdr(index))(cdr(vals))
+  ELSE eval((# C:= m`C*(car(vals)^nth(m`alpha,car(index))),
+  alpha := replace(m`alpha, car(index))(0) #),cdr(index))(cdr(vals)) 
+  ENDIF
+  MEASURE length(index)
+
+%-------------------------------------------------------
+%% Evaluation for all terms in a monomial
+%-------------------------------------------------------
+
+full_eval(m:monomial)
+ (vals:{l:list[real] | length(l) >=length(m`alpha)}): real = 
+  eval(m, list_length_n[nat](length(vals)))(vals)`C
+
+%--------------------------------------------------------------------------
+%% Partial eval MultPoly, will return a MultPoly. 
+%% The inputs needs to be of type UnifInd, if not, lift by max_length
+%--------------------------------------------------------------------------
+ 
+eval(p:MultPoly, index:list[nat])
+ (vals:list[real] | length(vals)=length(index)): 
+RECURSIVE MultPoly =
+  IF p = null
+    THEN null
+  ELSE
+    cons(eval(car(p), index)(vals),
+    eval(cdr(p),index)(vals))
+  ENDIF
+  MEASURE length(p)
+
+%--------------------------------------------------------------------------
+%% Full eval MultPoly, will return a real
+%--------------------------------------------------------------------------
+ 
+% adds all the coefficients
+sum_C(p:MultPoly): RECURSIVE real = 
+  IF p=null 
+    THEN 0 
+  ELSE car(p)`C + sum_C(cdr(p)) 
+  ENDIF
+  MEASURE length(p)
+
+% evaluates all terms in a polynomial, returns a real
+full_eval(p:MultPoly)(vals:{l:list[real] |
+  length(l) >= max_length(p)}): RECURSIVE real =
+  IF p = null
+    THEN 0 
+  ELSE 
+    LET P = eval(p,list_length_n[nat](length(vals)))(vals)
+    IN sum_C(P)
+  ENDIF
+  MEASURE length(p)
+
+% @QED full_eval_null proved by lmwhite3 on Fri, 29 Apr 2022 14:44:13 GMT
+full_eval_null: LEMMA
+  FORALL(p:MultPoly|max_length(p)=0): full_eval(p)(null) = sum_C(p)  
+
+
+
+  %~~  The End  ~%
+  END eval_MultPoly

@@ -1,0 +1,284 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% @theory dimension_induction
+% @author Aaron Dutle
+% @date   Mon, Oct 30, 2020
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+dimension_induction : THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  This theory includes theorems related to induction on the dimension of
+%  the space of a polynomial. It takes a multivariate polynomial in n variables,
+%  and creates a univariate polynomial in the first variable, where the coefficients
+%  are multivariate polynomials in the remaining variables. 
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  BEGIN
+
+  IMPORTING
+  standard_form_extras,
+  polyplus_props
+
+%%%%%%%%%%%%%%%%
+%%
+%% A variation on "mv_standard_form."
+%% This definition removes the "sorted" and "minlength" requirements from
+%% standard form. This is enough for the induction proofs, and will avoid sorting
+%% the reduced monomials. Following the definition are several lemmas about it.
+%%
+%%%%%%%%%%%%%%%%
+
+  %% The 'mv_UNS' (Uniform, Non-zero, Simplified) definition
+
+  mv_UNS?(n:nat)(p:MultPoly):
+    bool =
+    null?(p) OR
+    (Unif?(p) AND length(car(p)`alpha) = n
+   AND allnonzero?(p) AND simplified?(p))
+
+  %% A corresponding definition for a single monomial
+
+  mon_UNS?(n:nat)(m:monomial):
+    bool =
+    length(m`alpha) = n AND
+    m`C /= 0
+
+  %% A lemma stating that a polynomial made from a single "mon_UNS" monomial is "mv_UNS"
+
+  single_UNS: LEMMA
+    FORALL (n:nat, m: (mon_UNS?(n))):
+    mv_UNS?(n)( (: m :) )
+
+  %% The first element of a non-empty "mv_UNS" list is "mon_UNS"
+
+  car_mon_UNS: LEMMA
+    FORALL (n: nat,  p:(mv_UNS?(n))):
+    cons?(p) IMPLIES
+    mon_UNS?(n)(car(p))
+
+  %% A lemma describing the max_length of a monomial in "mv_UNS"
+
+  max_length_UNS: LEMMA
+    FORALL (n:nat, p:(mv_UNS?(n))):
+    cons?(p) IMPLIES
+    max_length(p) = n
+
+  %% A more general lemma (removes the "cons" assumption) bounding the max_length in "mv_UNS"
+
+  max_length_UNSge: LEMMA
+    FORALL (n:nat, p:(mv_UNS?(n))):
+    max_length(p) <= n
+
+  %% A lemma proving that a polynomial in standard form is also an "mv_UNS" 
+
+  standard_is_UNS: LEMMA
+   FORALL (p: (mv_standard_form?)):
+   mv_UNS?(max_length(p))(p)
+
+  %% Removing the first element of an "m_UNS" list preserves the property.
+
+  cdr_is_UNS: LEMMA 
+   FORALL (n:nat, p:(mv_UNS?(n))):
+   cons?(p) IMPLIES
+   mv_UNS?(n)(cdr(p))
+
+  %% Every monomial in an "mv_UNS(n)" for positive n is nonempty
+  %% useful for tccs. 
+
+  pos_uns_every: LEMMA 
+    FORALL (n: posnat, p: (mv_UNS?(n))):
+    every(LAMBDA (m: monomial): cons?(m`alpha))(p)
+
+  %% An alternate form of the previous lemma 
+
+  pos_uns_cons: LEMMA
+    FORALL (n: posnat, p: (mv_UNS?(n)), i: below(length(p))):
+    cons?(nth(p, i)`alpha)
+
+  %% filtering a list that is simplified keeps that property. Used to prove the next lemma
+
+  filter_simplified: LEMMA
+    FORALL (n:posnat, p: MultPoly, PR:[{m: monomial | cons?[nat](m`alpha)}->bool]):
+    mv_UNS?(n)(p) AND simplified?(p) IMPLIES
+    simplified?(filter(PR)(p))
+
+  %% filtering an "mv_UNS" list keeps that property. 
+
+  filter_is_UNS: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n)), PR:[{m: monomial | cons?[nat](m`alpha)}->bool]):
+    mv_UNS?(n)(filter(PR)(p))
+
+%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Reducing the dimension of a monomial.
+% The monomials will be grouped into lists with the
+% same first-variable exponent, and then the first exponent
+% will be dropped.
+%
+%%%%%%%%%%%%%%%%%%%%%%%%
+
+  %% A function to drop the first exponent. 
+
+  pop_car((m:monomial|cons?(m`alpha))):
+    monomial =
+    (# C:= m`C, alpha:= cdr(m`alpha) #)
+
+  %% A function dropping the first exponent from each monomial in a list.
+
+  pop_car(n:posnat, p:(mv_UNS?(n))):
+    MultPoly =
+    map(pop_car)(p)
+
+  %% A lemma stating that the previous function reduces the dimension of the polynomial by 1.
+
+  pop_car_is_UNS: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n)), k:nat):
+    every(LAMBDA ((m:monomial | cons?(m`alpha))): car(m`alpha) = k)(p)
+    IMPLIES mv_UNS?(n-1)(pop_car(n,p))
+
+  %% largest_car_alpha returns the highest occurence of the exponent on the
+  %% first variable in a multivariate polynomial. This lets us determine the
+  %% degree of the univariate polynomial to be constructed
+
+  largest_car_alpha(n:posnat, p:(mv_UNS?(n))): RECURSIVE nat=
+    IF null?(p) THEN 0
+    ELSE
+    max(car(car(p)`alpha), largest_car_alpha(n, cdr(p)))
+    ENDIF
+    MEASURE p BY <<
+
+  %% A lemma stating that the largest exponent occurs as a member of the polynomial
+
+  largest_car_is_nth: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n))):
+    cons?(p) IMPLIES
+    EXISTS (j:below(length(p))):
+    largest_car_alpha(n,p) = car(nth(p,j)`alpha)
+
+  %% A lemma stating that the largest exponent is the largest of all those occuring
+
+  largest_car_is_largest: LEMMA 
+    FORALL (n:posnat, p:(mv_UNS?(n))):
+    %cons?(p) IMPLIES
+    FORALL (i:below(length(p))):
+    largest_car_alpha(n,p) >= car(nth(p,i)`alpha)
+
+  %% A simple function to create a list of the numbers 0...n
+  %% The two main properties are included in the return type. 
+
+  list_upto(n:nat): RECURSIVE
+    {L : list[upto(n)] | length(L) = n+1 AND FORALL (i:upto(n)): nth(L,i) = i} =
+     IF n=0 THEN (: 0 :)
+     ELSE append(list_upto(n-1), (: n :))
+     ENDIF
+     MEASURE n
+
+  %% A function that gathers all of the monomials that have a particular exponent value
+  %% on their first variable. 
+
+  poly_filter_xk(n:posnat, (p: MultPoly | mv_UNS?(n)(p)), (k:nat | k <= largest_car_alpha(n,p))):
+    (mv_UNS?(n)) =
+    filter( LAMBDA ( (m:monomial | cons?(m`alpha))): car(m`alpha) = k)(p)
+
+  %% a function that gathers monomials as above, and then removes the first coefficient. 
+
+  poly_coeff_xk(n:posnat, (p: MultPoly | mv_UNS?(n)(p)), (k:nat | k <= largest_car_alpha(n,p))):
+    (mv_UNS?(n-1)) =
+    pop_car(n,poly_filter_xk(n,p,k))
+
+  %% This function gets the largest first variable exponent of a polynomial,
+  %% then creates a list of polynomials of dimension n-1. The ith element consists of the
+  %% monomials from the original that had first variable exponent i, with this variable removed.  
+
+  poly_in_polys(n:posnat, (p: MultPoly | mv_UNS?(n)(p))):
+    list[(mv_UNS?(n-1))] =
+    LET N = largest_car_alpha(n,p) ,
+        ListN = list_upto(N) IN
+    map(LAMBDA(k: upto(N)): poly_coeff_xk(n,p,k))(ListN)
+
+  %% An alternate characterization of this function in the case that the
+  %% original polynomial is a single monomial
+
+  poly_in_polys_single: LEMMA 
+    FORALL (n:posnat, m:(mon_UNS?(n))):
+    poly_in_polys(n,(: m :)) =
+    append[(mv_UNS?(n-1))]( (: null[(mon_UNS?(n-1))] :)^car[nat](m`alpha), (: (: pop_car(m) :) :))
+
+  %% A lemma about the length of the "poly_in_polys" function
+
+  pip_length: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n))):
+    length(poly_in_polys(n, p)) = largest_car_alpha(n,p)+1
+
+  %% A lemma stating that the "largest_car_alpha" entry is non-empty. 
+
+  pip_cons_nth: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n))):
+    cons?(p) IMPLIES
+    cons?(nth(poly_in_polys(n,p), largest_car_alpha(n,p)))
+
+  %% A function to evaluate all variables except the first one, returning a
+  %% list of reals, which is of univariate polynomial type. 
+
+  partial_eval_pip(n:posnat, pip:list[(mv_UNS?(n-1))], (vals: list[real] | length(vals) = n-1)):
+    {p: Polynomial | length(p) = length(pip)} =
+    map(LAMBDA (pxk:(mv_UNS?(n-1))): full_eval(pxk)(vals))(pip)
+
+  %% A function that takes a multivariate poly, and a list of values for all but the first vatiable,
+  %% and returns the univariate polynomial from the evaluation. 
+
+  poly_in_polys_partial_eval(n:posnat, p:(mv_UNS?(n)), (vals: list[real] | length(vals) = n-1)):
+    {pp: Polynomial | length(pp) = largest_car_alpha(n,p) + 1 } =
+    partial_eval_pip(n,poly_in_polys(n,p), vals)
+
+  %% An alternate characterization in the case of a single monomial
+
+  pip_eval_single: LEMMA
+  FORALL (n:posnat, m:(mon_UNS?(n)), (vals: list[real] | length(vals) = n-1)):
+  poly_in_polys_partial_eval(n, (: m :), vals) =
+  append[real]( (: 0 :)^car[nat](m`alpha), (: full_eval(pop_car(m))(vals) :))
+
+  %% A lemma stating the value of evaluating a univarate polynomial of the form
+  %% c*x^m at the point x=r.
+
+  eval_single: LEMMA
+  FORALL (m:nat, c, r: real):
+  eval(append[real]( (: 0 :)^m, (: c :)))(r) =
+  r^m*c
+
+  %% A lemma stating that (for a single monomial) doing the translation to univariate,
+  %% evaluating partially, and then evaluating the first variable, is equivalent to evaluating the
+  %% original multivariate fully.
+
+  eval_pip_eval_single: LEMMA
+    FORALL (n:posnat, m:(mon_UNS?(n)), r:real, (vals: list[real] | length(vals) = n-1)):
+    eval(poly_in_polys_partial_eval(n,(: m :),vals))(r)
+    = full_eval(m)(cons(r,vals))
+ 
+  %% A lemma stating that "translating to univariate, partial evaluation, then evaluation"
+  %% can be done to the first element and the rest seperately. This is the main inductive case. 
+
+  eval_pip_eval_recurs: LEMMA
+   FORALL (n:posnat, p:(mv_UNS?(n)), r:real, (vals: list[real] | length(vals) = n-1)):
+   cons?(p) IMPLIES
+   eval(poly_in_polys_partial_eval(n,p,vals))(r) =
+   eval(poly_in_polys_partial_eval(n,(: car(p) :),vals))(r) +
+   eval(poly_in_polys_partial_eval(n,cdr(p), vals))(r)
+
+  %% The main lemma. Fully evaluating a multivariate polynomial is equivalent to
+  %% translating to a univariate polynomial with coefficients as polynomials in one lower dimension,
+  %% evaluating the lower dimension variables, and then evaluating the first variable.
+  %% Uses the lemma above and an induction... 
+
+  pip_to_full_eval: LEMMA
+    FORALL (n:posnat, p:(mv_UNS?(n)), r:real, (vals: list[real] | length(vals) = n-1)):
+    LET P = poly_in_polys_partial_eval(n,p,vals) IN
+    full_eval(p)(cons(r, vals)) = eval(P)(r)
+    
+  
+  
+
+  END dimension_induction

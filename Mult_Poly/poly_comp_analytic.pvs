@@ -1,0 +1,274 @@
+poly_comp_analytic % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%|The composition of a real        |%
+%| analytic function with a        |%
+%| multi-variatepolynomial is still|%
+%| real analytic. Also shows the   |%
+%| favorable properties of real    |%
+%| analytic functions interacting  |%
+%|  with semi-algebraic sets       |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:                         JTS
+% ***This contains section 3.2 in the
+%    paper ***
+
+%-----     %
+  BEGIN
+%     -----%
+
+IMPORTING analytic_def
+IMPORTING semi_algebraic
+IMPORTING eval_properties
+
+%--------------------------------------------
+%% A few preliminary definitions and properties
+%--------------------------------------------
+
+e_mon(m:monomial)(vals:{l:list[real] | length(l) = length(m`alpha)}): RECURSIVE real =
+IF m`alpha = null  THEN m`C
+ELSE car(vals)^car[nat](m`alpha)*e_mon( (# C:=m`C, alpha:= cdr(m`alpha) #))(cdr(vals))
+ENDIF
+MEASURE length(m`alpha)
+
+increasing?(l:list[nat]): RECURSIVE bool =
+IF length(l) <= 1
+THEN TRUE
+ELSE car[nat](l) <= car[nat](cdr(l)) AND increasing?(cdr(l))
+ENDIF
+MEASURE
+length(l)
+
+increase_nth: LEMMA
+FORALL(l:list[nat]):
+increasing?(l)
+IMPLIES
+(FORALL(i,j:below(length(l))):
+i <= j
+IMPLIES
+nth(l,i) <= nth(l,j))
+
+index_great_increase: LEMMA
+FORALL(m:{mm:monomial| cons?(mm`alpha)}, vals:{l:list[real] | cons?(l)}, index:{l:list[nat]| (length(l)=length(vals) AND increasing?(l)) AND bov?(0)(cdr(l))}):
+ car[nat](index) >= length(m`alpha)
+ IMPLIES
+ eval(m,index)(vals)`C = m`C
+
+cdr_replace: LEMMA
+  FORALL(m:monomial | cons?(m`alpha), index:list[nat] | cons?(index)):
+   (car[nat](index) < length(m`alpha) AND  NOT member[nat](0,index)) IMPLIES 
+  cdr[nat](replace(m`alpha, car[nat](index))(0)) =
+       replace(cdr[nat](m`alpha), car[nat](sub1(index)))(0)
+
+eval0_fconst: LEMMA
+ FORALL(m:monomial, v:list[real],ind:list[nat]):
+ (length(m`alpha)=0  AND length(v)=length(ind)) IMPLIES
+ eval(m,ind)(v)`C = m`C
+
+fulleval0_fconst: LEMMA
+ FORALL(m:monomial, v:list[real]):
+ (length(m`alpha)=0) IMPLIES
+ full_eval(m)(v) = m`C
+
+%--------------------------------------------
+%% Equivalence of evaluation with hat functions
+%--------------------------------------------
+
+%***This appears in Section 3.2 of paper ***
+eval_hat_equiv: LEMMA
+ FORALL(n:posnat, m:{mm:monomial| length(mm`alpha)=n},
+ f:[real->VectorN(n)]):
+ (LAMBDA(x:real): full_eval(m)(f(x)))
+ =
+ (LAMBDA(x:real):  m`C * car(f(x)) ^ car[nat](m`alpha)
+ * full_eval(hat(m))(hat(n)(f)(x)))
+
+eval_hat_equiv_ge: LEMMA
+ FORALL(n,n2:posnat, m:{mm:monomial| length(mm`alpha)=n},
+ f:[real->VectorN(n2)]):
+ n2 >= n IMPLIES (
+ (LAMBDA(x:real): full_eval(m)(f(x)))
+ =
+ (LAMBDA(x:real):  m`C * car(f(x)) ^ car[nat](m`alpha)
+ * full_eval(hat(m))(hat(n2)(f)(x))))
+ 
+%--------------------------------------------
+%% Hat function is analytic
+%--------------------------------------------
+
+ analytic_hat: LEMMA
+  FORALL(m:posnat,alpha:real,f:[real -> VectorN(m)]):
+  analytic?(m,alpha)(f)
+  IMPLIES
+  analytic?(m-1,alpha)(hat(m)(f))
+
+%--------------------------------------------
+%% Composition of analytic function with
+%  monomial is anaytic, zero case 
+%--------------------------------------------
+
+mono_comp_analytic_0: LEMMA
+ FORALL(alpha:real, m:{mm:monomial| length(mm`alpha)=0}, f:(analytic?(0,alpha))):
+   analytic?(alpha)(LAMBDA(x:real): full_eval(m)(f(x)))
+
+%--------------------------------------------
+%% Composition of analytic function with
+%  monomial is anaytic, general case 
+%--------------------------------------------
+%***This is Lemma 3.8 part 1 in paper ***
+
+mono_comp_analytic: LEMMA
+ FORALL(alpha:real,n:nat, m:{mm:monomial| length(mm`alpha)=n}, f:(analytic?(n,alpha))):
+   analytic?(alpha)(LAMBDA(x:real): full_eval(m)(f(x)))
+
+mono_comp_analytic_ge: LEMMA
+ FORALL(alpha:real, n,n2:nat,
+  m:{mm:monomial| length(mm`alpha)=n}, f:(analytic?(n2,alpha))):
+   n2 >= n IMPLIES
+   analytic?(alpha)(LAMBDA(x:real): full_eval(m)(f(x)))
+
+%--------------------------------------------
+%% Composition of analytic function with
+%  polynomials is anaytic, general case 
+%--------------------------------------------
+%***This is Lemma 3.8 part 2 in paper ***
+
+poly_comp_analytic: LEMMA
+ FORALL(n:nat, alpha:real, p:MultPoly, f:(analytic?(n,alpha))):
+  n >= max_length(p) IMPLIES 
+  analytic?(alpha)(LAMBDA(x:real): full_eval(p)(f(x)))
+
+%--------------------------------------------
+%% At any point an analytic function is either
+%  in a meeting for a small interval after,
+%  or outside of it
+%--------------------------------------------
+
+meeting_analytic: LEMMA
+ FORALL(x0:real, m:meeting, n:nat | n >=  atom_max(m), f:(analytic?(n,x0))):
+ (EXISTS(epsilon:posreal):
+ FORALL(t: posreal |  t < epsilon):
+ semi_alg((: m :))(n)(f(x0+t)))
+ OR
+ EXISTS(epsilon:posreal):
+ FORALL(t:posreal | t<= epsilon):
+ NOT semi_alg((: m :))(n)(f(x0+t))
+
+%--------------------------------------------
+%% At any point an analytic function is either
+%  in a SA set for a small interval after,
+%  or outside of it
+%--------------------------------------------
+%***This is Lemma 3.9 part 2 in paper ***
+
+joining_analytic: LEMMA
+FORALL(x0:real, j:joining, n:nat | n >=  meet_max(j), f:(analytic?(n,x0))):
+ (EXISTS(epsilon:posreal):
+ FORALL(t: posreal |  t < epsilon):
+ semi_alg(j)(n)(f(x0+t)))
+ OR
+ EXISTS(epsilon:posreal):
+ FORALL(t:posreal | t<= epsilon):
+ NOT semi_alg(j)(n)(f(x0+t))
+
+atom_max_nth: LEMMA
+ FORALL(m:meeting,i:below(length(m))):
+ atom_max(m) >= max_length(nth[atomic_poly](m,i)`poly)
+
+
+%--------------------------------------------
+%%  Minimum positive interval such that either
+% the function has no roots, or the function
+%  is the zero function
+%--------------------------------------------
+%**Appears in Section 3.2 of paper ***
+
+min_eps: LEMMA
+ FORALL(m:meeting, x0:real, n:nat | n >= atom_max(m),
+ f:(analytic?(n,x0))):
+  EXISTS(eps_min:posreal):
+   FORALL(i:below(length(m))):
+   (FORALL(t:real):
+   (x0<t AND t<x0+eps_min) IMPLIES
+   full_eval(nth(m,i)`poly)(f(t)) /= 0)
+   OR
+   (FORALL(t:real):
+   (x0<t AND t<x0+eps_min) IMPLIES
+   full_eval(nth(m,i)`poly)(f(t)) = 0)
+
+%--------------------------------------------
+%%Define inf
+%%Define Analytic for f:real -> Rn
+%--------------------------------------------
+
+inf(S:{SS:set[real]| nonempty?[real](SS) AND bounded_below?(SS)}): real = glb(S)
+
+Analytic?(n:nat,x0:real)(f:[real->VectorN(n)]): bool =
+  FORALL(x:real | x >= x0):
+  analytic?(n,x)(f)
+
+%--------------------------------------------
+%% Analytic function leaves SA set in clean
+%  way
+%--------------------------------------------
+%**Theorem 3.10 in paper ***
+
+clean_exit: THEOREM
+  FORALL(j:joining, x0:real, f:(Analytic?(meet_max(j),x0))):
+  semi_alg(j)(meet_max(j))(f(x0))
+  IMPLIES (
+  %Condition 1
+  (FORALL(x:real): x >= x0 IMPLIES semi_alg(j)(meet_max(j))(f(x))) OR
+  %Condition 2
+  (EXISTS(eps:posreal): FORALL(t:real): inf({xx:real | x0<=xx AND NOT semi_alg(j)(meet_max(j))(f(xx))}) < t
+  AND t< inf({xx:real | x0<=xx AND NOT semi_alg(j)(meet_max(j))(f(xx))}) + eps IMPLIES
+  semi_alg(j)(meet_max(j))(f(t))) OR
+  %Condition 3
+  ( EXISTS(eps:posreal): FORALL(t:real): inf({xx:real | x0<=xx AND NOT semi_alg(j)(meet_max(j))(f(xx))}) < t
+  AND t< inf({xx:real |x0<=xx AND NOT semi_alg(j)(meet_max(j))(f(xx))}) + eps IMPLIES
+  NOT semi_alg(j)(meet_max(j))(f(t))))
+
+%--------------------------------------------
+%% Analytic function leaves SA set in clean
+%  way
+%--------------------------------------------
+%**Theorem 3.11 in paper ***
+
+clean_enter: THEOREM
+  FORALL(j:joining, x0:real, f:(Analytic?(meet_max(j),x0))):
+  NOT semi_alg(j)(meet_max(j))(f(x0))
+  IMPLIES (
+  %Condition 1
+  (FORALL(x:real): x >= x0 IMPLIES NOT semi_alg(j)(meet_max(j))(f(x))) OR
+  %Condition 2
+  (EXISTS(eps:posreal): FORALL(t:real): inf({xx:real | x0<=xx AND semi_alg(j)(meet_max(j))(f(xx))}) < t
+  AND t< inf({xx:real | x0<=xx AND semi_alg(j)(meet_max(j))(f(xx))}) + eps IMPLIES
+  semi_alg(j)(meet_max(j))(f(t))) OR
+  %Condition 3
+  ( EXISTS(eps:posreal): FORALL(t:real): inf({xx:real | x0<=xx AND semi_alg(j)(meet_max(j))(f(xx))}) < t
+  AND t< inf({xx:real |x0<=xx AND semi_alg(j)(meet_max(j))(f(xx))}) + eps IMPLIES
+  NOT semi_alg(j)(meet_max(j))(f(t))))
+  
+%--------------------------------------------
+%% Series with zero tail converges
+%--------------------------------------------
+
+finite_support_series: LEMMA
+FORALL(a:sequence[real]):
+((EXISTS(N:nat): FORALL(n:nat): n>N implies a(n)=0))
+IMPLIES
+convergent?(series(a))
+
+%--------------------------------------------
+%% Another stating that the composition of
+%  an analytic function with a monomial
+%  is analytic 
+%--------------------------------------------
+
+analytic_mono: LEMMA
+ FORALL(m:nat,alpha:real, mon:{mm:monomial| length(mm`alpha)=m}, f:(analytic?(m,alpha))):
+ analytic?(alpha)(LAMBDA(t:real):full_eval(mon)(f(t)))
+ 
+  %~~~ The End       ~~%
+  END poly_comp_analytic
