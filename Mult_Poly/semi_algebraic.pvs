@@ -1,0 +1,320 @@
+semi_algebraic  % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This is defining semi-algebraic |%
+%| sets where the polynomials are  |%
+%| over the reals with n variables |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:                         LW
+% ***This contains all of Section 2.2 in
+%     the paper***
+
+%-----     %
+  BEGIN
+%     -----%
+
+%--------------------------------------------------–-
+%%Importing the definition of multivariate polynomials, 
+%% operations, and evaluation.
+%--------------------------------------------------–-
+
+IMPORTING eval_MultPoly, eval_properties
+
+
+%----------------------------------------------------------------------------------
+%% Background: The Semi-algebraic sets (SA) are defined through boolean statements 
+%% of polynomial ineqalities with zero. These boolean statements are written in 
+%% disjunctive normal form (DNF).
+%----------------------------------------------------------------------------------                                                                                                                                      evaluations |%
+
+
+ INEQ: TYPE = {ff: [real,real -> bool] | (ff = <=) OR (ff = >=) OR (ff = <) OR (ff = >) }
+
+
+
+%--------------------------------------------------–-
+%% Defining an atomic polynomial 
+%-----------------------------------------------------
+
+
+atomic_poly: TYPE = [# poly:(mv_standard_form?), ineq:INEQ  #]
+
+atom_eval(atom:atomic_poly)(x:list[real] | length(x) >= max_length(atom`poly)): bool = 
+    atom`ineq(full_eval(atom`poly)(x),0)
+
+%% negating an atom statement (used in complement)
+negative_atom(a:atomic_poly): atomic_poly =
+    IF a`ineq = > 
+        THEN (# poly := a`poly, ineq := <= #)
+    ELSIF a`ineq = <=
+        THEN (# poly := a`poly, ineq := > #)
+    ELSIF a`ineq = <
+        THEN (# poly := a`poly, ineq := >= #)
+    ELSE
+        (# poly := a`poly, ineq := < #)
+    ENDIF
+
+negative_atom_eval: LEMMA
+    FORALL(a:atomic_poly)(x:list[real] | length(x) >= max_length(a`poly)):
+        atom_eval(a)(x) = (NOT atom_eval(negative_atom(a))(x))
+
+%-------------------------------------------------
+%% intersection of a list of atomic polys
+%-------------------------------------------------
+
+% this list of atoms has truth value of the conjuction (and) of the atoms
+meeting: TYPE = list[atomic_poly]
+
+atom_max(m:meeting): RECURSIVE nat =
+  IF m=null 
+     THEN 0
+  ELSE
+     max(max_length(car(m)`poly), atom_max(cdr(m)))
+  ENDIF
+  MEASURE length(m)
+
+atom_max_max: LEMMA
+FORALL(m:meeting,i:below(length(m))):
+atom_max(m) >= max_length(nth(m,i)`poly)
+
+atom_max_nth: LEMMA
+FORALL(m:meeting):
+null?(m) OR
+EXISTS(i:below(length(m))):
+atom_max(m) = max_length(nth(m,i)`poly)
+
+max_atom: LEMMA
+    FORALL(m1,m2:meeting): atom_max(append(m1,m2))
+    = max(atom_max(m1), atom_max(m2))
+
+% evaluating at a given x, returns TRUE or FALSE
+meet(m:meeting)(x:list[real] | length(x) >= atom_max(m)): RECURSIVE bool = 
+    IF m = null
+        THEN TRUE
+    ELSE
+        atom_eval(car(m))(x) AND meet(cdr(m))(x)
+    ENDIF
+    MEASURE length(m)
+
+meet_meet: LEMMA
+    FORALL(m1,m2:meeting, x:list[real] | length(x) >=
+    max(atom_max(m1),atom_max(m2))):
+        meet(append(m1,m2))(x) = (meet(m1)(x) AND meet(m2)(x))
+
+meet_dim: LEMMA
+    FORALL(m:meeting, x1:{xx:list[real] | length(xx) >=
+    atom_max(m)},x2:{xx:list[real] | length(xx) >
+    length(x1)}):
+    (FORALL(i:below(atom_max(m))): nth(x1,i) = nth(x2,i))
+        IMPLIES
+        meet(m)(x1) = meet(m)(x2)
+
+%------------------------------------------------
+%% Union of intersections
+%------------------------------------------------
+
+% this list of conjuctive statements has truth value of the disjunction (or) of the conjunctives
+joining: TYPE = list[meeting]
+
+meet_max(j:joining): RECURSIVE nat =
+  IF j=null 
+     THEN 0
+  ELSE
+     max(atom_max(car(j)), meet_max(cdr(j)))
+  ENDIF
+  MEASURE length(j)
+
+meet_max_nth: LEMMA
+FORALL(j:joining,i:below(length(j))):
+meet_max(j) >= atom_max(nth(j,i))
+
+meet_max_nth_e: LEMMA
+FORALL(j:joining):
+null?(j) OR
+EXISTS(i:below(length(j))):
+meet_max(j) = atom_max(nth(j,i))
+
+max_meet: LEMMA
+    FORALL(j1,j2:joining): meet_max(append(j1,j2))
+    = max(meet_max(j1), meet_max(j2))
+
+meet_max_zero: LEMMA
+    FORALL(j:joining): meet_max(j) = 0 IMPLIES
+    j=null OR (FORALL(i:below(length(j))): nth(j,i) = null OR FORALL(n:below(length(nth(j,i)))): max_length(nth(nth(j,i),n)`poly) = 0) 
+
+join(j:joining)(x:list[real] | length(x) >= meet_max(j)): RECURSIVE bool = 
+    IF j = null
+        THEN FALSE
+    ELSE
+        meet(car(j))(x) OR join(cdr(j))(x) 
+    ENDIF
+    MEASURE length(j) 
+
+join_composed_null: LEMMA
+FORALL(j:joining):
+        (FORALL(i:below(length(j))):
+        nth(j, i) = null OR
+         FORALL (n: below(length(nth(j, i)))):
+           max_length(nth(nth(j, i), n)`poly) = 0) IMPLIES
+        (FORALL(x:list[real]|length(x) >= meet_max(j)): join(j)(x) = TRUE) 
+        OR 
+        (FORALL(x:list[real]|length(x) >= meet_max(j)): join(j)(x) = FALSE)
+
+join_dim: LEMMA
+    FORALL(j:joining, x1:{xx:list[real] | length(xx) >=
+    meet_max(j)},x2:{xx:list[real] | length(xx) >
+    length(x1)}):
+    (FORALL(i:below(meet_max(j))): nth(x1,i) = nth(x2,i))
+        IMPLIES
+        join(j)(x1) = join(j)(x2)
+
+%--------------------------------------
+%% Distributing or/and
+%--------------------------------------
+
+append_to_each(m:meeting,L:joining): RECURSIVE joining = 
+  IF L = null 
+    THEN null 
+  ELSE 
+    cons(append(m,car(L)), append_to_each(m,cdr(L)))
+  ENDIF
+  MEASURE length(L)
+
+max_append_to_each: LEMMA 
+    FORALL(x:meeting,L:joining): cons?(L) IMPLIES
+    meet_max(append_to_each(x,L)) = max(atom_max(x),meet_max(L))
+
+
+append_join: LEMMA
+    FORALL(m:meeting,L:joining, x:list[real] | length(x)
+    >= max(atom_max(m),meet_max(L))): 
+        join(append_to_each(m,L))(x) = (meet(m)(x) AND join(L)(x))
+  
+%formula of the conjunction of two statements in DNF
+cap_join(j1,j2:joining): RECURSIVE joining =
+    IF j1 = null 
+        THEN null
+    ELSIF j2 = null
+        THEN null
+    ELSE 
+        append(append_to_each(car(j1),j2), cap_join(cdr(j1),j2))
+    ENDIF
+    MEASURE length(j1)
+
+
+max_cap_join: LEMMA
+    FORALL(j1,j2:joining): cons?(j1) AND cons?(j2)
+    IMPLIES meet_max(cap_join(j1,j2)) = max(meet_max(j1),meet_max(j2))
+
+%--------------------------------------------------------
+%% Union and Intersections 
+%--------------------------------------------------------
+
+union_join: LEMMA
+    FORALL(j1,j2:joining, x:list[real] |
+    length(x) >= max(meet_max(j1),meet_max(j2))):
+        (join(j1)(x) OR join(j2)(x)) = join(append(j1,j2))(x)
+
+intersect_join: LEMMA
+    FORALL(j1,j2:joining, x:list[real] |
+    length(x) >= max(meet_max(j1),meet_max(j2))): 
+        (join(j1)(x) AND join(j2)(x)) = join(cap_join(j1,j2))(x)
+
+%---------------------------------------------------------
+%% Negation of join
+%---------------------------------------------------------
+
+negative_atom_meet(m:meeting): RECURSIVE joining =
+    IF m=null 
+        THEN null 
+    ELSE 
+        cons((: negative_atom(car(m)) :),
+	negative_atom_meet(cdr(m)))
+    ENDIF
+    MEASURE length(m)
+
+not_join(j:joining): RECURSIVE joining = 
+    IF j=null
+        THEN (: (: :) :)
+    ELSE 
+        cap_join(negative_atom_meet(car(j)), not_join(cdr(j))) 
+    ENDIF
+    MEASURE length(j)
+
+not_join_cons: LEMMA
+    FORALL(j:joining | FORALL(i:below(length(j))): cons?(nth(j,i))): cons?(not_join(j))
+
+not_join_null: LEMMA
+    FORALL(j:joining | EXISTS(i:below(length(j))): null?(nth(j,i))): not_join(j) = null
+
+max_not_meet: LEMMA
+    FORALL(m:meeting): atom_max(m) =
+    meet_max(negative_atom_meet(m))
+
+max_not_null: LEMMA
+    FORALL(j:joining | FORALL(i:below(length(j))): cons?(nth(j,i))):
+        meet_max(j) = meet_max(not_join(j))
+
+max_not: LEMMA
+    FORALL(j:joining):
+    IF (FORALL(i:below(length(j))): cons?(nth(j,i)))
+        THEN meet_max(j) = meet_max(not_join(j))
+    ELSE
+        0 = meet_max(not_join(j))
+    ENDIF
+
+not_meet: LEMMA
+    FORALL(m:meeting, x:list[real] | length(x) >= atom_max(m)): 
+        (NOT meet(m)(x)) = join(negative_atom_meet(m))(x)
+
+not_join: LEMMA
+    FORALL(j:joining, x:list[real] | length(x) >= meet_max(j)): 
+        (NOT join(j)(x)) = join(not_join(j))(x)
+
+%-------------------------------------------------
+%% Semi-algebraic set 
+%-------------------------------------------------
+
+semi_alg(j:joining)(n:nat | n >= meet_max(j)):
+set[VectorN(n)] = { x:VectorN(n) | join(j)(x) = TRUE }
+
+%--------------------------------------------------
+%% Properties of semi-algebraic sets
+%--------------------------------------------------
+
+% the semi-alg that gives all of R^n
+all_true: LEMMA
+ FORALL(n:nat): semi_alg((: (: :) :))(n) = {x:VectorN(n) | true}
+
+%--------------------------------------------------
+%*** This is Theorem 2.3 in the Paper ***
+%--------------------------------------------------
+
+% closed under union
+sa_union: LEMMA
+    FORALL(j1,j2:joining, n:nat | n >= max(meet_max(j1),meet_max(j2))): 
+        EXISTS(j:joining): n >= meet_max(j) IMPLIES
+	union(semi_alg(j1)(n),semi_alg(j2)(n)) = semi_alg(j)(n)
+ 
+% closed under intersection
+sa_intersection: LEMMA
+    FORALL(j1,j2:joining, n:nat | n >= max(meet_max(j1),meet_max(j2))): 
+        EXISTS(j:joining): n >= meet_max(j) IMPLIES
+	intersection(semi_alg(j1)(n),semi_alg(j2)(n)) = semi_alg(j)(n)
+
+% closed under complement
+sa_complement: LEMMA
+    FORALL(j:joining, n:nat | n >= meet_max(j)): 
+        EXISTS(j1:joining): n >= meet_max(j1) IMPLIES
+	complement(semi_alg(j)(n)) = semi_alg(j1)(n)
+
+% closed under set minus
+sa_difference: LEMMA
+    FORALL(j1,j2:joining, n:nat | n >= max(meet_max(j1),meet_max(j2))): 
+        EXISTS(j:joining): n >= meet_max(j) IMPLIES
+	difference(semi_alg(j1)(n),semi_alg(j2)(n)) = semi_alg(j)(n)
+
+
+%~  The End     ~%
+END semi_algebraic

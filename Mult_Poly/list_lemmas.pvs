@@ -1,0 +1,239 @@
+list_lemmas [T: TYPE]: THEORY % Welcome
+ %Inputs: T - Type that makes up  entries
+ %            of list
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Facts about lists that are    |%
+%| needed for subsequent theories|%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Written By:           AD, LW, JTS
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------
+%% Define global list variables,
+%  varialbe of type T,
+%  and predicates on the type T
+%-------------------------------------------
+
+  l, l1, l2, l3: VAR list[T]
+  x: VAR T
+  P, Q: VAR PRED[T]
+
+%-------------------------------------------
+%% Importing more_list_props to have
+%  many of the already established properties
+%  of lists
+%-------------------------------------------
+
+  IMPORTING structures@more_list_props[T],
+            structures@more_list_props[list[T]],
+            structures@more_list_props[nat]
+
+%-------------------------------------------
+%% If a predicate is true for every entry of
+%  a list, then it is true for every entry
+%  of the reverse of that list
+%-------------------------------------------
+
+every_reverse: LEMMA 
+    FORALL(P: PRED[T], l: list[T]):
+    every(P)(l) IMPLIES every(P)(reverse(l))
+
+
+%-------------------------------------------
+%% Define max length, measuring length of
+%  largest list in list of lists
+%-------------------------------------------
+
+max_length(L: list[list[T]]): RECURSIVE
+  nat =
+  IF L=null 
+     THEN 0
+  ELSE
+     max(length(car(L)), max_length(cdr(L)))
+  ENDIF
+  MEASURE length(L)
+
+%--------------------------------------
+%% All pairwise combining list terms
+%--------------------------------------
+
+zip(l1:list[T],l2:{ ll:list[T] | length(ll) = length(l1)}): RECURSIVE list[list[T]] =
+  IF l1 = null
+    THEN null 
+  ELSE  
+    cons((:car(l1),car(l2):), zip(cdr(l1),cdr(l2)))
+  ENDIF
+  MEASURE length(l1)
+
+
+combo_list(l1,l2:list[T]): list[list[T]] =
+  IF l1 = null
+    THEN (: l2 :)
+  ELSIF l2 = null
+    THEN (: l1 :)
+  ELSE 
+    zip(l1^length(l2),l2^length(l1))
+  ENDIF
+
+%------------------------------------------
+%% Helpful append lemma
+%------------------------------------------
+
+append_left_inj: LEMMA
+  FORALL(l,l1,l2:list[T]): append(l1,l) = append(l2,l) IMPLIES l1 = l2
+
+caret_swap: LEMMA
+  FORALL (l:list[T], n:nat):
+  l^(n+1) = append(l^n, l)
+  
+caret_to_append: LEMMA
+  FORALL (l: list[T], m, n:nat):
+  m>n IMPLIES
+  l^m = append(l^n, l^(m-n))
+
+append_carat: LEMMA
+  FORALL(l1,l2:list[T], w:T, n,m:nat):
+  m > n AND append(l1,(: w :)^n) = append(l2,(: w :)^m)
+  IMPLIES l1 = append(l2, (: w :)^(m-n))
+
+ append_list: LEMMA
+  FORALL(l1,l2,l3,l4:list[T]):
+  length(l1)=length(l3)
+  AND
+  append(l1,l2) = append(l3,l4)
+  IMPLIES
+  l1=l3
+
+%------------------------------------------
+%% Add two lists of natural numbers
+%------------------------------------------
+
+add_lists(l1,l2:list[nat]): RECURSIVE list[nat] = 
+  IF l1 = null 
+    THEN l2
+  ELSIF l2 = null
+    THEN l1
+  ELSE 
+    cons(car(l1) + car(l2), add_lists(cdr(l1),cdr(l2))) 
+  ENDIF
+  MEASURE length(l1) + length(l2)
+
+add_lists_length: LEMMA
+FORALL(l1,l2:list[nat]):
+length(add_lists(l1,l2)) = max(length(l1),length(l2))
+
+% @QED add_list_nth proved by lmwhite3 on Mon, 18 Apr 2022 14:35:42 GMT
+add_list_nth: LEMMA
+FORALL(l1,l2:list[nat], n:nat | n < min(length(l1),length(l2))):
+  nth(l1,n) + nth(l2,n) = nth(add_lists(l1,l2),n)
+
+
+%------------------------------------------
+%% Making a list of nats 0 to n-1
+%------------------------------------------
+
+list_length_n(n:nat): RECURSIVE list[nat] = 
+  IF n=0
+    THEN null
+  ELSE 
+    cons( 0, add_lists((: 1 :)^(n-1),
+      list_length_n(n-1)))
+  ENDIF
+  MEASURE n
+
+%------------------------------------------
+%% Example of list_length_n
+%------------------------------------------
+
+ex_list_n: LEMMA
+  list_length_n(3) = (: 0,1,2 :)
+
+%------------------------------------------
+%% Properties of list_length_n
+%------------------------------------------
+
+% @QED add_list_length proved by lmwhite3 on Mon, 18 Apr 2022 17:57:47 GMT
+add_list_length: LEMMA
+  FORALL(l1,l2:list[nat]):
+  length(add_lists(l1,l2)) = max(length(l1),length(l2))
+
+% @QED list_length_n proved by lmwhite3 on Mon, 18 Apr 2022 17:57:00 GMT
+list_length_n: LEMMA
+  FORALL(n:nat): n = length(list_length_n(n))
+
+% @QED list_n_nth proved by lmwhite3 on Mon, 18 Apr 2022 18:20:40 GMT
+list_n_nth: LEMMA   
+FORALL(n:nat, i:below(n)): nth(list_length_n(n),i)=i
+
+%---------------------------------------------
+% Define the sum of a list of real numbers
+%---------------------------------------------
+
+% sum(l:list[real]): RECURSIVE real = 
+% IF null?(l)
+%    THEN 0
+% ELSE
+%    car(l) + sum(cdr(l))
+% ENDIF
+% MEASURE l by <<
+
+%---------------------------------------------
+% Properties of filtering
+%---------------------------------------------
+
+every_filter: LEMMA
+ FORALL(l: list[T], P:[T->bool]):
+ every(P)(filter(P)(l))
+
+every_of_filter: LEMMA
+ FORALL(l: list[T], P, Q:[T->bool] ):
+ every(Q)(l) IMPLIES
+ every(Q)(filter(Q)(l))
+
+filter_exists_cons: LEMMA
+  FORALL (l:list[T], P:[T->bool]):
+  (EXISTS (i:below(length(l))):
+  P(nth(l,i))) IMPLIES
+  cons?(filter(P)(l))
+
+cons_filter_exists: LEMMA
+  FORALL (l:list[T], P:[T->bool]):
+  cons?(filter(P)(l)) IMPLIES
+  (EXISTS (i:below(length(l))):
+  P(nth(l,i)))
+
+%---------------------------------------------
+% Properties of rdc
+%---------------------------------------------
+
+length_rdc: LEMMA 
+    FORALL ( l1 : (cons?[T])):
+    length(rdc(l1)) = length(l1)-1
+
+nth_rdc: LEMMA
+    FORALL ((l1 : list[T] | NOT null?(l1)), i:nat):
+    i< length(l1)-1 IMPLIES
+    nth(rdc(l1),i) = nth(l1, i)
+
+rdc_cdr: lEMMA
+ FORALL(l:list[T]):
+ (cons?(l) AND cons?(cdr(l))) IMPLIES
+ rdc(cdr(l)) = cdr(rdc(l))
+
+
+
+min_list(l:list[real] | cons?[real](l)): RECURSIVE {t:real | FORALL(i:below(length(l))): t <= nth(l,i) AND EXISTS(i:below(length(l))): t = nth(l,i)} =
+IF length[real](l)=1 THEN car(l)
+ELSE  IF car(l) <= min_list(cdr(l)) THEN car(l) ELSE min_list(cdr(l)) ENDIF
+ENDIF
+MEASURE length(l)
+
+min_lemma: LEMMA
+FORALL(l1:list[real],l2:list[real] | cons?(l1) AND cons?(l2)): min_list(append[real](l1,l2)) = min(min_list(l1),min_list(l2))
+
+%~ The End  ~~%
+end list_lemmas

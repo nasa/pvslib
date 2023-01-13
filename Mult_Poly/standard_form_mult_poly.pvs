@@ -1,0 +1,1114 @@
+standard_form_mult_poly  % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Defines Multivariate Polynomials  |%
+%| and their standard form, with     |%
+%| properties of standard form       |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Written By:              LW, JTS, AD
+% Based off of standard_form_poly
+
+% *** This corresponds to the much of section
+%     2.1 in the paper, but ends at evalutation,
+%     partial evaluation, and showing the
+%     standard form is unique, which is shown
+%     later ****
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------
+%%Importing array definition of polynomials,
+% and array2list to be able to relate the
+% array and list definition of polynomials.
+% Importing list_lemmas to have necisary
+% properties of lists, and standard_form_poly
+% from poly safe to have standard form of
+% single variate polynomials
+%-------------------------------------------
+
+IMPORTING 
+          structures@array2list[real],
+          structures@array2list[nat],
+          more_list_props[nat],
+          list_lemmas,
+          standard_form_poly
+
+
+%-------------------------------------------
+%%Define monomials and multivariate
+% polynomial over reals
+%-------------------------------------------
+
+monomial: TYPE = [# C: real , alpha: list[nat] #]
+MultPoly: TYPE = list[monomial]
+
+%-------------------------------------------
+%%Importing more_list_props for monomials
+%-------------------------------------------
+
+IMPORTING 
+          more_list_props[monomial]
+
+%--------------------------------------------
+%%Making a subtype of Index that has
+%  uniform length
+%-------------------------------------------
+
+UnifInd: TYPE = {ll:list[monomial] | FORALL (i,j: below(length(ll))): length(nth(ll,i)`alpha) = length(nth(ll,j)`alpha)}
+
+Unifind_is_an_Ind: Judgement UnifInd SUBTYPE_OF MultPoly
+
+Unif?(p:MultPoly): bool =
+  null?(p) OR (FORALL (i,j: below(length(p))): length(nth(p,i)`alpha) = length(nth(p,j)`alpha))
+
+%--------------------------------------------
+%%Property of cons and Unif?
+%--------------------------------------------
+
+Unif_cons: LEMMA 
+  FORALL(m:monomial, p:MultPoly | cons?(p) AND Unif?(p)): length(m`alpha) = length(car(p)`alpha) IMPLIES Unif?(cons(m,p))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%  Some useful functions of list[nat] and MultPoly
+%%  sum of a list, list of term degrees,
+%%  largest length of the alpha terms, lifting a MultPoly          
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+caretzero_every: LEMMA
+FORALL (n:nat):
+	     every[number]
+	         (LAMBDA (x: number):
+	                 number_field_pred(x) AND
+			 real_pred(x) AND rational_pred(x)	
+	             AND integer_pred(x) AND (x >= 0))
+	         ((: 0 :)^n)
+
+%---------------------------------------------
+%%Define the sum of a list of natural numbers
+%---------------------------------------------
+
+sum(l:list[nat]): RECURSIVE real = 
+IF null?(l)
+   THEN 0
+ELSE
+   car(l) + sum(cdr(l))
+ENDIF
+MEASURE l by <<
+
+
+%---------------------------------------------
+%%Last nth prop
+%---------------------------------------------
+
+last_last_nth: LEMMA
+FORALL(l:list[nat]):
+cons?(l) IMPLIES
+(
+last(l) = nth(l,length(l)-1))
+
+%---------------------------------------------
+%%Sum of a list of natural numbers is a 
+%  natural number
+%---------------------------------------------
+sum_nat: LEMMA 
+ FORALL (l:list[nat]):
+   rational_pred(sum(l)) AND
+   integer_pred(sum(l)) AND
+   sum(l) >= 0
+
+%---------------------------------------------
+%%Properties of sum
+%---------------------------------------------
+
+sum_append: LEMMA
+  FORALL (l1,l2:list[nat]):
+    sum(append(l1,l2)) = sum(l1) + sum(l2)
+
+sum_0: LEMMA
+ FORALL(n:nat):
+ sum((: 0 :) ^ n ) = 0
+
+sum_append_0: LEMMA
+  FORALL(l:list[nat],n:nat):
+  sum(append(l, (: 0 :)^n)) = sum(l)
+
+sum_0_con: LEMMA
+ FORALL(l:list[nat]):
+ sum(l) = 0 IMPLIES EXISTS(n:nat): l = (: 0 :) ^ n 
+
+%---------------------------------------------
+%%Add two monomials together that have the
+%  same alpha
+%---------------------------------------------
+
+add_mono(m1:monomial,
+  m2:{mm:monomial | mm`alpha = m1`alpha}):
+  monomial = 
+  (# C:= m1`C + m2`C, alpha := m1`alpha  #)
+
+add_mono_commutative: LEMMA
+  FORALL(m1:monomial,
+  m2:{mm:monomial | mm`alpha = m1`alpha}):
+  add_mono(m1,m2) = add_mono(m2,m1)
+
+%---------------------------------------------
+%%Defining a list of the degree of each
+%  monomial in a MultPoly
+%---------------------------------------------
+
+term_deg(p:MultPoly): RECURSIVE list[nat] =
+  IF length(p) < 1
+    THEN null
+  ELSE
+    cons(sum(car(p)`alpha), term_deg(cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+term_deg_example: LEMMA
+  term_deg((: (# C:= 1, alpha := (: 0,0 :) #),
+  (# C:= 2, alpha := (: 3,4 :) #),
+  (# C:= 1, alpha := (: 2,5 :) #) :)) = (: 0,7,7 :)
+
+%---------------------------------------------
+%%Homogeneous check
+%---------------------------------------------
+
+homogen?(p:MultPoly): bool =
+  IF p = null
+    THEN TRUE
+  ELSIF FORALL(j:below(length(term_deg(p))-1)):
+  nth(term_deg(p),j) = nth(term_deg(p),j+1) 
+    THEN TRUE
+  ELSE 
+    FALSE
+  ENDIF
+
+%---------------------------------------------
+%%Largest degree in the list of terms
+%---------------------------------------------
+
+max_deg(p:MultPoly): RECURSIVE
+  nat =
+  IF null?(p) 
+    THEN 0
+  ELSE
+    max(car(term_deg(p)), max_deg(cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+%---------------------------------------------
+%%A function that finds the largest
+% length of the alphas in a MultPoly
+%---------------------------------------------
+
+max_length(p:MultPoly): RECURSIVE
+  nat =
+  IF p=null 
+     THEN 0
+  ELSE
+     max(length(car(p)`alpha), max_length(cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+%---------------------------------------------
+%%Examples of max_length
+%---------------------------------------------
+
+max_length_ex1: LEMMA
+  max_length((: (# C:= 0, alpha:= (:  :) #) :)) = 0
+
+max_length_ex2: LEMMA
+  max_length((: (# C:= 1, alpha := (: 0,0 :) #),
+  (# C:= 2, alpha := (: 3,4 :) #), (# C:= -1, alpha := (: 2,5 :) #) :)) = 2
+  
+%---------------------------------------------
+%%Properties of max_length
+%---------------------------------------------
+
+max_length_is_max: LEMMA
+  FORALL (p:{q:MultPoly | cons?(q)}, j:below(length(p))):
+  length(nth(p,j)`alpha) <= max_length(p)
+
+max_length_is_nth: LEMMA
+  FORALL (p:{q:MultPoly | cons?(q)}): EXISTS(j:below(length(p))):
+  length(nth(p,j)`alpha) = max_length(p)
+
+max_length_Unif: LEMMA
+  FORALL (p:{q:UnifInd | cons?(q)}, j:below(length(p))):
+  length(nth(p,j)`alpha) = max_length(p)
+
+max_length_Unif_cdr: LEMMA
+  FORALL (p:{q:UnifInd | cons?(q) AND cons?(cdr(q))}):
+  max_length(cdr(p)) = max_length(p)
+
+%---------------------------------------------
+%%Lift a MultPoly in R^k to R^n by making larger 
+%  index variables to zero power
+%  define length_a to have a measure in the
+%  recursive definition of lft
+%---------------------------------------------
+
+length_a(p:MultPoly): RECURSIVE nat =
+ IF p=null THEN 0
+ ELSE length(car(p)`alpha) + length_a(cdr(p))
+ ENDIF
+ MEASURE length(p)
+
+max_length_a: LEMMA
+ FORALL(p:MultPoly):
+ max_length(p)*length(p) >= length_a(p)
+
+lft(p:MultPoly)(n:{nn:nat | nn >= max_length(p)}):
+  RECURSIVE MultPoly =    
+  IF length(p) < 1
+    THEN null
+  ELSIF 0 <= length(car(p)`alpha) < n
+    THEN cons((# C:= car(p)`C, alpha :=
+    append(car(p)`alpha, (:0:)^(n-length(car(p)`alpha))) #),lft(cdr(p))(n))
+  ELSE
+    cons(car(p), lft(cdr(p))(n))
+  ENDIF
+  MEASURE length(p)+n*length(p) - length_a(p)
+
+%---------------------------------------------
+%% Establish alternate definition of lft
+%  to help prove later properties
+%---------------------------------------------
+
+lft_one(n: nat)((m:monomial | n >= length(m`alpha))):
+  monomial =
+  (#  C:= m`C, alpha := append(m`alpha,
+  (:0:)^(n-length(m`alpha))) #)
+
+lft_one_length: LEMMA
+ FORALL(m:monomial, n:nat | n >= length(m`alpha)):
+ length(lft_one(n)(m)`alpha)=n
+
+lft_alt(p:MultPoly)((n:nat | n >= max_length(p))):
+  MultPoly = map(lft_one(n))(p)
+
+lft_is_alt: LEMMA
+ FORALL (p:MultPoly, (n: nat | n >= max_length(p))):
+ lft(p)(n) = lft_alt(p)(n)
+
+%---------------------------------------------
+%% Example of lft
+%---------------------------------------------
+
+lft_example1: LEMMA
+ LET mp:MultPoly = (: (# C:= 1, alpha := (: 0,0 :) #),
+ (# C:= 2, alpha := (: 3,4 :) #), (# C:= -1, alpha := (: 2,5 :) #) :)
+ IN lft(mp)(3) = (: (# C:= 1, alpha := (: 0,0,0 :) #),
+ (# C:= 2, alpha := (: 3,4,0 :) #), (# C:= -1, alpha := (: 2,5,0 :) #) :)
+
+%---------------------------------------------
+%% Properties of lft
+%---------------------------------------------
+
+Lft_length: LEMMA
+  FORALL (p:MultPoly, n:{nn:nat | nn >= max_length(p)}):
+   length(p) = length(lft(p)(n))
+
+max_length_lft: LEMMA
+  FORALL (p:MultPoly, n:{nn:nat | nn >= max_length(p)}):
+   max_length(p) <= max_length(lft(p)(n))
+
+lft_length_nth: LEMMA
+  FORALL (p:{q:MultPoly | cons?(q)},
+  n:{nn:nat | nn >= max_length(p)}):
+  FORALL(j:below(length(p))): 
+  length(nth(lft(p)(n),j)`alpha) = n 
+
+lft_nth_C: LEMMA
+ FORALL(p:MultPoly,n:{nn:nat | nn >= max_length(p)},
+ i:below(length(p))):
+ nth(p,i)`C = nth(lft(p)(n),i)`C
+
+lft_nth_alpha: LEMMA
+ FORALL(p:MultPoly,n:{nn:nat | nn >= max_length(p)},
+ i:below(length(p))):
+ nth(lft(p)(n),i)`alpha = append( nth(p,i)`alpha,
+ (: 0 :)^(n - length(nth(p,i)`alpha)))
+ 
+lft_Unif: LEMMA
+  FORALL (p:MultPoly): Unif?(lft(p)(max_length(p))) = TRUE
+
+lft_n_last: LEMMA 
+  FORALL(p:MultPoly, n:{nn:nat | nn >= max_length(p)},
+   j:below(length(p))): 
+    n /= 0 AND length(nth(p,j)`alpha) = n
+     IMPLIES last(nth(p,j)`alpha) = last(nth(lft(p)(n),j)`alpha)
+
+lft_n_max_length: LEMMA
+ FORALL(p:MultPoly,n:{nn:nat | nn >= max_length(p)}):
+  cons?(p) IMPLIES
+  max_length(lft(p)(n)) = n 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Standard form of a Multivariate Polynomial
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%---------------------------------------------
+%% Sort a multivariate polynomial into standard
+%  order. Define leq that will define ordering
+%  this is graded lexicographical order
+%---------------------------------------------
+
+leq(l1,l2:monomial): RECURSIVE bool = 
+  (length(l1`alpha) < length(l2`alpha)) OR
+  (null?(l1`alpha) AND null?(l2`alpha))
+  OR (length(l1`alpha) = length(l2`alpha) AND (sum(l1`alpha) < sum(l2`alpha))) 
+  OR (length(l1`alpha) = length(l2`alpha) AND (sum(l1`alpha) = sum(l2`alpha) AND cons?(l1`alpha) AND cons?(l2`alpha) AND car(l1`alpha) < car(l2`alpha)))
+  OR (length(l1`alpha) = length(l2`alpha) AND (sum(l1`alpha) = sum(l2`alpha) AND cons?(l1`alpha) AND cons?(l2`alpha) AND car(l1`alpha) = car(l2`alpha) AND  leq((# C:= l1`C, alpha:= cdr(l1`alpha) #), (# C:= l2`C, alpha:= cdr(l2`alpha) #) )))
+  MEASURE length(l1`alpha) 
+
+%---------------------------------------------
+%%Properties of leq
+%---------------------------------------------
+
+leq_reflexive: LEMMA
+  reflexive?[monomial](leq)
+
+leq_transitive: LEMMA
+  transitive?[monomial](leq)
+
+leq_dichotomous: LEMMA
+  dichotomous?[monomial](leq)
+
+almost_total_order: LEMMA
+  FORALL(m1,m2:monomial): leq(m1,m2) AND leq(m2,m1) IMPLIES m1`alpha = m2`alpha
+
+%---------------------------------------------
+%%Importing bubblesort with leq
+%---------------------------------------------
+
+IMPORTING sorting@bubblesort[monomial, leq],
+          sorting@sorting[monomial, leq]
+
+%---------------------------------------------
+%%leq is total preorder
+%---------------------------------------------
+
+leq_total_preorder: LEMMA
+  total_preorder?[monomial](leq)
+
+%---------------------------------------------
+%% Sort a polynomial
+%---------------------------------------------
+
+mv_sort(p:MultPoly): MultPoly =
+  IF null?(p) 
+    THEN null 
+  ELSE bubblesort(lft(p)(max_length(p))) 
+  ENDIF
+
+%---------------------------------------------
+%% Example of mv_sort
+%---------------------------------------------
+
+mv_sort_ex1: LEMMA
+mv_sort((: (# C:= 1, alpha := (: 0,0 :) #),
+(# C:= 2, alpha := (: 3,4 :) #), (# C:= -1, alpha := (: 2,5 :) #) :))
+    = (: (# C:= 1, alpha := (: 0,0 :) #),
+    (# C:= -1, alpha := (: 2,5 :) #), (# C:= 2, alpha := (: 3,4 :) #) :)
+
+%---------------------------------------------
+%% Properties of mv_sort
+%---------------------------------------------
+
+sort_of_unif: LEMMA
+  FORALL (p:MultPoly):
+  Unif?(mv_sort(p))
+
+mv_sort_max_length: LEMMA
+ FORALL(p:MultPoly):
+  max_length(mv_sort(p)) = max_length(p)
+
+mv_is_sorted?(p:MultPoly):
+  bool =
+  Unif?(p) AND is_sorted?(p)
+
+mv_sort_is_sorted: LEMMA
+  FORALL (p:MultPoly): mv_is_sorted?(mv_sort(p)) = TRUE
+
+cons_smaller_to_sorted_is_sorted: LEMMA
+  FORALL (p:MultPoly, m:monomial):
+  cons?(p) AND is_sorted?(p) AND
+  leq(m,car(p)) IMPLIES is_sorted?(cons(m, p))
+
+add_mono_sorted: LEMMA
+  FORALL (p:MultPoly,
+  m1:monomial,m2:{mm:monomial | m1`alpha = mm`alpha}):
+  cons?(p) AND is_sorted?(p)
+  AND leq(add_mono(m1,m2),car(p))
+  IMPLIES is_sorted?(cons(add_mono(m1,m2), p))
+
+%---------------------------------------------
+%% More properties of leq, that help with
+%  sort
+%---------------------------------------------
+
+constant_doesnt_matter: LEMMA
+  FORALL (m1,m2,m3:monomial): 
+    (leq(m1,m3) AND m1`alpha = m2`alpha) IMPLIES leq(m2,m3)
+
+constant_doesnt_matter_last: LEMMA
+  FORALL (m1,m2,m3:monomial): 
+    (leq(m1,m2) AND m2`alpha = m3`alpha) IMPLIES leq(m1,m3)
+
+append_leq: LEMMA
+  FORALL(l:list[nat],m1:monomial,
+   m2:{mm:monomial | length(m1`alpha) = length(mm`alpha)}):
+    LET M1 = (# C := m1`C, alpha := append(m1`alpha,l) #),
+    M2 = (# C := m2`C, alpha := append(m2`alpha,l) #)
+    IN leq(m1,m2) IMPLIES leq(M1,M2)
+
+%---------------------------------------------
+%%Check if polynomial is simplified, no two
+% alphas are the same
+%---------------------------------------------
+
+simplified?(p:MultPoly): bool = 
+  IF p=null or length(p) = 1
+    THEN TRUE
+  ELSIF FORALL(i,j:below(length(p))): i /= j IMPLIES nth(p,i)`alpha /= nth(p,j)`alpha
+    THEN TRUE
+  ELSE
+    FALSE
+  ENDIF
+
+%---------------------------------------------
+%%Combine terms that have the same alpha
+%---------------------------------------------
+
+sortedsimplify(p:{q:MultPoly | is_sorted?(q)}):
+ RECURSIVE MultPoly = 
+  IF p = null
+    THEN null
+  ELSIF cdr(p) = null
+    THEN p
+  ELSIF car(p)`alpha = car(cdr(p))`alpha
+    THEN sortedsimplify(cons(add_mono(car(p),car(cdr(p))), cdr(cdr(p))))
+  ELSE
+    cons(car(p), sortedsimplify(cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+simplify(p:MultPoly): MultPoly = 
+  IF is_sorted?(p)
+    THEN sortedsimplify(p)
+  ELSE
+    sortedsimplify(mv_sort(p))
+  ENDIF
+
+%---------------------------------------------
+%%Properties of simplify
+%---------------------------------------------
+
+simplify_cdr: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND simplified?(p)): 
+    simplified?(cdr(p))
+
+simplify_cons: LEMMA
+  FORALL(p:MultPoly |is_sorted?(p)):
+  cons?(p) IMPLIES cons?(sortedsimplify(p))
+
+leq_simplify: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p),
+  m:monomial):
+  leq(m,car(p)) IMPLIES leq(m,car(sortedsimplify(p)))
+
+sorted_simp_is_sorted: LEMMA
+  FORALL(p:{q:MultPoly | is_sorted?(q)}):
+  is_sorted?(sortedsimplify(p))
+
+cons_smaller_simplify: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p)
+  AND simplified?(p), m:monomial): 
+    leq(m,car(p)) AND m`alpha /= car(p)`alpha
+    IMPLIES simplified?(cons(m,p))
+
+cons_simplify: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND simplified?(p),
+   m:monomial): 
+    (FORALL(j:below(length(p))): m`alpha /= nth(p,j)`alpha)
+    IMPLIES simplified?(cons(m,p))
+
+car_equal_simplify: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p)): 
+    car(p)`alpha = car(sortedsimplify(p))`alpha
+
+length_sortedsimplify_car_eq: LEMMA 
+  FORALL (p: MultPoly,
+  m1, m2: {m:monomial | is_sorted?(cons(m, p))}):
+  m1`alpha = m2`alpha
+  IMPLIES
+  length(sortedsimplify(cons(m1,p))) = length(sortedsimplify(cons(m2,p)))
+
+car_const_nth_sortedsimplify: LEMMA
+  FORALL (p: MultPoly,
+  m1, m2: {m:monomial | is_sorted?(cons(m, p))}):
+  m1`alpha = m2`alpha
+  IMPLIES
+  FORALL (i:below(length(sortedsimplify(cons(m1,p))))):
+  nth(sortedsimplify(cons(m1,p)),i)`alpha =
+  nth(sortedsimplify(cons(m2,p)),i)`alpha
+
+not_equal_simplify: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p), m:monomial): 
+    m`alpha /= car(p)`alpha IMPLIES
+    m`alpha /= car(sortedsimplify(p))`alpha
+
+simplify_alpha: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p)):
+   FORALL(j:below(length(sortedsimplify(p)))):
+    EXISTS(i:below(length(p))): nth(p,i)`alpha
+    = nth(sortedsimplify(p),j)`alpha
+
+simplify_alpha_reverse: LEMMA
+  FORALL(p:MultPoly |cons?(p) AND is_sorted?(p)):
+  FORALL(i:below(length(p))):
+    EXISTS(j:below(length(sortedsimplify(p)))):
+        nth(p,i)`alpha = nth(sortedsimplify(p),j)`alpha
+
+simplified: LEMMA
+  FORALL(p:MultPoly | is_sorted?(p)):
+  simplified?(sortedsimplify(p)) = TRUE
+
+simplify_Unif: LEMMA
+  FORALL(p:MultPoly | is_sorted?(p) AND Unif?(p)):
+  Unif?(sortedsimplify(p))
+
+mv_sorted_simp_is_sorted: LEMMA
+  FORALL(p:{q:MultPoly | mv_is_sorted?(q)}):
+  mv_is_sorted?(sortedsimplify(p))
+
+max_length_sorted_simplify: LEMMA
+ FORALL(p:MultPoly | is_sorted?(p)):
+ max_length(p) = max_length(sortedsimplify(p))
+
+%---------------------------------------------
+%%Sorted alternative definition 
+%---------------------------------------------
+
+ is_sorted_nth: LEMMA
+ FORALL(p:MultPoly):
+ is_sorted?(p)
+ IFF
+ (FORALL(i,j:below(length(p))):
+ i < j IMPLIES
+ leq(nth(p,i),nth(p,j)))
+
+%---------------------------------------------
+%%Check if any constants in polynomial are
+% zero
+%---------------------------------------------
+
+allnonzero?(p:MultPoly): bool =
+  IF null = p
+    THEN TRUE
+  ELSIF EXISTS (i: below(length(p))): nth(p,i)`C = 0
+    THEN FALSE
+  ELSE 
+    TRUE
+  ENDIF
+
+%---------------------------------------------
+%%Get rid of all zero terms in polynomial
+%---------------------------------------------
+
+allnonzero(p:MultPoly): RECURSIVE MultPoly = 
+  IF null = p
+    THEN p
+  ELSIF car(p)`C = 0
+    THEN allnonzero(cdr(p))
+  ELSE 
+    cons(car(p), allnonzero(cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+%---------------------------------------------
+%%Properties of allnonzero
+%---------------------------------------------
+
+allnonzero_cdr: LEMMA
+  FORALL(p:MultPoly): cons?(p) AND allnonzero?(p)
+   IMPLIES allnonzero?(cdr(p))
+
+all_nonzero: LEMMA
+  FORALL(p:MultPoly): allnonzero?(allnonzero(p))
+
+allnonzero_alpha: LEMMA
+  FORALL(p:MultPoly | cons?(p)):
+  FORALL(j:below(length(p))): nth(p,j)`C /= 0 
+    IMPLIES EXISTS(k:below(length(allnonzero(p)))):
+    k <= j AND nth(p,j)`alpha = nth(allnonzero(p),k)`alpha
+
+allnonzero_alpha_reverse: LEMMA
+  FORALL(p:MultPoly | cons?(p)): cons?(allnonzero(p))
+  IMPLIES FORALL(k:below(length(allnonzero(p)))): 
+  EXISTS(j:below(length(p))): nth(p,j)`C /= 0
+  AND nth(p,j)`alpha = nth(allnonzero(p),k)`alpha
+
+allnonzero_length: LEMMA
+  FORALL(p:MultPoly):
+  length(allnonzero(p)) <= length(p)
+
+allnonzero_sorted: LEMMA
+  FORALL(p:MultPoly): mv_is_sorted?(p)
+  IMPLIES mv_is_sorted?(allnonzero(p))
+
+allnonzero_simp: LEMMA
+  FORALL(p:MultPoly): simplified?(p)
+  IMPLIES simplified?(allnonzero(p))
+
+allnonzero_lft: LEMMA
+  FORALL (p:MultPoly, n:nat):
+  allnonzero?(p) AND n >= max_length(p) IMPLIES
+  allnonzero?(lft(p)(n))
+
+allnonzero_max_length: LEMMA
+ FORALL(p:MultPoly):
+ max_length(allnonzero(p)) <= max_length(p)
+
+allnonzero_id: LEMMA
+ FORALL(p:MultPoly):
+ allnonzero?(p) IMPLIES p = allnonzero(p)
+
+%---------------------------------------------
+%% Make sure there are no unnecisary zeros
+%  at end of alphas in polynomials
+%---------------------------------------------
+
+minlength?(p:MultPoly): bool =
+  IF null?(p)
+    THEN TRUE
+  ELSIF FORALL (i: below(length(p))):
+  null?(nth(p,i)`alpha)
+    THEN TRUE
+  ELSIF Unif?(p) AND
+  (EXISTS (j: below(length(p))):
+  cons?(nth(p,j)`alpha) AND last(nth(p,j)`alpha) /= 0)
+    THEN TRUE
+  ELSE
+    FALSE
+  ENDIF
+
+%---------------------------------------------
+%% If something is minlength then it is Unif
+%---------------------------------------------
+
+minlength_unif: LEMMA
+  FORALL (p:MultPoly):
+  minlength?(p) IMPLIES Unif?(p)
+
+%---------------------------------------------
+%% Cut zeros of end of list
+%---------------------------------------------
+
+cutting(l:list[nat]): RECURSIVE list[nat] = 
+  IF l = null 
+    THEN null 
+  ELSIF last(l) = 0
+    THEN cutting(rdc(l))
+  ELSE 
+    l
+  ENDIF
+  MEASURE length(l)
+
+%---------------------------------------------
+%% Cut all entries of a polynomial
+%---------------------------------------------
+
+mv_cut(p:MultPoly): RECURSIVE MultPoly = 
+  IF null = p
+    THEN p
+  ELSIF cons?(car(p)`alpha) AND
+  EXISTS (n:posnat): member(n,car(p)`alpha)
+    THEN cons( (# C:= car(p)`C,
+    alpha:= cutting(car(p)`alpha) #), mv_cut(cdr(p)))
+  ELSE
+    cons((# C := car(p)`C,
+    alpha:= (: :) #), mv_cut(cdr(p)))
+  ENDIF
+  MEASURE length(p) + length_a(p)
+
+%--------------------------------------------
+%% Alternative definition of cutting, to help
+%  with proving later properties
+%--------------------------------------------
+
+ cut_monom(m:monomial):
+   monomial =
+   (# C:= m`C, alpha:= cutting (m`alpha) #)
+
+%--------------------------------------------
+%%Last nth property
+%--------------------------------------------
+
+ last_is_nth: LEMMA
+   FORALL (l: (cons?[nat]) ):
+   last(l) = nth(l, length(l) - 1)
+
+%--------------------------------------------
+%%Properties of cut_monom
+%--------------------------------------------
+
+ cut_monom_null: LEMMA
+   FORALL (m:monomial):
+   cut_monom(m)`alpha = null
+   IFF
+   NOT (cons?(m`alpha) AND
+   EXISTS (n:posnat): member(n,m`alpha))
+
+ mv_cut_alt(p:MultPoly):
+   MultPoly =
+   map(cut_monom)(p)
+
+ mv_cut_is_alt: LEMMA
+   FORALL (p: MultPoly):
+   mv_cut(p) = mv_cut_alt(p)
+ 
+%--------------------------------------------
+%% Properties of cutting
+%--------------------------------------------
+
+cutting_length: LEMMA
+  FORALL (l:list[nat]): length(l) >= length(cutting(l))
+
+cutting_nth: LEMMA
+ FORALL(l:list[nat],i:below(length(cutting(l)))):
+ nth(cutting(l),i) = nth(l,i)
+
+cutting_last: LEMMA
+  FORALL(l:list[nat]): cutting(l) = null
+  OR last(cutting(l)) /= 0
+
+cutting_alt: LEMMA
+  FORALL (l: list[nat]):
+  l = append(cutting(l), (: 0 :)^(length(l) - length(cutting(l))))
+
+cutting_sum: LEMMA
+  FORALL(l:list[nat]):
+  sum(l) = sum(cutting(l))
+
+%--------------------------------------------
+%%Properties of mv_cut
+%--------------------------------------------
+
+mv_cut_length: Lemma
+ FORALL (p:MultPoly):
+ length(p)=length(mv_cut(p))
+
+mv_cut_C: LEMMA
+ FORALL(p:MultPoly,i:below(length(p))):
+ nth(p,i)`C = nth(mv_cut(p),i)`C
+
+mv_cut_alpha: LEMMA
+ FORALL(p:MultPoly,i:below(length(p))):
+ nth(mv_cut(p),i)`alpha = cutting(nth(p,i)`alpha)
+
+null_cut_cdr: LEMMA
+ FORALL(l:list[nat]):
+ cons?(l) AND null?(cutting(l))
+ IMPLIES
+ null?(cutting(cdr(l)))
+
+zero_n_nth: LEMMA
+ FORALL(n:nat,i:below(n)):
+ nth( (: 0 :) ^ n , i) = 0
+
+cutting_cdr: LEMMA
+ FORALL(l1:list[nat]):
+ (cons?(cutting(l1)) AND
+ cons?(l1)) IMPLIES
+ cutting(cdr(l1)) = cdr(cutting(l1))
+
+cutting_append_length: LEMMA
+ FORALL(l1,l2:list[nat], n,m:nat):
+ (length(l1) = length(l2) AND
+ append(cutting(l1), (: 0 :) ^ n ) =
+ append(cutting(l2), (: 0 :) ^ m))
+ IMPLIES
+ length(cutting(l1)) = length(cutting(l2))
+
+max_length_cut: LEMMA
+  FORALL (p:MultPoly):
+  max_length(p) >= max_length(mv_cut(p))
+
+mv_cut_last_nonzero: LEMMA
+  FORALL(p:MultPoly | cons?(p)):
+  LET P = mv_cut(p) 
+    IN
+    FORALL(j: below(length(P))):
+    null?(nth(P,j)`alpha) OR last(nth(P,j)`alpha) /= 0
+
+%--------------------------------------------
+%%Showing that lft of mv_cut is minlength
+%--------------------------------------------
+
+lft_max_0: LEMMA
+  FORALL(p:MultPoly |cons?(p)): max_length(p)<= 0
+  IMPLIES LET P = lft(p)(0)
+  IN
+  FORALL(j: below(length(P))): null?(nth(P,j)`alpha)
+
+lft_minlength: LEMMA 
+  FORALL(p:MultPoly |cons?(p)):
+  LET P = lft(p)(max_length(p))
+  IN
+  (EXISTS(j: below(length(p))): cons?(nth(p,j)`alpha) AND
+  length(nth(p,j)`alpha) = max_length(p)
+  AND last(nth(p,j)`alpha) /= 0) IMPLIES minlength?(P)
+
+lft_all_null: LEMMA
+  FORALL(p:MultPoly |cons?(p)):
+  LET P = lft(p)(max_length(p))
+  IN (FORALL(j: below(length(P))):
+  null?(nth(p,j)`alpha)) IMPLIES minlength?(P)
+
+lft_mv_cut: LEMMA
+  FORALL(p:MultPoly |cons?(p)):
+  LET P = lft(mv_cut(p))(max_length(mv_cut(p)))
+  IN minlength?(P)
+  
+%--------------------------------------------
+%%Properties of lft of mv_cut
+%--------------------------------------------
+
+minlength_cdr: LEMMA
+  FORALL(p:MultPoly): cons?(p) AND minlength?(p)
+  IMPLIES
+  minlength?(lft(mv_cut(cdr(p)))(max_length(mv_cut(cdr(p))))) 
+
+minlength_simplify: LEMMA
+  FORALL(p:MultPoly): cons?(p) AND is_sorted?(p)
+  AND minlength?(p)
+  IMPLIES minlength?(sortedsimplify(p))
+
+%--------------------------------------------
+%%Show lft is sorted and allnonzero
+%--------------------------------------------
+
+lft_sorted: LEMMA 
+  FORALL(p:MultPoly |cons?(p) AND Unif?(p)
+  AND is_sorted?(p),
+  n:{nn:nat | nn >= max_length(p)}):
+  LET P = lft(p)(n)
+  IN is_sorted?(P)
+
+lft_allnonzero: LEMMA
+  FORALL(p:MultPoly | allnonzero?(p),
+  n:{nn:nat | nn >= max_length(p)}):
+  allnonzero?(lft(p)(n))
+
+%--------------------------------------------
+%%Show allnonzero of mv_cut and lft
+%--------------------------------------------
+
+cut_allnonzero: LEMMA
+  FORALL(p:MultPoly | allnonzero?(p)):
+  allnonzero?(mv_cut(p))
+
+lft_cut_allnonzero: LEMMA
+  FORALL(p:MultPoly | allnonzero?(p),
+  n:{nn:nat | nn >= max_length(mv_cut(p))}):
+  allnonzero?(lft(mv_cut(p))(n))
+
+lft_cut_is_lft: LEMMA
+  FORALL (m:monomial, n:nat):
+  n >= length(m`alpha) IMPLIES
+  lft_one(n)(cut_monom(m)) = lft_one(n)(m)
+
+%--------------------------------------------
+%%lft alpha nth property
+%--------------------------------------------
+
+lft_alpha: LEMMA  
+  FORALL(p:MultPoly | cons?(p),
+  n:{nn:nat | nn >= max_length(p)}): 
+    FORALL(i:below(length(p))):
+      append(nth(p,i)`alpha,(:0:)^(n-length(nth(p,i)`alpha)))
+      = nth(lft(p)(n),i)`alpha OR
+      nth(p,i)`alpha
+      = nth(lft(p)(n),i)`alpha
+
+%--------------------------------------------
+%%lft of simplified is simpified and lft of
+%  mv_cut is simplified
+%--------------------------------------------
+
+lft_simplify: LEMMA 
+  FORALL((p:MultPoly | simplified?(p) AND Unif?(p)),
+  n:{nn:nat | nn >= max_length(p)}): 
+     simplified?(lft(p)(n))
+
+lft_cut_alpha: LEMMA
+  FORALL ((p:MultPoly | simplified?(p) AND Unif?(p)),
+  n:{nn:nat | nn >= max_length(p)}): 
+     simplified?(lft(mv_cut(p))(n))
+
+lft_cut_alpha_mv_cut: LEMMA
+  FORALL ((p:MultPoly | simplified?(p) AND Unif?(p)),
+  n:{nn:nat | nn >= max_length(mv_cut(p))}): 
+     simplified?(lft(mv_cut(p))(n))
+
+%--------------------------------------------
+%% mv_sort of minlength is minlength
+%--------------------------------------------
+
+minlength_sorted: LEMMA
+  FORALL(p:MultPoly |  cons?(p) AND minlength?(p)):
+  minlength?(mv_sort(p))
+
+%--------------------------------------------
+%% nth property of lft of mv_cut of
+%  polynomial
+%--------------------------------------------
+
+mv_cut_lft_alpha: LEMMA
+ FORALL(p:MultPoly,i:below(length(p)),
+ n:nat | n >= max_length(mv_cut(p))):
+ nth(lft(mv_cut(p))(n),i)`alpha =
+ append(cutting(nth(p,i)`alpha),
+ (: 0 :)^(n - length(cutting(nth(p,i)`alpha))))
+ 
+%--------------------------------------------
+%% more properties of leq
+%--------------------------------------------
+
+leq_Os: LEMMA
+ FORALL(n,m:nat,m1,m2:monomial):
+ (n <= m AND ( m1`alpha = (: 0 :)^n AND m2`alpha = (: 0 :)^m)) IMPLIES
+ leq(m1,m2)
+
+leq_0_all: LEMMA
+ FORALL(m1,m2:monomial,n:nat):
+ (length(m1`alpha)= length(m2`alpha) AND m1`alpha = (: 0 :) ^n )
+ IMPLIES
+ leq(m1,m2)
+
+ 
+leq_lft_monom: LEMMA
+ FORALL(m1,m2:monomial,
+ n:nat | n >= max(length(cut_monom(m1)`alpha),
+ length(cut_monom(m2)`alpha))):
+ (leq(m1,m2) AND length(m1`alpha) = length(m2`alpha))
+ IMPLIES
+ leq(lft_one(n)(cut_monom(m1)),lft_one(n)(cut_monom(m2)))
+
+leq_lft_mv: LEMMA
+ FORALL(p:MultPoly,
+ i,j:below(length(p)),
+ n:nat | n >= max_length(mv_cut(p))):
+ (leq(nth(p,i),nth(p,j)) AND Unif?(p))
+ IMPLIES
+ leq(nth(lft(mv_cut(p))(n),i),nth(lft(mv_cut(p))(n),j))
+
+sorted_mv_lift: LEMMA
+ FORALL(p:MultPoly, n:nat | n>= max_length(mv_cut(p)) ):
+ is_sorted?(p) AND Unif?(p)
+ IMPLIES
+ is_sorted?(lft(mv_cut(p))(n))
+
+%--------------------------------------------
+%% Define what is means for polynomial to
+%  be in standard form
+%--------------------------------------------
+
+mv_standard_form?(p:MultPoly): bool =
+  IF null?(p)
+    THEN TRUE
+  ELSIF minlength?(p) AND allnonzero?(p)
+  AND is_sorted?(p) AND simplified?(p)
+    THEN TRUE
+  ELSE
+    FALSE
+  ENDIF
+
+%--------------------------------------------
+%% False counter to help with standard_form
+%  function, with properties
+%--------------------------------------------
+
+false_counter(p:MultPoly): nat =
+  IF mv_standard_form?(p) = TRUE
+    THEN 0
+  ELSIF mv_is_sorted?(p) = FALSE
+    THEN 4
+  ELSIF simplified?(p) = FALSE
+    THEN 3
+    ELSIF allnonzero?(p) = FALSE 
+    THEN 2
+  ELSE
+    1
+  ENDIF
+
+f_count_le4: LEMMA
+ FORALL(p:MultPoly):
+ false_counter(p) <= 4
+
+f_count_mv_sort: LEMMA
+  FORALL (p: MultPoly):
+    NOT mv_standard_form?(p) = TRUE
+    AND mv_is_sorted?(p) = FALSE IMPLIES
+     false_counter(mv_sort(p)) < false_counter(p)
+
+f_count_simplify: LEMMA
+  FORALL (p: MultPoly):
+    NOT mv_standard_form?(p) = TRUE AND
+     NOT mv_is_sorted?(p) = FALSE
+     AND simplified?(p) = FALSE
+     IMPLIES false_counter(simplify(p)) < false_counter(p)
+
+f_count_all_nz: LEMMA
+  FORALL (p: MultPoly):
+    NOT mv_standard_form?(p) = TRUE AND
+     NOT mv_is_sorted?(p) = FALSE AND
+      NOT simplified?(p) = FALSE
+      AND allnonzero?(p) = FALSE
+     IMPLIES false_counter(allnonzero(p)) < false_counter(p);
+
+%--------------------------------------------
+%% Define standard form function, that will
+%  be shown to put a MultPoly in standard_form
+%--------------------------------------------
+
+mv_standard_form(p:MultPoly):
+ RECURSIVE MultPoly =
+  IF mv_standard_form?(p) = TRUE
+    THEN p
+  ELSIF mv_is_sorted?(p) = FALSE
+    THEN mv_standard_form(mv_sort(p))
+  ELSIF simplified?(p) = FALSE
+    THEN mv_standard_form(simplify(p))
+  ELSIF allnonzero?(p) = FALSE
+    THEN mv_standard_form(allnonzero(p))
+  ELSE
+    lft(mv_cut(p))(max_length(mv_cut(p)))
+  ENDIF
+  MEASURE false_counter(p)
+
+%--------------------------------------------
+%% Standard form of a polynomial is indeed
+%  in standard form
+%--------------------------------------------
+
+standard_form_is_standard: LEMMA
+  FORALL(p:MultPoly): mv_standard_form?(mv_standard_form(p)) = TRUE
+
+%--------------------------------------------
+%% Max Length of standard form is less that
+%  max length of original polynomial
+%--------------------------------------------
+
+standard_form_max_length: LEMMA
+ FORALL(p:MultPoly):
+ max_length(mv_standard_form(p)) <= max_length(p)
+
+  
+  %~~~       The End     ~~~%
+  END standard_form_mult_poly

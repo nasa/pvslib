@@ -1,0 +1,723 @@
+analytic_def% Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Basic definition and properties |%
+%| of real analytic functions       |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:                         JTS
+  % ***This contains the everything from the
+  %    first part of Section 3, up to Section
+  %    3.1, and Lemma 3.7 from Section 3.1***
+
+%-----     %
+  BEGIN
+%     -----%
+
+IMPORTING series@power_series
+IMPORTING series@taylor_series
+IMPORTING analysis@derivatives_subtype
+IMPORTING reals@sigma[nat]
+IMPORTING matrices@matrices
+IMPORTING continuous_ball_props
+
+%-------------------------------------------- 
+%% Convergence relation between power series
+% and sequence of terms of
+%  power series 
+%-------------------------------------------- 
+
+ con_conv_series: LEMMA
+  FORALL(alpha,x:real, a:sequence[real]):
+  convergent?(powerseries(a)(x - alpha))
+  IFF
+  conv_series?(powerseq(a, x - alpha))
+
+%--------------------------------------------
+%% Define open ball centered at alpha with radius M
+%--------------------------------------------
+
+  ball(alpha:real,M:posreal)(x:real): bool = 
+   abs(x-alpha)<M
+   
+  %Ball has more than one element
+  ball_noe: LEMMA
+   FORALL(M:posreal,alpha:real):
+   not_one_element?[(ball(alpha, M))]
+   
+  %Ball is a derivative domain for alpha = 0
+  ball_dd_0: LEMMA
+   FORALL(M:posreal):
+   deriv_domain?[(ball(0, M))]
+
+  %Ball is a derivative domain
+  ball_dd: LEMMA
+   FORALL(M:posreal,alpha:real):
+   deriv_domain?[(ball(alpha, M))]
+
+  %Ball is open for alpha = 0 
+  ball_open_0: LEMMA
+    FORALL(M:posreal,x:(ball(0,M))):
+    EXISTS(eps:posreal): FORALL(y:real):
+    abs(x-y)<eps IMPLIES ball(0,M)(y) 
+
+  %Ball is open
+  ball_open: LEMMA
+    FORALL(M:posreal,alpha:real,x:(ball(alpha,M))):
+    EXISTS(eps:posreal): FORALL(y:real):
+    abs(x-y)<eps IMPLIES ball(alpha,M)(y)
+
+  %Ball is connected for alpha = 0 
+  ball_con_0: LEMMA
+    FORALL(M:posreal):
+    connected?[(ball(0, M))]
+
+  %Ball is connected 
+  ball_con: LEMMA
+    FORALL(M:posreal,alpha:real):
+    connected?[(ball(alpha, M))]
+    
+  %Ball is connected 
+  conv_ball: LEMMA
+   FORALL(alpha:real,a:sequence[real],M:posreal):
+   (FORALL(x:(ball(alpha,M))): convergent?(powerseries(a)(x-alpha)))
+   IFF
+   FORALL(x:(ball(0,M))): convergent?(powerseries(a)(x))
+
+%--------------------------------------------
+%% Inf_sum on ball is same as limit of power series
+%--------------------------------------------
+
+   lim_ball: LEMMA
+   FORALL(alpha:real,a:sequence[real],M:posreal):
+   (FORALL(x:(ball(alpha,M))): convergent?(powerseries(a)(x-alpha)))
+   IMPLIES 
+   FORALL(x:(ball(alpha,M))):
+   Inf_sum[(ball(0,M))](a)(x-alpha)
+   = limit(powerseries(a)(x-alpha))
+
+%--------------------------------------------
+%% Shifted function is still derivable
+%--------------------------------------------
+
+   derivable_shift: LEMMA
+    FORALL(alpha:real, M:posreal,f:[real->real]):
+    derivable?[(ball(0,M))](f)
+    IFF
+    derivable?[(ball(alpha,M))](Lambda(x:(ball(alpha,M))): f(x-alpha))
+
+%--------------------------------------------
+%% Relationship between derivative of function and derivative of
+%  shifted function
+%--------------------------------------------
+
+   deriv_shift: LEMMA
+    FORALL(alpha:real, M:posreal,f:[real->real]):
+    derivable?[(ball(0,M))](f)
+    IMPLIES
+    FORALL(x:(ball(0,M))):
+    deriv[(ball(0,M))](f)(x)
+    =
+    deriv[(ball(alpha,M))](Lambda(x:(ball(alpha,M))): f(x-alpha))(x+alpha)
+
+%--------------------------------------------
+%% Shifted function is still n times derivable
+%--------------------------------------------
+
+    derivable_shift_n: LEMMA
+    FORALL(alpha:real, n:nat,  M:posreal,f:[real->real]):
+    derivable_n_times?[(ball(0,M))](f,n)
+    IFF
+    derivable_n_times?[(ball(alpha,M))](Lambda(x:(ball(alpha,M))): f(x-alpha),n)
+
+%--------------------------------------------
+%% Relationship between nth derivative of function and nth
+%  derivative of shifted function
+%--------------------------------------------
+
+   deriv_shift_n: LEMMA
+    FORALL(alpha:real, n:nat,  M:posreal,f:[real->real]):
+   derivable_n_times?[(ball(0,M))](f,n)
+    IMPLIES
+    FORALL(x1:(ball(0,M))):
+    nderiv[(ball(0,M))](n, LAMBDA (x: (ball(0, M))): f(x))(x1)
+    = 
+     nderiv[(ball(alpha, M))]
+           (n, LAMBDA (s: (ball(alpha, M))): f(s-alpha))(x1+alpha)
+
+%--------------------------------------------
+%% Move this to derivatives_subtype
+%--------------------------------------------
+
+derivable_n_subtype: LEMMA
+ FORALL(M1,M2:posreal,alpha:real,f:[real->real],n:nat):
+  M1<=M2 IMPLIES
+  derivable_n_times?[(ball(alpha,M2))](f,n)
+  IMPLIES
+  derivable_n_times?[(ball(alpha,M1))](f,n)
+
+deriv_n_subtype: LEMMA
+ FORALL(M1,M2:posreal,alpha:real,n:nat,
+ f:[real->real]):
+  (M1<=M2 AND  derivable_n_times?[(ball(alpha,M2))](f,n)) IMPLIES
+  FORALL(x:(ball(alpha,M1))):
+  nderiv[(ball(alpha,M2))](n,f)(x)
+  =
+  nderiv[(ball(alpha,M1))](n,f)(x)
+ 
+ 
+%--------------------------------------------
+%% Conditions for M and a in analytic definition
+%--------------------------------------------
+
+ analytic_parts?(alpha:real,f:[real->real])
+  (M:posreal, a:sequence[real]): bool = 
+  FORALL(x:{xx:real| abs(xx-alpha)<M}):
+    convergent?(powerseries(a)(x-alpha))
+    AND
+    f(x) = inf_sum(powerseq(a,x-alpha))
+
+%--------------------------------------------
+%% Conditions for M in analytic defintion 
+%--------------------------------------------
+
+ analytic_rad?(alpha:real,f:[real->real])(M:posreal): bool = 
+    EXISTS(a:sequence[real]):
+     FORALL(x:{xx:real| abs(xx-alpha)<M}):
+      convergent?(powerseries(a)(x-alpha))
+      AND
+      f(x) = limit(powerseries(a)(x-alpha))
+
+%--------------------------------------------
+%% Define analytic for f: R -> R at point alpha
+%--------------------------------------------
+
+ analytic?(alpha:real)(f:[real -> real]):  bool =
+  EXISTS(M:posreal, a:sequence[real]):
+   analytic_parts?(alpha,f)(M,a)
+
+%--------------------------------------------
+%% Define analytic for f: R -> Rn at point alpha
+%--------------------------------------------
+
+ analytic?(n:nat,c0:real)(f:[real -> VectorN(n)]): bool =
+   FORALL(i:below(n)):
+    analytic?(c0)(LAMBDA(x:real): nth(f(x),i))
+
+%--------------------------------------------
+%% Analytic implies derivable n times
+%--------------------------------------------
+
+analytic_der: LEMMA 
+ FORALL(alpha:real,f:[real->real], M: (analytic_rad?(alpha,f)),n:nat):
+   derivable_n_times?[(ball(alpha,M))](f, n)
+
+%--------------------------------------------
+%% Analytic implies continuous
+%--------------------------------------------
+
+analytic_cont: LEMMA
+ FORALL(alpha:real,f:[real->real], M: (analytic_rad?(alpha,f))):
+ continuous?[(ball(alpha,M))](f)
+
+%--------------------------------------------
+%% Sequence in analytic definition is realted to derivatives
+%--------------------------------------------
+
+analytic_term: LEMMA
+ FORALL(f:[real->real], alpha:real, M:posreal, a:sequence[real]):
+   analytic_parts?(alpha,f)(M, a)
+   IMPLIES
+   (FORALL(n:nat):
+   factorial(n)*a(n) = nderiv[(ball(alpha,M))](n,f)(alpha))
+
+%--------------------------------------------
+%% Sequence in analytic definition is unique
+%--------------------------------------------
+
+analytic_term_unique: LEMMA
+ FORALL(f:[real->real], alpha:real, M1,M2:posreal, a1,a2:sequence[real]):
+  (analytic_parts?(alpha,f)(M1, a1)
+   AND
+   analytic_parts?(alpha,f)(M2, a2))
+   IMPLIES
+   a1 = a2
+
+%--------------------------------------------
+%% Define maximum radius of convergence
+%--------------------------------------------
+
+ max_rad?(alpha:real,f:[real->real])(M:posreal): bool =
+  analytic_rad?(alpha,f)(M)
+  AND
+  FORALL(M1:posreal,a:sequence[real]):
+  analytic_parts?(alpha,f)(M1,a)
+  IMPLIES
+  M1<=M
+
+%--------------------------------------------
+%% Define infinite radius of convergence
+%--------------------------------------------
+
+inf_rad?(alpha:real,f:[real->real]): bool =
+  EXISTS(a:sequence[real]):
+   FORALL(x:real):
+    convergent?(powerseries(a)(x-alpha))
+     AND
+    f(x) = inf_sum(powerseq(a,x-alpha))
+
+%--------------------------------------------
+%% An analytic function has a maximum radius of convergence or an
+%  infinite radius of convergence
+%--------------------------------------------
+
+ %zero case 
+ max_rad_0: LEMMA
+  FORALL(f:(analytic?(0))):
+   inf_rad?(0,f)
+   OR
+   EXISTS(M:posreal):
+   max_rad?(0,f)(M)
+
+ %general case
+ max_rad: LEMMA
+  FORALL(alpha:real,f:(analytic?(alpha))):
+   inf_rad?(alpha,f)
+   OR
+   EXISTS(M:posreal):
+   max_rad?(alpha,f)(M)
+
+
+%--------------------------------------------
+%% Analytic means absolutly convergent
+%--------------------------------------------
+
+analytic_absolute_conv: LEMMA
+ FORALL(f:[real -> real],alpha:real,M:posreal,a:sequence[real]):
+   analytic_parts?(alpha,f)(M,a)
+   IMPLIES
+   FORALL(x:(ball(alpha, M))):
+   absolutely_convergent_series?(powerseq(a,x-alpha))
+
+%--------------------------------------------
+%% Positive series bounded by limit
+%--------------------------------------------
+
+pos_series_bound: LEMMA
+  FORALL(f:[real -> real],alpha:real,M:posreal,a:{aa:sequence[real]| FORALL(i:nat): aa(i)>=0}):
+   convergent?(series(a))
+   IMPLIES
+   FORALL(i:nat): sigma(0,i,a) <= inf_sum(a)
+
+inf_sum_nn: LEMMA
+  FORALL(f:[real -> real],alpha:real,M:posreal,a:{aa:sequence[real]| FORALL(i:nat): aa(i)>=0}):
+   convergent?(series(a))
+   IMPLIES
+   0<=inf_sum(a)
+
+
+%--------------------------------------------
+%% Define convolution terms for product series
+%--------------------------------------------
+
+convlf(m:nat,a:sequence[real], b:sequence[real])(i:nat): real =
+ IF i <= m
+ THEN a(i)*b(m-i)
+ ELSE 0
+ ENDIF
+
+convlfsh(m:nat,a:sequence[real], b:sequence[real],sh:nat)(i:nat): real =
+ IF i+sh <= m
+ THEN a(i+sh)*b(m-i-sh)
+ ELSE 0
+ ENDIF
+
+%--------------------------------------------
+%% The following identities and inequalities
+%  are to prove the produce of analytic functions
+%  is analytic
+%--------------------------------------------
+
+convl_convlfsh_0: LEMMA
+  FORALL(m:nat,a:sequence[real], b:sequence[real],sh:nat):
+  convlf(m,a,b) = convlfsh(m,a,b,0)
+
+convl_convlfsh_: LEMMA
+  FORALL(m:nat,a:sequence[real], b:sequence[real],i,sh1,sh2:nat):
+  (i+(sh1-sh2) <= m and i+(sh1-sh2) >= 0)
+  IMPLIES
+  convlfsh(m,a,b,sh1)(i) = convlfsh(m,a,b,sh2)(i+(sh1-sh2))
+
+sig_convl(a,b:sequence[real])(m:nat): real =
+  sigma(0, m, convlf(m,a,b))
+
+sig_convl_front: LEMMA
+ FORALL(a,b:sequence[real],m:nat,i:below(m)):
+ sigma(i,m,convlf(m,a,b))
+ =  a(i)*b(m-i) + sigma(i+1,m,convlf(m,a,b))
+
+sig_sig_convl: LEMMA
+  FORALL(alpha:real, a:sequence[real],
+  b:sequence[real], x:real, t:nat, i:nat):
+ sigma(i, t ,
+            LAMBDA (k: nat):
+              sigma(i, k, convlf(k, a, b)) * (x - alpha) ^ k)
+	      = a(i)*sigma(i,t, LAMBDA(k:nat): IF i<=k
+	      THEN b(k-i)*(x-alpha)^k ELSE 0 ENDIF) + sigma(i, t,  LAMBDA (k: nat) -> real:
+              sigma(i+1, k, convlf(k, a, b)) * (x - alpha) ^ k)
+
+sig_sig_convl_gen: LEMMA
+  FORALL(alpha:real, a:sequence[real],
+  b:sequence[real], x:real, t:nat, i:nat, j:nat):
+ sigma(i, t ,
+            LAMBDA (k: nat):
+              sigma(j, k, convlf(k, a, b)) * (x - alpha) ^ k)
+	      = a(j)*sigma(i,t, LAMBDA(k:nat): IF j<=k
+	      THEN b(k-j)*(x-alpha)^k ELSE 0 ENDIF) + sigma(i, t,  LAMBDA (k: nat) -> real:
+              sigma(j+1, k, convlf(k, a, b)) * (x - alpha) ^ k)
+
+sig_sig_ab_init: LEMMA
+  FORALL(alpha:real,a:sequence[real],
+  b:sequence[real], x:real, t:nat, i:below(t+1),j:below(t+1)):
+ sigma(i, t ,
+            LAMBDA (k: nat):
+              sigma(j, k, convlf(k, a, b)) * (x - alpha) ^ k)
+	      = sigma(j, t, LAMBDA(j:nat): a(j)*sigma(i,t, LAMBDA(k:nat):
+	      IF j<=k THEN b(k-j)*(x-alpha)^k ELSE 0 ENDIF))
+
+sig_a_pull_conv2: LEMMA
+  FORALL(alpha:real, a:sequence[real],
+  b:sequence[real],x:real,j:nat,i:below(j+1)):
+ sigma(i, j,
+            LAMBDA (k: nat):
+              sigma(i, k, convlf(k, a, b)) * (x - alpha) ^ k)
+	      = sigma(i, j, LAMBDA(k:nat): a(k)*sigma(i,j, LAMBDA(m:nat):
+	      IF k<=m THEN b(m-k)*(x-alpha)^m ELSE 0 ENDIF))
+	      
+%*** This appears in apper as example of one of the inequalities
+%    necisary to prove the produce of anlaytic functions is
+%    analytic ***
+
+sig_a_pull_conv: LEMMA
+  FORALL(c0:real, a,b:sequence[real], x:real, n:nat,i:below(n+1)):
+ sigma(i, n,
+            LAMBDA (k: nat):
+              sigma(i, k, convlf(k, a, b)) * (x - c0) ^ k)
+	      = sigma(i, n, LAMBDA(k:nat): a(k)*sigma(i,n, LAMBDA(m:nat):
+	      IF k<=m THEN b(m-k)*(x-c0)^m ELSE 0 ENDIF))
+
+b_flip: LEMMA FORALL(b:sequence[real], x,alpha:real,t:nat,
+ j:below(t+1),i:below(j+1)): 
+ sigma(i,t, LAMBDA(k:nat): IF j<=k THEN b(k-j)*(x-alpha)^k ELSE 0 ENDIF)
+ = (x-alpha)^j*sigma(0,t-j, LAMBDA(k:nat): b(k) * (x-alpha)^k)
+
+prod_seq(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+ a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+  sequence[real] =
+  powerseries(sig_convl(a,b))(x-alpha)
+
+arrange_terms_a:LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+  prod_seq(f1,f2,alpha,M1,M2,a,b,x) =
+  ( LAMBDA(m:nat):
+  sigma(0, m, LAMBDA(j:nat): IF j <= m
+  THEN a(j) * (x-alpha)^j *series(powerseq(b,x-alpha))(m-j) ELSE 0 ENDIF))
+
+arrange_terms_diff:LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+  prod_seq(f1,f2,alpha,M1,M2,a,b,x) =
+  ( LAMBDA(m:nat): sigma(0, m, LAMBDA(j:nat): IF j <= m
+  THEN a(j) * (x-alpha)^j * (f2(x) - limit(series(LAMBDA (n:nat):
+  powerseq(b,x - alpha)(n+m-j+1)))) ELSE 0 ENDIF))
+
+arrange_terms_diff_split: LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+  prod_seq(f1,f2,alpha,M1,M2,a,b,x) =
+  (LAMBDA(m:nat): series(powerseq(a,x-alpha))(m) * f2(x)) - (LAMBDA(m:nat): sigma(0, m, LAMBDA(j:nat):
+  IF j <= m THEN a(j) * (x-alpha)^j * limit(series(LAMBDA (n:nat): powerseq(b,x - alpha)(n+m-j+1))) ELSE 0 ENDIF))
+
+conv_prod_first: LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+        convergent?(LAMBDA (m: nat): series(powerseq(a, x - alpha))(m) * f2(x))
+	
+lim_prod_first: LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+   limit(LAMBDA(m:nat): series(powerseq(a,x-alpha))(m) * f2(x)) = f1(x)*f2(x)
+
+
+max_below(m:nat)(f:[nat -> real]): RECURSIVE
+ {c: nnreal | FORALL(i:below(m+1)):  c >= abs(f(i))}
+ = IF m=0 THEN abs(f(0))
+ ELSE max(abs(f(m)), max_below(m-1)(f))
+ ENDIF
+ MEASURE m
+
+tail_b_conv: LEMMA
+ FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+ a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+  b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+  x:{xx:real| abs(xx-alpha)<min(M1,M2)},j:nat):
+  convergent?(LAMBDA (m: nat): IF j<=m
+  THEN limit(series(LAMBDA(n: nat):powerseq (b, x - alpha)(n + m - j + 1))) ELSE 0 ENDIF)
+
+tail_b_lim: LEMMA
+ FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+ a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+  b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+  x:{xx:real| abs(xx-alpha)<min(M1,M2)},j:nat):
+  limit(LAMBDA (m: nat): IF j<=m
+  THEN limit(series(LAMBDA(n: nat):powerseq (b, x - alpha)(n + m - j + 1))) ELSE 0 ENDIF) = 0
+
+conv_prod_second: LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+         convergent?(LAMBDA (m: nat): sigma(0, m,
+	      LAMBDA (j: nat):
+                             IF j <= m
+                               THEN a(j) * (x - alpha) ^ j
+                                    *
+                                    limit
+                                    (series
+                                     (LAMBDA
+                                      (n: nat):
+                                      powerseq
+                                      (b, x - alpha)(n + m - j + 1)))
+                             ELSE 0
+                             ENDIF))
+
+lim_prod_second: LEMMA
+  FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+  a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+   limit(LAMBDA(m:nat): sigma(0, m, LAMBDA(j:nat): IF j <= m
+   THEN a(j) * (x-alpha)^j * limit(series(LAMBDA (n:nat): powerseq(b,x - alpha)(n+m-j+1))) ELSE 0 ENDIF)) = 0
+
+init_prod_analytic_conv: LEMMA
+ FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+ a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+convergent?(powerseries(sig_convl(a, b))(x - alpha))
+
+init_prod_analytic_inf_sum: LEMMA
+ FORALL(f1,f2:[real -> real], alpha:real, M1,M2:posreal,
+ a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)},
+ x:{xx:real| abs(xx-alpha)<min(M1,M2)}):
+ (f1 * f2)(x) = inf_sum(powerseq(sig_convl(a, b), x - alpha))
+
+%--------------------------------------------
+%% Product, sum, and scalar of analytic
+%  functions are analytic, analytic parts
+%  version of theorems
+%--------------------------------------------
+
+
+prod_analytic: LEMMA FORALL(f1,f2:[real -> real], alpha:real,
+M1,M2:posreal, a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)}):
+ analytic_parts?(alpha,f1*f2)(min(M1,M2),sig_convl(a,b))
+
+sum_analytic: LEMMA FORALL(f1,f2:[real -> real], alpha:real,
+M1,M2:posreal, a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},
+ b:{bb:sequence[real] | analytic_parts?(alpha,f2)(M2,bb)}):
+  analytic_parts?(alpha,f1+f2)(min(M1,M2),a+b)
+
+scal_analytic: LEMMA FORALL(f1:[real->real], alpha:real, M1:posreal,
+a:{aa:sequence[real] |analytic_parts?(alpha,f1)(M1,aa)},c:real):
+  analytic_parts?(alpha,c*f1)(M1,c*a)
+
+%--------------------------------------------
+%% Product, sum, and scalar of analytic
+%  functions are analytic 
+%--------------------------------------------
+%*** Theorem 3.2 in Paper ***
+
+analytic_prod_fun: LEMMA
+  FORALL(alpha:real, f,g:[real->real]):
+  analytic?(alpha)(f)
+  AND
+  analytic?(alpha)(g)
+  IMPLIES
+  analytic?(alpha)(f*g)
+
+analytic_const: LEMMA
+ FORALL(alpha,c:real):
+ analytic?(alpha)(LAMBDA(x:real): c)
+
+analytic_sum_fun: LEMMA
+  FORALL(alpha:real, f,g:[real->real]):
+  analytic?(alpha)(f)
+  AND
+  analytic?(alpha)(g)
+  IMPLIES
+  analytic?(alpha)(f+g)
+
+analytic_scal_fun: LEMMA
+  FORALL(alpha:real, f:[real->real],c:real):
+  analytic?(alpha)(f)
+  IMPLIES
+  analytic?(alpha)(c*f)
+
+%*** Theorem 3.2 in Paper ***
+analytic_pow_fun: LEMMA
+  FORALL(alpha:real, f:[real->real],n:nat):
+  analytic?(alpha)(f)
+  IMPLIES
+  analytic?(alpha)(f^n)
+
+%*** Lemma 3.3 in Paper ***
+analytic_pow_fun_scal: LEMMA
+  FORALL(alpha:real, f:[real->real],n:nat,c:real):
+  analytic?(alpha)(f)
+  IMPLIES
+  analytic?(alpha)(c*f^n)
+  
+
+%--------------------------------------------
+%% Analytic function that is positive at a point
+%  remains positive for small tim e
+%--------------------------------------------
+%*** Lemma  3.7 in paper ***
+analytic_pos_ball:LEMMA
+FORALL(alpha:real,f:[real->real]):
+(analytic?(alpha)(f)
+AND
+f(alpha)>0)
+IMPLIES
+EXISTS(delta:posreal):
+FORALL(x:real):
+abs(x-alpha)<delta
+IMPLIES
+f(x) > 0
+
+%--------------------------------------------
+%% Analytic function that is negative at a
+%  point, remains negative for small tim e
+%--------------------------------------------
+%*** Lemma  3.7 in paper ***
+
+analytic_neg_ball:LEMMA
+FORALL(alpha:real,f:[real->real]):
+(analytic?(alpha)(f)
+AND
+f(alpha)<0)
+IMPLIES
+EXISTS(delta:posreal):
+FORALL(x:real):
+abs(x-alpha)<delta
+IMPLIES
+f(x) < 0
+
+%--------------------------------------------
+%% Following lemmas are builiding up
+%  to the result about behavior of
+%  analytic function around a root
+%--------------------------------------------
+
+nz_seq(alpha:real, M:posreal, f:{ff:[real->real]| NOT (EXISTS(delta:posreal):
+FORALL(x:real):
+(abs(x-alpha)<delta AND x /= alpha)
+IMPLIES
+ff(x) /= 0)})(k:nat):
+{rr:real| rr /= alpha AND abs(rr-alpha)< min(1/(1+k),M) AND f(rr)=0}
+
+lowest_nz_der: LEMMA
+ FORALL(alpha:real,f:[real->real],
+ M: (analytic_rad?(alpha,f))):
+  (NOT ((EXISTS(delta:posreal):
+ FORALL(x:real):
+  abs(x-alpha)<delta
+  IMPLIES
+  f(x) = 0)))
+  IMPLIES
+  EXISTS(n:nat):
+  nderiv[(ball(alpha,M))](n,f)(alpha) /= 0
+
+lowdn(alpha:real,f:{ff:[real->real] |
+(NOT ((EXISTS(delta:posreal):
+ FORALL(x:real):
+  abs(x-alpha)<delta
+  IMPLIES
+  ff(x) = 0)))},M:(analytic_rad?(alpha,f))): nat = 
+  min({n:nat| nderiv[(ball(alpha,M))](n,f)(alpha) /= 0})
+  
+lowdn_seq(alpha:real,f:{ff:[real->real] |
+ff(alpha)=0 AND (NOT ((EXISTS(delta:posreal):
+ FORALL(x:real):
+  abs(x-alpha)<delta
+  IMPLIES
+  ff(x) = 0))) AND (NOT (EXISTS(delta:posreal):
+FORALL(x:real):
+(abs(x-alpha)<delta AND x /= alpha)
+IMPLIES
+ff(x) /= 0))}, M:(analytic_rad?(alpha,f)))(k:nat): 
+{r:real| abs(r-alpha)<min(1/(1+k),M) AND nderiv[(ball(alpha,M))](lowdn(alpha,f,M),f)(r) = 0}
+
+%--------------------------------------------
+%% Analytc function has no other roots in some
+% epsilon ball aronud root, or it is the zero
+% function around the root
+%--------------------------------------------
+%*** Lemma  3.7 in paper ***
+
+analytic_zero_ball: LEMMA
+FORALL(alpha:real,f:[real->real]):
+(analytic?(alpha)(f)
+AND
+f(alpha)=0)
+IMPLIES
+(EXISTS(delta:posreal):
+FORALL(x:real):
+(abs(x-alpha)<delta AND x /= alpha)
+IMPLIES
+f(x) /= 0)
+OR
+(EXISTS(delta:posreal):
+FORALL(x:real):
+abs(x-alpha)<delta
+IMPLIES
+f(x) = 0)
+
+analytic_zero_right: LEMMA
+FORALL(alpha:real, f:[real->real]):
+(analytic?(alpha)(f) AND f(alpha)=0)
+IMPLIES
+(((EXISTS(delta:posreal):
+FORALL(x:posreal):
+x < delta
+IMPLIES
+f(alpha+x) = 0)
+OR
+(EXISTS(delta:posreal):
+FORALL(x:posreal):
+x<delta
+IMPLIES
+f(alpha+x) > 0)) OR
+(EXISTS(delta:posreal):
+FORALL(x:posreal):
+x<delta
+IMPLIES
+f(alpha+x) < 0))
+
+  %~The End    ~~%
+  END analytic_def

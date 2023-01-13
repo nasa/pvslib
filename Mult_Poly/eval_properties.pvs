@@ -1,0 +1,234 @@
+eval_properties  % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Additional properties of evaluation     |%
+%| of multi-variate polynomials.           |%
+%| These are needed to show the uniqueness |%
+%| of standard form up to full evaluation  |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:		              JTS, LW
+% ***This Theory has the definition of
+%    hat(m) and hat(f) that appears in 
+%     Section 3.1***
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------
+%%Importing eval_MultPoly to have evaluation
+% of polynomials
+%-------------------------------------------
+
+ IMPORTING eval_MultPoly, list_lemmas
+
+%-------------------------------------------
+%%Pull out constant in eval of monomial 
+%-------------------------------------------
+
+  eval_monom_const: LEMMA
+  FORALL (c:real, alpha: list[nat],
+  ind:list[nat], vals: list[real]):
+  length(ind)=length(vals) IMPLIES
+   eval( (# C := c, alpha := alpha #), ind)(vals)`C =
+   c*eval( (# C := 1, alpha := alpha #), ind)(vals)`C
+
+%-------------------------------------------
+%%Define a list being about a natural
+%  number i
+%-------------------------------------------
+
+bov?(i:nat)(alpha:list[nat]): RECURSIVE bool =
+IF alpha = null THEN TRUE
+ELSE car[nat](alpha)>i AND bov?(i)(cdr(alpha))
+ENDIF
+MEASURE length(alpha)
+
+%-------------------------------------------
+%%nth property of bov
+%-------------------------------------------
+
+bov_nth: LEMMA
+ FORALL(i:nat,alpha:list[nat]):
+ bov?(i)(alpha)
+ IFF
+ FORALL(k:below(length(alpha))):
+ nth(alpha,k)>i
+
+%-------------------------------------------
+%%Subtract one from each entry of a list
+%-------------------------------------------
+
+sub1(l:{ll:list[nat]| bov?(0)(ll)}):
+ RECURSIVE {ll:list[nat]| length(ll) = length(l)
+ AND FORALL(i:below(length(ll))): nth(ll,i) = nth(l,i)-1} =
+ IF l = null THEN null
+ ELSE cons[nat](car[nat](l)-1, sub1(cdr[nat](l)))
+ ENDIF
+ MEASURE
+ length(l)
+
+%-------------------------------------------
+%%nth property list of ones
+%-------------------------------------------
+
+one_nth: LEMMA
+ FORALL(n:nat,k:below(n)):
+ nth(^[nat]((: 1 :),(n)) , k) = 1
+
+%-------------------------------------------
+%%If a monomial has a null alpha, the
+%  eval is just the constant term
+%-------------------------------------------
+
+alpha_null_eval: LEMMA
+FORALL(m:monomial,vals:list[real],
+ index:{l:list[nat]| length(l)=length(vals)}):
+ m`alpha=null
+ IMPLIES
+ eval(m,index)(vals)`C = m`C
+
+%-------------------------------------------
+%%Properties of add_lists
+%-------------------------------------------
+
+add_lists_length: LEMMA
+FORALL(l1,l2:list[nat]):
+length(add_lists[nat](l1,l2)) = max(length(l1),length(l2))
+
+add_lists_nth: LEMMA
+FORALL(l1,l2:list[nat],i:below(min(length(l1),length(l2)))):
+nth(add_lists[nat](l1,l2),i) = nth(l1,i) + nth(l2,i)
+
+%-------------------------------------------
+%%Relationship between bov and member
+%-------------------------------------------
+
+member_0_bov: LEMMA
+  FORALL(index:list[nat]):
+  NOT member(0, index) IMPLIES bov?(0)(index)
+
+bov_0_lln: LEMMA
+FORALL(n:posnat):
+ bov?(0)(cdr[nat](list_length_n[nat](n)))
+
+%-------------------------------------------
+%%Properties of sub1
+%-------------------------------------------
+
+sub1_add0: LEMMA FORALL(n:nat,l:list[nat]):
+length(l)=n IMPLIES 
+sub1(add_lists[nat]((: 1 :) ^(n), l)) = l
+
+list_length_n_cdr: LEMMA
+  FORALL(n:posnat):
+  sub1(cdr(list_length_n[nat](n)))
+  = list_length_n[nat](n-1)
+
+%-------------------------------------------
+%%Property of eval with replace
+%-------------------------------------------
+
+eval_replace: LEMMA
+ FORALL(m:monomial, vals:list[real],
+ index:{l:list[nat] | length(l) = length(vals)}):
+ NOT member[nat](0,index)
+ IMPLIES
+ (m`alpha = null OR 
+ eval(m,index)(vals)`C
+ = eval((# C:= m`C, alpha:= cdr[nat](m`alpha) #),
+ sub1(index))(vals)`C)
+
+%-------------------------------------------
+%%Property of eval and cdr of val list
+%-------------------------------------------
+
+eval_cdr: LEMMA
+ FORALL(m:{mm:monomial| cons?(mm`alpha)},
+ vals:{l:list[real] | cons?(l)}):
+ eval(m, list_length_n[nat](length(vals)))(vals)`C = 
+ eval((# C:=m`C* (car(vals) ^ nth(m`alpha, 0)),
+ alpha:=cdr(m`alpha) #),
+ list_length_n[nat](length(cdr(vals))) )(cdr(vals))`C
+
+%-------------------------------------------
+%%Define hat as in paper
+% ***This is hat and first as defined in
+%     Section 3.1***
+%-------------------------------------------
+
+ hat(m:{mm:monomial| cons?(mm`alpha)}):
+ {mm:monomial | length(mm`alpha) = length(m`alpha)-1} =
+ (# C:= 1 , alpha := cdr[nat](m`alpha) #)
+
+hat(n:posnat)(f:[real -> VectorN(n)]): 
+ [real -> VectorN(n-1)] = LAMBDA(x:real): cdr(f(x))
+
+first(m:{mm:monomial| cons?(mm`alpha)})(x:real): real = 
+ m`C * x ^ car[nat](m`alpha)
+
+
+%-------------------------------------------
+%%Recursive property of eval of a monomial
+%-------------------------------------------
+
+eval_vals: LEMMA
+ FORALL(n:posnat,
+ m:{mm:monomial| length(mm`alpha)=n},
+ vals:list[real] | length(vals)>= length(m`alpha)):
+ full_eval(m)(vals)
+ =
+ m`C * car(vals) ^ car[nat](m`alpha)
+ * full_eval(hat(m))(cdr(vals))
+ 
+%-------------------------------------------
+%%Recursive property of eval of a polynomial
+%-------------------------------------------
+
+full_eval_recurs: LEMMA
+ FORALL(p:MultPoly,
+ vals:{l:list[real] | length(l) >= max_length(p)}):
+ null?(p)
+ OR
+ full_eval(p)(vals) =
+ full_eval(car(p))(vals) + full_eval(cdr(p))(vals)
+ 
+%-------------------------------------------
+%% Cancelation property of evaluation
+%-------------------------------------------
+
+eval_canc_car: LEMMA
+FORALL(m1,m2:monomial,
+ vals:list[real] | length(vals) >= max(length(m1`alpha),
+  length(m2`alpha))):
+  (m1`C + m2`C = 0
+  AND
+  m1`alpha = m2`alpha)
+  IMPLIES
+   0 = full_eval(m1)(vals) + full_eval(m2)(vals)
+
+%-----------------------------------------
+%% eval at a higher dim
+%-----------------------------------------
+
+% @QED eval_higher_dim proved by lmwhite3 on Wed, 20 Apr 2022 15:54:41 GMT
+eval_higher_dim: LEMMA
+FORALL(m:monomial,val1:{v:list[real] | length(v) = length(m`alpha)},
+  val2:{v:list[real] | length(v) > length(val1)}):
+  (FORALL(i:below(length(m`alpha))): nth(val1,i) = nth(val2,i))
+  IMPLIES
+   full_eval(m)(val1) = full_eval(m)(val2)
+
+% @QED eval_higher_dim_poly proved by lmwhite3 on Wed, 20 Apr 2022 17:02:57 GMT
+eval_higher_dim_poly: LEMMA
+FORALL(p:MultPoly,val1:{v:list[real] | length(v) >= max_length(p)},
+  val2:{v:list[real] | length(v) > length(val1)}):
+  (FORALL(i:below(max_length(p))): nth(val1,i) = nth(val2,i))
+  IMPLIES
+   full_eval(p)(val1) = full_eval(p)(val2)
+
+
+
+  %~~~  The End  ~~~%
+  END eval_properties

@@ -1,0 +1,493 @@
+smooth_not_analytic % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This introduces a function that |%
+%| is smooth and not analytic, and |%
+%| shows that it does not interact |%
+%| with an SA set in a `nice' way, |%
+%| like real analytic functions do.|%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:                         JTS
+  % ***This contains everything from
+  %    section 3.1***
+
+%-----     %
+  BEGIN
+%     -----%
+
+  IMPORTING analysis@deriv_domain
+  IMPORTING analysis@derivatives_subtype
+  IMPORTING lnexp@ln_exp
+  IMPORTING trig@sincos_def
+  IMPORTING semi_algebraic
+  IMPORTING analytic_def
+  IMPORTING analysis@polynomial_deriv
+  IMPORTING analysis@chain_rule
+  IMPORTING nth_derivative_subtype
+  IMPORTING trig@sincos
+
+
+ %------------------------------------------
+ %%Generalized Rolles thm
+ %------------------------------------------
+ 
+  Rolles_thrm: THEOREM
+  FORALL(f:[real->real],a:real,b:{bb:real|bb>a}):
+  ((derivable?[open_interval(a,b)](f)
+  and
+  continuous?[closed_interval(a,b)](f))
+  and
+  f(a) = f(b)) IMPLIES
+  EXISTS(c:real): a < c AND c < b AND deriv(f, c) = 0
+
+ %------------------------------------------
+ %%Facts about open intervals
+ %------------------------------------------
+
+  open_noe: LEMMA
+  FORALL(a,b:real):
+  b > a IMPLIES
+    not_one_element?[open_interval[real](a, b)]
+
+  closed_cont: LEMMA
+  FORALL(a,b:real, f:[real -> real]):
+  (continuous?(f) AND
+  b > a) IMPLIES 
+   continuous?[closed_interval[real](a, b)]
+          (LAMBDA (s: closed_interval[real](a, b)): f(s))
+
+%------------------------------------------
+%%General mean value theorem, that has
+%  continuity on closed interval
+%  and differentiable on open
+%------------------------------------------
+% ***This appears in Section 3.1 of
+%    paper ***
+
+  mean_value_gen: THEOREM
+  FORALL(f:[real->real],a:real,b:{bb:real|bb>a}):
+  (derivable?[open_interval(a,b)](f)
+  and
+  continuous?[closed_interval(a,b)](f))
+   IMPLIES
+   EXISTS (c:real): a < c AND c < b AND 
+   deriv(f, c) * (b - a) = f(b) - f(a)
+
+%------------------------------------------
+%% The next two theorems are
+%  needed for showing sm is derivable at 0
+%------------------------------------------
+
+  deriv_left_right_point: LEMMA
+  FORALL(x:real,f:[real->real]):
+ (((((derivable?[(LAMBDA(r:real): r<x)](f)
+  AND  derivable?[(LAMBDA(r:real): r>x)](f))
+  AND
+  (convergent?[(LAMBDA (r: real): r < x)]
+             (deriv[(LAMBDA (r: real): r < x)]
+                  (restrict[real, (LAMBDA (r: real): r < x), real](f)),
+              x)
+	      AND
+   convergent?[(LAMBDA (r: real): r > x)]
+         (deriv[(LAMBDA (r: real): r > x)]
+              (restrict[real, (LAMBDA (r: real): r > x), real](f)),
+          x)))
+	  AND	      
+   lim(deriv[(LAMBDA(r:real): r<x)](f),x)
+   = lim(deriv[(LAMBDA(r:real): r>x)](f),x)))
+   AND
+   continuous?(f))
+   IMPLIES
+   derivable?[real](f,x)
+
+  deriv_left_right_point_deriv: LEMMA
+  FORALL(x:real,f:[real->real]):
+ (((((derivable?[(LAMBDA(r:real): r<x)](f)
+  AND  derivable?[(LAMBDA(r:real): r>x)](f))
+  AND
+  (convergent?[(LAMBDA (r: real): r < x)]
+             (deriv[(LAMBDA (r: real): r < x)]
+                  (restrict[real, (LAMBDA (r: real): r < x), real](f)),
+              x)
+	      AND
+   convergent?[(LAMBDA (r: real): r > x)]
+         (deriv[(LAMBDA (r: real): r > x)]
+              (restrict[real, (LAMBDA (r: real): r > x), real](f)),
+          x)))
+	  AND	      
+   lim(deriv[(LAMBDA(r:real): r<x)](f),x)
+   = lim(deriv[(LAMBDA(r:real): r>x)](f),x)))
+   AND
+   continuous?(f))
+   IMPLIES
+   deriv[real](f,x) = lim(deriv[(LAMBDA(r:real): r<x)](f),x)
+
+%------------------------------------------
+%% Define sm function 
+%------------------------------------------
+
+  sm(x:real): real = IF x<=0 THEN 0
+  ELSE exp(- 1 / x) * sin(1/x)
+  ENDIF
+
+%------------------------------------------
+%% Define smooth
+%------------------------------------------
+
+  smooth?(f:[real->real]): bool = 
+  FORALL(n:nat):
+  derivable_n_times?(f,n)
+
+%------------------------------------------
+%% sm is smooth for x<0
+%------------------------------------------
+
+  sm_derivable_init_le0: LEMMA
+  FORALL(n:nat):
+  (derivable_n_times?[(LAMBDA (r:real): r<0)](sm,n)
+  AND nderiv[(LAMBDA (r:real): r<0)](n,sm) =
+  (LAMBDA(x:real | x<0): 0))
+
+%------------------------------------------
+%% Define chop with polynomial properties
+%------------------------------------------
+
+chop(a:sequence[real],n:nat): sequence[real] =
+ LAMBDA(i:nat): IF i<=n THEN a(i) ELSE 0 ENDIF
+
+chop_poly: LEMMA
+ FORALL(a:sequence[real],n,m:nat):
+ m >= n IMPLIES
+ polynomial(a,n) = polynomial(chop(a,n),m)
+
+chop_poly_add: LEMMA
+ FORALL(a:sequence[real],b:sequence[real],n1,n2:nat):
+ polynomial(a,n1) + polynomial(b,n2) =
+ polynomial(chop(a,n1) + chop(b,n2),max(n1,n2))
+
+ poly_restrict_derivable: LEMMA
+ FORALL(a:sequence[real],n:nat):
+ derivable?[(LAMBDA (r: real): r > 0)]
+          (restrict[real, (LAMBDA (r: real): r > 0), real]
+               (polynomial(a, n)))
+
+
+%------------------------------------------
+%% Define derivative sequence corresponding
+%  to polnomial
+%------------------------------------------
+
+deriv_p(a:sequence[real],n:nat): sequence[real] =
+ IF n=0 THEN (LAMBDA(i:nat): 0)
+ ELSE (LAMBDA (i:nat): (i+1)*a(i+1))
+ ENDIF
+
+deriv_p_old_def: LEMMA
+ FORALL(a:sequence[real],n:nat):
+(IF n = 0 THEN (LAMBDA (x:real): 0)
+                          ELSE polynomial((LAMBDA (i:nat): (i+1)*a(i+1)),n-1) 
+                          ENDIF) =
+			  polynomial(deriv_p(a,n),max(n-1,0))
+
+%------------------------------------------
+%% Polynomials are derivable with deriv
+%------------------------------------------
+
+ poly_restrict_deriv: LEMMA
+ FORALL(a:sequence[real],n:nat):
+  deriv[(LAMBDA (r: real): r > 0)](restrict[real, (LAMBDA (r: real): r > 0), real]
+               (polynomial(a, n)))
+                        = polynomial(deriv_p(a,n),max(0,n-1))
+
+%------------------------------------------
+%% The next lemmas are building up derivability
+%  to show that sm is in fact smooth.
+%  There are many intermedaite steps,
+%  becuase it is quite tedious 
+%------------------------------------------
+
+ derivable_trig_exp_poly_div: LEMMA
+  FORALL(k:nat,a,b:sequence[real],n1,n2:nat):
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (exp(- 1 / x) *
+  (sin(1/x) * polynomial(a,n1)(x) + cos(1/x) * polynomial(b,n2)(x))) / x^k )
+
+deriv_sin1x: LEMMA
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (sin(1/x)))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0):
+  sin(1/x))
+  =  LAMBDA(x:real | x>0): -cos(1/x)/x^2
+
+deriv_cos1x: LEMMA
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): cos(1/x))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0):
+  cos(1/x))
+  =  LAMBDA(x:real | x>0): sin(1/x)/x^2
+
+deriv_sin1x_poly: LEMMA
+  FORALL(a:sequence[real],n1:nat):
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (sin(1/x)) * polynomial(a,n1)(x))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0):
+  sin(1/x)* polynomial(a,n1)(x))
+  =  LAMBDA(x:real | x>0): sin(1/x) * polynomial(deriv_p(a,n1),max(0,n1-1))(x)
+			  + cos(1/x)*polynomial(-a,n1)(x) / x^2
+deriv_cos1x_poly: LEMMA
+  FORALL(b:sequence[real],n2:nat):
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (cos(1/x)) * polynomial(b,n2)(x))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0):
+  cos(1/x)* polynomial(b,n2)(x))
+  =  LAMBDA(x:real | x>0): cos(1/x) * polynomial(deriv_p(b,n2),max(0,n2-1))(x)
+			  + sin(1/x)*polynomial(b,n2)(x) / x^2
+
+poly_pull_div_xk: LEMMA
+ FORALL(a:sequence[real],n,k:nat):
+ (LAMBDA(x:real | x>0):
+  polynomial(a,n)(x)) =  (LAMBDA(x:real | x>0):
+  polynomial(polynomial_prod(a,n,power_linear(0,1,k),k),n+k)(x) / x ^ k)
+
+deriv_sin1x_polyx2: LEMMA
+  FORALL(a:sequence[real],n1:nat):
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (sin(1/x)) * polynomial(a,n1)(x))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0):
+  sin(1/x)* polynomial(a,n1)(x))
+  =  LAMBDA(x:real | x>0): (sin(1/x) *
+  polynomial(polynomial_prod(deriv_p(a,n1),max(0,n1-1),power_linear(0,1,2),2),max(0,n1-1)+2)(x)
+			  + cos(1/x)*polynomial(-a,n1)(x)) / x^2
+
+deriv_cos1x_polyx2: LEMMA
+  FORALL(b:sequence[real],n2:nat):
+  derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (cos(1/x)) * polynomial(b,n2)(x))
+  AND
+  deriv[(LAMBDA (r:real): r>0)](LAMBDA(x:real | x>0): cos(1/x)*
+  polynomial(b,n2)(x))
+  =  LAMBDA(x:real | x>0): (cos(1/x) *
+  polynomial(polynomial_prod(deriv_p(b,n2),max(0,n2-1),power_linear(0,1,2),2),max(0,n2-1)+2)(x)
+			  + sin(1/x)*polynomial(b,n2)(x)) / x^2
+
+deriv_sin_cos1x: LEMMA
+ FORALL(a,b:sequence[real],n1,n2:nat):
+   derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (sin(1/x) * polynomial(a,n1)(x)
+  + cos(1/x) * polynomial(b,n2)(x) ))
+  AND
+  (deriv[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (sin(1/x) * polynomial(a,n1)(x)
+  + cos(1/x) * polynomial(b,n2)(x) ))
+  =
+  (LAMBDA(x:real| x>0): (sin(1/x) * polynomial(chop(b,n2)
+  +chop(polynomial_prod(deriv_p(a,n1),max(0,n1-1),
+  power_linear(0,1,2),2),max(0,n1-1)+2),max(n2,max(0,n1-1)+2))(x)
+     + cos(1/x) * polynomial(chop(-a,n1)
+     + chop(polynomial_prod(deriv_p(b,n2),max(0,n2-1),
+     power_linear(0,1,2),2),max(0,n2-1)+2),max(n1,max(0,n2-1)+2))(x))/ x^2))
+
+deriv_e1x: LEMMA
+  derivable?[(LAMBDA (r:real): r>0)]
+   (LAMBDA(x:real |x>0): exp(- 1 / x))
+   and
+   deriv[(LAMBDA (r:real): r>0)]
+   ( LAMBDA(x:real |x>0): exp(-1 / x)) =
+   LAMBDA(x:real |x>0): exp(- 1 / x ) / x ^ 2
+
+deriv_e_sin_cos1x: LEMMA
+   FORALL(a,b:sequence[real],n1,n2:nat):
+   derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (exp(-1 / x) * (sin(1/x) *
+  polynomial(a,n1)(x) + cos(1/x) * polynomial(b,n2)(x))))
+  AND
+  EXISTS(c,d:sequence[real],n3,n4:nat):
+  deriv[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (exp(-1 / x) * (sin(1/x) *
+  polynomial(a,n1)(x) + cos(1/x) * polynomial(b,n2)(x))))
+  =
+  (LAMBDA(x:real| x>0): (exp(-1 / x)* (sin(1/x) *
+  polynomial(c,n3)(x) + cos(1/x) * polynomial(d,n4)(x)))/ x^2)
+
+deriv_e_sin_cos1xk: LEMMA
+   FORALL(a,b:sequence[real],n1,n2,k:nat):
+   derivable?[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (exp(-1 / x) * (sin(1/x) *
+  polynomial(a,n1)(x) + cos(1/x) * polynomial(b,n2)(x))) / x^k)
+  AND
+  EXISTS(c,d:sequence[real],n3,n4:nat):
+  deriv[(LAMBDA (r:real): r>0)]
+  (LAMBDA(x:real | x>0): (exp(-1 / x) * (sin(1/x) *
+  polynomial(a,n1)(x) + cos(1/x) * polynomial(b,n2)(x))) / x^k)
+  =
+  (LAMBDA(x:real| x>0): (exp(-1 / x)* (sin(1/x) *
+  polynomial(c,n3)(x) + cos(1/x) * polynomial(d,n4)(x)))/ x^(k+2))
+
+
+init_deriv_n: LEMMA
+ FORALL(n:nat):
+  (derivable_n_times?[(LAMBDA (r:real): r>0)](sm,n)
+  IMPLIES ( EXISTS(c,d:sequence[real],n3,n4,k:nat):
+  nderiv[(LAMBDA (r:real): r>0)](n,sm) = (LAMBDA(x:real | x>0):
+  (exp(-1 / x)* (sin(1/x) * polynomial(c,n3)(x) +
+  cos(1/x) * polynomial(d,n4)(x))) / x^(k))))
+
+deriv_sm_n: LEMMA
+ FORALL(n:nat):
+  (derivable_n_times?[(LAMBDA (r:real): r>0)](sm,n))
+  AND
+  (EXISTS(c,d:sequence[real],n3,n4,k:nat):
+  nderiv[(LAMBDA (r:real): r>0)](n,sm) = (LAMBDA(x:real | x>0):
+  (exp(-1 / x)* (sin(1/x) * polynomial(c,n3)(x) +
+  cos(1/x) * polynomial(d,n4)(x))) / x^(k)))
+
+
+%------------------------------------------
+%% The next lemmas are building the limit
+%  of( e^(-1/x) * (p(x)sin(x) + cos(x)q(x))/x^k
+%  as x ->+ 0 
+%------------------------------------------
+
+  abs_between: LEMMA
+  FORALL(a,b,c:real):
+  (a<= b AND b<= c)
+  IMPLIES
+  abs(b) <= max(abs(a),abs(c))
+  
+  bound_sin_p_cos_p: LEMMA
+  FORALL(a,b:sequence[real],n1,n2:nat):
+  EXISTS(C:posreal):
+  FORALL(x:real| x<=1 AND 0<x):
+  abs((sin(1/x) * polynomial(a,n1)(x) +
+  cos(1/x) * polynomial(b,n2)(x))) < C
+
+  lnx_derivable: LEMMA
+  FORALL(k:nat,c:posreal):
+  derivable?[(LAMBDA(r:real): r>=c)](
+  LAMBDA(x:real |x>=c): -x + k * ln(x))
+  AND
+  deriv[(LAMBDA(r:real): r>=c)]
+  (LAMBDA(x:real |x>=c): -x + k * ln(x))
+  =(LAMBDA(x:real |x>=c): -1 + k/x)
+
+  lnx_le: LEMMA
+  FORALL(k:posnat):
+  FORALL(x:posreal):
+  x>(2*k) IMPLIES
+  -x + k * ln(x) <= (-1/2)*x + -2*k + k* ln(2*k) + k
+  
+  lnx_neg_large: LEMMA
+  FORALL(M1:posreal,k:posnat):
+  EXISTS(M2:posreal):
+  FORALL(x:posreal): x>= M2
+  IMPLIES
+  -x + k * ln(x) <= -M1
+  
+  exp_xk_small: LEMMA
+  FORALL(k:nat, epsilon:posreal):
+  EXISTS(M:posreal):
+  FORALL(x:real): x >= M IMPLIES
+  exp(-x) * x^k < epsilon
+
+  exp_conv: LEMMA FORALL(k:nat):
+  convergent?(LAMBDA(x:posreal): exp(-1/x)/x^k ,0)
+
+%------------------------------------------
+%% Wild exp limit
+%------------------------------------------
+
+  exp_sin_p_cos_p_conv: LEMMA FORALL(a,b:sequence[real],n1,n2:nat,k:nat):
+   convergent?(LAMBDA(x:real | x>0 ): exp(-1 / x)*
+   (sin(1/x) * polynomial(a,n1)(x) +
+   cos(1/x) * polynomial(b,n2)(x)) / x^(k), 0)
+
+  %%*** This is part 2 of Lemma 3.5 in paper***
+  exp_lim: LEMMA  FORALL(a,b:sequence[real],n1,n2:nat,k:nat):
+  lim( LAMBDA(x:real | x>0 ): exp(-1 / x)* (sin(1/x) *
+  polynomial(a,n1)(x) + cos(1/x) *
+  polynomial(b,n2)(x)) / x^(k) ,0) = 0
+
+%------------------------------------------
+%% Propertiy of derivability n times
+%  that is needed
+%------------------------------------------
+
+derivable_nth_split: LEMMA
+ FORALL(f:[real -> real],n:posnat):
+ derivable_n_times?(f,n-1) AND
+ derivable_n_times?[(Lambda(r:real): r<0)](f,n)
+ AND
+ derivable_n_times?[(Lambda(r:real): r>0)](f,n)
+ AND
+ derivable?(nderiv(n-1,f),0)
+ IMPLIES
+ derivable_n_times?(f,n)
+
+%------------------------------------------
+%% sm is derivable n times with a special
+%  form of derivative 
+%------------------------------------------
+%%*** This is part 1 of Lemma 3.5 in paper***
+
+  sm_n_derivable: LEMMA
+  FORALL(n:nat):
+  (derivable_n_times?(sm,n))
+  AND
+  (EXISTS(c,d:sequence[real],n3,n4,k:nat):
+  nderiv(n,sm) = (LAMBDA(x:real): IF x<=0 THEN 0
+   ELSE (exp(-1 / x)* (sin(1/x) * polynomial(c,n3)(x) + cos(1/x) * polynomial(d,n4)(x))) / x^(k) ENDIF))
+
+%------------------------------------------
+%% Smooth not anaytic 
+%------------------------------------------
+
+%%*** This is Theorem 3.6***
+  smooth_not_analytic: THEOREM
+  smooth?(sm) AND NOT analytic?(0)(sm)
+
+  psmxn(i:nat): {r:posreal | sm(r) > 0 AND r< 1/(i+1)}
+  nsmxn(i:nat): {r:posreal | sm(r) < 0 AND r< 1/(i+1)}
+
+nsmxn_conv_0: LEMMA
+  convergence(nsmxn, 0)
+
+psmxn_conv_0: LEMMA
+  convergence(psmxn, 0)
+  
+inf(S:set[real]| nonempty?[real](S) AND bounded_below?(S)): real = glb(S)
+
+
+%%*** This is the Example 3.12 in paper***
+
+p1:(mv_standard_form?) =  (: (# C := 1, alpha:= (: 1 :) #) :)
+atom1: atomic_poly =  (# poly := p1, ineq:=   <= #)
+SA:  set[VectorN(1)] =  semi_alg( (: (: atom1 :) :))(1)
+
+non_empt_bound_sm: LEMMA
+  nonempty?[real]({xx: real | NOT SA((: sm(xx) :))}) AND
+  bounded_below?({xx: real | NOT SA((: sm(xx) :))})
+
+inf_0_sm: LEMMA
+ inf({xx: real | NOT SA((: sm(xx) :))}) = 0
+
+
+  not_clean_break: LEMMA
+   inf({xx:real | NOT SA((: sm(xx) :))}) = 0
+   
+   AND
+   EXISTS(xn,yn:sequence[posreal]):
+   convergence(xn,0) AND
+   convergence(yn,0) AND
+   FORALL(i:nat):
+   SA((: sm(xn(i)) :)) AND xn(i)>0
+   AND
+   NOT SA((: sm(yn(i)) :) ) AND yn(i)>0 
+
+  %~~~    The End    ~~~%
+  END smooth_not_analytic

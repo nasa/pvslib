@@ -1,0 +1,220 @@
+arithmetic_MultPoly  % Welcome
+		: THEORY
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This is defining arithmetic operations  |%
+%| for Multivariate Polynomials with       |%
+%| useful properties.                      |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:		          LW, AD, JTS
+
+% *** This corresponds to a small amount of section
+%     2.1 in the paper, namely the discription of
+%     addition, multiplcation,
+%     and scalar multiplication****
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------
+%%Importing the definition of polynomial
+% and standard form 
+%-------------------------------------------
+
+IMPORTING standard_form_mult_poly
+
+%-------------------------------------------
+%% Adding and multiplying with a real number
+%-------------------------------------------
+
+add(r:real, p:MultPoly): RECURSIVE MultPoly = 
+  IF p = null
+    THEN (: (# C := r, alpha := (: :) #) :)
+  ELSIF FORALL (j:below(length(p))): sum(nth(p,j)`alpha) > 0
+    THEN cons((# C := r, alpha := (: :) #), p)
+  ELSIF sum(car(p)`alpha) = 0
+    THEN cons((# C := car(p)`C + r, alpha := car(p)`alpha #),cdr(p)) 
+  ELSE 
+    cons(car(p), add(r,cdr(p))) 
+  ENDIF
+  MEASURE length(p)
+
+add_mp_length: LEMMA
+ FORALL(r:real,p:MultPoly):
+ length(add(r,p)) >= length(p)
+
+add_mp_max_length: LEMMA
+ FORALL(r:real,p:MultPoly):
+ max_length(add(r,p)) = max_length(p)
+
+mult(r:real, m:monomial): monomial =
+  (# C := m`C*r, alpha := m`alpha #)
+
+%-------------------------------------------
+%%Scalar multiplication of MultPoly
+%-------------------------------------------
+
+mult(r:real, p:MultPoly): RECURSIVE MultPoly =
+  IF p = null 
+    THEN null 
+  ELSE 
+    cons(mult(r, car(p)),mult(r,cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+%-------------------------------------------
+%% Define addition for two sorted MultPolys 
+%% (addition for two monomials is defined
+% in standard_form_mult_poly)
+%
+% Extra care with addition is used to
+% garentee that the result of the
+% addition is in standard form.
+%-------------------------------------------
+
+%-------------------------------------------
+%%A definition of almost standard form.
+%It has all of standard form except for the
+%dimension being minimal.
+%This allows for addition of polynomials
+% with different dimensions.
+%-------------------------------------------
+
+  mv_standard_sans_cut?(n:nat)(p: MultPoly): 
+   bool =
+   null?(p) OR
+   (Unif?(p) AND length(car(p)`alpha) = n
+   AND allnonzero?(p) AND is_sorted?(p) AND simplified?(p))
+
+%-------------------------------------------
+%%Properties of mv_standard_sans_cut
+%-------------------------------------------
+
+  mv_standard_sans_cdr: LEMMA
+  FORALL(n:nat, p:MultPoly):
+  cons?(p) AND (mv_standard_sans_cut?(n)(p))
+  IMPLIES mv_standard_sans_cut?(n)(cdr(p))
+
+  lft_standard_is_sans: LEMMA
+  FORALL (p:(mv_standard_form?), (n:nat |n >= max_length(p))):
+  mv_standard_sans_cut?(n)(lft(p)(n))
+ 
+%-------------------------------------------
+%%Takes two sorted multpolys and gives
+% their sorted and simplified sum
+%-------------------------------------------
+
+sorted_sans_add(n: nat, p:(mv_standard_sans_cut?(n)),
+ q:(mv_standard_sans_cut?(n))): RECURSIVE MultPoly =
+  IF null?(p)
+    THEN q
+  ELSIF null?(q)
+    THEN p 
+  ELSIF car(p)`alpha = car(q)`alpha
+    THEN ( IF car(p)`C +car(q)`C = 0 THEN sorted_sans_add(n, cdr(p), cdr(q))
+    ELSE cons(add_mono(car(p),car(q)), sorted_sans_add(n,cdr(p),cdr(q))) ENDIF)
+  ELSIF leq(car(p), car(q))
+    THEN cons(car(p), sorted_sans_add(n,cdr(p),q))
+  ELSE
+    cons(car(q), sorted_sans_add(n,p, cdr(q)))
+  ENDIF
+  MEASURE length(p) + length(q)
+
+sorted_add(p,q: (mv_standard_form?)): MultPoly =
+  LET n = max(max_length(p), max_length(q)) IN
+  sorted_sans_add(n, lft(p)(n), lft(q)(n))
+
+%-------------------------------------------
+%%Sort_add gives a sorted and simplified sum
+%-------------------------------------------
+
+sort_add(p1:MultPoly ,p2:MultPoly): MultPoly =
+  IF mv_standard_form?(p1) AND mv_standard_form?(p2)
+    THEN sorted_add(p1,p2) 
+  ELSIF mv_standard_form?(p1) AND NOT mv_standard_form?(p2)
+    THEN sorted_add(p1,mv_standard_form(p2))
+  ELSIF mv_standard_form?(p2) AND NOT mv_standard_form?(p1)
+    THEN sorted_add(mv_standard_form(p1),p2)
+  ELSE 
+    sorted_add(mv_standard_form(p1),mv_standard_form(p2))
+    ENDIF
+
+%this add checks for minlength and cuts any extra zeros off the end of the alphas
+min_add(p1:MultPoly ,p2:MultPoly): MultPoly =
+  LET P = sort_add(p1,p2)
+  IN (IF minlength?(P)
+        THEN P
+      ELSE
+        lft(mv_cut(P))(max_length(mv_cut(P))) 
+      ENDIF)
+      
+%this add gets rid of any terms that have coefficient equal to 0, gives a multpoly in standard form
+add(p1:MultPoly ,p2:MultPoly): MultPoly = 
+  min_add(p1,p2)
+
+%--------------------------------------
+%% Lemmata for adding
+%--------------------------------------
+
+sorted_sans_add_nz: LEMMA
+ FORALL(n: nat, p:(mv_standard_sans_cut?(n)),
+ q:(mv_standard_sans_cut?(n))):
+ allnonzero?(sorted_sans_add(n,p,q))
+
+%-------------------------------------------
+%%Mult two monomials
+%-------------------------------------------
+
+mult_mono(m1,m2:monomial): monomial = 
+    (# C:= m1`C*m2`C, alpha :=
+    add_lists[nat](m1`alpha,m2`alpha) #)
+
+
+%--------------------------------------------
+%% Multiplying a MultPoly by a monomial
+%-------------------------------------------
+
+mp_mono_mult(m:monomial, p:MultPoly): RECURSIVE MultPoly = 
+  IF p = null OR m`C = 0
+    THEN null
+  ELSE 
+    cons(mult_mono(m,car(p)), mp_mono_mult(m,cdr(p)))
+  ENDIF
+  MEASURE length(p)
+
+% @QED mp_mono_mult_max proved by lmwhite3 on Thu, 19 May 2022 16:55:27 GMT
+mp_mono_mult_max: LEMMA   
+  FORALL(m:monomial, p:MultPoly): 
+    max_length(mp_mono_mult(m,p)) <= max(length(m`alpha), max_length(p))
+
+%-------------------------------------------
+%% Multiplying two MultPolys
+%-------------------------------------------
+
+mp_mult(p,q:MultPoly): RECURSIVE MultPoly = 
+  IF p = null OR q= null 
+    THEN null
+  ELSE
+    add( mp_mono_mult(car(p),q), mp_mult(cdr(p),q))
+  ENDIF
+  MEASURE length(p) + length(q)
+
+%-------------------------------------------
+%% MultPoly raised to a power
+%-------------------------------------------
+
+mp_power(p:MultPoly,k:nat): RECURSIVE MultPoly = 
+  IF p=null
+    THEN null
+  ELSIF k = 0
+    THEN (: (# C := 1, alpha := (: :) #) :)
+  ELSIF mv_standard_form?(p)
+    THEN mp_mult(p,mp_power(p,k-1))
+  ELSE LET P = mv_standard_form(p)
+    IN mp_mult(P,mp_power(P,k-1))
+  ENDIF
+  MEASURE k
+
+  %~~~  The End      ~~~%
+  END arithmetic_MultPoly
