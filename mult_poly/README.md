@@ -1,7 +1,11 @@
 # Multivariate Polynomials
 
 This library contains a formalization of multivariate polynomials
-and semi-algebriac sets  For full descriptioon see: "Formal Verification of the  Interaction Between Semi-Algebraic Sets and Real Analytic Functions." 
+and semi-algebriac sets. For full descriptioon see: "Formal Verification of the  Interaction Between Semi-Algebraic Sets and Real Analytic Functions." 
+
+## External Dependencies
+
+![dependency graph](./mult_poly.svg "Dependency Graph")
 
 ## Internal Summary
 
@@ -24,6 +28,8 @@ and semi-algebriac sets  For full descriptioon see: "Formal Verification of the 
   | [`analytic_def`](analytic_def.pvs) | Basic definition and properties of real analytic functions.|
   | [`smooth_not_analytic`](smooth_not_analytic.pvs)| This introduces a function that is smooth and not analytic, and shows that it does not interact with an SA set in a `nice' way, like real analytic functions do. |
   | [`poly_comp_analytic`](poly_comp_analytic.pvs)| The composition of a real analytic function with a multi-variate polynomial is still real analytic. Also shows the favorable properties of real analytic functions interacting with semi-algebraic sets. |
+
+![zoomed dependency graph](./mult_poly-zoomed.svg "Zoomed Dependency Graph")
 
 # Contributors
 * Lauren White, NASA, USA 
