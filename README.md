@@ -14,68 +14,72 @@ The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http:/
 
 # Libraries
 
-Currently, NASALib consists of 54 libraries, containing ~30K proven formulas.
+Currently, NASALib consists of 58 libraries, containing about 32K proven formulas.
 
 | Library  | Description | 
 | --- | --- | 
 | [ACCoRD](./ACCoRD/README.md) | Framework for the analysis of air traffic conflict detection and resolution algorithms | 
-| [affine_arith](./affine_arith/README.md) | Formalization of affine arithmetic and strategy for evaluating polynomial functions with variables on interval domains. |
-| [algebra](./algebra/README.md) | Groups, monoids, rings, etc. |
-| [analysis](./analysis/README.md) | Real analysis, limits, continuity, derivatives, integrals. |
-| [ASP](./ASP/README.md) | Denotational semantics of Answer Set Programming. |
-| [aviation](./aviation/README.md) | Support definitions and properties for aviation-related formalizations. |
-| [Bernstein](./Bernstein/README.md) | Formalization of multivariate Bernstein polynomials. |
-| [CCG](./CCG/README.md) | Formalization of diverse termination criteria. |
-| [complex](./complex/README.md) | Complex numbers. |
-| [complex_alt](./complex_alt/README.md) | Alternative formalization of complex numbers. |
-| [complex_integration](./complex_integration/README.md) | Complex integration. |
-| [co_structures](./co_structures/README.md) | Sequences of countable length defined as co-algebraic datatypes. |
-| [digraphs](./digraphs/README.md) | Directed graphs: circuits, maximal subtrees, paths, DAGs. |
-| [exact_real_arith](./exact_real_arith/README.md) | Exact real arithmetic including trig functions. |
-| [examples](./examples/README.md) | Examples of application of the functionality provided by NASALib. |
-| [extended_nnreal](./extended_nnreal/README.md) | Extended non-negative reals. |
-| [fast_approx](./fast_approx/README.md) | Approximations of standard numerical functions. |
-| [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols. |
-| [float](./float/README.md) | Floating point numbers and arithmetic. |
-| [graphs](./graphs/README.md) | Graph theory. |
-| [interval_arith](./interval_arith/README.md) | Interval arithmetic and numerical approximations. Includes automated strategies numerical for computing numerical approximations and interval for checking satisfiability and validity of simply quantified real-valued formulas. This development includes a formalization of Allen interval temporal logic. |
-| [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max. |
-| [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral. |
-| [linear_algebra](./linear_algebra/README.md) | Linear algebra. |
-| [lnexp](./lnexp/README.md) |  Logarithm, exponential and hyperbolic functions. & Foundational definitions of logarithm, exponential and hyperbolic functions. |
+| [affine_arith](./affine_arith/README.md) | Formalization of affine arithmetic and strategy for evaluating polynomial functions with variables on interval domains |
+| [algebra](./algebra/README.md) | Groups, monoids, rings, etc |
+| [analysis](./analysis/README.md) | Real analysis, limits, continuity, derivatives, integrals |
+| [ASP](./ASP/README.md) | Denotational semantics of Answer Set Programming |
+| [aviation](./aviation/README.md) | Support definitions and properties for aviation-related formalizations |
+| [Bernstein](./Bernstein/README.md) | Formalization of multivariate Bernstein polynomials |
+| [CCG](./CCG/README.md) | Formalization of diverse termination criteria |
+| [complex](./complex/README.md) | Complex numbers |
+| [complex_alt](./complex_alt/README.md) | Alternative formalization of complex numbers |
+| [complex_integration](./complex_integration/README.md) | Complex integration |
+| [co_structures](./co_structures/README.md) | Sequences of countable length defined as co-algebraic datatypes |
+| [digraphs](./digraphs/README.md) | Directed graphs: circuits, maximal subtrees, paths, DAGs |
+| [dL](./dL/README.md) | Differential Dynamic Logic |
+| [exact_real_arith](./exact_real_arith/README.md) | Exact real arithmetic including trig functions |
+| [examples](./examples/README.md) | Examples of application of the functionality provided by NASALib |
+| [extended_nnreal](./extended_nnreal/README.md) | Extended non-negative reals |
+| [fast_approx](./fast_approx/README.md) | Approximations of standard numerical functions |
+| [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols |
+| [float](./float/README.md) | Floating point numbers and arithmetic |
+| [graphs](./graphs/README.md) | Graph theory |
+| [interval_arith](./interval_arith/README.md) | Interval arithmetic and numerical approximations. Includes automated strategies numerical for computing numerical approximations and interval for checking satisfiability and validity of simply quantified real-valued formulas. This development includes a formalization of Allen interval temporal logic |
+| [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max |
+| [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral |
+| [linear_algebra](./linear_algebra/README.md) | Linear algebra |
+| [lnexp](./lnexp/README.md) |  Logarithm, exponential and hyperbolic functions. & Foundational definitions of logarithm, exponential and hyperbolic functions |
 | [LTL](./LTL/README.md) | Linear Temporal Logic |
-| [matrices](./matrices/README.md) | Executable specification of MxN matrices. This library includes computation of inverse and basic matrix operations such as addition and multiplication. |
-| [measure_integration](./measure_integration/README.md) | Sigma algebras, measures, Fubini-Tonelli Lemmas. |
-| [MetiTarski](./MetiTarski/README.md) | Integration of MetiTarski, an automated theorem prover for real-valued functions. |
-| [metric_space](./metric_space/README.md) | Domains with a distance metric, continuity and uniform continuity. |
-| [numbers](./numbers/README.md) | Elementary number theory. |
-| [orders](./orders/README.md) | Abstract orders, lattices, fix points. |
-| [power](./power/README.md) | Generalized Power function (without ln/exp). |
-| [probability](./probability/README.md) | Probability theory. |
-| [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts. |
-| [PVSioChecker](./PVSioChecker/README.md) | Animation of PVS specifications. |
-| [reals](./reals/README.md) | Summations, sup, inf, sqrt over the reals, absolute value, etc. |
-| [Riemann](./Riemann/README.md) |  Riemann integral. |
-| [scott](./scott/README.md) | Scott topology. |
-| [series](./series/README.md) | Power series, comparison test, ratio test, Taylor's theorem. |
-| [sets_aux](./sets_aux/README.md) | Power sets, orders, cardinality over infinite sets. Includes functional and relational facts based on Axiom of Choice and refinement relations based on equivalence relations. |
+| [matrices](./matrices/README.md) | Executable specification of MxN matrices. This library includes computation of inverse and basic matrix operations such as addition and multiplication |
+| [measure_integration](./measure_integration/README.md) | Sigma algebras, measures, Fubini-Tonelli Lemmas |
+| [MetiTarski](./MetiTarski/README.md) | Integration of MetiTarski, an automated theorem prover for real-valued functions |
+| [metric_space](./metric_space/README.md) | Domains with a distance metric, continuity and uniform continuity |
+| [mv_analysis](./mv_analysis/README.md) | Multivariate real analysis: norms, limits, continuity, derivatives, optimization, etc. |
+| [mult_poly](./mult_poly/README.md) | Multivariate polynomials and semi-algebriac sets. |
+| [numbers](./numbers/README.md) | Elementary number theory |
+| [ODEs](./ODEs/README.md) | Ordinary Differential Equations |
+| [orders](./orders/README.md) | Abstract orders, lattices, fix points |
+| [power](./power/README.md) | Generalized Power function (without ln/exp) |
+| [probability](./probability/README.md) | Probability theory |
+| [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts |
+| [PVSioChecker](./PVSioChecker/README.md) | Animation of PVS specifications |
+| [reals](./reals/README.md) | Summations, sup, inf, sqrt over the reals, absolute value, etc |
+| [Riemann](./Riemann/README.md) |  Riemann integral |
+| [scott](./scott/README.md) | Scott topology |
+| [series](./series/README.md) | Power series, comparison test, ratio test, Taylor's theorem |
+| [sets_aux](./sets_aux/README.md) | Power sets, orders, cardinality over infinite sets. Includes functional and relational facts based on Axiom of Choice and refinement relations based on equivalence relations |
 | [shapes](./shapes/README.md) | 2D-Shapes: triangle, parallelogram, rectangle, circular segment |
-| [sigma_set](./sigma_set/README.md) | Summations over countably infinite sets. |
-| [sorting](./sorting/README.md) | Sorting algorithms. |
-| [structures](./structures/README.md) | Bounded arrays, finite sequences, bags, and several other structures. |
-| [Sturm](./Sturm/README.md) |  Formalization of Sturm's theorem for univariate polynomials. Includes strategies `sturm` and `mono-poly` for automatically proving univariate polynomial relations over a real interval. |
-| [Tarski](./Tarski/README.md) | Formalization of Tarski's theorem for univariate polynomials. Includes strategy tarski for automatically proving systems of univariate polynomial relations on the real line. |
-| [topology](./topology/README.md) | Continuity, homeomorphisms, connected and compact spaces, Borel sets/functions. |
-| [trig](./trig/README.md) | Trigonometry: definitions, identities, approximations. |
-| [TRS](./TRS/README.md) | Term rewrite systems and Robinson unification algorithm. |
-| [TU_games](./TU_games/README.md) | Cooperative TU-games. |
-| [vect_analysis](./vect_analysis/README.md) | Limits, continuity, and derivatives of vector functions. |
-| [vectors](./vectors/README.md) | 2-D, 3-D, 4-D, and n-dimensional vectors. |
-| [while](./while/README.md) | Semantics for the programming language While. |
+| [sigma_set](./sigma_set/README.md) | Summations over countably infinite sets |
+| [sorting](./sorting/README.md) | Sorting algorithms |
+| [structures](./structures/README.md) | Bounded arrays, finite sequences, bags, and several other structures |
+| [Sturm](./Sturm/README.md) |  Formalization of Sturm's theorem for univariate polynomials. Includes strategies `sturm` and `mono-poly` for automatically proving univariate polynomial relations over a real interval |
+| [Tarski](./Tarski/README.md) | Formalization of Tarski's theorem for univariate polynomials. Includes strategy tarski for automatically proving systems of univariate polynomial relations on the real line |
+| [topology](./topology/README.md) | Continuity, homeomorphisms, connected and compact spaces, Borel sets/functions |
+| [trig](./trig/README.md) | Trigonometry: definitions, identities, approximations |
+| [TRS](./TRS/README.md) | Term rewrite systems and Robinson unification algorithm |
+| [TU_games](./TU_games/README.md) | Cooperative TU-games |
+| [vect_analysis](./vect_analysis/README.md) | Limits, continuity, and derivatives of vector functions |
+| [vectors](./vectors/README.md) | 2-D, 3-D, 4-D, and n-dimensional vectors |
+| [while](./while/README.md) | Semantics for the programming language While |
 
-## Dependencies
+## Structure
 
-Check the [NASALib dependency graph](docs/all-theories.svg "Dependency Graph").
+![NASALib dependency graph](nasalib.svg "Dependency Graph")
 
 # Scripts
 
