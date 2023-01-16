@@ -20,4 +20,4 @@ Basics of Ordinary Differential Equations
 * J Tanner Slagel, NASA, USA, <j.tanner.slagel@nasa.gov>
 
 # Dependencies
-![dependency graph](./ODEs-zoom.svg "Zoomed Dependency Graph")
+![dependency graph](./ODEs-zoomed.svg "Zoomed Dependency Graph")

@@ -5,7 +5,7 @@ Hybrid systems contain continuously evolving and discretely evolving components,
 Differential dynamic logic (dL) is a framework for formally specifying and reasoning about hybrid programs, where the specification allows modeling of hybrid systems, and its proof calculus allows for reasoning about such potentially complex programs. 
 This embedding of dL is operational, meaning that it leverages the internal logic of PVS, resulting in a version of dL whose proof calculus is not only formally verified, but is also executable within PVS itself. The result is a **P**roper**l**y **A**ssured **I**mplementation of **D**ifferential Dynamic Logic for H**y**brid **P**rogram **V**erification and **S**pecification, **Plaidypvs**. 
 
-![dependency graph](./Plaidypvs.png "Dependency Graph")
+![logo](./Plaidypvs.png "Plaidypvs logo")
 <div style="text-align: right"> Image credit: Esther Conrad </div>
 
 ## External Dependencies
