@@ -1,0 +1,263 @@
+%% -----------------------------------------------------------------------------
+%% vectors_2d_trig.pvs              Dependable Computing
+%% This theory formalizes some trigonometric functions using vector
+%% operations. It does not import anything from the NASA trig library.
+%% -----------------------------------------------------------------------------
+
+vectors_2d_trig : THEORY
+
+  BEGIN
+
+  IMPORTING vectors_cross_2d
+
+  % These definitions are similar to those of theory vect_trig_2D in
+  % the NASA vectors library, although more properties have been
+  % formalized here.
+
+  % vsin(u, v) provides the sin of the angle from u to v (counter-clockwise).
+  % vcos(u, v) provides the cos of the angle from u to v (either direction).
+
+  vsin(u, v: Normalized): {x: real | -1 <= x AND x <= 1} = cross(u, v)
+
+  vcos(u, v: Normalized): {x: real | -1 <= x AND x <= 1} = u * v
+
+  vsin_sq_plus_vcos_sq: LEMMA
+    FORALL (u, v: Normalized): sq(vsin(u, v)) + sq(vcos(u, v)) = 1
+
+  % Let u, v, w be vertices of a right triangle, with w - u the hypotenuse
+  % vector and w - v and v - u the opposite and adjacent sides, respectively.
+  % Following lemmas give side lengths using standard trig relationships.
+
+  vector_lengths_from_sin_cos_1: LEMMA
+    FORALL (u, v, w: point_2d):
+      u /= v AND v /= w AND w /= u AND
+      cross(v - u, w - u) > 0 AND (u - v) * (w - v) = 0
+        IMPLIES norm(v - u) = norm(w - u) * vcos(^(v - u), ^(w - u)) AND
+                norm(w - v) = norm(w - u) * vsin(^(v - u), ^(w - u))
+
+  vector_lengths_from_sin_cos_2: LEMMA
+    FORALL (u, v, w: point_2d):
+      u /= v AND v /= w AND w /= u AND
+      cross(w - u, v - u) > 0 AND (u - v) * (w - v) = 0
+        IMPLIES norm(v - u) = norm(w - u) * vcos(^(w - u), ^(v - u)) AND
+                norm(w - v) = norm(w - u) * vsin(^(w - u), ^(v - u))
+
+  scaled_sin_cos_eq: LEMMA
+    FORALL (u, v: Nz_vector, a, b: posreal):
+      vsin(^(a * u), ^(b * v)) = vsin(^(u), ^(v)) AND
+      vcos(^(a * u), ^(b * v)) = vcos(^(u), ^(v)) 
+
+  triangle_vertex_imp_sin_cos_pos_1: LEMMA
+    FORALL (u, v, p, q: point_2d, c, d: posreal):
+      u /= v AND q = u + d * (v - u) AND p = q + c * perp_right(v - u)
+        IMPLIES vcos(^(v - u), ^(p - u)) > 0 AND
+                vsin(^(v - u), ^(p - u)) > 0 
+
+  triangle_vertex_imp_sin_cos_pos_2: LEMMA
+    FORALL (u, v, p, q: point_2d, c, d: posreal):
+      u /= v AND q = u + d * (v - u) AND p = q + c * perp_left(v - u)
+        IMPLIES vcos(^(p - u), ^(v - u)) > 0 AND
+                vsin(^(p - u), ^(v - u)) > 0 
+
+  complementary_angle_vcos_eq: LEMMA
+    FORALL (u, v, w, x: point_2d, k: posreal):
+      u /= v AND v /= w AND u - v = k * (x - w)
+        IMPLIES vcos(^(u - v), ^(w - v)) = -vcos(^(v - w), ^(x - w))
+
+  % Express one vector as the sum of perpendicular components derived from
+  % the other.
+  perp_comps_cos_sin_left: LEMMA
+    FORALL (u, v: Normalized):
+      vcos(u, v) * v + vsin(u, v) * perp_left(v) = u
+
+  perp_comps_cos_sin_right: LEMMA
+    FORALL (u, v: Normalized):
+      vcos(u, v) * u + vsin(u, v) * perp_right(u) = v
+
+  % Half angle formulas for sine and cosine are expressed using the
+  % vector-based cosine function (dot product).
+
+  half_angle_vsin(u, v: Normalized): {x: real | 0 <= x AND x <= 1} =
+    % sin(a/2) = sqrt((1 - cos(a))/2)
+    sqrt((1 - vcos(u, v)) / 2)
+
+  % Following assumes counterclockwise angle from u to v.
+  half_angle_vcos(u, v: Normalized): {x: real | -1 <= x AND x <= 1} =
+    % cos(a/2) =  sqrt((1 + cos(a))/2) for 0 <= a/2 <= pi/2
+    %          = -sqrt((1 + cos(a))/2) for pi/2 <= a/2 <= pi
+    LET mag = sqrt((1 + vcos(u, v)) / 2) IN
+      IF cross(u, v) >= 0 THEN mag ELSE -mag ENDIF
+
+  half_angle_vsin_vcos_same: LEMMA
+    FORALL (u: Normalized):
+      half_angle_vsin(u, u) = 0 AND
+      half_angle_vsin(u, -u) = 1 AND
+      half_angle_vcos(u, u) = 1 AND
+      half_angle_vcos(u, -u) = 0
+
+  half_angle_sine_dir_nonparallel: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)}):
+      LET uv = u - v, wv = w - v IN
+        vcos(^(uv), ^(wv)) < 1 AND
+	sqrt((1 - vcos(^(uv), ^(wv))) / 2) > 0
+
+  half_angle_cosine_dir_nonparallel: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)}):
+      LET uv = u - v, wv = w - v IN
+        half_angle_vcos(^(uv), ^(wv)) < 1
+
+  % These alternative formulations are useful in some cases.
+
+  alt_half_angle_vsin(v: point_2d, u, w: {p: point_2d | p /= v}):
+		     {x: real | 0 <= x AND x <= 1} =
+    LET uv = ^(u - v), wv = ^(w - v) IN
+      IF uv = -wv
+        THEN 1
+        ELSE abs(cross(uv, wv)) / norm(uv + wv)
+      ENDIF
+
+  alt_half_angle_vcos(v: point_2d, u, w: {p: point_2d | p /= v}):
+		     {x: real | -1 <= x AND x <= 1} =
+    LET uv = ^(u - v), wv = ^(w - v) IN
+      IF uv = -wv
+        THEN 0
+        ELSE LET mag = (1 + uv * wv) / norm(uv + wv) IN
+	       IF cross(uv, wv) >= 0 THEN mag ELSE -mag ENDIF
+      ENDIF
+
+  half_angle_sine_defns_equiv: LEMMA
+    FORALL (v: point_2d, u, w: {p: point_2d | p /= v}):
+      half_angle_vsin(^(u - v), ^(w - v)) =
+      alt_half_angle_vsin(v, u, w)
+
+  half_angle_cosine_defns_equiv: LEMMA
+    FORALL (v: point_2d, u, w: {p: point_2d | p /= v}):
+      half_angle_vcos(^(u - v), ^(w - v)) =
+      alt_half_angle_vcos(v, u, w)
+
+  law_of_cosines_sqv: LEMMA
+    FORALL (u, v, w: point_2d):
+      LET a = u - v, b = w - v, c = w - u IN
+        sqv(c) = sqv(a) + sqv(b) - 2 * (a * b)
+
+  % This is a variant of sq_norm_dist in vectors@vectors_2D
+  law_of_cosines_sq: LEMMA
+    FORALL (u, v, w: point_2d):
+      LET a = norm(u - v), b = norm(w - v), c = norm(w - u) IN
+        sq(c) = sq(a) + sq(b) - 2 * ((u - v) * (w - v))
+
+  law_of_cosines_sq_vcos: LEMMA
+    FORALL (u, v, w: point_2d):
+      u /= v AND w /= v IMPLIES
+        LET a = norm(u - v), b = norm(w - v), c = norm(w - u) IN
+          sq(c) = sq(a) + sq(b) - 2 * a * b * vcos(^(u - v), ^(w - v))
+
+  dot_0_eqv_perp_vectors: LEMMA
+    FORALL (u, v: Nz_vector):
+      u * v = 0 IFF (^(v) = ^(perp_left(u)) OR ^(v) = ^(perp_right(u)))
+
+  % Two lemmas allow for cancellation of vector w in sum and difference
+  % arguments to norm provided w is perpendicular to u and v.
+  norm_perp_sum_le_eqv_norm_le: LEMMA
+    FORALL (u, v, w: vector_2d):
+      u * w = 0 AND v * w = 0 IMPLIES
+        (norm(u + w) <= norm(v + w) IFF norm(u) <= norm(v))
+
+  norm_perp_diff_le_eqv_norm_le: LEMMA
+    FORALL (u, v, w: vector_2d):
+      u * w = 0 AND v * w = 0 IMPLIES
+        (norm(u - w) <= norm(v - w) IFF norm(u) <= norm(v))
+
+  pythagorean_path_between_points: LEMMA
+    FORALL (p, q: point_2d, v: Normalized):
+      EXISTS (a, b: real): q = p + a * v + b * perp_right(v)
+
+  perp_ray_line_xing_components: LEMMA
+    FORALL (u, v, w: point_2d, c: nzreal):
+      u /= v AND u /= w IMPLIES
+        LET dir_v = ^(v - u), dir_w = ^(w - u) IN
+          NOT parallel?(dir_w, dir_v) AND dir_w * dir_v /= 0 IMPLIES
+            EXISTS (a, b: nzreal):
+	      a = c * vcos(dir_w, dir_v) AND
+	      b = c * vsin(dir_w, dir_v) AND
+              sq(c) = sq(a) + sq(b) AND
+              c * dir_v = a * dir_w + b * perp_right(dir_w)
+
+  % The angle between two hinged segments (reduced to vectors) is
+  % bisected to create an unnormalized vector midway between the segments.
+  % CCW orientation is assumed.
+
+  segment_bisect_vector(v: point_2d,
+                        u, w: {p: point_2d | p /= v}): Nz_vector =
+    LET uv = u - v,
+	wv = w - v,
+	c = cross(uv, wv),
+        a = ^(wv) + ^(uv)
+    IN IF c = 0 THEN perp_right(uv) ELSIF c > 0 THEN a ELSE -a ENDIF
+
+  % A miter point m is derived from mutually unequal points u, v, w.
+  % The concept is used by other theories to support constructions
+  % involving line segments. Consider the two vectors u - v and w - v.
+  % Miter point m is chosen so that m - v bisects those two vectors
+  % (in the angular sense). The distance |m - v| is chosen so that
+  % rays emanating from m and parallel to the segments (u,v) and (w,v)
+  % will have perpendicular distance d from those segments.
+
+  % Two alternative methods of defining miter points are provided.
+  % The first scales the bisect vector to create a hypotenuse ending
+  % in the miter point. The second reaches the same point by summing
+  % two perpendicular vectors.
+  
+  miter_point_hyp(v: point_2d, u: {p: point_2d | p /= v},
+                  w: {p: point_2d |
+		         p /= v AND NOT dir_parallel?(u - v, p - v)},
+                  d: posreal): point_2d =
+    LET s = half_angle_vsin(^(u - v), ^(w - v)),
+        bv = segment_bisect_vector(v, u, w)
+    IN  v + d / s * ^(bv)
+
+  miter_point(v: point_2d, u: {p: point_2d | p /= v},
+              w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)},
+              d: posreal): point_2d =
+    LET uv = u - v,
+        wv = w - v,
+        hsin = half_angle_vsin(^(uv), ^(wv)),
+        hcos = half_angle_vcos(^(uv), ^(wv))
+    IN  v + d * (hcos / hsin) * ^(wv) + d * ^(perp_left(wv))
+
+  % This is a variant where the perpendicular vectors are taken from
+  % the segment on the other side of v.
+
+  miter_point_prev(v: point_2d, u: {p: point_2d | p /= v},
+                   w: {p: point_2d |
+		          p /= v AND NOT dir_parallel?(u - v, p - v)},
+                   d: posreal): point_2d =
+    LET uv = u - v,
+        wv = w - v,
+        hsin = half_angle_vsin(^(uv), ^(wv)),
+        hcos = half_angle_vcos(^(uv), ^(wv))
+    IN  v + d * (hcos / hsin) * ^(uv) + d * ^(perp_right(uv))
+
+  bisect_vector_cross_dot_eq: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)}):
+      LET bv = ^(segment_bisect_vector(v, u, w)) IN
+        cross(^(u - v), bv) = cross(bv, ^(w - v)) AND
+        ^(u - v) * bv = bv * ^(w - v)
+
+  miter_point_defns_equiv: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)},
+            d: posreal):
+      miter_point(v, u, w, d) = miter_point_hyp(v, u, w, d)
+
+  miter_point_defns_equiv_2: LEMMA
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)},
+            d: posreal):
+      miter_point_prev(v, u, w, d) = miter_point_hyp(v, u, w, d)
+  
+
+  END vectors_2d_trig

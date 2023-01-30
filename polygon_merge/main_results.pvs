@@ -1,0 +1,57 @@
+%% -----------------------------------------------------------------------------
+%% main_results.pvs                 Dependable Computing
+%% Top-level theory with the main results about the
+%% polygon merge algorithm.
+%% -----------------------------------------------------------------------------
+
+main_results: THEORY
+
+  BEGIN
+
+  IMPORTING merge_props
+  
+  % Two theorems capture the requirements for the polygon merge
+  % algorithm.  The first shows that every point in A or B is in
+  % the merged polygon C.  The second shows that every point in C
+  % is in A or B or one of the holes.
+
+  point_in_polygon_inclusive?(p: point_2d, G: simple_polygon_2d): bool =
+    point_in_polygon?(p, G) OR point_on_polygon_perimeter?(G)(p)
+
+  merged(A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+        ccw_simple_polygon = 
+    LET (Am, Bm) = inject_vertices_into_polygon(A, B) IN
+      merged_polygon(Am, Bm)
+
+  point_in_A_or_B_is_in_merge: THEOREM
+    FORALL (A: ccw_simple_polygon,
+            B: (ccw_merge_pre_condition(A)), p: point_2d):
+      point_in_polygon_inclusive?(p, A) OR
+      point_in_polygon_inclusive?(p, B)
+        IMPLIES point_in_polygon_inclusive?(p, merged_polygon(A, B))
+
+
+  % A hole in the overlay of polygons A and B is a region surrounded
+  % completely by edges or partial edges of A and B.  A point p is in a
+  % hole if it is not in/on A and not in/on B and every serpentine ray S
+  % originating at p intersects an edge of A or B.
+  
+  point_in_polygon_merge_hole?(A, B: simple_polygon_2d)(p: point_2d): bool =
+    NOT point_in_polygon_inclusive?(p, A) AND
+    NOT point_in_polygon_inclusive?(p, B) AND
+    FORALL (S: serpentine_ray):
+      p = S`body`seq(0) IMPLIES
+        EXISTS (q: point_2d):
+          point_on_serp_ray?(q, S) AND
+	  (point_on_polygon_perimeter?(A)(q) OR
+	   point_on_polygon_perimeter?(B)(q))
+
+  point_in_merge_is_in_either_polygon_or_a_hole: THEOREM
+    FORALL (A: ccw_simple_polygon,
+            B: (ccw_merge_pre_condition(A)), p: point_2d):
+      point_in_polygon_inclusive?(p, merged_polygon(A, B)) IMPLIES
+        point_in_polygon_inclusive?(p, A) OR
+        point_in_polygon_inclusive?(p, B) OR
+        point_in_polygon_merge_hole?(A, B)(p)
+
+  END main_results

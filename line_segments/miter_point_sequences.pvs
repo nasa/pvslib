@@ -1,0 +1,684 @@
+%% -----------------------------------------------------------------------------
+%% miter_point_sequences.pvs              Dependable Computing
+%% Definitions and properties of sequences of "miter points" derived from
+%% paths of connected segments.
+%% -----------------------------------------------------------------------------
+
+miter_point_sequences : THEORY
+
+  BEGIN
+
+  % The concept of miter point, introduced in vectors_2d_trig, defines
+  % a point having a specific geometric relationship to three other
+  % points, normally taken from three consecutive vertices of a
+  % polygon. Definitions introduced in this theory allow us to specify
+  % sequences of miter points, each corresponding to a polygon vertex.
+  % The segments defined by consecutive miter points are parallel to
+  % the polygon's edges and placed a fixed distance away.
+
+  IMPORTING between_rays
+  IMPORTING segment_endpoint_sequences
+
+  AUTO_REWRITE+ sets.member, sub_eq_zero
+
+  % Note: The following definitions and lemmas about miter points and
+  % sequences assume the segments created are to the right of their
+  % corresponding edges.  For counterclockwise polygons these segments
+  % will be on the "outward" side, while they will be "inward" for
+  % clockwise polygons.
+
+  edge_parallel_seq_is_endpt_seq: JUDGEMENT
+    edge_parallel_endpoint_seq SUBTYPE_OF segment_endpoint_seq
+
+  nonparallel_half_angle_sine_pos: JUDGEMENT
+    FORALL (v: point_2d, u: {p: point_2d | p /= v},
+            w: {p: point_2d | p /= v AND NOT dir_parallel?(u - v, p - v)}):
+      half_angle_vsin(^(u - v), ^(w - v)) HAS_TYPE posreal
+
+  % For every three consecutive points u,v,w in S, we identify the
+  % sine of the half angle formed by u,v,w and the segments (u,v) and
+  % (w,v), then collect the sines into a set.
+  miter_sine_set(S: edge_parallel_endpoint_seq): finite_set[posreal] =
+    {x: posreal |
+	EXISTS (i: below(S`length - 1)):
+ 	  ((i = 0 OR i = loop_back_intercept(S)) AND
+           S`seq(i) = S`seq(S`length - 1) AND
+           LET u = S`seq(S`length - 2), v = S`seq(i), w = S`seq(1 + i),
+               uv = u - v, wv = w - v
+           IN  x = half_angle_vsin(^(uv), ^(wv))) OR
+	  (i > 0 AND
+	   LET u = S`seq(i - 1), v = S`seq(i), w = S`seq(i + 1),
+	       uv = u - v, wv = w - v
+	   IN  x = half_angle_vsin(^(uv), ^(wv))) }
+
+  miter_sine_set_nonempty: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      NOT empty?(miter_sine_set(S))
+  
+  % The minimum sine is used to define other quantities later.
+  min_miter_sine(S: edge_parallel_endpoint_seq): posreal =
+    min[posreal, <=](miter_sine_set(S))
+
+  % If segment S loops back on itself, there are additional bounds
+  % observed the minimum sine and those of segments around the
+  % intercept point.
+  min_miter_sine_le_wrapped_sine: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET u = S`seq(S`length - 2), v = S`seq(lbi), w = S`seq(1 + lbi),
+    	      uv = u - v, wv = w - v
+          IN  min_miter_sine(S) <= half_angle_vsin(^(uv), ^(wv))
+
+  min_miter_sine_le_wrapped_sine_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET u = S`seq(S`length - 3), v = S`seq(S`length - 2),
+	      w = S`seq(lbi),
+    	      uv = u - v, wv = w - v
+          IN  min_miter_sine(S) <= half_angle_vsin(^(uv), ^(wv))
+
+  min_miter_sine_le_each_sine: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1}):
+      LET u = S`seq(i - 1), v = S`seq(i), w = S`seq(i + 1),
+	  uv = u - v, wv = w - v
+      IN  min_miter_sine(S) <= half_angle_vsin(^(uv), ^(wv))
+
+  miter_half_angle_sine_pos: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1}):
+      LET u = S`seq(i - 1), v = S`seq(i), w = S`seq(i + 1),
+	  uv = u - v, wv = w - v
+      IN  half_angle_vsin(^(uv), ^(wv)) > 0
+
+  wrapped_miter_half_angle_sine_pos: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET u = S`seq(S`length - 2), v = S`seq(lbi), w = S`seq(1 + lbi),
+	      uv = u - v, wv = w - v
+          IN  half_angle_vsin(^(uv), ^(wv)) > 0
+
+  wrapped_miter_half_angle_sine_pos_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET u = S`seq(S`length - 3), v = S`seq(S`length - 2),
+	      w = S`seq(lbi),
+	      uv = u - v, wv = w - v
+          IN  half_angle_vsin(^(uv), ^(wv)) > 0
+
+  min_miter_sine_le_1: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      min_miter_sine(S) <= 1
+
+  miter_half_angle_cosine_lt_1: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1}):
+      LET u = S`seq(i - 1), v = S`seq(i), w = S`seq(i + 1),
+	  uv = u - v, wv = w - v
+      IN  half_angle_vcos(^(uv), ^(wv)) < 1
+
+  % This quantity is chosen to be a sufficiently small offset so that
+  % the segments of a miter point sequence will not intersect the
+  % segments of S.  Although it is named "max_miter_offset", it is not
+  % a tight bound.  It allows us to prove the key properties we need.
+  max_miter_offset(S: edge_parallel_endpoint_seq): posreal =
+      min_miter_sine(S) * min_segment_sep(S) / 6
+
+  % This type allows us to refer to any positive real bounded by the
+  % max_miter_offset.
+  miter_seq_offset_dist(S: edge_parallel_endpoint_seq): TYPE =
+    {d: posreal | d <= max_miter_offset(S)}
+
+  % This group of lemmas applies and specializes results established
+  % in other theories to miter point sequences.
+
+  miter_point_defns_equiv_seq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) =
+      miter_point_hyp(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+
+  three_pt_miniseq_in_endpt_seq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      three_point_miniseq?(S`seq(i - 1), S`seq(i))(S`seq(i + 1)) AND
+      three_point_offset_dist?(S`seq(i - 1), S`seq(i), S`seq(i + 1))(d)
+
+  four_pt_miniseq_in_endpt_seq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      four_point_miniseq?(S`seq(i - 1), S`seq(i), S`seq(i + 1))
+                         (S`seq(i + 2)) AND
+      four_point_offset_dist?(S`seq(i - 1), S`seq(i),
+                              S`seq(i + 1), S`seq(i + 2))(d)
+
+  three_pt_miniseq_in_endpt_seq_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          three_point_miniseq?(S`seq(S`length - 2), S`seq(lbi))
+	                      (S`seq(1 + lbi)) AND
+          three_point_offset_dist?(S`seq(S`length - 2),
+	                           S`seq(lbi), S`seq(1 + lbi))(d)
+
+  four_pt_miniseq_in_endpt_seq_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          four_point_miniseq?(S`seq(S`length - 2), S`seq(lbi), S`seq(1 + lbi))
+                             (S`seq(2 + lbi)) AND
+          four_point_offset_dist?(S`seq(S`length - 2), S`seq(lbi),
+                                  S`seq(1 + lbi), S`seq(2 + lbi))(d)
+
+  four_pt_miniseq_in_endpt_seq_wrap_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          four_point_miniseq?(S`seq(S`length - 3), S`seq(S`length - 2),
+	                      S`seq(lbi))(S`seq(1 + lbi)) AND
+          four_point_offset_dist?(S`seq(S`length - 3), S`seq(S`length - 2),
+                                  S`seq(lbi), S`seq(1 + lbi))(d)
+
+  % In the following formalization, the lemmas are usually presented in
+  % pairs. The first expresses a property for three or four points
+  % satisfying the "miniseq" constraints. The second expresses the
+  % same property for consecutive elements of an endpoint sequence.
+  % Some additional lemmas expresses properties for the "wrapped" cases,
+  % i.e., when sequence S loops back on itself.
+
+  miter_point_neq_vtx: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      miter_point(v, u, w, d) /= v
+
+  miter_point_neq_vertex: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: posreal):
+      miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) /= S`seq(i)
+
+  successive_miter_pair_neq: LEMMA
+    FORALL (u, v, w: point_2d, x: (four_point_miniseq?(u, v, w)),
+            d: (four_point_offset_dist?(u, v, w, x))):
+      miter_point(v, u, w, d) /= miter_point(w, v, x, d)
+
+  successive_miter_points_neq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) /=
+      miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d)
+
+  wrapped_miter_points_neq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+              miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                  S`seq(1 + lbi), d) /=
+              miter_point(S`seq(1 + lbi), S`seq(lbi), S`seq(2 + lbi), d)
+          AND miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                  S`seq(1 + lbi), d) /=
+              miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+	                  S`seq(lbi), d)
+
+  miter_point_neq_right_offset_point: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) /=
+      rightward_segment_offset((# p1 := S`seq(i), p2 := S`seq(i + 1) #), d)
+
+  miter_point_neq_right_offset_point_prev: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) /=
+      rightward_segment_offset((# p1 := S`seq(i - 1), p2 := S`seq(i) #), d)
+     
+  % In the following lemmas, variable d represents an offset distance,
+  % which can be either unconstrainted, bounded by type, or bounded by
+  % a "miniseq" contraint.
+
+  miter_point_from_prev_segment: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      miter_point(v, u, w, d) = miter_point_prev(v, u, w, d)
+
+  % The middle point of a three-point miniseq is called a pivot point.
+  % The distance from a miter point to its pivot point has a precise
+  % value. It also helps express both upper and lower bounds for d.
+
+  miter_pt_dist_to_pivot_pt_bound: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      LET m = miter_point(v, u, w, d),
+          hs = half_angle_vsin(^(u - v), ^(w - v))
+      IN  norm(m - v) = d / hs
+
+  miter_pt_dist_to_pivot_lower_bound: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      d <= norm(miter_point(v, u, w, d) - v)
+
+  miter_pt_dist_to_edge_endpt_bound: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      LET m = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+      IN  norm(m - S`seq(i)) <= d / min_miter_sine(S)
+
+  wrapped_miter_pt_dist_to_edge_endpt_bound: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                      S`seq(1 + lbi), d)
+          IN  norm(m - S`seq(lbi)) <= d / min_miter_sine(S)
+
+  wrapped_miter_pt_dist_to_edge_endpt_bound_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+	                      S`seq(lbi), d)
+          IN  norm(m - S`seq(S`length - 2)) <= d / min_miter_sine(S)
+
+  miter_pt_to_vertex_dist_lt_edge_length: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      LET m = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+      IN  norm(m - S`seq(i)) <= min_segment_sep(S) / 6 AND
+          FORALL (j: below(S`length - 1)):
+            norm(m - S`seq(i)) <= norm(S`seq(j + 1) - S`seq(j)) / 6
+
+  miter_pt_to_vtx_dist_lt_edge_len_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                      S`seq(lbi + 1), d)
+          IN  norm(m - S`seq(lbi)) <= min_segment_sep(S) / 6 AND
+              FORALL (j: below(S`length - 1)):
+                norm(m - S`seq(lbi)) <= norm(S`seq(j + 1) - S`seq(j)) / 6
+
+  miter_pt_to_vtx_dist_lt_edge_len_wrap_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+	                      S`seq(lbi), d)
+          IN  norm(m - S`seq(S`length - 2)) <= min_segment_sep(S) / 6 AND
+              FORALL (j: below(S`length - 1)):
+                norm(m - S`seq(S`length - 2)) <=
+		norm(S`seq(j + 1) - S`seq(j)) / 6
+
+  % The vector formed by consecutive miter points is parallel to the
+  % vector of their corresponding segment.
+  miter_pt_segment_parallel_to_orig: LEMMA
+    FORALL (u, v, w: point_2d, x: (four_point_miniseq?(u, v, w)),
+            d: (four_point_offset_dist?(u, v, w, x))):
+      LET m1 = miter_point(v, u, w, d),
+          m2 = miter_point(w, v, x, d)
+      IN  dir_parallel?(w - v, m2 - m1)
+
+  miter_pt_segment_parallel_to_edge: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d)
+      IN  dir_parallel?(S`seq(i + 1) - S`seq(i), m2 - m1)
+
+  % Let m be the miter point defined by u,v,w. The angle between m-v
+  % and u-v is less than pi.
+
+  miter_point_cross_gt_0: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      LET mp = miter_point(v, u, w, d) IN
+        cross(u - v, mp - v) > 0 AND cross(mp - v, w - v) > 0
+
+  miter_point_cross_pos: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: posreal):
+      LET mp = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+      IN  cross(S`seq(i - 1) - S`seq(i), mp - S`seq(i)) > 0 AND
+          cross(mp - S`seq(i), S`seq(i + 1) - S`seq(i)) > 0
+
+  % These two lemmas provide bounds on the ratio between adjacent miter
+  % points and the length of the corresponding segment give by sequnce S.
+  norm_ratio_miter_pt_seg_to_seg: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d),
+	  k = norm(m2 - m1) / norm(S`seq(i + 1) - S`seq(i))
+      IN  2/3 <= k AND k <= 4/3
+
+  norm_ratio_miter_pt_seg_to_seg_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m1 = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+                               S`seq(lbi), d),
+              m2 = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                       S`seq(lbi + 1), d),
+	      k = norm(m2 - m1) / norm(S`seq(lbi) - S`seq(S`length - 2))
+          IN  2/3 <= k AND k <= 4/3
+
+  miter_pt_offset_with_bounded_shift_1: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+      IN  EXISTS (a: real):
+            m1 = S`seq(i) + a * ^(S`seq(i + 1) - S`seq(i)) +
+	         d * ^(perp_left(S`seq(i + 1) - S`seq(i))) AND
+            abs(a) <= norm(S`seq(i + 1) - S`seq(i)) / 6
+
+  miter_pt_offset_with_bounded_shift_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: below(S`length - 2),
+            d: miter_seq_offset_dist(S)):
+      LET m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d)
+      IN  EXISTS (b: real):
+            m2 = S`seq(i + 1) + b * ^(S`seq(i + 1) - S`seq(i)) +
+	         d * ^(perp_left(S`seq(i + 1) - S`seq(i))) AND
+            abs(b) <= norm(S`seq(i + 1) - S`seq(i)) / 6
+
+  miter_pt_offset_with_bounded_shift_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m2 = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                       S`seq(lbi + 1), d)
+          IN  EXISTS (b: real):
+                 m2 = S`seq(lbi) + b * ^(S`seq(lbi) - S`seq(S`length - 2)) +
+	              d * ^(perp_left(S`seq(lbi) - S`seq(S`length - 2))) AND
+                 abs(b) <= norm(S`seq(lbi) - S`seq(S`length - 2)) / 6
+
+  % These two lemmas show (m1, m2) is at offset distance d from the
+  % corresponding segment give by S.
+  right_seg_offset_on_miter_pt_seg: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d),
+	  seg = (# p1 := S`seq(i), p2 := S`seq(i + 1) #),
+	  mps = (# p1 := m1, p2 := m2 #)
+      IN  point_on_segment?(rightward_segment_offset(seg, d), mps)
+
+  right_seg_offset_on_miter_pt_seg_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          LET m1 = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+	                       S`seq(lbi), d),
+              m2 = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                       S`seq(lbi + 1), d),
+	      seg = (# p1 := S`seq(S`length - 2), p2 := S`seq(lbi) #),
+	      mps = (# p1 := m1, p2 := m2 #)
+          IN  point_on_segment?(rightward_segment_offset(seg, d), mps)
+
+  % Miter points do not lie on either segment from S.
+  miter_point_not_on_either_seg: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)), d: posreal):
+      LET mp = miter_point(v, u, w, d) IN
+        NOT point_on_segment?(mp, (# p1 := u, p2 := v #)) AND
+        NOT point_on_segment?(mp, (# p1 := v, p2 := w #)) 
+
+  miter_point_not_on_adj_segs: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1},
+            d: posreal):
+      LET mp = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d) IN
+        NOT point_on_segment?(mp, (# p1 := S`seq(i - 1), p2 := S`seq(i) #)) AND
+        NOT point_on_segment?(mp, (# p1 := S`seq(i), p2 := S`seq(i + 1) #)) 
+      
+  % Corresponding segments from the miter point sequence and sequence S
+  % do not intersect.
+  miter_seg_points_not_on_seg: LEMMA
+    FORALL (u, v, w: point_2d, x: (four_point_miniseq?(u, v, w)),
+            d: (four_point_offset_dist?(u, v, w, x))):
+      LET g = (# p1 := v, p2 := w #),
+          m1 = miter_point(v, u, w, d),
+          m2 = miter_point(w, v, x, d),
+          h  = (# p1 := m1, p2 := m2 #)
+      IN  FORALL (p: point_2d):
+            point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  miter_seg_points_not_on_edge: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 2},
+            d: miter_seq_offset_dist(S)):
+      LET g  = (# p1 := S`seq(i), p2 := S`seq(i + 1) #),
+          m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d),
+          h  = (# p1 := m1, p2 := m2 #)
+      IN FORALL (p: point_2d):
+           point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+
+  % A miter point segment does intersect the ray emanating from the
+  % previous segment of S.
+  miter_seg_pts_not_on_prev_seg: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)),
+            c: posreal, d: (three_point_offset_dist?(u, v, w))):
+      LET g = (# p1 := u, p2 := v #),
+          mp = miter_point(v, u, w, d),
+          q  = mp + c * (w - v),
+          h  = (# p1 := mp, p2 := q #)
+      IN FORALL (p: point_2d):
+           point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  miter_seg_pts_not_on_prev_edge: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 1},
+            c: posreal, d: miter_seq_offset_dist(S)):
+      LET g  = (# p1 := S`seq(i - 1), p2 := S`seq(i) #),
+          mp = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          q  = mp + c * (S`seq(i + 1) - S`seq(i)),
+          h  = (# p1 := mp, p2 := q #)
+      IN FORALL (p: point_2d):
+           point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  % A miter point segment does intersect the ray emanating from the
+  % next segment of S.
+  miter_seg_pts_not_on_next_seg: LEMMA
+    FORALL (u, v: point_2d, w: (three_point_miniseq?(u, v)),
+            c: posreal, d: (three_point_offset_dist?(u, v, w))):
+      LET g = (# p1 := v, p2 := w #),
+          mp = miter_point(v, u, w, d),
+          q  = mp + c * (u - v),
+          h  = (# p1 := mp, p2 := q #)
+      IN FORALL (p: point_2d):
+           point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+
+  miter_seg_pts_not_on_next_edge: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 1},
+            c: posreal, d: miter_seq_offset_dist(S)):
+      LET g  = (# p1 := S`seq(i), p2 := S`seq(i + 1) #),
+          mp = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+          q  = mp + c * (S`seq(i - 1) - S`seq(i)),
+          h  = (# p1 := mp, p2 := q #)
+      IN FORALL (p: point_2d):
+           point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  % A miter point segment does intersect any segment of S not adjacent
+  % to the endpoint in S giving rise to the miter point.
+  miter_seg_pts_not_on_nonadj_edge: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 2},
+            j: below(S`length - 1),
+            d: miter_seq_offset_dist(S)):
+      j /= i AND j /= i - 1 AND j /= i + 1 AND
+      (LET lbi = loop_back_intercept(S) IN
+         S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+	    j < S`length - 2 OR i /= lbi AND i /= lbi - 1)
+      IMPLIES
+        LET g  = (# p1 := S`seq(j), p2 := S`seq(j + 1) #),
+            m1 = miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d),
+            m2 = miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d),
+            h  = (# p1 := m1, p2 := m2 #)
+        IN FORALL (p: point_2d):
+             point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  miter_seg_pts_not_on_nonadj_next_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            j: below(S`length - 2),
+            d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) AND
+        j /= lbi AND j /= lbi - 1 AND j /= lbi + 1 IMPLIES
+          LET g  = (# p1 := S`seq(j), p2 := S`seq(j + 1) #),
+              m1 = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                       S`seq(1 + lbi), d),
+              m2 = miter_point(S`seq(1 + lbi), S`seq(lbi), S`seq(2 + lbi), d),
+              h  = (# p1 := m1, p2 := m2 #)
+          IN FORALL (p: point_2d):
+               point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+      
+  miter_seg_pts_not_on_nonadj_prev_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            j: below(S`length - 3),
+            d: miter_seq_offset_dist(S)):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) AND
+        j /= lbi AND j /= lbi - 1 IMPLIES
+          LET g  = (# p1 := S`seq(j), p2 := S`seq(j + 1) #),
+              m1 = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+	                       S`seq(lbi), d),
+              m2 = miter_point(S`seq(lbi), S`seq(S`length - 2),
+	                       S`seq(1 + lbi), d),
+              h  = (# p1 := m1, p2 := m2 #)
+          IN FORALL (p: point_2d):
+               point_on_segment?(p, h) IMPLIES NOT point_on_segment?(p, g)
+
+  % Points on a miter point segment are between the rays emanating from
+  % the second endpoint of the segment from S.
+  miter_seg_pts_between_segments_1: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, p: point_2d,
+            i: below(S`length - 3), d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(1 + i), S`seq(i), S`seq(2 + i), d),
+          m2 = miter_point(S`seq(2 + i), S`seq(1 + i), S`seq(3 + i), d)
+      IN point_on_segment?(p, (# p1 := m1, p2 := m2 #))
+         IMPLIES between_rays?((# p1 := S`seq(1 + i), p2 := S`seq(2 + i) #),
+                               (# p1 := S`seq(2 + i), p2 := S`seq(3 + i) #))(p)
+
+  % Points on a miter point segment are between the rays emanating from
+  % the first endpoint of the segment from S.
+  miter_seg_pts_between_segments_2: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, p: point_2d,
+            i: below(S`length - 3), d: miter_seq_offset_dist(S)):
+      LET m2 = miter_point(S`seq(1 + i), S`seq(i), S`seq(2 + i), d),
+          m3 = miter_point(S`seq(2 + i), S`seq(1 + i), S`seq(3 + i), d)
+      IN point_on_segment?(p, (# p1 := m2, p2 := m3 #))
+         IMPLIES between_rays?((# p1 := S`seq(i), p2 := S`seq(1 + i) #),
+                               (# p1 := S`seq(1 + i), p2 := S`seq(2 + i) #))(p)
+
+  pt_on_seg_imp_pt_on_derived_seg: LEMMA
+    FORALL (p: point_2d, s: segment_2d, d1, d2: real):
+      LET v = s`p2 - s`p1 IN
+        norm(p - s`p1) >= d1 AND norm(s`p2 - p) >= d2 AND
+        point_on_segment?(p, s) AND d1 + d2 < norm(v) IMPLIES
+           point_on_segment?(p, (# p1 := s`p1 + d1 * ^(v),
+	                           p2 := s`p2 - d2 * ^(v) #))
+
+  pt_on_seg_imp_offset_pt_on_parallel_seg: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d, v: vector_2d):
+      point_on_segment?(p, e) AND
+      point_on_segment?(e`p1 + v, s) AND
+      point_on_segment?(e`p2 + v, s)
+        IMPLIES point_on_segment?(p + v, s)
+
+  % The relationship of cosines for miter points and segments from S
+  % reflect the half angle derivation.
+  half_angle_vcos_eq_miter_pt_vcos: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq,
+            i: {i: posnat | i < S`length - 1},
+            d: miter_seq_offset_dist(S)):
+      LET u = S`seq(i - 1), v = S`seq(i), w = S`seq(i + 1),
+	  uv = u - v, wv = w - v,
+	  m = miter_point(v, u, w, d)
+      IN  half_angle_vcos(^(uv), ^(wv)) = vcos(^(uv), ^(m - v)) AND
+          half_angle_vcos(^(uv), ^(wv)) = vcos(^(wv), ^(m - v))
+
+  % The distance between a point p on the miter point segment and a point q
+  % on the segment from S is bounded as expressed here.
+  miter_seg_pts_max_min_dist: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, p: point_2d,
+            i: below(S`length - 3), d: miter_seq_offset_dist(S)):
+      LET m1 = miter_point(S`seq(1 + i), S`seq(i), S`seq(2 + i), d),
+          m2 = miter_point(S`seq(2 + i), S`seq(1 + i), S`seq(3 + i), d)
+      IN point_on_segment?(p, (# p1 := m1, p2 := m2 #)) IMPLIES
+           EXISTS (q: point_2d):
+	     point_on_segment?(q, (# p1 := S`seq(1 + i), p2 := S`seq(2 + i) #))
+             AND norm(p - q) <= d / min_miter_sine(S)
+
+  % This definition specifies a full miter point sequence derived from
+  % the segment endpoint sequence S.
+  % For S`length = 3, the result sequence has a single point.
+  miter_point_seq(S: edge_parallel_endpoint_seq,
+                  d: miter_seq_offset_dist(S)): segment_endpoint_seq =
+    (# length := S`length - 2,
+       seq := LAMBDA (i: below(S`length - 2)):
+                miter_point(S`seq(i + 1), S`seq(i), S`seq(i + 2), d)
+     #)
+
+  % When sequence S loops back on itself, this condition states that
+  % it doesn't do so on the right side of the seqment sequence.
+  no_right_side_loop_back?(S: edge_parallel_endpoint_seq): bool =
+    LET lbi = loop_back_intercept(S) IN
+      lbi > 0 IMPLIES  %%% AND S`seq(lbi) = S`seq(S`length - 1)
+        NOT between_rays?((# p1 := S`seq(lbi - 1), p2 := S`seq(lbi) #),
+	                  (# p1 := S`seq(lbi), p2 := S`seq(lbi + 1) #))
+			 (S`seq(S`length - 2))
+
+  % This is a key result about miter point sequences. It states they each
+  % one cannot intersect any part of the endpoint sequence from which it
+  % was derived.
+  no_intersection_with_skimming_segments: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, d: miter_seq_offset_dist(S)):
+      no_right_side_loop_back?(S) IMPLIES
+        FORALL (p: point_2d):
+          NOT (point_on_segment_seq?(p, S) AND
+               point_on_segment_seq?(p, miter_point_seq(S, d)))
+
+  % This definition gives a closed miter point sequence derived from S
+  % by repeating the first miter point.
+  closed_miter_point_seq(S: {S: edge_parallel_endpoint_seq |
+                             S`seq(0) = S`seq(S`length - 1)}, 
+                         d: miter_seq_offset_dist(S)): segment_endpoint_seq =
+    LET m0 = miter_point(S`seq(0), S`seq(S`length - 2), S`seq(1), d) IN
+      singleton_seq(m0) o miter_point_seq(S, d) o singleton_seq(m0)
+
+  length_closed_miter_point_seq: LEMMA
+    FORALL (S: {S: edge_parallel_endpoint_seq |
+                   S`seq(0) = S`seq(S`length - 1)}, 
+            d: miter_seq_offset_dist(S)):
+      closed_miter_point_seq(S, d)`length = S`length
+
+  closed_miter_point_seq_element: LEMMA
+    FORALL (S: {S: edge_parallel_endpoint_seq |
+                   S`seq(0) = S`seq(S`length - 1)}, 
+            d: miter_seq_offset_dist(S), i: below(S`length)):
+      closed_miter_point_seq(S, d)`seq(i) =
+        IF 0 < i AND i < S`length - 1
+          THEN miter_point(S`seq(i), S`seq(i - 1), S`seq(i + 1), d)
+          ELSE miter_point(S`seq(0), S`seq(S`length - 2), S`seq(1), d)
+        ENDIF
+
+  no_intersection_with_wrap_edges: LEMMA
+    FORALL (S: {S: edge_parallel_endpoint_seq |
+                S`seq(0) = S`seq(S`length - 1)},
+            d: miter_seq_offset_dist(S)):
+      LET m0 = miter_point(S`seq(S`length - 2), S`seq(S`length - 3),
+                           S`seq(0), d),
+          m1 = miter_point(S`seq(0), S`seq(S`length - 2), S`seq(1), d),
+          m2 = miter_point(S`seq(1), S`seq(0), S`seq(2), d) IN
+        FORALL (p: point_2d):
+          NOT (point_on_segment_seq?(p, S) AND
+               (point_on_segment?(p, (# p1 := m0, p2 := m1 #)) OR
+	        point_on_segment?(p, (# p1 := m1, p2 := m2 #))))
+
+  % This result extends the previous non-intersection property to
+  % closed miter point sequences.
+  no_intersection_with_closed_skimming_segs: LEMMA
+    FORALL (S: {S: edge_parallel_endpoint_seq |
+                S`seq(0) = S`seq(S`length - 1)},
+            d: miter_seq_offset_dist(S)):
+      FORALL (p: point_2d):
+        NOT (point_on_segment_seq?(p, S) AND
+             point_on_segment_seq?(p, closed_miter_point_seq(S, d)))
+
+  END miter_point_sequences

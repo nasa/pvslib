@@ -1,0 +1,444 @@
+%% -----------------------------------------------------------------------------
+%% merge_props.pvs                 Dependable Computing
+%% Theory to formalize and prove containment results about the
+%% polygon merge algorithm.
+%% -----------------------------------------------------------------------------
+
+merge_props: THEORY
+
+  BEGIN
+
+  % This theory includes three categories of lemmas. The first concerns
+  % edge containment properties that apply to injected polygons and the
+  % merged polygon. Second is establishing that the merge algorithm
+  % produces a vertex list that is a simple polygon having CCW vertex
+  % order. Third is a set of results about the last edge that closes
+  % the merged polygon.
+
+  IMPORTING injection_props
+  IMPORTING merged_polygon_closed
+
+  % Following are various consequences of polygon edge containment as
+  % it relates to the merged polygon and its components.
+
+  contains_imp_topleft_first_vtx: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      polygon_contained?(B, A) IMPLIES
+        first_vertex_merge(A, B) = A`vertices(topleft_vertex_idx(A))
+
+  contains_imp_topleft_first_vtx_Am: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A)),
+            Am, Bm: simple_polygon_2d):
+        polygon_contained?(B, A) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+        first_vertex_merge(A, B) = Am`vertices(topleft_vertex_idx(Am))
+
+  contained_next_merge_vtx_eq_next_Am_vtx: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        polygon_contained?(Bm, Am) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+        IMPLIES
+	  FORALL (i: below(Am`num_vertices)):
+            next_merge_vertex(Am, Bm, Am`vertices(i),
+	                      Am`vertices(prev_index(Am, i))) =
+              Am`vertices(next_index(Am, i))
+
+  contained_next_merge_vtx_eq_next_Am_topleft: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        polygon_contained?(Bm, Am) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+        IMPLIES
+          LET Am_0 = topleft_vertex_idx(Am) IN
+            next_merge_vertex(Am, Bm, Am`vertices(Am_0),
+  	                      prev_0(Am`vertices(Am_0))) =
+              Am`vertices(next_index(Am, Am_0))
+
+  merge_prefix_contained_rotated_vertices_A: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              first_vtx: point_2d, k: nat):
+        k < Am`num_vertices AND
+        polygon_contained?(B, A) AND
+        first_vtx = first_vertex_merge(A, B) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        (FORALL (e: (edge_of_polygon?(Am))):
+           only_vertex_intersections?(Bm, Am, e))
+        IMPLIES
+          merge_prefix(Am, Bm, first_vtx, k)`seq =
+            LAMBDA (i: upto(k)):
+	      rotated_vertices(Am`num_vertices)
+	                      (Am`vertices, topleft_vertex_idx(Am))(i)
+
+  contained_next_merge_vtx_is_first: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        polygon_contained?(Bm, Am) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+          IMPLIES
+            next_merge_vertex(Am, Bm,
+                              Am`vertices(rem(Am`num_vertices)
+                                             (topleft_vertex_idx(Am) - 1)),
+                              Am`vertices(rem(Am`num_vertices)
+                                             (topleft_vertex_idx(Am) - 2)))
+              = first_vertex_merge(A, B)
+
+  contained_next_merge_vtx_neq_first: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              L: nat):
+        polygon_contained?(Bm, Am) AND
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        merge_seq(A, B)`length = L AND
+        Am`num_vertices > L
+        IMPLIES
+          next_merge_vertex(Am, Bm, merge_seq(A, B)`seq(L - 1),
+	                    seq_prev_vtx(merge_seq(A, B), L - 1, 1)) /=
+            first_vertex_merge(A, B)
+
+  % When B is contained by A, the merged polygon is the same as A with
+  % a rotation of vertices. The edges are the same but the algorithm
+  % starts numbering vertices at the top-left, which might not be the
+  % where A's vertices start.
+
+  merge_seq_contained_rotated_vertices_A: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        polygon_contained?(B, A) IMPLIES
+          merge_seq(A, B)`length = Am`num_vertices AND
+          merge_seq(A, B)`seq =
+	    rotated_vertices(Am`num_vertices)
+	                    (Am`vertices, topleft_vertex_idx(Am))
+
+  merge_seq_contained_rotated_vertices_B: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        polygon_contained?(A, B) IMPLIES
+          merge_seq(A, B)`length = Bm`num_vertices AND
+          merge_seq(A, B)`seq =
+	    rotated_vertices(Bm`num_vertices)
+	                    (Bm`vertices, topleft_vertex_idx(Bm))
+
+  merge_seq_not_contained_has_uniq_vertex_list: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET M = merge_seq(A, B) IN
+        uniq_vertex_list?(M`length)(M`seq) OR
+	polygon_contained?(A, B) OR polygon_contained?(B, A)
+
+  merge_seq_has_uniq_vertex_list: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET M = merge_seq(A, B) IN
+        uniq_vertex_list?(M`length)(M`seq)
+  
+  % The algorithm generates a vertex list that closes on itself. In
+  % other words, when next_merge_vertex is applied to the last vertex,
+  % it evaluates to the first vertex.
+
+  merged_polygon_is_closed: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+	     L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+          IMPLIES
+            LET last_vtx = L`seq(L`length - 1),
+                prev_vtx = L`seq(L`length - 2) IN
+              L`seq(0) = next_merge_vertex(Am, Bm, last_vtx, prev_vtx)
+
+  % Edges of the merged polygon come from either Am or Bm.
+  merge_path_props_edges: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+	     L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+	IMPLIES
+          FORALL (i: below(L`length)):
+	    LET next = IF i = L`length - 1 THEN 0 ELSE i + 1 ENDIF,
+                S: segment_2d = (# p1 := L`seq(i), p2 := L`seq(next) #) IN
+	      edge_of_polygon?(Am)(S) OR edge_of_polygon?(Bm)(S)
+
+  % The merged polygon edges don't cross each other.
+  merge_seq_edges_do_not_cross: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET M = merge_seq(A, B) IN
+        polygon_edges_do_not_cross?((# num_vertices := M`length,
+                                       vertices := M`seq #))
+  
+  % The polygon created by the merged vertex list is a valid simple
+  % polygon.
+  simple_merged_polygon(A: ccw_simple_polygon,
+                        B: (ccw_merge_pre_condition(A))): simple_polygon_2d =
+    LET M = merge_seq(A, B) IN
+      (# num_vertices := M`length, vertices := M`seq #)
+
+  merge_seq_topleft_index_is_0: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      topleft_vertex_idx(simple_merged_polygon(A, B)) = 0
+
+  first_merge_vertex_in_one_injected_polygon: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET v0 = first_vertex_merge(A, B),
+          (Am, Bm) = inject_vertices_into_polygon(A, B) IN
+        find_index(Am, v0) >= 0 OR find_index(Bm, v0) >= 0
+  
+  first_two_merge_vertices: LEMMA
+    FORALL (A: ccw_simple_polygon,
+            C: simple_polygon_2d, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              v0: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = simple_merged_polygon(A, B) AND
+	v0 = first_vertex_merge(A, B)
+          IMPLIES C`vertices(0) = v0 AND
+	          C`vertices(1) = next_merge_vertex(Am, Bm, v0, prev_0(v0))
+
+  first_merged_edge_is_topleft_Am_or_Bm: LEMMA
+    FORALL (A: ccw_simple_polygon,
+            C: simple_polygon_2d, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = simple_merged_polygon(A, B) IMPLIES
+          LET ti_Am = topleft_vertex_idx(Am),
+	      ti_Bm = topleft_vertex_idx(Bm) IN
+            (Am`vertices(ti_Am) = C`vertices(0) OR
+             Bm`vertices(ti_Bm) = C`vertices(0)) AND
+            (edges_of_polygon(Am)(ti_Am) = edges_of_polygon(C)(0) OR
+             edges_of_polygon(Bm)(ti_Bm) = edges_of_polygon(C)(0))
+
+  % Confirms the merge vertices produced by every step of the algorithm.
+  merge_vertex_seq_full: LEMMA
+    FORALL (A: ccw_simple_polygon, C: simple_polygon_2d,
+            B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = simple_merged_polygon(A, B)
+          IMPLIES
+	    FORALL (i: below(C`num_vertices)):
+              LET prev_vtx = seq_prev_vtx(merge_seq(A, B), i, 1) IN
+              C`vertices(next_index(C, i)) =
+                next_merge_vertex(Am, Bm, C`vertices(i), prev_vtx)
+
+  merge_path_edges_AB: LEMMA
+    FORALL (A: ccw_simple_polygon, C: simple_polygon_2d,
+            B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = simple_merged_polygon(A, B)
+  	  IMPLIES FORALL (i: below(C`num_vertices)):
+	            LET S = edges_of_polygon(C)(i) IN
+  	              edge_of_polygon?(Am)(S) OR edge_of_polygon?(Bm)(S)
+
+  last_merged_edge_is_prev_topleft_Am_or_Bm: LEMMA
+    FORALL (A: ccw_simple_polygon,
+            C: simple_polygon_2d, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = simple_merged_polygon(A, B) IMPLIES
+          LET prev_i_Am = prev_index(Am, topleft_vertex_idx(Am)),
+	      prev_i_Bm = prev_index(Bm, topleft_vertex_idx(Bm)),
+	      last_i_C = C`num_vertices - 1 IN
+            (Am`vertices(prev_i_Am) = C`vertices(last_i_C) OR
+             Bm`vertices(prev_i_Bm) = C`vertices(last_i_C)) AND
+            (edges_of_polygon(Am)(prev_i_Am) = edges_of_polygon(C)(last_i_C) OR
+             edges_of_polygon(Bm)(prev_i_Bm) = edges_of_polygon(C)(last_i_C))
+
+  merge_seq_meets_ccw_condition_A_B: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+        LET M = merge_seq(A, B),
+            C = simple_merged_polygon(A, B),
+ 	    r = M`seq(0) - (# x := 1, y := 0 #) IN
+	  edge_of_polygon?(Am)((# p1 := M`seq(0), p2 := M`seq(1) #)) AND
+	  edge_of_polygon?(Bm)((# p1 := M`seq(M`length - 1), p2 := M`seq(0) #))
+            IMPLIES point_between_edges?(TRUE, C, 0)(r)
+
+  merge_seq_meets_ccw_condition: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET M = merge_seq(A, B),
+          C = (# num_vertices := M`length, vertices := M`seq #) IN
+        point_between_edges?(TRUE, C, 0)(M`seq(0) - (# x := 1, y := 0 #))
+  
+  % The merged polygon is a CCW simple polygon.
+  merged_polygon(A: ccw_simple_polygon,
+                 B: (ccw_merge_pre_condition(A))): ccw_simple_polygon =
+    simple_merged_polygon(A, B)
+
+  merge_pred: TYPE = pred[[L: nat, [below(L) -> point_2d]]]
+
+  merged_polygon_has_finseq_prop: LEMMA
+    FORALL (P: merge_pred,
+            A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      LET L = merge_seq(A, B), M = merged_polygon(A, B) IN
+        P(L`length, L`seq) IMPLIES P(M`num_vertices, M`vertices)
+
+  % The merged polygon's edges intersect those of Am and Bm only
+  % at vertices.
+  merge_only_vertex_intersections: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B) AND
+	(FORALL (s: (edge_of_polygon?(C))):
+	  edge_of_polygon?(Am)(s) OR edge_of_polygon?(Bm)(s))
+        IMPLIES
+          (FORALL (e: (edge_of_polygon?(Am))):
+             only_vertex_intersections?(C, Am, e)) AND
+          (FORALL (e: (edge_of_polygon?(Bm))):
+             only_vertex_intersections?(C, Bm, e))
+
+  no_outgoing_edges_in_noninitial_wedges: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B)
+        IMPLIES
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Am))):
+             NOT (C`vertices(i) = e`p1 AND i > 0 AND
+	          point_between_edges?(true, C, i)(e`p2))) AND
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Bm))):
+             NOT (C`vertices(i) = e`p1 AND i > 0 AND
+	          point_between_edges?(true, C, i)(e`p2)))
+
+  % The last edge of the merged polygon is the leftmost edge (chosen
+  % from Am and Bm) to be incoming at the first vertex.
+  last_edge_is_leftmost_subcase_0: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              e, h: segment_2d, r, q: point_2d):
+	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	edge_of_polygon?(Bm)(e) AND edge_of_polygon?(Bm)(h) AND
+	C = simple_merged_polygon(A, B) AND
+	e`p2 = C`vertices(0) AND h`p1 = C`vertices(0) AND
+	point_on_segment?(r, e) AND
+	point_between_edges?(TRUE, C, 0)(r) AND
+	point_outside_polygon?(r, C) AND
+	norm(r - C`vertices(0)) <= vertex_wedge_radius(C) AND
+	point_on_segment?(q, h) AND
+	point_between_edges?(TRUE, C, 0)(q) AND
+	point_outside_polygon?(q, C)
+	  IMPLIES
+  	    r = e`p2 OR q = h`p1
+  
+  last_edge_is_leftmost_incoming_edge: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              s, e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B) AND
+	(edge_of_polygon?(Am)(s) AND edge_of_polygon?(Bm)(e) OR
+	 edge_of_polygon?(Bm)(s) AND edge_of_polygon?(Am)(e)) AND
+	s`p2 = e`p2 AND s = edges_of_polygon(C)(C`num_vertices - 1)
+          IMPLIES
+            NOT point_between_rays?(reverse_segment(e), reverse_segment(s))
+	                           (C`vertices(0) - (# x := 1, y := 0 #))
+
+  % Two lemmas to handle special cases for the proof of
+  % no_outgoing_edges_in_outward_wedges.
+  no_outgoing_edges_case_i_eq_0_A: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              e: segment_2d, i, j: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B) AND
+        i = 0 AND i < C`num_vertices AND
+	find_index(Am, C`vertices(i)) = j AND j >= 0 AND
+        find_index(Bm, C`vertices(i)) >= 0 AND
+        C`vertices(next_index(C, i)) =
+          Bm`vertices(next_index(Bm, find_index(Bm, C`vertices(i)))) AND
+        e = (# p1 := Am`vertices(j),
+               p2 := Am`vertices(next_index(Am, j)) #) AND
+        C`vertices(i) = e`p1 AND
+        point_between_rays?(
+             reverse_segment(edges_of_polygon(C)(prev_index(C, i))),
+             edges_of_polygon(C)(i))
+             (e`p2)
+        IMPLIES
+          point_between_rays?(edges_of_polygon(Bm)
+	                           (find_index(Bm, C`vertices(i))),
+                              edges_of_polygon(Am)(j))
+                             (seq_prev_vtx(merge_seq(A, B), i, 1))
+
+  no_outgoing_edges_case_i_eq_0_B: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              e: segment_2d, i, j: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B) AND
+        i = 0 AND j >= 0 AND
+        find_index(Am, C`vertices(i)) >= 0 AND
+        find_index(Bm, C`vertices(i)) = j AND
+        point_between_rays?(edges_of_polygon(Bm)(j),
+                            edges_of_polygon(Am)(find_index(Am, C`vertices(i))))
+                           (seq_prev_vtx(merge_seq(A, B), i, 1)) AND
+        C`vertices(next_index(C, i)) =
+          Am`vertices(next_index(Am, find_index(Am, C`vertices(i)))) AND
+        e = (# p1 := Bm`vertices(j),
+               p2 := Bm`vertices(next_index(Bm, j)) #) AND
+        C`vertices(i) = e`p1
+          IMPLIES
+            NOT point_between_rays?(
+                     reverse_segment(edges_of_polygon(C)(prev_index(C, i))),
+                     edges_of_polygon(C)(i))
+                     (e`p2)
+
+  no_outgoing_edges_in_outward_wedges: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B)
+        IMPLIES
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Am))):
+             NOT (C`vertices(i) = e`p1 AND
+	          point_between_edges?(true, C, i)(e`p2))) AND
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Bm))):
+             NOT (C`vertices(i) = e`p1 AND
+	          point_between_edges?(true, C, i)(e`p2)))
+
+  no_incoming_edges_in_outward_wedges: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B)
+        IMPLIES
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Am))):
+             NOT (C`vertices(i) = e`p2 AND
+	          point_between_edges?(true, C, i)(e`p1))) AND
+          (FORALL (i: below(C`num_vertices), e: (edge_of_polygon?(Bm))):
+             NOT (C`vertices(i) = e`p2 AND
+	          point_between_edges?(true, C, i)(e`p1)))
+
+  % The merged polygon has no protruding edges from Am and Bm, neither
+  % incoming nor outgoing edges.
+
+  merge_no_edges_in_outward_wedges: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B)
+        IMPLIES
+          no_edges_in_outward_wedges?(C, Am) AND
+          no_edges_in_outward_wedges?(C, Bm)
+
+  merge_intersecting_polygons: LEMMA
+    FORALL (A, C: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        C = merged_polygon(A, B) AND
+	(FORALL (s: (edge_of_polygon?(C))):
+	  edge_of_polygon?(Am)(s) OR edge_of_polygon?(Bm)(s))
+        IMPLIES
+          (EXISTS (q: point_2d):
+             point_on_polygon_perimeter?(Am)(q) AND
+             (point_on_polygon_perimeter?(C)(q) OR
+	      point_in_polygon?(q, C))) AND
+          (EXISTS (q: point_2d):
+             point_on_polygon_perimeter?(Bm)(q) AND
+             (point_on_polygon_perimeter?(C)(q) OR
+	      point_in_polygon?(q, C)))
+
+END merge_props

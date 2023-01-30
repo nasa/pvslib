@@ -1,0 +1,533 @@
+%% -----------------------------------------------------------------------------
+%% arb_direc_edge_crossing.pvs              Dependable Computing
+%% Theory analogous to horiz_edge_crossing, except the ray may be cast
+%% in an arbitrary direction.
+%% -----------------------------------------------------------------------------
+
+arb_direc_edge_crossing : THEORY
+
+  % Determining when a point p lies within a polygon can be achieved
+  % by counting the number of edge crossings encountereed by a ray
+  % emanating from p and pointed in an arbitrary direction. When the
+  % number of crossings is odd, point p must be inside the polygon.
+  % This theory contains is a generalization of the method in theory
+  % horiz_edge_crossing.  The arbitrary direction feature requires a
+  % more elaborate set of lemmas to carry out point membership proofs.
+
+  BEGIN
+
+  IMPORTING horiz_edge_crossing
+
+  AUTO_REWRITE+ sets.member, sub_eq_zero
+
+  % These definitions are needed for the edge-crossing method that uses
+  % arbitrary directions.  Collect sets of qualifying crossing points
+  % that lie along a ray originating at point p. If p is a vertex,
+  % consider the adjacent edges and their orientation relative to
+  % the vector v. These definitions are similar to and adapted from
+  % those in theory horiz_edge_crossing.
+
+  adjacent_edges_counted?(p: point_2d, v: Normalized,
+                          G: simple_polygon_2d): bool =
+    EXISTS (i: below(G`num_vertices)):
+      p = G`vertices(i) AND
+      LET prev = G`vertices(prev_index(G, i)),
+          next = G`vertices(next_index(G, i)) IN
+        % count only crossings where one edge lies to the left of vector v
+        % and the other does not (it's parallel or lies to the right)
+        cross(v, prev - p) > 0 AND cross(v, next - p) <= 0 OR
+        cross(v, next - p) > 0 AND cross(v, prev - p) <= 0
+
+  counted_crossing_arb?(v: Normalized, G: simple_polygon_2d)
+                       (p: point_2d): bool =
+    IF vertex?(G)(p)
+      THEN adjacent_edges_counted?(p, v, G)
+      ELSE EXISTS (s: (edge_of_polygon?(G))):
+             point_on_segment?(p, s) AND
+             NOT parallel?(s`p2 - s`p1, v)
+    ENDIF
+
+  arb_crossing_set(r: point_2d, v: Normalized,
+                   G: simple_polygon_2d): finite_set[point_2d] =
+    {p: point_2d | point_on_arb_ray?(p, r, v) AND
+                   counted_crossing_arb?(v, G)(p)}
+
+  set_before_p(S: finite_set[point_2d],
+               p, r: point_2d): finite_set[point_2d] =
+    {u: point_2d | S(u) AND norm(u - r) < norm(p - r)}
+
+  norms_from_points(S: finite_set[point_2d],
+                    r: point_2d): finite_set[real] =
+    {d: real | EXISTS (p: point_2d): S(p) AND d = norm(p - r)}
+
+  % This is the predicate analogous to point_in_polygon? defined in
+  % horiz_edge_crossing.
+
+  point_in_polygon_arb?(p: point_2d, v: Normalized,
+                        G: simple_polygon_2d): bool =
+    NOT point_on_polygon_perimeter?(G)(p) AND
+    odd?(card(arb_crossing_set(p, v, G)))
+
+  % Basic properties of the foregoing definitions
+
+  points_on_ray_diff_norms: LEMMA
+    FORALL (p, q, r: point_2d, v: Normalized):
+      point_on_arb_ray?(r, p, v) AND
+      point_on_arb_ray?(r, q, v) AND
+      point_on_arb_ray?(q, p, v)
+        IMPLIES norm(r - p) >= norm(q - p)
+
+  points_on_ray_norms_on_ray: LEMMA
+    FORALL (p, q, r: point_2d, v: Normalized):
+      point_on_arb_ray?(r, p, v) AND
+      point_on_arb_ray?(q, p, v) AND
+      norm(r - p) >= norm(q - p)
+        IMPLIES point_on_arb_ray?(r, q, v)
+
+  counted_crossing_on_perimeter: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_arb?(v, G)(p) IMPLIES
+        point_on_polygon_perimeter?(G)(p)
+
+  arb_crossings_subset: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      point_on_arb_ray?(q, p, v)
+        IMPLIES subset?(arb_crossing_set(q, v, G), arb_crossing_set(p, v, G))
+
+  arb_crossings_before_diff: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      point_on_arb_ray?(q, p, v) IMPLIES
+        LET R = arb_crossing_set(p, v, G) IN
+          arb_crossing_set(q, v, G) =
+	    difference(R, set_before_p(R, q, p))
+
+  member_arb_crossings_on_perimeter: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      member(q, arb_crossing_set(p, v, G))
+        IMPLIES point_on_polygon_perimeter?(G)(q)
+
+  arb_crossings_min: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      LET R = arb_crossing_set(p, v, G) IN
+	(FORALL (u: (R)): norm(u - p) >= norm(q - p)) AND
+        point_on_arb_ray?(q, p, v)
+          IMPLIES arb_crossing_set(q, v, G) = R
+
+  arb_crossings_max: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      LET R = arb_crossing_set(p, v, G) IN
+	(FORALL (u: (R)): norm(u - p) < norm(q - p)) AND
+        point_on_arb_ray?(q, p, v)
+          IMPLIES
+            arb_crossing_set(q, v, G) = emptyset
+
+  before_arb_crossings_empty: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      point_on_arb_ray?(q, p, v) AND
+      set_before_p(arb_crossing_set(p, v, G), q, p) = emptyset
+        IMPLIES arb_crossing_set(q, v, G) = arb_crossing_set(p, v, G)
+
+  one_adjacent_edge_not_parallel: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      adjacent_edges_counted?(p, v, G)
+        IMPLIES EXISTS (i: below(G`num_vertices)):
+	          p = G`vertices(i) AND
+                  (NOT parallel?(G`vertices(prev_index(G, i)) - p, v) OR
+	           NOT parallel?(G`vertices(next_index(G, i)) - p, v))
+
+  next_arb_intersection?(p: point_2d, v: Normalized,
+                         G: simple_polygon_2d)(q: point_2d): bool =
+    point_on_arb_ray?(q, p, v) AND
+    point_on_polygon_perimeter?(G)(q) AND
+    FORALL (u: point_2d):
+      point_on_arb_ray?(u, p, v) AND norm(u - p) < norm(q - p)
+        IMPLIES NOT point_on_polygon_perimeter?(G)(u) % AND
+
+  % The remaining deveopment in this theory provides a set of lemmas
+  % to support the proof of edge containment implies point
+  % containment. That result is found in theory polygon_membership.
+
+  % Need this function to identify candidates for counted crossing points.
+  % Includes intersecting points from edges not parallel to vector v.
+  % Set contains distances from p, the ray's origin.
+
+  key_arb_intersections(p: point_2d, v: Normalized,
+                        G: simple_polygon_2d): finite_set[real] =
+    {d: real | EXISTS (s: (edge_of_polygon?(G))), (q: point_2d):
+                 point_on_segment?(q, s) AND
+	         point_on_arb_ray?(q, p, v) AND
+                 NOT parallel?(s`p2 - s`p1, v) AND
+	         p /= q AND d = norm(q - p)}
+
+  with_real_offset(S: finite_set[real], r: real): finite_set[real] =
+    {d: real | EXISTS (x: (S)): d = x + r}
+
+  key_arb_intersections_nonneg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      key_arb_intersections(p, v, G)(r) IMPLIES r >= 0
+
+  key_arb_intersections_subset: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      point_on_arb_ray?(q, p, v)
+        IMPLIES subset?(with_real_offset(key_arb_intersections(q, v, G),
+	                                 norm(q - p)),
+	                key_arb_intersections(p, v, G))
+
+  % Edges parallel to vector v play the same role as horizontal edges
+  % in theory horiz_edge_crossing. They cannot be counted as valid
+  % crossings.
+
+  only_parallel_edges?(p: point_2d, v: Normalized,
+                       G: simple_polygon_2d): bool =
+    FORALL (e: (edge_of_polygon?(G))): 
+      point_on_segment?(p, e) IMPLIES parallel?(e`p2 - e`p1, v)
+
+  on_parallel_not_adj_counted: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      only_parallel_edges?(p, v, G) IMPLIES
+        NOT adjacent_edges_counted?(p, v, G)
+
+  on_parallel_not_counted_crossing: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      only_parallel_edges?(p, v, G) IMPLIES
+        NOT counted_crossing_arb?(v, G)(p)
+
+  parallel_on_arb_line: LEMMA
+    FORALL (q, r: point_2d, v: Normalized):
+      parallel?(q - r, v) IMPLIES point_on_arb_line?(q, r, v)
+
+  parallel_diff_norm: LEMMA
+    FORALL (q, r: point_2d, v: Normalized):
+      parallel?(q - r, v) IMPLIES
+      q - r = norm(q - r) * v OR q - r = -norm(q - r) * v
+
+  parallel_vectors_diff_segment_endpoints: LEMMA
+    FORALL (p: point_2d, d: nzreal, v: Normalized, e: segment_2d):
+      parallel?(e`p2 - e`p1, v) AND e`p2 /= p AND
+      point_on_segment?(p + d * v, e)
+        IMPLIES parallel?(e`p2 - p, v)
+
+  parallel_point_diff_norm: LEMMA
+    FORALL (p: point_2d, r: nzreal, v: Normalized, e: segment_2d):
+      parallel?(e`p2 - e`p1, v) AND e`p2 /= p AND e`p1 /= p AND
+      point_on_segment?(p + r * v, e)
+        IMPLIES 
+  	  (e`p1 - p = norm(e`p1 - p) * v OR
+	   e`p1 - p = -norm(e`p1 - p) * v) AND
+  	  (e`p2 - p = norm(e`p2 - p) * v OR
+	   e`p2 - p = -norm(e`p2 - p) * v)
+
+  point_not_on_parallel_segment: LEMMA
+    FORALL (p: point_2d, r: real, v: Normalized, e: segment_2d):
+      0 < r AND r < min(norm(e`p1 - p), norm(e`p2 - p)) AND
+      parallel?(e`p2 - e`p1, v) AND NOT point_on_segment?(p, e)
+        IMPLIES NOT point_on_segment?(p + r * v, e)
+
+  below_min_key_arb_not_on: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      0 < r AND r < min[real, <=](key_arb_intersections(p, v, G))
+        IMPLIES only_parallel_edges?(p + r * v, v, G)
+
+  % A variety of properties about arb_crossing_set is collected here.
+
+  below_min_key_arb_crossing: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      0 < r AND r < min[real, <=](key_arb_intersections(p, v, G)) AND
+      NOT point_on_polygon_perimeter?(G)(p)
+        IMPLIES arb_crossing_set(p + r * v, v, G) =
+	        arb_crossing_set(p, v, G)
+
+  below_min_key_same_crossing_set: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      LET kai = key_arb_intersections(p, v, G) IN
+        NOT empty?[real](kai) AND 0 < r AND r < min[real, <=](kai)
+          IMPLIES arb_crossing_set(p + r * v, v, G) =
+                  arb_crossing_set(p + min[real, <=](kai) * v, v, G)
+
+  key_intersections_subset_arb_crossings: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT member(p, arb_crossing_set(p, v, G)) IMPLIES
+        subset?(norms_from_points(arb_crossing_set(p, v, G), p),
+                key_arb_intersections(p, v, G))
+
+  key_intersections_empty_arb_crossings: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT member(p, arb_crossing_set(p, v, G)) AND
+      empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES empty?[point_2d](arb_crossing_set(p, v, G))
+
+  empty_key_arb_only_parallel: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES FORALL (d: posreal): only_parallel_edges?(p + d * v, v, G)
+
+  empty_key_arb_crossings_emptyset: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: posreal):
+      empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES arb_crossing_set(p + r * v, v, G) = emptyset
+
+  empty_key_arb_before_empty_crossings: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: posreal):
+      NOT point_on_polygon_perimeter?(G)(p) AND
+      empty?[real](key_arb_intersections(p, v, G)) IMPLIES
+        set_before_p(arb_crossing_set(p, v, G), p + r * v, p)
+          = emptyset
+
+  empty_key_arb_before_empty_crossings_neg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: posreal):
+      empty?[real](key_arb_intersections(p, -v, G)) IMPLIES
+        set_before_p(arb_crossing_set(p - r * v, v, G), p, p - r * v)
+          = emptyset
+
+  empty_key_arb_no_crossings: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: posreal):
+      NOT point_on_polygon_perimeter?(G)(p) AND
+      empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES arb_crossing_set(p + r * v, v, G) =
+	        arb_crossing_set(p, v, G)
+
+  empty_key_arb_no_crossings_neg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: posreal):
+      empty?[real](key_arb_intersections(p, -v, G))
+        IMPLIES arb_crossing_set(p - r * v, v, G) =
+	        arb_crossing_set(p, v, G)
+
+  empty_key_arb_no_crossings_add: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_arb?(v, G)(p) AND
+      empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES arb_crossing_set(p, v, G) = add(p, emptyset)
+
+  card_add_crossing_set: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, c: posreal):
+      odd?(card(add(p, arb_crossing_set(p + c * v, v, G)))) OR
+      odd?(card(arb_crossing_set(p + c * v, v, G)))
+
+  point_before_min_key_not_on: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      0 < r AND r < min[real, <=](key_arb_intersections(p, v, G)) AND
+      point_on_arb_ray?(q, p, v) AND norm(q - p) <= r AND q /= p
+        IMPLIES only_parallel_edges?(q, v, G)
+
+  point_before_min_neg_key_not_on: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, -v, G)) AND
+      0 < r AND r < min[real, <=](key_arb_intersections(p, -v, G)) AND
+      point_on_arb_ray?(p, q, v) AND norm(q - p) <= r AND q /= p
+        IMPLIES only_parallel_edges?(q, v, G)
+
+
+  % Given that p is the common vertex of two adjacent edges with far
+  % endpoints q and r, this function yields an unnormalized vector that
+  % lies between those derived from the two edges (q - p and r - p).
+  bisect_vector(p, q, r: point_2d): vector_2d =
+   q + r - 2 * p
+
+  bisect_vector_nonzero: LEMMA
+    FORALL (p, q, r: point_2d):
+      q /= p AND r /= p AND NOT parallel?(q - p, r - p)
+        IMPLIES bisect_vector(p, q, r) /= zero
+
+  % Here is a condition for when a direction v enables point p to be
+  % counted as a qualifying crossing point.  For a vertex, the two
+  % adjacent edges must lie on opposite sides of vector v.
+  counted_crossing_direction?(p: point_2d, G: simple_polygon_2d)
+                             (v: Normalized): bool =
+    point_on_polygon_perimeter?(G)(p) AND
+    IF vertex?(G)(p)
+      THEN EXISTS (i: below(G`num_vertices)):
+	     p = G`vertices(i) AND
+	     LET q = G`vertices(prev_index(G, i)),
+		 r = G`vertices(next_index(G, i)) IN
+	       % v isn't parallel to either edge
+	       cross(q - p, v) > 0 AND cross(r - p, v) < 0 OR
+	       cross(r - p, v) > 0 AND cross(q - p, v) < 0
+      ELSE EXISTS (e: (edge_of_polygon?(G))):
+             point_on_segment?(p, e) AND NOT parallel?(e`p2 - e`p1, v)
+    ENDIF
+
+  bisect_not_parallel_prev: LEMMA
+    FORALL (p: point_2d, v: Nz_vector,
+            G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET prev = G`vertices(prev_index(G, i)),
+          next = G`vertices(next_index(G, i)) IN
+        p = G`vertices(i) AND
+        v = bisect_vector(p, prev, next) AND
+        NOT parallel?(prev - p, next - p)
+          IMPLIES NOT parallel?(prev - p, v)
+
+  bisect_not_parallel_next: LEMMA
+    FORALL (p: point_2d, v: Nz_vector,
+            G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET prev = G`vertices(prev_index(G, i)),
+          next = G`vertices(next_index(G, i)) IN
+        p = G`vertices(i) AND
+        v = bisect_vector(p, prev, next) AND
+        NOT parallel?(prev - p, next - p)
+          IMPLIES NOT parallel?(next - p, v)
+
+  counted_direction_not_parallel: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) IMPLIES
+        FORALL (e: (edge_of_polygon?(G))):
+	  point_on_segment?(p, e) IMPLIES NOT parallel?(e`p2 - e`p1, v)
+
+  bisect_not_parallel_cross_nonzero: LEMMA
+    FORALL (G: simple_polygon_2d, v: Normalized, i: below(G`num_vertices)):
+      LET p = G`vertices(i),
+          prev = G`vertices(prev_index(G, i)),
+          next = G`vertices(next_index(G, i)),
+	  u = prev - p,
+	  w = next - p IN
+        NOT parallel?(u, w) AND
+        v = ^(bisect_vector(p, prev, next))
+          IMPLIES cross(u, v) > 0 AND cross(w, v) < 0 OR
+	          cross(u, v) < 0 AND cross(w, v) > 0
+
+  key_arb_intersections_pos: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES min[real, <=](key_arb_intersections(p, v, G)) > 0
+
+  counted_key_arb_intersections_pos: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT empty?[real](key_arb_intersections(p, v, G))
+        IMPLIES min[real, <=](key_arb_intersections(p, v, G)) > 0
+
+  counted_key_arb_intersections_reverse_pos: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT empty?[real](key_arb_intersections(p, -v, G))
+        IMPLIES min[real, <=](key_arb_intersections(p, -v, G)) > 0
+
+  crossing_direction_counted: LEMMA
+    FORALL (p, q: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(q, G)(v) AND
+      point_on_arb_ray?(q, p, v)
+       IMPLIES counted_crossing_arb?(v, G)(q)
+
+  crossing_direction_neg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) IMPLIES
+        counted_crossing_direction?(p, G)(-v)
+
+
+  prev_point_ray_crossing_set: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, -v, G)) AND
+      0 <= r AND r < min[real, <=](key_arb_intersections(p, -v, G))
+        IMPLIES arb_crossing_set(p - r * v, v, G) =
+	        arb_crossing_set(p, v, G)
+
+  later_point_ray_crossing_set: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, r: real):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      counted_crossing_direction?(p, G)(v) AND
+      0 < r AND r < min[real, <=](key_arb_intersections(p, v, G))
+        IMPLIES arb_crossing_set(p, v, G) =
+                add(p, arb_crossing_set(p + r * v, v, G))
+  
+
+  % Analogous to key_arb_intersections, this function collects the
+  % endpoints of edges lying along the ray in direction v.
+
+  parallel_intersections(p: point_2d, v: Normalized,
+                         G: simple_polygon_2d): finite_set[real] =
+    {d: real | EXISTS (s: (edge_of_polygon?(G))), (q: point_2d):
+		 (q = s`p1 OR q = s`p2) AND
+                 parallel?(s`p2 - s`p1, v) AND
+	         point_on_arb_ray?(q, p, v) AND
+	         p /= q AND d = norm(q - p)}
+
+  all_arb_intersections(p: point_2d, v: Normalized,
+                        G: simple_polygon_2d): finite_set[real] =
+    union(key_arb_intersections(p, v, G),
+          parallel_intersections(p, v, G))
+
+  % Properties of the two types of sets
+
+  empty_ray_intersection_sets: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      empty?[real](all_arb_intersections(p, v, G)) IFF
+        empty?[real](key_arb_intersections(p, v, G)) AND
+        empty?[real](parallel_intersections(p, v, G))
+
+  parallel_intersections_pos: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT empty?[real](parallel_intersections(p, v, G))
+        IMPLIES min[real, <=](parallel_intersections(p, v, G)) > 0
+
+  min_all_intersections_key: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      empty?[real](parallel_intersections(p, v, G))
+        IMPLIES min[real, <=](all_arb_intersections(p, v, G)) =
+	        min[real, <=](key_arb_intersections(p, v, G))
+
+  min_all_intersections_parallel: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      empty?[real](key_arb_intersections(p, v, G)) AND
+      NOT empty?[real](parallel_intersections(p, v, G))
+        IMPLIES min[real, <=](all_arb_intersections(p, v, G)) =
+	        min[real, <=](parallel_intersections(p, v, G))
+
+  all_intersections_pos: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      NOT empty?[real](all_arb_intersections(p, v, G))
+        IMPLIES min[real, <=](all_arb_intersections(p, v, G)) > 0
+
+  nonempty_min_key_arb_intersections: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      d < min[real, <=](all_arb_intersections(p, v, G))
+        IMPLIES d < min[real, <=](key_arb_intersections(p, v, G))
+
+  nonempty_min_parallel_intersections: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      NOT empty?[real](parallel_intersections(p, v, G)) AND
+      d < min[real, <=](all_arb_intersections(p, v, G))
+        IMPLIES d < min[real, <=](parallel_intersections(p, v, G))
+
+  no_parallel_intersections_not_on_segment: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d,
+            e: (edge_of_polygon?(G)), d: posreal):
+      (empty?[real](parallel_intersections(p, v, G)) OR
+       d < min[real, <=](parallel_intersections(p, v, G))) AND
+      NOT point_on_segment?(p, e) AND
+      parallel?(e`p2 - e`p1, v)
+        IMPLIES NOT point_on_segment?(p + d * v, e)
+
+  empty_parallel_intersections_not_on: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d,
+            e: (edge_of_polygon?(G)), d: posreal):
+      (empty?[real](parallel_intersections(p, v, G)) OR
+       d < min[real, <=](parallel_intersections(p, v, G))) AND
+      counted_crossing_direction?(p, G)(v) AND
+      parallel?(e`p2 - e`p1, v)
+        IMPLIES NOT point_on_segment?(p + d * v, e)
+
+  empty_all_not_on_perimeter: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      empty?[real](all_arb_intersections(p, v, G))
+        IMPLIES FORALL (d: posreal):
+	          NOT point_on_polygon_perimeter?(G)(p + d * v)
+
+  below_min_all_arb_not_on: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT empty?[real](all_arb_intersections(p, v, G)) AND
+      d < min[real, <=](all_arb_intersections(p, v, G))
+        IMPLIES NOT point_on_polygon_perimeter?(G)(p + d * v)
+
+  below_min_all_arb_not_on_neg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT empty?[real](all_arb_intersections(p, -v, G)) AND
+      d < min[real, <=](all_arb_intersections(p, -v, G))
+        IMPLIES NOT point_on_polygon_perimeter?(G)(p - d * v)
+
+  END arb_direc_edge_crossing

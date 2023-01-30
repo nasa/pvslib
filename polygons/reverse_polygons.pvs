@@ -1,0 +1,181 @@
+%% -----------------------------------------------------------------------------
+%% reverse_polygons.pvs              Dependable Computing
+%% Theory to map a polygon into its reverse form.
+%% -----------------------------------------------------------------------------
+
+% The reverse of polygon G is a polygon having the same vertices and edges
+% as G, except that the vertices are listed in the opposite order.
+
+reverse_polygons : THEORY
+
+  BEGIN
+
+  IMPORTING polygon_attributes;
+  IMPORTING rightward_crossings;
+
+  % Following are used to characterize reverse polygons and their
+  % relationship to CCW vs CW polygons.
+  % The definitions use the first vertex as a pivot element, i.e.,
+  % G`vertices(0) = reverse_polygon(G)`vertices(0).
+  
+  rev_polygon_index(G: polygon_2d,
+                    i: below(G`num_vertices)): below(G`num_vertices) =
+    IF i = 0 THEN 0 ELSE G`num_vertices - i ENDIF
+
+  reverse_polygon(G: polygon_2d): polygon_2d =
+    (# num_vertices := G`num_vertices,
+       vertices := LAMBDA (i: below(G`num_vertices)):
+                     G`vertices(rev_polygon_index(G, i))
+     #)
+
+  % Following are properties of reverse polygons and mappings between
+  % vertex index values.
+
+  rev_polygon_index_reverse: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      rev_polygon_index(reverse_polygon(G), i) = rev_polygon_index(G, i)
+
+  rev_rev_polygon_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      rev_polygon_index(G, rev_polygon_index(G, i)) = i
+
+  reverse_reverse_polygon: LEMMA
+    FORALL (G: polygon_2d):
+      reverse_polygon(reverse_polygon(G)) = G
+  
+  reverse_vertex_rev_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      reverse_polygon(G)`vertices(rev_polygon_index(G, i)) = G`vertices(i)
+
+  prev_index_rev_index_next: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      prev_index(G, rev_polygon_index(G, i)) =
+      rev_polygon_index(G, next_index(G, i))
+
+  prev_index_of_reverse: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      reverse_polygon(G)`vertices(prev_index(reverse_polygon(G), i)) =
+      G`vertices(next_index(G, rev_polygon_index(G, i)))
+
+  next_index_rev_index_prev: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      next_index(G, rev_polygon_index(G, i)) =
+      rev_polygon_index(G, prev_index(G, i))
+
+  next_index_of_reverse: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      reverse_polygon(G)`vertices(next_index(reverse_polygon(G), i)) =
+      G`vertices(prev_index(G, rev_polygon_index(G, i)))
+
+  edges_of_reverse_polygon: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      edges_of_polygon(reverse_polygon(G))(i) = 
+      reverse_segment(
+        edges_of_polygon(G)(prev_index(G, rev_polygon_index(G, i))))
+
+  point_on_edge_of_rev_polygon: LEMMA
+    FORALL (p: point_2d, G: polygon_2d, i: below(G`num_vertices)):
+      point_on_segment?(p, edges_of_polygon(reverse_polygon(G))(i)) IFF
+      point_on_segment?(p, edges_of_polygon(G)
+                                 (prev_index(G, rev_polygon_index(G, i))))
+
+  edge_of_rev_polygon_rev_segment: LEMMA
+    FORALL (G: polygon_2d, s: segment_2d):
+      edge_of_polygon?(G)(s) IMPLIES
+        edge_of_polygon?(reverse_polygon(G))(reverse_segment(s))
+
+  edge_of_rev_polygon_imp_edge_rev_seg: LEMMA
+    FORALL (G: polygon_2d, s: segment_2d):
+      edge_of_polygon?(reverse_polygon(G))(s) IMPLIES
+        edge_of_polygon?(G)(reverse_segment(s))
+
+  rev_polygon_edge_is_rev_segment: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices), s: segment_2d):
+      edges_of_polygon(reverse_polygon(G))(i) = s IMPLIES
+        edges_of_polygon(G)(prev_index(G, rev_polygon_index(G, i)))
+          = reverse_segment(s)
+
+  on_rev_perim_eqv_on_perim: LEMMA
+    FORALL (G: polygon_2d, p: point_2d):
+      point_on_polygon_perimeter?(reverse_polygon(G))(p) IFF
+      point_on_polygon_perimeter?(G)(p)
+
+  reverse_polygon_is_simple: JUDGEMENT
+    FORALL (G: simple_polygon_2d):
+      reverse_polygon(G) HAS_TYPE simple_polygon_2d
+  
+  topleft_index_of_reverse: LEMMA
+    FORALL (G: simple_polygon_2d):
+      topleft_vertex_idx(reverse_polygon(G)) =
+      rev_polygon_index(G, topleft_vertex_idx(G))
+  
+  topleft_vertex_of_reverse_is_same: LEMMA
+    FORALL (G: simple_polygon_2d):
+      reverse_polygon(G)`vertices(topleft_vertex_idx(reverse_polygon(G))) =
+      G`vertices(topleft_vertex_idx(G))
+
+  find_index_any_reverse: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d, i: below(G`num_vertices)):
+      point_on_segment?(p, edges_of_polygon(G)(i)) AND
+      NOT segment_endpoint?(edges_of_polygon(G)(i))(p)
+        IMPLIES find_index_any(reverse_polygon(G), p) =
+                prev_index(G, rev_polygon_index(G, i))
+
+  find_index_any_vertex_reverse: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      find_index_any(reverse_polygon(G), G`vertices(i)) =
+      rev_polygon_index(G, i)
+
+  % The reverse of a CCW polygon is CW and vice versa.
+
+  ccw_reverse_polygon: LEMMA
+    FORALL (G: simple_polygon_2d):
+      ccw_vertex_order?(G) IFF NOT ccw_vertex_order?(reverse_polygon(G))
+
+  ccw_miter_pt_left_of_topleft_vtx: LEMMA
+    FORALL (G: simple_polygon_2d, d: posreal):
+      LET i  = topleft_vertex_idx(G),
+          mp = miter_point(G`vertices(i), G`vertices(prev_index(G, i)),
+ 	                   G`vertices(next_index(G, i)), d),
+	  tl = G`vertices(i)
+      IN IF ccw_vertex_order?(G) THEN mp`x < tl`x ELSE tl`x < mp`x ENDIF
+
+  segment_falling_reverse_rising: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET H = reverse_polygon(G),
+          e = edges_of_polygon(G)(i),
+          j = prev_index(H, rev_polygon_index(G, i)),
+          r = edges_of_polygon(H)(j)
+      IN segment_falling?(e) IFF segment_rising?(r)
+
+  segment_falling_reverse_image: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET H = reverse_polygon(G),
+          e = edges_of_polygon(G)(i),
+          j = prev_index(G, rev_polygon_index(G, i)),
+          r = edges_of_polygon(H)(j)
+      IN segment_falling?(e) IFF segment_falling?(reverse_segment(r))
+
+  % These lemmas describe reverse polygon relationships for
+  % rightward edge crossings.
+  
+  reverse_seg_rightward_edge_crossing: LEMMA
+    FORALL (e: segment_2d, p: (rightward_edge_crossing?(e))):
+      rightward_edge_crossing?(reverse_segment(e))(p)
+
+  reverse_has_rightward_crossings: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      has_rightward_crossings?(G)(p) IFF
+      has_rightward_crossings?(reverse_polygon(G))(p)
+
+  edge_crossing_point_same_in_reverse: LEMMA
+    FORALL (e: segment_2d, p: (rightward_edge_crossing?(e))):
+      edge_crossing_point(reverse_segment(e), p) = 
+      edge_crossing_point(e, p)
+
+  leftmost_crossing_same_in_reverse: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      leftmost_intersection_point(reverse_polygon(G), p) =
+      leftmost_intersection_point(G, p)
+
+  END reverse_polygons

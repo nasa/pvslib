@@ -1,0 +1,344 @@
+%% -----------------------------------------------------------------------------
+%% segment_endpoint_sequences.pvs              Dependable Computing
+%% Definitions and properties of sequences of endpoints drawn from
+%% paths of connected segments. The paths may be open.
+%% -----------------------------------------------------------------------------
+
+segment_endpoint_sequences : THEORY
+
+  BEGIN
+
+  IMPORTING segments_2d_trig
+  IMPORTING nearest_segment_points
+  % Importing finite_types eliminates the is_finite TCC
+  IMPORTING orders@finite_types;
+
+  IMPORTING finite_sets@finite_sets_minmax
+  IMPORTING finite_sets@finite_sets_card_eq
+  IMPORTING finite_sets@finite_sets_inductions
+
+  % Define a type to represent sequences of connected segment
+  % endpoints.  Successive pairs of endpoints are disjoint but
+  % endpoints can repeat elsewhere in the sequence.  Special case of
+  % length = 1 is allowed to represent a single point.
+
+  segment_endpoint_cond(S: finseq[point_2d]): bool =
+     S`length > 0 AND FORALL (i: below(S`length - 1)): S`seq(i) /= S`seq(i+1)
+
+  segment_endpoint_seq: TYPE =
+    {S: finseq[point_2d] |
+     S`length > 0 AND FORALL (i: below(S`length - 1)): S`seq(i) /= S`seq(i+1)}
+
+  % Analogous to point_on_segment? predicate
+  point_on_segment_seq?(p: point_2d, S: segment_endpoint_seq): bool =
+    IF S`length = 1 THEN p = S`seq(0)    % single-point case
+      ELSE EXISTS (i: below(S`length - 1)):
+             point_on_segment?(p, (# p1 := S`seq(i), p2 := S`seq(i+1) #))
+    ENDIF
+
+  reverse_segment_seq(S: segment_endpoint_seq): segment_endpoint_seq =
+    (# length := S`length,
+       seq := LAMBDA (i: below(S`length)): S`seq(S`length - 1 - i)
+     #)
+
+  reverse_reverse_segment_seq: LEMMA
+    FORALL (S: segment_endpoint_seq):
+	reverse_segment_seq(reverse_segment_seq(S)) = S
+
+  point_on_reverse_segment_seq: LEMMA
+    FORALL (p: point_2d, S: segment_endpoint_seq):
+      point_on_segment_seq?(p, S) IFF
+      point_on_segment_seq?(p, reverse_segment_seq(S))
+
+  singleton_endpoint_seq(p: point_2d): segment_endpoint_seq =
+      (# length := 1, seq := LAMBDA (i: below(1)): p #)
+
+  two_point_endpt_seq(p, q: point_2d): segment_endpoint_seq =
+    IF p = q
+      THEN (# length := 1, seq := LAMBDA (i: below(1)): q #)
+      ELSE (# length := 2,
+              seq := LAMBDA (i: below(2)): IF i = 0 THEN p ELSE q ENDIF #)
+    ENDIF
+
+  % Following is used to construct conditional expressions during proofs
+  % so they satisfy type constraints.
+  alternative_endpt_seqs(P: bool,
+                         X: {X: finseq[point_2d] |
+			     P IMPLIES segment_endpoint_cond(X)},
+                         Y: {Y: finseq[point_2d] |
+			     NOT P IMPLIES segment_endpoint_cond(Y)}):
+                        segment_endpoint_seq =
+    IF P THEN X ELSE Y ENDIF
+
+  % X is a subsequence of Y with its points starting at the ith point of Y.
+  % Index_values are rotated using modulus m.
+  segment_endpoint_subseq?(X, Y: segment_endpoint_seq, m: posnat): bool =
+    X`length <= m AND m <= Y`length AND
+    EXISTS (i: below(m)):
+      FORALL (j: below(X`length)):
+        X`seq(j) = Y`seq(rem(m)(i + j))
+
+  % Appending X and Y requires that the last endpoint in X matches the
+  % first endpoint in Y. Only one of these occurs in the appended sequence.
+  append_segment_seqs(X: segment_endpoint_seq,
+                      Y: {S: segment_endpoint_seq |
+		          X`seq(X`length - 1) = S`seq(0)}):
+                      segment_endpoint_seq =
+    (# length := X`length + Y`length - 1,
+       seq := (X ^^ (0, X`length - 1) o Y)`seq #)
+
+  % Properties of these sequences and their operations.
+  
+  initial_point_append_segment_seqs: LEMMA
+    FORALL (X: segment_endpoint_seq,
+            Y: {S: segment_endpoint_seq | X`seq(X`length - 1) = S`seq(0)}):
+      append_segment_seqs(X, Y)`seq(0) = X`seq(0)
+
+  final_point_append_segment_seqs: LEMMA
+    FORALL (X: segment_endpoint_seq,
+            Y: {S: segment_endpoint_seq | X`seq(X`length - 1) = S`seq(0)}):
+      LET Z = append_segment_seqs(X, Y) IN
+        Z`seq(Z`length - 1) = Y`seq(Y`length - 1)
+
+  point_on_append_seg_seqs_on_either: LEMMA
+    FORALL (p: point_2d, X: segment_endpoint_seq,
+            Y: {S: segment_endpoint_seq | X`seq(X`length - 1) = S`seq(0)}):
+      point_on_segment_seq?(p, append_segment_seqs(X, Y)) IFF
+      (point_on_segment_seq?(p, X) OR point_on_segment_seq?(p, Y))
+
+  point_on_segment_subseq: LEMMA
+    FORALL (p: point_2d, X, Y: segment_endpoint_seq, m: posnat):
+      X`length <= m AND m = Y`length - 1 AND
+      Y`seq(0) = Y`seq(Y`length - 1) AND
+      point_on_segment_seq?(p, X) AND
+      segment_endpoint_subseq?(X, Y, m)
+        IMPLIES point_on_segment_seq?(p, Y)
+
+  point_on_segment_on_seq: LEMMA
+    FORALL (p: point_2d, S: segment_endpoint_seq, i: below(S`length - 1)):
+      point_on_segment?(p, (# p1 := S`seq(i), p2 := S`seq(i + 1) #))
+        IMPLIES point_on_segment_seq?(p, S)
+
+  point_on_segment_seq_subrange_on_seq: LEMMA
+    FORALL (p: point_2d, S: segment_endpoint_seq,
+            j: below(S`length), i: upto(j)):
+      point_on_segment_seq?(p, S ^ (i, j))
+        IMPLIES point_on_segment_seq?(p, S)
+
+  % These "mini-sequence" predicates provide a compact way to express
+  % constraints on a few consecutive points. These are helpful when
+  % when formulating lemmas in higher level theories.
+  
+  three_point_miniseq?(u, v: point_2d)(w: point_2d): bool =
+    u /= v AND w /= v AND NOT dir_parallel?(u - v, w - v)
+
+  four_point_miniseq?(u, v, w: point_2d)(x: point_2d): bool =
+    u /= v AND w /= v AND x /= w AND
+    NOT dir_parallel?(u - v, w - v) AND
+    NOT dir_parallel?(v - w, x - w)
+
+  three_point_offset_dist?(u, v: point_2d, w: (three_point_miniseq?(u, v)))
+                          (d: posreal): bool =
+    d <= half_angle_vsin(^(u - v), ^(w - v)) *
+         min(norm(u - v), norm(w - v)) / 3
+
+  four_point_offset_dist?(u, v, w: point_2d,
+                          x: (four_point_miniseq?(u, v, w)))
+			 (d: posreal): bool =
+    d <= min(half_angle_vsin(^(u - v), ^(w - v)),
+             half_angle_vsin(^(v - w), ^(x - w))) *
+         min(norm(u - v), min(norm(w - v), norm(x - w))) / 3
+
+  % This condition is analogous to polygon_edges_do_not_cross? in
+  % theory polygons_2d.
+  segments_do_not_cross?(S: segment_endpoint_seq): bool =
+    S`length < 3 OR
+    FORALL (i, j: below(S`length - 1)):
+      LET si = (# p1 := S`seq(i), p2 := S`seq(i + 1) #),
+          sj = (# p1 := S`seq(j), p2 := S`seq(j + 1) #) IN
+        FORALL (q: point_2d):
+          point_on_segment?(q, si) AND point_on_segment?(q, sj) IMPLIES
+            i = j OR q = S`seq(i) OR q = S`seq(i + 1)
+
+  subseq_segments_do_not_cross: LEMMA
+    FORALL (S: segment_endpoint_seq, i, j: below(S`length)):
+      segments_do_not_cross?(S) AND i <= j IMPLIES
+        segments_do_not_cross?(S ^ (i, j))
+
+  % This condition states that sequence S may loop back on itself at
+  % most once and not necessarily at the starting point. The last
+  % element of S may equal an earlier element of S.
+  single_loop_back_seq?(S: segment_endpoint_seq): bool =
+    S`length > 2 AND
+    ((EXISTS (i: below(S`length - 3)):
+        S`seq(i) = S`seq(S`length - 1)) IMPLIES
+     EXISTS (i: below(S`length - 3)):
+       S`seq(i) = S`seq(S`length - 1) AND
+       FORALL (j: below(S`length - 1)):
+         S`seq(j) = S`seq(S`length - 1) IMPLIES i = j) AND
+    S`seq(S`length - 3) /= S`seq(S`length - 1)
+
+  loop_back_intercept_rec(S: (single_loop_back_seq?), n: below(S`length - 2)):
+    RECURSIVE below(S`length - 2) =
+      IF n = 0 THEN 0
+      ELSIF n < S`length - 3 AND S`seq(n) = S`seq(S`length - 1)
+        THEN n
+        ELSE loop_back_intercept_rec(S, n - 1)
+      ENDIF
+    MEASURE n
+
+  loop_back_intercept_rec_prop: LEMMA
+    FORALL (S: (single_loop_back_seq?), n: below(S`length - 2)):
+      S`length > 3 IMPLIES
+        LET lbi = loop_back_intercept_rec(S, n) IN
+          IF FORALL (j: nat): j <= n IMPLIES S`seq(j) /= S`seq(S`length - 1)
+            THEN lbi = 0
+            ELSE lbi < S`length - 3 AND S`seq(lbi) = S`seq(S`length - 1)
+          ENDIF	
+
+  % If sequence S loops back on itself, this function gives the index
+  % within S where that occurs. Otherwise, it evaluates to 0.
+  loop_back_intercept(S: (single_loop_back_seq?)):
+    {i: below(S`length - 2) |
+     IF FORALL (j: below(S`length - 3)): S`seq(j) /= S`seq(S`length - 1)
+       THEN i = 0
+       ELSE i < S`length - 3 AND S`seq(i) = S`seq(S`length - 1)
+     ENDIF}
+
+  intercept_0_cond: LEMMA
+    FORALL (S: (single_loop_back_seq?)):
+      loop_back_intercept(S) = 0 IMPLIES
+        S`length = 3 OR
+        S`seq(0) = S`seq(S`length - 1) OR
+	FORALL (k: below(S`length - 3)): S`seq(k) /= S`seq(S`length - 1)
+
+  % This predicate is similar to uniq_vertex_list?, except that it
+  % allows the last point and one other to be equal. It supports the
+  % loop-back definitions.
+  mostly_uniq_point_list?(n: posnat, lbi: below(n))
+                         (seq: [below(n) -> point_2d]): bool =
+    FORALL (i, j: below(n)):
+      i = lbi AND j = n - 1 OR
+      j = lbi AND i = n - 1 OR
+      i = j OR seq(i) /= seq(j)
+
+  % This type, a sequence of endpoints, applies to paths of polygon edges
+  % and segment paths running parallel to such edges. The endpoints must
+  % be unique, except that the last may equal one of the others.
+  % Also, the segments must be non-crossing.
+  edge_parallel_endpoint_seq: TYPE =
+     {S: (single_loop_back_seq?) |
+      LET lbi = loop_back_intercept(S) IN
+        (S`seq(lbi) = S`seq(S`length - 1) IMPLIES S`length > 3) AND
+        mostly_uniq_point_list?(S`length, lbi)(S`seq) AND
+        segments_do_not_cross?(S)}
+
+  intercept_index_value: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, k: below(S`length - 2)):
+      S`seq(k) = S`seq(S`length - 1) IMPLIES
+        k < S`length - 3 AND loop_back_intercept(S) = k
+
+  adj_edge_parallel_endpts_neq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: below(S`length - 1)):
+      S`seq(i) /= S`seq(i + 1)
+
+  edge_parallel_endpts_mostly_uniq: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i, j: below(S`length)):
+    S`seq(i) = S`seq(j) IMPLIES
+      LET lbi = loop_back_intercept(S) IN
+        i = j OR i = lbi AND j = S`length - 1 OR j = lbi AND i = S`length - 1
+
+  edge_parallel_seq_is_endpt_seq: JUDGEMENT
+    edge_parallel_endpoint_seq SUBTYPE_OF segment_endpoint_seq
+
+  % A segment of S cannot double-back on the previous segment in S.
+  adj_segs_not_dir_parallel: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: below(S`length - 2)):
+      ^(S`seq(i) - S`seq(i + 1)) /= ^(S`seq(i + 2) - S`seq(i + 1))
+
+  % A similar constraint holds with "wrapped" segments, i.e., the last
+  % one on S and the ones at the intercept index.
+  wrapped_adj_segs_not_dir_parallel: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          ^(S`seq(S`length - 2) - S`seq(lbi)) /=
+	    ^(S`seq(1 + lbi) - S`seq(lbi)) AND
+          ^(S`seq(S`length - 3) - S`seq(S`length - 2)) /=
+  	    ^(S`seq(lbi) - S`seq(S`length - 2))
+
+  edge_para_endpts_valid_miter_point_args: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: {i: posnat | i < S`length - 1}):
+      S`seq(i) /= S`seq(i - 1) AND S`seq(i) /= S`seq(i + 1) AND
+      NOT dir_parallel?(S`seq(i - 1) - S`seq(i), S`seq(i + 1) - S`seq(i))
+
+  min_seg_length(S: edge_parallel_endpoint_seq): posreal =
+    min[posreal, <=]({len: posreal | EXISTS (i: below(S`length - 1)):
+                                       len = norm(S`seq(i + 1) - S`seq(i))})
+
+  eligible_seg_sep_index?(S: edge_parallel_endpoint_seq, i: below(S`length))
+	                 (j: below(S`length - 1)): bool =
+    LET lbi = loop_back_intercept(S) IN
+      j /= i AND j /= i - 1 AND
+      (S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+        (i /= lbi OR j < S`length - 2) AND
+        (i /= S`length - 1 OR j /= lbi AND j /= lbi - 1))
+
+  % These three definitions follow the pattern for min_edge_sep in
+  % theory polygon_attributes. They formalize the minimum separation
+  % distance between non-adjacent segments in S.
+
+  min_seg_sep_vertex(S: edge_parallel_endpoint_seq, i: below(S`length),
+                     j: (eligible_seg_sep_index?(S, i))): posreal =
+    LET e = (# p1 := S`seq(j), p2 := S`seq(j + 1) #),
+        v = e`p2 - e`p1,
+        vtx = S`seq(i),
+  	t_min = (vtx - e`p1) * v / sqv(v) IN
+      IF t_min <= 0 THEN norm(vtx - e`p1)
+        ELSIF t_min >= 1 THEN norm(vtx - e`p2)
+        ELSE norm(e`p1 + t_min * v - vtx)
+      ENDIF
+  
+  min_seg_separation(S: edge_parallel_endpoint_seq): posreal =
+    min[posreal, <=](
+        {v_min: posreal |
+         EXISTS (i: below(S`length), j: (eligible_seg_sep_index?(S, i))):
+           v_min = min_seg_sep_vertex(S, i, j)})
+
+  % A slightly different name, for historical reasons.
+  min_segment_sep(S: edge_parallel_endpoint_seq): posreal =
+    min_seg_separation(S)
+
+  % The remaining lemmas state the bounds that apply with min_segment_sep.
+
+  min_segment_sep_bounds_sep_dist: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, p: point_2d,
+            i: below(S`length), j: (eligible_seg_sep_index?(S, i))):
+      point_on_segment?(p, (# p1 := S`seq(j), p2 := S`seq(j + 1) #))
+        IMPLIES min_segment_sep(S) <= norm(S`seq(i) - p)
+
+  min_seg_sep_all_points: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, p, q: point_2d, i, j: nat):
+      LET lbi = loop_back_intercept(S) IN
+        i < j - 1 AND j < S`length - 1 AND
+        (S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+	    j < S`length - 2 OR i /= lbi AND i /= lbi - 1)
+          IMPLIES
+            LET g = (# p1 := S`seq(i), p2 := S`seq(i + 1) #),
+                h = (# p1 := S`seq(j), p2 := S`seq(j + 1) #)
+            IN point_on_segment?(p, g) AND point_on_segment?(q, h)
+                 IMPLIES min_segment_sep(S) <= norm(p - q)
+
+  min_seg_sep_bounds_seg_length: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq, i: below(S`length - 1)):
+      LET e = (# p1 := S`seq(i), p2 := S`seq(i + 1) #) IN
+        min_segment_sep(S) <= length(e)
+
+  min_seg_sep_bounds_seg_length_wrap: LEMMA
+    FORALL (S: edge_parallel_endpoint_seq):
+      LET lbi = loop_back_intercept(S) IN
+        S`seq(lbi) = S`seq(S`length - 1) IMPLIES
+          min_segment_sep(S) <= norm(S`seq(S`length - 2) - S`seq(lbi)) AND
+          min_segment_sep(S) <= norm(S`seq(1 + lbi) - S`seq(lbi))
+
+  END segment_endpoint_sequences

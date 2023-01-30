@@ -1,0 +1,166 @@
+%% -----------------------------------------------------------------------------
+%% topleft_vertex.pvs              Dependable Computing
+%% Theory to formalize the topmost, leftmost vertex and
+%% intermediate x and y values.
+%% -----------------------------------------------------------------------------
+
+% The topmost, leftmost vertex of a polygon is used to express various
+% concepts about polygons and operations on them. There is exactly one
+% such vertex for every polygon.
+
+topleft_vertex: THEORY
+  BEGIN
+
+  IMPORTING polygons_2d;
+  % Importing finite_types eliminates the is_finite TCC
+  IMPORTING orders@finite_types;
+
+  IMPORTING finite_sets@finite_sets_minmax
+
+  % Function for finding the x value of the leftmost vertex
+  leftmost_vertex_val(p: simple_polygon_2d): real =
+    min[real, <=]({r: real | EXISTS (i: below(p`num_vertices)):
+                               r = p`vertices(i)`x})
+
+  exists_leftmost_vertex_val: LEMMA
+    FORALL (p: simple_polygon_2d):
+      EXISTS (i: below(p`num_vertices)):
+        leftmost_vertex_val(p) = p`vertices(i)`x;
+
+  leftmost_vertex_val_is_min: LEMMA
+    FORALL (p: simple_polygon_2d):
+      FORALL (i: below(p`num_vertices)):
+        leftmost_vertex_val(p) <= p`vertices(i)`x;
+
+  % Function that returns a set of vertices whose x-values equal
+  % the leftmost vertex x-value.
+  leftmost_vertices(p: simple_polygon_2d): finite_set[point_2d] =
+    {v: point_2d | EXISTS (i: below(p`num_vertices)):
+                     v`x = leftmost_vertex_val(p) AND v = p`vertices(i)}
+
+  % Unit lemma that the leftmost_vertices list is non-empty
+  at_least_one_leftmost: LEMMA
+    FORALL(p: simple_polygon_2d):
+      NOT empty?(leftmost_vertices(p))
+
+  % Function for finding the y value of the topmost of the leftmost vertices.
+  topleft_vertex_val(p: simple_polygon_2d): real =
+    max[real, <=]({y: real | EXISTS (v: (leftmost_vertices(p))): y = v`y})
+
+  topleft_vertex_val_is_max: LEMMA
+    FORALL (p: simple_polygon_2d):
+      FORALL (v: (leftmost_vertices(p))):
+        v`y <= topleft_vertex_val(p);
+
+  % Index value of the topmost vertex in the set of leftmost vertices.
+  topleft_vertex_idx(p: simple_polygon_2d):
+    {i: below(p`num_vertices) |
+        p`vertices(i)`x = leftmost_vertex_val(p) AND
+        p`vertices(i)`y = topleft_vertex_val(p)}
+
+  % Properties of leftmost and topmost definitions.
+
+  leftmost_is_topleft_x: LEMMA
+    FORALL (G: simple_polygon_2d):
+      leftmost_vertex_val(G) = G`vertices(topleft_vertex_idx(G))`x
+
+  leftmost_has_min_x: LEMMA
+    FORALL (G: simple_polygon_2d, left_vtx: point_2d):
+      left_vtx = G`vertices(topleft_vertex_idx(G))
+        IMPLIES
+          FORALL (index: below(G`num_vertices)):
+            left_vtx`x <= G`vertices(index)`x
+
+  topmost_is_topleft_y: LEMMA
+    FORALL (G: simple_polygon_2d):
+      topleft_vertex_val(G) = G`vertices(topleft_vertex_idx(G))`y
+
+  topmost_has_max_y: LEMMA
+    FORALL (G: simple_polygon_2d, tl_vtx: point_2d):
+      tl_vtx = G`vertices(topleft_vertex_idx(G))
+        IMPLIES
+          FORALL (index: below(G`num_vertices)):
+            tl_vtx`x = G`vertices(index)`x IMPLIES
+              G`vertices(index)`y <= tl_vtx`y
+
+  % Several lemmas are used to prove further bounds on topleft vertices.
+
+  leftmost_xval_le_segment: LEMMA
+    FORALL (s: segment_2d, v: point_2d, xval: real):
+      xval <= s`p1`x AND
+      xval <= s`p2`x AND
+      point_on_segment?(v, s)
+        IMPLIES xval <= v`x
+
+  leftmost_xval_lt_segment: LEMMA
+    FORALL (s: segment_2d, v: point_2d, xval: real):
+      xval < s`p1`x AND
+      xval < s`p2`x AND
+      point_on_segment?(v, s)
+        IMPLIES xval < v`x
+
+  leftmost_xval_lt_segment_eq: LEMMA
+    FORALL (s: segment_2d, v: point_2d, xval: real):
+      xval = s`p1`x AND
+      xval < s`p2`x AND
+      point_on_segment?(v, s)
+        IMPLIES v = s`p1 OR xval < v`x
+
+  leftmost_vtx_val_le_any_perim_point: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      point_on_polygon_perimeter?(G)(p) IMPLIES
+        leftmost_vertex_val(G) <= p`x
+
+  topmost_yval_ge_segment: LEMMA
+    FORALL (s: segment_2d, v: point_2d, yval: real):
+      s`p1`y <= yval AND
+      s`p2`y <= yval AND
+      point_on_segment?(v, s)
+        IMPLIES v`y <= yval
+
+  topmost_yval_gt_segment: LEMMA
+    FORALL (s: segment_2d, v: point_2d, yval: real):
+      s`p1`y < yval AND
+      s`p2`y < yval AND
+      point_on_segment?(v, s)
+        IMPLIES v`y < yval
+
+  % The next two lemmas provide bounds that are likely to be useful
+  % for most types of proofs involving topleft vertices.
+
+  topleft_vertex_bounds_vertices: LEMMA
+    FORALL (G: simple_polygon_2d, v: (vertex?(G))):
+      v = G`vertices(topleft_vertex_idx(G)) IFF
+      FORALL (u: (vertex?(G))):
+        v`x < u`x OR v`x = u`x AND u`y <= v`y
+
+  topleft_vertex_bounds_all_points: LEMMA
+    FORALL (G: simple_polygon_2d, v: (vertex?(G))):
+      v = G`vertices(topleft_vertex_idx(G)) IFF
+      FORALL (p: (point_on_polygon_perimeter?(G))):
+        v`x < p`x OR v`x = p`x AND p`y <= v`y
+
+
+  min_vertex_yval(G: simple_polygon_2d): real =
+    min[real, <=]({r: real | EXISTS (i: below(G`num_vertices)):
+                               r = G`vertices(i)`y})
+
+  max_vertex_yval(G: simple_polygon_2d): real =
+    max[real, <=]({r: real | EXISTS (i: below(G`num_vertices)):
+                               r = G`vertices(i)`y})
+
+  not_all_vertices_collinear_horiz: LEMMA
+    FORALL (G: simple_polygon_2d, yval: real):
+      EXISTS (i: below(G`num_vertices)): G`vertices(i)`y /= yval
+
+  falling_edge_exists: LEMMA
+    FORALL (G: simple_polygon_2d):
+      EXISTS (i: below(G`num_vertices)):
+        segment_falling?(edges_of_polygon(G)(i))
+
+  rising_edge_exists: LEMMA
+    FORALL (G: simple_polygon_2d):
+      EXISTS (i: below(G`num_vertices)):
+        segment_rising?(edges_of_polygon(G)(i))
+
+END topleft_vertex
