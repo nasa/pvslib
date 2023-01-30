@@ -1,0 +1,682 @@
+%% -----------------------------------------------------------------------------
+%% vertex_wedges.pvs              Dependable Computing
+%% Definitions and properties of vertex wedge regions.
+%% -----------------------------------------------------------------------------
+
+vertex_wedges : THEORY
+
+  BEGIN
+
+  % This theory introduces the concept of a vertex wedge region and
+  % provides many properties about them. These results are used in
+  % other theories to show that edge containment conditions are
+  % satisfied by a merged polygon.
+
+  IMPORTING line_segments@between_rays
+  IMPORTING polygons@polygon_attributes
+  IMPORTING injection_props
+
+  vertex_wedge_radius(G: simple_polygon_2d): posreal =  min_edge_sep(G) / 3
+
+  % A vertex has a region of space on the inside/outside of the polygon
+  % bounded by the adjacent edges and a circular arc at distance
+  % vertex_wedge_radius.  Points on the edges are excluded.
+
+  point_in_vertex_wedge?(outward: bool, G: ccw_simple_polygon,
+                         i: below(G`num_vertices))(p: point_2d): bool =
+    point_between_edges?(outward, G, i)(p) AND
+    norm(p - G`vertices(i)) <= vertex_wedge_radius(G)
+
+  % The angle between two adjacent edges is bisected to create an
+  % unnormalized vector midway between the edges.  Both outward
+  % and inward-directed cases are included.
+
+  vertex_bisect_vector(G: simple_polygon_2d,
+                       i: below(G`num_vertices)): vector_2d =
+    LET v = G`vertices(i),
+        u = G`vertices(prev_index(G, i)),
+        w = G`vertices(next_index(G, i)),
+        uv = u - v,
+	wv = w - v,
+	c = cross(uv, wv),
+        a = norm(wv) * uv + norm(uv) * wv
+    IN IF c = 0 THEN perp_right(uv) ELSIF c > 0 THEN a ELSE -a ENDIF
+
+  vertex_bisect_vector_nonzero: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      vertex_bisect_vector(G, i) /= zero
+
+  % In the bisected direction there is an apex point at the periphery
+  % of the wedge, namely, on the circular arc that bounds the wedge.
+
+  vertex_wedge_apex(outward: bool, G: simple_polygon_2d,
+                    i: below(G`num_vertices)): point_2d =
+    LET v = G`vertices(i),
+	d = vertex_wedge_radius(G),
+	b = ^(vertex_bisect_vector(G, i))
+    IN v + d * (IF outward THEN b ELSE -b ENDIF)
+
+  % Wedge connectors are line segments having their endpoints on the
+  % arcs of two adjacent wedges. Each connector is parallel to a
+  % polygon edge at a fixed offset distance, which is determined by
+  % smallest angle between edge pairs in a polygon.
+  % A safe sine value for wedge connectors is half the minimum.
+
+  wedge_connector_sine(G: simple_polygon_2d): {a: posreal | a <= 1/2} =
+    min(sines_of_edge_angles(G)) / 2
+
+  wedge_connector_sine_sq_bound: LEMMA
+    FORALL (G: simple_polygon_2d):
+      1 > sq(wedge_connector_sine(G))
+
+  wedge_connector_offset(G: simple_polygon_2d): posreal =
+    vertex_wedge_radius(G) * wedge_connector_sine(G)
+
+  % The endpoints of connectors are defined as follows.
+  wedge_connector_endpoint(G: simple_polygon_2d, i: below(G`num_vertices),
+                           near_end: bool): point_2d =
+    LET u = G`vertices(i),
+        v = G`vertices(next_index(G, i)),
+	r = vertex_wedge_radius(G),
+	sin_a = wedge_connector_sine(G),
+	cos_a = sqrt(1 - sq(sin_a)),
+	perp_vect = r * sin_a * ^(perp_left(v - u)),
+	edge_vect = r * cos_a * ^(v - u)
+    IN IF near_end
+         THEN u + perp_vect + edge_vect
+         ELSE v + perp_vect - edge_vect
+       ENDIF
+
+  % This definition states a key condition about a merged polygon,
+  % namely, that there can be no outgoing edges of polygon H in
+  % the outward wedges of polygon G, typically the merged polygon.
+
+  no_edges_in_outward_wedges?(G, H: simple_polygon_2d): bool =
+    FORALL (i: below(G`num_vertices)):
+      LET v = G`vertices(i) IN
+      FORALL (e: (edge_of_polygon?(H))):
+        NOT (v = e`p1 AND point_between_edges?(true, G, i)(e`p2) OR
+             v = e`p2 AND point_between_edges?(true, G, i)(e`p1))
+
+  % These are needed in proofs that use induction over vertex indices.
+  
+  index_from_offset(G: simple_polygon_2d, offset: below(G`num_vertices))
+                   (i: below(G`num_vertices)): below(G`num_vertices) =
+    rem(G`num_vertices)(i + offset)
+
+  index_from_offset_injective: LEMMA
+    FORALL (G: simple_polygon_2d, offset: below(G`num_vertices)):
+      injective?(index_from_offset(G, offset))
+
+  index_from_offset_surjective: LEMMA
+    FORALL (G: simple_polygon_2d, offset: below(G`num_vertices)):
+      surjective?(index_from_offset(G, offset))
+
+  % These are lemmas about various edge crossing properties.
+
+  in_out_on_segment_have_crossing_between: LEMMA
+    FORALL (G: simple_polygon_2d, p, q: point_2d, e: segment_2d):
+      point_in_polygon?(p, G) AND point_outside_polygon?(q, G) AND
+      point_on_segment?(p, e) AND point_on_segment?(q, e)
+        IMPLIES EXISTS (v: point_2d):
+                  point_on_segment?(v, e) AND
+                  point_on_polygon_perimeter?(G)(v) AND
+                  0 < norm(v - p) AND norm(v - p) < norm(q - p)
+
+  in_out_have_crossing_on_subsegment: LEMMA
+    FORALL (G: simple_polygon_2d, p, q: point_2d):
+      NOT point_outside_polygon?(p, G) AND point_outside_polygon?(q, G)
+        IMPLIES EXISTS (v: point_2d):
+                  point_on_segment?(v, (# p1 := p, p2 := q #)) AND
+                  point_on_polygon_perimeter?(G)(v)
+
+  nearest_perimeter_offset(G: simple_polygon_2d)
+                          (p: {p: point_2d | NOT point_outside_polygon?(p, G)},
+			   q: {q: point_2d | point_outside_polygon?(q, G)}):
+    {d: posreal | next_arb_intersection?(q, ^(p - q), G)(q + d * ^(p - q))}
+
+  nearest_perimeter_offset_bound: LEMMA
+    FORALL (G: simple_polygon_2d, p, q: point_2d, e: segment_2d):
+     NOT point_outside_polygon?(p, G) AND point_outside_polygon?(q, G) AND
+     point_on_segment?(p, e) AND point_on_segment?(q, e) AND p /= q
+       IMPLIES nearest_perimeter_offset(G)(p, q) <= norm(p - q)
+
+  between_points_on_perimeter: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d, e: segment_2d):
+      NOT point_outside_polygon?(p, G) AND
+      point_outside_polygon?(q, G) AND
+      point_on_segment?(p, e) AND point_on_segment?(q, e)
+        IMPLIES EXISTS (v: point_2d, i: below(G`num_vertices)):
+                  point_on_segment?(v, edges_of_polygon(G)(i)) AND
+		  point_on_segment?(v, e) AND
+		  FORALL (u: point_2d, d: posreal):
+		    u = v + d * (q - v) AND d <= 1 IMPLIES
+		      point_outside_polygon?(u, G)
+
+  % Two lemmas that state when a point lying between edges can be
+  % extrapolated to other points.
+
+  extend_points_between_edges: LEMMA
+    FORALL (p: point_2d, e: segment_2d, outward: bool,
+            G: simple_polygon_2d, i: below(G`num_vertices)):
+      e`p1 = G`vertices(i) AND p /= e`p1 AND
+      point_between_edges?(outward, G, i)(p) AND
+      point_on_segment?(p, e)
+         IMPLIES FORALL (q: point_2d):
+                   point_on_segment?(q, e) AND q /= e`p1
+                     IMPLIES point_between_edges?(outward, G, i)(q)
+
+  extend_points_between_edges_ray: LEMMA
+    FORALL (p: point_2d, e: segment_2d, outward: bool,
+            G: simple_polygon_2d, i: below(G`num_vertices)):
+      e`p1 = G`vertices(i) AND p /= e`p1 AND
+      point_between_edges?(outward, G, i)(p) AND
+      point_on_arb_ray?(p, e`p1, ^(e`p2 - e`p1))
+         IMPLIES FORALL (q: point_2d):
+		   point_on_arb_ray?(q, e`p1, ^(e`p2 - e`p1)) AND q /= e`p1
+                     IMPLIES point_between_edges?(outward, G, i)(q)
+
+  % When a point is inside, all the non-endpoints of that edge are inside.
+  all_interior_points_inside: LEMMA
+    FORALL (q: point_2d, G, H: ccw_simple_polygon, e: (edge_of_polygon?(H))):
+      only_vertex_intersections?(G, H, e) AND
+      point_in_polygon?(q, G) AND point_on_segment?(q, e) AND
+      NOT segment_endpoint?(e)(q)
+        IMPLIES FORALL (p: point_2d):
+                  point_on_segment?(p, e) AND NOT segment_endpoint?(e)(p)
+                    IMPLIES point_in_polygon?(p, G)
+
+  opposite_wedge_apex_point: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), outward: bool):
+      vertex_wedge_apex(NOT outward, G, i) =
+        2 * G`vertices(i) - vertex_wedge_apex(outward, G, i)
+
+  opposite_points_between_narrow: LEMMA
+    FORALL (s, e: segment_2d, p, v: point_2d):
+      cross(s`p1 - v, e`p2 - v) >= 0 AND v = s`p2 AND v = e`p1 AND
+      between_rays?(s, e)(p)
+        IMPLIES between_rays?(reverse_segment(e),
+      	                      reverse_segment(s))(2 * v - p)
+
+  opposite_points_between_wide: LEMMA
+    FORALL (s, e: segment_2d, p, v: point_2d):
+      cross(s`p1 - v, e`p2 - v) < 0 AND v = s`p2 AND v = e`p1 AND
+      between_rays?((# p1 := 2 * v - e`p2, p2 := v #),
+                    (# p1 := v, p2 := 2 * v - s`p1 #))(p)
+        IMPLIES between_rays?(reverse_segment(e),
+      	                      reverse_segment(s))(2 * v - p)
+
+  % This is a series of lemmas allowing for various inferences about
+  % points between rays.
+
+  cross_wide_opposite_narrow: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(u - v, w - v) < 0 IMPLIES cross(v - w, v - u) > 0
+
+  cross_wide_opposite_vertex_between: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(u - v, w - v) < 0 IMPLIES
+        between_rays?((# p1 := u, p2 := v #),
+	              (# p1 := v, p2 := 2 * v - u #))(2 * v - w)
+
+  cross_wide_point_between_opposite_1: LEMMA
+    FORALL (q, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      between_rays?((# p1 := 2 * v - w, p2 := v #),
+                    (# p1 := v, p2 := 2 * v - u #))(q)
+        IMPLIES between_rays?((# p1 := u, p2 := v #),
+                              (# p1 := v, p2 := 2 * v - u #))(q)
+
+  cross_wide_point_between_opposite_2: LEMMA
+    FORALL (q, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      between_rays?((# p1 := u, p2 := v #),
+                    (# p1 := v, p2 := 2 * v - u #))(q)
+        IMPLIES between_rays?((# p1 := u, p2 := v #),
+                              (# p1 := v, p2 := w #))(q)
+
+  cross_wide_point_between_opposite_3: LEMMA
+    FORALL (q, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      between_rays?((# p1 := 2 * v - w, p2 := v #),
+                    (# p1 := v, p2 := w #))(q)
+        IMPLIES between_rays?((# p1 := u, p2 := v #),
+                              (# p1 := v, p2 := w #))(q)
+
+  cross_wide_point_between_opposite_4: LEMMA
+    FORALL (q, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      between_rays?((# p1 := 2 * v - w, p2 := v #),
+                    (# p1 := v, p2 := 2 * v - u #))(q)
+        IMPLIES between_rays?((# p1 := 2 * v - w, p2 := v #),
+                              (# p1 := v, p2 := w #))(q)
+
+  cross_wide_point_between_opposite_5: LEMMA
+    FORALL (q, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      between_rays?((# p1 := u, p2 := v #),
+                    (# p1 := v, p2 := w #))(q)
+        IMPLIES between_rays?((# p1 := 2 * v - w, p2 := v #),
+                              (# p1 := v, p2 := w #))(q)
+             OR between_rays?((# p1 := u, p2 := v #),
+                              (# p1 := v, p2 := 2 * v - u #))(q)
+
+  weighted_vector_sum_between: LEMMA
+    FORALL (s, e: segment_2d, a, b: posreal):
+      LET u = s`p1, v = e`p1, w = e`p2,
+          uv = u - v, wv = w - v IN
+	cross(uv, wv) /= 0 IMPLIES
+          IF cross(uv, wv) < 0
+            THEN between_rays?(s, e)(v - b * uv - a * wv)
+            ELSE between_rays?(s, e)(v + b * uv + a * wv)
+	  ENDIF
+
+  weighted_vector_sum_between_neg: LEMMA
+    FORALL (s, e: segment_2d, a, b: negreal):
+      LET u = s`p1, v = e`p1, w = e`p2,
+          uv = u - v, wv = w - v IN
+	cross(uv, wv) /= 0 IMPLIES
+          IF cross(uv, wv) < 0
+            THEN between_rays?(s, e)(v + b * uv + a * wv)
+            ELSE between_rays?(s, e)(v - b * uv - a * wv)
+	  ENDIF
+
+  bisect_vector_between: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i),
+          bv = vertex_bisect_vector(G, i)
+      IN between_rays?(s, e)(e`p1 + bv)
+
+  bisect_vector_between_rev: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i),
+          bv = vertex_bisect_vector(G, i)
+      IN between_rays?(reverse_segment(e),
+      	               reverse_segment(s))(e`p1 - bv)
+
+  apex_point_neq_next_apex: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), outward: bool):
+      vertex_wedge_apex(outward, G, i) /=
+        vertex_wedge_apex(outward, G, next_index(G, i))
+
+  connector_endpoints_neq: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      wedge_connector_endpoint(G, i, true) /=
+        wedge_connector_endpoint(G, i, false)
+
+  connector_segment(G: ccw_simple_polygon,
+                    i: below(G`num_vertices)): segment_2d =
+    (# p1 := wedge_connector_endpoint(G, i, true),
+       p2 := wedge_connector_endpoint(G, i, false) #)
+
+  acute_angle_coeff_between: LEMMA
+    FORALL (uv, wv: Nz_vector, a, b, normu, normw: posreal):
+      a * (normu * normw) < cross(uv, wv) AND
+      b * (normu * normw) > uv * wv
+        IMPLIES a * cross(uv, perp_left(wv)) + b * cross(uv, wv) > 0 OR
+                cross(uv, wv) < 0 OR uv * wv < 0
+
+  pos_coeff_between: LEMMA
+    FORALL (s, e: segment_2d, a, b: posreal):
+      LET u = s`p1, v = e`p1, w = e`p2,
+          uv = u - v, wv = w - v IN
+        u /= w AND s`p2 = e`p1 AND
+        (cross(uv, wv) < 0 OR
+	 uv * wv < 0 OR (a < cross(^(uv), ^(wv)) AND b > ^(uv) * ^(wv)))
+          IMPLIES between_rays?(s, e)(v + a * ^(perp_left(wv)) + b * ^(wv))
+
+  neg_coeff_between: LEMMA
+    FORALL (s, e: segment_2d, a, b: posreal):
+      LET u = s`p1, v = e`p1, w = e`p2,
+          uv = u - v, wv = w - v IN
+        u /= w AND s`p2 = e`p1 AND
+        (cross(uv, wv) < 0 OR
+  	 uv * wv < 0 OR (a < cross(^(uv), ^(wv)) AND b > ^(uv) * ^(wv)))
+          IMPLIES between_rays?(s, e)(v + b * ^(uv) - a * ^(perp_left(uv)))
+
+  connector_endpoint_between: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), near_end: bool):
+      LET index = IF near_end THEN i ELSE next_index(G, i) ENDIF IN
+        point_between_edges?(true, G, index)
+                            (wedge_connector_endpoint(G, i, near_end))
+
+  % Some properties about apex points
+
+  apex_point_between: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), outward: bool):
+      point_between_edges?(outward, G, i)(vertex_wedge_apex(outward, G, i))
+
+  apex_point_between_rev_out: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i),
+          p = vertex_wedge_apex(true, G, i),
+	  v = e`p1
+      IN cross(s`p1 - v, e`p2 - v) < 0 IMPLIES
+           between_rays?((# p1 := 2 * v - e`p2, p2 := v #),
+                         (# p1 := v, p2 := 2 * v - s`p1 #))(p)
+
+  apex_point_between_rev_in: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i),
+          p = vertex_wedge_apex(false, G, i),
+	  v = e`p1
+      IN cross(s`p1 - v, e`p2 - v) > 0 IMPLIES
+           between_rays?((# p1 := 2 * v - s`p1, p2 := v #),
+                         (# p1 := v, p2 := 2 * v - e`p2 #))(p)
+
+  opposite_apex_point_between: LEMMA
+    FORALL (p, v: point_2d, G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i)
+      IN v = e`p1 AND p = vertex_wedge_apex(true, G, i)
+           IMPLIES between_rays?(reverse_segment(e),
+                                 reverse_segment(s))(2 * v - p)
+
+  % This lemma expresses a key property about wedges. A point that is
+  % within the wedge radius at a vertex must be in either the inward
+  % or outward wedge, or it must lie on one of the two edges adjacent
+  % to the vertex.
+
+  in_wedge_or_on_edge: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices)):
+      norm(p - G`vertices(i)) <= vertex_wedge_radius(G) IMPLIES
+        point_in_vertex_wedge?(true, G, i)(p) OR
+        point_in_vertex_wedge?(false, G, i)(p) OR
+        point_on_segment?(p, edges_of_polygon(G)(i)) OR
+        point_on_segment?(p, edges_of_polygon(G)(prev_index(G, i)))
+
+  wedge_points_not_on_perimeter: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices), outward: bool):
+      point_in_vertex_wedge?(outward, G, i)(p)
+        IMPLIES NOT point_on_polygon_perimeter?(G)(p)
+
+  apex_in_wedge: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices), outward: bool):
+      point_in_vertex_wedge?(outward, G, i)(vertex_wedge_apex(outward, G, i))
+
+  connector_endpoint_in_wedge: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices), near_end: bool):
+      LET index = IF near_end THEN i ELSE next_index(G, i) ENDIF IN
+        point_in_vertex_wedge?(true, G, index)
+                              (wedge_connector_endpoint(G, i, near_end))
+
+  no_intersections_with_prev_edge_wide: LEMMA
+    FORALL (p, q: point_2d, s, e: segment_2d):
+      cross(s`p1 - e`p1, e`p2 - e`p1) < 0 AND s`p2 = e`p1 AND p /= q AND
+      cross(e`p2 - e`p1, p - e`p1) < 0 AND
+      parallel?(e`p2 - e`p1, q - p)
+        IMPLIES FORALL (r: point_2d):
+                  point_on_segment?(r, (# p1 := p, p2 := q #))
+                    IMPLIES NOT point_on_segment?(r, s)
+
+  other_end_of_parallel_segment_between: LEMMA
+    FORALL (p, q: point_2d, s, e: segment_2d):
+      s`p2 = e`p1 AND p /= q AND
+      NOT dir_parallel?(e`p1 - e`p2, s`p2 - s`p1) AND
+      cross(p - e`p1, q - e`p1) > 0 AND
+      between_rays?(s, e)(p) AND dir_parallel?(e`p2 - e`p1, q - p) AND
+      (EXISTS (a: posreal, c: nnreal):
+          q - a * perp_left(e`p2 - e`p1) = e`p1 + c * (e`p2 - e`p1))
+        IMPLIES between_rays?(s, e)(q)
+
+  other_end_of_parallel_segment_between_far: LEMMA
+    FORALL (p, q: point_2d, s, e: segment_2d):
+      s`p2 = e`p1 AND p /= q AND
+      NOT dir_parallel?(e`p1 - e`p2, s`p2 - s`p1) AND
+      cross(p - s`p1, q - s`p1) > 0 AND
+      between_rays?(s, e)(q) AND dir_parallel?(s`p1 - s`p2, p - q) AND
+      (EXISTS (a: posreal, c: nnreal):
+          p - a * perp_left(s`p2 - s`p1) = s`p2 + c * (s`p1 - s`p2))
+        IMPLIES between_rays?(s, e)(p)
+
+  % When two point are within a wedge, so are all points between them.
+  interior_segment_points_in_wedge: LEMMA
+    FORALL (p, q: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices), outward: bool):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i) IN
+      IF outward
+        THEN cross(s`p1 - e`p1, e`p2 - e`p1) >= 0
+        ELSE cross(e`p2 - e`p1, s`p1 - e`p1) >= 0
+      ENDIF AND p /= q AND
+      point_in_vertex_wedge?(outward, G, i)(p) AND
+      point_in_vertex_wedge?(outward, G, i)(q)
+        IMPLIES FORALL (u: point_2d):
+	          point_on_segment?(u, (# p1 := p, p2 := q #))
+                    IMPLIES point_in_vertex_wedge?(outward, G, i)(u)
+
+  pos_cross_to_between_point_narrow: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i)
+      IN
+      cross(s`p1 - e`p1, e`p2 - e`p1) > 0 AND between_rays?(s, e)(p)
+        IMPLIES cross(e`p1 - e`p2, p - e`p2) > 0
+
+  pos_cross_to_between_point_wide: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices)):
+      LET s = edges_of_polygon(G)(prev_index(G, i)),
+          e = edges_of_polygon(G)(i)
+      IN
+      cross(s`p1 - e`p1, e`p2 - e`p1) <= 0 AND
+      cross(e`p1 - e`p2, p - e`p1) > 0
+        IMPLIES cross(e`p1 - e`p2, p - e`p2) > 0
+
+  % Several lemmas give properties of wedge connectors relative to the
+  % nearby edges.
+
+  connector_parallel_to_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+          q = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(i)
+      IN dir_parallel?(e`p2 - e`p1, q - p)
+
+  connector_near_endpoint_cross_neg: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+	  e = edges_of_polygon(G)(i)
+      IN cross(e`p2 - e`p1, p - e`p1) < 0
+
+  connector_segment_point_cross_neg: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), q: point_2d):
+      LET p = wedge_connector_endpoint(G, i, true),
+          r = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(i)
+      IN p /= q AND point_on_segment?(q, (# p1 := p, p2 := r #))
+           IMPLIES cross(e`p2 - e`p1, q - e`p1) < 0
+
+  connector_segment_points_cross_pos: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), q: point_2d):
+      LET p = wedge_connector_endpoint(G, i, true),
+          r = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(i)
+      IN p /= q AND point_on_segment?(q, (# p1 := p, p2 := r #))
+           IMPLIES cross(p - e`p1, q - e`p1) > 0
+
+  connector_not_on_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+          q = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(i)
+      IN FORALL (r: point_2d):
+           point_on_segment?(r, (# p1 := p, p2 := q #))
+             IMPLIES NOT point_on_segment?(r, e)
+
+  connector_not_on_prev_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+          q = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(prev_index(G, i))
+      IN FORALL (r: point_2d):
+           point_on_segment?(r, (# p1 := p, p2 := q #))
+             IMPLIES NOT point_on_segment?(r, e)
+
+  connector_not_on_next_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+          q = wedge_connector_endpoint(G, i, false),
+	  e = edges_of_polygon(G)(next_index(G, i))
+      IN FORALL (r: point_2d):
+           point_on_segment?(r, (# p1 := p, p2 := q #))
+             IMPLIES NOT point_on_segment?(r, e)
+
+  % Connectors do not intersect the polygon perimeter.
+  connector_not_on_perimeter: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      LET p = wedge_connector_endpoint(G, i, true),
+          q = wedge_connector_endpoint(G, i, false)
+      IN FORALL (r: point_2d):
+           point_on_segment?(r, (# p1 := p, p2 := q #))
+             IMPLIES NOT point_on_polygon_perimeter?(G)(r)
+
+  apex_to_apex_not_on_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      LET p = vertex_wedge_apex(true, G, i),
+          q = vertex_wedge_apex(true, G, next_index(G, i)),
+	  e = edges_of_polygon(G)(i)
+      IN FORALL (r: point_2d):
+           point_on_segment?(r, (# p1 := p, p2 := q #))
+             IMPLIES NOT point_on_segment?(r, e)
+
+  vertex_to_vertex_length_bound: LEMMA
+    FORALL (G: simple_polygon_2d,
+            i, j: below(G`num_vertices), e: segment_2d):
+      e`p1 = G`vertices(i) AND e`p2 = G`vertices(j)
+        IMPLIES min_edge_sep(G) <= length(e)
+
+  vertex_to_vertex_in_wedge_neq_prev: LEMMA
+    FORALL (G: ccw_simple_polygon, q: point_2d,
+            i, j: below(G`num_vertices), e: segment_2d):
+      e`p1 = G`vertices(i) AND e`p2 = G`vertices(j) AND
+      point_on_segment?(q, e) AND point_in_vertex_wedge?(true, G, j)(q)
+        IMPLIES j /= prev_index(G, i)
+
+  segment_points_in_wedge: LEMMA
+    FORALL (p, q: point_2d, G: ccw_simple_polygon,
+            i: below(G`num_vertices), outward: bool):
+      LET a = vertex_wedge_apex(outward, G, i) IN
+        point_in_vertex_wedge?(outward, G, i)(p) AND
+        p /= a AND point_on_segment?(q, (# p1 := a, p2 := p #))
+          IMPLIES point_in_vertex_wedge?(outward, G, i)(q)
+
+  between_opposite_apex_points_in_wedges: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices),
+            p: point_2d, d: nnreal):
+      p = G`vertices(i) +
+          (d - vertex_wedge_radius(G)) * ^(vertex_bisect_vector(G, i)) AND
+      d /= vertex_wedge_radius(G) AND
+      d < 2 * vertex_wedge_radius(G)
+        IMPLIES point_in_vertex_wedge?(true, G, i)(p) OR
+                point_in_vertex_wedge?(false, G, i)(p)
+
+  % When one wedge point is outside, all of them are.
+  wedge_point_out_imp_all_wedge_points_out: LEMMA
+    FORALL (p, q: point_2d, G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_in_vertex_wedge?(true, G, i)(p) AND
+      point_in_vertex_wedge?(true, G, i)(q) AND
+      point_outside_polygon?(p, G)
+        IMPLIES point_outside_polygon?(q, G)
+  
+  % Apex points of inward and outward wedges are not both outside.
+  outward_apex_outside_inward_inside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_outside_polygon?(vertex_wedge_apex(true, G, i), G)
+        IMPLIES point_in_polygon?(vertex_wedge_apex(false, G, i), G)
+
+  % A point to left of the topleft vertex must be outside.
+  westward_point_outside: LEMMA
+    FORALL (G: ccw_simple_polygon, c: posreal):
+      LET r = (# x := c, y := 0 #) IN
+        point_outside_polygon?(G`vertices(topleft_vertex_idx(G)) - r, G)
+
+  topleft_outward_apex_outside: LEMMA
+    FORALL (G: ccw_simple_polygon):
+      LET a = vertex_wedge_apex(true, G, topleft_vertex_idx(G)) IN
+        point_outside_polygon?(a, G)
+
+  wedge_apex_points_outside_rec: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      LET j = index_from_offset(G, topleft_vertex_idx(G))(i) IN
+        point_outside_polygon?(vertex_wedge_apex(true, G, j), G)
+
+  % Outward apex points are outside.
+  wedge_apex_points_outside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_outside_polygon?(vertex_wedge_apex(true, G, i), G)
+
+  % Inward apex points are inside.
+  wedge_apex_points_inside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_in_polygon?(vertex_wedge_apex(false, G, i), G)
+
+  % Outward wedge points are outside.
+  all_wedge_points_outside: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_in_vertex_wedge?(true, G, i)(p)
+        IMPLIES point_outside_polygon?(p, G)
+
+  % Inward wedge points are inside.
+  all_wedge_points_inside: LEMMA
+    FORALL (p: point_2d, G: ccw_simple_polygon, i: below(G`num_vertices)):
+      point_in_vertex_wedge?(false, G, i)(p) IMPLIES point_in_polygon?(p, G)
+
+  point_on_spanning_edge_between_rays: LEMMA
+    FORALL (A, C: ccw_simple_polygon, i, j: below(C`num_vertices),
+            s: segment_2d, q: point_2d):
+      (edge_of_polygon?(A)(s) OR edge_of_polygon?(A)(reverse_segment(s))) AND
+      C`vertices(i) = s`p1 AND C`vertices(j) = s`p2 AND
+      point_on_segment?(q, s) AND
+      (FORALL (e: (edge_of_polygon?(A))):
+         only_vertex_intersections?(C, A, e)) AND
+      norm(q - C`vertices(j)) <= vertex_wedge_radius(C) AND
+      between_rays?(edges_of_polygon(C)(prev_index(C, j)),
+                    edges_of_polygon(C)(j))
+                   (q)
+        IMPLIES between_rays?(edges_of_polygon(C)(prev_index(C, i)),
+                              edges_of_polygon(C)(i))
+                             (q)
+
+  % This lemma expresses conditions for certain edges to straddle the
+  % perimeter of G.
+
+  point_outside_imp_edge_partly_outside: LEMMA
+    FORALL (G, H: simple_polygon_2d):
+      (FORALL (e: (edge_of_polygon?(H))):
+         only_vertex_intersections?(G, H, e)) AND
+      (EXISTS (p: point_2d):
+         point_on_polygon_perimeter?(H)(p) AND
+	 NOT point_outside_polygon?(p, G)) AND
+      (EXISTS (u: point_2d):
+         point_on_polygon_perimeter?(H)(u) AND point_outside_polygon?(u, G))
+      IMPLIES
+        EXISTS (i: below(H`num_vertices)), (q, r: point_2d):
+	  point_on_segment?(q, edges_of_polygon(H)(i)) AND
+	  point_on_segment?(r, edges_of_polygon(H)(i)) AND
+	  point_outside_polygon?(q, G) AND
+  	  point_on_polygon_perimeter?(G)(r) AND
+	  norm(q - r) <= vertex_wedge_radius(G)
+
+  % This key result states that if there are no edges of H protruding
+  % from G, and there exists a perimeter point of H that is on or in G,
+  % then H is contained by G.
+
+  contained_if_no_protruding_edges: LEMMA
+    FORALL (G, H: ccw_simple_polygon):
+      (EXISTS (q: point_2d):
+        point_on_polygon_perimeter?(H)(q) AND
+        (point_on_polygon_perimeter?(G)(q) OR point_in_polygon?(q, G))) AND
+      no_edges_in_outward_wedges?(G, H) AND
+      (FORALL (e: (edge_of_polygon?(H))):
+         only_vertex_intersections?(G, H, e))
+    IMPLIES polygon_contained?(H, G)
+ 
+  END vertex_wedges

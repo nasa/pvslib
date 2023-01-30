@@ -1,0 +1,161 @@
+%% -----------------------------------------------------------------------------
+%% rightward_crossing.pvs              Dependable Computing
+%% Theory to formalize edges crossings resulting from a rightward ray.
+%% -----------------------------------------------------------------------------
+
+% A rightward crossing from point p occurs on edge e of a polygon
+% when the rightward horizontal ray emanating from p intersects e.
+
+rightward_crossings  : THEORY
+
+  BEGIN
+
+  IMPORTING topleft_vertex;
+
+  % Add the concept of rightward edge crossings and the leftmost such crossing.
+  % Find leftmost point on the rightward ray from p that intersects a polygon.
+
+  rightward_edge_crossing?(e: segment_2d)(p: point_2d): bool =
+    (e`p1`y = e`p2`y IMPLIES p`x < min(e`p1`x, e`p2`x)) AND
+    EXISTS (d: posreal): point_on_segment?(p + (d,0), e)
+
+  has_rightward_crossings?(G: simple_polygon_2d)(p: point_2d): bool =
+    NOT point_on_polygon_perimeter?(G)(p) AND
+    EXISTS (i: below(G`num_vertices)):
+      rightward_edge_crossing?(edges_of_polygon(G)(i))(p)
+
+  % Given that p has a rightward crossing on edge e, this function
+  % derives the intersection point on e.
+  edge_crossing_point(e: segment_2d,
+                         p: (rightward_edge_crossing?(e))): point_2d =
+    IF e`p1`y /= e`p2`y
+      THEN LET dx = e`p2`x - e`p1`x,
+               dy = e`p2`y - e`p1`y
+	   IN (e`p1`x + (p`y - e`p1`y) * dx / dy, p`y)
+    ELSIF e`p1`x < e`p2`x THEN e`p1 ELSE e`p2
+    ENDIF
+
+  rightward_crossing_set(G: simple_polygon_2d,
+                         p: (has_rightward_crossings?(G))): finite_set[real] =
+    {r: real | EXISTS (i: below(G`num_vertices)):
+                 rightward_edge_crossing?(edges_of_polygon(G)(i))(p) AND
+                 r = edge_crossing_point(edges_of_polygon(G)(i), p)`x}
+
+  rightward_crossing_set_nonempty: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      NOT empty?(rightward_crossing_set(G, p))
+
+  leftmost_crossing_xval(G: simple_polygon_2d,
+                         p: (has_rightward_crossings?(G))): real =
+    min[real, <=](rightward_crossing_set(G, p))
+
+  % This function gives the leftmost of all eligible rightward crossings,
+  % which is used elsewhere to prove whether p is inside of the polygon.
+  leftmost_intersection_point(G: simple_polygon_2d,
+                              p: (has_rightward_crossings?(G))): point_2d =
+    (# x := leftmost_crossing_xval(G, p), y := p`y #)
+    
+  edge_crossing_point_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d, e: (edge_of_polygon?(G))):
+      rightward_edge_crossing?(e)(p) IMPLIES
+        point_on_polygon_perimeter?(G)(edge_crossing_point(e, p))
+
+  leftmost_crossing_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      point_on_polygon_perimeter?(G)(leftmost_intersection_point(G, p))
+
+  edge_crossing_point_xval_bound: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d, e: (edge_of_polygon?(G))):
+      rightward_edge_crossing?(e)(p) IMPLIES
+        p`x < edge_crossing_point(e, p)`x
+
+  leftmost_crossing_xval_bound: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      p`x < leftmost_crossing_xval(G, p)
+
+  leftmost_crossing_xval_is_min: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            e: (edge_of_polygon?(G))):
+        rightward_edge_crossing?(e)(p) IMPLIES
+          leftmost_crossing_xval(G, p) <= edge_crossing_point(e, p)`x
+
+  leftmost_has_horiz_dist_from_p: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        EXISTS (d: posreal): q = p + (d, 0)
+
+  has_crossing_off_right_side_falling: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            e: (edge_of_polygon?(G))):
+      segment_falling?(e) AND rightward_edge_crossing?(e)(p)
+        IMPLIES off_right_side?(p, e)
+
+  % Several lemmas are used to relate the leftmost intersection point
+  % to other parts of the polygon.
+
+  no_point_x_left_of_leftmost_crossing: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            e: (edge_of_polygon?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        FORALL (r: point_2d):
+          rightward_edge_crossing?(e)(p) AND
+          point_on_segment?(r, e) AND
+          point_on_segment?(r, (# p1 := p, p2 := q #))
+  	    IMPLIES q`x <= r`x
+
+  no_edge_point_left_of_leftmost_crossing: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            e: (edge_of_polygon?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        FORALL (r: point_2d):
+          rightward_edge_crossing?(e)(p) AND
+          point_on_segment?(r, e) AND
+          point_on_segment?(r, (# p1 := p, p2 := q #))
+  	    IMPLIES q = r
+
+  left_of_leftmost_crossing_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        FORALL (r: point_2d):
+  	  point_on_segment?(r, (# p1 := p, p2 := q #)) AND r /= q
+  	    IMPLIES NOT point_on_polygon_perimeter?(G)(r)
+
+  left_of_leftmost_crossing_not_on_perim_2: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        FORALL (r: point_2d):
+          p`y = r`y AND p`x <= r`x AND r`x < q`x
+  	    IMPLIES NOT point_on_polygon_perimeter?(G)(r)
+
+  leftmost_crossing_on_polygon_edge: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        EXISTS (i: below(G`num_vertices)):
+	  point_on_segment?(q, edges_of_polygon(G)(i))
+
+  leftmost_is_horiz_edge_endpoint: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G)),
+            i: below(G`num_vertices)):
+      LET q = leftmost_intersection_point(G, p),
+          e = edges_of_polygon(G)(i)
+      IN point_on_segment?(q, e) AND e`p1`y = e`p2`y
+           IMPLIES segment_endpoint?(e)(q)
+
+  left_of_leftmost_not_on_perim_edge: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        NOT EXISTS (e: segment_2d):
+  	      q = e`p2 AND e`p1`y = e`p2`y AND e`p1`x < q`x AND
+  	      (edge_of_polygon?(G)(e) OR
+	       edge_of_polygon?(G)(reverse_segment(e)))
+
+  only_one_edge_adj_leftmost_is_horiz: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET q = leftmost_intersection_point(G, p) IN
+        NOT EXISTS (s, e: segment_2d, i: below(G`num_vertices)):
+	      s = edges_of_polygon(G)(prev_index(G, i)) AND
+	      e = edges_of_polygon(G)(i) AND
+  	      q = s`p2 AND s`p1`y = s`p2`y AND
+  	      q = e`p1 AND e`p1`y = e`p2`y
+
+  END rightward_crossings

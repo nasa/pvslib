@@ -1,0 +1,895 @@
+%% -----------------------------------------------------------------------------
+%% vectors_cross_2d.pvs              Dependable Computing
+%% PVS theory for vectors in the XY-plane and their operations.
+%% Extends the lemmas found in theory vectors@vectors_2D.pvs and
+%% other theories in the NASA vectors library.
+%% -----------------------------------------------------------------------------
+
+% 2D cross products on vectors are defined here and many of their properties
+% are provided. In vectors@det_2D, an equivalent function is defined
+% as det(u,v), the 2D determinant. While some properties of 2D determinants
+% (aka 2D cross products) are found in that theory, many more properties
+% are formailzed here.
+
+vectors_cross_2d: THEORY
+  BEGIN
+
+  IMPORTING vectors@vectors_2D;
+  IMPORTING vectors@perpendicular_2D
+
+  vector_2d: TYPE = Vect2;
+  point_2d: TYPE = Vect2;
+
+  normalized_vector_components_abs_val_lt_1: LEMMA
+    FORALL(v: (normalized?)):
+      -1 <= v`x AND v`x <= 1 AND -1 <= v`y AND v`y <= 1;
+
+  values_neg1_to_1_implies_product_neg1_to_1: LEMMA
+    FORALL(a, b: {r: real | -1 <= r AND r <= 1}):
+      -1 <= a * b AND a * b <= 1;
+
+  zero_vector: vector_2d = zero;
+  zero_point: point_2d = zero;
+
+  nondegen_vector_2d: TYPE = {v: vector_2d | v`x /= 0 OR v`y /= 0};
+
+  nondegen_self_dot_product_pos: LEMMA
+    FORALL(ndv: nondegen_vector_2d):
+      ndv * ndv > 0;
+
+  nondegen_norm_pos: LEMMA
+    FORALL(ndv: nondegen_vector_2d):
+      norm(ndv) > 0;
+
+  % Right-hand perpendicular vector
+  perp_right(v: vector_2d): vector_2d =
+    (# x := -v`y, y := v`x #);
+
+  norm_perp_right_is_norm_right: LEMMA
+    FORALL(v: vector_2d): norm(perp_right(v)) = norm(v);
+
+  dot_perp_right_is_zero: LEMMA
+    FORALL(v: vector_2d): v * perp_right(v) = 0;
+
+  % Left-hand perpendicular vector
+  perp_left(v: vector_2d): vector_2d =
+    (# x := v`y, y := -v`x #);
+
+  norm_perp_left_is_norm_left: LEMMA
+    FORALL(v: vector_2d): norm(perp_left(v)) = norm(v);
+
+  dot_perp_left_is_zero: LEMMA
+    FORALL(v: vector_2d): v * perp_left(v) = 0;
+
+  perp_left_is_inverse_perp_right: LEMMA
+    FORALL(v: vector_2d): perp_left(perp_right(v)) = v;
+
+  % Define the 2-dimensional cross product for 2D vectors. This is not the
+  % typical cross-product, because it does not result in a new vector.
+  cross(v1, v2: vector_2d): real =
+    v1`x * v2`y - v1`y * v2`x;
+
+  % Degenerate unit lemma
+  cross_self_zero: LEMMA
+    FORALL(v1: vector_2d): cross(v1, v1) = 0;
+
+  cross_antisymmetric: LEMMA
+    FORALL(v1, v2: vector_2d):
+      cross(v1, v2) = -cross(v2, v1);
+
+  cross_scales: LEMMA
+    FORALL(v1, v2: vector_2d, a, b: real):
+      cross(a * v1, b * v2) = a * b * cross(v1, v2);
+
+  cross_product_is_product_of_norms_and_cross_of_normalizeds: LEMMA
+    FORALL(v1, v2: nondegen_vector_2d):
+      cross(v1, v2) = norm(v1) * norm(v2) * cross(normalize(v1), normalize(v2));
+
+  cross_equals_same_dot_perp_left: LEMMA
+    FORALL(v1, v2: vector_2d):
+      cross(v1, v2) = v1 * perp_left(v2);
+
+  cross_perp_right_equals_norm_product: LEMMA
+    FORALL(v1: vector_2d, a: posreal):
+      LET v2: vector_2d = a * perp_right(v1) IN
+      cross(v1, v2) = norm(v1) * norm(v2);
+
+  cross_perp_left_equals_neg_norm_product: LEMMA
+    FORALL(v1: vector_2d, a: posreal):
+      LET v2: vector_2d = a * perp_left(v1) IN
+      cross(v1, v2) = -norm(v1) * norm(v2);
+
+  abs_cross_perp_equals_norm_product: LEMMA
+    FORALL(v1: vector_2d, a: real):
+      LET v2: vector_2d = a * perp_right(v1) IN
+      abs(cross(v1, v2)) = norm(v1) * norm(v2);
+
+  abs_non_perp_cross_product_less_than_perp_normalized: LEMMA
+    FORALL(v1, v2: Normalized):
+      LET v3: Normalized = perp_right(v1) IN
+      abs(cross(v1, v2)) <= cross(v1, v3);
+
+  abs_non_perp_cross_product_less_than_perp: LEMMA
+    FORALL(v1: nondegen_vector_2d, v2: vector_2d):
+      LET a: nnreal = norm(v2) / norm(v1) IN
+      LET v3: vector_2d = a * perp_right(v1) IN
+      abs(cross(v1, v2)) <= cross(v1, v3);
+
+  cross_bounded_by_norm_product: LEMMA
+    FORALL(v1, v2: vector_2d):
+      abs(cross(v1, v2)) <= norm(v1) * norm(v2);
+
+  % Two different ways to determine if vectors are collinear where one is used
+  % to "type-check" the other
+  are_vectors_collinear?(v1: vector_2d, v2: vector_2d):
+      {b: bool | b = (abs(v1 * v2) = norm(v1) * norm(v2))} =
+    cross(v1, v2) = 0;
+
+  are_vectors_collinear_reflexive: LEMMA
+    FORALL(v: vector_2d):
+      are_vectors_collinear?(v, v);
+
+  are_vectors_collinear_symmetric: LEMMA
+    FORALL(v1, v2: vector_2d):
+      are_vectors_collinear?(v1, v2) = are_vectors_collinear?(v2, v1);
+
+  are_vectors_collinear_transitive: LEMMA
+    FORALL(v1, v2, v3: vector_2d):
+      (are_vectors_collinear?(v1, v2) AND
+       are_vectors_collinear?(v2, v3) AND
+       % transitivity only holds for non-zero length vectors
+       norm(v2) > 0) IMPLIES
+      are_vectors_collinear?(v1, v3);
+
+  are_vectors_approx_collinear?(v1: vector_2d, v2: vector_2d,
+                                eps: posreal): bool =
+    abs(cross(v1, v2)) <= eps;
+
+  are_vectors_approx_collinear_reflexive: LEMMA
+    FORALL(v: vector_2d, eps: posreal):
+      are_vectors_approx_collinear?(v, v, eps);
+
+  are_vectors_approx_collinear_symmetric: LEMMA
+    FORALL(v1, v2: vector_2d, eps: posreal):
+      are_vectors_approx_collinear?(v1, v2, eps) =
+        are_vectors_approx_collinear?(v2, v1, eps);
+
+  collinear_implies_approx_collinear: LEMMA
+    FORALL(v1, v2: vector_2d, eps: posreal):
+      are_vectors_collinear?(v1, v2) IMPLIES
+        are_vectors_approx_collinear?(v1, v2, eps);
+
+  collinear_distances_additive_line: LEMMA
+    FORALL (p, q, r: point_2d):
+      dir_parallel?(q - p, r - p) AND norm(q - p) <= norm(r - p)
+        IMPLIES norm(r - p) = norm(q - p) + norm(r - q)
+
+  vector_from_point_to_point(p1: point_2d, p2: point_2d): vector_2d =
+    (p2`x - p1`x, p2`y - p1`y);
+
+  % Unit lemma
+  vector_from_point_to_point_is_diff: LEMMA
+    FORALL(p1, p2: point_2d):
+      vector_from_point_to_point(p1, p2) = p2 - p1;
+
+  are_points_collinear?(p1, p2, p3: point_2d): bool =
+    are_vectors_collinear?(vector_from_point_to_point(p1, p2),
+                           vector_from_point_to_point(p1, p3));
+
+  highly_degenerate_points_collinear: LEMMA
+    FORALL(p1: point_2d):
+      are_points_collinear?(p1, p1, p1);
+
+  degenerate_points_collinear: LEMMA
+    FORALL(p1, p2: point_2d):
+      are_points_collinear?(p1, p1, p2) AND
+      are_points_collinear?(p1, p2, p2) AND
+      are_points_collinear?(p1, p2, p1);
+
+  % Equivalence doesn't hold if one vector is zero and the other nonzero
+  % because parallel? doesn't hold in that case.
+
+  parallel_vectors_equiv_collinear: LEMMA
+    FORALL (u, v: Nz_vector):
+      parallel?(u, v) IFF are_vectors_collinear?(u, v)
+
+  norm_diff_pos: LEMMA
+    FORALL (p, q: point_2d):
+      p /= q IMPLIES norm(q - p) > 0;
+
+  norm_diff_nonzero: LEMMA
+    FORALL (p, q: point_2d): p /= q IMPLIES norm(q - p) /= 0
+
+  norm_diff_nonzero_2: LEMMA
+    FORALL (p, q: point_2d): p /= q IMPLIES (norm(q - p) = 0 IFF FALSE)
+
+  AUTO_REWRITE+ norm_diff_pos, norm_diff_nonzero, norm_diff_nonzero_2
+
+  % These basic properties of vectors extend those of vectors@vectors_2D.
+
+  add_cancel_add_2: LEMMA
+    FORALL (u, v, w: vector_2d):
+      u + v + w - u = v + w
+
+  add_cancel_sub_2: LEMMA
+    FORALL (u, v, w: vector_2d):
+      u + v - w - u = v - w
+
+  scal_by_two_cancel_1: LEMMA
+    FORALL (u, v: vector_2d):
+      2 * u - v - u = u - v
+
+  scal_by_two_cancel_2: LEMMA
+    FORALL (u, v: vector_2d):
+      u /= v IMPLIES 2 * u - v /= u
+
+  dot_sqv_add: LEMMA
+    FORALL (u, v: vector_2d):
+      2 * (u * v) <= sqv(u) + sqv(v)
+
+  point_add_neg_scal: LEMMA
+    FORALL (a: real, p: point_2d, v: vector_2d):
+      p + (-a) * v = p - a * v
+
+  point_sub_neg_scal: LEMMA
+    FORALL (a: real, p: point_2d, v: vector_2d):
+      p - (-a) * v = p + a * v
+
+  point_add_scal_neq_point: LEMMA
+    FORALL (a: nzreal, p: point_2d, v: Normalized):
+      p + a * v /= p
+
+  point_sub_scal_neq_point: LEMMA
+    FORALL (a: nzreal, p: point_2d, v: Normalized):
+      p - a * v /= p
+
+  point_add_scal_neq_point_2: LEMMA
+    FORALL (a: nzreal, p: point_2d, v: Normalized):
+      p /= p + a * v 
+
+  point_sub_scal_neq_point_2: LEMMA
+    FORALL (a: nzreal, p: point_2d, v: Normalized):
+      p /= p - a * v
+
+  % Additional properties of parallel vectors are provided.
+  % Note that parallel vectors as defined in vectors@vectors_2D
+  % are scaled versions of each other, i.e., they're collinear and
+  % both start at the origin.
+
+  parallel_neg: LEMMA
+    FORALL (u, v: vector_2d): parallel?(u, -v) IFF parallel?(u, v)
+
+  parallel_diff_points_comm_left: LEMMA
+    FORALL (p, q: point_2d, v: vector_2d):
+      parallel?(p - q, v) IFF parallel?(q - p, v)
+
+  parallel_diff_points_comm_right: LEMMA
+    FORALL (p, q: point_2d, v: vector_2d):
+      parallel?(v, p - q) IFF parallel?(v, q - p)
+
+  parallel_equiv_cross_eq_0: LEMMA
+    FORALL (u, v: Nz_vector):
+      parallel?(u, v) IFF cross(u, v) = 0
+
+  parallel_or_pos_cross_cases: LEMMA
+    FORALL (u, v: Nz_vector):
+      parallel?(u, v) OR cross(u, v) > 0 OR cross(v, u) > 0
+
+  dir_parallel_imp_scaled_by_norms_eq: LEMMA
+    FORALL (u, v: vector_2d):
+      dir_parallel?(u, v) IMPLIES norm(u) * v = norm(v) * u
+
+  dir_parallel_symm: LEMMA
+    FORALL (u, v: vector_2d):
+      dir_parallel?(u, v) IFF dir_parallel?(v, u)
+
+  dir_parallel_trans: LEMMA
+    FORALL (u, v, w: vector_2d):
+      dir_parallel?(u, v) AND dir_parallel?(v, w)
+        IMPLIES dir_parallel?(u, w)
+
+  dir_parallel_diff: LEMMA
+    FORALL (p, q, r, s: point_2d):
+       dir_parallel?(q - p, s - r) IFF dir_parallel?(p - q, r - s)
+
+  dir_parallel_eqv_normalized_diffs_eq: LEMMA
+    FORALL (p, q, r, s: point_2d):
+      q /= p AND s /= r IMPLIES
+        (dir_parallel?(q - p, s - r) IFF ^(q - p) = ^(s - r))
+
+  parallel_normalized: LEMMA
+    FORALL (u: vector_2d, v: Nz_vector):
+       parallel?(u, ^(v)) IFF parallel?(u, v)
+
+  normalized_diffs_anti_comm: LEMMA
+    FORALL (p, q: vector_2d):
+      p /= q IMPLIES ^(p - q) = -^(q - p)
+
+  norm_scal_norm: LEMMA
+    FORALL (d: real, v: Normalized): norm(d * v) = abs(d)
+
+  norm_diff_scal_norm: LEMMA
+    FORALL (p: point_2d, d: nonneg_real, v: Normalized):
+      norm(p - (p - d * v)) = d
+
+  norm_diff_scal_norm_2: LEMMA
+    FORALL (p: point_2d, d: nonneg_real, v: Normalized):
+      norm(p + d * v - p) = d
+
+  norm_diff_scal_norm_3: LEMMA
+    FORALL (p: point_2d, d: nonpos_real, v: Normalized):
+      norm(p - d * v - p) = -d
+
+  norm_diff_horiz: LEMMA
+    FORALL (u, v: vector_2d):
+      u /= v AND u`y = v`y
+        IMPLIES norm(v - u) = abs(v`x - u`x)
+
+  norm_diff_vert: LEMMA
+    FORALL (u, v: vector_2d):
+      u /= v AND u`x = v`x
+        IMPLIES norm(v - u) = abs(v`y - u`y)
+
+  % Some properties of perpendicular vectors
+
+  perp_left_not_parallel: LEMMA
+    FORALL (v: Nz_vector):
+      NOT parallel?(v, perp_left(v))
+
+  perp_right_not_parallel: LEMMA
+    FORALL (v: Nz_vector):
+      NOT parallel?(v, perp_right(v))
+
+  perp_left_right_parallel: LEMMA
+    FORALL (u, v: Nz_vector):
+      dir_parallel?(u, -v) IMPLIES
+        dir_parallel?(perp_right(u), perp_left(v))
+
+  vector_neq_perp_right: LEMMA
+    FORALL (v: Nz_vector):
+      v /= perp_right(v)
+
+  vector_neq_perp_left: LEMMA
+    FORALL (v: Nz_vector):
+      v /= perp_left(v)
+
+  vector_neq_scaled_perp_right: LEMMA
+    FORALL (v: Nz_vector, a: nzreal):
+      v /= a * perp_right(v)
+
+  vector_neq_scaled_perp_left: LEMMA
+    FORALL (v: Nz_vector, a: nzreal):
+      v /= a * perp_left(v)
+
+  % Properties of cross products
+
+  cross_scales_1: LEMMA
+    FORALL (v1, v2: vector_2d, a: real):
+      cross(a * v1, v2) = a * cross(v1, v2)
+
+  cross_scales_2: LEMMA
+    FORALL (v1, v2: vector_2d, b: real):
+      cross(v1, b * v2) = b * cross(v1, v2)
+
+  cross_lt_0_norm_2: LEMMA
+    FORALL (v1: vector_2d, v2: Nz_vector):
+      cross(v1, ^(v2)) < 0 IFF cross(v1, v2) < 0
+
+  cross_gt_0_norm_2: LEMMA
+    FORALL (v1: vector_2d, v2: Nz_vector):
+      cross(v1, ^(v2)) > 0 IFF cross(v1, v2) > 0
+
+  cross_distrib_add_1: LEMMA
+    FORALL (u, v, w: vector_2d):
+      cross(u + v, w) = cross(u, w) + cross(v, w)
+
+  cross_distrib_add_2: LEMMA
+    FORALL (u, v, w: vector_2d):
+      cross(u, v + w) = cross(u, v) + cross(u, w)
+
+  cross_distrib_sub_1: LEMMA
+    FORALL (u, v, w: vector_2d):
+      cross(u - v, w) = cross(u, w) - cross(v, w)
+
+  cross_distrib_sub_2: LEMMA
+    FORALL (u, v, w: vector_2d):
+      cross(u, v - w) = cross(u, v) - cross(u, w)
+
+  cross_scal_add_1: LEMMA
+    FORALL (u, v: vector_2d, a: real):
+      cross(u, a * u + v) = cross(u, v)
+
+  cross_scal_add_2: LEMMA
+    FORALL (u, v: vector_2d, a: real):
+      cross(u, v + a * u) = cross(u, v)
+
+  cross_scal_sub_1: LEMMA
+    FORALL (u, v: vector_2d, a: real):
+      cross(u, -a * u - v) = -cross(u, v)
+
+  cross_scal_sub_2: LEMMA
+    FORALL (u, v: vector_2d, a: real):
+      cross(u, -v - a * u) = -cross(u, v)
+
+  cross_norm_gt_0: LEMMA
+    FORALL (u: vector_2d, v: Nz_vector):
+      cross(u, ^(v)) > 0 IFF cross(u, v) > 0
+
+  cross_norm_lt_0: LEMMA
+    FORALL (u: vector_2d, v: Nz_vector):
+      cross(u, ^(v)) < 0 IFF cross(u, v) < 0
+
+  cross_both_norm_gt_0: LEMMA
+    FORALL (u, v: Nz_vector):
+      cross(^(u), ^(v)) > 0 IFF cross(u, v) > 0
+
+  cross_both_norm_lt_0: LEMMA
+    FORALL (u, v: Nz_vector):
+      cross(^(u), ^(v)) < 0 IFF cross(u, v) < 0
+
+  cross_both_norm_eq_0: LEMMA
+    FORALL (u, v: Nz_vector):
+      cross(^(u), ^(v)) = 0 IFF cross(u, v) = 0
+
+  cross_scal_norm_add_neq_zero: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, v) > 0 IMPLIES
+        norm(v) * u + norm(u) * v /= zero
+
+  neg_cross_neg: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, -v) = -cross(u, v)
+
+  cross_diff_1: LEMMA
+    FORALL (u, v: point_2d, w: vector_2d):
+      cross(u - v, w) = -cross(v - u, w)
+
+  cross_diff_2: LEMMA
+    FORALL (u, v: point_2d, w: vector_2d):
+      cross(w, u - v) = -cross(w, v - u)
+
+  cross_diff_both: LEMMA
+    FORALL (u, v, p, q: point_2d):
+      cross(u - v, p - q) = cross(v - u, q - p)
+
+  cross_diff_rev_eq_0: LEMMA
+    FORALL (u, v: point_2d):
+      cross(u - v, v - u) = 0
+
+  cross_gt_0_swap_lt_0: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, v) > 0 IFF cross(v, u) < 0
+
+  cross_lt_0_swap_gt_0: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, v) < 0 IFF cross(v, u) > 0
+
+  cross_eq_0_iff_point_on_line: LEMMA
+    FORALL (u, v, w: point_2d):
+      v /= u AND w /= u IMPLIES
+        (cross(v - u, w - u) = 0 IFF EXISTS (d: real): v = u + d * (w - u))
+
+  cross_eq_0_iff_point_on_line_2: LEMMA
+    FORALL (u, v, w: point_2d):
+      v /= u AND w /= u IMPLIES
+        (cross(v - u, w - u) = 0 IFF EXISTS (d: real): w = u + d * (v - u))
+
+  cross_diff_triangle_gt: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(v - u, w - u) < 0 IMPLIES cross(u - v, w - v) > 0
+
+  cross_diff_triangle_lt: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(v - u, w - u) > 0 IMPLIES cross(u - v, w - v) < 0
+
+  triangle_vertices_cross_pos: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(v - u, w - u) > 0 IMPLIES
+        cross(w - v, u - v) > 0 AND cross(u - w, v - w) > 0
+
+  triangle_vertices_cross_neg: LEMMA
+    FORALL (u, v, w: point_2d):
+      cross(v - u, w - u) < 0 IMPLIES
+        cross(w - v, u - v) < 0 AND cross(u - w, v - w) < 0
+
+  three_vectors_cross_dot: LEMMA
+    FORALL (u, v, w: Normalized):
+      cross(w, u) = -(cross(u, v) * (v * w) + (u * v) * cross(v, w))
+
+  below_horiz_cross_diff_pos: LEMMA
+    FORALL (u, v, w: point_2d):
+      v`y > u`y AND v`x < w`x AND v`y = w`y IMPLIES cross(u - v, w - v) > 0
+
+  above_horiz_cross_diff_neg: LEMMA
+    FORALL (u, v, w: point_2d):
+      v`y < u`y AND v`x < w`x AND v`y = w`y IMPLIES cross(u - v, w - v) < 0
+
+  above_cross_diff_pos_imp_x_lt: LEMMA
+    FORALL (p, u, v: point_2d):
+      p`y >= u`y AND p`y = v`y AND cross(v - u, p - u) > 0
+        IMPLIES p`x < v`x
+
+  above_cross_pos_interpolate_below: LEMMA
+    FORALL (u, v, w: vector_2d):
+      w`y <= 0 AND 0 < v`y AND 0 < u`y AND
+      cross(u, v) > 0 AND cross(u, w) > 0
+        IMPLIES cross(v, w) > 0
+
+  above_peak_cross_vect: LEMMA
+    FORALL (p, u, w: vector_2d):
+      cross(u, w) < 0 AND
+      cross(u, p) > 0 AND cross(p, w) > 0 AND
+      u`y < 0 AND w`y < 0
+        IMPLIES 0 < p`y
+
+  above_peak_cross_diff: LEMMA
+    FORALL (p, u, v, w: point_2d):
+      cross(u - v, w - v) < 0 AND
+      cross(u - v, p - v) > 0 AND cross(p - v, w - v) > 0 AND
+      u`y < v`y AND w`y < v`y
+        IMPLIES v`y < p`y
+
+  % Relationships between cross and dot products
+
+  cross_perp_right_eq_pos_dot: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, perp_right(v)) = u * v
+
+  cross_perp_left_eq_neg_dot: LEMMA
+    FORALL (u, v: vector_2d):
+      cross(u, perp_left(v)) = -(u * v)
+
+  cross_eq_0_imp_dot_neg: LEMMA
+    FORALL (u, v: Nz_vector):
+      cross(u, v) = 0 IMPLIES u * v < 0 OR EXISTS (a: posreal): u = a * v
+
+  cross_perp_right_pos: LEMMA
+    FORALL (v: Nz_vector):
+      cross(v, perp_right(v)) > 0
+
+  cross_perp_left_neg: LEMMA
+    FORALL (v: Nz_vector):
+      cross(v, perp_left(v)) < 0
+
+  parallel_cross_perp_right_pos: LEMMA
+    FORALL (u, v: Nz_vector):
+      dir_parallel?(u, v) IMPLIES cross(u, perp_right(v)) > 0
+
+  cross_normalized_perp_right_pos: LEMMA
+    FORALL (v: Nz_vector):
+      cross(v, ^(perp_right(v))) > 0
+
+  % Following are various properties of lines and points.
+
+  same_side_points_off_line: LEMMA
+    FORALL (p, q, u, v, r: point_2d):
+      cross(q - p, u - p) > 0 AND cross(q - p, v - p) > 0 AND
+      (EXISTS (t: nonneg_real): t <= 1 AND r = (1 - t) * u + t * v)
+        IMPLIES NOT EXISTS (d: real): r = p + d * (q - p)
+
+  same_side_points_off_line_2: LEMMA
+    FORALL (p, q, u, v, r: point_2d):
+      cross(u - p, q - p) > 0 AND cross(v - p, q - p) > 0 AND
+      (EXISTS (t: nonneg_real): t <= 1 AND r = (1 - t) * u + t * v)
+        IMPLIES NOT EXISTS (d: real): r = p + d * (q - p)
+
+  perp_vector_points_off_line: LEMMA
+    FORALL (p, q, u, v: point_2d):
+      p /= q AND
+      (EXISTS (a: real): u = p + a * (q - p)) AND
+      (EXISTS (c: nzreal): v = u + c * perp_left(q - p) OR
+                           v = u + c * perp_right(q - p))
+        IMPLIES FORALL (d: real): v /= p + d * (q - p)
+
+  endpoints_on_parallel_line: LEMMA
+    FORALL (p, q, r, s: point_2d):
+      p /= q AND r /= s AND parallel?(q - p, s - r) AND
+      (EXISTS (a: real): r = p + a * (q - p))
+        IMPLIES EXISTS (b: real): s = p + b * (q - p)
+
+  endpts_and_other_pts_on_line: LEMMA
+    FORALL (p, q, r, s, u: point_2d):
+      p /= q AND
+      (EXISTS (a: real): r = p + a * (q - p)) AND
+      (EXISTS (b: real): s = p + b * (q - p)) AND
+      (EXISTS (c: real): u = r + c * (s - r))
+        IMPLIES EXISTS (d: real): u = p + d * (q - p)
+
+  parallel_and_perp_off_line: LEMMA
+    FORALL (p, q, r, s, u, v: point_2d):
+      p /= q AND r /= s AND parallel?(q - p, s - r) AND
+      (EXISTS (a: real): u = p + a * (q - p)) AND
+      (EXISTS (b: real): v = r + b * (s - r)) AND
+      (EXISTS (c: nzreal): v = u + c * perp_left(q - p) OR
+                           v = u + c * perp_right(q - p))
+        IMPLIES FORALL (d: real): s /= p + d * (q - p)
+
+  rel_slope_gt_imp_pos_cross: LEMMA
+    FORALL (p, q, u, v, w: point_2d, c, d: nnreal, k: posreal):
+      cross(p - v, u - v) > 0 AND (p - v) * (u - v) > 0 AND
+      p = u + c * perp_right(v - u) AND q = w + d * perp_right(v - w) AND
+      norm(p - u) * norm(v - w) > norm(q - w) * norm(v - u) AND
+      w = v + k * (u - v)
+        IMPLIES cross(p - v, q - v) > 0
+
+  short_dist_offset_points_neq: LEMMA
+    FORALL (p, q, r, s: point_2d, u, v: Normalized, a, b: nnreal):
+      r = p + a * u AND s = q + b * v AND a + b < norm(q - p)
+        IMPLIES r /= s
+
+  scaled_perp_left_neq_scaled_vector: LEMMA
+    FORALL (c, d: real, v: vector_2d):
+      c * perp_left(v) = d * v
+        IMPLIES (c = 0 AND d = 0) OR v = zero
+
+  scaled_perp_right_neq_scaled_vector: LEMMA
+    FORALL (c, d: real, v: vector_2d):
+      c * perp_right(v) = d * v
+        IMPLIES (c = 0 AND d = 0) OR v = zero
+
+  perp_left_nzvect_neq_zero: LEMMA
+    FORALL (v: Nz_vector):
+      perp_left(v) /= zero
+
+  perp_right_nzvect_neq_zero: LEMMA
+    FORALL (v: Nz_vector):
+      perp_right(v) /= zero
+
+  perp_left_norm_nzvect_neq_zero: LEMMA
+    FORALL (v: Nz_vector):
+      perp_left(^(v)) /= zero
+
+  perp_right_norm_nzvect_neq_zero: LEMMA
+    FORALL (v: Nz_vector):
+      perp_right(^(v)) /= zero
+
+  perp_left_preserves_norm: LEMMA
+    FORALL (v: Nz_vector):
+      perp_left(^(v)) = ^(perp_left(v))
+
+  perp_right_preserves_norm: LEMMA
+    FORALL (v: Nz_vector):
+      perp_right(^(v)) = ^(perp_right(v))
+
+  right_triangle_vertices_neq_1: LEMMA
+    FORALL (u, v: point_2d, c, d: posreal):
+      u /= v IMPLIES
+        u /= u + d * (v - u) + c * perp_right(v - u)
+
+  right_triangle_vertices_neq_2: LEMMA
+    FORALL (u, v: point_2d, c, d: posreal):
+      u /= v IMPLIES
+        u /= u + d * (v - u) + c * perp_left(v - u)
+
+  % Some properties of normalized vectors.
+
+  cross_normalized_eq_0: LEMMA
+    FORALL (u, v: Normalized):
+      cross(u, v) = 0 IFF (u = v OR u = -v)
+
+  dot_normalized_eq_1: LEMMA
+    FORALL (u: Normalized):
+      u * u = 1 AND u * -u = -1
+
+  sum_squares_cross_and_dot: LEMMA
+    FORALL (u, v: Normalized):
+      sq(u * v) + sq(cross(u, v)) = 1
+
+  abs_dot_and_cross_le_1: LEMMA
+    FORALL (u, v: Normalized):
+      abs(u * v) <= 1 AND abs(cross(u, v)) <= 1
+
+  dot_normalized_lt_1: LEMMA
+    FORALL (u, v: Normalized):
+      u = v OR u * v < 1
+
+  dot_normalized_gt_neg_1: LEMMA
+    FORALL (u, v: Normalized):
+      u = -v OR u * v > -1
+
+  sqv_normalized_eq_1: LEMMA
+    FORALL (u: Normalized):
+      sqv(u) = 1
+
+  norm_sum_same_eq_2: LEMMA
+    FORALL (u: Normalized):
+      norm(u + u) = 2
+
+  cross_above_and_below: LEMMA
+    FORALL (a, b, c: point_2d):
+      NOT (cross(a, b) < 0 AND cross(a, c) > 0 AND cross(b, c) > 0 AND
+           c`y < b`y AND b`y < 0 AND 0 <= a`y)
+
+  one_perp_pos_other_neg: LEMMA
+    FORALL (u, v: Nz_vector):
+      cross(u, perp_left(v)) >= 0 AND cross(u, perp_right(v)) <= 0 OR
+      cross(u, perp_left(v)) <= 0 AND cross(u, perp_right(v)) >= 0
+
+  dot_neg_cross_pos_cross_perp_left_pos: LEMMA
+    FORALL (u, v: Nz_vector):
+      u * v < 0 AND cross(u, v) >= 0 IMPLIES cross(u, perp_left(v)) > 0
+
+  sqv_weighted_sum_perp_left: LEMMA
+    FORALL (u: Nz_vector, a, b: real):
+      sq(a) + sq(b) <= 1 IMPLIES sqv(a * ^(perp_left(u)) + b * ^(u)) <= 1
+
+  sqv_weighted_sum_perp_right: LEMMA
+    FORALL (u: Nz_vector, a, b: real):
+      sq(a) + sq(b) <= 1 IMPLIES sqv(a * ^(perp_right(u)) + b * ^(u)) <= 1
+
+  scaled_vector_neq_scaled_perp_left: LEMMA
+    FORALL (u: Nz_vector, a, b: real):
+      a /= 0 OR b /= 0 IMPLIES a * perp_left(u) /= b * u
+
+  scaled_vector_neq_scaled_perp_right: LEMMA
+    FORALL (u: Nz_vector, a, b: real):
+      a /= 0 OR b /= 0 IMPLIES a * perp_right(u) /= b * u
+
+  parallel_pts_between_imp_not_on_seg: LEMMA
+    FORALL (p, u, v, w: point_2d):
+      cross(u - v, p - v) > 0 AND cross(p - v, w - v) > 0 AND
+      cross(u - v, w - v) >= 0
+        IMPLIES FORALL (d: nnreal): cross(p + d * (u - v) - v, w - v) > 0
+
+  parallel_pts_between_imp_not_on_seg_2: LEMMA
+    FORALL (p, u, v, w: point_2d):
+      cross(u - v, p - v) > 0 AND cross(p - v, w - v) > 0 AND
+      cross(u - v, w - v) >= 0
+        IMPLIES FORALL (d: nnreal): cross(u - v, p + d * (w - v) - v) > 0
+
+  points_on_parallel_ray_cross_pos_1: LEMMA
+    FORALL (p, u, v: point_2d):
+      cross(u - v, p - v) > 0 IMPLIES
+        FORALL (d: nnreal): cross(u - v, p + d * (u - v) - v) > 0
+
+  points_on_parallel_ray_cross_pos_2: LEMMA
+    FORALL (p, v, w: point_2d):
+      cross(p - v, w - v) > 0 IMPLIES
+        FORALL (d: nnreal): cross(p + d * (w - v) - v, w - v) > 0
+
+  % Define when a point p lies on the ray emanating from point r
+  % in the direction given by vector v.
+  % Several relevant lemmas are provided.
+  point_on_arb_ray?(p, r: point_2d, v: Normalized): bool =
+    EXISTS (d: nonneg_real): p = r + d * v
+
+  point_on_arb_ray_refl: LEMMA
+    FORALL (p: point_2d, v: Normalized):
+      point_on_arb_ray?(p, p, v)
+
+  point_on_arb_ray_trans: LEMMA
+    FORALL (p, q, r: point_2d, v: Normalized):
+      point_on_arb_ray?(q, p, v) AND point_on_arb_ray?(r, q, v)
+        IMPLIES point_on_arb_ray?(r, p, v)
+
+  point_on_arb_ray_neg: LEMMA
+    FORALL (p, q: point_2d, v: Normalized):
+      point_on_arb_ray?(p, q, -v) IFF point_on_arb_ray?(q, p, v)
+
+  point_on_arb_ray_add: LEMMA
+    FORALL (p: point_2d, d: nonneg_real, v: Normalized):
+      point_on_arb_ray?(p + d * v, p, v)
+
+  point_on_arb_ray_sub: LEMMA
+    FORALL (p: point_2d, d: nonneg_real, v: Normalized):
+      point_on_arb_ray?(p, p - d * v, v)
+
+  point_not_on_arb_ray_add: LEMMA
+    FORALL (p: point_2d, d: posreal, v: Normalized):
+      NOT point_on_arb_ray?(p, p + d * v, v)
+
+  point_not_on_arb_ray_sub: LEMMA
+    FORALL (p: point_2d, d: posreal, v: Normalized):
+      NOT point_on_arb_ray?(p - d * v, p, v)
+
+  point_on_arb_ray_norm: LEMMA
+    FORALL (p, q: point_2d, v: Normalized):
+      point_on_arb_ray?(q, p, v) IFF q = p + norm(q - p) * v
+
+  point_on_arb_line?(p, r: point_2d, v: Normalized): bool =
+    EXISTS (d: real): p = r + d * v
+
+  AUTO_REWRITE+ parallel_neg,
+                sub_eq_zero, % from vectors@vectors_2D
+                point_add_neg_scal, point_sub_neg_scal,
+		point_add_scal_neq_point, point_sub_scal_neq_point,
+		point_add_scal_neq_point_2, point_sub_scal_neq_point_2,
+		norm_scal_norm,
+		norm_diff_scal_norm, norm_diff_scal_norm_2,
+		norm_diff_scal_norm_3,
+		point_on_arb_ray_neg, point_on_arb_ray_refl,
+                point_on_arb_ray_add, point_on_arb_ray_sub,
+		point_not_on_arb_ray_add, point_not_on_arb_ray_sub,
+                add_cancel_add_2, add_cancel_sub_2,
+		perp_left_nzvect_neq_zero, perp_right_nzvect_neq_zero
+
+
+  % A trig-free method of formalizing vector rotation is provided.
+  % This obviates the need to import the trig library.
+  % Rotating vector u by nonzero vector v implicitly uses the
+  % ccw angle from (1,0) to v.
+
+  rotate_vect(u: vector_2d, v: Nz_vector): vector_2d =
+    (v`x * u`x - v`y * u`y, v`y * u`x + v`x * u`y)
+
+  % Comparable definition with angles:
+  % rotate_vect(u: vector_2d, a: real): vector_2d =
+  %   (cos(a) * u`x - sin(a) * u`y, sin(a) * u`x + cos(a) * u`y)
+
+  % Generate the vector v whose corresponding angle from (1,0) achieves
+  % a rotation of u to vertical using the rotate_vect function.
+
+  rotate_to_vert_angle(u: Nz_vector): Nz_vector =
+    IF u`x = 0
+      THEN IF u`y > 0 THEN (1, 0) ELSE (-1, 0) ENDIF
+    ELSIF u`y = 0
+      THEN IF u`x > 0 THEN (0, 1) ELSE (0, -1) ENDIF
+      ELSE (u`y / norm(u), u`x / norm(u))
+    ENDIF
+
+  % Comparable definition with angles:
+  % rotate_to_vert_angle(u: {u: vector_2d | u`x /= 0}):
+  %                     {x: real | 0 < x AND x < pi} =
+  %   IF u`x > 0 THEN pi/2 ELSE -pi/2 ENDIF - atan(u`y / u`x)
+
+  rotate_to_vert_makes_x_0: LEMMA
+    FORALL (u: Nz_vector):
+      rotate_vect(u, rotate_to_vert_angle(u))`x = 0
+
+  rotation_preserves_pos_cross: LEMMA
+    FORALL (u, v: vector_2d, w: Nz_vector):
+      cross(rotate_vect(u, w), rotate_vect(v, w)) > 0 IFF cross(u, v) > 0
+
+  % Given four vectors with relationships among them expressed using
+  % positive cross products, the following lemmas indicate when
+  % additional cross products are positive.
+  extend_pos_cross_vectors_vert: LEMMA
+    FORALL (p, q, r, s: vector_2d):
+      cross(s, p) > 0 AND cross(q, p) > 0 AND p`x = 0 AND
+      cross(r, p) > 0 AND cross(r, q) > 0 AND cross(s, r) > 0
+        IMPLIES cross(s, q) > 0
+
+  extend_pos_cross_vectors: LEMMA
+    FORALL (p, q, r, s: vector_2d):
+      cross(s, p) > 0 AND cross(q, p) > 0 AND
+      cross(r, p) > 0 AND cross(r, q) > 0 AND cross(s, r) > 0
+        IMPLIES cross(s, q) > 0
+
+  extend_pos_cross_vectors_vert_2: LEMMA
+    FORALL (p, q, r, s: vector_2d):
+      cross(s, p) > 0 AND cross(q, p) > 0 AND p`x = 0 AND
+      cross(s, q) > 0 AND cross(r, q) > 0 AND cross(s, r) > 0
+        IMPLIES cross(r, p) > 0
+
+  extend_pos_cross_vectors_2: LEMMA
+    FORALL (p, q, r, s: vector_2d):
+      cross(s, p) > 0 AND cross(q, p) > 0 AND
+      cross(s, q) > 0 AND cross(r, q) > 0 AND cross(s, r) > 0
+        IMPLIES cross(r, p) > 0
+
+  four_vectors_pos_cross_vert: LEMMA
+    FORALL (a, b, c, d: vector_2d):
+      cross(a, b) > 0 AND cross(b, c) > 0 AND
+      cross(a, c) > 0 AND cross(c, d) > 0 AND d`x = 0
+        IMPLIES cross(b, d) > 0 OR cross(d, a) > 0
+
+  four_vectors_pos_cross: LEMMA
+    FORALL (a, b, c, d: vector_2d):
+      cross(a, b) > 0 AND cross(b, c) > 0 AND
+      cross(a, c) > 0 AND cross(c, d) > 0
+        IMPLIES cross(b, d) > 0 OR cross(d, a) > 0
+
+  four_vectors_pos_cross_vert_2: LEMMA
+    FORALL (a, b, c, d: vector_2d):
+      cross(a, b) > 0 AND cross(c, a) > 0 AND
+      cross(a, d) > 0 AND cross(d, b) > 0 AND b`x = 0
+        IMPLIES cross(b, c) > 0 OR cross(c, d) > 0
+
+  four_vectors_pos_cross_2: LEMMA
+    FORALL (a, b, c, d: vector_2d):
+      cross(a, b) > 0 AND cross(c, a) > 0 AND
+      cross(a, d) > 0 AND cross(d, b) > 0
+        IMPLIES cross(b, c) > 0 OR cross(c, d) > 0
+
+END vectors_cross_2d
+

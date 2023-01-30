@@ -1,0 +1,752 @@
+%% -----------------------------------------------------------------------------
+%% segments_2d.pvs              Dependable Computing
+%% PVS theory for line segments constrained to the XY-plane
+%% -----------------------------------------------------------------------------
+
+% Line segments and a large body of their properties are formalized in
+% this theory. In several cases, predicate functions are specified in
+% two ways, one that can be mapped readily into an implementation and
+% one that is easier to use in proofs. Equivalence of all such pairs
+% has been shown.
+
+segments_2d: THEORY
+  BEGIN
+
+  IMPORTING vectors_2d_trig;
+  IMPORTING vertex_list;
+  IMPORTING structures@Maybe[point_2d];
+  IMPORTING vectors@lines_2D;
+  IMPORTING vectors@perpendicular_2D;
+  IMPORTING vectors@closest_approach_2D;
+  % Note: vectors@closest_approach_2D imports
+  % reals@quad_minmax which imports reals@quadratic
+  % which defines MACROs for x1 and x2 which broke
+  % some old proofs that used x1 and x2 for renaming.
+
+  % Degenerate (zero length) line segments are disallowed.
+  segment_2d: TYPE =
+    [#
+      p1: point_2d,
+      p2: {p: point_2d | p /= p1}
+     #];
+
+  segment_2d_to_Line(seg: segment_2d): Line =
+    (# p := seg`p1, v := seg`p2 - seg`p1 #);
+
+  endpoint_diff_nonzero_1: JUDGEMENT
+    FORALL (s: segment_2d): s`p2 - s`p1 HAS_TYPE Nz_vector
+
+  endpoint_diff_nonzero_2: JUDGEMENT
+    FORALL (s: segment_2d): s`p1 - s`p2 HAS_TYPE Nz_vector
+
+  sqv_segment_posreal: JUDGEMENT
+    FORALL (s: segment_2d): sqv(s`p2 - s`p1) HAS_TYPE posreal
+
+  norm_segment_posreal: JUDGEMENT
+    FORALL (s: segment_2d): norm(s`p2 - s`p1) HAS_TYPE posreal
+
+  length(s: segment_2d): posreal =
+    norm(s`p2 - s`p1);
+
+  length_invariant_to_direction: LEMMA
+    FORALL(s: segment_2d):
+      LET m: segment_2d = (# p1 := s`p2, p2 := s`p1 #) IN
+      length(s) = length(m);
+
+  % Unit vector from p1 to p2 of segment s
+  ^(s: segment_2d): Normalized = ^(s`p2 - s`p1);
+
+  normalize_eq: LEMMA
+    FORALL (s: segment_2d): ^(s) = ^(s`p2 - s`p1);
+  AUTO_REWRITE+ normalize_eq;
+
+  segment_intersection_type: TYPE =
+    {Collinear_Overlapping,
+     Collinear_Non_Overlapping,
+     Parallel,
+     Intersecting,
+     Non_Parallel_Not_Intersecting};
+
+  % This is an implementable specification of the condition for a point
+  % to lie on a segment.
+  % Adapted from http://www.lucidarme.me/?p=1952
+  is_point_on_segment?(p: point_2d, s: segment_2d): bool =
+    LET A: point_2d = s`p1 IN
+    LET B: point_2d = s`p2 IN
+    LET C: point_2d = p IN
+    LET A_to_C: vector_2d = vector_from_point_to_point(A, C) IN
+    LET A_to_B: vector_2d = vector_from_point_to_point(A, B) IN
+    LET AB_dot_AC: real = A_to_B * A_to_C IN
+    LET AB_dot_AB: real = A_to_B * A_to_B IN
+    are_vectors_collinear?(A_to_C, A_to_B) AND
+    (0 <= AB_dot_AC) AND (AB_dot_AC <= AB_dot_AB);
+
+  is_point_on_segment_exclusive?(p: point_2d, s: segment_2d): bool =
+    is_point_on_segment?(p, s) AND NOT
+    (p = s`p1 OR p = s`p2);
+
+  is_point_on_segment_alt?(p: point_2d, s: segment_2d): bool =
+    LET distance_from_origin = norm(p - s`p1) IN
+    distance_from_origin <= length(s) AND
+    p = s`p1 + (distance_from_origin / length(s)) * (s`p2 - s`p1);
+
+  is_point_on_segment_alt?_eq_is_point_on_segment?: LEMMA
+    FORALL(p: point_2d, s: segment_2d):
+      is_point_on_segment_alt?(p, s) = is_point_on_segment?(p, s);
+
+  % Unit lemma making it clear that is_point_on_segment? is inclusive
+  end_points_are_on_segment: LEMMA
+    FORALL(s: segment_2d):
+      is_point_on_segment?(s`p1, s) AND
+      is_point_on_segment?(s`p2, s);
+
+  % Curried version for types of points on segment_2d s
+  is_point_on_segment?(s: segment_2d)(p: point_2d): bool =
+    is_point_on_segment?(p, s);
+
+  is_point_approx_on_segment?(p: point_2d, s: segment_2d, eps: real): bool =
+    LET A: point_2d = s`p1 IN
+    LET B: point_2d = s`p2 IN
+    LET C: point_2d = p IN
+    LET A_to_C: vector_2d = vector_from_point_to_point(A, C) IN
+    LET A_to_B: vector_2d = vector_from_point_to_point(A, B) IN
+    LET AB_dot_AC: real = A_to_B * A_to_C IN
+    LET AB_dot_AB: real = A_to_B * A_to_B IN
+    are_vectors_collinear?(A_to_C, A_to_B) AND
+    (-eps <= AB_dot_AC) AND (AB_dot_AC <= AB_dot_AB + eps);
+
+  % A few lemmas about parametric values
+  
+  one_parameter_min: LEMMA
+    FORALL (a, b, m: real, t: {x: real | 0 <= x AND x <= 1}):
+      m <= a AND m <= b IMPLIES m <= (1-t) * a + t * b
+
+  one_parameter_max: LEMMA
+    FORALL (a, b, m: real, t: {x: real | 0 <= x AND x <= 1}):
+      a <= m AND b <= m IMPLIES (1-t) * a + t * b <= m
+
+  one_parameter_min_lt: LEMMA
+    FORALL (a, b, m: real, t: {x: real | 0 <= x AND x <= 1}):
+      m < a AND m < b IMPLIES m < (1-t) * a + t * b
+
+  one_parameter_max_lt: LEMMA
+    FORALL (a, b, m: real, t: {x: real | 0 <= x AND x <= 1}):
+      a < m AND b < m IMPLIES (1-t) * a + t * b < m
+
+  two_parameter_bounds: LEMMA
+    FORALL (a, b: {x: real | 0 <= x AND x <= 1}):
+      a * b <= a + b AND a + b <= 1 + a * b
+
+  cross_diff_same: LEMMA
+    FORALL(p, q, v: point_2d):
+      cross(v - p, q - p) = 0 AND p /= q AND p /= v IMPLIES
+        ((q - p)`x * (q - p)`y >= 0 IFF (v - p)`x * (v - p)`y >= 0)
+
+  sum_of_products_bound_left: LEMMA
+    FORALL (a, b, c, d: real):
+      (a * b >= 0 IFF c * d >= 0) AND
+      0 <= c * a + d * b AND a /= 0 AND c /= 0
+        IMPLIES
+          (a > 0 AND c > 0) OR (a < 0 AND c < 0)
+
+  sum_of_products_bound_right: LEMMA
+    FORALL (a, b, c, d: real):
+      (a * b >= 0 IFF c * d >= 0) AND
+      0 <= c * a + d * b AND b /= 0 AND d /= 0
+        IMPLIES
+          (b > 0 AND d > 0) OR (b < 0 AND d < 0)
+
+  cross_diff_ratio_bounds: LEMMA
+    FORALL(p, q, v, dq, dv: point_2d):
+      p /= q AND p /= v AND dq = q - p AND dv = v - p AND
+      cross(dv, dq) = 0 AND 0 <= dv * dq AND dv * dq <= dq * dq
+        IMPLIES
+          (p`x /= q`x IMPLIES 0 <= dv`x / dq`x AND dv`x / dq`x <= 1) AND
+          (p`y /= q`y IMPLIES 0 <= dv`y / dq`y AND dv`y / dq`y <= 1)
+  
+  % This definition is from the PolyCARP package.  It provides a
+  % parametric way to state segment membership.
+
+  point_on_segment?(p: point_2d, s: segment_2d): bool =
+    EXISTS (t: real): 0 <= t AND t <= 1 AND p = (1-t) * s`p1 + t * s`p2
+
+  point_on_segment?(s: segment_2d): pred[point_2d] =
+    LAMBDA(p: point_2d): point_on_segment?(p, s);
+
+  is_point_on_segment?_imp_point_on_segment?: LEMMA
+    FORALL(p: point_2d, s: segment_2d):
+      is_point_on_segment?(p, s) IMPLIES point_on_segment?(p, s)
+
+  point_on_segment?_iff_is_point_on_segment?: LEMMA
+    FORALL(p: point_2d, s: segment_2d):
+      point_on_segment?(p, s) IFF is_point_on_segment?(p, s)
+
+  end_points_are_on_segment_2: LEMMA
+    FORALL(s: segment_2d):
+      point_on_segment?(s)(s`p1) AND
+      point_on_segment?(s)(s`p2);
+
+  p1_on_segment: LEMMA
+    FORALL (s: segment_2d): point_on_segment?(s`p1, s)
+
+  p2_on_segment: LEMMA
+    FORALL (s: segment_2d): point_on_segment?(s`p2, s)
+
+  AUTO_REWRITE+ p1_on_segment, p2_on_segment
+
+  mult_normalized_vec_by_lt_len_on_seg: LEMMA
+    FORALL(s: segment_2d, d: {x: nnreal | x < length(s)}):
+      point_on_segment?(s`p1 + d * ^(s), s);
+
+  mult_normalized_vec_by_lt_len_on_seg2: LEMMA
+    FORALL(s: segment_2d, d: {x: nnreal | x < length(s)}):
+      point_on_segment?(s`p2 - d * ^(s), s);
+
+  on_parallel_segment_on_ray: LEMMA
+    FORALL (p: point_2d, v: Normalized, e: segment_2d, d: posreal):
+      point_on_segment?(p + d * v, e) AND
+      parallel?(e`p2 - e`p1, v)
+        IMPLIES point_on_arb_ray?(e`p1, p, v) OR point_on_arb_ray?(e`p2, p, v)
+
+  point_diff_start_parameter: LEMMA
+    FORALL (t: real, p, q: point_2d): (1-t) * p + t * q - p = t * (q - p)
+
+  parameter_eq_norm_ratio: LEMMA
+    FORALL (p: point_2d, s: segment_2d, t: {x: real | 0 <= x AND x <= 1}):
+      p = (1 - t) * s`p1 + t * s`p2
+        IMPLIES t = norm(p - s`p1) / norm(s`p2 - s`p1)
+
+  parameter_eq_diff_ratio_x: LEMMA
+    FORALL (p: point_2d, s: segment_2d, t: {x: real | 0 <= x AND x <= 1}):
+      p = (1 - t) * s`p1 + t * s`p2
+        IMPLIES t * (s`p2`x - s`p1`x) = (p`x - s`p1`x)
+
+  parameter_eq_diff_ratio_y: LEMMA
+    FORALL (p: point_2d, s: segment_2d, t: {x: real | 0 <= x AND x <= 1}):
+      p = (1 - t) * s`p1 + t * s`p2
+        IMPLIES t * (s`p2`y - s`p1`y) = (p`y - s`p1`y)
+
+  % When points p and q are both on segment s, and the parameterized
+  % form of is_point_on_segment? has parameters t1 and t2, the distance
+  % of p and q from s`p1 is ordered the same as t1 and t2.
+  
+  parameters_lt_iff_norms_lt: LEMMA
+    FORALL (p, q: point_2d, s: segment_2d,
+            t1, t2: {x: real | 0 <= x AND x <= 1}):
+      p = (1 - t1) * s`p1 + t1 * s`p2 AND
+      q = (1 - t2) * s`p1 + t2 * s`p2
+        IMPLIES (t1 < t2 IFF norm(p - s`p1) < norm(q - s`p1))
+
+  % Some definitions about endpoints along with their properties
+
+  segment_endpoint?(s: segment_2d)(p: point_2d): bool =  p = s`p1 OR p = s`p2
+
+  opposite_endpoint(s: segment_2d,
+                    p: (segment_endpoint?(s))): (segment_endpoint?(s)) =
+    IF p = s`p1 THEN s`p2 ELSE s`p1 ENDIF
+
+  reverse_segment(s: segment_2d): segment_2d = (# p1 := s`p2, p2 := s`p1 #)
+
+  reverse_reverse_segment: LEMMA
+    FORALL (s: segment_2d):
+      reverse_segment(reverse_segment(s)) = s
+
+  reverse_segment_endpoint: LEMMA
+    FORALL (s: segment_2d, p: point_2d):
+      segment_endpoint?(reverse_segment(s))(p) IFF segment_endpoint?(s)(p)
+
+  point_on_reverse_segment: LEMMA
+    FORALL (p: point_2d, s: segment_2d):
+      point_on_segment?(p, reverse_segment(s)) IFF point_on_segment?(p, s)
+
+  reverse_segment_same_length: LEMMA
+    FORALL(s: segment_2d):
+      length(s) = length(reverse_segment(s));
+
+  opposite_opposite_endpoint: LEMMA
+    FORALL (s: segment_2d, u: (segment_endpoint?(s))):
+      opposite_endpoint(s, opposite_endpoint(s, u)) = u
+
+  opposite_endpoint_reverse_segment: LEMMA
+    FORALL (s: segment_2d, u: (segment_endpoint?(s))):
+      opposite_endpoint(reverse_segment(s), u) = opposite_endpoint(s, u)
+
+  point_on_either_segment: LEMMA
+    FORALL (s: segment_2d, u: (segment_endpoint?(s)), v, p: point_2d):
+      v = opposite_endpoint(s, u) IMPLIES
+        (point_on_segment?(p, s) IFF
+	 point_on_segment?(p, (# p1 := u, p2 := v #)))
+
+  segment_endpoint_diff_choices: LEMMA
+    FORALL (s: segment_2d, u: (segment_endpoint?(s)), v: point_2d):
+      v = opposite_endpoint(s, u) IMPLIES
+        s`p2 - s`p1 = v - u OR s`p2 - s`p1 = u - v
+
+  % The collinearity predicate on segments is specified in two ways,
+  % one that can be implemented and one that's easier to use in proofs.
+
+  collinear_impl(s1, s2: segment_2d): bool =
+    LET p: point_2d = s1`p1 IN
+    LET r: vector_2d = vector_from_point_to_point(s1`p1, s1`p2) IN
+    LET q: point_2d = s2`p1 IN
+    LET s: vector_2d = vector_from_point_to_point(s2`p1, s2`p2) IN
+    LET r_cross_s: real = cross(r, s) IN
+    LET q_minus_p_cross_r: real = cross((q - p), r) IN
+    ((r_cross_s = 0) AND (q_minus_p_cross_r = 0));
+
+  collinear?(s1, s2: segment_2d): bool =
+    are_points_collinear?(s1`p1, s1`p2, s2`p1) AND
+      are_points_collinear?(s1`p1, s1`p2, s2`p2);
+
+  collinear_impl_equals_collinear?: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear_impl(s1, s2) = collinear?(s1, s2);
+
+  collinear_alt(s1, s2: segment_2d): bool =
+    LET sa1: segment_2d = (# p1 := zero_point, p2 := s1`p2 - s1`p1 #) IN
+    LET sa2: segment_2d = (# p1 := zero_point, p2 := s2`p2 - s2`p1 #) IN
+      IF length(s1) >= length(s2) THEN
+        is_point_on_segment?(sa2`p2, sa1)
+      ELSE
+        is_point_on_segment?(sa1`p2, sa2)
+      ENDIF;
+
+  collinear_reflexive: LEMMA
+    FORALL(s: segment_2d):
+      collinear?(s, s);
+
+  collinear_symmetric_helper: LEMMA
+    FORALL(a, b, c, d, w, x, y, z: real):
+      (a /= b OR w /= x) IMPLIES
+      ((a * x + c * w + b * y - a * y - b * w - c * x = 0) AND
+       (a * x + d * w + b * z - a * z - b * w - d * x = 0)) IMPLIES
+      (a * y + d * w + c * z - a * z - c * w - d * y = 0);
+
+  collinear_symmetric_half: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear?(s1, s2) IMPLIES collinear?(s2, s1);
+
+  collinear_symmetric: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear?(s1, s2) = collinear?(s2, s1);
+
+  collinear_impl_symmetric: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear_impl(s1, s2) = collinear_impl(s2, s1);
+
+  collinear_reverse: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear?(reverse_segment(s1), s2) = collinear?(s1, s2);
+
+  collinear_as_parallel_with_p1_on_line: LEMMA
+    FORALL(s, e: segment_2d):
+      collinear?(s, e) IFF
+        (parallel?(s`p2 - s`p1, e`p2 - e`p1) AND
+         EXISTS (k: real): e`p1 = s`p1 + k * (s`p2 - s`p1))
+
+  collinear_transitive: LEMMA
+    FORALL(s1, s2, s3: segment_2d):
+      collinear?(s1, s2) AND collinear?(s2, s3) IMPLIES collinear?(s1, s3)
+
+  collinear_parallel: LEMMA
+    FORALL(s1, s2: segment_2d):
+      collinear?(s1, s2) IMPLIES parallel?(s1`p2 - s1`p1, s2`p2 - s2`p1)
+
+  % This function specifies the conditions for two secgments to be
+  % intersecting and the type of intersection that results. It is an
+  % implementable specification.
+
+  % See https://stackoverflow.com/questions/563198/how-do-you-detect-where-two-line-segments-intersect
+  segment_intersect_kernel(s1, s2: segment_2d):
+      [segment_intersection_type, point_2d] =
+    LET p: point_2d = s1`p1 IN
+    LET r: vector_2d = vector_from_point_to_point(s1`p1, s1`p2) IN
+    LET q: point_2d = s2`p1 IN
+    LET s: vector_2d = vector_from_point_to_point(s2`p1, s2`p2) IN
+    LET r_cross_s: real = cross(r, s) IN
+    LET q_minus_p_cross_r: real = cross((q - p), r) IN
+    % As the algorithm given notes, there are four cases to consider, which
+    % actually yield 5 discrete results.
+    %
+    % 1. The segments are colinear:
+    IF ((r_cross_s = 0) AND (q_minus_p_cross_r = 0)) THEN
+      % t0 is vector from s1`p1 to s2`p1 projected onto r
+      LET t0: real = (s2`p1 - s1`p1) * r IN
+      % t1 is vector from s1`p1 to s2`p2 projected onto r
+      LET t1: real = (s2`p2 - s1`p1) * r IN
+      % norm_sq_r equals the length of r, squared
+      LET norm_sq: nnreal = r * r IN
+      % This breaks into further tests to determine colinear overlapping v
+      % colinear non-overlapping. Overlapping occurs when any of the four
+      % endpoints lies on the other segment.
+      IF (0 <= t0 AND t0 <= norm_sq) OR (0 <= t1 AND t1 <= norm_sq) OR
+         (t0 < 0 AND norm_sq < t1) OR (t1 < 0 AND norm_sq < t0)
+        THEN (Collinear_Overlapping, zero_point)
+        ELSE (Collinear_Non_Overlapping, zero_point)
+      ENDIF
+    % 2. The segments are parallel
+    ELSIF ((r_cross_s = 0) AND (q_minus_p_cross_r /= 0)) THEN
+      (Parallel, zero_point)
+    % The final two cases deal with non-parallel, non-colinear segments.
+    % Either the segments intersect or they don't (because they're not
+    % long enough).
+    ELSE
+      LET q_minus_p_cross_s: real = cross((q - p), s) IN
+      LET t: real = q_minus_p_cross_s / r_cross_s IN
+      LET u: real = q_minus_p_cross_r / r_cross_s IN
+      % 3. The segments have a defined intersection
+      IF ((0 <= t AND t <= 1) AND (0 <= u AND u <= 1)) THEN
+        (Intersecting, mk_vect2(p`x + t * r`x, p`y + t * r`y))
+      % 4. Segments are not parallel but do not intersect.
+      ELSE
+        (Non_Parallel_Not_Intersecting, zero_point)
+      ENDIF
+    ENDIF;
+
+  % This lemma identifies a test case that failed to hold with the erroneous
+  % prior specification of segment_intersect_kernel.
+  segment_intersect_regression: LEMMA
+    segment_intersect_kernel((# p1 := (-1,0), p2 := (1,0) #),
+                             (# p1 := (-2,0), p2 := (2,0) #))`1
+      = Collinear_Overlapping;
+
+  % Only used in lemmas
+  r_cross_s(s, e: segment_2d): real =
+    LET r: vector_2d = vector_from_point_to_point(s`p1, s`p2),
+        s: vector_2d = vector_from_point_to_point(e`p1, e`p2) IN
+    cross(r, s);
+
+  r_cross_s_anticommutative: LEMMA
+    FORALL(s, e: segment_2d):
+      r_cross_s(s, e) = -r_cross_s(e, s);
+
+  % This notion of parallel doesn't include collinear cases.
+  parallel?(s: segment_2d)(e: segment_2d): bool =
+    segment_intersect_kernel(s, e)`1 = Parallel;
+
+  parallel_commutative: LEMMA
+    FORALL(s, e: segment_2d):
+      parallel?(s)(e) = parallel?(e)(s);
+
+  parallel_reverse: LEMMA
+    FORALL(s, e: segment_2d):
+      parallel?(s)(e) = parallel?(s)(reverse_segment(e));
+
+  parallel_defs_almost_same: LEMMA
+    FORALL(s, e: segment_2d):
+      parallel?(s`p2 - s`p1, e`p2 - e`p1) =
+        (parallel?(s)(e) OR collinear?(s, e));
+
+  % Allows us to substitute the RHS of the equality for the LHS of the equality
+  segment_intersect_calc_alt_support: LEMMA
+    FORALL(q_minus_p_cross_s, q_minus_p_cross_r: real, r_cross_s: nzreal):
+      LET t: real = q_minus_p_cross_s / r_cross_s,
+          u: real = q_minus_p_cross_r / r_cross_s IN
+      ((0 <= t AND t <= 1) AND (0 <= u AND u <= 1)) =
+      ((r_cross_s > 0 AND
+        (0 <= q_minus_p_cross_s AND q_minus_p_cross_s <= r_cross_s) AND
+        (0 <= q_minus_p_cross_r AND q_minus_p_cross_r <= r_cross_s)) OR
+       (r_cross_s < 0 AND
+        (r_cross_s <= q_minus_p_cross_s AND q_minus_p_cross_s <= 0) AND
+        (r_cross_s <= q_minus_p_cross_r AND q_minus_p_cross_r <= 0)));
+
+  % Unit lemma testing boundary condition for clearly overlapping
+  overlapping_y_axis_segments_are_collinear_overlapping: LEMMA
+    LET s1 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 0, y := 2 #) #) IN
+    LET s2 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 0, y := 1 #) #) IN
+      segment_intersect_kernel(s1, s2)`1 = Collinear_Overlapping;
+
+  % Unit lemma testing boundary condition for segments in a line
+  connecting_y_axis_segments_are_collinear_overlapping: LEMMA
+    LET s1 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 0, y := 1 #) #) IN
+    LET s2 = (# p1 := (# x := 0, y := 1 #), p2 := (# x := 0, y := 2 #) #) IN
+      segment_intersect_kernel(s1, s2)`1 = Collinear_Overlapping;
+
+  % Unit lemma testing simple clearly intersecting case
+  x_intersects: LEMMA
+    LET s1 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 1, y := 1 #) #) IN
+    LET s2 = (# p1 := (# x := 0, y := 1 #), p2 := (# x := 1, y := 0 #) #) IN
+      segment_intersect_kernel(s1, s2)`1 = Intersecting;
+
+  % Unit lemma testing boundary case for intersection
+  t_intersects: LEMMA
+    LET s1 = (# p1 := (# x := 1, y := 0 #), p2 := (# x := 1, y := 2 #) #) IN
+    LET s2 = (# p1 := (# x := 0, y := 2 #), p2 := (# x := 2, y := 2 #) #) IN
+      segment_intersect_kernel(s1, s2)`1 = Intersecting;
+
+  are_segments_intersecting?(s1: segment_2d)(s2: segment_2d): bool =
+    (segment_intersect_kernel(s1, s2)`1 = Intersecting or
+     segment_intersect_kernel(s1, s2)`1 = Collinear_Overlapping);
+
+  are_segments_strictly_intersecting?(s1: segment_2d)(s2: segment_2d): bool =
+    segment_intersect_kernel(s1, s2)`1 = Intersecting;
+
+  % The opposite of this lemma was able to be proven with an erroneous prior
+  % specification of are_segments_intersecting?
+  are_segments_intersecting?_regression: LEMMA
+    LET s1 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 1, y := 0 #) #) IN
+    LET s2 = (# p1 := (# x := 0, y := 0 #), p2 := (# x := 2, y := 0 #) #) IN
+      segment_intersect_kernel(s1, s2)`1 = Collinear_Overlapping;
+
+  % Much more intuitive definition of are_segments_intersecting
+  % However, this definition cannot be directly implemented
+  are_segments_intersecting_alt?(s1, s2: segment_2d): bool =
+    EXISTS(p1: (is_point_on_segment?(s1))):
+      is_point_on_segment?(s2)(p1);
+
+  are_segments_intersecting_alt_reflexive: LEMMA
+    FORALL(s1: segment_2d):
+      are_segments_intersecting_alt?(s1, s1);
+
+  are_segments_intersecting_alt_symmetric_half: LEMMA
+    FORALL(s1, s2: segment_2d):
+      are_segments_intersecting_alt?(s1, s2) IMPLIES
+      are_segments_intersecting_alt?(s2, s1);
+
+  are_segments_intersecting_alt_symmetric: LEMMA
+    FORALL(s1, s2: segment_2d):
+      are_segments_intersecting_alt?(s1, s2) =
+      are_segments_intersecting_alt?(s2, s1);
+
+  are_segments_intersecting_alt_reverse: LEMMA
+    FORALL(s1, s2: segment_2d):
+      are_segments_intersecting_alt?(reverse_segment(s1), s2) =
+      are_segments_intersecting_alt?(s1, s2);
+
+  % Following are additional basic properties of segments.
+
+  segment_far_endpoint_length: LEMMA
+    FORALL (s: segment_2d):
+      s`p2 = s`p1 + length(s) * ^(s`p2 - s`p1)
+
+  dir_parallel_diffs_eqv_norm_diffs_eq: LEMMA
+    FORALL (s, e: segment_2d):
+      dir_parallel?(s`p2 - s`p1, e`p2 - e`p1) IFF
+      ^(s`p2 - s`p1) = ^(e`p2 - e`p1)
+
+  % This lemma is the same as point_on_segment?_iff_is_point_on_segment?
+  % (except for ordering). Both have been kept because each is used
+  % in many other proofs.
+  is_point_on_seg_equiv: LEMMA
+    FORALL (p: point_2d, s: segment_2d):
+      is_point_on_segment?(s)(p) IFF point_on_segment?(p, s)
+
+  is_point_on_seg_equiv_2: LEMMA
+    FORALL (p: point_2d, s: segment_2d):
+      is_point_on_segment?(p, s) IFF point_on_segment?(p, s)
+
+  % This is an equivalent way to express the condition in point_on_segment?.
+  % It simply rearranges the terms slightly.
+  point_on_segment_has_offset: LEMMA
+    FORALL (p: point_2d, s: segment_2d):
+      point_on_segment?(p, s) IFF
+        EXISTS (d: nonneg_real):
+          p = s`p1 + d * (s`p2 - s`p1) AND d <= 1
+
+  point_on_segment_has_norm_offset: LEMMA
+    FORALL (p: point_2d, s: segment_2d):
+      point_on_segment?(p, s) IFF
+        EXISTS (d: nonneg_real):
+          p = s`p1 + d * ^(s`p2 - s`p1) AND d <= length(s)
+
+  offset_point_on_segment_iff_bounded: LEMMA
+    FORALL (s: segment_2d, d: posreal):
+      point_on_segment?(s`p1 + d * ^(s`p2 - s`p1), s) IFF d <= length(s)
+
+  nearby_segment_distance_bounded: LEMMA
+    FORALL (s, e: segment_2d, p: point_2d, d: nnreal):
+      norm(s`p1 - e`p1) <= d AND norm(s`p2 - e`p2) <= d AND
+      point_on_segment?(p, s)
+        IMPLIES EXISTS (q: point_2d):
+                    point_on_segment?(q, e) AND norm(p - q) <= d
+
+  point_on_interior_segment: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      point_on_segment?(p, s) AND
+      point_on_segment?(s`p1, e) AND point_on_segment?(s`p2, e)
+        IMPLIES point_on_segment?(p, e)
+
+  collinear_distances_additive: LEMMA
+    FORALL (e: segment_2d, p, q: point_2d):
+      point_on_segment?(p, e) AND point_on_segment?(q, e) AND
+      norm(p - e`p1) <= norm(q - e`p1)
+        IMPLIES norm(q - e`p1) = norm(p - e`p1) + norm(q - p)
+
+  collinear_distances_additive_2: LEMMA
+    FORALL (e: segment_2d, p, q, v: point_2d):
+      point_on_segment?(p, e) AND point_on_segment?(q, e) AND
+      segment_endpoint?(e)(v) AND
+      norm(p - v) <= norm(q - v)
+        IMPLIES norm(q - v) = norm(p - v) + norm(q - p)
+
+  segment_midpoint(s: segment_2d): point_2d = 1/2 * (s`p1 + s`p2)
+
+  segment_endpoints_neq_midpoint: LEMMA
+    FORALL (s: segment_2d):
+      s`p1 /= segment_midpoint(s) AND s`p2 /= segment_midpoint(s)
+
+  segment_midpoint_on_segment: LEMMA
+    FORALL (s: segment_2d):
+      point_on_segment?(segment_midpoint(s), s)
+
+  % Two definitions to express points off a segment midpoint in each
+  % perpendicular direction.
+  rightward_segment_offset(s: segment_2d, d: real): point_2d =
+    segment_midpoint(s) + d * ^(perp_left(s`p2 - s`p1))
+
+  leftward_segment_offset(s: segment_2d, d: real): point_2d =
+    segment_midpoint(s) + d * ^(perp_right(s`p2 - s`p1))
+
+  midpoint_reverse: LEMMA
+    FORALL (s: segment_2d):
+      segment_midpoint(reverse_segment(s)) = segment_midpoint(s)
+
+  norm_midpoint_to_p1_half_len: LEMMA
+    FORALL(s: segment_2d):
+      norm(segment_midpoint(s) - s`p1) = 1/2 * length(s);
+
+  norm_midpoint_to_p2_half_len: LEMMA
+    FORALL(s: segment_2d):
+      norm(segment_midpoint(s) - s`p2) = 1/2 * length(s);
+
+  rightward_reverse_is_leftward: LEMMA
+    FORALL (s: segment_2d, d: real):
+      rightward_segment_offset(reverse_segment(s), d)
+        = leftward_segment_offset(s, d)
+
+  leftward_reverse_is_rightward: LEMMA
+    FORALL (s: segment_2d, d: real):
+      leftward_segment_offset(reverse_segment(s), d)
+        = rightward_segment_offset(s, d)
+
+  perp_left_point_not_on_segment: LEMMA
+    FORALL (p: point_2d, s: segment_2d, d: nzreal):
+      point_on_segment?(p, s) IMPLIES
+        NOT point_on_segment?(p + d * ^(perp_left(s`p2 - s`p1)), s)
+
+  perp_right_point_not_on_segment: LEMMA
+    FORALL (p: point_2d, s: segment_2d, d: nzreal):
+      point_on_segment?(p, s) IMPLIES
+        NOT point_on_segment?(p + d * ^(perp_right(s`p2 - s`p1)), s)
+
+  % A few sufficient conditions for when points don't lie on segments.
+  no_intersections_with_segment_across_line: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      cross(s`p1 - s`p2, e`p2 - e`p1) <= 0 AND s`p2 = e`p1 AND
+      cross(e`p2 - e`p1, p - e`p1) < 0
+        IMPLIES NOT point_on_segment?(p, s)
+
+  no_intersections_with_segment_across_line_far: LEMMA
+    FORALL (p: point_2d, s, e: segment_2d):
+      cross(s`p1 - s`p2, e`p2 - e`p1) <= 0 AND s`p2 = e`p1 AND
+      cross(s`p1 - s`p2, p - s`p2) > 0
+        IMPLIES NOT point_on_segment?(p, e)
+
+  no_intersections_with_parallel_segments: LEMMA
+    FORALL (p, q: point_2d, s: segment_2d):
+      parallel?(s`p2 - s`p1, q - p) AND p /= q AND
+      (FORALL (d: real): p /= s`p1 + d * (s`p2 - s`p1))
+        IMPLIES FORALL (r: point_2d):
+                  point_on_segment?(r, (# p1 := p, p2 := q #))
+                    IMPLIES NOT point_on_segment?(r, s)
+
+  pythagorean_path_parallel_segments: LEMMA
+    FORALL (s, e: segment_2d):
+      LET v = ^(s`p2 - s`p1) IN
+        parallel?(v, e`p2 - e`p1) IMPLIES
+          EXISTS (a, b: real): e`p1 = s`p1 + a * v + b * perp_right(v)
+
+  % Orthogonality of segments
+  perpendicular_segments?(s, e: segment_2d): bool =
+    EXISTS (u, v: Nz_vector):
+      (u = s`p2 - s`p1 OR u = s`p1 - s`p2) AND
+      (v = e`p2 - e`p1 OR v = e`p1 - e`p2) AND
+      u * v = 0
+
+  point_beyond_segment?(p: point_2d, s: segment_2d): bool =
+    EXISTS (k: real): k > 1 AND p = s`p1 + k * (s`p2 - s`p1)
+
+  p2_dist_from_hub_eq_p1_dist_plus_len: LEMMA
+    FORALL(s: segment_2d, v: point_2d):
+      (EXISTS (k: negreal): v = s`p1 + k * (s`p2 - s`p1)) AND
+      norm(s`p1 - v) < norm(s`p2 - v)
+        IMPLIES norm(s`p2 - v) = norm(s`p1 - v) + length(s)
+
+  farther_from_hub_imp_farther_from_p: LEMMA
+    FORALL(s: segment_2d, p, v: point_2d):
+      p /= v AND s`p1 /= v AND s`p2 /= v AND
+      (EXISTS (k: negreal): v = s`p1 + k * (s`p2 - s`p1)) AND
+      norm(s`p1 - v) < norm(s`p2 - v) AND
+      norm(p - v) <= norm(s`p1 - v)
+        IMPLIES norm(s`p1 - p) < norm(s`p2 - p)
+
+  % Properties of collinear and parallel segments
+  
+  collinear_imp_seg_points_on_same_line: LEMMA
+    FORALL (s, e: segment_2d):
+      collinear?(s, e) IMPLIES
+        FORALL (p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+	  EXISTS (d: real): q = p + d * (s`p2 - s`p1)
+
+  nonoverlapping_collinear_seg_pts_dir_parallel: LEMMA
+    FORALL(s, e: segment_2d, p, q: point_2d):
+      collinear?(s, e) AND
+      NOT are_segments_intersecting_alt?(s, e) AND
+      point_on_segment?(p, s) AND point_on_segment?(q, e) AND
+      p /= s`p1 AND norm(q - s`p1) <= norm(q - p)
+	IMPLIES dir_parallel?(p - s`p1, s`p1 - q)
+
+  disjoint_collinear_segs_dist_bound_p1: LEMMA
+    FORALL(s, e: segment_2d, v: (segment_endpoint?(e)), p: point_2d):
+      collinear?(s, e) AND
+      NOT are_segments_intersecting_alt?(s, e) AND
+      point_on_segment?(p, s) AND
+      norm(s`p2 - v) >= norm(s`p1 - v)
+	IMPLIES norm(p - v) >= norm(s`p1 - v)
+
+  disjoint_collinear_segs_dist_bound_both: LEMMA
+    FORALL(s, e: segment_2d, u, w: (segment_endpoint?(s)),
+           v: (segment_endpoint?(e)), p: point_2d):
+      collinear?(s, e) AND
+      NOT are_segments_intersecting_alt?(s, e) AND
+      point_on_segment?(p, s) AND
+      w = opposite_endpoint(s, u) AND
+      norm(w - v) >= norm(u - v)
+	IMPLIES norm(p - v) >= norm(u - v)
+
+  dir_parallel_segs_dist_bound_p1_p1: LEMMA
+    FORALL(s, e: segment_2d, p, q: point_2d):
+      point_on_segment?(p, s) AND
+      point_on_segment?(q, e) AND
+      dir_parallel?(s`p2 - s`p1, s`p1 - e`p1) AND
+      dir_parallel?(s`p1 - e`p1, e`p1 - e`p2)
+	IMPLIES norm(s`p1 - e`p1) <= norm(p - q)
+
+  endpt_1_closer_to_q_imp_q_farther_from_p: LEMMA
+    FORALL(s: segment_2d, p, q: point_2d, k: real):
+      point_on_segment?(p, s) AND
+      q = s`p1 + k * (s`p2 - s`p1) AND
+      norm(q - s`p1) <= norm(q - s`p2)
+	IMPLIES p = s`p1 OR point_on_segment?(q, s) OR
+                norm(q - p) > norm(q - s`p1)
+
+  endpt_2_closer_to_q_imp_q_farther_from_p: LEMMA
+    FORALL(s: segment_2d, p, q: point_2d, k: real):
+      point_on_segment?(p, s) AND
+      q = s`p1 + k * (s`p2 - s`p1) AND
+      norm(q - s`p1) >= norm(q - s`p2)
+	IMPLIES p = s`p2 OR point_on_segment?(q, s) OR
+                norm(q - p) > norm(q - s`p2)
+
+  parallel_normalized_cases: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s))):
+      ^(s`p2 - s`p1) = ^(e`p2 - e`p1) OR
+      ^(s`p2 - s`p1) = -^(e`p2 - e`p1)
+
+  parallel_normalized_vector_cases: LEMMA
+    FORALL (s, e: segment_2d):
+      parallel?(s`p2 - s`p1, e`p2 - e`p1) IMPLIES
+        ^(s`p2 - s`p1) = ^(e`p2 - e`p1) OR
+        ^(s`p2 - s`p1) = -^(e`p2 - e`p1)
+
+END segments_2d

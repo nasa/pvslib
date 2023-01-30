@@ -1,0 +1,434 @@
+%% -----------------------------------------------------------------------------
+%% merged_polygon_closed.pvs              Dependable Computing
+%% Supports the reasoning to show that the merged vertex list
+%% creates a closed figure.
+%% -----------------------------------------------------------------------------
+
+merged_polygon_closed : THEORY
+
+  BEGIN
+
+  % Showing that the merged polygon meets the requirements of a CCW
+  % simple polygon is a difficult task. A portion of that work is
+  % represented in this theory. Much of it is directed at the loop-back
+  % behavior of the merged vertex list.
+
+  IMPORTING merge_well_formed
+  
+  % The following edge separation properties are based on those in
+  % theory polygon_attributes. They are adapted to describe separation
+  % of edges from two different polygons.
+
+  min_edge_sep_vertex_A(
+        A, B: simple_polygon_2d,
+        i: below(A`num_vertices),
+        j: {j: below(B`num_vertices) |
+               NOT point_on_segment?(A`vertices(i), edges_of_polygon(B)(j))}
+        ): posreal =
+    LET e = edges_of_polygon(B)(j),
+        v = e`p2 - e`p1,
+        vtx = A`vertices(i),
+  	t_min = (vtx - e`p1) * v / sqv(v) IN
+      IF t_min < 0 THEN norm(vtx - e`p1)
+        ELSIF t_min > 1 THEN norm(vtx - e`p2)
+        ELSE norm(e`p1 + t_min * v - vtx)
+      ENDIF
+  
+  min_edge_separation_A(A, B: simple_polygon_2d): posreal =
+    min[posreal, <=](
+        {v_min: posreal |
+         EXISTS (i: below(A`num_vertices), j: below(B`num_vertices)):
+           NOT point_on_segment?(A`vertices(i), edges_of_polygon(B)(j)) AND
+           v_min = min_edge_sep_vertex_A(A, B, i, j) })
+
+  min_edge_separation_AB(A, B: simple_polygon_2d): posreal =
+      min(min_edge_separation_A(A, B), min_edge_separation_A(B, A))
+
+  min_edge_sep_vertex_A_le_dist_to_vtx: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            i: below(A`num_vertices), j: below(B`num_vertices)):
+      point_on_segment?(A`vertices(i), edges_of_polygon(B)(j)) OR
+        FORALL (p: point_2d):
+          point_on_segment?(p, edges_of_polygon(B)(j))
+            IMPLIES min_edge_sep_vertex_A(A, B, i, j)
+	               <= norm(A`vertices(i) - p)
+
+  min_edge_separation_A_is_min: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            i: below(A`num_vertices), j: below(B`num_vertices)):
+      point_on_segment?(A`vertices(i), edges_of_polygon(B)(j)) OR
+      FORALL (p: point_2d):
+        point_on_segment?(p, edges_of_polygon(B)(j))
+          IMPLIES min_edge_separation_A(A, B) <= norm(A`vertices(i) - p)
+
+  min_edge_sep_AB_all_points: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            i: below(A`num_vertices), j: below(B`num_vertices),
+	    p, q: point_2d):
+      (FORALL (u: point_2d):
+         NOT point_on_segment?(u, edges_of_polygon(A)(i)) OR
+         NOT point_on_segment?(u, edges_of_polygon(B)(j))) AND
+      point_on_segment?(p, edges_of_polygon(A)(i)) AND
+      point_on_segment?(q, edges_of_polygon(B)(j))
+        IMPLIES min_edge_separation_AB(A, B) <= norm(p - q)
+
+  % Having non-crossing edges is an important requirement to be met.
+
+  extend_do_not_cross_off_seq: LEMMA
+    FORALL (M: segment_endpoint_seq, w: point_2d, S2: finseq[point_2d]):
+  	w = M`seq(0) + (# x := 0, y := 1 #) AND
+	(FORALL (p: point_2d):
+	  point_on_segment_seq?(p, M) IMPLIES
+	    M`seq(0)`x < p`x OR M`seq(0)`x = p`x AND p`y <= M`seq(0)`y) AND
+        S2 = singleton_seq(w) o M AND
+        segments_do_not_cross?(M)
+          IMPLIES segments_do_not_cross?(S2)
+
+  subseq_does_not_cross: LEMMA
+    FORALL (M: segment_endpoint_seq, k, l, i, j: below(M`length)):
+       k <= i AND i <= j AND j <= l AND segments_do_not_cross?(M ^ (k, l))
+        IMPLIES segments_do_not_cross?(M ^ (i, j))
+
+  extend_do_not_cross_Am_edge: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], j: below(M`length),
+              S2: finseq[point_2d], e: segment_2d):
+	j > 0 AND
+  	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+  	M = merge_seq(A, B) AND
+        edge_of_polygon?(Am)(e) AND
+	M`seq(j) = e`p2 AND
+	NOT segment_endpoint?(e)(M`seq(j - 1)) AND
+        S2 = (M ^ (0, j)) o singleton_seq(e`p1) AND
+        segments_do_not_cross?(M ^ (0, j)) AND
+  	uniq_vertex_list?(j + 1)((M ^ (0, j))`seq)
+          IMPLIES segments_do_not_cross?(S2)
+
+  % Following are lemmas concerning the loop-back behavior of the merged
+  % vertex list. These contribute to showing that the merged polygon has
+  % the desired structure. Some of the lemmas are long because they were
+  % formed to handle subcases that arose in large proofs.
+
+  left_side_loop_back_is_ccw: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], C: simple_polygon_2d,
+  	      j: below(M`length), i: below(j - 2),
+              S2: segment_endpoint_seq, w: point_2d,
+  	      r: below(Am`num_vertices), s, e: segment_2d):
+	j > 0 AND
+  	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+  	M = merge_seq(A, B) AND
+  	uniq_vertex_list?(j)((M ^ (0, j - 1))`seq) AND
+  	S2`length = j + 2 AND
+        S2 = singleton_seq(w) o (M ^ (0, j - 1)) o
+	     singleton_seq(Am`vertices(r)) AND
+  	M`seq(i) = Am`vertices(r) AND
+  	M`seq(j - 1) = Am`vertices(next_index(Am, r)) AND
+  	M`seq(i) = S2`seq(j + 1) AND
+  	w = M`seq(0) + (# x := 0, y := 1 #) AND
+        s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+               p2 := M`seq(i) #) AND
+        e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+        between_rays?(reverse_segment(e), reverse_segment(s))
+                     (Am`vertices(next_index(Am, r))) AND
+	(FORALL (p: point_2d):
+	  (point_on_polygon_perimeter?(Am)(p) OR
+	    point_on_polygon_perimeter?(Bm)(p))
+	   IMPLIES M`seq(0)`x < p`x OR M`seq(0)`x = p`x
+	           AND p`y <= M`seq(0)`y) AND
+  	single_loop_back_seq?(S2) AND
+  	mostly_uniq_point_list?(S2`length, loop_back_intercept(S2))(S2`seq) AND
+        segments_do_not_cross?(S2) AND
+        C`num_vertices = j - i AND
+        (FORALL (k: below(C`num_vertices)): C`vertices(k) = M`seq(i + k))
+          IMPLIES ccw_vertex_order?(C)
+
+  no_incoming_edge_at_i(Am: ccw_simple_polygon,
+                        Bm: (ccw_merge_pre_condition(Am)),
+                        M: segment_endpoint_seq,
+  	  	        i: below(M`length - 1)): bool =
+    LET w = M`seq(0) + (# x := 0, y := 1 #) IN
+      NOT EXISTS (s, e, h: segment_2d):
+            s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+  	           p2 := M`seq(i) #) AND
+   	    e = (# p1 := M`seq(i), p2 := M`seq(i + 1) #) AND
+  	    between_rays?(s, e)(h`p1) AND M`seq(i) = h`p2 AND
+  	    (edge_of_polygon?(Am)(h) OR edge_of_polygon?(Bm)(h))
+
+  no_min_inc_back_side_edge_from_M_contained: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              C: ccw_simple_polygon, M: finseq[point_2d],
+	      i: below(M`length - 1), k: below(i),
+	      r: below(Am`num_vertices), s, e: segment_2d):
+	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	uniq_vertex_list?(2 + i)((M ^ (0, 1 + i))`seq) AND
+	C`num_vertices = i - k + 1 AND
+	(# num_vertices := i - k + 1,
+	   vertices := LAMBDA (l: below(i - k + 1)): M`seq(k + l) #)
+	 = C AND
+	(FORALL (l: below(C`num_vertices)): C`vertices(l) = M`seq(k + l)) AND
+	(FORALL (p: point_2d):
+	  (point_on_polygon_perimeter?(Am)(p) OR
+	    point_on_polygon_perimeter?(Bm)(p))
+	   IMPLIES M`seq(0)`x < p`x OR
+	           M`seq(0)`x = p`x AND p`y <= M`seq(0)`y) AND
+	(FORALL (i: below(M`length - 1)): NOT M`seq(i) = M`seq(1 + i)) AND
+	(FORALL (k: below(M`length)):
+	  M`seq(0)`x < M`seq(k)`x OR
+	   M`seq(0)`x = M`seq(k)`x AND M`seq(k)`y <= M`seq(0)`y) AND
+	M`seq(i) = Am`vertices(next_index(Am, r)) AND
+	s = (# p1 := M`seq(i - 1), p2 := M`seq(i) #) AND
+	e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+	between_rays?(s, e)(Am`vertices(r)) AND
+	Am`vertices(r) = M`seq(k)
+	  IMPLIES polygon_contained?(Am, C)
+
+  no_min_inc_back_side_edge_from_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: below(M`length - 1),
+	      w: point_2d, r: below(Am`num_vertices), s, e: segment_2d):
+	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	uniq_vertex_list?(2 + i)((M ^ (0, 1 + i))`seq) AND
+	M`seq(0) + (# x := 0, y := 1 #) = w AND
+	(FORALL (k: below(Am`num_vertices)): w /= Am`vertices(k)) AND
+	(FORALL (p: point_2d):
+	  (point_on_polygon_perimeter?(Am)(p) OR
+	    point_on_polygon_perimeter?(Bm)(p))
+	   IMPLIES M`seq(0)`x < p`x OR M`seq(0)`x = p`x
+	           AND p`y <= M`seq(0)`y) AND
+	(FORALL (u: point_2d):
+	  point_on_segment?(u, (# p1 := w, p2 := M`seq(0) #)) =>
+	   u = M`seq(0) OR NOT point_on_segment_seq?(u, M)) AND
+	(FORALL (i: below(M`length - 1)): NOT M`seq(i) = M`seq(1 + i)) AND
+	(FORALL (k: below(M`length)): w /= M`seq(k)) AND
+	(FORALL (k: below(M`length)):
+	  M`seq(0)`x < M`seq(k)`x OR
+	   M`seq(0)`x = M`seq(k)`x AND M`seq(k)`y <= M`seq(0)`y) AND
+	M`seq(i) = Am`vertices(next_index(Am, r)) AND
+        s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+               p2 := M`seq(i) #) AND
+        e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+        between_rays?(s, e)(Am`vertices(r))
+	  IMPLIES
+	    FORALL (k: upto(i)): Am`vertices(r) /= M`seq(k)
+
+  no_min_inc_edge_to_M_Am_no_cross: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: below(M`length - 1),
+              S2: segment_endpoint_seq, w: point_2d,
+	      r: below(Am`num_vertices), s, e: segment_2d):
+	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	uniq_vertex_list?(2 + i)((M ^ (0, 1 + i))`seq) AND
+	S2`length = i + 4 AND
+	single_loop_back_seq?(S2) AND
+	mostly_uniq_point_list?(S2`length, loop_back_intercept(S2))(S2`seq) AND
+	(FORALL (i: below(S2`length - 1)): NOT S2`seq(i) = S2`seq(1 + i)) AND
+	(FORALL (k: below(i + 4)):
+	  S2`seq(k) =
+	   IF k = 0 THEN w
+	   ELSIF k = i + 2 THEN Am`vertices(r)
+	   ELSIF k = i + 3 THEN Am`vertices(prev_index(Am, r))
+	   ELSE M`seq(k - 1)
+	   ENDIF) AND
+	% singleton_seq(w) o (M ^ (0, i)) o singleton_seq(Am`vertices(r)) o
+	%  singleton_seq(Am`vertices(prev_index(Am, r)))
+	%  = S2
+	M`seq(0) + (# x := 0, y := 1 #) = w AND
+	(FORALL (k: below(Am`num_vertices)): w /= Am`vertices(k)) AND
+	(FORALL (p: point_2d):
+	  (point_on_polygon_perimeter?(Am)(p) OR
+	    point_on_polygon_perimeter?(Bm)(p))
+	   IMPLIES M`seq(0)`x < p`x OR M`seq(0)`x = p`x
+	           AND p`y <= M`seq(0)`y) AND
+	(FORALL (u: point_2d):
+	  point_on_segment?(u, (# p1 := w, p2 := M`seq(0) #)) =>
+	   u = M`seq(0) OR NOT point_on_segment_seq?(u, M)) AND
+	(FORALL (i: below(M`length - 1)): NOT M`seq(i) = M`seq(1 + i)) AND
+	(FORALL (k: below(M`length)): w /= M`seq(k)) AND
+	(FORALL (k: below(M`length)):
+	  M`seq(0)`x < M`seq(k)`x OR
+	   M`seq(0)`x = M`seq(k)`x AND M`seq(k)`y <= M`seq(0)`y) AND
+	M`seq(i) = Am`vertices(next_index(Am, r)) AND
+        s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+               p2 := M`seq(i) #) AND
+        e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+        between_rays?(s, e)(Am`vertices(r))
+	  IMPLIES
+	    segments_do_not_cross?(S2)
+
+  no_min_inc_edge_to_M_Am_uniq_list: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: below(M`length - 1),
+              S2: segment_endpoint_seq, w: point_2d,
+	      r: below(Am`num_vertices), s, e, h: segment_2d):
+	(Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	uniq_vertex_list?(2 + i)((M ^ (0, 1 + i))`seq) AND
+	single_loop_back_seq?(S2) AND
+	S2`length = i + 4 AND
+	(FORALL (i: below(S2`length - 1)): NOT S2`seq(i) = S2`seq(1 + i)) AND
+	(FORALL (k: below(i + 4)):
+	  S2`seq(k) =
+	   IF k = 0 THEN w
+	   ELSIF k = i + 2 THEN Am`vertices(r)
+	   ELSIF k = i + 3 THEN Am`vertices(prev_index(Am, r))
+	   ELSE M`seq(k - 1)
+	   ENDIF) AND
+	% singleton_seq(w) o (M ^ (0, i)) o singleton_seq(Am`vertices(r)) o
+	%  singleton_seq(Am`vertices(prev_index(Am, r)))
+	%  = S2
+	M`seq(0) + (# x := 0, y := 1 #) = w AND
+	(FORALL (k: below(Am`num_vertices)): w /= Am`vertices(k)) AND
+	(FORALL (p: point_2d):
+	  (point_on_polygon_perimeter?(Am)(p) OR
+	    point_on_polygon_perimeter?(Bm)(p))
+	   IMPLIES M`seq(0)`x < p`x OR M`seq(0)`x = p`x
+	           AND p`y <= M`seq(0)`y) AND
+	(FORALL (u: point_2d):
+	  point_on_segment?(u, (# p1 := w, p2 := M`seq(0) #)) =>
+	   u = M`seq(0) OR NOT point_on_segment_seq?(u, M)) AND
+	(FORALL (i: below(M`length - 1)): NOT M`seq(i) = M`seq(1 + i)) AND
+	(FORALL (k: below(M`length)): w /= M`seq(k)) AND
+	(FORALL (k: below(M`length)):
+	  M`seq(0)`x < M`seq(k)`x OR
+	   M`seq(0)`x = M`seq(k)`x AND M`seq(k)`y <= M`seq(0)`y) AND
+	edges_of_polygon(Am)(r) = h AND
+        s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+               p2 := M`seq(i) #) AND
+        e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+        between_rays?(s, e)(h`p1) AND
+        M`seq(i) = h`p2
+        IMPLIES
+	  mostly_uniq_point_list?(S2`length, loop_back_intercept(S2))(S2`seq)
+
+  no_min_incoming_edge_to_M_Am: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: below(M`length - 1),
+	      s, e, h: segment_2d, w: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        M = merge_seq(A, B) AND
+        uniq_vertex_list?(i + 2)((M ^ (0, i + 1))`seq) AND
+        (FORALL (k: below(i)): no_incoming_edge_at_i(Am, Bm, M, k)) AND
+        w = M`seq(0) + (# x := 0, y := 1 #) AND
+        s = (# p1 := IF i = 0 THEN w ELSE M`seq(i - 1) ENDIF,
+               p2 := M`seq(i) #) AND
+        e = (# p1 := M`seq(i), p2 := M`seq(1 + i) #) AND
+        between_rays?(s, e)(h`p1) AND
+        M`seq(i) = h`p2
+          IMPLIES NOT edge_of_polygon?(Am)(h)
+
+  no_min_incoming_edge_to_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: below(M`length - 1)):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+  	M = merge_seq(A, B) AND
+        uniq_vertex_list?(i + 2)((M ^ (0, i + 1))`seq) AND
+        (FORALL (k: below(i)): no_incoming_edge_at_i(Am, Bm, M, k))
+  	  IMPLIES no_incoming_edge_at_i(Am, Bm, M, i)
+
+  % Shows that no incoming edge (from Am or Bm) can occur at the merge
+  % vertices before the last one.
+  no_incoming_edges_to_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+  	M = merge_seq(A, B) AND i < M`length - 2 AND
+        uniq_vertex_list?(i + 2)((M ^ (0, i + 1))`seq)
+  	  IMPLIES no_incoming_edge_at_i(Am, Bm, M, i)
+
+  no_right_side_loop_back_on_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (M: finseq[point_2d], s, e, h: segment_2d,
+              j: below(M`length), i: below(j - 2)):
+  	M = merge_seq(A, B) AND i > 0 AND
+  	s = (# p1 := M`seq(i - 1), p2 := M`seq(i) #) AND
+  	e = (# p1 := M`seq(i),     p2 := M`seq(i + 1) #) AND
+  	h = (# p1 := M`seq(j - 1), p2 := M`seq(j) #) AND
+        uniq_vertex_list?(j)((M ^ (0, j - 1))`seq) AND
+        M`seq(i) = M`seq(j)
+  	  IMPLIES NOT between_rays?(s, e)(h`p1) OR M`seq(i) /= h`p2
+
+  edge_on_perim_imp_outgoing_edge: LEMMA
+    FORALL (A: simple_polygon_2d,  B: ccw_simple_polygon,
+            q: point_2d, e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND edge_of_polygon?(B)(e) AND
+      vertex?(A)(q) AND point_outside_polygon?(q, B)
+        IMPLIES EXISTS (v: point_2d, i: below(B`num_vertices),
+                        s: (edge_of_polygon?(A))):
+                  vertex?(A)(v) AND v = B`vertices(i) AND v = s`p1 AND 
+		  between_rays?(edges_of_polygon(B)(prev_index(B, i)),
+ 		                edges_of_polygon(B)(i))(s`p2) AND
+  		  FORALL (u: (vertex?(A))):
+		    on_perimeter_vertex_path?(A, e`p2, v)(u)
+  	              IMPLIES NOT point_outside_polygon?(u, B)
+
+  % The merged vertices are formed in CCW order.
+  ccw_shared_edges_imp_ccw: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            C: simple_polygon_2d,
+	    M: finseq[point_2d], i0: below(M`length - 1)):
+      M = merge_seq(A, B) AND 0 < i0 AND
+      C`num_vertices < M`length - i0 AND
+      (FORALL (k: below(C`num_vertices)): C`vertices(k) = M`seq(i0 + k)) AND
+      uniq_vertex_list?(i0 + C`num_vertices)
+                       ((M ^ (0, i0 + C`num_vertices - 1))`seq) AND
+      M`seq(i0 + C`num_vertices) = M`seq(i0)
+        IMPLIES ccw_vertex_order?(C)
+
+  merge_subseq_edges_do_not_cross: LEMMA
+    FORALL (A: ccw_simple_polygon,
+	    B: (ccw_merge_pre_condition(A)), i, j: nat):
+      LET M = merge_seq(A, B) ^ (i, j) IN
+        i < j AND j < merge_seq(A, B)`length - 1 AND
+        M`length > 2 AND uniq_vertex_list?(M`length)(M`seq) AND
+	merge_seq(A, B)`seq(i) = merge_seq(A, B)`seq(j + 1) IMPLIES
+          polygon_edges_do_not_cross?((# num_vertices := M`length,
+                                         vertices := M`seq #))
+  % Shows that when the merge vertices looping back on themselves it
+  % happens at vertex 0.
+  merge_seq_uniq_case_Am: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], i0: below(M`length - 1),
+              j0: below(M`length), C: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	i0 > 0 AND j0 - i0 > 2 AND
+	M`seq(i0) = M`seq(j0) AND
+	C = (# num_vertices := j0 - i0,
+	       vertices := LAMBDA (k: below(j0 - i0)): M`seq(k + i0) #) AND
+	edge_of_polygon?(Am)((# p1 := M`seq(i0 - 1), p2 := M`seq(i0) #)) AND
+	point_outside_polygon?(M`seq(i0 - 1), C) AND
+	(FORALL (k: below(j0 - i0)):
+	   edges_of_polygon(C)(k) =
+	    (# p1 := M`seq(k + i0), p2 := M`seq(1 + k + i0) #)) AND
+	(FORALL (k: below(j0 - i0)): C`vertices(k) = M`seq(k + i0)) AND
+	min[below(M`length)]
+	    ({j: below(M`length) |
+		EXISTS (l: nat): l < j AND M`seq(j) = M`seq(l)})
+	 = j0 AND
+	choose[below(M`length)]
+	    ({i: below(M`length) | i < j0 AND M`seq(i) = M`seq(j0)})
+	 = i0 AND
+	(FORALL (e: (edge_of_polygon?(Am))):
+	   seq_only_vertex_intersections?(merge_seq(A, B), Am, e)) AND
+	(FORALL (e: (edge_of_polygon?(Bm))):
+	   seq_only_vertex_intersections?(merge_seq(A, B), Bm, e))
+          IMPLIES
+	    i0 = 0 OR polygon_contained?(A, B) OR polygon_contained?(B, A)
+
+  END merged_polygon_closed

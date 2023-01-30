@@ -10,7 +10,7 @@ It consists of a collection of formal development (i.e.,
 [NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
-The current version of NASALib is 7.1.0 (11/05/20) and requires [PVS 7.1](http://pvs.csl.sri.com/).
+The current version of NASALib is 7.1.1 (1/30/23) and requires [PVS 7.1](http://pvs.csl.sri.com/).
 
 # Libraries
 
@@ -43,6 +43,7 @@ Currently, NASALib consists of 58 libraries, containing about 32K proven formula
 | [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max |
 | [lebesgue](./lebesgue/README.md) | Lebesgue integral with connection to Riemann Integral |
 | [linear_algebra](./linear_algebra/README.md) | Linear algebra |
+| [line_segments](./line_segments/README.md) | 2-dimensional line segments |
 | [lnexp](./lnexp/README.md) |  Logarithm, exponential and hyperbolic functions. & Foundational definitions of logarithm, exponential and hyperbolic functions |
 | [LTL](./LTL/README.md) | Linear Temporal Logic |
 | [matrices](./matrices/README.md) | Executable specification of MxN matrices. This library includes computation of inverse and basic matrix operations such as addition and multiplication |
@@ -54,6 +55,8 @@ Currently, NASALib consists of 58 libraries, containing about 32K proven formula
 | [numbers](./numbers/README.md) | Elementary number theory |
 | [ODEs](./ODEs/README.md) | Ordinary Differential Equations |
 | [orders](./orders/README.md) | Abstract orders, lattices, fix points |
+| [polygons](./polygons/README.md) | 2-dimensional polygons |
+| [polygon_merge](./polygon_merge/README.md) | Merge of 2-dimensional polygons without generating holes |
 | [power](./power/README.md) | Generalized Power function (without ln/exp) |
 | [probability](./probability/README.md) | Probability theory |
 | [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts |

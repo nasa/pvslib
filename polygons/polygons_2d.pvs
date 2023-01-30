@@ -1,0 +1,921 @@
+%% -----------------------------------------------------------------------------
+%% polygons_2d.pvs              Dependable Computing
+%% PVS theory for simple polygons constrained to the XY-plane
+%% -----------------------------------------------------------------------------
+
+% A simple polygon is defined by the number of vertices and a list of
+% vertices. All vertices must be unique (pairwise unequal) and the edges
+% must satisfy the constraint that they do not intersect, except for the
+% common vertex between adjacent edges.
+
+polygons_2d: THEORY
+  BEGIN
+
+  IMPORTING line_segments@vectors_2d_trig;
+  IMPORTING line_segments@segments_2d_props;
+  IMPORTING line_segments@perp_crossings;
+  IMPORTING line_segments@vertex_list;
+  IMPORTING line_segments@backward_induction;
+
+  % This is essentially finseq[point_2d] defined in the prelude except the field
+  % names are more meaningful and is also almost the same as polygon_2d (below).
+  path_2d: TYPE =
+   [#
+     num_vertices: {nni: nonneg_int | nni > 1},
+     vertices: uniq_vertex_list(num_vertices)
+    #];
+
+  % This is essentially finseq[point_2d] defined in the prelude except the field
+  % names are more meaningful
+  polygon_2d: NONEMPTY_TYPE =
+   [#
+     num_vertices: upfrom(3),
+     vertices: uniq_vertex_list(num_vertices)
+    #];
+
+  prev_index(p: polygon_2d, cur_index: below(p`num_vertices)):
+      below(p`num_vertices) =
+    IF cur_index = 0 THEN
+      p`num_vertices - 1
+    ELSE
+      cur_index - 1
+    ENDIF;
+
+  next_index(p: polygon_2d, cur_index: below(p`num_vertices)):
+      below(p`num_vertices) =
+    IF cur_index = p`num_vertices - 1 THEN
+      0
+    ELSE
+      cur_index + 1
+    ENDIF;
+
+  % inverse unit lemma
+  prev_next_is_original: LEMMA
+    FORALL(p: polygon_2d, cur_index: below(p`num_vertices)):
+      prev_index(p, next_index(p, cur_index)) = cur_index;
+
+  % inverse unit lemma
+  next_prev_is_original: LEMMA
+    FORALL(p: polygon_2d, cur_index: below(p`num_vertices)):
+      next_index(p, prev_index(p, cur_index)) = cur_index;
+
+  % When comparing vertices whose indices differ by more than one,
+  % the remainder function is helpful.
+
+  rem_nonneg: JUDGEMENT
+    FORALL (b: posnat, k: int): rem(b)(k) HAS_TYPE nat
+
+  rem_diff_eq_0: LEMMA
+    FORALL (b: posnat, i, j: below(b)):
+      rem(b)(b + j - i) = 0 IMPLIES j = i
+    
+  rem_diff_eq_0_shift: LEMMA
+    FORALL (b: posnat, i, j: below(b)):
+      rem(b)(j - i) = 0 IMPLIES j = i
+
+  rem_add1_eq_next_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      rem(G`num_vertices)(1 + G`num_vertices + i) = next_index(G, i)
+    
+  rem_sum3: LEMMA
+    FORALL (b: posnat, i, j, k: int):
+      rem(b)(i + rem(b)(j) + k) = rem(b)(i + j + k)
+
+  % Curried predicate useful for creating types
+  vertex?(polygon: polygon_2d): pred[point_2d] =
+    LAMBDA(p: point_2d):
+      EXISTS(i: below(polygon`num_vertices)):
+        polygon`vertices(i) = p;
+
+  % composition unit lemma
+  vertex_is_vertex: LEMMA
+    FORALL(polygon: polygon_2d, i: below(polygon`num_vertices)):
+      vertex?(polygon)(polygon`vertices(i))
+
+  nonvertex?(polygon: polygon_2d): pred[point_2d] =
+    LAMBDA(p: point_2d): NOT vertex?(polygon)(p);
+
+  % composition unit lemma
+  vertex_is_not_nonvertex: LEMMA
+    FORALL(polygon: polygon_2d, i: below(polygon`num_vertices)):
+      NOT nonvertex?(polygon)(polygon`vertices(i))
+
+  edges_of_polygon(polygon: polygon_2d):
+      [below(polygon`num_vertices) -> segment_2d] =
+    LAMBDA(i: below(polygon`num_vertices)):
+      (# p1 := polygon`vertices(i),
+         p2 := polygon`vertices(next_index(polygon, i)) #);
+
+  % Curried predicate useful for creating types
+  edge_of_polygon?(polygon: polygon_2d): pred[segment_2d] =
+    LAMBDA(s: segment_2d):
+      EXISTS(i: below(polygon`num_vertices)):
+        edges_of_polygon(polygon)(i) = s;
+
+  % composition unit lemma
+  edge_is_edge: LEMMA
+    FORALL(polygon: polygon_2d, i: below(polygon`num_vertices)):
+      edge_of_polygon?(polygon)(edges_of_polygon(polygon)(i))
+
+  % idx, being of type upto(p`num_vertices), implicitly requires p to have
+  % a non-zero number of vertices
+  find_helper(p: polygon_2d, idx: upto(p`num_vertices), point: point_2d):
+      RECURSIVE {i: int | -1 <= i AND i < p`num_vertices} =
+    % Terminating condition when not found
+    IF idx = p`num_vertices THEN
+      -1
+    % Terminating condition when found
+    ELSIF p`vertices(idx) = point THEN
+      idx
+    ELSE
+    % Look at the next point
+      find_helper(p, idx + 1, point)
+    ENDIF
+    MEASURE p`num_vertices - idx;
+
+  % For each value of idx, this lemma describes what can be inferred
+  % about the partial search results.
+  find_helper_invariant: LEMMA
+    FORALL (p: polygon_2d, idx: upto(p`num_vertices), point: point_2d):
+      LET k = find_helper(p, idx, point) IN
+        0 <= k AND p`vertices(k) = point OR
+	k = -1 AND
+	  FORALL (j: nat): j < p`num_vertices - idx IMPLIES
+ 	                     p`vertices(p`num_vertices - 1 - j) /= point
+
+  % Find index value of vertex matching point or return -1 if there's no match
+  find_index(polygon: polygon_2d, point: point_2d):
+    {i: int | (i = -1 AND
+                 NOT EXISTS(v: (vertex?(polygon))): v = point) OR
+              (i >= 0 AND i < polygon`num_vertices AND
+                polygon`vertices(i) = point)} =
+    find_helper(polygon, 0, point);
+
+  % Properties of vertex index values and prev/next_index functions
+
+  next_index_distinct: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      next_index(G, i) /= i
+      
+  vertex_find_helper: LEMMA
+    FORALL (G: polygon_2d, p: point_2d, i, j: below(G`num_vertices)):
+      G`vertices(i) = p AND i >= j IMPLIES find_helper(G, j, p) >= 0
+
+  vertex_find_index: LEMMA
+    FORALL (G: polygon_2d, p: point_2d):
+      vertex?(G)(p) IMPLIES find_index(G, p) >= 0
+
+  find_helper_self: LEMMA
+    FORALL (G: polygon_2d, u: point_2d, i: below(G`num_vertices)):
+      find_helper(G, i, u) >= 0 IMPLIES
+        G`vertices(find_helper(G, i, u)) = u
+
+  find_index_self: LEMMA
+    FORALL (G: polygon_2d, u: point_2d):
+      find_index(G, u) >= 0 IMPLIES
+        G`vertices(find_index(G, u)) = u
+
+  find_index_self_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      find_index(G, G`vertices(i)) = i
+
+  segment_in_edges: LEMMA
+    FORALL (u, v: point_2d, G: polygon_2d):
+      find_index(G, u) >= 0 AND
+      v = G`vertices(next_index(G, find_index(G, u)))
+        IMPLIES
+           edge_of_polygon?(G)((# p1 := u, p2 := v #))
+
+  edge_segment_has_vertices: LEMMA
+    FORALL (G: polygon_2d, s: segment_2d):
+      edge_of_polygon?(G)(s) IMPLIES
+        vertex?(G)(s`p1) AND vertex?(G)(s`p2)
+
+  find_index_segment_is_edge: LEMMA
+    FORALL (u, v: point_2d, G: polygon_2d):
+      find_index(G, u) >= 0 AND
+      v = G`vertices(next_index(G, find_index(G, u)))
+        IMPLIES
+           edges_of_polygon(G)(find_index(G, u)) = (# p1 := u, p2 := v #)
+
+  % Some of these arise frequently in proofs as side conditions.
+
+  vertex_neq_next: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(i) /= G`vertices(next_index(G, i))
+
+  vertex_neq_next_2: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(next_index(G, i)) /= G`vertices(i)
+
+  vertex_neq_prev: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(i) /= G`vertices(prev_index(G, i))
+
+  vertex_neq_prev_2: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(prev_index(G, i)) /= G`vertices(i)
+
+  prev_vertex_neq_next_vertex: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(prev_index(G, i)) /= G`vertices(next_index(G, i))
+
+  vertices_diff_next_nonzero: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(next_index(G, i)) - G`vertices(i) = zero IFF FALSE
+
+  vertices_diff_prev_nonzero: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      G`vertices(i) - G`vertices(prev_index(G, i)) = zero IFF FALSE
+
+  second_edge_does_not_double_back: LEMMA
+    FORALL (v0: point_2d, G: polygon_2d, j0, j: int):
+      j0 = find_index(G, v0) AND j0 >= 0 AND
+      j = find_index(G, G`vertices(next_index(G, j0)))
+        IMPLIES v0 /= G`vertices(next_index(G, j))
+
+  vertex_on_edge: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      point_on_segment?(G`vertices(i), edges_of_polygon(G)(i))
+
+  next_vertex_on_edge: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      point_on_segment?(G`vertices(next_index(G, i)), edges_of_polygon(G)(i))
+
+  vertex_on_prev_edge: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      point_on_segment?(G`vertices(i), edges_of_polygon(G)(prev_index(G, i)))
+
+  AUTO_REWRITE+ vertex_on_edge, next_vertex_on_edge, vertex_on_prev_edge
+
+
+  norm_vertex_diff_next_pos: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      norm(G`vertices(next_index(G, i)) - G`vertices(i)) > 0
+
+  norm_vertex_diff_prev_pos: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      norm(G`vertices(prev_index(G, i)) - G`vertices(i)) > 0
+
+  two_adjacent_edges: LEMMA
+    FORALL (p: point_2d, G: polygon_2d, i: below(G`num_vertices)):
+      p = G`vertices(i) IMPLIES
+	LET e1 = (# p1 := G`vertices(prev_index(G, i)), p2 := p #),
+            e2 = (# p1 := p, p2 := G`vertices(next_index(G, i)) #) IN
+          edge_of_polygon?(G)(e1) AND edge_of_polygon?(G)(e2)
+
+  same_edge_equiv_same_points: LEMMA
+    FORALL (G: polygon_2d, i, j: below(G`num_vertices)):
+      i = j IFF
+      FORALL (u: point_2d):
+        point_on_segment?(u, edges_of_polygon(G)(i)) IFF
+	point_on_segment?(u, edges_of_polygon(G)(j))
+
+  rem_plus_1_eq_next_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      rem(G`num_vertices)(i + 1) = next_index(G, i)
+
+  rem_minus_1_eq_prev_index: LEMMA
+    FORALL (G: polygon_2d, i: below(G`num_vertices)):
+      rem(G`num_vertices)(i - 1) = prev_index(G, i)
+
+  rem_plus_1_eq_next_index_2: LEMMA
+    FORALL (G: polygon_2d, i, j: nat):
+      rem(G`num_vertices)(i + j + 1) =
+        next_index(G, rem(G`num_vertices)(i + j))
+
+
+  AUTO_REWRITE+ next_prev_is_original, prev_next_is_original, edge_is_edge,
+                vertex_neq_next, vertex_neq_next_2,
+                vertex_neq_prev, vertex_neq_prev_2,
+                vertices_diff_next_nonzero, vertices_diff_prev_nonzero,
+	        norm_vertex_diff_next_pos, norm_vertex_diff_prev_pos
+%		rem_plus_1_eq_next_index, rem_minus_1_eq_prev_index
+
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %                            Predicates on edges                            %
+
+  equal_or_adjacent_edge?(n: nonneg_int, i, j: below(n)): bool =
+    % Simple adjacency
+    (abs(i - j) <= 1) OR
+    % Wrapping adjacency
+    (i = n-1 AND j = 0) OR (i = 0 AND j = n-1);
+
+  equal_or_adjacent_edge_reflexive: LEMMA
+    FORALL(n: nonneg_int, i: below(n)):
+      equal_or_adjacent_edge?(n, i, i);
+
+  equal_or_adjacent_edge_symmetric: LEMMA
+    FORALL(n: nonneg_int, i, j: below(n)):
+      equal_or_adjacent_edge?(n, i, j) = equal_or_adjacent_edge?(n, j, i);
+
+  equal_or_adjacent_edge_not_transitive: LEMMA
+    EXISTS(n: nonneg_int, i, j, k: below(n)):
+      equal_or_adjacent_edge?(n, i, j) AND equal_or_adjacent_edge?(n, j, k) AND
+        NOT equal_or_adjacent_edge?(n, i, k);
+
+  not_equal_or_adjacent_edge?(n: nonneg_int, i: below(n))(j: below(n)): bool =
+    NOT equal_or_adjacent_edge?(n, i, j);
+
+  adjacent_edge?(n: nonneg_int, i: below(n))(j: below(n)): bool =
+    % Simple adjacency
+    (abs(i - j) = 1) OR
+    % Wrapping adjacency
+    (i = n-1 AND j = 0) OR (i = 0 AND j = n-1);
+
+  % Verify that edges do not cross or even touch, except at their vertices.
+  % The uniqueness requirement on vertices plus the following condition
+  % rule out degenerate polygons.  Intersections are allowed only at
+  % vertices.  If nonadjacent edges were to share a vertex, there would be a
+  % repeated vertex, which is prohibited.  An adjacent edge can't double-back
+  % on the previous edge.  If it did so, there are two cases: 1) they have
+  % the same length, which again leads to a repeated vertex; 2) with unequal
+  % lengths, there would be a "T" intersection, which is ruled out as a
+  % non-vertex intersection.
+  %
+  % Several lemmas are provided to formalize these consequences.
+
+  polygon_edges_do_not_cross?(p: polygon_2d): bool =
+    FORALL (i, j: below(p`num_vertices)):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+        FORALL (q: (is_point_on_segment?(ei))):
+          is_point_on_segment?(ej)(q) IMPLIES
+            i = j OR q = ei`p1 OR q = ei`p2;
+
+  polygon_edges_do_not_cross?_alt(p: polygon_2d): bool =
+    FORALL(i: below(p`num_vertices),
+           j: {n: below(p`num_vertices) | n /= i}):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+      IF equal_or_adjacent_edge?(p`num_vertices, i, j) THEN
+        NOT ^(ei) = -^(ej)
+      ELSE
+        NOT are_segments_intersecting?(ei)(ej)
+      ENDIF;
+
+  adj_edges_share_vertex: LEMMA
+    FORALL(p: polygon_2d, i: below(p`num_vertices),
+           j: (adjacent_edge?(p`num_vertices, i))):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+      ei`p2 = ej`p1 OR ei`p1 = ej`p2;
+
+  % Could potentially be moved to segments_2d
+  short_antenna_edge_midpoint_on_longer_edge: LEMMA
+    FORALL(s1, s2: segment_2d):
+      (s1`p2 = s2`p1) AND (length(s2) <= length(s1)) AND (^(s1) = -^(s2))
+      IMPLIES
+      is_point_on_segment?(s1)(segment_midpoint(s2));
+
+  % Could potentially be moved to segments_2d
+  % For proof that it's not the other endpoints see
+  % segment_endpoints_neq_midpoint in segments_2d
+  short_antenna_edge_midpoint_not_endpoint: LEMMA
+    FORALL(s1, s2: segment_2d):
+      (s1`p2 = s2`p1) AND (length(s2) <= length(s1)) AND (^(s1) = -^(s2))
+      IMPLIES
+      segment_midpoint(s2) /= s1`p1;
+
+  antenna_edges_share_many_points: LEMMA
+    FORALL(p: polygon_2d, i: below(p`num_vertices),
+           j: (adjacent_edge?(p`num_vertices, i))):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+      ^(ei) = -^(ej) IMPLIES
+        EXISTS(q: (is_point_on_segment?(ei))):
+	  is_point_on_segment?(ej)(q) AND q /= ei`p1 AND q /= ei`p2;
+
+  only_common_point_is_vertex_means_equal_or_adjacent: LEMMA
+    FORALL(p: polygon_2d, i, j: below(p`num_vertices)):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+      (EXISTS (p: (is_point_on_segment?(ei))):
+        is_point_on_segment?(ej)(p)) AND
+      (FORALL (q: (is_point_on_segment?(ei))):
+        is_point_on_segment?(ej)(q) IMPLIES q = ei`p1 OR q = ei`p2) AND
+      (FORALL (q: (is_point_on_segment?(ej))):
+        is_point_on_segment?(ei)(q) IMPLIES q = ej`p1 OR q = ej`p2) IMPLIES
+      equal_or_adjacent_edge?(p`num_vertices, i, j);
+
+  common_pt_on_adj_edges_must_be_vertex_unless_antenna: LEMMA
+    FORALL(p: polygon_2d, i: below(p`num_vertices),
+           j: (adjacent_edge?(p`num_vertices, i))):
+      LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+      (^(ei) = -^(ej)) OR
+      (FORALL(q: (is_point_on_segment?(ei))):
+         is_point_on_segment?(ej)(q) IMPLIES
+	   (q = ei`p1 OR q = ei`p2));
+
+  polygon_edges_do_not_cross_defs_eq: LEMMA
+    FORALL(p: polygon_2d):
+      polygon_edges_do_not_cross?(p) IFF
+        polygon_edges_do_not_cross?_alt(p)
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  %                          Predicates on polygons                           %
+
+  % A simple polygon has to
+  % 1. Have at least 3 vertices (and hence 3 edges)
+  % 2. No edges cross other edges
+  % 3. No edge's vertices lie on non-adjacent edges
+  % polygon_edges_do_not_cross handles both 2 & 3
+  simple_polygon_2d?(p: polygon_2d): bool =
+    polygon_edges_do_not_cross?(p);
+
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  % Right equilateral triangle with unit edges on the x- and y-axes
+  example_right_triangle: polygon_2d =
+    (#
+      num_vertices := 3,
+      vertices := LAMBDA(i: below(3)):
+        IF (i = 0) THEN
+          (# x := 0, y := 0 #)
+        ELSIF (i = 1) THEN
+          (# x := 1, y := 0 #)
+        ELSE
+          (# y := 1, x := 0 #)
+        ENDIF
+     #);
+
+  % simple_polygon_2d_TCC1 :
+  %   simple_polygon_2d?(example_right_triangle)
+
+  simple_polygon_2d: NONEMPTY_TYPE = (simple_polygon_2d?)
+    CONTAINING example_right_triangle;
+
+  % Another example of a simple_polygon_2d useful for testing
+  % interior points
+  example_diamond: simple_polygon_2d =
+    (#
+      num_vertices := 4,
+      vertices := LAMBDA(i: below(4)):
+        IF (i = 0) THEN
+	  (# x := -1, y := 0 #)
+	ELSIF (i = 1) THEN
+	  (# x := 0, y := 1 #)
+	ELSIF (i = 2) THEN
+	  (# x := 1, y := 0 #)
+	ELSE
+	  (# x := 0, y := -1 #)
+	ENDIF
+     #);
+
+  % Several lemmas express properties of adjacent edges and
+  % restrictions on how they can intersect.
+  
+  next_edge_shares_only_vertex: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices)):
+       LET ei = edges_of_polygon(p)(i),
+           ej = edges_of_polygon(p)(next_index(p, i)) IN
+         FORALL (q: (is_point_on_segment?(ei))):
+           is_point_on_segment?(ej)(q) IMPLIES q = ei`p2 AND q = ej`p1
+
+  prev_edge_shares_only_vertex: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices)):
+       LET ei = edges_of_polygon(p)(i),
+           ej = edges_of_polygon(p)(prev_index(p, i)) IN
+         FORALL (q: (is_point_on_segment?(ei))):
+           is_point_on_segment?(ej)(q) IMPLIES q = ei`p1 AND q = ej`p2
+
+  adjacent_edges_share_only_vertex: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices),
+            j: (adjacent_edge?(p`num_vertices, i))):
+       LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+         FORALL (q: (is_point_on_segment?(ei))):
+           is_point_on_segment?(ej)(q) IMPLIES
+  	     q = ei`p2 AND q = ej`p1 OR q = ei`p1 AND q = ej`p2
+
+  % These preclude adjacent edges from doubling back on each other.
+
+  next_edge_not_dir_parallel: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices)):
+       LET ei = edges_of_polygon(p)(i),
+           ej = edges_of_polygon(p)(next_index(p, i)) IN
+       NOT dir_parallel?(ei`p2 - ei`p1, ej`p1 - ej`p2)
+
+  prev_edge_not_dir_parallel: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices)):
+       LET ei = edges_of_polygon(p)(i),
+           ej = edges_of_polygon(p)(prev_index(p, i)) IN
+       NOT dir_parallel?(ei`p1 - ei`p2, ej`p2 - ej`p1)
+
+  adjacent_edges_not_dir_parallel: LEMMA
+    FORALL (p: simple_polygon_2d, i: below(p`num_vertices),
+            j: (adjacent_edge?(p`num_vertices, i))):
+       LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+       NOT dir_parallel?(ei`p2 - ei`p1, ej`p1 - ej`p2)
+
+  prev_vertex_not_on_ray_of_edge: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), e: segment_2d):
+      e = edges_of_polygon(G)(i) IMPLIES 
+	NOT point_on_arb_ray?(G`vertices(prev_index(G, i)),
+	                      e`p1, ^(e`p2 - e`p1))
+
+  only_adjacent_edges_intersect: LEMMA
+    FORALL (p: simple_polygon_2d, i, j: below(p`num_vertices)):
+       LET ei = edges_of_polygon(p)(i), ej = edges_of_polygon(p)(j) IN
+         FORALL (q: point_2d):
+           is_point_on_segment?(ei)(q) AND is_point_on_segment?(ej)(q)
+  	     IMPLIES equal_or_adjacent_edge?(p`num_vertices, i, j)
+
+  adjacent_edges_do_not_fold_back: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      G`vertices(prev_index(G, i)) /= G`vertices(i) AND
+      G`vertices(next_index(G, i)) /= G`vertices(i) AND
+      NOT dir_parallel?(G`vertices(prev_index(G, i)) - G`vertices(i),
+                        G`vertices(next_index(G, i)) - G`vertices(i))
+			  
+  points_on_distinct_edges_differ: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, j, k: below(G`num_vertices)):
+      is_point_on_segment?(edges_of_polygon(G)(j))(p) AND
+      is_point_on_segment?(edges_of_polygon(G)(k))(p) AND j < k
+        IMPLIES k = j + 1 AND p = edges_of_polygon(G)(j)`p2 OR
+	        k = G`num_vertices - 1 AND j = 0 AND
+		p = edges_of_polygon(G)(k)`p2
+
+  edge_x_left_or_right_imp_cross_neq_0: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      (G`vertices(prev_index(G, i))`x > G`vertices(i)`x AND
+       G`vertices(next_index(G, i))`x > G`vertices(i)`x) OR
+      (G`vertices(prev_index(G, i))`x < G`vertices(i)`x AND
+       G`vertices(next_index(G, i))`x < G`vertices(i)`x)
+         IMPLIES cross(G`vertices(prev_index(G, i)) - G`vertices(i),
+                       G`vertices(next_index(G, i)) - G`vertices(i)) /= 0
+
+  edge_y_above_or_below_imp_cross_neq_0: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      (G`vertices(prev_index(G, i))`y > G`vertices(i)`y AND
+       G`vertices(next_index(G, i))`y > G`vertices(i)`y) OR
+      (G`vertices(prev_index(G, i))`y < G`vertices(i)`y AND
+       G`vertices(next_index(G, i))`y < G`vertices(i)`y)
+         IMPLIES cross(G`vertices(prev_index(G, i)) - G`vertices(i),
+                       G`vertices(next_index(G, i)) - G`vertices(i)) /= 0
+
+  shared_endpoints_imp_same_edge: LEMMA
+    FORALL (G: simple_polygon_2d, s, e: segment_2d):
+      (s`p1 = e`p1 OR s`p2 = e`p2) AND
+      edge_of_polygon?(G)(s) AND edge_of_polygon?(G)(e)
+        IMPLIES s = e
+
+  same_polygon_edge_overlaps_equal: LEMMA
+    FORALL (G: simple_polygon_2d, s, e: segment_2d):
+      are_segments_overlapping?(s)(e) AND
+      edge_of_polygon?(G)(s) AND edge_of_polygon?(G)(e)
+        IMPLIES s = e
+
+  interior_point_is_nonvertex: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d,
+            t: real, i: below(G`num_vertices)):
+      0 < t AND t < 1 AND
+      p = (1 - t) * G`vertices(i) + t * G`vertices(next_index(G, i))
+        IMPLIES NOT vertex?(G)(p)
+
+  nonvertex_on_one_edge: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, e, s: (edge_of_polygon?(G))):
+      nonvertex?(G)(p) AND point_on_segment?(p, e) AND point_on_segment?(p, s)
+        IMPLIES e = s
+
+  vertex_is_segment_endpoint: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, s: (edge_of_polygon?(G))):
+      vertex?(G)(p) AND point_on_segment?(p, s) IMPLIES p = s`p1 OR p = s`p2
+
+  vertex_is_edge_endpoint: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      vertex?(G)(p) IFF
+      EXISTS (s: (edge_of_polygon?(G))): segment_endpoint?(s)(p)
+
+  vertex_on_two_edges: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d,
+            s: (edge_of_polygon?(G)), i: below(G`num_vertices)):
+      point_on_segment?(p, s) AND p = G`vertices(i) IMPLIES
+	s = (# p1 := G`vertices(prev_index(G, i)), p2 := p #) OR
+        s = (# p1 := p, p2 := G`vertices(next_index(G, i)) #)
+
+  % The horizontal ray-casting method for determining whether a point is in
+  % a polygon is formalized here. A point is in a polygon iff the number
+  % of crossed edges is odd.
+
+  % Determine if the x coordinate of the point p is left of the point at which
+  % a line through x intersects the line segment from p1 to p2.
+  % Copied from
+  % http://web.archive.org/web/20120323102807/http://local.wasp.uwa.edu.au/~pbourke/geometry/insidepoly/
+  x_in_range(p: point_2d, p1: point_2d, p2: point_2d): bool =
+    IF (p2`y - p1`y < 0) THEN
+      (p2`y - p1`y) * (p`x - p1`x) > (p2`x - p1`x) * (p`y - p1`y)
+    ELSE
+      (p2`y - p1`y) * (p`x - p1`x) < (p2`x - p1`x) * (p`y - p1`y)
+    ENDIF;
+
+  % Determine if the y coordinate is between y1 and y2, checking both orders.
+  % Note the asymmetry: one endpoint must be strictly above the ray's y value.
+  % That condition prevents cases that would otherwise count an extra edge
+  % and yield an incorrect result.
+  y_in_range(p: point_2d, p1: point_2d, p2: point_2d): bool =
+    (p1`y <= p`y AND p`y < p2`y) OR
+    (p2`y <= p`y AND p`y < p1`y);
+
+  % Same as above, but biased by eps, similar to SPARK implementation
+  y_approx_in_range(p: point_2d, p1: point_2d, p2: point_2d, eps: real): bool =
+    (p1`y + eps <= p`y AND p`y < p2`y - eps) OR
+    (p2`y + eps <= p`y AND p`y < p1`y - eps);
+
+  is_right_point_ray_intersection?(point: point_2d, segment: segment_2d): bool =
+    y_in_range(point, segment`p1, segment`p2) AND
+    x_in_range(point, segment`p1, segment`p2);
+
+  % This function corresponds to an algorithm for checking each edge for
+  % an eligible crossing. Boolean operations are used instead of counting
+  % and testing if the sum is odd.
+  is_point_in_polygon_recursive?(polygon: polygon_2d, point: point_2d,
+                                 index: below(polygon`num_vertices),
+                                 is_inside: bool): RECURSIVE bool =
+    LET segment: segment_2d = edges_of_polygon(polygon)(index) IN
+    IF (index = polygon`num_vertices - 1) THEN
+      is_inside XOR is_right_point_ray_intersection?(point, segment)
+    ELSE
+      is_point_in_polygon_recursive?(polygon, point, index + 1,
+              is_inside XOR is_right_point_ray_intersection?(point, segment))
+    ENDIF
+   MEASURE (polygon`num_vertices - index);
+
+  is_point_in_polygon_recursive_negation: LEMMA
+    FORALL(polygon: polygon_2d, point: point_2d,
+           index: below(polygon`num_vertices)):
+      is_point_in_polygon_recursive?(polygon, point, index, FALSE) =
+        NOT is_point_in_polygon_recursive?(polygon, point, index, TRUE);
+
+  is_point_on_polygon_perimeter?(polygon: polygon_2d)(point: point_2d): bool =
+    EXISTS(e: (edge_of_polygon?(polygon))):
+      is_point_on_segment?(point, e);
+
+  % Is the point inside the polygon or on the edge of the polygon?
+  is_point_in_polygon_inclusive?(polygon: polygon_2d)(point: point_2d): bool =
+    IF is_point_on_polygon_perimeter?(polygon)(point) THEN
+      TRUE
+    ELSE
+      is_point_in_polygon_recursive?(polygon, point, 0, FALSE)
+    ENDIF;    
+
+  % Is the point inside the polygon, but not on the edge of the polygon?
+  is_point_in_polygon_exclusive?(polygon: polygon_2d)(point: point_2d): bool =
+    IF is_point_on_polygon_perimeter?(polygon)(point) THEN
+      FALSE
+    ELSE
+      is_point_in_polygon_recursive?(polygon, point, 0, FALSE)
+    ENDIF;    
+
+  % Test for edge case where rightward ray goes through a vertex, thereby
+  % touching two segments of the diamond
+  center_of_diamond_is_inside: LEMMA
+    LET ctr = (# x := 0, y := 0 #) IN
+    is_point_in_polygon_exclusive?(example_diamond)(ctr);
+
+  % Test for edge case where rightward ray goes through two vertices, thereby
+  % touching all segments of the diamond
+  outside_left_of_diamond_is_outside: LEMMA
+    LET pt = (# x := -2, y := 0 #) IN
+    NOT is_point_in_polygon_exclusive?(example_diamond)(pt);
+
+  % "Normal" inside case
+  above_center_of_diamond_is_inside: LEMMA
+    LET pt = (# x := 0, y := 0.5 #) IN
+    is_point_in_polygon_exclusive?(example_diamond)(pt);
+
+  % "Normal" outside case
+  above_outside_left_of_diamond_is_outside: LEMMA
+    LET pt = (# x := -2, y := 0.5 #) IN
+    NOT is_point_in_polygon_exclusive?(example_diamond)(pt);
+
+  % Far above outside case
+  way_above_diamond_is_outside: LEMMA
+    LET pt = (# x := 0, y := 50 #) IN
+    NOT is_point_in_polygon_exclusive?(example_diamond)(pt);
+
+  % Return true if all vertices of polygon2 are contained in polygon1.
+  % Note this is not the same as the condition that all interior points
+  % of polygon2 are inside of polygon1. 
+  is_polygon_inside_polygon?(polygon1: polygon_2d, polygon2: polygon_2d): bool =
+    FORALL(v: (vertex?(polygon2))):
+      is_point_in_polygon_inclusive?(polygon1)(v);
+
+  % A segment enters a polygon if any point on that segment is inside the
+  % polygon, not including the perimeter of the polygon itself
+  segment_enters_polygon?(polygon: polygon_2d, segment: segment_2d): bool =
+    EXISTS(pt: (is_point_on_segment?(segment))):
+      is_point_in_polygon_exclusive?(polygon)(pt);
+
+  segment_enters_polygon_alt?(polygon: polygon_2d, segment: segment_2d): bool =
+    is_point_in_polygon_exclusive?(polygon)(segment`p1) OR
+    is_point_in_polygon_exclusive?(polygon)(segment`p2) OR
+    EXISTS(e: (edge_of_polygon?(polygon))):
+      % Does not include collinear overlapping
+      are_segments_strictly_intersecting?(e)(segment);
+
+  % Unit lemma testing that a polygon is inside itself
+  polygons_are_inside_themselves: LEMMA
+    FORALL(polygon: polygon_2d):
+      is_polygon_inside_polygon?(polygon, polygon);
+
+  % Alternate definition of polygon_intersect? that would be harder to map to
+  % an executable but is easier to see is true -- two polygons intersect if
+  % and only if there exists at least one point that is definitely inside
+  % both polygons
+  polygon_intersect?(A: polygon_2d)(B: polygon_2d): bool =
+    NOT (is_polygon_inside_polygon?(A, B) OR is_polygon_inside_polygon?(B, A)) AND
+    EXISTS(point: vector_2d):
+      is_point_in_polygon_exclusive?(A)(point) AND
+      is_point_in_polygon_exclusive?(B)(point);
+
+  % polygon_intersect is designed to be reasonably easy to map to executable
+  % code -- in order for two polygons to intersect, one of them has to have a
+  % vertex inside the other. If one is _completely_ inside the other, it doesn't
+  % count as intersecting. However, this is not true - consider the Star of David
+  polygon_intersect_invalid?(A: polygon_2d)(B: polygon_2d): bool =
+    NOT (is_polygon_inside_polygon?(A, B) OR is_polygon_inside_polygon?(B, A)) AND
+    ((EXISTS(vb: (vertex?(B))):
+        is_point_in_polygon_exclusive?(A)(vb))
+     OR
+     (EXISTS(va: (vertex?(A))):
+        is_point_in_polygon_exclusive?(B)(va)));
+
+  polygon_intersect_alt?(A: polygon_2d)(B: polygon_2d): bool =
+    EXISTS(ea: (edge_of_polygon?(A))):
+      segment_enters_polygon?(B, ea);
+
+  insert_vertex(A: polygon_2d, i: upto(A`num_vertices),
+                p: (nonvertex?(A))):
+    {s: polygon_2d | s`num_vertices = A`num_vertices + 1} =
+    (#
+      num_vertices := A`num_vertices + 1,
+      vertices :=
+        LAMBDA(n: upto(A`num_vertices)):
+          IF n < i THEN
+            A`vertices(n)
+          ELSIF n = i THEN
+            p
+          ELSE
+            A`vertices(n - 1)
+          ENDIF
+     #);
+
+  insert_vertex_seq_pre(A: polygon_2d, seq: uniq_vertex_seq,
+                        j: below(seq`length)): bool =
+    FORALL(i: {k: below(seq`length) | k >= j}): nonvertex?(A)(seq`seq(i));
+
+  insert_vertex_seq(A: polygon_2d, i: upto(A`num_vertices),
+                    seq: uniq_vertex_seq,
+                    j: {k: below(seq`length) |
+                         insert_vertex_seq_pre(A, seq, k)}):
+    RECURSIVE {s: polygon_2d | s`num_vertices = A`num_vertices + seq`length - j} =
+    IF seq`length = 0 THEN
+      A
+    ELSIF j = seq`length - 1 THEN
+      insert_vertex(A, i, seq`seq(j))
+    ELSE
+      insert_vertex_seq(insert_vertex(A, i, seq`seq(j)), i+1, seq, j+1)
+    ENDIF
+    MEASURE seq`length - 1 - j;
+
+  % Whether a segment is completely outside a polygon, including its edges
+  segment_outside_inclusive?(A: polygon_2d)(s: segment_2d): bool =
+    FORALL(point: {p: point_2d | is_point_on_segment?(p, s)}):
+      NOT is_point_in_polygon_inclusive?(A)(point);
+
+  % Unit lemma testing that polygon edges are not outside the polygon, when you
+  % include the polygon edges
+  polygon_segment_is_not_outside_inclusive: LEMMA
+    FORALL(polygon: polygon_2d,
+           edge: (edge_of_polygon?(polygon))):
+      NOT segment_outside_inclusive?(polygon)(edge);
+
+  % Whether a segment is completely outside a polygon, not including its edges
+  segment_outside_exclusive?(A: polygon_2d)(s: segment_2d): bool =
+    FORALL(point: {p: point_2d | is_point_on_segment?(p, s)}):
+      NOT is_point_in_polygon_exclusive?(A)(point);
+
+  % Unit lemma testing that polygon edges are outside the polygon, when you
+  % exclude the polygon edges
+  polygon_segment_is_outside_exclusive: LEMMA
+    FORALL(polygon: polygon_2d,
+           edge: (edge_of_polygon?(polygon))):
+      segment_outside_exclusive?(polygon)(edge);
+
+  % Whether a segment is completely inside a polygon, including its edges
+  segment_inside_inclusive?(A: polygon_2d)(s: segment_2d): bool =
+    FORALL(point: {p: point_2d | is_point_on_segment?(p, s)}):
+      is_point_in_polygon_inclusive?(A)(point);
+
+  % Unit lemma testing that polygon edges are inside the polygon, when you
+  % include the polygon edges
+  polygon_segment_is_inside_inclusive: LEMMA
+    FORALL(polygon: polygon_2d,
+           edge: (edge_of_polygon?(polygon))):
+      segment_inside_inclusive?(polygon)(edge);
+
+  % Whether a segment is completely inside a polygon, not including its edges
+  segment_inside_exclusive?(A: polygon_2d)(s: segment_2d): bool =
+    FORALL(point: {p: point_2d | is_point_on_segment?(p, s)}):
+      is_point_in_polygon_exclusive?(A)(point);
+
+  % Unit lemma testing that polygon edges are not inside the polygon, when you
+  % exclude the polygon edges
+  polygon_segment_is_not_inside_exclusive: LEMMA
+    FORALL(polygon: polygon_2d,
+           edge: (edge_of_polygon?(polygon))):
+      NOT segment_inside_exclusive?(polygon)(edge);
+
+  % Whether a path is completely outside a polygon, including its edges
+  path_outside_inclusive?(A: polygon_2d)(p: path_2d): bool =
+    FORALL(n: below(p`num_vertices-1)):
+      LET s: segment_2d = (# p1 := p`vertices(n), p2 := p`vertices(n+1) #) IN
+      segment_outside_inclusive?(A)(s);
+
+  % Whether a path is completely inside a polygon, not including its edges
+  path_inside_exclusive?(A: polygon_2d)(p: path_2d): bool =
+    FORALL(n: below(p`num_vertices-1)):
+      LET s: segment_2d = (# p1 := p`vertices(n), p2 := p`vertices(n+1) #) IN
+      segment_inside_exclusive?(A)(s);
+
+
+  % In theory segments_2d, a second alternative form of is_point_on_segment?
+  % was introduced, called point_on_segment?.  This version uses an
+  % existential parameter approach rather than direct computation using
+  % vector operations.  The following predicate for point on perimeter
+  % uses the alternative form.
+
+  point_on_polygon_perimeter?(G: polygon_2d)(p: point_2d): bool =
+    EXISTS (e: (edge_of_polygon?(G))):
+      point_on_segment?(p, e);
+
+  point_on_polygon_perimeter?_eq_is_point_on_polygon_perimeter?: LEMMA
+    FORALL(polygon: polygon_2d, point: point_2d):
+      point_on_polygon_perimeter?(polygon)(point) IFF
+        is_point_on_polygon_perimeter?(polygon)(point);
+
+  % Find index of edge on which an arbitrary point lies.  Evaluates to -1
+  % if the point is not on the perimeter.  For vertices, the index is for
+  % the edge where the vertex is p1.
+
+  find_index_any_rec(G: polygon_2d, p: point_2d, i: below(G`num_vertices)):
+       RECURSIVE {n: int | n = -1 OR 0 <= n AND n < G`num_vertices} =
+    IF p = G`vertices(next_index(G, i))
+      THEN next_index(G, i)
+    ELSIF point_on_segment?(p, edges_of_polygon(G)(i))
+      THEN i
+    ELSIF i = 0
+      THEN -1
+      ELSE find_index_any_rec(G, p, i - 1)
+    ENDIF
+    MEASURE i
+
+  find_index_any(G: polygon_2d, p: point_2d):
+                {n: int | n = -1 OR 0 <= n AND n < G`num_vertices} =
+    find_index_any_rec(G, p, G`num_vertices - 1)
+
+  perimeter_find_index_any: LEMMA
+    FORALL (G: polygon_2d, p: point_2d):
+      point_on_polygon_perimeter?(G)(p) IFF find_index_any(G, p) >= 0
+
+  point_on_find_index_segment: LEMMA
+    FORALL (G: polygon_2d, p: point_2d):
+      find_index_any(G, p) >= 0 IMPLIES
+        point_on_segment?(p, edges_of_polygon(G)(find_index_any(G, p))) AND
+	p /= G`vertices(next_index(G, find_index_any(G, p)))
+
+  find_index_any_segment_rec: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d,
+            n: below(G`num_vertices), k: upto(n)):
+      point_on_segment?(p, edges_of_polygon(G)(n - k))
+       IMPLIES find_index_any_rec(G, p, n) =
+ 	        IF p = G`vertices(next_index(G, n - k)) 
+          THEN next_index(G, n - k)
+	        ELSE n - k
+	        ENDIF
+
+  find_index_any_segment: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d, i: below(G`num_vertices)):
+      point_on_segment?(p, edges_of_polygon(G)(i)) AND
+      p /= G`vertices(next_index(G, i))
+        IMPLIES find_index_any(G, p) = i
+
+  find_index_any_self: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices)):
+      find_index_any(G, G`vertices(i)) = i
+
+  point_on_segment_rem_endpoints: LEMMA
+    FORALL (G: polygon_2d, p: point_2d, i: nat):
+      LET j = G`num_vertices + i IN
+      point_on_segment?(p, (# p1 := G`vertices(rem(G`num_vertices)(j)),
+                              p2 := G`vertices(rem(G`num_vertices)(1 + j)) #))
+        IMPLIES
+	  point_on_segment?(p, edges_of_polygon(G)(rem(G`num_vertices)(i)))
+          AND point_on_polygon_perimeter?(G)(p)
+
+  point_on_segment_rem_endpoints_2: LEMMA
+    FORALL (G: polygon_2d, p: point_2d, i, j: nat):
+      point_on_segment?(p,
+                        (# p1 := G`vertices(rem(G`num_vertices)(i + j)),
+                           p2 := G`vertices(rem(G`num_vertices)(1 + i + j)) #))
+        IMPLIES
+	  point_on_segment?(p, edges_of_polygon(G)(rem(G`num_vertices)(i + j)))
+          AND point_on_polygon_perimeter?(G)(p)
+
+END polygons_2d

@@ -1,0 +1,744 @@
+%% -----------------------------------------------------------------------------
+%% merge_well_formed.pvs              Dependable Computing
+%% Definitions and properties of vertex wedge regions.
+%% -----------------------------------------------------------------------------
+
+merge_well_formed : THEORY
+
+  BEGIN
+
+  % The merged polygon must satisfy the conditions for being a valid
+  % simple polygon. This theory develops the definitions and lemmas
+  % needed to establish that the algorithm creates polygons that are
+  % well formed.
+
+  IMPORTING polygon_merge
+  IMPORTING vertex_wedges
+  IMPORTING structures@seq_pigeon
+
+  % Extend the merge_pre_condition to CCW polygons.
+  ccw_merge_pre_condition(A: ccw_simple_polygon)
+                         (B: ccw_simple_polygon): bool =
+     merge_pre_condition(A)(B)
+
+  segment_enters_polygon_alt?(G: simple_polygon_2d, s: segment_2d): bool =
+    EXISTS (pt: point_2d):
+      point_on_segment?(pt, s) AND point_in_polygon?(pt, G)
+
+  segment_exits_polygon?(G: simple_polygon_2d, s: segment_2d): bool =
+    EXISTS (pt: point_2d):
+      point_on_segment?(pt, s) AND point_outside_polygon?(pt, G)
+
+  segment_does_not_enter_own_polygon: LEMMA
+    FORALL (G: simple_polygon_2d):
+      FORALL (e: (edge_of_polygon?(G))):
+        NOT segment_enters_polygon_alt?(G, e)
+
+  rightward_segment_offset_on_connector: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      LET e = edges_of_polygon(G)(i),
+          c = outward_edge_offset_dist(G)
+      IN point_on_segment?(rightward_segment_offset(e, c),
+                           connector_segment(G, i))
+
+  connector_points_outside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices), r: point_2d):
+      point_on_segment?(r, connector_segment(G, i))
+        IMPLIES point_outside_polygon?(r, G)
+  
+  rightward_nearby_ccw_points_outside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      rightward_nearby_points_outside?(G, i)
+  
+  leftward_nearby_ccw_points_inside: LEMMA
+    FORALL (G: ccw_simple_polygon, i: below(G`num_vertices)):
+      leftward_nearby_points_inside?(G, i)
+
+  % Vertex injection preserves CCW vertex ordering.
+  injected_polygon_has_ccw_order: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        ccw_vertex_order?(A)
+	  IMPLIES ccw_vertex_order?(Am)
+
+  injected_polygons_have_ccw_order: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        ccw_vertex_order?(A) AND ccw_vertex_order?(B)
+	  IMPLIES ccw_vertex_order?(Am) AND ccw_vertex_order?(Bm)
+
+  injected_polygon_has_merge_precondition: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+	  IMPLIES merge_pre_condition(Am)(Bm)
+
+  next_vertex_neq_between_point: LEMMA
+    FORALL (u, v: point_2d, A, B: simple_polygon_2d, i, j: int):
+      i = find_index(A, u) AND i >= 0 AND
+      j = find_index(B, u) AND j >= 0 AND
+      edges_of_polygon(A)(i)`p1 = edges_of_polygon(B)(j)`p1 AND
+      point_between_rays?(edges_of_polygon(A)(i), edges_of_polygon(B)(j))(v)
+        IMPLIES v /= A`vertices(next_index(A, i)) AND
+	        v /= B`vertices(next_index(B, j))
+
+  % Several invariants about incoming and outgoing edge sequences are
+  % inroduced and proved.
+
+  incoming_edge_of_C?(A, C: ccw_simple_polygon,
+                      i: below(A`num_vertices)): bool =
+    LET e = edges_of_polygon(A)(i) IN
+      EXISTS (j: below(C`num_vertices), q: point_2d):
+        e`p2 = C`vertices(j) AND
+        q /= e`p2 AND point_on_segment?(q, e) AND
+        point_in_vertex_wedge?(true, C, j)(q)
+
+  outgoing_edge_of_C?(A, C: ccw_simple_polygon,
+                      i: below(A`num_vertices)): bool =
+    LET e = edges_of_polygon(A)(i) IN
+      EXISTS (j: below(C`num_vertices), q: point_2d):
+        e`p1 = C`vertices(j) AND
+        q /= e`p1 AND point_on_segment?(q, e) AND
+        point_in_vertex_wedge?(true, C, j)(q)
+
+  int_index(A: simple_polygon_2d)(n: int): below(A`num_vertices) =
+    rem(A`num_vertices)(A`num_vertices + n)
+
+  inc_or_outg_edge_invariant: LEMMA
+    FORALL (A, C: ccw_simple_polygon, j: below(A`num_vertices)):
+      (FORALL (e: (edge_of_polygon?(A))):
+         only_vertex_intersections?(C, A, e)) AND
+      incoming_edge_of_C?(A, C, j) IMPLIES
+        FORALL (k: below(A`num_vertices)):
+          (EXISTS (l: upto(k)):
+ 	     outgoing_edge_of_C?(A, C, int_index(A)(j-l))) OR
+          (FORALL (l: upto(k)):
+	     NOT outgoing_edge_of_C?(A, C, int_index(A)(j-l)) AND
+	     point_outside_polygon?(A`vertices(int_index(A)(j-l)), C))
+
+  inc_edge_imp_outg_edge_exists: LEMMA
+    FORALL (A, C: ccw_simple_polygon, j: below(A`num_vertices)):
+      (FORALL (e: (edge_of_polygon?(A))):
+         only_vertex_intersections?(C, A, e)) AND
+      incoming_edge_of_C?(A, C, j) IMPLIES
+        EXISTS (k: below(A`num_vertices)):
+	  outgoing_edge_of_C?(A, C, int_index(A)(j-k))
+
+  % If an edge of A is incoming on C, there must exist another edge
+  % of A that is outgoing from C.
+  incoming_edge_imp_outgoing_edge: LEMMA
+    FORALL (A, C: ccw_simple_polygon,
+            s: (edge_of_polygon?(A)), i: below(C`num_vertices)):
+      s`p2 = C`vertices(i) AND
+      (EXISTS (p: point_2d):
+         point_on_segment?(p, s) AND p /= s`p2 AND
+	 point_in_vertex_wedge?(true, C, i)(p)) AND
+      (FORALL (e: (edge_of_polygon?(A))):
+         only_vertex_intersections?(C, A, e))
+      IMPLIES
+        EXISTS (e: (edge_of_polygon?(A)), j: below(C`num_vertices),
+	        q: point_2d):
+	  e`p1 = C`vertices(j) AND
+          point_on_segment?(q, e) AND q /= e`p1 AND
+	  point_in_vertex_wedge?(true, C, j)(q)
+
+  % Other lemmas expressing similar properties
+  A_intersects_C_imp_outgoing_edge: LEMMA
+    FORALL (A, C: ccw_simple_polygon, i: below(C`num_vertices),
+            s: segment_2d, p: point_2d):
+      (FORALL (e: (edge_of_polygon?(A))):
+        only_vertex_intersections?(C, A, e)) AND
+      vertex?(A)(p) AND point_outside_polygon?(p, C) AND
+      edge_of_polygon?(A)(s) AND s`p1 = C`vertices(i) AND
+      (are_segments_overlapping?(s)(edges_of_polygon(C)(i)) OR
+       are_segments_overlapping?(s)(edges_of_polygon(C)(prev_index(C, i))) OR
+       EXISTS (u: point_2d):
+         point_on_segment?(u, s) AND u /= s`p1 AND
+         point_in_vertex_wedge?(false, C, i)(u))
+        IMPLIES EXISTS (e: (edge_of_polygon?(A)),
+                        j: below(C`num_vertices), q: point_2d):
+                  e`p1 = C`vertices(j) AND
+                  q /= e`p1 AND point_on_segment?(q, e) AND
+                  point_in_vertex_wedge?(true, C, j)(q) 
+
+  A_intersects_C_imp_outgoing_edge_exists: LEMMA
+    FORALL (A, C: ccw_simple_polygon):
+      (FORALL (e: (edge_of_polygon?(A))):
+        only_vertex_intersections?(C, A, e)) AND
+      (EXISTS (p, q: (vertex?(A))): 
+        point_outside_polygon?(p, C) AND vertex?(C)(q))
+          IMPLIES EXISTS (e: (edge_of_polygon?(A)),
+                          j: below(C`num_vertices), u: point_2d):
+                    e`p1 = C`vertices(j) AND u /= e`p1 AND
+		    point_on_segment?(u, e) AND
+                    point_in_vertex_wedge?(true, C, j)(u) 
+
+  % A few lemmas about the first merge vertex and their relationship
+  % to the topleft vertiex of Am and Bm.
+
+  first_merge_vertex_is_topleft: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+	    M: finseq[point_2d]):
+      M = merge_seq(A, B) IMPLIES
+        FORALL (k: below(M`length)):
+	  M`seq(0)`x < M`seq(k)`x OR
+          M`seq(0)`x = M`seq(k)`x AND M`seq(k)`y <= M`seq(0)`y
+
+  merge_seq_topleft_vertices: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      LET v0 = first_vertex_merge(A, B),
+          (Am, Bm) = inject_vertices_into_polygon(A, B) IN
+        (find_index(Am, v0) >= 0 IMPLIES
+           find_index(Am, v0) = topleft_vertex_idx(Am)) AND
+        (find_index(Bm, v0) >= 0 IMPLIES
+           find_index(Bm, v0) = topleft_vertex_idx(Bm))
+
+  injected_topleft_vertices_shared: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, v: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+        merge_seq(A, B)`seq(0) = v AND
+	find_index(Am, v) >= 0 AND find_index(Bm, v) >= 0
+	  IMPLIES Am`vertices(topleft_vertex_idx(Am)) = v AND
+	          Bm`vertices(topleft_vertex_idx(Bm)) = v
+
+  first_merge_vertex_is_topleft_all: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              M: finseq[point_2d], p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        M = merge_seq(A, B) AND
+	(point_on_polygon_perimeter?(Am)(p) OR
+	 point_on_polygon_perimeter?(Bm)(p))
+           IMPLIES M`seq(0)`x < p`x OR
+                   M`seq(0)`x = p`x AND p`y <= M`seq(0)`y
+
+  % These length properties are needed to show the merge vertices
+  % forms a valid simple polygon.
+
+  merge_seq_length_neq_2: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      merge_seq(A, B)`length /= 2
+
+  merge_seq_has_min_length: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      merge_seq(A, B)`length > 2
+
+
+  % Following lemmas establish that the merge algorithm is commutative.
+
+  next_merge_vertex_neq_prev_vertex: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              vertex, prev_vtx: (point_AB_vtx?(Am, Bm))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	vertex /= prev_vtx AND
+        (edge_of_polygon?(Am)((# p1 := prev_vtx, p2 := vertex #)) OR
+         edge_of_polygon?(Bm)((# p1 := prev_vtx, p2 := vertex #)))
+           IMPLIES next_merge_vertex(Am, Bm, vertex, prev_vtx) /= prev_vtx
+
+  prev_edge_not_on_arb_ray: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+  	      vertex, prev_vtx: (point_AB_vtx?(Am, Bm)), e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Am)(e) AND
+	e`p1 = vertex AND e`p2 /= prev_vtx AND prev_vtx /= vertex AND
+        (edge_of_polygon?(Am)((# p1 := prev_vtx, p2 := vertex #)) OR
+         edge_of_polygon?(Bm)((# p1 := prev_vtx, p2 := vertex #)))
+           IMPLIES NOT point_on_arb_ray?(prev_vtx, vertex, ^(e`p2 - e`p1))
+
+  next_edge_on_ray_imp_next_vertices_eq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+  	      vertex, next_vtx: (point_AB_vtx?(Am, Bm)), e: segment_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        edge_of_polygon?(Bm)(e) AND e`p1 = vertex AND
+	vertex /= next_vtx AND
+        edge_of_polygon?(Am)((# p1 := vertex, p2 := next_vtx #)) AND
+        point_on_arb_ray?(next_vtx, vertex, ^(e`p2 - e`p1))
+	  IMPLIES next_vtx = e`p2
+
+  next_merge_vertex_comm: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+  	      vertex, prev_vtx: (point_AB_vtx?(Am, Bm))):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	vertex /= prev_vtx AND
+        (edge_of_polygon?(Am)((# p1 := prev_vtx, p2 := vertex #)) OR
+         edge_of_polygon?(Bm)((# p1 := prev_vtx, p2 := vertex #)))
+           IMPLIES next_merge_vertex(Am, Bm, vertex, prev_vtx) =
+                   next_merge_vertex(Bm, Am, vertex, prev_vtx)
+
+  next_merge_vertex_comm_prev_0: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+	  LET first_vtx = first_vertex_merge(A, B) IN
+            next_merge_vertex(Am, Bm, first_vtx, prev_0(first_vtx)) =
+            next_merge_vertex(Bm, Am, first_vtx, prev_0(first_vtx))
+
+  merge_prefix_comm: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am, Bm: simple_polygon_2d, k: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+	  LET first_vtx = first_vertex_merge(A, B) IN
+            merge_prefix(Am, Bm, first_vtx, k) =
+	    merge_prefix(Bm, Am, first_vtx, k)
+
+  merge_seq_commutative: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      merge_seq(A, B) = merge_seq(B, A)
+
+
+  % More properties about vertices and edges.
+
+  A_vertex_imp_B_vertex: LEMMA
+    FORALL (A, B: simple_polygon_2d, v: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      vertex?(A)(v) AND point_on_polygon_perimeter?(B)(v)
+        IMPLIES vertex?(B)(v)
+
+  B_vertex_imp_A_vertex: LEMMA
+    FORALL (A, B: simple_polygon_2d, v: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      vertex?(B)(v) AND point_on_polygon_perimeter?(A)(v)
+        IMPLIES vertex?(A)(v)
+
+  outside_endpoint_between_rays: LEMMA
+    FORALL (A: simple_polygon_2d, B: ccw_simple_polygon,
+            i: below(B`num_vertices), e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      e`p1 = B`vertices(i) AND point_outside_polygon?(e`p2, B) AND
+      (edge_of_polygon?(A)(e) OR edge_of_polygon?(A)(reverse_segment(e)))
+	IMPLIES between_rays?(edges_of_polygon(B)(prev_index(B, i)),
+ 	                      edges_of_polygon(B)(i))(e`p2)
+
+  inside_endpoint_between_rays: LEMMA
+    FORALL (A: simple_polygon_2d, B: ccw_simple_polygon,
+            i: below(B`num_vertices), e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      e`p1 = B`vertices(i) AND point_in_polygon?(e`p2, B) AND
+      (edge_of_polygon?(A)(e) OR edge_of_polygon?(A)(reverse_segment(e)))
+	IMPLIES
+	  point_between_rays?(edges_of_polygon(B)(i),
+ 	                      reverse_segment(
+		                edges_of_polygon(B)(prev_index(B, i))))(e`p2)
+
+  contained_imp_endpoint_between_rays: LEMMA
+    FORALL (A, B: ccw_simple_polygon,
+            i: below(B`num_vertices), e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      polygon_contained?(A, B) AND
+      e`p1 = B`vertices(i) AND
+      e`p2 /= B`vertices(next_index(B, i)) AND
+      e`p2 /= B`vertices(prev_index(B, i)) AND
+      (edge_of_polygon?(A)(e) OR edge_of_polygon?(A)(reverse_segment(e)))
+	IMPLIES
+	  point_between_rays?(edges_of_polygon(B)(i),
+ 	                      reverse_segment(
+		                edges_of_polygon(B)(prev_index(B, i))))(e`p2)
+
+  % This series presents several lemmas dealing with conditions for
+  % edges on A or B being either inside or outside of A or B.
+
+  non_vertex_points_outside_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, q: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND
+      (point_outside_polygon?(e`p1, B) AND q /= e`p2 OR
+       point_outside_polygon?(e`p2, B) AND q /= e`p1) AND
+      point_on_segment?(q, e)
+        IMPLIES point_outside_polygon?(q, B)
+
+  non_vertex_points_inside_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, q: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND
+      (point_in_polygon?(e`p1, B) AND q /= e`p2 OR
+       point_in_polygon?(e`p2, B) AND q /= e`p1) AND
+      point_on_segment?(q, e)
+        IMPLIES point_in_polygon?(q, B)
+
+  non_endpoints_outside_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, p, q: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND point_outside_polygon?(p, B) AND
+      point_on_segment?(p, e) AND point_on_segment?(q, e) AND
+      NOT segment_endpoint?(e)(p) AND NOT segment_endpoint?(e)(q)
+        IMPLIES point_outside_polygon?(q, B)
+
+  non_endpoints_inside_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, p, q: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND point_in_polygon?(p, B) AND
+      point_on_segment?(p, e) AND point_on_segment?(q, e) AND
+      NOT segment_endpoint?(e)(p) AND NOT segment_endpoint?(e)(q)
+        IMPLIES point_in_polygon?(q, B)
+
+  endpoint_outside_or_on_perimeter: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, p, v: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND point_outside_polygon?(p, B) AND
+      segment_endpoint?(e)(v) AND point_on_segment?(p, e)
+        IMPLIES point_outside_polygon?(v, B) OR vertex?(B)(v)
+
+  endpoint_inside_or_on_perimeter: LEMMA
+    FORALL (A, B: simple_polygon_2d, e: segment_2d, p, v: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND point_in_polygon?(p, B) AND
+      segment_endpoint?(e)(v) AND point_on_segment?(p, e)
+        IMPLIES point_in_polygon?(v, B) OR vertex?(B)(v)
+
+  edge_endpoint_inside_or_on_perimeter: LEMMA
+    FORALL (B: simple_polygon_2d, e: segment_2d, p, v: point_2d):
+      segment_endpoint?(e)(v) AND
+      (FORALL (q: point_2d), (s: (edge_of_polygon?(B))):
+        point_on_segment?(q, e) AND point_on_segment?(q, s)
+	  IMPLIES segment_endpoint?(e)(q) AND segment_endpoint?(s)(q)) AND
+      point_in_polygon?(p, B) AND point_on_segment?(p, e)
+        IMPLIES point_in_polygon?(v, B) OR vertex?(B)(v)
+
+  outside_point_on_segment_between_rays: LEMMA
+    FORALL (A: simple_polygon_2d,  B: ccw_simple_polygon,
+            p, q: point_2d, i: below(B`num_vertices), e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND p /= e`p1 AND q /= e`p1 AND
+      e`p1 = B`vertices(i) AND point_outside_polygon?(p, B) AND
+      point_on_segment?(p, e) AND point_on_segment?(q, e)
+	IMPLIES between_rays?(edges_of_polygon(B)(prev_index(B, i)),
+ 	                      edges_of_polygon(B)(i))(q)
+
+  inside_point_on_segment_between_rays: LEMMA
+    FORALL (A: simple_polygon_2d,  B: ccw_simple_polygon,
+            p, q: point_2d, i: below(B`num_vertices), e: segment_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      edge_of_polygon?(A)(e) AND p /= e`p1 AND q /= e`p1 AND
+      e`p1 = B`vertices(i) AND point_in_polygon?(p, B) AND
+      point_on_segment?(p, e) AND
+      point_on_arb_ray?(q, e`p1, ^(e`p2 - e`p1))
+	IMPLIES between_rays?(reverse_segment(edges_of_polygon(B)(i)),
+ 	                      reverse_segment(
+			        edges_of_polygon(B)(prev_index(B, i))))(q)
+
+  extend_vertices_outside_polygon: LEMMA
+    FORALL (A, B: simple_polygon_2d, i: below(A`num_vertices), n: nat):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      (FORALL (k: below(n)):
+         NOT vertex?(B)(A`vertices(rem(A`num_vertices)(k + i)))) AND
+      point_outside_polygon?(A`vertices(i), B)
+        IMPLIES 
+          FORALL (k: below(n)):
+            point_outside_polygon?(A`vertices(rem(A`num_vertices)(k + i)), B)
+
+  % A few invariants are proved to show that polygons A and B have an
+  % intersection when one polygon's perimeter cross that of the other.
+
+  in_out_intersection_vertex_invariant: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, j: below(A`num_vertices)):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(A`vertices(i), B) AND
+      point_in_polygon?(A`vertices(j), B)
+        IMPLIES
+	  LET m = A`num_vertices IN
+          FORALL (k: below(rem(A`num_vertices)(j - i))):
+            (FORALL (l: upto(k)):
+               NOT point_in_polygon?(A`vertices(rem(m)(l + i)), B)) OR
+            (EXISTS (l: upto(k)):
+               0 < l AND vertex?(B)(A`vertices(rem(m)(l + i))))
+
+  in_out_intersection_vertex_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d, i, j: below(A`num_vertices)):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(A`vertices(i), B) AND
+      point_in_polygon?(A`vertices(j), B)
+        IMPLIES EXISTS (k: below(rem(A`num_vertices)(j - i))):
+                  0 < k AND vertex?(B)(A`vertices(rem(A`num_vertices)(k + i)))
+
+  seq_in_out_intersection_vertex_invariant: LEMMA
+    FORALL (S: {S: finseq[point_2d] |
+                   FORALL (i: below(S`length - 1)): S`seq(i) /= S`seq(i + 1)},
+            B: simple_polygon_2d, j: below(S`length - 1), i: below(j - 1)):
+      (FORALL (h: (edge_of_polygon?(B))):
+         seq_only_vertex_intersections?(S, B, h)) AND
+      point_outside_polygon?(S`seq(i), B) AND
+      point_in_polygon?(S`seq(j), B)
+        IMPLIES FORALL (k: upto(j - i)):
+                  (FORALL (l: upto(k)):
+                      NOT point_in_polygon?(S`seq(l + i), B)) OR
+                  (EXISTS (l: upto(k)):
+                      0 < l AND vertex?(B)(S`seq(l + i)))
+
+  seq_in_out_intersection_vertex_exists: LEMMA
+    FORALL (S: {S: finseq[point_2d] |
+                   FORALL (i: below(S`length - 1)): S`seq(i) /= S`seq(i + 1)},
+            B: simple_polygon_2d, j: below(S`length - 1), i: below(j - 1)):
+      (FORALL (h: (edge_of_polygon?(B))):
+         seq_only_vertex_intersections?(S, B, h)) AND
+      point_outside_polygon?(S`seq(i), B) AND
+      point_in_polygon?(S`seq(j), B)
+        IMPLIES EXISTS (k: below(j - i)):
+                  0 < k AND vertex?(B)(S`seq(k + i))
+
+  % Several lemmas are given that show when paths of A (subsequence of
+  % its edges) crosses and enters or exits polygon B.
+
+  path_to_enter_B_invariant: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(p, B) AND point_in_polygon?(q, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          FORALL (k: below(A`num_vertices)):
+            (FORALL (l: upto(k)):
+               NOT point_in_polygon?(A`vertices(rem(m)(l + i)), B)) OR
+            (EXISTS (l: upto(k)):
+	      vertex?(B)(A`vertices(rem(m)(l + i))) AND
+	      segment_enters_polygon_alt?(B,
+	                                  edges_of_polygon(A)(rem(m)(l + i))))
+
+  path_to_enter_B_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(p, B) AND point_in_polygon?(q, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_enters_polygon_alt?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  first_path_to_enter_B_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(p, B) AND point_in_polygon?(q, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+            (FORALL (l: below(k)):
+               NOT point_in_polygon?(A`vertices(rem(m)(l + i)), B)) AND
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_enters_polygon_alt?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  path_to_exit_B_invariant: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND point_in_polygon?(p, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          FORALL (k: below(A`num_vertices)):
+            (FORALL (l: upto(k)):
+               NOT point_outside_polygon?(A`vertices(rem(m)(l + i)), B)) OR
+            (EXISTS (l: upto(k)):
+	      vertex?(B)(A`vertices(rem(m)(l + i))) AND
+	      segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(l + i))))
+
+  path_to_exit_B_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND point_in_polygon?(p, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  first_path_to_exit_B_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND point_in_polygon?(p, B)
+        IMPLIES 
+          LET i = next_index(A, find_index_any(A, p)),
+	      m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+            (FORALL (l: below(k)):
+               NOT point_outside_polygon?(A`vertices(rem(m)(l + i)), B)) AND
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  path_to_exit_B_from_vertex_invariant: LEMMA
+    FORALL (A, B: simple_polygon_2d, p, q: (vertex?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND vertex?(B)(p)
+        IMPLIES 
+          LET i = find_index(A, p), m = A`num_vertices IN
+          FORALL (k: below(A`num_vertices)):
+            (FORALL (l: upto(k)):
+               NOT point_outside_polygon?(A`vertices(rem(m)(l + i)), B)) OR
+            (EXISTS (l: upto(k)):
+	      vertex?(B)(A`vertices(rem(m)(l + i))) AND
+	      segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(l + i))))
+
+  path_to_exit_B_from_vertex_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d, p, q: (vertex?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND vertex?(B)(p)
+        IMPLIES 
+          LET i = find_index(A, p), m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  first_path_to_exit_B_from_vertex_exists: LEMMA
+    FORALL (A, B: simple_polygon_2d, p, q: (vertex?(A))):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      point_outside_polygon?(q, B) AND vertex?(B)(p)
+        IMPLIES 
+          LET i = find_index(A, p), m = A`num_vertices IN
+          EXISTS (k: below(A`num_vertices)):
+            (FORALL (l: below(k)):
+               NOT point_outside_polygon?(A`vertices(rem(m)(l + i)), B)) AND
+	    vertex?(B)(A`vertices(rem(m)(k + i))) AND
+	    segment_exits_polygon?(B, edges_of_polygon(A)(rem(m)(k + i)))
+
+  % When polygons A and B overlap but A doesn't contain B, there must be
+  % a path of A's edges that eventually exits B.
+
+  in_out_for_overlapping_polygons: LEMMA
+    FORALL (A, B: ccw_simple_polygon, p, q: point_2d):
+      (FORALL (h: (edge_of_polygon?(A))):
+         only_vertex_intersections?(B, A, h)) AND
+      NOT polygon_contained?(B, A) AND
+      point_in_polygon?(p, A) AND point_in_polygon?(p, B) AND
+      vertex?(A)(q) AND point_outside_polygon?(q, B)
+        IMPLIES EXISTS (u, v: point_2d, i, j: below(B`num_vertices),
+	                e: (edge_of_polygon?(A))):
+                  vertex?(A)(u) AND u = B`vertices(i) AND
+                  vertex?(A)(v) AND v = B`vertices(j) AND
+		  v = e`p1 AND v /= u AND i /= j AND
+		  between_rays?(edges_of_polygon(B)(prev_index(B, j)),
+ 		                edges_of_polygon(B)(j))(e`p2) AND
+  		  FORALL (w: (vertex?(A))):
+		    on_perimeter_vertex_path?(A, u, v)(w)
+  	              IMPLIES NOT point_outside_polygon?(w, B)
+
+  % Some lemmas to state that merge vertices are endpoints of Am or Bm.
+
+  merge_seq_vertices_always_endpoints: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            Am:ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+            M: finseq[point_2d],
+            e: segment_2d, i: below(M`length - 1), j: below(M`length)):
+      (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+      M = merge_seq(A, B) AND
+      e`p1 = M`seq(i) AND e`p2 = M`seq(i + 1) AND
+      point_on_segment?(M`seq(j), e)
+        IMPLIES M`seq(j) = M`seq(i) OR M`seq(j) = M`seq(i + 1)
+
+  merge_seq_vertices_always_endpoints_Am: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            Am:ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+            M: finseq[point_2d],
+            e: segment_2d, i: below(Am`num_vertices), j: below(M`length)):
+      (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+      M = merge_seq(A, B) AND
+      e = edges_of_polygon(Am)(i) AND
+      point_on_segment?(M`seq(j), e)
+        IMPLIES M`seq(j) = Am`vertices(i) OR
+	        M`seq(j) = Am`vertices(next_index(Am, i))
+
+  merge_seq_vertices_always_endpoints_Bm: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            Am:ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+            M: finseq[point_2d],
+            e: segment_2d, i: below(Bm`num_vertices), j: below(M`length)):
+      (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+      M = merge_seq(A, B) AND
+      e = edges_of_polygon(Bm)(i) AND
+      point_on_segment?(M`seq(j), e)
+        IMPLIES M`seq(j) = Bm`vertices(i) OR
+	        M`seq(j) = Bm`vertices(next_index(Bm, i))
+
+  merge_seq_vertices_always_endpoints_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            Am:ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+            M: finseq[point_2d], e: segment_2d,
+            k: below(M`length), i: below(k), j: upto(k)):
+      (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+      M = merge_seq(A, B) AND
+      uniq_vertex_list?(1 + k)((M ^ (0, k))`seq) AND
+      e = (# p1 := M`seq(i), p2 := M`seq(i + 1) #) AND
+      point_on_segment?(M`seq(j), e)
+        IMPLIES j = i OR j = i + 1
+
+  % Merge vertices have no outgoing edges for i > 0.
+  no_outgoing_edges_from_M: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], s, e: segment_2d, i: below(M`length - 1)):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND i > 0 AND
+	s = (# p1 := M`seq(i - 1), p2 := M`seq(i) #) AND
+	e = (# p1 := M`seq(i), p2 := M`seq(i + 1) #)
+  	  IMPLIES NOT EXISTS (h: segment_2d):
+	                between_rays?(s, e)(h`p2) AND M`seq(i) = h`p1 AND
+	                (edge_of_polygon?(Am)(h) OR edge_of_polygon?(Bm)(h))
+
+  % Merge vertex at i = 0 has no outgoing edges.
+  no_outgoing_edges_from_M_0: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A))):
+      FORALL (Am: ccw_simple_polygon, Bm: (ccw_merge_pre_condition(Am)),
+              M: finseq[point_2d], s, e: segment_2d, w: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	M = merge_seq(A, B) AND
+	w = M`seq(0) + (# x := 0, y := 1 #) AND
+	s = (# p1 := w, p2 := M`seq(0) #) AND
+	e = (# p1 := M`seq(0), p2 := M`seq(1) #)
+  	  IMPLIES NOT EXISTS (h: segment_2d):
+	                between_rays?(s, e)(h`p2) AND M`seq(0) = h`p1 AND
+	                (edge_of_polygon?(Am)(h) OR edge_of_polygon?(Bm)(h))
+
+  merge_initial_segments_do_not_cross: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            k: posnat):
+      LET M = merge_seq(A, B) ^ (0, k - 1) IN
+        k <= merge_seq(A, B)`length AND uniq_vertex_list?(k)(M`seq)
+	  IMPLIES segments_do_not_cross?(M)
+
+  merge_wrapped_segments_do_not_cross: LEMMA
+    FORALL (A: ccw_simple_polygon, B: (ccw_merge_pre_condition(A)),
+            i0: nat, k: posnat):
+      LET M = merge_seq(A, B) IN
+        k < M`length AND i0 + 3 <= k AND
+	uniq_vertex_list?(k)((M ^ (0, k - 1))`seq) AND
+	M`seq(k) = M`seq(i0)
+	  IMPLIES segments_do_not_cross?(M ^ (0, k))
+
+  END merge_well_formed

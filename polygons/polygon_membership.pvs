@@ -1,0 +1,767 @@
+%% -----------------------------------------------------------------------------
+%% polygons_membership.pvs              Dependable Computing
+%% Theory to formalize concepts of polygon point membership.
+%% -----------------------------------------------------------------------------
+
+polygon_membership: THEORY
+  BEGIN
+
+  % This theory formalizes concepts of point membership in polygons
+  % based on three different methods: horizontal edge crossing,
+  % arbitrary-direction edge crossing and the serpentine ray condition
+  % for a point being outside of a polygon. Much of the formalization
+  % appears in several imported theories. This theory ties them
+  % together.
+
+  IMPORTING arb_direc_edge_crossing
+  IMPORTING polygon_miter_sequences
+
+  rem_nonneg: JUDGEMENT
+    FORALL (b: posnat, k: int): rem(b)(k) HAS_TYPE nat
+
+
+  % The serpentine ray method is formalized in this section. A hybrid
+  % geometric object, the serpentine ray, is used to specify when a
+  % point is outside of a polygon. Since this method quantifies over
+  % an infinite domain, it is only usable in proofs and cannot be the
+  % basis for an algorithm. It does, however, provide an effective
+  % way to reason about point membership in certain situations.
+
+  % A serpentine ray has a body of connected line segments and a tail,
+  % which is a ray originating from the last endpoint of the segments.
+
+  serpentine_ray: TYPE =
+    {S: [# body: finseq[point_2d], tail: Normalized #] |
+           S`body`length > 0 AND
+ 	   FORALL (i: below(S`body`length - 1)):
+	     S`body`seq(i) /= S`body`seq(i+1)}
+
+  % A serpentine ray S lies outside of a polygon G when:
+  %   1) none of the segments in S's body intersects G's perimeter, and
+  %   2) none of the points on the tail lies on G's perimeter.
+
+  serp_ray_outside?(S: serpentine_ray, G: simple_polygon_2d): bool =
+    (FORALL (i: below(S`body`length - 1)), (p: point_2d):
+       point_on_segment?(p, (# p1 := S`body`seq(i), p2 := S`body`seq(i+1) #))
+         IMPLIES NOT point_on_polygon_perimeter?(G)(p)) AND
+    (LET origin = S`body`seq(S`body`length - 1) IN
+       FORALL (d: nonneg_real):
+         NOT point_on_polygon_perimeter?(G)(origin + d * S`tail))
+
+  % The main condition states what must be true for a point p to be
+  % outside of a polygon G (not on its perimeter either). There must
+  % exist an s-ray S originating at p that is outside of G.
+
+  point_outside_polygon?(p: point_2d, G: simple_polygon_2d): bool =
+    EXISTS (S: serpentine_ray):
+      serp_ray_outside?(S, G) AND p = S`body`seq(0)
+
+  perimeter_not_outside: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      NOT point_on_polygon_perimeter?(G)(p) OR
+      NOT point_outside_polygon?(p, G)
+
+  % A point p is on an s-ray when it lies on one of the body segments
+  % or on the tail.
+  point_on_serp_ray?(p: point_2d, S: serpentine_ray): bool =
+    (EXISTS (i: below(S`body`length - 1)):
+       point_on_segment?(p, (# p1 := S`body`seq(i),
+                               p2 := S`body`seq(i+1) #))) OR
+    point_on_arb_ray?(p, S`body`seq(S`body`length - 1), S`tail)
+
+  % When S is outside of G, all points on S are outside.
+  downstream_point_outside: LEMMA
+    FORALL (G: simple_polygon_2d, S: serpentine_ray):
+      serp_ray_outside?(S, G) IMPLIES
+        FORALL (q: point_2d):
+	  point_on_serp_ray?(q, S) IMPLIES point_outside_polygon?(q, G)
+
+  % Point membership holds for both G and its reverse polygon.
+
+  pt_inside_imp_inside_rev_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      point_in_polygon?(p, G) IMPLIES point_in_polygon?(p, reverse_polygon(G))
+
+  pt_inside_eqv_inside_rev_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      point_in_polygon?(p, G) IFF point_in_polygon?(p, reverse_polygon(G))
+
+  pt_outside_eqv_outside_rev_polygon: LEMMA
+    FORALL (G: simple_polygon_2d, p: point_2d):
+      point_outside_polygon?(p, G) IFF
+      point_outside_polygon?(p, reverse_polygon(G))
+
+  % These definitions and lemmas concern properties of points lying
+  % near polygon edges and lying on perpendiculars off those edges.
+  % The notion of "nearby" is defined by bounds involving offset
+  % distances.
+
+  rightward_nearby_points_outside?(G: simple_polygon_2d,
+                                   i: below(G`num_vertices)): bool =
+    LET e = edges_of_polygon(G)(i) IN
+      FORALL (d: posreal):
+        d <= outward_edge_offset_dist(G) IMPLIES
+          point_outside_polygon?(rightward_segment_offset(e, d), G)
+
+  leftward_nearby_points_inside?(G: simple_polygon_2d,
+                                 i: below(G`num_vertices)): bool =
+    LET e = edges_of_polygon(G)(i) IN
+      FORALL (d: posreal):
+        d <= inward_edge_offset_dist(G) IMPLIES
+          point_in_polygon?(leftward_segment_offset(e, d), G)
+
+  prev_edge_not_crossed_by_perp_left_segment: LEMMA
+    FORALL (G: simple_polygon_2d, e: segment_2d, i: below(G`num_vertices),
+            p: point_2d, v: Normalized, d: posreal):
+      e = edges_of_polygon(G)(i) AND d <= 1 AND
+      v = ^(perp_left(e`p2 - e`p1)) AND
+      p = segment_midpoint(e) + d * outward_edge_offset_dist(G) * v
+        IMPLIES NOT point_on_segment?(p, edges_of_polygon(G)(prev_index(G, i)))
+
+  prev_edge_not_crossed_by_perp_right_segment: LEMMA
+    FORALL (G: simple_polygon_2d, e: segment_2d, i: below(G`num_vertices),
+            p: point_2d, v: Normalized, d: posreal):
+      e = edges_of_polygon(G)(i) AND d <= 1 AND
+      v = ^(perp_right(e`p2 - e`p1)) AND
+      p = segment_midpoint(e) + d * inward_edge_offset_dist(G) * v
+        IMPLIES NOT point_on_segment?(p, edges_of_polygon(G)(prev_index(G, i)))
+
+  next_edge_not_crossed_by_perp_left_segment: LEMMA
+    FORALL (G: simple_polygon_2d, e: segment_2d, i: below(G`num_vertices),
+            p: point_2d, v: Normalized, d: posreal):
+      e = edges_of_polygon(G)(i) AND d <= 1 AND
+      v = ^(perp_left(e`p1 - e`p2)) AND
+      p = segment_midpoint(e) + d * inward_edge_offset_dist(G) * v
+        IMPLIES NOT point_on_segment?(p, edges_of_polygon(G)(next_index(G, i)))
+
+  next_edge_not_crossed_by_perp_right_segment: LEMMA
+    FORALL (G: simple_polygon_2d, e: segment_2d, i: below(G`num_vertices),
+            p: point_2d, v: Normalized, d: posreal):
+      e = edges_of_polygon(G)(i) AND d <= 1 AND
+      v = ^(perp_right(e`p1 - e`p2)) AND
+      p = segment_midpoint(e) + d * outward_edge_offset_dist(G) * v
+        IMPLIES NOT point_on_segment?(p, edges_of_polygon(G)(next_index(G, i)))
+
+  nearby_perp_right_segment_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i),
+          c = inward_edge_offset_dist(G),
+	  m = segment_midpoint(e),
+	  q = m + d * c * ^(perp_right(e`p2 - e`p1))
+      IN d <= 1 IMPLIES NOT point_on_polygon_perimeter?(G)(q)
+
+  nearby_perp_left_segment_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i),
+          c = outward_edge_offset_dist(G),
+	  m = segment_midpoint(e),
+	  p = m + d * c * ^(perp_left(e`p2 - e`p1))
+      IN d <= 1 IMPLIES NOT point_on_polygon_perimeter?(G)(p)
+
+  rightward_offset_pt_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) IMPLIES
+          NOT point_on_polygon_perimeter?(G)(rightward_segment_offset(e, d))
+
+  leftward_offset_pt_not_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) IMPLIES
+          NOT point_on_polygon_perimeter?(G)(leftward_segment_offset(e, d))
+
+  % Two definitions specify when a point on a segment endpoint sequence
+  % is inside/outside of a polygon.
+
+  segment_seq_outside?(S: segment_endpoint_seq, G: simple_polygon_2d): bool =
+    FORALL (p: point_2d):
+      point_on_segment_seq?(p, S) IMPLIES point_outside_polygon?(p, G)
+
+  segment_seq_inside?(S: segment_endpoint_seq, G: simple_polygon_2d): bool =
+    FORALL (p: point_2d):
+      point_on_segment_seq?(p, S) IMPLIES point_in_polygon?(p, G)
+
+  % Paths of polygon edges or vertices can be characterized by
+  % starting and ending vertices. Two methods of formalizing such
+  % paths are provided.
+
+  % In the first method, the remainder function gives us index values
+  % for all edges and vertices along a path. Predicate functions make
+  % use of this approach so that an explicit path need not be
+  % constructed.
+
+  % Given two vertices u and v, determine if a point p lies on the
+  % perimeter anywhere from u to v.
+  on_perimeter_edge_path?(G: simple_polygon_2d, u, v: (vertex?(G)))
+                         (p: point_2d): bool =
+    u = v AND p = u OR
+    LET i = find_index(G, u),
+        j = find_index(G, v),
+	n = G`num_vertices,
+	len = rem(n)(n + j - i) IN
+      EXISTS (k: below(len)):
+        point_on_segment?(p, edges_of_polygon(G)(rem(n)(i + k)))
+
+  % Given two vertices u and v, determine if a vertex w lies on the
+  % perimeter anywhere from u to v, inclusive.
+  on_perimeter_vertex_path?(G: simple_polygon_2d, u, v: (vertex?(G)))
+                           (w: (vertex?(G))): bool =
+    u = v AND w = u OR
+    LET i = find_index(G, u),
+        j = find_index(G, v),
+	n = G`num_vertices,
+	len = 1 + rem(n)(n + j - i) IN
+      EXISTS (k: below(len)): w = G`vertices(rem(n)(i + k))
+
+  % The second path method constructs explicit paths expressed as
+  % segment endpoint sequences. Operations on these sequences are
+  % also provided.
+
+  % Construct a sequence of endpoints for a path of segments traversing
+  % from p to q along a polygon perimeter.  Points p and q can lie on
+  % the interiors of edges, so the initial and final segments may be
+  % only partial edges.
+  perimeter_segment_path(G: simple_polygon_2d,
+                         p, q: (point_on_polygon_perimeter?(G))):
+  			segment_endpoint_seq =
+    LET i = find_index_any(G, p),
+        j = find_index_any(G, q),
+	len = IF i = j AND
+	         norm(p - G`vertices(i)) > norm(q - G`vertices(i)) THEN
+	        G`num_vertices
+              ELSE
+                rem(G`num_vertices)(j - i)
+	      ENDIF IN
+    IF (p = q) THEN
+      (# length := 1, seq := LAMBDA (i: below(1)): p #)
+    ELSE 
+      IF p = G`vertices(next_index(G, i)) THEN 
+        empty_seq
+	    ELSE
+        (# length := 1, seq := LAMBDA (i: below(1)): p #)
+	    ENDIF
+       o
+      (# length := len,
+	          seq := LAMBDA (k: below(len)):
+	                  G`vertices(rem(G`num_vertices)(i + 1 + k)) #)
+       o
+      IF q = G`vertices(j) THEN
+        empty_seq
+	    ELSE
+        (# length := 1, seq := LAMBDA (i: below(1)): q #)
+	    ENDIF
+    ENDIF
+    
+  initial_point_perimeter_segment_path: LEMMA
+    FORALL (G: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(G))):
+      perimeter_segment_path(G, p, q)`seq(0) = p
+    
+  final_point_perimeter_segment_path: LEMMA
+    FORALL (G: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(G))):
+      LET S = perimeter_segment_path(G, p, q) IN
+        S`seq(S`length - 1) = q
+
+  % Every point on a perimeter path must lie on the perimeter.
+  perim_segment_path_on_perim: LEMMA
+    FORALL (G: simple_polygon_2d,
+            p, q: (point_on_polygon_perimeter?(G))):
+      FORALL (u: point_2d):
+        point_on_segment_seq?(u, perimeter_segment_path(G, p, q))
+	  IMPLIES point_on_polygon_perimeter?(G)(u)
+
+  % This operation prepends a point sequence to an s-ray to produce
+  % a longer s-ray.
+  append_path_to_s_ray(R: segment_endpoint_seq,
+                       S: {S: serpentine_ray |
+		           R`seq(R`length - 1) = S`body`seq(0)}):
+                      serpentine_ray =
+    (# body := R ^^ (0, R`length - 1) o S`body, tail := S`tail #)
+
+  % If point p lies on s-ray S, this operation produces a point sequence
+  % from the initial point of S through p. The sequence can be viewed as
+  % a prefix of S.
+  truncated_serp_ray(S: serpentine_ray,
+                     p: {p: point_2d | point_on_serp_ray?(p, S)}):
+		    segment_endpoint_seq =
+    LET singleton = (# length := 1, seq := LAMBDA (i: below(1)): p #) IN
+    IF EXISTS (d: posreal): p = S`body`seq(S`body`length - 1) + d * S`tail
+      THEN S`body o singleton
+    ELSIF S`body`length = 1
+      THEN singleton
+      ELSE LET J = {j: below(S`body`length - 1) |
+                    point_on_segment?(p, (# p1 := S`body`seq(j),
+		                            p2 := S`body`seq(j+1) #))},
+               i = choose[below(S`body`length - 1)](J)
+	   IN IF p = S`body`seq(i)
+	        THEN S`body ^ (0, i)
+		ELSE S`body ^ (0, i) o singleton
+              ENDIF
+    ENDIF
+
+  initial_point_append_path_to_s_ray: LEMMA
+    FORALL (R: segment_endpoint_seq,
+            S: {S: serpentine_ray | R`seq(R`length - 1) = S`body`seq(0)}):
+      append_path_to_s_ray(R, S)`body`seq(0) = R`seq(0)
+
+  % Given s-ray S that is outside of G and endpoint sequence R, if no
+  % segments in R intersect G`s perimeter, then the extended s-ray is
+  % likewise outside of G.
+  append_outside_seq_to_s_ray: LEMMA
+    FORALL (G: simple_polygon_2d,
+            R: segment_endpoint_seq,
+            S: {S: serpentine_ray | R`seq(R`length - 1) = S`body`seq(0)}):
+      (FORALL (p: point_2d):
+        point_on_segment_seq?(p, R) IMPLIES
+	  NOT point_on_polygon_perimeter?(G)(p)) AND
+      serp_ray_outside?(S, G)
+        IMPLIES serp_ray_outside?(append_path_to_s_ray(R, S), G)
+
+  initial_point_of_truncated_s_ray: LEMMA
+    FORALL (S: serpentine_ray,
+            p: {p: point_2d | point_on_serp_ray?(p, S)}):
+      truncated_serp_ray(S, p)`seq(0) = S`body`seq(0)
+
+  point_on_truncated_s_ray_on_s_ray: LEMMA
+    FORALL (S: serpentine_ray,
+            p: {p: point_2d | point_on_serp_ray?(p, S)}):
+      FORALL (q: point_2d):
+        point_on_segment_seq?(q, truncated_serp_ray(S, p))
+	  IMPLIES point_on_serp_ray?(q, S)
+
+  % If S is outside of G, then every truncation of S is also outside.
+  truncated_s_ray_outside: LEMMA
+    FORALL (G: simple_polygon_2d,
+            S: serpentine_ray,
+            p: {p: point_2d | point_on_serp_ray?(p, S)}):
+      serp_ray_outside?(S, G) IMPLIES
+        segment_seq_outside?(truncated_serp_ray(S, p), G)
+
+  % In theories horiz_edge_crossing and arb_direc_edge_crossing,
+  % two crossing-number methods for determining point membership
+  % are formalized. Here we draw on those definitions and properties
+  % to complete the polygon membership story and characterize the
+  % relationships that connect these methods.
+
+  % First we state a special case of the equivalence of the horizontal and
+  % arbitrary-direction methods for edge crossing. This case applies when
+  % the arbitrary direction is the rightward horizontal direction.
+  % Equivalence in this special case has been proved.
+
+  point_in_polygon_conds_equiv_horiz: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IFF point_in_polygon_arb?(p, (1, 0), G)
+
+  % Proving equivalence in the general case is nontrivial. For now we
+  % state it as an axiom becuase it is a well-known result. A proof for
+  % this result might be added later. In the meantime, we have encoded
+  % the PVS definitions and the axiom in Python, then confirmed the
+  % equivalence via testing. We ran a million test cases using random
+  % points and random directions. The test polygon has 23 vertices and
+  % its edges provide opportunities for as many as 10 crossings.
+
+  point_in_polygon_conds_equiv: AXIOM 
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IFF point_in_polygon_arb?(p, v, G)
+
+  % In the next few lemmas, we provide ways to infer that the points
+  % on a segment are inside/outside of a polygon when one point on the
+  % segment is inside/outside and the segment does not intersect the
+  % polygon perimeter.
+
+  extend_points_inside_polygon: LEMMA
+    FORALL (p: point_2d, e: segment_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND p = e`p1 AND
+      (FORALL (q: point_2d):
+         point_on_segment?(q, e) IMPLIES NOT point_on_polygon_perimeter?(G)(q))
+       IMPLIES FORALL (q: point_2d):
+                  point_on_segment?(q, e) IMPLIES point_in_polygon?(q, G)
+
+  extend_points_inside_polygon_excl: LEMMA
+    FORALL (p: point_2d, e: segment_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND p = e`p1 AND
+      (FORALL (q: point_2d):
+         point_on_segment?(q, e) AND q /= e`p2
+           IMPLIES NOT point_on_polygon_perimeter?(G)(q))
+       IMPLIES FORALL (q: point_2d):
+                  point_on_segment?(q, e) AND q /= e`p2
+                    IMPLIES point_in_polygon?(q, G)
+
+  extend_points_outside_polygon: LEMMA
+    FORALL (p: point_2d, e: segment_2d, G: simple_polygon_2d):
+      point_outside_polygon?(p, G) AND p = e`p1 AND
+      (FORALL (q: point_2d):
+         point_on_segment?(q, e) IMPLIES NOT point_on_polygon_perimeter?(G)(q))
+       IMPLIES FORALL (q: point_2d):
+                  point_on_segment?(q, e) IMPLIES point_outside_polygon?(q, G)
+
+  extend_points_outside_polygon_excl: LEMMA
+    FORALL (p: point_2d, e: segment_2d, G: simple_polygon_2d):
+      point_outside_polygon?(p, G) AND p = e`p1 AND
+      (FORALL (q: point_2d):
+         point_on_segment?(q, e) AND q /= e`p2
+	   IMPLIES NOT point_on_polygon_perimeter?(G)(q))
+       IMPLIES FORALL (q: point_2d):
+                  point_on_segment?(q, e) AND q /= e`p2
+		    IMPLIES point_outside_polygon?(q, G)
+
+  % Similar results are provided for segment sequences.
+
+  point_out_pts_on_non_perim_path_out: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, S: segment_endpoint_seq):
+      point_outside_polygon?(p, G) AND p = S`seq(0) AND
+      (FORALL (q: point_2d): point_on_segment_seq?(q, S) IMPLIES
+                             NOT point_on_polygon_perimeter?(G)(q))
+        IMPLIES segment_seq_outside?(S, G)
+
+  point_in_pts_on_non_perim_path_in: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d,
+            S: segment_endpoint_seq, n: posnat):
+      point_in_polygon?(p, G) AND p = S`seq(0) AND S`length <= n AND
+      (FORALL (q: point_2d): point_on_segment_seq?(q, S) IMPLIES
+                             NOT point_on_polygon_perimeter?(G)(q))
+        IMPLIES segment_seq_inside?(S, G)
+
+
+  % Whether the miter point of the topleft vertex is inside or outside
+  % is determined by the polygon's vertex order.
+  topleft_miter_point_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, d: posreal):
+      LET S = polygon_vertex_seq(G),
+          i = topleft_vertex_idx(G),
+       	  mp = miter_point(G`vertices(i),
+                           G`vertices(prev_index(G, i)),
+                           G`vertices(next_index(G, i)),
+                           d)
+      IN d <= max_miter_offset(S) IMPLIES
+           IF ccw_vertex_order?(G)
+             THEN point_outside_polygon?(mp, G)
+	     ELSE point_in_polygon?(mp, G)
+	   ENDIF
+
+  % The previous result is extended to the full polygon miter sequence.
+  polygon_miter_sequence_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, d: posreal):
+      LET S = polygon_vertex_seq(G) IN
+        d <= max_miter_offset(S) IMPLIES
+          LET MS = closed_miter_point_seq(S, d) IN
+            IF ccw_vertex_order?(G)
+              THEN segment_seq_outside?(MS, G)
+	      ELSE segment_seq_inside?(MS, G)
+	    ENDIF
+
+  % Two lemmas provide a key property about the nearest rightward
+  % crossing. Let e be the edge at the nearest crossing from p.
+  % There is a relationship connecting three items:
+  %   1) whether edge e is rising or falling
+  %   2) whether G has a CCW vertex order
+  %   3) whether p is inside or outside of G.
+
+  falling_edge_imp_ccw_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p)
+      IN segment_falling?(edges_of_polygon(G)(i)) IMPLIES
+         IF ccw_vertex_order?(G)
+	   THEN point_outside_polygon?(p, G)
+	   ELSE point_in_polygon?(p, G)
+	 ENDIF
+
+  ccw_imp_falling_edge_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p)
+      IN ccw_vertex_order?(G) IMPLIES
+         IF segment_falling?(edges_of_polygon(G)(i))
+	   THEN point_outside_polygon?(p, G)
+	   ELSE point_in_polygon?(p, G)
+	 ENDIF
+
+  % Every point inside of a polygon must have a rightward crossing.
+  point_in_has_rightward_crossings: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IMPLIES has_rightward_crossings?(G)(p)
+
+  % These lemmas derive the equivalence of the serpentine ray method
+  % and the horizontal edge crossing method.
+
+  point_outside_imp_not_inside: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d, n: posnat):
+      (EXISTS (S: serpentine_ray):
+         serp_ray_outside?(S, G) AND p = S`body`seq(0) AND S`body`length <= n)
+      IMPLIES NOT point_in_polygon?(p, G)
+
+  point_outside_imp_not_in: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_outside_polygon?(p, G) IMPLIES NOT point_in_polygon?(p, G)
+
+  point_not_in_imp_outside: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      NOT point_in_polygon?(p, G) IMPLIES
+        point_on_polygon_perimeter?(G)(p) OR point_outside_polygon?(p, G)
+
+  % This is the key result showing the equivalence:
+
+  point_out_not_in: THEOREM
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      NOT point_in_polygon?(p, G) IFF
+      (point_on_polygon_perimeter?(G)(p) OR point_outside_polygon?(p, G))
+
+  % If two polygons have the same perimeter points, even though their
+  % vertex lists might be rotated or reversed, they have the same
+  % interior and exterior point sets.
+
+  same_perim_pts_imp_same_exterior_pts: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (p: point_2d): point_on_polygon_perimeter?(A)(p) IFF
+                             point_on_polygon_perimeter?(B)(p))
+        IMPLIES
+          FORALL (q: point_2d):
+            point_outside_polygon?(q, A) IFF point_outside_polygon?(q, B)
+
+  same_perim_pts_imp_same_interior_pts: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (p: point_2d): point_on_polygon_perimeter?(A)(p) IFF
+                             point_on_polygon_perimeter?(B)(p))
+        IMPLIES
+          FORALL (q: point_2d):
+            point_in_polygon?(q, A) IFF point_in_polygon?(q, B)
+
+  % Two more lemmas relating CCW and falling crossing edges.
+
+  falling_edge_ccw_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p)
+      IN segment_falling?(edges_of_polygon(G)(i)) IFF
+         IF ccw_vertex_order?(G)
+	   THEN point_outside_polygon?(p, G)
+	   ELSE point_in_polygon?(p, G)
+	 ENDIF
+
+  ccw_falling_edge_in_or_out: LEMMA
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p)
+      IN ccw_vertex_order?(G) IFF
+         IF segment_falling?(edges_of_polygon(G)(i))
+	   THEN point_outside_polygon?(p, G)
+	   ELSE point_in_polygon?(p, G)
+	 ENDIF
+
+  % This result integrates those of several preceding lemmas. It provides
+  % a way to determin whether a point is inside or outside of a polygon
+  % based on the edge at the nearest crossing.
+
+  nearest_rightward_crossing_in_or_out: THEOREM
+    FORALL (G: simple_polygon_2d, p: (has_rightward_crossings?(G))):
+      LET i = rightward_crossing_index(G, p),
+          e = edges_of_polygon(G)(i) IN
+        IF ccw_vertex_order?(G) IFF segment_falling?(e)
+          THEN point_outside_polygon?(p, G)
+          ELSE point_in_polygon?(p, G)
+        ENDIF
+
+  % This lemma provides an inverse result. It states that if p in inside
+  % of G and q is on its perimeter, then there must exist a sequence of
+  % segments starting at p and ending at q that lies entirely inside of
+  % G, except for the point q.
+
+  point_in_has_inside_segments: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IMPLIES
+        FORALL (q: (point_on_polygon_perimeter?(G))):
+	  EXISTS (S: segment_endpoint_seq):
+            S`seq(0) = p AND S`seq(S`length - 1) = q AND
+	    FORALL (r: point_2d):
+	      r /= q AND point_on_segment_seq?(r, S)
+                IMPLIES point_in_polygon?(r, G)
+
+  % This group of lemmas adds a few properties stating various
+  % inside-outside relationships.
+
+  point_outside_not_in_polygon_arb: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      point_outside_polygon?(p + d * v, G) IMPLIES
+        NOT point_in_polygon_arb?(p + d * v, v, G)
+
+  point_outside_not_in_polygon_arb_neg: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      point_outside_polygon?(p - d * v, G) IMPLIES
+        NOT point_in_polygon_arb?(p - d * v, v, G)
+
+  left_right_midpoints_in_out: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) AND
+        point_in_polygon?(leftward_segment_offset(e, d), G)
+          IMPLIES point_outside_polygon?(rightward_segment_offset(e, d), G)
+
+  right_left_midpoints_in_out: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) AND
+        point_in_polygon?(rightward_segment_offset(e, d), G)
+          IMPLIES point_outside_polygon?(leftward_segment_offset(e, d), G)
+
+  left_right_midpoints_out_in: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) AND
+        point_outside_polygon?(leftward_segment_offset(e, d), G)
+          IMPLIES point_in_polygon?(rightward_segment_offset(e, d), G)
+
+  right_left_midpoints_out_in: LEMMA
+    FORALL (G: simple_polygon_2d, i: below(G`num_vertices), d: posreal):
+      LET e = edges_of_polygon(G)(i) IN
+        d <= in_out_edge_offset_dist(G) AND
+        point_outside_polygon?(rightward_segment_offset(e, d), G)
+          IMPLIES point_in_polygon?(leftward_segment_offset(e, d), G)
+
+
+  % This next group of lemmas helps round out the formalization of the
+  % arbitrary-direction crossing method.
+
+  counted_crossing_direction_exists: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_on_polygon_perimeter?(G)(p) IMPLIES
+        EXISTS (v: Normalized): counted_crossing_direction?(p, G)(v)
+
+  free_ray_point_outside: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      empty?[real](all_arb_intersections(p, v, G)) IMPLIES
+        FORALL (d: posreal): point_outside_polygon?(p + d * v, G)
+
+  only_parallel_ray_point_outside: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      counted_crossing_direction?(p, G)(v) AND
+      empty?[real](key_arb_intersections(p, v, G)) AND
+      NOT empty?[real](parallel_intersections(p, v, G)) AND
+      d < min[real, <=](parallel_intersections(p, v, G))
+        IMPLIES point_outside_polygon?(p + d * v, G)
+
+  one_dir_empty_intersections: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      empty?[real](key_arb_intersections(p, -v, G)) IMPLIES
+        NOT empty?[real](key_arb_intersections(p, v, G))
+
+  one_dir_empty_point_outside: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      empty?[real](key_arb_intersections(p, -v, G))
+        IMPLIES NOT odd?(card(arb_crossing_set(p, v, G)))
+
+  one_dir_out_other_in_polygon: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d, d: posreal):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT odd?(card(arb_crossing_set(p, v, G))) AND
+      NOT empty?[real](key_arb_intersections(p, v, G)) AND
+      d < min[real, <=](key_arb_intersections(p, v, G)) AND
+      (empty?[real](parallel_intersections(p, v, G)) OR
+       d < min[real, <=](parallel_intersections(p, v, G)))
+        IMPLIES point_in_polygon_arb?(p + d * v, v, G)
+
+  opposite_sides_of_crossing_arb: LEMMA
+    FORALL (p: point_2d, v: Normalized, G: simple_polygon_2d):
+      counted_crossing_direction?(p, G)(v) AND
+      NOT empty?[real](all_arb_intersections(p, v, G)) AND
+      NOT empty?[real](all_arb_intersections(p, -v, G))
+        IMPLIES
+	  (FORALL (d1, d2: posreal):
+             d1 < min[real, <=](all_arb_intersections(p, v, G)) AND
+             d2 < min[real, <=](all_arb_intersections(p, -v, G))
+               IMPLIES point_in_polygon_arb?(p - d2 * v, v, G) AND
+	               point_outside_polygon?(p + d1 * v, G)) OR
+	  (FORALL (d1, d2: posreal):
+             d1 < min[real, <=](all_arb_intersections(p, v, G)) AND
+             d2 < min[real, <=](all_arb_intersections(p, -v, G))
+               IMPLIES point_outside_polygon?(p - d2 * v, G) AND
+	               point_in_polygon_arb?(p + d1 * v, v, G))
+
+  nearby_point_outside_exists_either: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_on_polygon_perimeter?(G)(p) IMPLIES
+        EXISTS (a, b: posreal, v: Normalized):
+          ((FORALL (c, d: posreal):
+	      c < a AND d < b IMPLIES
+	          point_outside_polygon?(p + c * v, G) AND
+                  point_in_polygon_arb?(p - d * v, v, G)) OR
+           (FORALL (c, d: posreal):
+	      c < a AND d < b IMPLIES
+	           point_in_polygon_arb?(p + c * v, v, G) AND
+                   point_outside_polygon?(p - d * v, G)))
+          AND counted_crossing_direction?(p, G)(v)
+
+  nearby_point_outside_exists: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_on_polygon_perimeter?(G)(p) IMPLIES
+        EXISTS (a, b: posreal, v: Normalized):
+          (FORALL (c, d: posreal):
+	     c < a AND d < b IMPLIES
+	         point_outside_polygon?(p + c * v, G) AND
+	           point_in_polygon_arb?(p - d * v, v, G))
+          AND counted_crossing_direction?(p, G)(v)
+
+  nearby_point_in_polygon: LEMMA
+    FORALL (p: point_2d, v: Normalized, d: nonneg_real, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND
+      NOT point_on_polygon_perimeter?(G)(p + d * v) AND
+      NOT empty?[point_2d](arb_crossing_set(p, v, G)) AND
+      d < min[real, <=](key_arb_intersections(p, v, G))
+        IMPLIES point_in_polygon?(p + d * v, G)
+
+  % The preceding lemmas describe properties about a single polygon.
+  % The remaining lemmas describe relationships between two polygons.
+
+  A_perim_outside_imp_B_perim_inside: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      (FORALL (p: point_2d):
+         point_on_polygon_perimeter?(A)(p) IMPLIES
+           point_outside_polygon?(p, B)) AND
+      (EXISTS (u: point_2d): point_in_polygon?(u, A) AND
+         (point_in_polygon?(u, B) OR point_on_polygon_perimeter?(B)(u)))
+      IMPLIES
+        FORALL (q: point_2d):
+	  point_on_polygon_perimeter?(B)(q) IMPLIES point_in_polygon?(q, A)
+
+  overlap_imp_inside_pt_on_perim: LEMMA
+    FORALL (A, B: simple_polygon_2d, p: point_2d):
+      NOT polygon_contained?(B, A) AND
+      point_in_polygon?(p, A) AND point_in_polygon?(p, B)
+        IMPLIES EXISTS (r: (point_on_polygon_perimeter?(A))):
+	          point_in_polygon?(r, B)
+
+  outside_C_inside_A: LEMMA
+    FORALL (p: point_2d, A, C: simple_polygon_2d):
+      point_on_polygon_perimeter?(C)(p) AND point_in_polygon?(p, A)
+        IMPLIES EXISTS (q: point_2d):
+	          point_in_polygon?(q, A) AND point_outside_polygon?(q, C)
+
+  container_edges_not_inside: LEMMA
+    FORALL (A, C: simple_polygon_2d):
+      polygon_contained?(A, C) IMPLIES
+        FORALL (p: point_2d), (e: (edge_of_polygon?(C))):
+	  point_on_segment?(p, e) IMPLIES NOT point_in_polygon?(p, A)
+
+  contained_not_on_perimeter: LEMMA
+    FORALL (p: point_2d, A, C: simple_polygon_2d):
+      polygon_contained?(A, C) AND point_in_polygon?(p, A)
+        IMPLIES NOT point_on_polygon_perimeter?(C)(p)
+
+  % Main theorems about contained polygons and point membership.
+  % The first can be viewed as edge containment implies point containment.
+  % The second is a corollary that swaps outside for inside.
+
+  contained_membership: THEOREM
+    FORALL (p: point_2d, A, C: simple_polygon_2d):
+      polygon_contained?(A, C) AND point_in_polygon?(p, A)
+        IMPLIES point_in_polygon?(p, C)
+
+
+  contained_membership_cor: THEOREM
+    FORALL (p: point_2d, A, C: simple_polygon_2d):
+      polygon_contained?(A, C) AND point_outside_polygon?(p, C)
+        IMPLIES point_outside_polygon?(p, A)
+
+END polygon_membership
+
+

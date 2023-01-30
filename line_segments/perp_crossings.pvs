@@ -1,0 +1,684 @@
+%% -----------------------------------------------------------------------------
+%% perp_crossings.pvs              Dependable Computing
+%% Formalization of line and segment crossings and special properties of
+%% perpendicular crossings.
+%% -----------------------------------------------------------------------------
+
+perp_crossings : THEORY
+
+  BEGIN
+
+  IMPORTING segments_2d
+
+  endpoint_diff_nonzero_1: JUDGEMENT
+    FORALL (s: segment_2d): s`p2 - s`p1 HAS_TYPE Nz_vector
+
+  endpoint_diff_nonzero_2: JUDGEMENT
+    FORALL (s: segment_2d): s`p1 - s`p2 HAS_TYPE Nz_vector
+  
+  % Treat 2 line segments as infinite lines and determine where
+  % they cross. Return None if the line segments are parallel.
+  % From Wikipedia's article on line-line intersection 
+ line_crossing(s, e: segment_2d): Maybe[point_2d] =
+    LET denom = (s`p1`x - s`p2`x) * (e`p1`y - e`p2`y) -
+      (s`p1`y - s`p2`y) * (e`p1`x - e`p2`x) IN
+    IF denom = 0 THEN
+      None
+    ELSE
+      LET x = ((s`p1`x * s`p2`y - s`p1`y * s`p2`x) * (e`p1`x - e`p2`x) -
+               (s`p1`x - s`p2`x) * (e`p1`x * e`p2`y - e`p1`y * e`p2`x)) / denom,
+          y = ((s`p1`x * s`p2`y - s`p1`y * s`p2`x) * (e`p1`y - e`p2`y) -
+               (s`p1`y - s`p2`y) * (e`p1`x * e`p2`y - e`p1`y * e`p2`x)) / denom
+      IN
+        (# x := x, y := y #)
+    ENDIF;
+
+ % This is the same as line_crossing without the cross product terms expanded.
+ line_crossing_alt(s, e: segment_2d): Maybe[point_2d] =
+    LET ds = s`p1 - s`p2, de = e`p1 - e`p2, denom = cross(ds, de) IN
+      IF denom = 0 THEN
+        None
+      ELSE
+        (cross(s`p1, s`p2) / denom) * de - (cross(e`p1, e`p2) / denom) * ds
+      ENDIF;
+
+  line_crossing_eq_line_crossing_alt: LEMMA
+    FORALL(s, e: segment_2d):
+      line_crossing(s, e) = line_crossing_alt(s, e)
+
+  % Here is a third definition of line crossing point.
+  % It's based on "intersect_pt" from the theory
+  % vectors@intersections_2D in the NASA Library.
+  line_crossing_alt2(s, e: segment_2d): Maybe[point_2d] =
+    LET ds = s`p2 - s`p1, de = e`p2 - e`p1, denom = cross(ds, de) IN
+      IF denom = 0 THEN
+        None
+      ELSE
+        s`p1 + (cross(e`p1 - s`p1, e`p2 - e`p1) / denom) * ds
+      ENDIF;
+
+  line_crossing_alt_eq_line_crossing_alt2: LEMMA
+    FORALL(s, e: segment_2d):
+      line_crossing_alt(s, e) = line_crossing_alt2(s, e)
+
+  no_line_crossing_eqv_parallel_or_collinear: LEMMA
+    FORALL(s, e: segment_2d):
+      line_crossing(s, e) = None IFF (parallel?(s)(e) OR collinear?(s, e))
+  
+  line_crossing_commutative: LEMMA
+    FORALL(s, e: segment_2d):
+      line_crossing(s, e) = line_crossing(e, s);
+  
+  line_crossing_reverse: LEMMA
+    FORALL(s, e: segment_2d):
+      line_crossing(s, e) = line_crossing(s, reverse_segment(e));
+
+  % Crossing point is on both lines. Use commutativity to get property for e.
+  line_crossing_on_line: LEMMA
+    FORALL (s, e: segment_2d):
+      LET line_xing: Maybe[point_2d] = line_crossing(s, e) IN
+        line_xing = None OR
+        EXISTS (k: real): val(line_xing) = s`p1 + k * (s`p2 - s`p1)
+
+  % Returns true if the line determined by the end points of line segment s
+  % intersects the line segment e, including if the two line segments
+  % themselves intersect.
+  extending_s_crosses_e(s, e: segment_2d): bool =
+    LET line_xing: Maybe[point_2d] = line_crossing(s, e) IN
+    IF line_xing = None THEN
+      FALSE
+    ELSE
+      point_on_segment?(val(line_xing), e)
+    ENDIF;
+
+  collinear_imp_not_extending_crosses: LEMMA
+    FORALL (s, e: segment_2d):
+      collinear?(s, e) IMPLIES NOT extending_s_crosses_e(s, e)
+
+  % Next two lemmas and their proofs are based on "intersection_lem"
+  % and "intersection_pt_unique" from the theory
+  % vectors@intersections_2D in the NASA Library.
+  intersection_point_for_each_line: LEMMA
+    FORALL(s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET delta = e`p1 - s`p1,
+	    denom = cross(s`p2 - s`p1, e`p2 - e`p1),
+	    s_t = cross(delta, e`p2 - e`p1) / denom,
+	    e_t = cross(delta, s`p2 - s`p1) / denom
+	IN s`p1 + s_t * (s`p2 - s`p1) = e`p1 + e_t * (e`p2 - e`p1)
+
+  line_crossing_is_unique: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) AND
+      (EXISTS (k: real): p = s`p1 + k * (s`p2 - s`p1)) AND
+      (EXISTS (k: real): p = e`p1 + k * (e`p2 - e`p1))
+        IMPLIES p = val(line_crossing(s, e))
+
+  segment_crossing_is_unique: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) AND
+      point_on_segment?(p, s) AND point_on_segment?(p, e)
+        IMPLIES p = val(line_crossing(s, e))
+
+  collinear_segments_same_line_crossing: LEMMA
+    FORALL(s, e, h: segment_2d):
+      collinear?(e, h) IMPLIES
+        line_crossing(s, e) = line_crossing(s, h);
+  
+  parallel_or_extending_crosses: LEMMA
+    FORALL(s, e: segment_2d):
+      parallel?(s)(e) OR
+      collinear?(s, e) OR
+      extending_s_crosses_e(s, e) OR
+      extending_s_crosses_e(e, s) OR
+      NOT are_segments_intersecting_alt?(s, e);
+
+  are_segments_intersecting?_defs_same: LEMMA
+    FORALL(s1, s2: segment_2d):
+      are_segments_intersecting?(s1)(s2) =
+      are_segments_intersecting_alt?(s1, s2);
+
+  are_segments_intersecting?_sym: LEMMA
+    FORALL(s1, s2: segment_2d):
+      are_segments_intersecting?(s1)(s2) =
+      are_segments_intersecting?(s2)(s1);
+
+  % Perpendicular lines necessarily have a crossing.
+  perp_lines_cross: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      LET e_perp_rt: segment_2d = (# p1 := p,
+                                     p2 := p + perp_right(e`p2 - e`p1) #) IN
+      line_crossing(e_perp_rt, e) /= None;
+
+  collinear_perp_line_crossings_same: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      LET s_perp_rt: segment_2d = (# p1 := p,
+                                     p2 := p + perp_right(s`p2 - s`p1) #) IN
+      LET e_perp_rt: segment_2d = (# p1 := p,
+                                     p2 := p + perp_right(e`p2 - e`p1) #) IN
+        collinear?(s, e) IMPLIES
+          line_crossing(s_perp_rt, s) = line_crossing(e_perp_rt, e)
+
+  collinear_imp_seg_line_crossings_same: LEMMA
+    FORALL(s, e, g, h: segment_2d):
+      collinear?(s, g) AND collinear?(e, h) IMPLIES
+        line_crossing(s, e) = line_crossing(g, h)
+
+  perp_line_crossing_on_other_line: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s)), q: point_2d, a, b: real):
+      LET dir_s = s`p2 - s`p1,
+          perp_s = (# p1 := q, p2 := q + perp_right(dir_s) #)
+      IN (EXISTS (d: real): q = e`p1 + d * (e`p2 - e`p1)) AND
+         e`p1 = s`p1 + a * dir_s + b * perp_right(dir_s)
+ 	   IMPLIES val(line_crossing(perp_s, s)) = q - b * perp_right(dir_s)
+
+  % Draws rays in both directions from p, perpendicular to e, to
+  % see where they cross e. If they don't cross e, then returns None.
+  find_perp_ray_crossing(e: segment_2d,
+                         p: point_2d): Maybe[point_2d] =
+    % Line segment perpendicular to s, that starts at p
+    % Doesn't matter if it's perp_right or perp_left
+    LET e_perp_rt: segment_2d = (# p1 := p,
+                                   p2 := p + perp_right(e`p2 - e`p1) #) IN
+    LET line_xing = line_crossing(e_perp_rt, e) IN
+    IF point_on_segment?(val(line_xing), e) THEN
+      line_xing
+    ELSE
+      % crossing happens outside of segment e
+      None
+    ENDIF
+
+  % Similar to find_perp_ray_crossing, but does not require crossing to
+  % be on segment
+  find_perp_ray_line_crossing(e: segment_2d,
+                              p: point_2d): point_2d =
+    % Line segment perpendicular to s, that starts at p
+    % Doesn't matter if it's perp_right or perp_left
+    LET e_perp_rt: segment_2d = (# p1 := p,
+                                   p2 := p + perp_right(e`p2 - e`p1) #) IN
+    val(line_crossing(e_perp_rt, e));
+
+  perp_ray_crossing_is_perp_ray_line_crossing: LEMMA
+    FORALL(e: segment_2d, v: point_2d):
+      find_perp_ray_crossing(e, v) /= None IMPLIES
+        val(find_perp_ray_crossing(e, v)) = 
+          find_perp_ray_line_crossing(e, v)
+
+  perp_ray_line_crossing_distance_exists: LEMMA
+    FORALL (e: segment_2d, v: point_2d):
+      EXISTS (b: real):
+        find_perp_ray_line_crossing(e, v) = 
+          v + b * perp_right(e`p2 - e`p1)
+
+  perp_ray_line_crossing_distance_norm: LEMMA
+    FORALL (e: segment_2d, v: point_2d):
+      EXISTS (b: real):
+        find_perp_ray_line_crossing(e, v) = 
+          v + b * perp_right(^(e`p2 - e`p1))
+
+  perp_crossing_reverse: LEMMA
+    FORALL (e: segment_2d, p: point_2d):
+      line_crossing((# p1 := p, p2 := p + perp_right(e`p2 - e`p1) #), e) =
+      line_crossing((# p1 := p, p2 := p + perp_right(e`p1 - e`p2) #), e)
+
+  perp_crossing_reverse_2: LEMMA
+    FORALL (e: segment_2d, p: point_2d):
+      line_crossing((# p1 := p, p2 := p + perp_right(e`p2 - e`p1) #), e) =
+      line_crossing((# p1 := p, p2 := p + perp_right(e`p1 - e`p2) #),
+                    reverse_segment(e))
+
+  find_perp_ray_crossing_reverse: LEMMA
+    FORALL(e: segment_2d, v: point_2d):
+      find_perp_ray_crossing(e, v) =
+        find_perp_ray_crossing(reverse_segment(e), v)
+    
+  perp_ray_line_crossing_swapped_endpoints: LEMMA
+    FORALL (s, e, ss, ee: segment_2d, p, q: point_2d):
+      (ss = s OR ss = reverse_segment(s)) AND
+      (ee = e OR ee = reverse_segment(e))
+        IMPLIES
+          find_perp_ray_line_crossing(e, p) = 
+            find_perp_ray_line_crossing(ee, p) AND
+          find_perp_ray_line_crossing(s, q) = 
+            find_perp_ray_line_crossing(ss, q)
+
+  find_perp_ray_crossing_subseq: LEMMA
+    FORALL(e, h: segment_2d, v: point_2d):
+      find_perp_ray_crossing(e, v) /= None AND
+      point_on_segment?(e`p1, h) AND point_on_segment?(e`p2, h)
+        IMPLIES find_perp_ray_crossing(h, v) /= None
+
+  % Useful for interacting with lemmas in perpendicular_2D
+  perp_line_crossing_is_perp_pt: LEMMA	
+    FORALL(e: segment_2d, p: point_2d):
+      LET Q: Vect2      = p,
+          P0: Vect2     = e`p1,
+	  nzv: Nz_vect2 = e`p2 - e`p1,
+	  tp: real      = perp_pt(Q, P0, nzv) IN
+        val(find_perp_ray_line_crossing(e, p)) =
+	  P0 + tp * nzv;
+
+  % Useful for interacting with lemmas in perpendicular_2D
+  find_perp_ray_crossing_is_perp_pt: LEMMA
+    FORALL(e: segment_2d, p: point_2d):
+      LET Q: Vect2      = p,
+          P0: Vect2     = e`p1,
+	  nzv: Nz_vect2 = e`p2 - e`p1,
+	  tp: real      = perp_pt(Q, P0, nzv) IN
+      find_perp_ray_crossing(e, p) /= None IMPLIES
+        val(find_perp_ray_crossing(e, p)) =
+	  P0 + tp * nzv;
+
+  % Mirrors similar lemma in perpendicular_2D
+  perp_is_min: LEMMA
+    FORALL(e: segment_2d, p: point_2d):
+      LET Q: Vect2      = p,
+          P0: Vect2     = e`p1,
+	  nzv: Nz_vect2 = e`p2 - e`p1,
+	  tp: real      = perp_pt(Q, P0, nzv) IN
+        FORALL(t: real):
+          LET d = (P0 + t * nzv) - Q,
+	      c = (P0 + tp * nzv) - Q IN
+	    norm(d) >= norm(c);
+
+  % Useful for converting from perpendicular_2D to segments_2d notation
+  % or vice-versa.
+  t_exists_on_line_seg: LEMMA
+    FORALL(e: segment_2d, q: (point_on_segment?(e))):
+      LET P0: Vect2     = e`p1,
+	  nzv: Nz_vect2 = e`p2 - e`p1 IN
+      EXISTS(t: real):
+        (P0 + t * nzv) = q;
+
+  % A useful variation of perp_is_min
+  perp_is_shortest: LEMMA
+    FORALL(e: segment_2d, v: point_2d):
+      find_perp_ray_crossing(e, v) /= None IMPLIES
+        FORALL(q: (point_on_segment?(e))):
+	  norm(v - val(find_perp_ray_crossing(e, v))) <= norm(v - q);
+
+  % Useful for working with dist_eq_vel lemma in closest_approach_2D
+  exists_parallel_parameterization: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+        EXISTS(p0, q0, v: Vect2, t: real):
+	  (p = p0 + t * v) AND (q = q0 + t * v);
+
+  % Useful for working with dist_eq_vel lemma in closest_approach_2D
+  exists_parallel_parameterization_generalization: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      FORALL(p: {pt: Vect2 | on_line?(pt, segment_2d_to_Line(s))},
+             q: {pt: Vect2 | on_line?(pt, segment_2d_to_Line(e))}):
+        EXISTS(p0, q0, v: Vect2, t: real):
+	  (p = p0 + t * v) AND (q = q0 + t * v);
+
+  perp_is_shortest_on_line: LEMMA
+    FORALL (e: segment_2d, p, q: point_2d):
+      (EXISTS (k: real): q = e`p1 + k * (e`p2 - e`p1))
+        IMPLIES
+	  norm(p - val(find_perp_ray_line_crossing(e, p))) <= norm(p - q)
+
+  not_perp_p1_closer_p2_imp_p1_closest: LEMMA
+    FORALL (e: segment_2d, p, q: point_2d):
+      norm(p - e`p1) <= norm(p - e`p2) AND
+      find_perp_ray_crossing(e, p) = None AND
+      point_on_segment?(q, e)
+        IMPLIES norm(p - e`p1) <= norm(p - q)
+
+  perp_line_orthogonal: LEMMA
+    FORALL (s: segment_2d, p: (point_on_segment?(s)), q: point_2d):
+      LET u = find_perp_ray_line_crossing(s, q) IN
+        orthogonal?(u - p, q - u)
+
+  % The next few lemmas consider relationships based on whether adjacent
+  % segments sharing an endpoint have an acute or obtuse angle between
+  % them, as determined by the vector cosine value.
+  cos_neg_inner_point_closer: LEMMA
+    FORALL(u, v, w, p: point_2d):
+      u /= v AND w /= v AND p /= v AND
+      vcos(^(u - v), ^(w - v)) < 0 AND
+      (EXISTS (k: nnreal): p = v + k * (u - v))
+        IMPLIES (norm(u - w) <= norm(p - w) IFF norm(u - v) <= norm(p - v))
+
+  cos_neg_inner_point_closer_lt: LEMMA
+    FORALL(u, v, w, p: point_2d):
+      u /= v AND w /= v AND p /= v AND
+      vcos(^(u - v), ^(w - v)) < 0 AND
+      (EXISTS (k: nnreal): p = v + k * (u - v))
+        IMPLIES (norm(u - w) < norm(p - w) IFF norm(u - v) < norm(p - v))
+
+  cos_pos_len_le_imp_find_perp_ray_crossing: LEMMA
+    FORALL(u, v, w: point_2d):
+      u /= v AND w /= v IMPLIES
+        LET wv_seg = (# p1 := v, p2 := w #),
+	    uvw_cos = vcos(^(u - v), ^(w - v)) IN
+	  uvw_cos >= 0 IMPLIES
+	    (uvw_cos * norm(u - v) <= norm(w - v) IFF
+	     find_perp_ray_crossing(wv_seg, u) /= None)
+
+  parallel_segment_imp_points_on_same_side: LEMMA
+    FORALL (p, q, r: point_2d, s: segment_2d):
+      parallel?(s`p2 - s`p1, q - p) AND p /= q AND
+      cross(s`p2 - s`p1, r - s`p1) < 0 AND
+      point_on_segment?(r, (# p1 := p, p2 := q #))
+        IMPLIES FORALL (u: point_2d):
+                  point_on_segment?(u, (# p1 := p, p2 := q #))
+                    IMPLIES cross(s`p2 - s`p1, u - s`p1) < 0
+
+  parallel_line_crossing_points_same_vectors: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s)), p, q: point_2d):
+      (EXISTS (k: real): p = s`p1 + k * (s`p2 - s`p1)) AND
+      (EXISTS (k: real): q = s`p1 + k * (s`p2 - s`p1))
+        IMPLIES LET u = find_perp_ray_line_crossing(e, p),
+                    v = find_perp_ray_line_crossing(e, q)
+                IN q - p = v - u
+
+  parallel_lines_same_distance_at_all_points: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s)), p, q: point_2d):
+      (EXISTS (k: real): p = s`p1 + k * (s`p2 - s`p1)) AND
+      (EXISTS (k: real): q = s`p1 + k * (s`p2 - s`p1))
+        IMPLIES norm(val(find_perp_ray_line_crossing(e, p)) - p) =
+	        norm(val(find_perp_ray_line_crossing(e, q)) - q)
+
+  points_on_parallel_lines_rectangular: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s)), p, q: point_2d):
+      (EXISTS (k: real): p = s`p1 + k * (s`p2 - s`p1)) AND
+      (EXISTS (k: real): q = e`p1 + k * (e`p2 - e`p1))
+        IMPLIES LET u = find_perp_ray_line_crossing(s, q),
+                    v = find_perp_ray_line_crossing(e, p)
+                IN u - p = q - v
+
+  % Define the offset distance along a segment line needed to reach
+  % the perpendicular projection of the other segment's initial vertex.
+
+  parallel_segment_offset(s: segment_2d, e: (parallel?(s))):
+      {a: real | EXISTS (b: real): e`p1 = s`p1 + a * ^(s`p2 - s`p1)
+                   + b * perp_right(^(s`p2 - s`p1))} =
+    LET xing_pt = find_perp_ray_line_crossing(s, e`p1),
+        dist = norm(xing_pt - s`p1)
+    IN IF xing_pt = s`p1 THEN 0
+       ELSIF ^(xing_pt - s`p1) = ^(s`p2 - s`p1) THEN dist ELSE -dist
+       ENDIF
+
+  parallel_segment_line_crossings_rectangular: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s))):
+      LET u = find_perp_ray_line_crossing(s, e`p1),
+          v = find_perp_ray_line_crossing(e, s`p1)
+      IN u - s`p1 = e`p1 - v
+
+  parallel_segment_offset_semi_commutative: LEMMA
+    FORALL (e: segment_2d, s: (parallel?(e))):
+      parallel_segment_offset(e, s) =
+        IF ^(e`p2 - e`p1) = ^(s`p2 - s`p1)
+          THEN -parallel_segment_offset(s, e)
+          ELSE parallel_segment_offset(s, e)
+	ENDIF
+
+  parallel_perp_crossing_on_segment: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s)), q: point_2d, d: nnreal):
+      LET dir_s = ^(s`p2 - s`p1), dir_e = ^(e`p2 - e`p1) IN
+        q = e`p1 + d * dir_e AND d <= length(e) IMPLIES
+          LET a = parallel_segment_offset(s, e),
+              shift = IF dir_s = dir_e THEN a + d ELSE a - d ENDIF
+          IN find_perp_ray_crossing(s, q) /= None IFF
+             0 <= shift <= length(s)
+
+  parallel_perp_crossing_is_p1_plus_offset: LEMMA
+    FORALL (s: segment_2d, e: (parallel?(s))):
+      find_perp_ray_line_crossing(s, e`p1) =
+        s`p1 + parallel_segment_offset(s, e) * ^(s`p2 - s`p1)
+
+  parallel_seg_with_no_xing_imp_other_seg_has_0_or_2_xing: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      (find_perp_ray_crossing(e, s`p1) = None AND
+       find_perp_ray_crossing(e, s`p2) = None) IMPLIES
+        ((find_perp_ray_crossing(s, e`p1) = None AND
+          find_perp_ray_crossing(s, e`p2) = None) OR
+         (find_perp_ray_crossing(s, e`p1) /= None AND
+          find_perp_ray_crossing(s, e`p2) /= None));
+
+  parallel_segments_point_distance_bound: LEMMA
+    FORALL (s, e: segment_2d, p, q: point_2d, a, b: real, v: vector_2d):
+      v = ^(s`p2 - s`p1) AND
+      parallel?(v, ^(e`p2 - e`p1)) AND
+      point_on_segment?(p, s) AND point_on_segment?(q, e) AND
+      e`p1 = s`p1 + a * v + b * perp_right(v)
+        IMPLIES abs(b) <= norm(p - q)
+
+  projected_point_preserves_distance_ordering: LEMMA
+    FORALL (s: segment_2d, p, q: (point_on_segment?(s)), r: point_2d):
+      LET u = find_perp_ray_line_crossing(s, r) IN
+        norm(u - p) >= norm(u - q) IFF norm(r - p) >= norm(r - q)
+
+  % Another way to express the perp crossing point. Uses a cosine factor.
+  perp_line_crossing_point_val: LEMMA
+    FORALL (s, e: segment_2d, v: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e))
+      IMPLIES
+        LET xing_pt = val(line_crossing(s, e)), c = norm(v - xing_pt) IN
+          v /= xing_pt IMPLIES
+            LET dir_s = ^(v - xing_pt), dir_e = ^(e`p2 - e`p1),
+  	        a = c * vcos(dir_e, dir_s) IN
+              find_perp_ray_line_crossing(e, v) = xing_pt + a * dir_e
+
+  perp_line_crossing_at_line_crossing_self: LEMMA
+    FORALL (s, e: segment_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)) IN
+          find_perp_ray_line_crossing(e, xing_pt) = xing_pt
+
+  % The triangle legs for a perp crossing further out are longer.
+  closer_point_imp_closer_perp_crossing: LEMMA
+    FORALL(s, e: segment_2d, u, v: (point_on_segment?(s))):
+      NOT (parallel?(s)(e) OR collinear?(s, e))
+      IMPLIES
+        LET xing_pt = val(line_crossing(s, e)),
+            p = find_perp_ray_line_crossing(e, u),
+            q = find_perp_ray_line_crossing(e, v) IN
+          u /= v AND v /= xing_pt AND
+	  norm(xing_pt - u) > norm(xing_pt - v)
+	    IMPLIES norm(p - u) >= norm(q - v) AND
+                    norm(xing_pt - p) >= norm(xing_pt - q)
+
+  point_on_seg_farther_from_perp_xing: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s)),
+           v: (segment_endpoint?(e)), u: point_2d,
+	   q: (point_on_segment?(e))):
+      find_perp_ray_crossing(e, u) = None IMPLIES
+        LET ov = opposite_endpoint(e, v),
+            w = find_perp_ray_line_crossing(e, u)
+        IN norm(v - u) <= norm(ov - u) IMPLIES norm(w - v) <= norm(w - q)
+
+  perp_crossing_at_endpoint_is_closest: LEMMA
+    FORALL (s, e: segment_2d,
+            p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) AND
+      find_perp_ray_crossing(e, s`p1) /= None
+        IMPLIES
+          LET xing_pt = val(line_crossing(s, e)),
+	      u = val(find_perp_ray_crossing(e, s`p1)) IN
+	    norm(s`p1 - xing_pt) < norm(s`p2 - xing_pt)
+  	      IMPLIES
+	        norm(s`p1 - u) <= norm(p - q) OR
+	        extending_s_crosses_e(e, s)
+
+  % These two lemmas identify the three possibilities that can arise from
+  % perpendicular crossings on the lines of two segments having an acute
+  % angle between them.  Either the crossing occurs on the other segment
+  % or it occurs on the line to either side of the segment.
+  
+  cos_pos_perp_crossing_cases: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)),
+	    pre_seg = (# p1 := xing_pt, p2 := e`p1 #),
+	    perp_xing = find_perp_ray_line_crossing(e, p) IN
+          s`p1 /= xing_pt AND NOT point_on_segment?(xing_pt, e) AND
+          norm(e`p1 - xing_pt) <= norm(e`p2 - xing_pt) AND
+          (EXISTS (k: posreal): p = xing_pt + k * (s`p1 - xing_pt)) AND
+          vcos(^(s`p1 - xing_pt), ^(e`p1 - xing_pt)) >= 0
+  	    IMPLIES
+                 point_on_segment?(perp_xing, e)
+              OR point_on_segment?(perp_xing, pre_seg) AND
+	           norm(e`p1 - p) < norm(e`p2 - p)
+  	      OR point_beyond_segment?(perp_xing, e) AND
+	           norm(e`p2 - p) < norm(e`p1 - p)
+
+  cos_pos_find_perp_crossing_cases: LEMMA
+    FORALL(s, e: segment_2d, p: point_2d):
+      NOT (parallel?(s)(e) OR collinear?(s, e)) IMPLIES
+        LET xing_pt = val(line_crossing(s, e)),
+	    pre_seg_e = (# p1 := xing_pt, p2 := e`p1 #),
+	    full_seg_e = (# p1 := xing_pt, p2 := e`p2 #) IN
+          s`p1 /= xing_pt AND s`p2 /= xing_pt AND
+          NOT point_on_segment?(xing_pt, e) AND
+          norm(e`p1 - xing_pt) <= norm(e`p2 - xing_pt) AND
+          (EXISTS (k: posreal): p = xing_pt + k * (s`p1 - xing_pt)) AND
+          vcos(^(s`p1 - xing_pt), ^(e`p1 - xing_pt)) >= 0
+  	    IMPLIES
+                 find_perp_ray_crossing(e, p) /= None
+              OR find_perp_ray_crossing(pre_seg_e, p) /= None AND
+	           norm(e`p1 - p) < norm(e`p2 - p)
+  	      OR find_perp_ray_crossing(full_seg_e, p) = None AND
+	           norm(e`p2 - p) < norm(e`p1 - p)
+
+  % Returns the endpoints of s and e that are closest to each other
+  % In case of a tie, it chooses based on the order of s, e, and their
+  % endpoints.
+  % Thus, this function is not necessarily going to return the same
+  % points if you switch s and e, or flip their endpoints.
+  nearest_endpoints(s, e: segment_2d): [point_2d, point_2d] =
+    LET d11 = norm(s`p1 - e`p1),
+        d12 = norm(s`p1 - e`p2),
+        d21 = norm(s`p2 - e`p1),
+        d22 = norm(s`p2 - e`p2),
+        min_d = min(min(min(d11, d12), d21), d22) IN
+    IF min_d = d11 THEN
+      (s`p1, e`p1)
+    ELSIF min_d = d12 THEN
+      (s`p1, e`p2)
+    ELSIF min_d = d21 THEN
+      (s`p2, e`p1)
+    ELSE
+      (s`p2, e`p2)
+    ENDIF;
+
+  % Here is an alternative to nearest_endpoints that is expressed
+  % in a relational style.
+  is_nearest_endpoint_pair?(pair: [point_2d, point_2d],
+                            s, e: segment_2d): bool =
+    LET (p, q) = pair IN
+      norm(p - q) <= norm(s`p1 - e`p1) AND
+      norm(p - q) <= norm(s`p1 - e`p2) AND
+      norm(p - q) <= norm(s`p2 - e`p1) AND
+      norm(p - q) <= norm(s`p2 - e`p2)
+
+  nearest_endpoints_is_nearest_pair: LEMMA
+    FORALL (s, e: segment_2d):
+      is_nearest_endpoint_pair?(nearest_endpoints(s, e), s, e)
+
+  nearest_endpoint_pair_swapped: LEMMA
+    FORALL (s, e: segment_2d, pair: [point_2d, point_2d]):
+      is_nearest_endpoint_pair?(pair, s, e) IFF
+      is_nearest_endpoint_pair?((pair`2, pair`1), e, s) 
+
+  % This notion of overlapping applies when segments are parallel
+  % (not their vectors). Hence they are not collinear.
+  overlapping?(s: segment_2d, e: (parallel?(s))): bool =
+    find_perp_ray_crossing(e, s`p1) /= None OR
+    find_perp_ray_crossing(e, s`p2) /= None OR
+    find_perp_ray_crossing(s, e`p1) /= None OR
+    find_perp_ray_crossing(s, e`p2) /= None;
+
+  overlapping_symmetric: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      overlapping?(s, e) IFF overlapping?(e, s)
+
+  overlapping_reverse: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      overlapping?(s, e) IFF overlapping?(s, reverse_segment(e))
+
+  alt_overlapping?(s: segment_2d, e: (parallel?(s))): bool =
+    LET v = ^(s`p2 - s`p1) IN
+      EXISTS (a, b: real):
+        e`p1 = s`p1 + a * v + b * perp_right(v) AND
+        IF v = ^(e`p2 - e`p1)
+          THEN -length(e) <= a <= length(s)
+	  ELSE 0 <= a <= length(s) + length(e)
+	ENDIF
+
+  % specialization of overlapping_implies_at_least_2_endpt_ray_crossings
+  overlapping_covered: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      (overlapping?(s, e) AND
+       find_perp_ray_crossing(e, s`p1) = None AND
+       find_perp_ray_crossing(e, s`p2) = None) IMPLIES
+        (find_perp_ray_crossing(s, e`p1) /= None AND
+         find_perp_ray_crossing(s, e`p2) /= None);
+
+  parallel_nonoverlapping_imp_no_point_crossings: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      NOT overlapping?(s, e) IMPLIES
+        FORALL (p: (point_on_segment?(s))):
+  	  find_perp_ray_crossing(e, p) = None
+
+  large_parallel_seg_offset_imp_p2_closer: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      parallel_segment_offset(s, e) > length(s)
+        IMPLIES norm(s`p1 - e`p1) > norm(s`p2 - e`p1)
+
+  parallel_nonoverlapping_dir_offset_neg: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      NOT overlapping?(s, e) AND
+      norm(s`p1 - e`p1) <= norm(s`p1 - e`p2) AND
+      norm(s`p1 - e`p1) <= norm(s`p2 - e`p1) AND
+      norm(s`p1 - e`p1) <= norm(s`p2 - e`p2)
+        IMPLIES ^(s`p2 - s`p1) = -^(e`p2 - e`p1) AND
+                parallel_segment_offset(s, e) < 0
+
+  parallel_nonoverlapping_xing_pt_offsets: LEMMA
+    FORALL(s: segment_2d, e: (parallel?(s))):
+      NOT overlapping?(s, e) IMPLIES
+        FORALL(p: (point_on_segment?(s)), q: (point_on_segment?(e))):
+          LET u = nearest_endpoints(s, e)`1, v = nearest_endpoints(s, e)`2,
+	      ou = opposite_endpoint(s, u), ov = opposite_endpoint(e, v)
+	  IN ^(ou - u) = -^(ov - v) AND
+	     (EXISTS (k: negreal):
+	        find_perp_ray_line_crossing(e, p) = v + k * (ov - v)) AND
+	     (EXISTS (k: negreal):
+	        find_perp_ray_line_crossing(s, q) = u + k * (ou - u))
+
+
+  points_where_segment_crosses_segment(s, cur_segment: segment_2d):
+      {uvs: uniq_vertex_seq_with_empty | uvs`length <= 2} =
+    IF are_segments_intersecting?(s)(cur_segment) THEN
+      IF are_segments_strictly_intersecting?(s)(cur_segment) THEN
+        singleton_seq(segment_intersect_kernel(s, cur_segment)`2)
+      ELSE
+        IF is_point_on_segment_exclusive?(cur_segment`p1, s) THEN
+          IF is_point_on_segment_exclusive?(cur_segment`p2, s) THEN
+            % cur_segment is entirely inside s
+            (# length := 2,
+                seq := LAMBDA(i: below(2)):
+                        IF i = 0 THEN
+                          cur_segment`p1
+                        ELSE
+                          cur_segment`p2
+                        ENDIF #)
+          ELSE
+            singleton_seq(cur_segment`p1)
+          ENDIF
+        ELSE
+          IF is_point_on_segment_exclusive?(cur_segment`p2, s) THEN
+            singleton_seq(cur_segment`p1)
+          ELSE
+            % s is entirely inside cur_segment
+            empty_seq
+          ENDIF
+        ENDIF
+      ENDIF
+    ELSE
+      empty_seq
+    ENDIF;
+
+  END perp_crossings

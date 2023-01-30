@@ -1,0 +1,411 @@
+%% -----------------------------------------------------------------------------
+%% polygon_merge.pvs              Dependable Computing
+%% Theory to formalize the polygon merge algorithm and some of its
+%% basic properties.
+%% -----------------------------------------------------------------------------
+
+polygon_merge : THEORY
+
+  BEGIN
+
+  % The polygon merge algorithm operates on two polygons A and B to
+  % create a merged polygon containing all the regions within A and B
+  % as well as any "holes" (fully enclosed regions) that occur from
+  % overlaying A and B. A and B are first transformed into Am and Bm
+  % by applying the vertex injection process.
+  
+  % The algorithm begins at the topmost, leftmost vertex of Am and Bm.
+  % From there it traverses edges from Am and Bm and adds a new vertex
+  % from Am or Bm to the list of vertices for polygon C, the merged
+  % polygon. At each step the algorithm must choose which vertex to
+  % include next based on the orientation of the edges in Am and
+  % Bm. Termination occurs when the traveral returns to the starting
+  % vertex.
+
+  IMPORTING line_segments@between_rays
+  IMPORTING polygons@topleft_vertex
+  IMPORTING injection_props
+
+  % A few definitions and lemmas about point sequences drawn from
+  % vertices of polygons Am and Bm.
+
+  point_AB_vtx?(Am, Bm: simple_polygon_2d)(p: point_2d): bool =
+      vertex?(Am)(p) OR vertex?(Bm)(p)
+ 
+  point_seq_AB_vtx?(Am, Bm: simple_polygon_2d)(s: finseq[point_2d]): bool =
+      FORALL (i: below(s`length)): point_AB_vtx?(Am, Bm)(s`seq(i))
+ 
+  uniq_seq_AB_vtx?(Am, Bm: simple_polygon_2d)(s: uniq_vertex_seq): bool =
+      FORALL (i: below(s`length)): point_AB_vtx?(Am, Bm)(s`seq(i))
+
+  seq_AB_singleton: LEMMA
+    FORALL (Am, Bm: simple_polygon_2d), (p: (point_AB_vtx?(Am, Bm))):
+      point_seq_AB_vtx?(Am, Bm)(singleton_seq(p))
+
+  seq_AB_concat: LEMMA
+    FORALL (Am, Bm: simple_polygon_2d), (x, y: finseq[point_2d]):
+       point_seq_AB_vtx?(Am, Bm)(x) AND point_seq_AB_vtx?(Am, Bm)(y)
+         IFF point_seq_AB_vtx?(Am, Bm)(x o y)
+
+
+  % The key step in the algorithm is choosing which vertex from Am or Bm
+  % to make the next vertex in the merged polygon. This function captures
+  % the selection logic. In some cases there is only one choice for the
+  % next vertex. In other cases there are two choices, one from each of
+  % Am and Bm. The edge that is rightmost relative to the previously
+  % selected edge is the one to be chosen.
+
+  % The function point_between_rays? is used to determine which of the
+  % two outgoing edges is rightmost. The previously generated vertex is
+  % an input to the function; it is the point that must be "between"
+  % edges e3 and e2 (CCW direction) for e2 to be considered rightmost.
+
+  next_merge_vertex(Am: simple_polygon_2d, Bm: simple_polygon_2d,
+	            vertex: (point_AB_vtx?(Am, Bm)), prev_vtx: point_2d):
+       (point_AB_vtx?(Am, Bm)) =
+    LET idx_A = find_index(Am, vertex) IN
+    LET idx_B = find_index(Bm, vertex) IN
+      IF idx_A >= 0 THEN
+        % current vertex is in both injected polygons
+        IF idx_B >= 0 THEN
+          % If I'm at the nth vertex, then my next edge is the nth edge
+          LET e2: segment_2d = edges_of_polygon(Am)(idx_A) IN
+          LET e3: segment_2d = edges_of_polygon(Bm)(idx_B) IN
+        IF prev_vtx = e3`p2 OR point_between_rays?(e3, e2)(prev_vtx) THEN
+            % e2 points more to the right than e3
+            Am`vertices(next_index(Am, idx_A))
+          ELSE
+            % e3 points more rightward, or e2 and e3 overlap (and are equal)
+            Bm`vertices(next_index(Bm, idx_B))
+          ENDIF
+        ELSE
+          % vertex is only in injected polygon Am
+          Am`vertices(next_index(Am, idx_A))
+        ENDIF
+      ELSE
+        % vertex is only in injected polygon Bm
+        % idx_B must be >= 0 due to type constraint on vertex
+        Bm`vertices(next_index(Bm, idx_B))
+      ENDIF
+
+  % The first vertex doesn't have a previous vertex in the recursion.
+  % We create an artificial one by picking a point to the left of the
+  % topleft vertex. This ensures that it can serve to differentiate
+  % which of the initial edges is rightmost.
+  
+  prev_0(topleft: point_2d): point_2d =
+    % Choose an arbitrary point to the left of the topleft vertex.
+    topleft + (# x := -1, y := 0 #)
+
+  seq_prev_vtx(S: {S: finseq[point_2d] | S`length > 0},
+               i, k: nat): point_2d =
+    IF i >= k AND i-k < S`length THEN S`seq(i-k) ELSE prev_0(S`seq(0)) ENDIF
+  
+  next_vertex_distinct: LEMMA
+    FORALL (Am, Bm: simple_polygon_2d,
+            vertex: (point_AB_vtx?(Am, Bm)), prev_vtx: point_2d):
+      next_merge_vertex(Am, Bm, vertex, prev_vtx) /= vertex
+
+  next_merge_vertex_on_edge: LEMMA
+    FORALL (Am, Bm: simple_polygon_2d,
+	    vertex: (point_AB_vtx?(Am, Bm)), prev_vtx: point_2d):
+      LET next = next_merge_vertex(Am, Bm, vertex, prev_vtx),
+          edge = (# p1 := vertex, p2 := next #) IN
+	edge_of_polygon?(Am)(edge) OR edge_of_polygon?(Bm)(edge)
+
+  % This recursive function models the edge traversal process used by
+  % the merge algorithm. It invokes next_merge_vertex to find the next
+  % vertex to add to the point sequence. Three vertex inputs are used:
+  % staring, current and previous. Note that the number of vertices in
+  % the merged polygon is unknown initially. The type of vtx_num is
+  % the worst case, namely, the sum of the sizes of Am and Bm.
+
+  merge_helper(Am: simple_polygon_2d, Bm: simple_polygon_2d,
+               first_vtx, vertex: (point_AB_vtx?(Am, Bm)),
+	       prev_vtx: point_2d,
+	       vtx_num: upto(Am`num_vertices + Bm`num_vertices)):
+      RECURSIVE {s: (point_seq_AB_vtx?(Am, Bm)) |
+                    s`length <= Am`num_vertices + Bm`num_vertices - vtx_num} =
+    LET next_vtx: point_2d = next_merge_vertex(Am, Bm, vertex, prev_vtx) IN
+    % If next_vtx reaches first vertex, we're done
+    IF next_vtx = first_vtx OR vtx_num = Am`num_vertices + Bm`num_vertices
+      THEN empty_seq
+      ELSE
+        % Else recurse with new vertex
+        singleton_seq(next_vtx) o
+          merge_helper(Am, Bm, first_vtx, next_vtx, vertex, vtx_num + 1)
+    ENDIF
+    MEASURE Am`num_vertices + Bm`num_vertices - vtx_num
+
+
+  % The first vertex to use for the algorithm is chosen based on which
+  % of the two topleft vertices from A and B is the topmost, leftmost.
+  
+  first_vertex_merge(A, B: simple_polygon_2d): point_2d =
+      LET start_with_A: bool =
+        IF leftmost_vertex_val(A) = leftmost_vertex_val(B) THEN
+           topleft_vertex_val(A) >= topleft_vertex_val(B)
+        ELSE
+           leftmost_vertex_val(A) < leftmost_vertex_val(B)
+        ENDIF IN
+      IF start_with_A THEN
+         A`vertices(topleft_vertex_idx(A))
+      ELSE
+         B`vertices(topleft_vertex_idx(B))
+      ENDIF
+
+  first_vertex_AB: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          point_AB_vtx?(Am, Bm)(first_vertex_merge(A, B))
+
+  first_vertex_merge_comm: LEMMA
+    FORALL (A, B: simple_polygon_2d):
+      first_vertex_merge(A, B) = first_vertex_merge(B, A)
+
+  % This function applies the merge_helper function to derive the
+  % sequence of merge vertices. It then prepends the starting vertex
+  % since that one is not included in the result produced by the
+  % merge_helper recursion.
+
+  merge_seq(A: simple_polygon_2d,
+            B: (merge_pre_condition(A))): finseq[point_2d] =
+    LET (Am, Bm) = inject_vertices_into_polygon(A, B) IN
+    LET first_vtx = first_vertex_merge(A, B) IN
+      singleton_seq(first_vtx) o
+        merge_helper(Am, Bm, first_vtx, first_vtx, prev_0(first_vtx), 0)
+
+  merge_seq_length_gt_0: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      merge_seq(A, B)`length > 0
+
+  merge_helper_max_length: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx, vertex: (point_AB_vtx?(Am, Bm)),
+	    prev_vtx: point_2d,
+	    k: upto(Am`num_vertices + Bm`num_vertices)):
+      LET n = Am`num_vertices + Bm`num_vertices IN
+        merge_helper(Am, Bm, first_vtx, vertex, prev_vtx, n - k)`length <= k
+
+  merge_seq_max_length: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          merge_seq(A, B)`length <= Am`num_vertices + Bm`num_vertices + 1
+
+  % We add a function to capture the sequence of vertices already
+  % generated before each recursive call of merge_helper.  The basic
+  % idea is to have MH(...,0) = MP(...,i) o MH(...,i).  See lemma
+  % merge_helper_seq below.
+  
+  merge_prefix(Am: simple_polygon_2d, Bm: simple_polygon_2d,
+               first_vtx: (point_AB_vtx?(Am, Bm)), k: nat):
+       RECURSIVE {s: (point_seq_AB_vtx?(Am, Bm)) | s`length = k + 1} =
+    IF k = 0 THEN singleton_seq(first_vtx)
+       ELSE LET S = merge_prefix(Am, Bm, first_vtx, k - 1),
+                prev_vtx = seq_prev_vtx(S, k, 2) IN
+              S o singleton_seq(
+	            next_merge_vertex(Am, Bm, S`seq(k - 1), prev_vtx))
+    ENDIF
+    MEASURE k
+
+  merge_prefix_initial_element: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx: (point_AB_vtx?(Am, Bm)), k: nat):
+       merge_prefix(Am, Bm, first_vtx, k)`seq(0) = first_vtx
+
+  merge_prefix_length: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx: (point_AB_vtx?(Am, Bm)), k: nat):
+       merge_prefix(Am, Bm, first_vtx, k)`length = k + 1
+  AUTO_REWRITE+ merge_prefix_length
+
+  merge_prefix_prev: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx: (point_AB_vtx?(Am, Bm)), k: nat, i: upto(k)):
+      merge_prefix(Am, Bm, first_vtx, k)`seq(i) =
+      merge_prefix(Am, Bm, first_vtx, k + 1)`seq(i)
+
+  merge_prefix_prefix: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx: (point_AB_vtx?(Am, Bm)),
+	    k: nat, d: nat, i: upto(k)):
+      merge_prefix(Am, Bm, first_vtx, k)`seq(i) =
+      merge_prefix(Am, Bm, first_vtx, k + d)`seq(i)
+
+  merge_prefix_AB: LEMMA
+    FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+            first_vtx: (point_AB_vtx?(Am, Bm)), k: nat):
+      FORALL (i: upto(k)):
+        point_AB_vtx?(Am, Bm)(merge_prefix(Am, Bm, first_vtx, k)`seq(i))
+
+  merge_vertex_AB: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+	      L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+          IMPLIES
+            FORALL (i: below(L`length)): point_AB_vtx?(Am, Bm)(L`seq(i))
+
+  % The following lemmas allow us to express the results of the merge
+  % algorithm (function merge_helper) in terms of a sequence of
+  % values, each of which depends on the previous value in the
+  % sequence.
+  
+  merge_helper_seq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+          IMPLIES
+              LET first_vtx = first_vertex_merge(A, B),
+		  L = merge_seq(A, B) IN
+                FORALL (i: below(L`length)):
+                  LET P = merge_prefix(Am, Bm, first_vtx, i),
+                      prev_vtx = seq_prev_vtx(P, i, 1) IN
+                    L = P o merge_helper(Am, Bm, first_vtx, P`seq(i),
+		                         prev_vtx, i)
+  
+  extend_merge_prefix_merge_seq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, n: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+          IMPLIES
+              LET first_vtx = first_vertex_merge(A, B),
+		  L = merge_seq(A, B) IN
+		L`length <= n + 1 IMPLIES
+                  FORALL (i: below(L`length)):
+		    L`seq(i) = merge_prefix(Am, Bm, first_vtx, n)`seq(i)
+  
+  merge_seq_eq_merge_prefix: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B)
+          IMPLIES
+	    merge_seq(A, B) = merge_prefix(Am, Bm, first_vertex_merge(A, B),
+	                                   merge_seq(A, B)`length - 1)
+  
+  next_merge_vtx_seq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+	      L: finseq[point_2d], n: nat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_prefix(Am, Bm, first_vertex_merge(A, B), n)
+          IMPLIES
+            FORALL (i: below(L`length - 1)):
+              LET prev_vtx = seq_prev_vtx(L, i, 1) IN
+              L`seq(i+1) = next_merge_vertex(Am, Bm, L`seq(i), prev_vtx)
+  
+  merge_vertex_seq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+	      L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+          IMPLIES
+	    FORALL (i: below(L`length - 1)):
+              LET prev_vtx = seq_prev_vtx(L, i, 1) IN
+              L`seq(i+1) = next_merge_vertex(Am, Bm, L`seq(i), prev_vtx)
+  
+  merge_seq_vertices_wrap: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+	      L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B) AND
+	L`length - 1 < Am`num_vertices + Bm`num_vertices
+          IMPLIES LET prev_vtx = seq_prev_vtx(L, L`length - 1, 1) IN
+                    next_merge_vertex(Am, Bm, L`seq(L`length - 1), prev_vtx) =
+	              first_vertex_merge(A, B)
+
+  % This lemma has the form needed to establish properties of the vertex
+  % sequence computed by merge_helper.  Additional lemmas can be cloned
+  % from this one by replacing or augmenting the consequent with more
+  % facts about edges.
+  
+  merge_path_props: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+	IMPLIES
+          FORALL (i: below(L`length - 1)):
+	    LET S: segment_2d = (# p1 := L`seq(i), p2 := L`seq(i+1) #) IN
+	      edge_of_polygon?(Am)(S) OR edge_of_polygon?(Bm)(S)
+  
+  adj_merge_seq_vertices_distinct: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              L: finseq[point_2d]):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        L = merge_seq(A, B)
+	  IMPLIES FORALL (i: below(L`length - 1)): L`seq(i) /= L`seq(i+1)
+
+  next_is_first_merge_seq_length: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+  	      first_vtx, vertex: (point_AB_vtx?(Am, Bm)),
+	      prev_vtx: point_2d, k: posnat):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	first_vtx = first_vertex_merge(A, B) AND
+	k < merge_seq(A, B)`length AND
+        vertex = merge_prefix(Am, Bm, first_vtx, k)`seq(k) AND
+        prev_vtx = merge_prefix(Am, Bm, first_vtx, k)`seq(k - 1) AND
+        next_merge_vertex(Am, Bm, vertex, prev_vtx) = first_vtx
+          IMPLIES merge_seq(A, B)`length = k + 1
+
+  % This property of merge_seq holds that only vertices of Am and Bm
+  % can be intersection points.
+
+  merge_seq_only_vertex_intersections: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          (FORALL (e: (edge_of_polygon?(Am))):
+             seq_only_vertex_intersections?(merge_seq(A, B), Am, e)) AND
+          (FORALL (e: (edge_of_polygon?(Bm))):
+             seq_only_vertex_intersections?(merge_seq(A, B), Bm, e))
+
+  merge_seq_only_vertex_int_subseq: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d,
+              S: finseq[point_2d], i, j: below(merge_seq(A, B)`length)):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+	S = merge_seq(A, B) ^ (i, j)
+  	  IMPLIES
+            (FORALL (e: (edge_of_polygon?(Am))):
+               seq_only_vertex_intersections?(S, Am, e)) AND
+            (FORALL (e: (edge_of_polygon?(Bm))):
+               seq_only_vertex_intersections?(S, Bm, e))
+
+  first_vertex_merge_is_topleft_Am_or_Bm: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        LET first_vtx = first_vertex_merge(A, B) IN
+          (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+  	    (vertex?(Am)(first_vtx) IMPLIES
+	       first_vtx = Am`vertices(topleft_vertex_idx(Am))) AND
+  	    (vertex?(Bm)(first_vtx) IMPLIES
+	       first_vtx = Bm`vertices(topleft_vertex_idx(Bm)))
+
+  first_vertex_x_le_vertices: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) IMPLIES
+          LET first_vtx = first_vertex_merge(A, B) IN
+	    (FORALL (i: below(Am`num_vertices)):
+	       first_vtx`x <= Am`vertices(i)`x) AND
+	    (FORALL (i: below(Bm`num_vertices)):
+	       first_vtx`x <= Bm`vertices(i)`x)
+
+  prev_0_first_vtx_not_on_Am_or_Bm: LEMMA
+    FORALL (A: simple_polygon_2d, B: (merge_pre_condition(A))):
+      FORALL (Am: simple_polygon_2d, Bm: simple_polygon_2d, p: point_2d):
+        (Am, Bm) = inject_vertices_into_polygon(A, B) AND
+        (point_on_polygon_perimeter?(Am)(p) OR
+         point_on_polygon_perimeter?(Bm)(p))
+           IMPLIES prev_0(first_vertex_merge(A, B)) /= p
+
+  END polygon_merge

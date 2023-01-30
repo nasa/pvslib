@@ -1,0 +1,427 @@
+%% -----------------------------------------------------------------------------
+%% horiz_edge_crossing.pvs              Dependable Computing
+%% Theory concerning the horizontal edge crossing method for the
+%% point-in-polygon problem.
+%% -----------------------------------------------------------------------------
+
+horiz_edge_crossing : THEORY
+
+  % Determining when a point p lies within a polygon can be achieved by
+  % counting the number of edge crossings encountereed by a rightward
+  % ray emanating from p. When the number of crossings is odd, point p
+  % must be inside the polygon.
+
+  % In theory polygons_2d there is a specification of the edge crossing
+  % method that is based on a recursive definition. That makes it a
+  % suitable basis for implementation. The version in this theory is
+  % based on a finite-set approach, which gives it some advantages in
+  % supporting proofs.
+
+  BEGIN
+
+  IMPORTING line_segments@segments_2d_props
+  IMPORTING line_segments@segments_2d_trig
+  IMPORTING topleft_vertex
+
+  IMPORTING finite_sets@finite_sets_card_eq
+  IMPORTING finite_sets@finite_sets_inductions
+
+  AUTO_REWRITE+ sets.member, sub_eq_zero
+
+  AUTO_REWRITE+ is_point_on_seg_equiv, is_point_on_seg_equiv_2,
+                vertex_neq_next, vertex_neq_prev,
+                vertices_diff_next_nonzero, vertices_diff_prev_nonzero
+
+  % Following is the formalization for horizontal edge crossing.
+
+  horizontal_segment?(s: segment_2d): bool = s`p1`y = s`p2`y
+
+  % Is point p on the rightward horizontal ray emanating from point q?
+  point_on_ray?(p: point_2d, r: point_2d): bool =
+    r`x <= p`x AND r`y = p`y
+
+  point_on_ray_reflexive: LEMMA
+    FORALL(p: point_2d):
+      point_on_ray?(p, p);
+
+  point_on_ray_trans: LEMMA
+    FORALL (p, q, r: point_2d):
+      point_on_ray?(p, q) AND point_on_ray?(q, r) IMPLIES point_on_ray?(p, r)
+
+  pt_above_p1_and_below_p2_and_x_in_range_imp_pt_on_seg_on_ray: LEMMA
+    FORALL(pt: point_2d, segment: segment_2d):
+      (segment`p1`y <= pt`y AND pt`y <= segment`p2`y AND
+        x_in_range(pt, segment`p1, segment`p2)) IMPLIES
+        EXISTS(p: (point_on_segment?(segment))):
+	  point_on_ray?(p, pt);
+
+  is_right_point_ray_intersect?_imp_exists_pt_on_seg_point_on_ray?: LEMMA
+    FORALL(point: point_2d, segment: segment_2d):
+      is_right_point_ray_intersection?(point, segment) IMPLIES
+        EXISTS(p: (point_on_segment?(segment))):
+	  point_on_ray?(p, point);
+
+  % Several definitions make use of sets of x values.
+
+  point_x_values(S: finite_set[point_2d]): finite_set[real] =
+    {x: real | EXISTS (p: (S)): x = p`x}
+
+  vertex_x_values(G: simple_polygon_2d): finite_set[real] =
+    {x: real | EXISTS (i: below(G`num_vertices)): x = G`vertices(i)`x}
+
+  rightmost_x_val(G: simple_polygon_2d): real =
+    max[real, <=](vertex_x_values(G))
+
+  all_edges_to_left: LEMMA
+    FORALL (G: simple_polygon_2d, e: (edge_of_polygon?(G)), p: point_2d):
+      point_on_segment?(p, e) IMPLIES p`x <= rightmost_x_val(G)
+
+  ray_segment_overlapping?(r: point_2d, s: segment_2d): bool =
+    horizontal_segment?(s) AND
+      (point_on_ray?(s`p1, r) AND point_on_ray?(s`p2, r) OR
+       point_on_segment?(r, s))
+
+  vertex_on_perimeter: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      vertex?(G)(p) IMPLIES point_on_polygon_perimeter?(G)(p)
+
+  AUTO_REWRITE+ is_point_on_seg_equiv, is_point_on_seg_equiv_2,
+                vertex_neq_next, vertex_neq_prev,
+                vertices_diff_next_nonzero, vertices_diff_prev_nonzero
+
+  crossing_point?(r: point_2d, G: simple_polygon_2d)(p: point_2d): bool =
+    point_on_ray?(p, r) AND
+    EXISTS (s: (edge_of_polygon?(G))): point_on_segment?(p, s)
+
+  % These definitions are needed for the horizontal edge-crossing
+  % method for determining when a point lies inside of a polygon.
+  % Collect sets of qualifying crossing points that lie along a
+  % rightward horizontal ray originating at point p. If the crossing
+  % point is a vertex, consider the adjacent edges and their
+  % orientation relative to the horizontal ray.
+
+  count_adjacent_edges?(p: point_2d, G: simple_polygon_2d): bool =
+    EXISTS (i: below(G`num_vertices)):
+      p = G`vertices(i) AND
+      (LET prev = G`vertices(prev_index(G, i)),
+           next = G`vertices(next_index(G, i)) IN
+         % count only crossings where one edge lies above the ray
+         % and the other does not (it's horizontal or lies below)
+         (prev`y > p`y AND next`y <= p`y) OR 
+         (next`y > p`y AND prev`y <= p`y));
+
+  counted_crossing?(G: simple_polygon_2d)(p: point_2d): bool =
+    IF vertex?(G)(p) THEN
+      count_adjacent_edges?(p, G)
+    ELSE
+      EXISTS (s: (edge_of_polygon?(G))):
+        point_on_segment?(p, s) AND NOT horizontal_segment?(s)
+    ENDIF;
+
+  uncounted_crossing?(G: simple_polygon_2d)(p: point_2d): bool =
+    IF vertex?(G)(p)
+      THEN NOT count_adjacent_edges?(p, G)
+      ELSE EXISTS (s: (edge_of_polygon?(G))):
+             point_on_segment?(p, s) AND horizontal_segment?(s)
+    ENDIF
+
+  % Collect the x-value of each eligible intersection point.
+  right_crossing_set(r: point_2d, G: simple_polygon_2d): finite_set[real] =
+    {x: real | EXISTS (p: point_2d):
+                 x = p`x AND point_on_ray?(p, r) AND
+		 counted_crossing?(G)(p)}
+
+  right_crossing_edges_from_n(r: point_2d, G: simple_polygon_2d,
+                              idx: below(G`num_vertices))
+			      : finite_set[below(G`num_vertices)] =
+    {j: below(G`num_vertices) | idx <= j AND
+	is_right_point_ray_intersection?(r, edges_of_polygon(G)(j))}
+
+  % Derive the crossing point on edge e from a ray starting at point r,
+  % assuming that r'y is within e's y range.
+  edge_right_crossing_point(r: point_2d,
+                            e: {e: segment_2d |
+			           e`p2`y - e`p1`y /= 0}): point_2d =
+    e`p1 + (r`y - e`p1`y) / (e`p2`y - e`p1`y) * (e`p2 - e`p1)
+
+  % This condition states that the intersection point occurs at e`p1
+  % and the other endpoints of the two edges lie above e`p1. In other
+  % words, the edges form a V shape.
+  is_vertex_with_V_edges?(r: point_2d, G: simple_polygon_2d,
+                          i: below(G`num_vertices)): bool =
+     LET e = edges_of_polygon(G)(i),
+         prev_e = edges_of_polygon(G)(prev_index(G, i)) IN
+       e`p1`y < prev_e`p1`y AND e`p1`y < e`p2`y AND
+       e`p1 = edge_right_crossing_point(r, e) AND
+       is_right_point_ray_intersection?(r, e) AND
+       is_right_point_ray_intersection?(r, prev_e)
+
+  % Identify the index values of all vertices between V-edge pairs.
+  purged_V_edges(r: point_2d,
+                 G: simple_polygon_2d): finite_set[below(G`num_vertices)] =
+    {j: below(G`num_vertices) |
+        EXISTS (i: below(G`num_vertices)):
+          (j = i OR j = prev_index(G, i)) AND
+          is_vertex_with_V_edges?(r, G, i)}
+
+  % Derive the set of index values for all edges having a
+  % qualifying ray intersection.
+  right_crossing_edges_no_V(r: point_2d, G: simple_polygon_2d):
+			   finite_set[below(G`num_vertices)] =
+    {j: below(G`num_vertices) |
+        EXISTS (e: segment_2d, q: point_2d):
+          e = edges_of_polygon(G)(j) AND
+	  is_right_point_ray_intersection?(r, e) AND
+	  q = edge_right_crossing_point(r, e) AND
+	  (segment_endpoint?(e)(q) IMPLIES count_adjacent_edges?(q, G))}
+
+  % Define the set of x-values for all qualifying ray intersections.
+  right_ray_crossing_x(r: point_2d, G: simple_polygon_2d): finite_set[real] =
+    {x: real |
+        EXISTS (j: below(G`num_vertices), e: segment_2d, q: point_2d):
+          e = edges_of_polygon(G)(j) AND x = q`x AND
+	  is_right_point_ray_intersection?(r, edges_of_polygon(G)(j)) AND
+	  q = edge_right_crossing_point(r, e) AND
+	  (segment_endpoint?(e)(q) IMPLIES count_adjacent_edges?(q, G))}
+
+  set_before_x(S: finite_set[real], x: real): finite_set[real] =
+    {u: real | S(u) AND u < x}
+
+  % This is the main condition for point membership using the
+  % horizontal method and based on a finite set specification.
+
+  point_in_polygon?(p: point_2d, G: simple_polygon_2d): bool =
+    NOT point_on_polygon_perimeter?(G)(p) AND
+    odd?(card(right_crossing_set(p, G)))
+
+  edge_right_crossing_point_y_eq: LEMMA
+    FORALL (q, r: point_2d, e: {e: segment_2d | e`p2`y - e`p1`y /= 0}):
+      q = edge_right_crossing_point(r, e) IMPLIES q`y = r`y
+
+  right_crossing_point_on_edge: LEMMA
+    FORALL (r: point_2d, G: simple_polygon_2d,
+            e: {e: (edge_of_polygon?(G)) | e`p2`y - e`p1`y /= 0}):
+      is_right_point_ray_intersection?(r, e) IMPLIES
+        point_on_segment?(edge_right_crossing_point(r, e), e)
+
+  diamond_center_is_inside: LEMMA
+    LET ctr = (# x := 0, y := 0 #) IN
+    point_in_polygon?(ctr, example_diamond);
+
+  % Equivalence of the two horizontal crossing-number formulations,
+  % one using the set-theoretic expression and the other an
+  % implementable recursive function, defined in theory polygons_2d.
+  odd_rt_xing_edges_card_eqv_point_in_polygon_rec: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d,
+           n: below(G`num_vertices)):
+      odd?(card(right_crossing_edges_from_n(p, G, n))) IFF
+        is_point_in_polygon_recursive?(G, p, n, FALSE);
+
+  even_card_purged_V_edges: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      even?(card(purged_V_edges(p, G)))
+
+  subset_purged_V_right_crossing_edges: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      subset?(purged_V_edges(p, G),
+              right_crossing_edges_from_n(p, G, 0))
+
+  % Expresses that the crossed edges without V-edge cases equals
+  % the full set of crossings with V edges removed.
+  no_V_edges_eq_crossing_edges_sans_purged: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      right_crossing_edges_no_V(p, G) =
+        difference(right_crossing_edges_from_n(p, G, 0),
+                   purged_V_edges(p, G))
+
+  card_xing_edges_from_n_and_no_V_both_odd: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      odd?(card(right_crossing_edges_from_n(p, G, 0))) IFF
+      odd?(card(right_crossing_edges_no_V(p, G)))
+
+  card_rt_xing_edges_eq_card_rt_xing_x: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      card(right_crossing_edges_no_V(p, G)) =
+      card(right_ray_crossing_x(p, G))
+
+  right_crossing_x_eq_rt_crossing_set: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      right_ray_crossing_x(p, G) = right_crossing_set(p, G) OR
+      point_on_polygon_perimeter?(G)(p)
+
+  % Equivalence of the two horizontal crossing-number formulations,
+  % each encapsulated in a predicate function.
+  point_in_polygon?_eq_is_point_in_polygon_exclusive?: LEMMA
+    FORALL(p: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IFF
+        is_point_in_polygon_exclusive?(G)(p);
+
+  % Following are a few additional properties of the various
+  % crossing definitions.
+  
+  counted_is_crossing: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+       point_on_ray?(q, p) AND counted_crossing?(G)(q)
+         IMPLIES crossing_point?(p, G)(q)
+
+  counted_or_uncounted_crossing: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      crossing_point?(p, G)(q) IFF
+      (point_on_ray?(q, p) AND
+       (counted_crossing?(G)(q) OR uncounted_crossing?(G)(q)))
+
+  crossing_on_perimeter: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      crossing_point?(p, G)(q) IMPLIES
+        point_on_polygon_perimeter?(G)(q)
+
+  set_before_subset: LEMMA
+    FORALL (S: finite_set[real], x: real):
+      subset?(set_before_x(S, x), S)
+
+  crossings_subset: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_on_ray?(q, p)
+        IMPLIES subset?(right_crossing_set(q, G),
+                        right_crossing_set(p, G))
+
+  crossing_before_diff: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_on_ray?(q, p) IMPLIES
+        LET R = right_crossing_set(p, G) IN
+          right_crossing_set(q, G) = difference(R, set_before_x(R, q`x))
+
+  right_crossings_min: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      LET R = right_crossing_set(p, G) IN
+	(FORALL (u: (R)): u >= q`x) AND
+        point_on_ray?(q, p)
+          IMPLIES right_crossing_set(q, G) = R
+
+  right_crossings_max: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      LET R = right_crossing_set(p, G) IN
+	(FORALL (u: (R)): u < q`x) AND
+        point_on_ray?(q, p)
+          IMPLIES
+            right_crossing_set(q, G) = emptyset
+
+  before_crossings_empty: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_on_ray?(q, p) AND
+      set_before_x(right_crossing_set(p, G), q`x) = emptyset
+        IMPLIES right_crossing_set(q, G) = right_crossing_set(p, G)
+
+  right_crossings_gap: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_on_ray?(q, p) AND
+      (FORALL (u: point_2d): point_on_ray?(u, p) AND u`x < q`x IMPLIES
+                               NOT crossing_point?(p, G)(u))
+        IMPLIES
+          right_crossing_set(q, G) = right_crossing_set(p, G)
+
+  right_counted_gap: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_on_ray?(q, p) AND
+      (FORALL (u: point_2d): point_on_ray?(u, p) AND u`x < q`x IMPLIES
+                               NOT counted_crossing?(G)(u))
+        IMPLIES
+          right_crossing_set(q, G) = right_crossing_set(p, G)
+
+  between_crossings_even: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+        LET R = right_crossing_set(p, G) IN
+            point_in_polygon?(p, G) AND
+            point_on_ray?(q, p)
+              IMPLIES (odd?(card(right_crossing_set(q, G))) IFF
+		       even?(card(set_before_x(R, q`x))))
+
+  opposite_sides_of_crossing: LEMMA
+    FORALL (p, q, r: point_2d, G: simple_polygon_2d):
+      NOT point_on_polygon_perimeter?(G)(p) AND
+      NOT point_on_polygon_perimeter?(G)(r) AND
+      counted_crossing?(G)(q) AND
+      point_on_ray?(q, p) AND point_on_ray?(r, q) AND
+      (FORALL (u: point_2d):
+         p`x <= u`x AND u`x <= r`x AND p`y = u`y AND u /= q
+	   IMPLIES NOT counted_crossing?(G)(u))
+        IMPLIES
+          point_in_polygon?(p, G) AND NOT point_in_polygon?(r, G) OR
+          NOT point_in_polygon?(p, G) AND point_in_polygon?(r, G)
+
+  % A few additional definitions about crossing points
+
+  outgoing_crossing?(G: simple_polygon_2d)(p: point_2d): bool =
+    counted_crossing?(G)(p) AND odd?(card(right_crossing_set(p, G)))
+
+  incoming_crossing?(G: simple_polygon_2d)(p: point_2d): bool =
+    counted_crossing?(G)(p) AND even?(card(right_crossing_set(p, G)))
+
+  next_crossing_point?(r: point_2d, x: real,
+                       G: simple_polygon_2d)(p: point_2d): bool =
+    crossing_point?(r, G)(p) AND x <= p`x AND
+    FORALL (q: (crossing_point?(r, G))): q`x < x OR p`x <= q`x
+
+  next_counted_crossing?(x: real, G: simple_polygon_2d)(p: point_2d): bool =
+    counted_crossing?(G)(p) AND x <= p`x AND
+    FORALL (q: (counted_crossing?(G))):
+      q`y = p`y IMPLIES q`x < x OR p`x <= q`x
+
+  prev_crossing_point?(r: point_2d, x: real,
+                       G: simple_polygon_2d)(p: point_2d): bool =
+    crossing_point?(r, G)(p) AND p`x <= x AND
+    FORALL (q: (crossing_point?(r, G))): x < q`x OR q`x <= p`x
+
+  prev_counted_crossing?(x: real, G: simple_polygon_2d)(p: point_2d): bool =
+    counted_crossing?(G)(p) AND p`x <= x AND
+    FORALL (q: (counted_crossing?(G))):
+      q`y = p`y IMPLIES x < q`x OR q`x <= p`x
+
+  % Here is the condition for polygon edge containment. A is contained
+  % within C if every point on every edge of A is either inside of C or
+  % lies on an edge of C.
+
+  polygon_contained?(A, C: simple_polygon_2d): bool =
+    FORALL (p: point_2d):
+      point_on_polygon_perimeter?(A)(p) IMPLIES
+        point_in_polygon?(p, C) OR point_on_polygon_perimeter?(C)(p)
+
+  outgoing_follows_point_in: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND p`y = q`y AND
+      next_counted_crossing?(p`x, G)(q)
+        IMPLIES outgoing_crossing?(G)(q)
+
+  % Several sufficient conditions for points being inside of a polygon
+
+  before_crossing_in_polygon: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND
+      next_crossing_point?(p, p`x, G)(q)
+        IMPLIES FORALL (u: point_2d): point_on_ray?(u, p) AND u`x < q`x
+                                        IMPLIES point_in_polygon?(u, G)
+
+  before_counted_odd_crossings: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND p`y = q`y AND
+      next_counted_crossing?(p`x, G)(q)
+        IMPLIES FORALL (u: point_2d):
+	          point_on_ray?(u, p) AND u`x < q`x
+                    IMPLIES odd?(card(right_crossing_set(u, G)))
+
+  before_counted_in_polygon: LEMMA
+    FORALL (p, q: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) AND p`y = q`y AND
+      next_counted_crossing?(p`x, G)(q)
+        IMPLIES FORALL (u: point_2d):
+  	          point_on_ray?(u, p) AND u`x < q`x AND
+  		    NOT uncounted_crossing?(G)(u)
+                      IMPLIES point_in_polygon?(u, G)
+
+  counted_crossing_follows_point_inside: LEMMA
+    FORALL (p: point_2d, G: simple_polygon_2d):
+      point_in_polygon?(p, G) IMPLIES
+        EXISTS (q: point_2d): next_counted_crossing?(p`x, G)(q) AND
+			      odd?(card(right_crossing_set(q, G)))
+
+  END horiz_edge_crossing
