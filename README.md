@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.1 (1/30/23) and requires [PVS 7.1](http://
 
 # Libraries
 
-Currently, NASALib consists of 58 libraries, containing about 32K proven formulas.
+Currently, NASALib consists of 61 libraries, containing about 36K proven formulas.
 
 | Library  | Description | 
 | --- | --- | 
