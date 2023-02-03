@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.1 (1/30/23) and requires [PVS 7.1](http://
 
 # Libraries
 
-Currently, NASALib consists of 61 libraries, containing about 36K proven formulas.
+Currently, NASALib consists of 64 libraries, containing about 35K proven formulas.
 
 | Library  | Description | 
 | --- | --- | 
@@ -37,7 +37,10 @@ Currently, NASALib consists of 61 libraries, containing about 36K proven formula
 | [extended_nnreal](./extended_nnreal/README.md) | Extended non-negative reals |
 | [fast_approx](./fast_approx/README.md) | Approximations of standard numerical functions |
 | [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols |
-| [float](./float/README.md) | Floating point numbers and arithmetic |
+| [float/axm_bnd](./float/README.md) | Floating point arithmetic (Axiomatic IEEE-754) |
+| [float/fnd_bnd](./float/README.md) | Floating point arithmetic (Foundational generic) |
+| [float/fnd_unb](./float/README.md) | Floating point arithmetic (Foundational IEEE-754)|
+| [float/ieee854](./float/README.md) | Floating point arithmetic (Foundational IEEE-854)|
 | [graphs](./graphs/README.md) | Graph theory |
 | [interval_arith](./interval_arith/README.md) | Interval arithmetic and numerical approximations. Includes automated strategies numerical for computing numerical approximations and interval for checking satisfiability and validity of simply quantified real-valued formulas. This development includes a formalization of Allen interval temporal logic |
 | [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max |

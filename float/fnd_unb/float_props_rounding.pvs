@@ -1,0 +1,133 @@
+float_props_rounding
+[ radix        : above(1),
+  precision    : above(1),
+  dExp         : { d: posnat | d > 2*(precision-1) - 1} ]
+: THEORY BEGIN
+
+  IMPORTING float[radix]
+
+  given_format : MACRO Format=(#Prec:=precision,dExp:=dExp#)
+  
+  exp_bound: LEMMA
+    FORALL(b: Format,
+    	   round : ClosestRoundingPred(b),
+           RtoF  : RNDF(b,round) | FORALL(y:real):
+	   	   		     Fnum(RtoF(y))=0
+				     IMPLIES Fexp(RtoF(y)) = -dExp(b),
+	   exp   : int | -dExp(b) <= exp ,
+	   x     : nonneg_real):
+      x <= radix^exp IMPLIES Fexp(RtoF(x)) <= exp
+
+  closestrounding_preserves_fplowerbound: LEMMA 
+    FORALL(b: Format,
+    	   round : ClosestRoundingPred(b),
+           RtoF  : RNDF(b,round),
+	   f     : (Fbounded?(b)),
+	   x     : real):
+      FtoR(f) <= x IMPLIES FtoR(f) <= FtoR(RtoF(x))
+
+  %
+  %  Uniqueness of zero
+  %  Zero has an unique representation for this concrete
+  %  description of floating-point numbers.
+  %
+
+  unique_zero(b:Format,round:Rounding(b),RtoF: RNDF(b,round)): bool =
+     FORALL(y:real): Fnum(RtoF(y))=0 IMPLIES Fexp(RtoF(y)) = -dExp(b)
+     
+  rep_exp_bound: LEMMA
+    FORALL(b     : Format,
+    	   round : ClosestRoundingPred(b),
+           RtoF  : CanonicRoundingFun(b,round) | unique_zero(b,round,RtoF),
+	   exp   : int | -dExp(b) <= exp,
+	   x     : real,
+	   err   : nonneg_real,
+	   f     : (Fcanonic?(b))):
+    abs(FtoR(f) - x) <= err AND
+    abs(x)+err <= radix^exp
+    IMPLIES Fexp(f) <= exp  
+
+  unique_zero_closest_rounding: LEMMA
+    FORALL(b     : Format,
+    	   round : Rounding(b),
+           RtoF  : CanonicRoundingFun(b,round)):
+      unique_zero(b,round,RtoF)
+
+  unique_zero_RND_aux: LEMMA
+   FORALL(b: Format):
+    FORALL(y: nonneg_real): Fnum(RND_aux(b)(y))=0 IMPLIES Fexp(RND_aux(b)(y)) = -dExp(b)
+    
+  unique_zero_RND_Min: LEMMA
+   FORALL(b: Format):
+    unique_zero(b,isMin?(b),RND_Min(b))
+
+  unique_zero_RND_Max: LEMMA
+   FORALL(b: Format):
+    unique_zero(b,isMax?(b),RND_Max(b))
+
+  unique_zero_RND_EClosest: LEMMA
+   FORALL(b: Format):
+    unique_zero(b,EvenClosest?(b),RND_EClosest(b))
+
+  %
+  % 
+  %
+
+  % ucf : unbounded canonic float
+  unb_canonic_float: TYPE = (Fcanonic?(given_format))
+  
+  % Projection
+  prj_ucf(f1: unb_canonic_float): real = FtoR(f1)
+
+  closest?_ucf(x1: real,(f1:(Fbounded?(given_format)))): bool =
+    EvenClosest?(given_format)(x1,f1)
+        
+  closest?_ucf__j: JUDGEMENT
+    closest?_ucf HAS_TYPE
+        {round: RestrictedRounding(given_format, EvenClosest?) |
+                                 rounded_mode?(given_format)(round) }
+
+  currified_closest?_ucf(x1: real)(f1:(Fbounded?(given_format))): bool =
+    closest?_ucf(x1,f1)
+
+  rnd_eclosest_is_particuLar_closest
+  : LEMMA FORALL (x1: real)
+    : currified_closest?_ucf(x1)(RND_EClosest(given_format)(x1))
+
+  rnd_ucf(x1 : real): { f:unb_canonic_float |  currified_closest?_ucf(x1)(f) } =
+    RND_EClosest(given_format)(x1)
+
+  rnd_prj_ucf
+  : LEMMA
+    FORALL(f: unb_canonic_float): rnd_ucf(prj_ucf(f)) = f
+
+  rnd_opp_ucf
+  : LEMMA
+    FORALL(x:real): rnd_ucf(-x) = Fopp(rnd_ucf(x))
+
+  rnd_ucf_monotonic
+  : LEMMA
+    FORALL(x1,x2: real): x1 <= x2 IMPLIES prj_ucf(rnd_ucf(x1)) <= prj_ucf(rnd_ucf(x2))
+
+  rnc_ucf_increasing
+  : LEMMA
+    FORALL(x1,x2: real): x1 <= x2 IMPLIES rnd_ucf(x1) <= rnd_ucf(x2)
+
+  rnd_ucf_is_canonic_rounding_closest_ucf_
+  : lemma
+    (FORALL (x: real): closest?_ucf(x, rnd_ucf(x))) AND
+    FORALL (x: real): Fcanonic?[radix]((# Prec := precision, dExp := dExp #))(rnd_ucf(x))
+
+  rnd_ucf_is_canonic_rounding_closest_ucf
+  : judgement
+    rnd_ucf has_type CanonicRoundingFun(given_format, closest?_ucf)
+
+  prj_rnd_ucf_ints
+  : Theorem
+    forall(z: int | abs(z) <= vNum(given_format)): prj_ucf(rnd_ucf(z)) = z
+
+  prj_rnd_ucf_zero
+  : Corollary
+    prj_ucf(rnd_ucf(0)) = 0
+
+END float_props_rounding

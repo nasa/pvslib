@@ -1,0 +1,63 @@
+accum_err_mul[
+  radix : above(1),
+  (IMPORTING float[radix])
+  b     : Format,
+  round : ClosestRoundingPred(b),
+  RtoF  : CanonicRoundingFun(b,round)
+]: THEORY
+BEGIN
+  ASSUMING
+
+    round_even_closest: ASSUMPTION
+      FORALL(x:real,f:(Fbounded?(b))): round(x,f) IMPLIES EvenClosest?(b)(x,f)
+
+    round_rounded_mode: ASSUMPTION
+      rounded_mode?(b)(round)
+
+  ENDASSUMING
+
+  f,f1,f2 : VAR (Fbounded?(b))
+  e,e1,e2 : VAR nonneg_real
+  r,r1,r2 : VAR real
+
+  IMPORTING std_mul[radix,b,round,RtoF]
+  IMPORTING reals@abs_lems
+  IMPORTING interval_arith@interval_mps
+  
+  mul_aerr_bound(r1,e1,r2,e2)
+  : nonneg_real 
+  = abs(r1)*e2+abs(r2)*e1+e1*e2
+
+  % Error of the (correctly-rounded) function w.r.t. the real operation on
+  % the (real version of the) floating point numbers. 
+  mul_accum_err: LEMMA
+    abs(FtoR(f1)-r1) <= e1 AND
+    abs(FtoR(f2)-r2) <= e2
+    IMPLIES abs((FtoR(f1)*FtoR(f2))-(r1*r2)) <= mul_aerr_bound(r1,e1,r2,e2)
+
+  mul_ulp_bound(r1,e1,r2,e2)
+  : real 
+  = abs(r1)*abs(r2) + abs(r1)*e2 + e1*abs(r2) + e1*e2 
+
+  Fmul_accum_err_bound: LEMMA
+    abs(FtoR(f1)-r1) <= e1 AND
+    abs(FtoR(f2)-r2) <= e2
+    IMPLIES abs(FtoR(f1)*FtoR(f2)) <= mul_ulp_bound(r1,e1,r2,e2)  
+
+  IMPORTING accum_err_op2sch[
+              (Fbounded?(b)), FtoR, RtoF, ulp(b),
+	      LAMBDA(f1,f2): TRUE, Fmul,
+	      LAMBDA(r1,r2): TRUE, *,
+	      LAMBDA(r1,e1,r2,e2): TRUE,
+	      mul_aerr_bound,
+	      LAMBDA(r1,e1,r2,e2): TRUE,
+	      mul_ulp_bound] AS aelemmath_mul
+
+  accum_err_bound: LEMMA
+    abs(FtoR(f1)-r1) <= e1 AND
+    abs(FtoR(f2)-r2) <= e2
+    IMPLIES abs(FtoR(Fmul(f1,f2)) - (r1*r2))
+            <= mul_aerr_bound(r1,e1,r2,e2)
+	       + ulp(b)(mul_ulp_bound(r1,e1,r2,e2)) / 2
+
+END accum_err_mul

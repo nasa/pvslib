@@ -1,0 +1,130 @@
+extended_float_rounding__nearest_even
+[ radix     : above(1),
+  precision : above(1),
+  dExp      : { d: posnat | d > 2*(precision-1) - 1 }
+] : THEORY BEGIN
+
+  IMPORTING extended_float[radix,precision,dExp]
+  IMPORTING extended_float_exactly_representable_reals[radix, precision, dExp]
+
+  dtor_rtod_on_er
+  : COROLLARY
+    FORALL (x: xef_real) : x = prj_ucf(rnd_ucf(x))
+
+  bound_on_exp_of_rounded_erreal
+  : COROLLARY
+    FORALL (x: xef_real) : Fexp(rnd_ucf(x)) <= max_exp
+
+  %
+
+  rtod_on_ranged_pos_is_in_range : LEMMA
+  FORALL (x: real):
+    x <= max_pos_value AND
+    min_pos_value <= x
+    IMPLIES rnd_ucf(x)`Fexp <= max_exp AND rnd_ucf(x)`Fnum /= 0;
+
+  rtod_on_ranged_neg_is_in_range : LEMMA
+  FORALL (x: real):
+    -x <= -min_pos_value AND
+    -max_pos_value <= -x
+    IMPLIES rnd_ucf(x)`Fexp <= max_exp AND rnd_ucf(x)`Fnum /= 0;
+
+  rtod_on_near_but_not_zero_is_in_range : LEMMA
+  FORALL (x: real):
+    x <= min_pos_value AND
+    -min_pos_value <= x AND
+    NOT FtoR(rnd_ucf(x)) = 0
+    IMPLIES rnd_ucf(x)`Fexp <= max_exp AND rnd_ucf(x)`Fnum /= 0;
+
+  %
+  % Rounding for extended floats
+  %
+  
+  rnd_ef_well_defined
+  : LEMMA
+    FORALL (x: real)
+    : NOT x < -max_pos_value AND NOT x > max_pos_value
+      IMPLIES FORALL (rounded_x: {f: unb_canonic_float[radix, precision, dExp] | currified_closest?_ucf[radix, precision, dExp](x)(f)})
+      	      : rounded_x = rnd_ucf(x) AND NOT FtoR[radix](rounded_x) = 0
+	      IMPLIES rounded_x`Fexp <= max_exp[radix, precision, dExp] AND rounded_x`Fnum /= 0
+
+  rnd_ef(x: real): efloat
+  = IF    x < -max_pos_value THEN neginf
+    ELSIF x >  max_pos_value THEN posinf
+    ELSE LET rounded_x = rnd_ucf(x) IN
+      IF rounded_x = 0 THEN
+        IF x < 0 THEN negzero
+        ELSE poszero ENDIF
+      ELSE nzfinite(rounded_x) ENDIF
+    ENDIF
+
+  % Properties
+
+  round_zero: LEMMA rnd_ef(0) = poszero
+  
+  round_inverse_of_projection_on_nzfinite
+  : LEMMA
+    FORALL(f: (nzfinite?)): rnd_ef(prj_ef(f)) = f
+
+  proj_round_proj_on_finite
+  : THEOREM
+    FORALL(f: (is_finite?))
+    : safe_prjct(rnd_ef(safe_prjct(f))) = safe_prjct(f)
+
+%M3 needed to prove interpretations
+  rtoed_er_is_finite
+  : LEMMA FORALL (x: xef_real)
+    : is_finite?(rnd_ef(x))
+
+  %
+  %
+  %
+
+  round_er_eq_unb
+  : LEMMA 
+    FORALL (x: er_real | NOT x = 0)
+    : rnd_ef(x) = nzfinite(rnd_ucf(x))
+
+  proj_round_er_eq_unb
+  : LEMMA 
+    FORALL (x: er_real)
+    : prj_ef(rnd_ef(x)) = prj_ucf(rnd_ucf(x))
+
+  proj_round_on_er : LEMMA FORALL (x: er_real) : x = prj_ef(rnd_ef(x))
+
+  round_is_injective_on_er
+  : LEMMA FORALL (x, y: er_real): rnd_ef(x) = rnd_ef(y) IMPLIES x = y
+
+  %
+  %
+  %
+
+  ieee754_semantics_round_proj_interpretation_obligation_1: LEMMA 
+    FORALL (f: {x: efloat | nzfinite?(x)}):
+      f = rnd_ef(prj_ef(f));
+
+  ieee754_semantics_nzfinite?_def_interpretation_obligation_1
+  : LEMMA  FORALL (f: efloat): nzfinite?(f) = (is_finite?(f) AND prj_ef(f) /= 0)
+  
+  ieee754_semantics_pfinite?_def_interpretation_obligation_1: LEMMA 
+    FORALL (f: efloat):
+      nzpfinite?(f) = (is_finite?(f) AND
+       prj_ef(f) > 0);
+  
+  ieee754_semantics_nfinite?_def_interpretation_obligation_1: LEMMA 
+    FORALL (f: efloat):
+      nznfinite?(f) = (is_finite?(f) AND
+       prj_ef(f) < 0);
+  
+  ieee754_semantics_add_inv_def_interpretation_obligation_1: LEMMA 
+    FORALL (f: {x: efloat | nzfinite?(x)}):
+      prj_ef(flip_sign(f)) =
+       -prj_ef(f);
+
+  %
+
+  proj_round_is_monotone_on_er
+  : LEMMA FORALL (x, y: er_real):
+    x <= y IMPLIES prj_ef(rnd_ef(x)) <= prj_ef(rnd_ef(y));
+
+END extended_float_rounding__nearest_even

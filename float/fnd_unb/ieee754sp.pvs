@@ -1,0 +1,183 @@
+%
+% IEEE 754 instantiation of the high level specification for single precision numbers.
+%
+ieee754sp: THEORY
+BEGIN
+
+  ieee754radix: MACRO nat = 2
+  ieee754sp_prec: MACRO nat = 24
+  ieee754sp_dexp: MACRO nat = 149
+
+  IMPORTING float[ieee754radix],
+   	    float_props_rounding[ieee754radix,ieee754sp_prec,ieee754sp_dexp]
+
+  x,x1,x2: VAR real
+
+  single_precision_format: Format=(#Prec:=ieee754sp_prec,dExp:=ieee754sp_dexp#)
+
+  % single precision numbers 
+  unb_single: TYPE+ = (Fcanonic?(single_precision_format)) CONTAINING RND_EClosest(single_precision_format)(0)
+
+  min_pos_value: posreal = minimum_positive_bounded_value(single_precision_format)
+
+  f,f1,f2: VAR unb_single
+  
+  Sulp(f1): posreal = Fulp(single_precision_format)(f1)
+
+  min_Sulp: nonneg_real = min_Fulp(single_precision_format)
+
+  Sminexp: MACRO int = -dExp(single_precision_format)
+
+  sp_closest?(x1,(f1:(Fbounded?(single_precision_format)))): bool =
+    EvenClosest?(single_precision_format)(x1,f1)
+        
+  closest_single?(x1)(f1:(Fbounded?(single_precision_format))): bool =
+    sp_closest?(x1,f1)
+
+  sp_closest?_j: JUDGEMENT
+    sp_closest? HAS_TYPE
+        {round: RestrictedRounding[2](single_precision_format, EvenClosest?) |
+                                 rounded_mode?(single_precision_format)(round) }
+
+  sp_closest?_closestroundingpred_j: JUDGEMENT
+    sp_closest? HAS_TYPE ClosestRoundingPred[2](single_precision_format)
+
+  %
+  % Rounding & Projection
+  %
+
+  % rounding to the nearest (even)
+  RtoS(x1): { f:unb_single |  closest_single?(x1)(f) } =
+    RND_EClosest(single_precision_format)(x1)
+
+  RtoS_closest_single
+  : LEMMA
+    FORALL (x1: real):
+      closest_single?(x1)(RtoS(x1));
+
+  % rounding to infinity
+  RtoS_max(x1) : unb_single
+  = RND_Max(single_precision_format)(x1)
+
+  % rounding to minus infinity
+  RtoS_min(x1) : unb_single
+  = RND_Min(single_precision_format)(x1)
+
+  nonneg_unbsp: TYPE = { X: unb_single | RtoS(0) <= X }
+  nonpos_unbsp: TYPE = { X: unb_single | X <= RtoS(0) }
+
+  rtos_canonicroundfun_exactrepconservation_j: JUDGEMENT
+    RtoS HAS_TYPE {RtoF:
+          CanonicRoundingFun(single_precision_format, sp_closest?) |
+                exact_rep_conservation[2]
+                    (single_precision_format, sp_closest?)(RtoF)}
+
+  rtos_canonic_rounding_fun_j: JUDGEMENT
+    RtoS HAS_TYPE CanonicRoundingFun[2](single_precision_format,sp_closest?)
+
+  % Projection
+  StoR(f1): real = FtoR(f1)
+  CONVERSION StoR
+
+  rtos_monotonic
+  : LEMMA
+    FORALL(x1,x2: real): x1 <= x2 IMPLIES StoR(RtoS(x1)) <= StoR(RtoS(x2))
+
+  % integers.
+
+  ItoS(i: int): MACRO unb_single = RtoS(i)
+
+  %
+  % Inequalities
+  %
+
+  ;< (X,Y: unb_single): MACRO bool = X < Y
+  ;<=(X,Y: unb_single): MACRO bool = X <= Y
+  ;>=(X,Y: unb_single): MACRO bool = Y <= X
+
+  neq_lt_rew
+  : LEMMA
+    FORALL(X,Y: unb_single):  Y < X = (NOT X <= Y)
+
+  noteq_rew_rl1 : LEMMA FORALL(X,Y: unb_single):
+    X < Y IMPLIES (NOT X = Y)
+
+  noteq_rew_rl2 : LEMMA FORALL(X,Y: unb_single):
+    X > Y IMPLIES (NOT X = Y)
+
+  noteq_rew : LEMMA FORALL(X,Y: unb_single):
+    (NOT X = Y) = (X > Y OR X < Y)	
+
+  neq_rew : LEMMA FORALL(X,Y: unb_single):
+    X /= Y = NOT X = Y
+
+  leq_def: LEMMA FORALL(X,Y: unb_single):
+    X<=Y = (X<Y OR X=Y)
+
+  %
+  % Unit in the Last Place (ulp) definition for single precision
+  %
+  
+  ulp_sp(x): nonneg_real =
+    ulp(single_precision_format)(x)
+
+  Sulp_def: LEMMA
+    Sulp(f1) = 2^Fexp(f1)
+
+  %
+  % Conversions between reals and single-precision numbers
+  %
+
+  StoR_round: LEMMA
+    abs(StoR(RtoS(x1)) - x1) <= Sulp(RtoS(x1)) / 2
+  AUTO_REWRITE+ StoR_round
+
+  StoR_RtoS: LEMMA
+   EXISTS(e1: real):
+    - Sulp(RtoS(x1)) / 2 <= e1 AND
+    e1 <= Sulp(RtoS(x1)) / 2 AND
+    StoR(RtoS(x1)) = x1 + e1
+
+  StoR_RtoS_int_exactly_representable: LEMMA
+    FORALL(i: int | abs(i) <= ieee754radix^ieee754sp_prec ):
+      StoR(RtoS(i)) = i
+
+  RtoS_StoR: LEMMA
+    RtoS(StoR(f)) = f
+
+  StoR_ext
+  : LEMMA
+    FORALL(f1,f2: unb_single):
+    StoR(f1) = StoR(f2) IFF f1=f2
+
+  % StoR conversion is an increasing function.  
+  StoR_strictly_increasing: LEMMA
+    f1 < f2 IFF StoR(f1) < StoR(f2)
+    
+  StoR_inc: LEMMA
+    f1 <= f2 IFF StoR(f1) <= StoR(f2)
+
+  % RtoS conversion is an increasing function.
+  
+  RtoS_inc: LEMMA
+    x1 <= x2 IMPLIES RtoS(x1) <= RtoS(x2)
+
+  RtoS_opp: LEMMA
+    RtoS(-x) = Fopp(RtoS(x))
+
+  % Rounding properties
+
+  unique_zero_RtoS: LEMMA
+    unique_zero(
+      single_precision_format,
+      EvenClosest?(single_precision_format),
+      RtoS)
+
+  sp_rep_exp_bound: LEMMA
+    FORALL(exp   : int | -ieee754sp_dexp <= exp,
+	   x     : real,
+	   err   : nonneg_real | abs(x)+err <= ieee754radix^exp,
+	   f     : unb_single  | abs(StoR(f) - x) <= err):
+      Fexp(f) <= exp
+
+END ieee754sp

@@ -1,0 +1,188 @@
+%
+% IEEE 754 instantiation of the high level specification for double precision numbers.
+%
+ieee754dp: THEORY
+BEGIN
+
+  ieee754radix: MACRO nat = 2
+  ieee754dp_prec: MACRO nat = 53
+  ieee754dp_dexp: MACRO nat = 1074
+
+  precomputed_rep_int_limit
+  : LEMMA
+    ieee754radix^ieee754dp_prec = 9007199254740992
+  AUTO_REWRITE+ precomputed_rep_int_limit
+
+  IMPORTING float[ieee754radix],
+   	    float_props_rounding[ieee754radix,ieee754dp_prec,ieee754dp_dexp]
+
+  x,x1,x2: VAR real
+
+  double_precision_format: Format=(#Prec:=ieee754dp_prec,dExp:=ieee754dp_dexp#)
+
+  % double precision numbers 
+  unb_double: TYPE+ = (Fcanonic?(double_precision_format)) CONTAINING RND_EClosest(double_precision_format)(0)
+
+  min_pos_value: posreal = minimum_positive_bounded_value(double_precision_format)
+
+  f,f1,f2: VAR unb_double
+  
+  Dulp(f1): posreal = Fulp(double_precision_format)(f1)
+
+  min_Dulp: nonneg_real = min_Fulp(double_precision_format)
+
+  Sminexp: MACRO int = -dExp(double_precision_format)
+
+  dp_closest?(x1,(f1:(Fbounded?(double_precision_format)))): bool =
+    EvenClosest?(double_precision_format)(x1,f1)
+        
+  closest_double?(x1)(f1:(Fbounded?(double_precision_format))): bool =
+    dp_closest?(x1,f1)
+
+  dp_closest?_j: JUDGEMENT
+    dp_closest? HAS_TYPE
+        {round: RestrictedRounding[2](double_precision_format, EvenClosest?) |
+                                 rounded_mode?(double_precision_format)(round) }
+
+  dp_closest?_closestroundingpred_j: JUDGEMENT
+    dp_closest? HAS_TYPE ClosestRoundingPred[2](double_precision_format)
+
+  %
+  % Rounding & Projection
+  %
+
+  % rounding to the nearest (even)
+  RtoD(x1): { f:unb_double |  closest_double?(x1)(f) } =
+    RND_EClosest(double_precision_format)(x1)
+
+  RtoD_closest_double
+  : LEMMA
+    FORALL (x1: real):
+      closest_double?(x1)(RtoD(x1));
+
+  % rounding to infinity
+  RtoD_max(x1) : unb_double
+  = RND_Max(double_precision_format)(x1)
+
+  % rounding to minus infinity
+  RtoD_min(x1) : unb_double
+  = RND_Min(double_precision_format)(x1)
+
+  nonneg_unbdp: TYPE = { X: unb_double | RtoD(0) <= X }
+  nonpos_unbdp: TYPE = { X: unb_double | X <= RtoD(0) }
+
+  rtod_canonicroundfun_exactrepconservation_j: JUDGEMENT
+    RtoD HAS_TYPE {RtoF:
+          CanonicRoundingFun(double_precision_format, dp_closest?) |
+                exact_rep_conservation[2]
+                    (double_precision_format, dp_closest?)(RtoF)}
+
+  rtod_canonic_rounding_fun_j: JUDGEMENT
+    RtoD HAS_TYPE CanonicRoundingFun[2](double_precision_format,dp_closest?)
+
+  % Projection
+  DtoR(f1): real = FtoR(f1)
+  CONVERSION DtoR
+
+  rtod_monotonic
+  : LEMMA
+    FORALL(x1,x2: real): x1 <= x2 IMPLIES DtoR(RtoD(x1)) <= DtoR(RtoD(x2))
+
+  % integers.
+
+  ItoD(i: int): MACRO unb_double = RtoD(i)
+
+  %
+  % Inequalities
+  %
+
+  ;< (X,Y: unb_double): MACRO bool = X < Y
+  ;<=(X,Y: unb_double): MACRO bool = X <= Y
+  ;>=(X,Y: unb_double): MACRO bool = Y <= X
+
+  neq_lt_rew
+  : LEMMA
+    FORALL(X,Y: unb_double):  Y < X = (NOT X <= Y)
+
+  noteq_rew_rl1 : LEMMA FORALL(X,Y: unb_double):
+    X < Y IMPLIES (NOT X = Y)
+
+  noteq_rew_rl2 : LEMMA FORALL(X,Y: unb_double):
+    X > Y IMPLIES (NOT X = Y)
+
+  noteq_rew : LEMMA FORALL(X,Y: unb_double):
+    (NOT X = Y) = (X > Y OR X < Y)	
+
+  neq_rew : LEMMA FORALL(X,Y: unb_double):
+    X /= Y = NOT X = Y
+
+  leq_def: LEMMA FORALL(X,Y: unb_double):
+    X<=Y = (X<Y OR X=Y)
+
+  %
+  % Unit in the Last Place (ulp) definition for double precision
+  %
+  
+  ulp_dp(x): nonneg_real =
+    ulp(double_precision_format)(x)
+
+  Dulp_def: LEMMA
+    Dulp(f1) = 2^Fexp(f1)
+
+  %
+  % Conversions between reals and double-precision numbers
+  %
+
+  DtoR_round: LEMMA
+    abs(DtoR(RtoD(x1)) - x1) <= Dulp(RtoD(x1)) / 2
+  AUTO_REWRITE+ DtoR_round
+
+  DtoR_RtoD: LEMMA
+   EXISTS(e1: real):
+    - Dulp(RtoD(x1)) / 2 <= e1 AND
+    e1 <= Dulp(RtoD(x1)) / 2 AND
+    DtoR(RtoD(x1)) = x1 + e1
+
+  DtoR_RtoD_int_exactly_representable: LEMMA
+    FORALL(i: int | abs(i) <= ieee754radix^ieee754dp_prec ):
+      DtoR(RtoD(i)) = i
+
+  RtoD_DtoR: LEMMA
+    RtoD(DtoR(f)) = f
+
+  DtoR_ext
+  : LEMMA
+    FORALL(f1,f2: unb_double):
+    DtoR(f1) = DtoR(f2) IFF f1=f2
+
+  % DtoR conversion is an increasing function.  
+  DtoR_strictly_increasing: LEMMA
+    f1 < f2 IFF DtoR(f1) < DtoR(f2)
+    
+  DtoR_inc: LEMMA
+    f1 <= f2 IFF DtoR(f1) <= DtoR(f2)
+
+  % RtoD conversion is an increasing function.
+  
+  RtoD_inc: LEMMA
+    x1 <= x2 IMPLIES RtoD(x1) <= RtoD(x2)
+
+  RtoD_opp: LEMMA
+    RtoD(-x) = Fopp(RtoD(x))
+
+  % Rounding properties
+
+  unique_zero_RtoD: LEMMA
+    unique_zero(
+      double_precision_format,
+      EvenClosest?(double_precision_format),
+      RtoD)
+
+  dp_rep_exp_bound: LEMMA
+    FORALL(exp   : int | -ieee754dp_dexp <= exp,
+	   x     : real,
+	   err   : nonneg_real | abs(x)+err <= ieee754radix^exp,
+	   f     : unb_double  | abs(DtoR(f) - x) <= err):
+      Fexp(f) <= exp
+
+END ieee754dp
