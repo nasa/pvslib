@@ -4,12 +4,13 @@ BEGIN
   IMPORTING HP,
             hp_expr,
             TraceState,
-	    structures@more_list_props,
-	    bounded_star_semantics
+            ODEs_equiv,
+	          structures@more_list_props,
+	          bounded_star_semantics
 
   wf_trace?(trace:list[TraceState]) : bool =
     cons?(trace) AND
-    FORALL (i:below(length(trace))) :
+    FORALL (i:below(length(trace)-1)) :
       state?(nth(trace,i))
 
   Trace : TYPE = (wf_trace?)
@@ -18,6 +19,8 @@ BEGIN
     state?(last(trace))
 
   FiniteTrace : TYPE = (finite_trace?)
+
+  lastState(trace:FiniteTrace) : Environment = state(last(trace))
 
   trace_semantic_rel(hp:HP)(trace:Trace) : INDUCTIVE bool =
     (assign?(hp) AND length(trace) = 2 AND
@@ -31,7 +34,8 @@ BEGIN
                         state(envo)(vari) = rexpr(state(envi))) AND
 		      FORALL (varj:(not_in_map(l))) :state(envo)(varj) = state(envi)(varj)))
     OR
-    (diff?(hp) AND  length(trace) = 2 AND
+    (diff?(hp) AND
+    (length(trace) = 2 AND
 		    LET envi = nth(trace,0),
 		        envo = nth(trace,1) IN
 		     ((state?(envi) AND
@@ -40,6 +44,16 @@ BEGIN
 	               semantic_rel_diff(D,odes(hp),be(hp),state(envi),state(envo))))
 		      OR
 		      (state?(envi) AND error?(envo) AND not be(hp)(state(envi))))
+      OR
+      (length(trace) = 2 AND
+        LET envi = nth(trace,0),
+            envo = nth(trace,1) IN
+            state?(envi) AND
+            inf_diff?(envo) AND
+            EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),state(envi)))):
+            behavior(envo) = (LAMBDA (r:(hp(0))):
+              env_at_t(odes(hp),fs,state(envi))(r)))
+    )
     OR
     (test?(hp) AND  ((length(trace)=1 AND
                       LET envi = nth(trace,0) IN
@@ -117,14 +131,14 @@ BEGIN
 
   trace_sem_rel_implies_bounded : LEMMA
   FORALL (hp: HP) :
-     (FORALL (trace: Trace):
+     (FORALL (trace: FiniteTrace):
         (NOT null?(trace)) AND state?(car(trace))
          AND state?(last(trace))
          AND trace_semantic_rel(hp)(trace)
        IMPLIES
          semantic_rel(hp)(state(car(trace)))(state(last(trace))))
       IMPLIES
-     (FORALL (trace: Trace):
+     (FORALL (trace: FiniteTrace):
         (NOT null?(trace)) AND state?(car(trace))
          AND state?(last(trace))
          AND trace_semantic_rel(STAR(hp))(trace)
@@ -152,7 +166,7 @@ BEGIN
 
   trace_semantics_sound: LEMMA
      FORALL(hp:HP) :
-     FORALL(trace:Trace) : not null?(trace) AND state?(car(trace)) AND state?(last(trace)) IMPLIES
+     FORALL(trace:FiniteTrace) : not null?(trace) AND state?(car(trace)) AND state?(last(trace)) IMPLIES
         LET envi=state(car(trace)),
             envo=state(last(trace)) IN
         trace_semantic_rel(hp)(trace) IMPLIES semantic_rel(hp)(envi)(envo)
