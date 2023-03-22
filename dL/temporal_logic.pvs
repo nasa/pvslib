@@ -1,0 +1,268 @@
+%%
+% @theory: temporal_logic
+% @author: lmwhite3
+% @date: Wed, 22 Mar 2023 14:09:22 GMT
+%%
+
+
+
+temporal_logic: THEORY
+  BEGIN 
+    
+    IMPORTING ltl_expr
+
+%%--------------------------------------------
+%%Define variables 
+%%--------------------------------------------
+
+  l,m: VAR Assigns
+  f:   VAR ODEs
+  j,k: VAR nat
+  re:  VAR RealExpr
+  r :  VAR real
+
+  Gamma,Delta : VAR Formulas
+  P,Q,J,R     : VAR BoolExpr
+  S,T,U,V     : VAR TraceBoolExpr
+  A,B         : VAR HP
+  t           : VAR Trace
+  re1,re2     : VAR RealExpr
+  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Normalization of Trace Formulas
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Sequential Composition
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [;]⊓
+% [A]([B](P ⊓ □Q) ⊓ □Q)
+% -----------------------
+% [A;B](P ⊓ □Q)
+dltl_SEQcap: LEMMA
+FORALL(env:Environment):
+    ALLRUNS_tr(A, normDLGLOBALLY(ALLRUNS_tr(B, normDLGLOBALLY(P,Q)), Q))(env) IMPLIES
+    ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))(env)
+
+%  [;]⊔
+% [A]([B](P ⊔ ◇Q) ⊔ ◇Q)
+% -----------------------
+% [A;B](P ⊔ ◇Q)
+dltl_SEQcup: LEMMA
+FORALL(env:Environment):
+    ALLRUNS_tr(A, normDLEVENTUALLY(ALLRUNS_tr(B, normDLEVENTUALLY(P,Q)), Q))(env) IMPLIES
+    ALLRUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q))(env)  
+
+%  [;]◁
+% [A]([B](P ◁ T) ◁ T)
+% -----------------------
+% [A;B](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_SEQtriangleEG: LEMMA
+FORALL(env:Environment):
+    ALLRUNS_tr(A, normDLEG(ALLRUNS_tr(B, normDLEG(P,Q)), Q))(env) IMPLIES
+    ALLRUNS_tr(SEQ(A,B), normDLEG(P,Q))(env)
+
+dltl_SEQtriangleGE: LEMMA
+FORALL(env:Environment):
+    ALLRUNS_tr(A, normDLGE(ALLRUNS_tr(B, normDLGE(P,Q)), Q))(env) IMPLIES
+    ALLRUNS_tr(SEQ(A,B), normDLGE(P,Q))(env)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Nondeterministic Choice
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [∪]T
+% [A]T ∧ [B]T
+% -----------------------
+% [A ∪ B]T
+dltl_choice: LEMMA
+FORALL(env:Environment):
+    ALLRUNS_tr(A,T)(env) AND ALLRUNS_tr(B,T)(env) IMPLIES
+    ALLRUNS_tr(UNION(A,B),T)(env)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Test
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [?]⊓
+% (¬P ∨ Q) ∧ R
+% -----------------------
+% [?P](Q ⊓ □R)
+dltl_TESTcap: LEMMA
+FORALL(env:Environment):
+    (NOT P(env) OR Q(env)) AND R(env) IMPLIES
+    ALLRUNS_tr(TEST(P),normDLGLOBALLY(Q,R))(env)
+
+%  [?]⊔
+% (P ∧ Q) ∨ R
+% -----------------------
+% [?P](Q ⊔ ◇R)
+dltl_TESTcup: LEMMA
+FORALL(env:Environment):
+    (P(env) AND Q(env)) OR R(env) IMPLIES
+    ALLRUNS_tr(TEST(P),normDLEVENTUALLY(Q,R))(env)
+
+%  [;]◁ ◇
+% (P ∧ Q) ∨ (¬P ∧ R)
+% -----------------------
+% [?P](Q ◁ ◇□R)
+dltl_TESTEG: LEMMA
+FORALL(env:Environment):
+    (P(env) AND Q(env)) OR (NOT P(env) AND R(env)) IMPLIES
+    ALLRUNS_tr(TEST(P),normDLEG(Q,R))(env)
+
+%  [;]◁ □
+% (P ∧ Q) ∨ (¬P ∧ R)
+% -----------------------
+% [?P](Q ◁ □◇R)
+dltl_TESTGE: LEMMA
+FORALL(env:Environment):
+    (P(env) OR Q(env)) AND (NOT P(env) OR R(env)) IMPLIES
+    ALLRUNS_tr(TEST(P),normDLGE(Q,R))(env)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Assignment
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [:=]⊓
+% P ∧ [x:=l](Q ∧ P)
+% -----------------------
+% [x:=l](Q ⊓ □P)
+dltl_ASSIGNcap: LEMMA
+FORALL(env:Environment):
+    P(env) AND ALLRUNS(ASSIGN(l),Q AND P)(env) IMPLIES
+    ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))(env)
+
+%  [:=]⊔
+% P ∨ [x:=l](Q ∨ P)
+% -----------------------
+% [x:=l](Q ⊔ ◇P)
+dltl_ASSIGNcup: LEMMA
+FORALL(env:Environment):
+    P(env) OR ALLRUNS(ASSIGN(l),Q OR P)(env) IMPLIES
+    ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))(env)
+
+%  [:=]◁
+% [x:=l]P
+% -----------------------
+% [x:=l](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_ASSIGNEG: LEMMA
+FORALL(env:Environment):
+    ALLRUNS(ASSIGN(l),P)(env) IMPLIES
+    ALLRUNS_tr(ASSIGN(l),normDLEG(P,Q))(env)
+
+dltl_ASSIGNGE: LEMMA
+FORALL(env:Environment):
+    ALLRUNS(ASSIGN(l),P)(env) IMPLIES
+    ALLRUNS_tr(ASSIGN(l),normDLGE(P,Q))(env)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Ordinary Differential Equation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [']⊓
+% P ∧ [x':=f&Q](R ∧ P)
+% -----------------------
+% [x:=f&Q](R ⊓ □P)
+dltl_DIFFcap: LEMMA
+FORALL(env:Environment):
+    P(env) AND ALLRUNS(DIFF(f,Q),R AND P)(env) IMPLIES
+    ALLRUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P))(env)
+
+%  [']⊔
+% (P∨Q) ∧ [x:=f&(P∧¬Q)]R ∧〈x:=f〉(¬P∨Q)
+% -----------------------
+% [x:=f&P](R ⊔ ◇Q)
+dltl_DIFFcup: LEMMA
+FORALL(env:Environment):
+    (P(env) OR Q(env)) AND ALLRUNS(DIFF(f,P AND NOT Q),R)(env) AND SOMERUNS(DIFF(f,DLTRUE), NOT P OR Q)(env) IMPLIES
+    ALLRUNS_tr(DIFF(f,P),normDLEVENTUALLY(R,Q))(env)
+
+%  [']◁ ◇
+% (P∨Q) ∧ [x:=f&P]R ∧ (〈x:=f〉(¬P) ∨〈x:=f〉[x:=f]Q)
+% -----------------------
+% [x:=f&P](R ◁ ◇□Q)
+dltl_DIFFEG: LEMMA
+FORALL(env:Environment):
+    (P(env) OR Q(env)) AND ALLRUNS(DIFF(f,P),R)(env) AND (SOMERUNS(DIFF(f,DLTRUE), NOT P)(env) OR SOMERUNS(DIFF(f,DLTRUE), ALLRUNS(DIFF(f,DLTRUE),Q))(env)) IMPLIES
+    ALLRUNS_tr(DIFF(f,P),normDLEG(R,Q))(env)
+
+%  [']◁ □
+% (P∨Q) ∧ [x:=f&P]R ∧ (〈x:=f〉(¬P) ∨〈x:=f〉[x:=f]Q)
+% -----------------------
+% [x:=f&P](R ◁ □◇Q)
+dltl_DIFFGE: LEMMA
+FORALL(env:Environment):
+    (P(env) OR Q(env)) AND ALLRUNS(DIFF(f,P),R)(env) AND (SOMERUNS(DIFF(f,DLTRUE), NOT P)(env) OR SOMERUNS(DIFF(f,DLTRUE), ALLRUNS(DIFF(f,DLTRUE),Q))(env)) IMPLIES
+    ALLRUNS_tr(DIFF(f,P),normDLGE(R,Q))(env)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Repetition
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [*]⊓
+% P ∧ [A*][A](P ⊓ □Q)
+% -----------------------
+% [A*](P ⊓ □Q)
+dltl_STARcap: LEMMA
+FORALL(env:Environment):
+    P(env) AND ALLRUNS(STAR(A),ALLRUNS_tr(A,normDLGLOBALLY(P,Q)))(env) IMPLIES
+    ALLRUNS_tr(STAR(A),normDLGLOBALLY(P,Q))(env)
+
+%  [*n]⊔
+% P ∨ (Q ∧ [A;A*](Q ⊔ ◇P))
+% -----------------------
+% [A*](Q ⊔ ◇P)
+dltl_STARcup: LEMMA
+FORALL(env:Environment):
+    P(env) OR (Q(env) AND ALLRUNS_tr(SEQ(STAR(A),A),normDLEVENTUALLY(Q,P))(env)) IMPLIES
+    ALLRUNS_tr(STAR(A),normDLEVENTUALLY(Q,P))(env)
+
+%  ind⊔
+% P → [A](P ⊔ ◇Q))
+% -----------------------
+% P → [A*](P ⊔ ◇Q)
+dltl_STARindcup: LEMMA
+FORALL(env:Environment):
+    DLIMPLIES(P,ALLRUNS_tr(A,normDLEVENTUALLY(P,Q)))(env) IMPLIES
+    DLIMPLIES(P,ALLRUNS_tr(STAR(A),normDLEVENTUALLY(P,Q)))(env)
+
+%  [*]◁
+% P ∧ [A*][A](P ◁ T)
+% -----------------------
+% [A*](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_STAREG: LEMMA
+FORALL(env:Environment):
+    P(env) AND ALLRUNS(STAR(A),ALLRUNS_tr(A,normDLEG(P,Q)))(env) IMPLIES
+    ALLRUNS_tr(STAR(A),normDLEG(P,Q))(env)
+
+dltl_STARGE: LEMMA
+FORALL(env:Environment):
+    P(env) AND ALLRUNS(STAR(A),ALLRUNS_tr(A,normDLGE(P,Q)))(env) IMPLIES
+    ALLRUNS_tr(STAR(A),normDLGE(P,Q))(env)
+
+% I am not a hundred percent on what is happening here, the part where r<=0 confuses me because shouldn't r be a nat? its the index of a trace? or is it part of the domain of A?
+
+%  con⊓
+% ∀r>0 (t(r) → 〈A〉(t(r-1) ⊓ □Q)
+% -----------------------
+% (∃r t(r)) ∧ Q → 〈A〉(∃r≤0 t(r) ⊓ □Q)
+dltl_STARconcap: LEMMA
+    FORALL(env:Environment):
+    LET
+    L(i:below(length(t))) = LAMBDA(env:Environment): FORALL(n:nat): env(n) = (state(nth(t,i)))(n)
+    IN
+    (FORALL(k:below(length(t)) | k/= 0): DLIMPLIES(L(k),SOMERUNS_tr(A,normDLGLOBALLY(L(k-1),Q)))(env)) IMPLIES
+    (DLIMPLIES(LAMBDA(env:Environment): EXISTS(k:below(length(t))): L(k)(env) AND Q(env),SOMERUNS_tr(STAR(A),normDLGLOBALLY(L(0),Q)))(env))
+
+
+
+  END temporal_logic
