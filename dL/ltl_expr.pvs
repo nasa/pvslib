@@ -6,13 +6,24 @@ BEGIN
 
   TraceBoolExpr : TYPE = [ Trace -> bool ]
 
+  State_Trace(P:BoolExpr)(trace:Trace): RECURSIVE bool = 
+  IF (length(trace)=1 AND state?(car(trace)))
+    THEN P(state(car(trace)))
+  ELSIF (length(trace)=1 AND inf_diff?(car(trace)))
+    THEN FORALL(t:(hp(0))): P(behavior(car(trace))(t))
+  ELSIF (length(trace)=1 AND error?(car(trace)))
+    THEN FALSE
+  ELSE P(state(car(trace))) AND State_Trace(P)(cdr(trace))
+  ENDIF
+  MEASURE length(trace)
+
 % STATE FORMULAS %
 
-  ALLRUNS_tr(hp:HP)(f:TraceBoolExpr)(env0:Environment): bool =
+  ALLRUNS_tr(hp:HP,f:TraceBoolExpr)(env0:Environment): bool =
     FORALL (trace:Trace): nth(trace,0) = STATE(env0) AND trace_semantic_rel(hp)(trace) IMPLIES
       f(trace)
 
-  SOMERUNS_tr(hp:HP)(f:TraceBoolExpr)(env0:Environment): bool =
+  SOMERUNS_tr(hp:HP,f:TraceBoolExpr)(env0:Environment): bool =
     EXISTS (trace:Trace): nth(trace,0) = STATE(env0) AND trace_semantic_rel(hp)(trace) IMPLIES
       f(trace)
 
@@ -38,5 +49,43 @@ BEGIN
     EXISTS (suffix:Trace): suffix?(suffix,trace)
       IMPLIES
         f(suffix)
+
+
+% NORMALIZED TRACE FORMULAS FOR FINITE TRACES %
+
+  normDLGLOBALLY(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(state(last(trace))) AND DLGLOBALLY(State_Trace(g))(trace)
+  ELSE DLGLOBALLY(State_Trace(g))(trace)
+  ENDIF
+
+  normDLEVENTUALLY(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(state(last(trace))) OR DLEVENTUALLY(State_Trace(g))(trace)
+  ELSE DLEVENTUALLY(State_Trace(g))(trace)
+  ENDIF
+
+  normDLGE(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(state(last(trace))) 
+  ELSE DLGLOBALLY(DLEVENTUALLY(State_Trace(g)))(trace)
+  ENDIF
+
+  normDLEG(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(state(last(trace))) 
+  ELSE DLEVENTUALLY(DLGLOBALLY(State_Trace(g)))(trace)
+  ENDIF
+
+
+
+%% relations for the normalized trace?
+TBETBoolExpr: TYPE = [TraceBoolExpr,Trace -> bool]
+R: VAR PRED[[TBETBoolExpr,TBETBoolExpr]]
+
+
+% normalization?(R): bool = reflexive?(R) AND 
+
+
 
 END ltl_expr
