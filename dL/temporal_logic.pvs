@@ -9,7 +9,8 @@
 temporal_logic: THEORY
   BEGIN 
     
-    IMPORTING ltl_expr
+    IMPORTING ltl_expr,
+              even_more_list_props[TraceState]
 
 %%--------------------------------------------
 %%Define variables 
@@ -27,12 +28,54 @@ temporal_logic: THEORY
   A,B         : VAR HP
   t           : VAR Trace
   re1,re2     : VAR RealExpr
+
+
+%---------
+%% Some preliminary lemmas
+%-----------
+
+DLGLOBALLY_append: LEMMA
+FORALL(Q:BoolExpr,t1,t2,t3:Trace): 
+append(t1,t2) = t3 AND
+DLGLOBALLY(State_Trace(Q))(t1) AND
+DLGLOBALLY(State_Trace(Q))(t2)
+IMPLIES DLGLOBALLY(State_Trace(Q))(t3)
+
+
+
+
+
+
   
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Normalization Rules
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% @QED norm_DLGLOBALLY proved by lmwhite3 on Mon, 27 Mar 2023 14:06:28 GMT
+norm_DLGLOBALLY: LEMMA
+FORALL(t:Trace):
+    DLGLOBALLY(State_Trace(P))(t) = normDLGLOBALLY(DLTRUE,P)(t)
+
+% @QED norm_DLEVENTUALLY proved by lmwhite3 on Mon, 27 Mar 2023 14:06:53 GMT
+norm_DLEVENTUALLY: LEMMA
+FORALL(t:Trace):
+    DLEVENTUALLY(State_Trace(P))(t) = normDLEVENTUALLY(DLFALSE,P)(t)
+
+% @QED norm_DLGE proved by lmwhite3 on Mon, 27 Mar 2023 15:47:52 GMT
+norm_DLGE: LEMMA
+FORALL(t:Trace):
+    DLGLOBALLY(DLEVENTUALLY(State_Trace(P)))(t) = normDLGE(P,P)(t)
+
+% @QED norm_DLEG proved by lmwhite3 on Mon, 27 Mar 2023 15:51:15 GMT
+norm_DLEG: LEMMA
+FORALL(t:Trace):
+    DLEVENTUALLY(DLGLOBALLY(State_Trace(P)))(t) = normDLEG(P,P)(t)
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Normalization of Trace Formulas
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
+% Handled by core of PVS
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -226,12 +269,12 @@ FORALL(env:Environment):
     ALLRUNS_tr(STAR(A),normDLEVENTUALLY(Q,P))(env)
 
 %  ind⊔
-% P → [A](P ⊔ ◇Q))
+% ∀a (P → [a](P ⊔ ◇Q)))
 % -----------------------
 % P → [A*](P ⊔ ◇Q)
 dltl_STARindcup: LEMMA
 FORALL(env:Environment):
-    DLIMPLIES(P,ALLRUNS_tr(A,normDLEVENTUALLY(P,Q)))(env) IMPLIES
+    (FORALL(A1: HP): DLIMPLIES(P,ALLRUNS_tr(A1,normDLEVENTUALLY(P,Q)))(env)) IMPLIES
     DLIMPLIES(P,ALLRUNS_tr(STAR(A),normDLEVENTUALLY(P,Q)))(env)
 
 %  [*]◁
@@ -252,7 +295,7 @@ FORALL(env:Environment):
 % I am not a hundred percent on what is happening here, the part where r<=0 confuses me because shouldn't r be a nat? its the index of a trace? or is it part of the domain of A?
 
 %  con⊓
-% ∀r>0 (t(r) → 〈A〉(t(r-1) ⊓ □Q)
+% ∀a ∀r>0 (t(r) → 〈a〉(t(r-1) ⊓ □Q)
 % -----------------------
 % (∃r t(r)) ∧ Q → 〈A〉(∃r≤0 t(r) ⊓ □Q)
 dltl_STARconcap: LEMMA
@@ -260,7 +303,7 @@ dltl_STARconcap: LEMMA
     LET
     L(i:below(length(t))) = LAMBDA(env:Environment): FORALL(n:nat): env(n) = (state(nth(t,i)))(n)
     IN
-    (FORALL(k:below(length(t)) | k/= 0): DLIMPLIES(L(k),SOMERUNS_tr(A,normDLGLOBALLY(L(k-1),Q)))(env)) IMPLIES
+    (FORALL(a:HP, k:below(length(t)) | k/= 0): DLIMPLIES(L(k),SOMERUNS_tr(a,normDLGLOBALLY(L(k-1),Q)))(env)) IMPLIES
     (DLIMPLIES(LAMBDA(env:Environment): EXISTS(k:below(length(t))): L(k)(env) AND Q(env),SOMERUNS_tr(STAR(A),normDLGLOBALLY(L(0),Q)))(env))
 
 
