@@ -10,7 +10,8 @@ temporal_logic: THEORY
   BEGIN 
     
     IMPORTING ltl_expr,
-              even_more_list_props[TraceState]
+              even_more_list_props[TraceState],
+              substitution
 
 %%--------------------------------------------
 %%Define variables 
@@ -33,16 +34,6 @@ temporal_logic: THEORY
 %---------
 %% Some preliminary lemmas
 %-----------
-
-% @QED DLGLOBALLY_append proved by lmwhite3 on Tue, 28 Mar 2023 16:57:39 GMT
-DLGLOBALLY_append: LEMMA
-FORALL(Q:BoolExpr,t1,t2,t3:Trace): 
-append(t1,t2) = t3 AND
-DLGLOBALLY(State_Trace(Q))(t1) AND
-DLGLOBALLY(State_Trace(Q))(t2)
-IMPLIES DLGLOBALLY(State_Trace(Q))(t3)
-
-
 
 
 
@@ -92,30 +83,28 @@ FORALL(env:Environment):
     ALLRUNS_tr(A, normDLGLOBALLY(ALLRUNS_tr(B, normDLGLOBALLY(P,Q)), Q))(env) IMPLIES
     ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))(env)
 
-dltl_SEQcap_reverse: LEMMA
-FORALL(env:Environment):
-    ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))(env) IMPLIES
-    ALLRUNS_tr(A, normDLGLOBALLY(ALLRUNS_tr(B, normDLGLOBALLY(P,Q)), Q))(env)
+dltl_SEQcap_eq: LEMMA
+    ALLRUNS_tr(A, normDLGLOBALLY(ALLRUNS_tr(B, normDLGLOBALLY(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))
 
 %  [;]⊔
 % [A]([B](P ⊔ ◇Q) ⊔ ◇Q)
 % -----------------------
 % [A;B](P ⊔ ◇Q)
+% @QED dltl_SEQcup proved by lmwhite3 on Mon, 10 Apr 2023 18:28:22 GMT
 dltl_SEQcup: LEMMA
-FORALL(env:Environment):
-    ALLRUNS_tr(A, normDLEVENTUALLY(ALLRUNS_tr(B, normDLEVENTUALLY(P,Q)), Q))(env) IMPLIES
-    ALLRUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q))(env)  
+    ALLRUNS_tr(A, normDLEVENTUALLY(ALLRUNS_tr(B, normDLEVENTUALLY(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q)) 
 
 %  [;]◁
 % [A]([B](P ◁ T) ◁ T)
 % -----------------------
 % [A;B](P ◁ T)
 % where T = □◇Q or ◇□Q
-% @QED dltl_SEQtriangleEG proved by lmwhite3 on Wed, 29 Mar 2023 14:04:20 GMT
+
 dltl_SEQtriangleEG: LEMMA
-FORALL(env:Environment):
-    ALLRUNS_tr(A, normDLEG(ALLRUNS_tr(B, normDLEG(P,Q)), Q))(env) IMPLIES
-    ALLRUNS_tr(SEQ(A,B), normDLEG(P,Q))(env)
+    ALLRUNS_tr(A, normDLEG(ALLRUNS_tr(B, normDLEG(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLEG(P,Q))
 
 % @QED dltl_SEQtriangleGE proved by lmwhite3 on Wed, 29 Mar 2023 17:04:08 GMT
 dltl_SEQtriangleGE: LEMMA
@@ -135,8 +124,8 @@ FORALL(env:Environment):
 % @QED dltl_choice proved by lmwhite3 on Tue, 28 Mar 2023 19:26:55 GMT
 dltl_choice: LEMMA
 FORALL(env:Environment):
-    ALLRUNS_tr(A,T)(env) AND ALLRUNS_tr(B,T)(env) IMPLIES
-    ALLRUNS_tr(UNION(A,B),T)(env)
+    DLAND(ALLRUNS_tr(A,T), ALLRUNS_tr(B,T)) =
+    ALLRUNS_tr(UNION(A,B),T)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Test
@@ -146,36 +135,36 @@ FORALL(env:Environment):
 % (¬P ∨ Q) ∧ R
 % -----------------------
 % [?P](Q ⊓ □R)
+% @QED dltl_TESTcap proved by lmwhite3 on Thu, 30 Mar 2023 18:47:26 GMT
 dltl_TESTcap: LEMMA
-    (FORALL(env:Environment): (NOT P(env) OR Q(env)) AND R(env)) IMPLIES
-    (FORALL(env:Environment): ALLRUNS_tr(TEST(P),normDLGLOBALLY(Q,R))(env))
+    DLAND(DLOR(DLNOT(P),Q),R) = ALLRUNS_tr(TEST(P),normDLGLOBALLY(Q,R))
 
 %  [?]⊔
 % (P ∧ Q) ∨ R
 % -----------------------
 % [?P](Q ⊔ ◇R)
+% @QED dltl_TESTcup proved by lmwhite3 on Thu, 06 Apr 2023 17:44:10 GMT
 dltl_TESTcup: LEMMA
 FORALL(env:Environment):
-    (P(env) AND Q(env)) OR R(env) IMPLIES
-    ALLRUNS_tr(TEST(P),normDLEVENTUALLY(Q,R))(env)
+    DLOR(DLAND(P,Q),R) = ALLRUNS_tr(TEST(P),normDLEVENTUALLY(Q,R))
 
 %  [;]◁ ◇
 % (P ∧ Q) ∨ (¬P ∧ R)
 % -----------------------
 % [?P](Q ◁ ◇□R)
+% @QED dltl_TESTEG proved by lmwhite3 on Thu, 06 Apr 2023 18:10:17 GMT
 dltl_TESTEG: LEMMA
 FORALL(env:Environment):
-    (P(env) AND Q(env)) OR (NOT P(env) AND R(env)) IMPLIES
-    ALLRUNS_tr(TEST(P),normDLEG(Q,R))(env)
+    DLOR(DLAND(P,Q),DLAND(DLNOT(P),R)) = ALLRUNS_tr(TEST(P),normDLEG(Q,R))
 
 %  [;]◁ □
 % (P ∧ Q) ∨ (¬P ∧ R)
 % -----------------------
 % [?P](Q ◁ □◇R)
+% @QED dltl_TESTGE proved by lmwhite3 on Thu, 06 Apr 2023 18:55:39 GMT
 dltl_TESTGE: LEMMA
 FORALL(env:Environment):
-    (P(env) OR Q(env)) AND (NOT P(env) OR R(env)) IMPLIES
-    ALLRUNS_tr(TEST(P),normDLGE(Q,R))(env)
+    DLOR(DLAND(P,Q),DLAND(DLNOT(P),R)) = ALLRUNS_tr(TEST(P),normDLGE(Q,R))
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Assignment
@@ -185,37 +174,32 @@ FORALL(env:Environment):
 % P ∧ [x:=l](Q ∧ P)
 % -----------------------
 % [x:=l](Q ⊓ □P)
-% @QED dltl_ASSIGNcap proved by lmwhite3 on Tue, 28 Mar 2023 20:15:36 GMT
+% @QED dltl_ASSIGNcap proved by lmwhite3 on Thu, 06 Apr 2023 21:06:34 GMT
 dltl_ASSIGNcap: LEMMA
-FORALL(env:Environment):
-    P(env) AND ALLRUNS(ASSIGN(l),Q AND P)(env) IMPLIES
-    ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))(env)
+    DLAND(P,ALLRUNS(ASSIGN(l),Q AND P)) = ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))
 
 %  [:=]⊔
 % P ∨ [x:=l](Q ∨ P)
 % -----------------------
 % [x:=l](Q ⊔ ◇P)
+% @QED dltl_ASSIGNcup proved by lmwhite3 on Thu, 06 Apr 2023 21:26:12 GMT
 dltl_ASSIGNcup: LEMMA
-FORALL(env:Environment):
-    P(env) OR ALLRUNS(ASSIGN(l),Q OR P)(env) IMPLIES
-    ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))(env)
+    DLOR(P,ALLRUNS(ASSIGN(l),Q OR P)) = ALLRUNS_tr(ASSIGN(l),normDLEVENTUALLY(Q,P))
 
 %  [:=]◁
 % [x:=l]P
 % -----------------------
 % [x:=l](P ◁ T)
 % where T = □◇Q or ◇□Q
-% @QED dltl_ASSIGNEG proved by lmwhite3 on Tue, 28 Mar 2023 20:28:35 GMT
+% @QED dltl_ASSIGNEG proved by lmwhite3 on Fri, 07 Apr 2023 13:51:45 GMT
 dltl_ASSIGNEG: LEMMA
 FORALL(env:Environment):
-    ALLRUNS(ASSIGN(l),P)(env) IMPLIES
-    ALLRUNS_tr(ASSIGN(l),normDLEG(P,Q))(env)
+    ALLRUNS(ASSIGN(l),P) = ALLRUNS_tr(ASSIGN(l),normDLEG(P,Q))
 
-% @QED dltl_ASSIGNGE proved by lmwhite3 on Tue, 28 Mar 2023 20:29:22 GMT
+% @QED dltl_ASSIGNGE proved by lmwhite3 on Fri, 07 Apr 2023 13:55:38 GMT
 dltl_ASSIGNGE: LEMMA
 FORALL(env:Environment):
-    ALLRUNS(ASSIGN(l),P)(env) IMPLIES
-    ALLRUNS_tr(ASSIGN(l),normDLGE(P,Q))(env)
+    ALLRUNS(ASSIGN(l),P) = ALLRUNS_tr(ASSIGN(l),normDLGE(P,Q))
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Ordinary Differential Equation
@@ -227,8 +211,7 @@ FORALL(env:Environment):
 % [x:=f&Q](R ⊓ □P)
 dltl_DIFFcap: LEMMA
 FORALL(env:Environment):
-    P(env) AND ALLRUNS(DIFF(f,Q),R AND P)(env) IMPLIES
-    ALLRUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P))(env)
+    DLAND(P,ALLRUNS(DIFF(f,Q),R AND P)) = ALLRUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P))
 
 %  [']⊔
 % (P∨Q) ∧ [x:=f&(P∧¬Q)]R ∧〈x:=f〉(¬P∨Q)
@@ -236,8 +219,8 @@ FORALL(env:Environment):
 % [x:=f&P](R ⊔ ◇Q)
 dltl_DIFFcup: LEMMA
 FORALL(env:Environment):
-    (P(env) OR Q(env)) AND ALLRUNS(DIFF(f,P AND NOT Q),R)(env) AND SOMERUNS(DIFF(f,DLTRUE), NOT P OR Q)(env) IMPLIES
-    ALLRUNS_tr(DIFF(f,P),normDLEVENTUALLY(R,Q))(env)
+    DLAND(DLAND(DLOR(P,Q),ALLRUNS(DIFF(f,P AND NOT Q),R)),SOMERUNS(DIFF(f,DLTRUE), NOT P OR Q)) =
+    ALLRUNS_tr(DIFF(f,P),normDLEVENTUALLY(R,Q))
 
 %  [']◁ ◇
 % (P∨Q) ∧ [x:=f&P]R ∧ (〈x:=f〉(¬P) ∨〈x:=f〉[x:=f]Q)
@@ -283,9 +266,15 @@ FORALL(env:Environment):
 % ∀a (P → [a](P ⊔ ◇Q)))
 % -----------------------
 % P → [A*](P ⊔ ◇Q)
+% @QED dltl_STARindcup proved by lmwhite3 on Fri, 31 Mar 2023 18:21:55 GMT
 dltl_STARindcup: LEMMA
 FORALL(env:Environment):
     (FORALL(A1: HP): DLIMPLIES(P,ALLRUNS_tr(A1,normDLEVENTUALLY(P,Q)))(env)) IMPLIES
+    DLIMPLIES(P,ALLRUNS_tr(STAR(A),normDLEVENTUALLY(P,Q)))(env)
+
+dltl_STARindcup_noforall: LEMMA
+FORALL(env:Environment):
+    DLIMPLIES(P,ALLRUNS_tr(A,normDLEVENTUALLY(P,Q)))(env) IMPLIES
     DLIMPLIES(P,ALLRUNS_tr(STAR(A),normDLEVENTUALLY(P,Q)))(env)
 
 %  [*]◁
