@@ -22,7 +22,7 @@ BEGIN
       last(trace1) = car(trace2) IMPLIES wf_trace?(append(trace1, cdr(trace2)))
 
   finite_trace?(trace:Trace) : bool =
-    state?(last(trace))
+    state?(last(trace)) OR state_diff?(last(trace))
 
   FiniteTrace : TYPE = (finite_trace?)
 
@@ -42,26 +42,36 @@ BEGIN
     )
     OR
     (diff?(hp) AND
-      ((length(trace) = 2 AND
-		    LET envi = nth(trace,0),
-		        envo = nth(trace,1) IN
-		     ((state?(envi) AND
-		       state?(envo) AND
-             EXISTS(D:(dd?)):
-	               semantic_rel_diff(D,odes(hp),be(hp),state(envi),state(envo))))
-		      OR
-		      (state?(envi) AND error?(envo) AND not be(hp)(state(envi))))
-      OR
       (length(trace) = 2 AND
         LET envi = nth(trace,0),
             envo = nth(trace,1) IN
-            state?(envi) AND
-            inf_diff?(envo) AND
-            EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),state(envi)))):
-            (behavior(envo) = (LAMBDA (r:(hp(0))):
+        (state?(envi) AND
+         state_diff?(envo) AND
+          EXISTS(D:(dd?)):
+          (NOT D = hp(0) AND
+          EXISTS(fs:(solution_odes_u?(D,odes(hp),state(envi)))):
+            (behavior(envo) = (LAMBDA (r:(D)):
               env_at_t(odes(hp),fs,state(envi))(r))
             AND
-            FORALL(t:(hp(0))): be(hp)(behavior(envo)(t)))))
+            FORALL(t:(D)): be(hp)(behavior(envo)(t)))))
+        %     (length(trace) = 2 AND
+		    % LET envi = nth(trace,0),
+		    %     envo = nth(trace,1) IN
+        %     state?(envi) AND
+        %     state_diff?(envo) AND
+        %       EXISTS(D:(dd?)):
+	      %           semantic_rel_diff(D,odes(hp),be(hp),state(envi),state(envo)))
+        OR
+        (state?(envi) AND error?(envo) AND NOT be(hp)(state(envi)))
+        OR
+        (state?(envi) AND
+         inf_diff?(envo) AND
+         EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),state(envi)))):
+         (inf_behavior(envo) = (LAMBDA (r:(hp(0))):
+           env_at_t(odes(hp),fs,state(envi))(r))
+         AND
+         FORALL(t:(hp(0))): be(hp)(inf_behavior(envo)(t))))
+         )
     )
     OR
     (any?(hp) AND
@@ -85,7 +95,13 @@ BEGIN
         AND
         LET envi = nth(trace,0) IN
 		      inf_diff?(envi) AND
-          FORALL (r:(hp(0))): be(hp)(behavior(envi)(r)))
+          FORALL (r:(hp(0))): be(hp)(inf_behavior(envi)(r)))
+        OR
+        (length(trace)=1
+        AND
+        LET envi = nth(trace,0) IN
+		      state_diff?(envi) AND
+          FORALL (r:(D(envi))): be(hp)(behavior(envi)(r)))
         OR
 		    (length(trace)=2 AND
 		      LET envi = nth(trace,0),
@@ -134,7 +150,7 @@ BEGIN
     FORALL (hp:HP, env:Environment):
       EXISTS (trace:Trace): trace_semantic_rel(hp)(trace)
                             AND
-                            state(car(trace)) = env
+                            (state?(car(trace)) IMPLIES state(car(trace)) = env)
 
   % @QED trace_semantics_sound_assign proved by ltitolo on Tue, 28 Mar 2023 01:40:58 GMT
   trace_semantics_sound_assign: LEMMA
