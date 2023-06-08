@@ -12,7 +12,7 @@ BEGIN
   wf_trace?(trace:list[TraceState]) : bool =
     cons?(trace) AND
     FORALL (i:below(length(trace)-1)) :
-      state?(nth(trace,i))
+      state?(nth(trace,i)) OR state_diff?(nth(trace,i))
 
   Trace : TYPE = (wf_trace?)
 
@@ -41,37 +41,40 @@ BEGIN
 		         l = assigns(hp) IN
 		     state?(envi) AND
 		     state?(envo) AND
-                     ((FORALL (i:below(length(l))) :
-                        LET (vari,rexpr) = nth(l,i) IN
-                        state(envo)(vari) = rexpr(state(envi))) AND
-		      FORALL (varj:(not_in_map(l))) :state(envo)(varj) = state(envi)(varj))
+            ((FORALL (i:below(length(l))) :
+              LET (vari,rexpr) = nth(l,i) IN
+                state(envo)(vari) = rexpr(state(envi))) AND
+		            FORALL (varj:(not_in_map(l))) :
+                state(envo)(varj) = state(envi)(varj))
     )
     OR
     (diff?(hp) AND 
-      ((length(trace)=1 AND state?(nth(trace,0)) AND be(hp)(state(nth(trace,0)))) 
-      OR
-      (length(trace) = 2 AND
-        LET envi = nth(trace,0),
-            envo = nth(trace,1) IN
-        ((state?(envi) AND
-         state_diff?(envo) AND
-          EXISTS(fs:(solution_odes_u?(D(envo),odes(hp),state(envi)))):
-            (behavior(envo) = (LAMBDA (r:(D(envo))):
-              env_at_t(odes(hp),fs,state(envi))(r))
+      (length(trace) = 1 AND
+        LET env = nth(trace,0) IN
+        ((state?(env) AND be(hp)(state(env)))
+        OR
+        (state_diff?(env) AND
+          EXISTS(fs:(solution_odes_u?(D(env),odes(hp),s0(env)))):
+            (behavior(env) = (LAMBDA (r:(D(env))):
+              env_at_t(odes(hp),fs,s0(env))(r))
             AND
-            FORALL(t:(D(envo))): be(hp)(behavior(envo)(t))))
+            FORALL(t:(D(env))): be(hp)(behavior(env)(t))))
         %       EXISTS(D:(dd?)):
 	      %           semantic_rel_diff(D,odes(hp),be(hp),state(envi),state(envo)))
         OR
-        (state?(envi) AND
-         inf_diff?(envo) AND
-         EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),state(envi)))):
-         (inf_behavior(envo) = (LAMBDA (r:(hp(0))):
-           env_at_t(odes(hp),fs,state(envi))(r))
+        (inf_diff?(env) AND
+         EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),s0(env)))):
+         (inf_behavior(env) = (LAMBDA (r:(hp(0))):
+           env_at_t(odes(hp),fs,s0(env))(r))
          AND
-         FORALL(t:(hp(0))): be(hp)(inf_behavior(envo)(t))))
+         FORALL(t:(hp(0))): be(hp)(inf_behavior(env)(t))))))
         OR
-        (state?(envi) AND error?(envo) AND NOT be(hp)(state(envi))))))
+        (length(trace)=2 AND 
+          LET envi = nth(trace,0),
+              envo = nth(trace,1) IN
+              state?(envi) AND
+          error?(envo) AND 
+          NOT be(hp)(state(envi)))
     )
     OR
     (any?(hp) AND
@@ -125,13 +128,28 @@ BEGIN
 			   state(last(trace1))=state(car(trace2))))
         OR
         (EXISTS (trace1, trace2:Trace):
-        (trace = append(rdc(trace1),trace2) AND
+        (trace = append(trace1,cdr(trace2)) AND
          trace_semantic_rel(stm1(hp))(trace1) AND
 			   trace_semantic_rel(stm2(hp))(trace2) AND
 			   state_diff?(last(trace1)) AND
 			   state?(car(trace2)) AND
          behavior(last(trace1))(max(D(last(trace1))))=state(car(trace2))))
-        % now we don't need the state - state_diff case since a trace cannot begin with state_diff
+        OR
+        (EXISTS (trace1, trace2:Trace):
+        (trace = append(trace1,trace2) AND
+         trace_semantic_rel(stm1(hp))(trace1) AND
+			   trace_semantic_rel(stm2(hp))(trace2) AND
+			   state?(last(trace1)) AND
+			   state_diff?(car(trace2)) AND
+         state(last(trace1)) = s0(car(trace2))))
+        OR
+        (EXISTS (trace1, trace2:Trace):
+        (trace = append(trace1,trace2) AND
+         trace_semantic_rel(stm1(hp))(trace1) AND
+			   trace_semantic_rel(stm2(hp))(trace2) AND
+			   state?(last(trace1)) AND
+			   inf_diff?(car(trace2)) AND
+         state(last(trace1)) = s0(car(trace2))))
 		    OR
 			  ((error?(last(trace)) OR inf_diff?(last(trace))) AND
 		        trace_semantic_rel(stm1(hp))(trace)))
