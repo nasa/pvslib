@@ -7,7 +7,8 @@ BEGIN
             ODEs_equiv,
 	          structures@more_list_props,
 	          bounded_star_semantics,
-            substitution
+            substitution,
+            ODEs@more_ci_props
 
   wf_trace?(trace:list[TraceState]) : bool =
     cons?(trace) AND
@@ -24,10 +25,16 @@ BEGIN
   finite_trace?(trace:Trace) : bool =
     state?(last(trace)) OR state_diff?(last(trace))
 
+  init_env(trace:(finite_trace?)): Environment =
+    IF state?(car(trace))
+      THEN state(car(trace))
+      ELSE s0(car(trace))
+    ENDIF
+
   final_env(trace:(finite_trace?)): Environment =
     IF state?(last(trace))
       THEN state(last(trace))
-      ELSE behavior(last(trace))(max(D(last(trace))))
+      ELSE behavior(last(trace))(max_ci(D(last(trace))))
     ENDIF
 
   FiniteTrace : TYPE = (finite_trace?)
@@ -133,7 +140,7 @@ BEGIN
 			   trace_semantic_rel(stm2(hp))(trace2) AND
 			   state_diff?(last(trace1)) AND
 			   state?(car(trace2)) AND
-         behavior(last(trace1))(max(D(last(trace1))))=state(car(trace2))))
+         behavior(last(trace1))(max_ci(D(last(trace1))))=state(car(trace2))))
         OR
         (EXISTS (trace1, trace2:Trace):
         (trace = append(trace1,trace2) AND
@@ -179,7 +186,7 @@ BEGIN
          trace_semantic_rel(hp)(trace2) AND
 		     state_diff?(last(trace1)) AND
 		     state?(car(trace2)) AND
-		     behavior(last(trace1))(max(D(last(trace1))))=state(car(trace2)))
+		     behavior(last(trace1))(max_ci(D(last(trace1))))=state(car(trace2)))
       % now we don't need the state - state_diff case since a trace cannot begin with state_diff
       OR
 			((error?(last(trace)) OR inf_diff?(last(trace))) AND
@@ -208,7 +215,7 @@ BEGIN
   % @QED trace_semantics_sound_diff proved by ltitolo on Tue, 28 Mar 2023 01:41:08 GMT
   trace_semantics_sound_diff: LEMMA
     FORALL(trace:FiniteTrace,odes:ODEs,be:BoolExpr) :
-      LET envi = state(car(trace)),
+      LET envi = init_env(trace),
           envo = final_env(trace) IN
       trace_semantic_rel(DIFF(odes,be))(trace)
       IMPLIES
@@ -217,7 +224,7 @@ BEGIN
   % @QED trace_semantics_sound_any proved by ltitolo on Tue, 28 Mar 2023 01:40:13 GMT
   trace_semantics_sound_any: LEMMA
     FORALL(trace:FiniteTrace,anyvar:nat,anyset:[real->BoolExpr]) :
-      LET envi = state(car(trace)),
+      LET envi = init_env(trace),
           envo = final_env(trace) IN
       trace_semantic_rel(ANY(anyvar,anyset))(trace)
       IMPLIES
@@ -226,7 +233,7 @@ BEGIN
   % @QED trace_semantics_sound_test proved by ltitolo on Tue, 28 Mar 2023 01:40:41 GMT
   trace_semantics_sound_test: LEMMA
     FORALL(trace:FiniteTrace,be:BoolExpr) :
-      LET envi = state(car(trace)),
+      LET envi = init_env(trace),
           envo = final_env(trace) IN
       trace_semantic_rel(TEST(be))(trace)
       IMPLIES
@@ -236,19 +243,19 @@ BEGIN
   trace_semantics_sound_seq: LEMMA
     FORALL (stm1,stm2: HP):
       ((FORALL(trace:FiniteTrace) :
-          LET envi = state(car(trace)),
+          LET envi = init_env(trace),
               envo = final_env(trace) IN
           trace_semantic_rel(stm1)(trace)
         IMPLIES semantic_rel(stm1)(envi)(envo))
         AND
         (FORALL(trace:FiniteTrace) :
-          LET envi = state(car(trace)),
+          LET envi = init_env(trace),
               envo = final_env(trace) IN
           trace_semantic_rel(stm2)(trace)
         IMPLIES semantic_rel(stm2)(envi)(envo)))
        IMPLIES
        FORALL(trace:FiniteTrace) :
-        LET envi = state(car(trace)),
+        LET envi = init_env(trace),
             envo = final_env(trace) IN
         trace_semantic_rel(SEQ(stm1,stm2))(trace)
         IMPLIES semantic_rel(SEQ(stm1,stm2))(envi)(envo)
@@ -257,19 +264,19 @@ BEGIN
   trace_semantics_sound_union: LEMMA
     FORALL (stm1,stm2: HP):
       ((FORALL(trace:FiniteTrace) :
-          LET envi = state(car(trace)),
+          LET envi = init_env(trace),
               envo = final_env(trace) IN
           trace_semantic_rel(stm1)(trace)
         IMPLIES semantic_rel(stm1)(envi)(envo))
         AND
         (FORALL(trace:FiniteTrace) :
-          LET envi = state(car(trace)),
+          LET envi = init_env(trace),
               envo = final_env(trace) IN
           trace_semantic_rel(stm2)(trace)
         IMPLIES semantic_rel(stm2)(envi)(envo)))
        IMPLIES
        FORALL(trace:FiniteTrace) :
-        LET envi = state(car(trace)),
+        LET envi = init_env(trace),
             envo = final_env(trace) IN
         trace_semantic_rel(UNION(stm1,stm2))(trace)
         IMPLIES semantic_rel(UNION(stm1,stm2))(envi)(envo)
@@ -280,19 +287,19 @@ BEGIN
      ((FORALL (trace:FiniteTrace):
         trace_semantic_rel(hp)(trace)
         IMPLIES
-        semantic_rel(hp)(state(car(trace)))(final_env(trace)))
+        semantic_rel(hp)(init_env(trace))(final_env(trace)))
       IMPLIES
      (FORALL (trace:FiniteTrace):
         trace_semantic_rel(STAR(hp))(trace)
         IMPLIES
-        EXISTS (i:nat) : semantic_rel_bounded_star(i)(STAR(hp))(state(car(trace)))(final_env(trace))
+        EXISTS (i:nat) : semantic_rel_bounded_star(i)(STAR(hp))(init_env(trace))(final_env(trace))
      ))
 
   % @QED trace_semantics_sound proved by ltitolo on Tue, 28 Mar 2023 14:16:41 GMT
   trace_semantics_sound: THEOREM
     FORALL(hp:HP) :
     FORALL(trace:FiniteTrace) :
-      LET envi = state(car(trace)),
+      LET envi = init_env(trace),
           envo = final_env(trace)
       IN
         trace_semantic_rel(hp)(trace) IMPLIES semantic_rel(hp)(envi)(envo)
@@ -308,7 +315,7 @@ BEGIN
       semantic_rel(ASSIGN(assigns))(envi)(envo)
       IMPLIES
       EXISTS(trace:FiniteTrace):
-        envi = state(car(trace)) AND
+        envi = init_env(trace) AND
         envo = final_env(trace) AND
         trace_semantic_rel(ASSIGN(assigns))(trace)
 
@@ -318,7 +325,7 @@ BEGIN
       semantic_rel(DIFF(odes,be))(envi)(envo)
       IMPLIES
       EXISTS(trace:FiniteTrace):
-        envi = state(car(trace)) AND
+        envi = init_env(trace) AND
         envo = final_env(trace) AND
         trace_semantic_rel(DIFF(odes,be))(trace)
 
@@ -328,7 +335,7 @@ BEGIN
       semantic_rel(ANY(anyvar,anyset))(envi)(envo)
         IMPLIES
         EXISTS(trace:FiniteTrace):
-          envi = state(car(trace)) AND
+          envi = init_env(trace) AND
           envo = final_env(trace) AND
           trace_semantic_rel(ANY(anyvar,anyset))(trace)
 
@@ -338,7 +345,7 @@ BEGIN
       semantic_rel(TEST(be))(envi)(envo)
       IMPLIES
       EXISTS(trace:FiniteTrace):
-        envi = state(car(trace)) AND
+        envi = init_env(trace) AND
         envo = final_env(trace) AND
         trace_semantic_rel(TEST(be))(trace)
 
@@ -348,21 +355,21 @@ BEGIN
       ((FORALL (envi, envo: Environment):
           semantic_rel(stm1)(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(stm1)(trace))
         AND
         FORALL (envi, envo: Environment):
           semantic_rel(stm2)(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(stm2)(trace))
        IMPLIES
        FORALL (envi, envo: Environment):
          semantic_rel(SEQ(stm1, stm2))(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(SEQ(stm1, stm2))(trace)
 
@@ -372,21 +379,21 @@ BEGIN
       ((FORALL (envi, envo: Environment):
           semantic_rel(stm1)(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(stm1)(trace))
         AND
         FORALL (envi, envo: Environment):
           semantic_rel(stm2)(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(stm2)(trace))
         IMPLIES
         FORALL (envi, envo: Environment):
           semantic_rel(UNION(stm1, stm2))(envi)(envo) IMPLIES
           EXISTS (trace: FiniteTrace):
-                  envi = state(car(trace)) AND
+                  envi = init_env(trace) AND
                   envo = final_env(trace) AND
                   trace_semantic_rel(UNION(stm1, stm2))(trace)
 
@@ -396,14 +403,14 @@ BEGIN
         (FORALL (envi, envo: Environment):
             semantic_rel(hp)(envi)(envo) IMPLIES
             EXISTS (trace: FiniteTrace):
-                    envi = state(car(trace)) AND
+                    envi = init_env(trace) AND
                     envo = final_env(trace) AND
                     trace_semantic_rel(hp)(trace))
          IMPLIES
          FORALL (envi, envo: Environment, i: nat):
            semantic_rel_bounded_star(i)(STAR(hp))(envi)(envo) IMPLIES
             EXISTS (trace: FiniteTrace):
-                    envi = state(car(trace)) AND
+                    envi = init_env(trace) AND
                     envo = final_env(trace) AND
                     trace_semantic_rel(STAR(hp))(trace)
 
@@ -414,7 +421,7 @@ BEGIN
       semantic_rel(hp)(envi)(envo)
       IMPLIES
       EXISTS(trace:FiniteTrace):
-        envi = state(car(trace)) AND
+        envi = init_env(trace) AND
         envo = final_env(trace) AND
         trace_semantic_rel(hp)(trace)
 
