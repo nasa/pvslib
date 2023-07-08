@@ -3,22 +3,49 @@ BEGIN
 
   CSVError : ExceptionTag[string] = "FieldError"
 
-  CSVFieldSpec : TYPE+ = { String, Rational, Integer }
+  CSVFieldSpec : TYPE+ = { String, Rational, Integer, Boolean }
 
   CSVData: DATATYPE
   BEGIN
     str_field(str_val: string):str?
     int_field(int_val: int):int?
     rat_field(rat_val: real):rat?
+    bool_field(bool_val: boolean): bool?
   END CSVData
 
   toString(data: CSVData): string
   = CASES data OF
        str_field(s): s,
        int_field(i): rat2str(i),
-       rat_field(i): rat2str(i)
+       rat_field(r): rat2str(r),
+       bool_field(b): bool2str(b)
     ENDCASES
 
+  toRational(data: CSVData): real
+  = CASES data OF
+       str_field(s): decstr2rat(s),
+       int_field(i): i,
+       rat_field(r): r,
+       bool_field(b): IF b THEN 1 ELSE 0 ENDIF
+    ENDCASES
+
+   NotABoolean : ExceptionTag[string] ="NotABoolean"
+
+   %% THROWS NotABoolean
+   str2boolean(s:string): bool =
+     IF str2bool(s,"TRUE") OR str2bool(s,"T") THEN TRUE
+     ELSIF str2bool(s,"FALSE") OR str2bool(s,"F") THEN FALSE
+     ELSE throw(NotABoolean)
+     ENDIF
+
+   toBoolean(data: CSVData): bool
+   = CASES data OF
+       str_field(s): str2boolean(s),
+       int_field(i): (i /= 0),
+       rat_field(r): (r /= 0),
+       bool_field(b): b
+    ENDCASES
+   
   IMPORTING csv_writer
 
   CSVDataFromSpec(spec: list[CSVFieldSpec]): TYPE+
@@ -27,14 +54,16 @@ BEGIN
 			: CASES nth(spec,i) OF
 			    String: str?(nth(l,i)),
 			    Integer: int?(nth(l,i)),
-			    Rational: rat?(nth(l,i))
+			    Rational: rat?(nth(l,i)),
+			    Boolean: bool?(nth(l,i))
 			  ENDCASES }
 
   getField(spec: list[CSVFieldSpec])(data: CSVDataFromSpec(spec), i: below(length(data)))
   : {d: CSVData | CASES nth(spec,i) OF
 		    String: str?(d),
 		    Integer: int?(d),
-		    Rational: rat?(d)
+		    Rational: rat?(d),
+		    Boolean: bool?(d)
 		  ENDCASES }
   = nth(data,i)
 
@@ -45,6 +74,12 @@ BEGIN
     FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
     : nth(spec,i) = Rational
       IMPLIES rat?(getField(spec)(data,i))
+
+  csv_data_from_spec_field_bool
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Boolean
+      IMPLIES bool?(getField(spec)(data,i))
 
   csv_data_from_spec_field_int
   : LEMMA
@@ -59,19 +94,20 @@ BEGIN
       IMPLIES str?(getField(spec)(data,i))
 
   % THROWS CSVError
-  processCSVLine(spec: list[CSVFieldSpec], strs: list[string] | length(spec) <= length(strs))
+  processCSVLine(spec: list[CSVFieldSpec], tokens: list[string] | length(spec) <= length(tokens))
   : RECURSIVE CSVDataFromSpec(spec)
   = IF null?(spec) THEN null
     ELSE LET fieldSpec=car(spec),
-    	     str=car(strs)
+    	     token=trim(car(tokens))
 	 IN catch[CSVDataFromSpec(spec)]
-	    ( (: NotARealNumber , NotAnInteger :) ,
-	        LET rest: list[CSVData] = processCSVLine(cdr(spec),cdr(strs))
-	      	IN cons( IF fieldSpec = Integer THEN int_field(str2int(str))
-	      	   	 ELSIF fieldSpec = Rational THEN rat_field(decstr2rat(str))
-	      	   	 ELSE str_field(str) ENDIF , rest),
+	    ( (: NotARealNumber , NotAnInteger, NotABoolean :) ,
+	        LET rest: list[CSVData] = processCSVLine(cdr(spec),cdr(tokens))
+	      	IN cons( IF fieldSpec = Integer THEN int_field(str2int(token))
+	      	   	 ELSIF fieldSpec = Rational THEN rat_field(decstr2rat(token))
+			 ELSIF fieldSpec = Boolean THEN bool_field(str2boolean(token))
+	      	   	 ELSE str_field(token) ENDIF , rest),
 	    throw(CSVError) ) ENDIF
-  MEASURE strs BY <<
+  MEASURE tokens BY <<
 
   IMPORTING pvsio_checker
   IMPORTING str_util
@@ -80,20 +116,9 @@ BEGIN
   readCSVRecord(ins: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
   : CSVDataFromSpec(data_spec)
   = LET line  = readln_checker(ins),
-    	tokens = str_split(line, dlct`dlmt)
+    	tokens = str_split(line, dlct`dlmt) 
     IN IF length(data_spec) > length(tokens)
        THEN throw(CSVError)
        ELSE processCSVLine(data_spec,tokens) ENDIF
-
-  % Usage Example
-
-  ex1: void
-  = LET file = "csv_reader_test.csv",
-    	fin: IStream = fopenin(file),
-    	spec: list[CSVFieldSpec] = (: Integer, String, Rational :)
-    IN while(NOT eof?(fin),
-       	     LET data: {l:list[CSVData] | length(l) = 3} = readCSVRecord(fin,MSEXCEL_DIALECT,spec)
-	     IN printf("~a ~a ~a~%",{|(toString(car(data)),toString(nth(data,1)),toString(nth(data,2)))|})
-         ) & fclose(fin);
 
 END csv_reader
