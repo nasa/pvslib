@@ -16,6 +16,7 @@
   (error 'pvsio-exception :str-tag str-tag :val val))
 
 (defattach |stdcatch.catch_lift| (tag f1 f2)
+  (declare (ignore tag))
   "If F1 throws the exception e tagged tag, then evaluates F2(e). Otherwise, returns F1"
   (handler-case
       (pvs-funcall f1 0)
@@ -30,7 +31,7 @@
 ;;; The tag in the parameters is ignored and the exception is thrown to the tag in exception.
 ;;; This should be corrected in PVS-8/lib/pvsio_prelude.pvs
 (defattach |stdcatch.throw| (tag exc)
-  "Throws the exception E"
+  "Throws the exception EXC"
   (let ((str-tag (elt exc 0))
 	(val     (elt exc 1)))
     (throw-pvsio-exc str-tag val)))
