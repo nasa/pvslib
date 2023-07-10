@@ -171,7 +171,7 @@
 
 ;; decls is a list of declarations for defun, e.g., (declare (ignore x))
 (defun defattach-body (attachment args body &optional decls)
-  (if (and body (listp (car body)) (equal (caar body) 'declare)) ;; Element is a delcaration
+  (if (and body (listp (car body)) (equal (caar body) 'declare)) ;; Element is a declaration
       (defattach-body attachment args (cdr body) (append decls (list (car body))))
     (let* ((fnm    (attachment-symbol attachment))
 	   (theory (attachment-theory attachment))
@@ -219,9 +219,7 @@ It cannot be evaluated in a formal proof."
     (setf (gethash theory *pvsio-attachments*)
 	  (cons attachment (remove-if #'(lambda (x) (same-attachment attachment x))
 				      (gethash theory *pvsio-attachments*))))
-    (let ((ff (defattach-body attachment args body)))
-      (when (equal name "throw") (format t "~%~s~%" ff))
-      ff)))
+    (defattach-body attachment args body)))
 
 (defmacro defattach-th-nm (theory nm args &rest body)
   (when (check-defattach nm body)
