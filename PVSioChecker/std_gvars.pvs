@@ -1,31 +1,43 @@
+%% This attachments should only be used inside <PVSio>.
+%% Examples of use:
+%%
+%% <PVSio> set_gvar("A",1);
+%%
+%% <PVSio> set_gvar("B",TRUE);
+%%
+%% <PVSio> gvar[bool]("B");
+%% ==>
+%% TRUE
+%%
+%% <PVSio> gvar[real]("A");
+%% ==>
+%% 1
+%%
+%% <PVSio> print_gvars;
+%% Global Variables: B:bool, A:real
+
 std_gvars[T:TYPE+]: THEORY
 BEGIN
 
+  IMPORTING std_gvars_names
+
   undefined : T
 
-  GlobalVars : Global[[string->T]]
+  GlobalVars  : Global[[string->T],LAMBDA(s:string):undefined]
+
+  type_of_domain_lisp(f:[T->void]): string
+
+  dummy_fun(t:T) :void = skip
+
+  type_of(t:T) : MACRO string =
+    type_of_domain_lisp(dummy_fun)
   
-  reset_gvars : MACRO void =
-    set(GlobalVars,LAMBDA(name:string):undefined)
-
   set_gvar(name:string,t:T) : MACRO void =
-    IF undef(GlobalVars) THEN
-      LET the_type = typeof(t) IN
-      printf("Global variables of type ~a have to be reset first. In PVSio, type: reset_gvars[~a];~2%",{|(the_type,the_type)|}) &
-      throw("UndefinedMutableVariable")
-    ELSE
-      set(GlobalVars,val(GlobalVars) WITH [`name := t])
-    ENDIF
+    LET the_type = type_of(t) IN
+    set(GlobalVars,val(GlobalVars) WITH [`name := t]) &
+    set(GlobalNames,cons((name,the_type),val(GlobalNames)))
 
-  type_of_domain(f:[T->void]): string
-
-  get_gvar(name:string) : MACRO T =
-    IF undef(GlobalVars) THEN
-      prog(LET the_type = type_of_domain(LAMBDA(t:T):skip) IN
-           printf("Global variables of type ~a have to be reset first. In PVSio, type: reset_gvars[~a];~2%",{|(the_type,the_type)|}),
-           throw("UndefinedMutableVariable"))
-    ELSE
-      val(GlobalVars)(name)
-    ENDIF
+  gvar(name:string) : MACRO T =
+    val(GlobalVars)(name)
 
 END std_gvars
