@@ -1,9 +1,13 @@
 csv_reader: THEORY
 BEGIN
 
+  IMPORTING csv_writer,
+            structures@listn
+
   CSVError : ExceptionTag[string] = "CSVError"
 
-  CSVFieldSpec : TYPE+ = { String, Rational, Integer, Boolean }
+  CSVFieldSpec : TYPE+ = { String, Rational, Integer, Boolean,
+                           StringOrNull, RationalOrNull, IntegerOrNull, BooleanOrNull }
 
   CSVData: DATATYPE
   BEGIN
@@ -11,26 +15,11 @@ BEGIN
     int_field(int_val: int):int?
     rat_field(rat_val: real):rat?
     bool_field(bool_val: boolean): bool?
+    null_field(str_val: string): null? %%% Added support for null data. The string is token in the input 
   END CSVData
 
-  toString(data: CSVData): string
-  = CASES data OF
-       str_field(s): s,
-       int_field(i): rat2str(i),
-       rat_field(r): rat2str(r),
-       bool_field(b): bool2str(b)
-    ENDCASES
-
-  %% THROWS NotARealNumber
-  toRational(data: CSVData): real
-  = CASES data OF
-       str_field(s): decstr2rat(s),
-       int_field(i): i,
-       rat_field(r): r,
-       bool_field(b): throw(NotARealNumber,bool2str(b))
-    ENDCASES
-
-   NotABoolean : ExceptionTag[string] ="NotABoolean"
+   NotABoolean      : ExceptionTag[string] ="NotABoolean"
+   NotAQuotedString : ExceptionTag[string] ="NotAQuotedString"
 
    %% THROWS NotABoolean
    str2boolean(s:string): bool =
@@ -39,83 +28,134 @@ BEGIN
      ELSE throw(NotABoolean,s)
      ENDIF
 
-   toBoolean(data: CSVData): bool
-   = CASES data OF
-       str_field(s): str2boolean(s),
-       int_field(i): (i /= 0),
-       rat_field(r): (r /= 0),
-       bool_field(b): b
-    ENDCASES
-   
-  IMPORTING csv_writer,structures@listn
+   %% String s should be either \"...\", if double quote, or \'...\', if single quote 
+   quotedstring?(qchar:QuoteChar,s:string): bool =
+     LET len = length(s) IN
+       len >= 2 AND
+       LET prefix  = substr(s,0,0),
+           postfix = substr(s,len-1,len-1) IN
+         strcmp(prefix,postfix) = 0 AND
+         CASES qchar OF
+           SINGLE_QUOTE: strcmp(prefix,singlequote) = 0,
+           DOUBLE_QUOTE: strcmp(prefix,doublequote) = 0,
+	   BACK_QUOTE: strcmp(prefix,backquote) = 0
+	 ENDCASES
+
+  %% Well Formet CSVData with respect to specification
+  wf_CSVData?(spec:CSVFieldSpec)(d:CSVData) : bool =
+    CASES spec OF
+      String: str?(d),
+      Integer: int?(d),
+      Rational: rat?(d),
+      Boolean: bool?(d),
+      StringOrNull: str?(d) OR null?(d),
+      IntegerOrNull: int?(d) OR null?(d),
+      RationalOrNull: rat?(d) OR null?(d),
+      BooleanOrNull: bool?(d) OR null?(d)
+    ENDCASES     
 
   CSVDataFromSpec(spec: list[CSVFieldSpec]): TYPE+
   = {l: listn[CSVData](length(spec)) | 
-    		      	FORALL(i:below(length(spec)))
-			: CASES nth(spec,i) OF
-			    String: str?(nth(l,i)),
-			    Integer: int?(nth(l,i)),
-			    Rational: rat?(nth(l,i)),
-			    Boolean: bool?(nth(l,i))
-			  ENDCASES }
+     FORALL(i:below(length(spec))): wf_CSVData?(nth(spec,i))(nth(l,i))}
 
   getField(spec: list[CSVFieldSpec])(data: CSVDataFromSpec(spec), i: below(length(data)))
-  : {d: CSVData | CASES nth(spec,i) OF
-		    String: str?(d),
-		    Integer: int?(d),
-		    Rational: rat?(d),
-		    Boolean: bool?(d)
-		  ENDCASES }
+  : (wf_CSVData?(nth(spec,i)))
   = nth(data,i)
 
   % to prove getField-related TCCs use csv-tcc strategy
-
-  csv_data_from_spec_field_rat
-  : LEMMA
-    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
-    : nth(spec,i) = Rational
-      IMPLIES rat?(getField(spec)(data,i))
 
   csv_data_from_spec_field_bool
   : LEMMA
     FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
     : nth(spec,i) = Boolean
-      IMPLIES bool?(getField(spec)(data,i))
+      IMPLIES LET d = getField(spec)(data,i) IN bool?(d) 
+
+  csv_data_from_spec_field_bool_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = BooleanOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN bool?(d) OR null?(d)
+
+  csv_data_from_spec_field_rat
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Rational
+      IMPLIES LET d = getField(spec)(data,i) IN rat?(d)
+
+  csv_data_from_spec_field_rat_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = RationalOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN rat?(d) OR null?(d)
 
   csv_data_from_spec_field_int
   : LEMMA
     FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
     : nth(spec,i) = Integer
-      IMPLIES int?(getField(spec)(data,i))
+      IMPLIES LET d = getField(spec)(data,i) IN int?(d) 
+
+  csv_data_from_spec_field_int_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = IntegerOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN int?(d) OR null?(d)
 
   csv_data_from_spec_field_str
   : LEMMA
     FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
-    : nth(spec,i) = String
-      IMPLIES str?(getField(spec)(data,i))
+    : nth(spec,i) = String 
+      IMPLIES LET d = getField(spec)(data,i) IN str?(d) 
+
+  csv_data_from_spec_field_str_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = StringOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN str?(d) OR null?(d)
 
   % THROWS CSVError
-  processCSVLine(spec: list[CSVFieldSpec], tokens: list[string] | length(spec) <= length(tokens),line:nat,field:posnat)
+  processCSVField(fieldspec:CSVFieldSpec,token:string,
+                  qchar:QuoteChar,line:nat,field:posnat) : (wf_CSVData?(fieldspec)) =
+   catch[(wf_CSVData?(fieldspec))](
+    (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :) ,
+    IF fieldspec = Integer OR fieldspec = IntegerOrNull
+      THEN int_field(str2int(token))
+    ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
+      THEN rat_field(decstr2rat(token))
+    ELSIF fieldspec = Boolean OR fieldspec = BooleanOrNull
+      THEN bool_field(str2boolean(token))
+    ELSIF %%  fieldspec = String OR fieldspec = StringOrNull
+      quotedstring?(qchar,token) THEN str_field(token)
+    ELSE throw(NotAQuotedString,token)
+    ENDIF,
+    IF fieldspec = IntegerOrNull OR
+       fieldspec = RationalOrNull OR
+       fieldspec = BooleanOrNull OR
+       fieldspec = StringOrNull THEN
+       null_field(token)
+    ELSE
+      LET lnstr = IF line > 0 THEN format(" line ~a,",line) ELSE "" ENDIF,
+          flstr = pvs2str(fieldspec),
+	  msg   = format("Value ~s doesn't satisfy spec ~a in~a field ~a",
+		         {| (token,flstr,lnstr,field) |}) 
+      IN throw(CSVError,msg)
+    ENDIF ) 
+
+  % THROWS CSVError
+  processCSVLine(spec: list[CSVFieldSpec],
+                 tokens: list[string] | length(spec) <= length(tokens),
+                 qchar: QuoteChar, line: nat,field: posnat)
   : RECURSIVE CSVDataFromSpec(spec)
   = IF null?(spec) THEN null
-    ELSE LET fieldSpec=car(spec),
-    	     token=trim(car(tokens))
-	 IN catch[CSVDataFromSpec(spec)]
-	    ( (: NotARealNumber , NotAnInteger, NotABoolean :) ,
-	        LET rest: list[CSVData] = processCSVLine(cdr(spec),cdr(tokens),line,field+1)
-	      	IN cons( IF fieldSpec = Integer THEN int_field(str2int(token))
-	      	   	 ELSIF fieldSpec = Rational THEN rat_field(decstr2rat(token))
-			 ELSIF fieldSpec = Boolean THEN bool_field(str2boolean(token))
-	      	   	 ELSE str_field(token) ENDIF , rest),
-	        LET lnstr = IF line > 0 THEN format(" line ~a,",line) ELSE "" ENDIF,
-		    flstr = pvs2str(fieldSpec),
-		    msg   = format("Value ~s doesn't satisfy spec ~a in~a field ~a",
-		    	         {| (token,flstr,lnstr,field) |}) IN
-		throw(CSVError,msg) ) ENDIF
+    ELSE
+      LET fieldspec=car(spec),
+    	  token=trim(car(tokens)),
+	  rest: list[CSVData] = processCSVLine(cdr(spec),cdr(tokens),qchar,line,field+1)
+      IN cons(processCSVField(fieldspec,token,qchar,line,field),rest)
+    ENDIF
   MEASURE tokens BY <<
 
-  IMPORTING pvsio_checker
-  IMPORTING str_util
+  IMPORTING pvsio_checker,
+            str_util
 
   % THROWS CSVError
   readCSVRecordln(ins: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec],line:nat)
@@ -126,9 +166,10 @@ BEGIN
     IN IF delta > 0
        THEN
          LET lnstr = IF line > 0 THEN rat2str(line) ELSE "" ENDIF, 
-	     mssg  = format("Line~a has ~a fewer fields than data specifications",{| lnstr,delta |}) IN
+	     mssg  = format("Line~a has ~a fewer fields than data specifications",
+	                    {| lnstr,delta |}) IN
          throw(CSVError,mssg)
-       ELSE processCSVLine(data_spec,tokens,line,1) ENDIF
+       ELSE processCSVLine(data_spec,tokens,dlct`qchr,line,1) ENDIF
 
   readCSVRecord(ins: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
   : MACRO CSVDataFromSpec(data_spec) =
@@ -139,7 +180,8 @@ BEGIN
     LET line = ref[nat](1),
         ret  = ref[list[CSVDataFromSpec(data_spec)]](null)
     IN prog(while(NOT eof?(ins),
-       	      LET data: CSVDataFromSpec(data_spec) = readCSVRecordln(ins,MSEXCEL_DIALECT,data_spec,val(line))
+       	      LET data: CSVDataFromSpec(data_spec) =
+	          readCSVRecordln(ins,MSEXCEL_DIALECT,data_spec,val(line))
 	      IN
 	        set(line,val(line)+1) &
 	        set(ret,append(val(ret),(: data :)))) &
@@ -150,4 +192,29 @@ BEGIN
   : list[CSVDataFromSpec(data_spec)] =
     readCSV(fopenin(file),dlct,data_spec)
 
+%  toString(data: CSVData): string
+%  = CASES data OF
+%       str_field(s): s,
+%       int_field(i): rat2str(i),
+%       rat_field(r): rat2str(r),
+%       bool_field(b): bool2str(b)
+%    ENDCASES
+
+  %% THROWS NotARealNumber
+%  toRational(data: CSVData): real
+%  = CASES data OF
+%       str_field(s): decstr2rat(s),
+%       int_field(i): i,
+%       rat_field(r): r,
+%       bool_field(b): throw(NotARealNumber,bool2str(b))
+%    ENDCASES
+
+%   toBoolean(data: CSVData): bool
+%   = CASES data OF
+%       str_field(s): str2boolean(s),
+%       int_field(i): (i /= 0),
+%       rat_field(r): (r /= 0),
+%%       bool_field(b): b
+%    ENDCASES
+   
 END csv_reader

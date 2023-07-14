@@ -36,6 +36,14 @@
 	(val     (elt exc 1)))
     (throw-pvsio-exc str-tag val)))
 
+(defattach |stdstr.decstr2rat| (s)
+  "Converts string representing a decimal number to rational number"
+  (handler-case
+      (decimals:parse-decimal-number s)
+    (decimals:decimal-parse-error
+     (condition)
+     (throw-pvsio-exc "NotARealNumber" s))))
+
 (defattach |stdstr.str2real| (s)
   "Rational denoted by S"
   (let ((i (read-from-string s)))
