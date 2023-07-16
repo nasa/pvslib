@@ -1,25 +1,26 @@
 csv_reader: THEORY
 BEGIN
 
-  IMPORTING csv_writer,
-            structures@listn
+  IMPORTING csv_writer_def,
+            structures@listn,
+	    pvsio_checker
 
   CSVError : ExceptionTag[string] = "CSVError"
 
-  CSVFieldSpec : TYPE+ = { String, Rational, Integer, Boolean,
-                           StringOrNull, RationalOrNull, IntegerOrNull, BooleanOrNull }
+  CSVFieldSpec : TYPE+ = { String, Rational, Decimal, Integer, Boolean,
+                           StringOrNull, RationalOrNull, DecimalOrNull, IntegerOrNull, BooleanOrNull }
 
   CSVData: DATATYPE
   BEGIN
     str_field(str_val: string):str?
     int_field(int_val: int):int?
     rat_field(rat_val: real):rat?
+    dec_field(rat_val: real, precision:nat): dec?
     bool_field(bool_val: boolean): bool?
-    null_field(str_val: string): null? %%% Added support for null data. The string is token in the input 
+    null_field: null? 
   END CSVData
 
    NotABoolean      : ExceptionTag[string] ="NotABoolean"
-   NotAQuotedString : ExceptionTag[string] ="NotAQuotedString"
 
    %% THROWS NotABoolean
    str2boolean(s:string): bool =
@@ -28,29 +29,18 @@ BEGIN
      ELSE throw(NotABoolean,s)
      ENDIF
 
-   %% String s should be either \"...\", if double quote, or \'...\', if single quote 
-   quotedstring?(qchar:QuoteChar,s:string): bool =
-     LET len = length(s) IN
-       len >= 2 AND
-       LET prefix  = substr(s,0,0),
-           postfix = substr(s,len-1,len-1) IN
-         strcmp(prefix,postfix) = 0 AND
-         CASES qchar OF
-           SINGLE_QUOTE: strcmp(prefix,singlequote) = 0,
-           DOUBLE_QUOTE: strcmp(prefix,doublequote) = 0,
-	   BACK_QUOTE: strcmp(prefix,backquote) = 0
-	 ENDCASES
-
   %% Well Formet CSVData with respect to specification
   wf_CSVData?(spec:CSVFieldSpec)(d:CSVData) : bool =
     CASES spec OF
       String: str?(d),
       Integer: int?(d),
-      Rational: rat?(d),
+      Rational: rat?(d), 
+      Decimal: dec?(d), 
       Boolean: bool?(d),
       StringOrNull: str?(d) OR null?(d),
       IntegerOrNull: int?(d) OR null?(d),
       RationalOrNull: rat?(d) OR null?(d),
+      DecimalOrNull: dec?(d) OR null?(d),
       BooleanOrNull: bool?(d) OR null?(d)
     ENDCASES     
 
@@ -88,6 +78,18 @@ BEGIN
     : nth(spec,i) = RationalOrNull
       IMPLIES LET d = getField(spec)(data,i) IN rat?(d) OR null?(d)
 
+  csv_data_from_spec_field_dec
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Decimal
+      IMPLIES LET d = getField(spec)(data,i) IN dec?(d)
+
+  csv_data_from_spec_field_dec_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = DecimalOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN dec?(d) OR null?(d)
+
   csv_data_from_spec_field_int
   : LEMMA
     FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
@@ -112,38 +114,44 @@ BEGIN
     : nth(spec,i) = StringOrNull
       IMPLIES LET d = getField(spec)(data,i) IN str?(d) OR null?(d)
 
-  % THROWS CSVError
+  % THROWS CSVError. token is trimmed
   processCSVField(fieldspec:CSVFieldSpec,token:string,
-                  qchar:QuoteChar,line:nat,field:posnat) : (wf_CSVData?(fieldspec)) =
-   catch[(wf_CSVData?(fieldspec))](
-    (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :) ,
-    IF fieldspec = Integer OR fieldspec = IntegerOrNull
-      THEN int_field(str2int(token))
-    ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
-      THEN rat_field(decstr2rat(token))
-    ELSIF fieldspec = Boolean OR fieldspec = BooleanOrNull
-      THEN bool_field(str2boolean(token))
-    ELSIF %%  fieldspec = String OR fieldspec = StringOrNull
-      quotedstring?(qchar,token) THEN str_field(token)
-    ELSE throw(NotAQuotedString,token)
-    ENDIF,
-    IF fieldspec = IntegerOrNull OR
-       fieldspec = RationalOrNull OR
-       fieldspec = BooleanOrNull OR
-       fieldspec = StringOrNull THEN
-       null_field(token)
-    ELSE
+                  qchar:StringChar,line:nat,field:posnat) : (wf_CSVData?(fieldspec)) =
+    IF str_length(token) = 0 AND
+       (fieldspec = IntegerOrNull OR fieldspec = RationalOrNull OR fieldspec = DecimalOrNull OR
+        fieldspec = BooleanOrNull OR fieldspec = StringOrNull) THEN
+      null_field
+    ELSE   
+      catch[(wf_CSVData?(fieldspec))](
+      (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :) ,
+      IF fieldspec = Integer OR fieldspec = IntegerOrNull
+        THEN int_field(str2int(token))
+      ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
+        THEN rat_field(str2real(token))
+      ELSIF fieldspec = Decimal OR fieldspec = DecimalOrNull
+        THEN
+        LET pos = strfind(".",token),
+	    len = length(token), 
+	    decpos = IF pos = -1 THEN len ELSE pos+1 ENDIF
+	IN dec_field(decstr2rat(token),max(0,len-decpos)) %% Keeps the orignal precision of the decimal
+      ELSIF fieldspec = Boolean OR fieldspec = BooleanOrNull
+        THEN bool_field(str2boolean(token))
+      ELSIF %%  fieldspec = String OR fieldspec = StringOrNull
+        quotedstring?(token,qchar) THEN str_field(token)
+      ELSE throw(NotAQuotedString,token)
+      ENDIF,
       LET lnstr = IF line > 0 THEN format(" line ~a,",line) ELSE "" ENDIF,
           flstr = pvs2str(fieldspec),
 	  msg   = format("Value ~s doesn't satisfy spec ~a in~a field ~a",
-		         {| (token,flstr,lnstr,field) |}) 
+		         {| token,flstr,lnstr,field |}) 
       IN throw(CSVError,msg)
-    ENDIF ) 
+      )
+    ENDIF 
 
   % THROWS CSVError
   processCSVLine(spec: list[CSVFieldSpec],
                  tokens: list[string] | length(spec) <= length(tokens),
-                 qchar: QuoteChar, line: nat,field: posnat)
+                 qchar: StringChar, line: nat,field: posnat)
   : RECURSIVE CSVDataFromSpec(spec)
   = IF null?(spec) THEN null
     ELSE
@@ -154,14 +162,11 @@ BEGIN
     ENDIF
   MEASURE tokens BY <<
 
-  IMPORTING pvsio_checker,
-            str_util
-
   % THROWS CSVError
   readCSVRecordln(ins: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec],line:nat)
   : CSVDataFromSpec(data_spec)
   = LET line   = readln_checker(ins),
-    	tokens = str_split(line, dlct`dlmt),
+    	tokens = str_split_with_quotechar(line, dlct`dlmt, dlct`qchr),
 	delta  = length(data_spec) - length(tokens)
     IN IF delta > 0
        THEN
@@ -192,29 +197,4 @@ BEGIN
   : list[CSVDataFromSpec(data_spec)] =
     readCSV(fopenin(file),dlct,data_spec)
 
-%  toString(data: CSVData): string
-%  = CASES data OF
-%       str_field(s): s,
-%       int_field(i): rat2str(i),
-%       rat_field(r): rat2str(r),
-%       bool_field(b): bool2str(b)
-%    ENDCASES
-
-  %% THROWS NotARealNumber
-%  toRational(data: CSVData): real
-%  = CASES data OF
-%       str_field(s): decstr2rat(s),
-%       int_field(i): i,
-%       rat_field(r): r,
-%       bool_field(b): throw(NotARealNumber,bool2str(b))
-%    ENDCASES
-
-%   toBoolean(data: CSVData): bool
-%   = CASES data OF
-%       str_field(s): str2boolean(s),
-%       int_field(i): (i /= 0),
-%       rat_field(r): (r /= 0),
-%%       bool_field(b): b
-%    ENDCASES
-   
 END csv_reader

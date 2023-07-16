@@ -1,8 +1,69 @@
 str_util: THEORY
 BEGIN
 
-  str_length(s: string): nat = length(s)
+  str_length(str: string): nat = length(str)
 
-  str_split(str: string, delimiter: string | length(delimiter) = 1): list[string]
+  StringChar : TYPE = {str:string | length(str) = 1}
+
+  %% Split str using delimiter
+  str_split(str: string, delimiter: StringChar): list[string]
+
+  NotAQuotedString : ExceptionTag[string] ="NotAQuotedString"
+
+  %% Is string str of the form Q...., where Q is the quotechar, e.g., \", \', etc.
+  left_quotedstring?(str:string,quotechar:StringChar): bool =
+    LET len = str_length(str) IN
+      len >= 1 AND
+      LET prefix  = substr(str,0,0) IN
+        strcmp(prefix,quotechar) = 0
+
+  %% Is string str of the form ...Q, where Q is the quotechar, e.g., \", \', etc.
+  right_quotedstring?(str:string,quotechar:StringChar): bool =
+    LET len = str_length(str) IN
+      len >= 1 AND
+      LET postfix = substr(str,len-1,len-1) IN
+        strcmp(postfix,quotechar) = 0
+
+  %% Is string str of the form Q....Q, where Q is the quotechar, e.g., \", \', etc.
+  quotedstring?(str:string,quotechar:StringChar): bool =
+    LET len = str_length(str) IN
+      len >= 2 AND
+      LET prefix  = substr(str,0,0),
+          postfix = substr(str,len-1,len-1) IN
+        strcmp(prefix,postfix) = 0 AND
+        strcmp(prefix,quotechar) = 0
+
+  str_split_with_qchar_rec(tokens: list[string], delimiter,quotechar: StringChar, leftstr: string):
+    RECURSIVE list[string] =
+    LET inside_str : bool = str_length(leftstr) > 0 IN
+    IF null?(tokens) THEN
+      IF inside_str THEN (: leftstr :) ELSE tokens
+      ENDIF
+    ELSE
+      LET token    = car(tokens),
+          str_trim = trim(token),
+	  lstr     = left_quotedstring?(str_trim,quotechar),
+	  rstr     = right_quotedstring?(str_trim,quotechar) IN
+        IF inside_str THEN % leftstr is not empty
+	  LET newstr = format("~a~a~a",{| leftstr, delimiter, token |}) IN
+	  IF rstr THEN
+	      cons(newstr,str_split_with_qchar_rec(cdr(tokens),delimiter,quotechar,""))
+	  ELSE
+	      str_split_with_qchar_rec(cdr(tokens),delimiter,quotechar,newstr)
+	  ENDIF
+	ELSE 
+ 	  IF lstr AND (rstr IMPLIES str_length(str_trim) = 1) THEN
+ 	    str_split_with_qchar_rec(cdr(tokens),delimiter,quotechar,token)
+          ELSE % leftstr is empty
+	    cons(token,str_split_with_qchar_rec(cdr(tokens),delimiter,quotechar,""))
+	  ENDIF
+	ENDIF
+    ENDIF
+    MEASURE tokens BY <<
+
+  %% Split str using delimiter, but avoid splitting within quotechar 
+  str_split_with_quotechar(str: string, delimiter,quotechar: StringChar): list[string] =
+    LET split = str_split(str,delimiter) IN
+    str_split_with_qchar_rec(split,delimiter,quotechar,"")
 
 END str_util

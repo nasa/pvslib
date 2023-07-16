@@ -35,7 +35,7 @@
  
  (defattach |pathname_name| (name)
    "Name of pathname"
-   (pathname-name name))
+   (or (pathname-name name) ""))
 
  (defattach |pathname_type| (name)
    "Type of pathname"
@@ -53,21 +53,25 @@
  |csv_writerow|
 
  (defattach |write_row| (wrt row)
-   (using
-    ((get_stream  "csv_writer_stream")
-     (get_dialect "csv_writer_dialect")
-     (get_delim   "csv_dialect_delimeter")
-     (get_qchar   "csv_dialect_quotechar"))
-    (let*((stream (funcall get_stream  wrt))
-	  (dialect(funcall get_dialect wrt))
-	  (delim  (funcall get_delim   dialect))
-	  (qchar  (funcall get_qchar   dialect))
-	  (fmt-str(case qchar
-		    (0 (format nil "~~{~~:[~~a~~;'~~a'~~]~~^~a ~~}~~%" delim))
-		    (1 (format nil "~~{~~:[~~a~~;~~s~~]~~^~a ~~}~~%" delim))
-		    (otherwise (attach-error (format nil "[csv_writerow.write_row] Unknown type of quote char: ~a" qchar)))))
-	  (pro-row(loop for x across row collect (stringp x) collect x)))
-      (not (format stream fmt-str pro-row))))))
+   (setq *A* wrt)
+   (setq *R* row)
+   (let*((dialect(elt wrt 0))
+	 (stream (elt wrt 1))
+	 (delim  (elt dialect 0))
+	 (qchar  (elt dialect 1)))
+     (if (arrayp row)
+	 (let ((fmt-str (format nil "~~{~~a~~^~a ~~}~~%" delim))
+	       (pro-row(loop for x across row 
+			     collect
+			     (cond ((numberp x) x)
+				   ((stringp x) (case qchar
+						  (0 (format nil "'~a'" x))
+						  (1 (format nil "~s" x))
+						  (2 (format nil "`~a`" x))))
+				   (x "TRUE")
+				   (t "FALSE")))))
+	   (not (format stream fmt-str pro-row)))
+       (not (format stream "~a" row))))))
 
 (attachments |std_syscall|
 	     
