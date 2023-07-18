@@ -3,10 +3,28 @@
 
   (defattach |str_length| (s)
     (length s))
-
+  
   (defattach |str_split| (str delim)
-   "Splits the string STR using DELIM as delimiter."
-   (split str (char delim 0))))
+    "Splits the string STR using DELIM as delimiter."
+    (split str (char delim 0)))
+
+  (defattach |numerator| (r)
+    "Returns the numerator of rational number R"
+    (numerator r))
+
+  (defattach |denominator| (r)
+    "Returns the denomirator of rational number R (always positive)"
+    (denominator r))
+
+  (defattach |decimal_precision| (r)
+    "Returns the decimal precision of rational R, 0 if integer,  -1 if infinite decimal."
+    (or (decimal-precision-of-rat r)
+	(throw-pvsio-exc "NotARealNumber" (format nil "~a" r))))
+
+  (defattach |rationalize| (r)
+    "Returns a rational number close to the real number"
+    r) ;;; This is PVSio, real numbers are already rational! This is just needed for casting.
+)
 
 (attachments
  |time_fun|
@@ -39,50 +57,49 @@
 
  (defattach |pathname_type| (name)
    "Type of pathname"
-   (pathname-type name)))
+   (pathname-type name))
 
-(attachments
- |pvsio_checker|
- 
- (defattach |real2str| (r n m)
-   "Converts real number r to string, where the integer n represents the precision 10^-n, and m is the rounding mode
-    (0: to zero, 1: to infinity (away from zero), 2: to negative infinity (floor), 3: to positive infinity (ceiling)"
-   (ratio2decimal r (or (= m 3) (and (= m 1) (> r 0)) (and (= m 0) (< r 0))) n)))
+ (defattach |filename_of_stream| (stream)
+   "File name of stream"
+   (with-slots ((plist excl::plist)) stream
+	       (let ((rest (member 'excl::filename plist)))
+		 (if rest
+		     (format nil "~a" (cadr rest))
+		   ""))))
+)
+
+(defun csv_data2str (data rounding precision quotechar)
+  (cond ((numberp data) (real2decimal data rounding precision))
+	((stringp data) (format nil "~a~a~a" quotechar data quotechar))
+	((null data) "FALSE")
+	((eql data t) "TRUE")
+	(t (throw-pvsio-exc "CSVError" (format nil "~a" data)))))
 
 (attachments
  |csv_writerow|
 
- (defattach |write_row| (wrt row)
-   (setq *A* wrt)
-   (setq *R* row)
-   (let*((dialect(elt wrt 0))
-	 (stream (elt wrt 1))
-	 (delim  (elt dialect 0))
-	 (qchar  (elt dialect 1)))
-     (if (arrayp row)
-	 (let ((fmt-str (format nil "~~{~~a~~^~a ~~}~~%" delim))
-	       (pro-row(loop for x across row 
-			     collect
-			     (cond ((numberp x) x)
-				   ((stringp x) (case qchar
-						  (0 (format nil "'~a'" x))
-						  (1 (format nil "~s" x))
-						  (2 (format nil "`~a`" x))))
-				   (x "TRUE")
-				   (t "FALSE")))))
-	   (not (format stream fmt-str pro-row)))
-       (not (format stream "~a" row))))))
+ (defattach |write_row_lisp| (stream separator quotechar rounding precision row)
+   "A simple CSV writer of rows that doesn't require CSVData (as defined in csv_reader.pvs)"
+   (if (arrayp row)
+       (let ((fmt-str (format nil "~~{~~a~~^~a~~}~~%" separator))
+	     (pro-row (loop for data across row 
+			    collect
+			    (csv_data2str data rounding precision quotechar))))
+	 (not (format stream fmt-str pro-row)))
+     (not (format stream "~a~%" row))))
+)
 
 (attachments |std_syscall|
 	     
   (defattach |system_call| (command)
-  "Make a system call with $<command>"
+  "Make a system call of command"
   (let ((output (extra-system-call command)))
     (pvs2cl_record (car output) (cdr output)))))
 
 (attachments |std_gvars|
 
 (defattach |type_of_domain_lisp| (f)
+  (declare (ignore f))
   "Return the type of the domain of F"
   (let ((dom (domain (domain *the-pvs-type*))))
     (format nil "~a" dom))))

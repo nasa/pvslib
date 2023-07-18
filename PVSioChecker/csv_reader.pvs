@@ -12,15 +12,37 @@ BEGIN
 
   CSVData: DATATYPE
   BEGIN
-    str_field(str_val: string):str?
+    str_field(str_val: string):str? % Strings are stored without the quotechar 
     int_field(int_val: int):int?
-    rat_field(rat_val: real):rat?
-    dec_field(rat_val: real, precision:nat): dec?
+    rat_field(rat_val: rat):rat?   % Rationals are printed as decimals, when posible.
+    		       		    % Otherwise, they are printed as rationals
+    dec_field(rat_val: rat, precision:nat): dec? % Decimals are printed at the given precision
     bool_field(bool_val: boolean): bool?
     null_field: null? 
   END CSVData
 
-   NotABoolean      : ExceptionTag[string] ="NotABoolean"
+   real2rat_field(r:real) : (rat?) =
+     LET rat = rationalize(r) IN
+       rat_field(rat)
+
+   rat2dec_field(rat:rat) : (dec?) =
+     LET prec = decimal_precision(rat) IN
+     IF prec >= 0 THEN
+       dec_field(rat,prec)
+     ELSE
+       dec_field(rat,val(PRECISION))
+     ENDIF   
+
+   real2dec_field(r:real) : (dec?) =
+     rat2dec_field(rationalize(r))
+
+   rat_field2dec_field(rf:(rat?)) : (dec?) =
+     rat2dec_field(rat_val(rf))
+
+   dec_field2rat_field(df:(dec?)) : (rat?) =
+     rat_field(rat_val(df))
+
+   NotABoolean : ExceptionTag[string] ="NotABoolean"
 
    %% THROWS NotABoolean
    str2boolean(s:string): bool =
@@ -133,11 +155,11 @@ BEGIN
         LET pos = strfind(".",token),
 	    len = length(token), 
 	    decpos = IF pos = -1 THEN len ELSE pos+1 ENDIF
-	IN dec_field(decstr2rat(token),max(0,len-decpos)) %% Keeps the orignal precision of the decimal
+	IN dec_field(rationalize(decstr2rat(token)),max(0,len-decpos)) %% Keeps the orignal precision of the decimal
       ELSIF fieldspec = Boolean OR fieldspec = BooleanOrNull
         THEN bool_field(str2boolean(token))
       ELSIF %%  fieldspec = String OR fieldspec = StringOrNull
-        quotedstring?(token,qchar) THEN str_field(token)
+        quotedstring?(qchar)(token) THEN str_field(unquote_string(qchar)(token))
       ELSE throw(NotAQuotedString,token)
       ENDIF,
       LET lnstr = IF line > 0 THEN format(" line ~a,",line) ELSE "" ENDIF,
@@ -170,9 +192,9 @@ BEGIN
 	delta  = length(data_spec) - length(tokens)
     IN IF delta > 0
        THEN
-         LET lnstr = IF line > 0 THEN rat2str(line) ELSE "" ENDIF, 
-	     mssg  = format("Line~a has ~a fewer fields than data specifications",
-	                    {| lnstr,delta |}) IN
+         LET lnstr = IF line > 0 THEN " "+rat2str(line) ELSE "" ENDIF, 
+	     mssg  = format("Line~a has ~a fewer fields than data specifications (~a)",
+	                    {| lnstr,delta, tokens |}) IN
          throw(CSVError,mssg)
        ELSE processCSVLine(data_spec,tokens,dlct`qchr,line,1) ENDIF
 
@@ -186,15 +208,21 @@ BEGIN
         ret  = ref[list[CSVDataFromSpec(data_spec)]](null)
     IN prog(while(NOT eof?(ins),
        	      LET data: CSVDataFromSpec(data_spec) =
-	          readCSVRecordln(ins,MSEXCEL_DIALECT,data_spec,val(line))
+	          readCSVRecordln(ins,dlct,data_spec,val(line))
 	      IN
 	        set(line,val(line)+1) &
 	        set(ret,append(val(ret),(: data :)))) &
 	    fclose(ins),
 	    val(ret))
-	    
+
+  % Read CSV file using given dialect and data spec
   readCSV(file: string, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
   : list[CSVDataFromSpec(data_spec)] =
     readCSV(fopenin(file),dlct,data_spec)
+
+  % read CSV file using MSEXCEL_DIALECT and given data spec
+  readCSV(file: string, data_spec: list[CSVFieldSpec]) 
+  : list[CSVDataFromSpec(data_spec)] =
+  readCSV(file,MSEXCEL_DIALECT,data_spec)
 
 END csv_reader

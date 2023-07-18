@@ -36,19 +36,31 @@
 	(val     (elt exc 1)))
     (throw-pvsio-exc str-tag val)))
 
+(defattach |stdstr.real2decstr| (r precision rounding)
+  "Converts real number r to string. If rational can be represented by a finite decimal, it prints its excact represenation. Otherwise, it uses precision and rounding, where the precision represents the accuracy  10^-precision and rounding as as follows:
+0: to zero, 1: to infinity (away from zero), 2: to negative infinity (floor), 3: to positive infinity (ceiling)"
+  (real2decimal r rounding precision))
+
 (defattach |stdstr.decstr2rat| (s)
   "Converts string representing a decimal number to rational number"
   (handler-case
       (decimals:parse-decimal-number s)
     (decimals:decimal-parse-error
      (condition)
+     (declare (ignore condition))
      (throw-pvsio-exc "NotARealNumber" s))))
 
 (defattach |stdstr.str2real| (s)
   "Rational denoted by S"
-  (let ((i (read-from-string s)))
-    (if (numberp i) (rational i)
-      (throw-pvsio-exc "NotARealNumber" s))))
+  (handler-case
+      (decimals:parse-decimal-number s)
+    (decimals:decimal-parse-error
+     (condition)
+     (declare (ignore condition))
+     (let ((n (read-from-string s)))
+       (cond ((rationalp n) n)
+	     ((floatp n) (rationalize n))
+	     (t (throw-pvsio-exc "NotARealNumber" s)))))))
 
 (defattach |stdstr.str2int| (s)
   "Integer denoted by S"
