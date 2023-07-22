@@ -1,7 +1,7 @@
 #!/bin/bash
 
 usage() {
-  echo "Installs NASALib scripts. 
+  echo "Installs NASALib pvs-scripts. 
 
 The option --pvs-dir <pvs path> can be used to provide the directory where PVS is installed. 
 This option can be omitted if the directory is in the \$PVS_DIR or the \$PATH environment variables."
@@ -32,22 +32,38 @@ done
 ## Append code into .pvsemacs in order to load
 ## automatically load el files into emacs-PVS
 LOAD_EL_SNIPPET_v0="(let ((nasalib-path (pvs-send-and-wait \"(extra-pvs-nasalib)\"))) (loop for el-file in (directory-files (format \"%spvs-emacs\" nasalib-path) nil \".el\") do (load (format \"%spvs-emacs/%s\" nasalib-path el-file))))"
+
 ## Corrected version of snippet for newer emacs
-LOAD_EL_SNIPPET_v1="(let ((nasalib-path (pvs-send-and-wait \"(extra-pvs-nasalib)\"))) (cl-loop for el-file in (directory-files (format \"%spvs-emacs\" nasalib-path) nil \".el\") when el-file do (load (format \"%spvs-emacs/%s\" nasalib-path el-file))))"
+BEGINNING_OF_MARKER=";; BEGINNING OF ADDITION BY install-scripts AT NASALib"
+END_OF_MARKER=";; END OF ADDITION BY install-scripts AT NASALib"
+LOAD_EL_SNIPPET_v1="$BEGINNING_OF_MARKER
+(let ((nasalib-path (pvs-send-and-wait \"(extra-pvs-nasalib)\"))) 
+  (cl-loop for el-file in (directory-files (format \"%spvs-emacs\" nasalib-path) nil \".el\") 
+           when el-file 
+           do (load (format \"%spvs-emacs/%s\" nasalib-path el-file))))
+$END_OF_MARKER"
+
 if [ -f ~/.pvsemacs ]; then
+    echo "Modifying ~/.pvsemacs, backing-up the current file in ~/.pvsemacs.bak"
     if grep -Fq "$LOAD_EL_SNIPPET_v0" ~/.pvsemacs
-    then
-	echo "Modifying ~/.pvsemacs, backing-up the current file in ~/.pvsemacs.bak"
-	sed "s|$LOAD_EL_SNIPPET_v0||" ~/.pvsemacs > ~/.pvsemacs.new
-	echo "$LOAD_EL_SNIPPET_v1" >> ~/.pvsemacs.new
-	mv -f ~/.pvsemacs ~/.pvsemacs.bak
-	mv -f ~/.pvsemacs.new ~/.pvsemacs
+    then  ## Removing v0 addition
+	sed -e "s|$LOAD_EL_SNIPPET_v0|<<TODELETE>>|" -e "/<<TODELETE>>/ d" ~/.pvsemacs > ~/.pvsemacs.new
+    elif grep -Fq "$BEGINNING_OF_MARKER" ~/.pvsemacs
+    then ## Removing code between markers
+	sed -e "/$BEGINNING_OF_MARKER/,/$END_OF_MARKER/ d" ~/.pvsemacs > ~/.pvsemacs.new
+    else
+	cp -f ~/.pvsemacs ~/.pvsemacs.new
     fi
+    echo "$LOAD_EL_SNIPPET_v1" >> ~/.pvsemacs.new
+    mv -f ~/.pvsemacs ~/.pvsemacs.bak
+    mv -f ~/.pvsemacs.new ~/.pvsemacs
+else
+    echo "$LOAD_EL_SNIPPET_v1" >> ~/.pvsemacs
 fi
 
 ## Check if there are scripts
-if [ ! -d pvs-patches/scripts ]; then
-    echo "There is no script to be installed"
+if [ ! -d pvs-scripts ]; then
+    echo "There are no pvs-scripts to be installed"
     exit 0
 fi
 
@@ -78,5 +94,5 @@ Please double check that PVS is correctly installed in this directory and try ag
 fi
 
 echo "Installing NASALib scripts into $pvsdir"
-rsync -av --existing --exclude '.*' pvs-patches/scripts/ $pvsdir
+rsync -av --existing --exclude '.*' pvs-scripts/ $pvsdir
 cd $pvsdir;./install-sh
