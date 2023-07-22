@@ -1,1 +1,2 @@
-(defparameter *nasalib-version* "7.1.0 (08/20/20)")
+;; extrategies.lisp use this file to find the absolute path to nasalib                                      
+
