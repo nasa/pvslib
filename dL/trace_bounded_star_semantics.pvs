@@ -7,7 +7,7 @@ trace_bounded_star_semantics: THEORY
   BEGIN 
     
 
-  IMPORTING trace_semantics
+  IMPORTING ltl_expr
   IMPORTING bounded_star_semantics
   IMPORTING orders@orders_nat
   IMPORTING orders@lex2_generic[nat,HP]
@@ -42,7 +42,7 @@ trace_semantic_rel_bounded_star(i: nat)(hp: HP)(trace:Trace): RECURSIVE bool
 
   % @QED trace_semantic_rel_implies_bounded proved by lmwhite3 on Tue, 11 Jul 2023 18:19:33 GMT
   trace_semantic_rel_implies_bounded : LEMMA
-  FORALL(hp:HP, trace:Trace, envo : Environment)
+  FORALL(hp:HP, trace:Trace)
     : trace_semantic_rel(hp)(trace)
       IMPLIES EXISTS (i: nat): trace_semantic_rel_bounded_star(i)(hp)(trace)
 
@@ -52,7 +52,6 @@ trace_semantic_rel_bounded_star(i: nat)(hp: HP)(trace:Trace): RECURSIVE bool
     : trace_semantic_rel_bounded_star(i)(hp)(trace)
       IMPLIES
       trace_semantic_rel(hp)(trace)
-
 
   %----------------------------------------------------
   %% Lemmas that relate the bounded iterations BSTAR
@@ -65,38 +64,78 @@ trace_semantic_rel_bounded_star(i: nat)(hp: HP)(trace:Trace): RECURSIVE bool
     FORALL(hp:HP, trace:Trace|length(trace)=1 AND state?(car(trace)), i: nat)
     : trace_semantic_rel(BSTAR(hp,i))(trace)
 
+  % @QED trace_semantic_rel_bounded_bstar_trace_semantic_rel_bstar proved by lmwhite3 on Wed, 12 Jul 2023 15:25:24 GMT
   trace_semantic_rel_bounded_bstar_trace_semantic_rel_bstar
   : LEMMA
     FORALL(hp:HP, trace:Trace, i: nat)
     : trace_semantic_rel_bounded_star(i)(STAR(hp))(trace)
       IMPLIES trace_semantic_rel(BSTAR(hp,i))(trace)
 
+  % @QED trace_semantic_rel_star_bounded_star proved by lmwhite3 on Wed, 12 Jul 2023 15:29:47 GMT
   trace_semantic_rel_star_bounded_star
   : LEMMA
     FORALL(hp:HP, trace:Trace)
     : trace_semantic_rel(STAR(hp))(trace)
       IMPLIES EXISTS (i: nat): trace_semantic_rel(BSTAR(hp,i))(trace)
 
+  % @QED trace_semantic_rel_star_bounded_star_con proved by lmwhite3 on Wed, 12 Jul 2023 15:33:17 GMT
   trace_semantic_rel_star_bounded_star_con
   : LEMMA
     FORALL(hp:HP, trace:Trace,i:nat)
     :  trace_semantic_rel(BSTAR(hp,i))(trace)
        IMPLIES trace_semantic_rel(STAR(hp))(trace)
+      
+  % @QED trace_semantic_rel_star_seq proved by lmwhite3 on Thu, 13 Jul 2023 13:20:58 GMT
+  trace_semantic_rel_star_seq: LEMMA
+  FORALL(stm:HP, trace:Trace):
+  (length(trace)=1 AND state?(car(trace))) OR
+    (trace_semantic_rel(SEQ(stm,STAR(stm)))(trace) IFF 
+    trace_semantic_rel(STAR(stm))(trace))
+
+%% the lemmas below need to have the statement refined
+
+  % swtrace(trace:Trace): RECURSIVE Trace = 
+  % LET swcar = IF state?(car(trace))
+  %   THEN (: car(trace) :)
+  % ELSIF state_diff?(car(trace))
+  %   THEN (: STATE(s0(car(trace))),car(trace),STATE(behavior(car(trace))(max_ci(D(car(trace))))) :)
+  % ELSE (: STATE(s0(car(trace))),car(trace) :) 
+  % ENDIF IN
+  % append(swcar,swtrace(cdr(trace)))
+  % MEASURE length(trace)
+
+  trace_semantic_rel_bounded_star_equiv_switch: LEMMA
+  FORALL(stm:HP, P,Q:BoolExpr, trace:Trace, i: nat):
+    (trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace) AND normDLGLOBALLY(P,Q)(trace)) IMPLIES 
+    EXISTS(trace_1:Trace): (trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(trace_1) AND normDLGLOBALLY(P,Q)(trace_1))
+
+
+
+
+
 
   trace_semantic_rel_bounded_star_seq_switch: LEMMA
   FORALL(stm:HP, trace:Trace, i: nat):
     trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace) IFF 
     trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(trace)
 
+  trace_semantic_rel_bounded_star_seq_implies_car_state: LEMMA
+  FORALL(stm:HP, trace:Trace, i: nat):
+    trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace) IMPLIES 
+    EXISTS(timp:Trace):  
+    (FORALL(i:below(length(timp))):EXISTS(j:below(length(trace))): 
+      nth(trace,j) = nth(timp,i) OR 
+      (state_diff?(nth(trace,j)) OR inf_diff?(nth(trace,j)) AND nth(timp,i) = STATE(s0(nth(trace,j)))) OR 
+      (state_diff?(nth(trace,j)) AND nth(timp,i) = STATE(behavior(nth(trace,j))(max_ci(D(nth(trace,j))))))) AND 
+    trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(timp)
+
+
+    
+
   trace_semantic_rel_star_seq_switch: LEMMA
   FORALL(stm:HP, trace:Trace):
     trace_semantic_rel(SEQ(stm,STAR(stm)))(trace) IFF 
     trace_semantic_rel(SEQ(STAR(stm),stm))(trace)
-
-  % trace_semantic_rel_star_implies: LEMMA
-  % FORALL(stm:HP, trace:Trace):
-  %   trace_semantic_rel(stm)(trace) IMPLIES 
-  %   trace_semantic_rel(STAR(stm))(trace)o9,l
 
 
   END trace_bounded_star_semantics
