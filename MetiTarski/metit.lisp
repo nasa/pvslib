@@ -309,7 +309,7 @@
 (defun metit-about ()
   (let* ((metit-version (extra-system-call (format nil "bash -c \"~a ~a -v\"" *metit-lib* *metit-bin*)))
 	 (z3-version    (extra-system-call (format nil "~a -version" *z3-bin*))))
-    (format t "MetiTarski -- NASA PVS Library ~a~%" *nasalib-version*)
+    (format t "MetiTarski -- ~a~%" *nasalib-version*)
     (when (car metit-version)
       (format t "About MetiTarski~%")
       (format t "  Version: ~a~%" (cdr metit-version))

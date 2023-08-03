@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+use strict;
+use warnings;
 use Getopt::Long;
 
 my $filename = '.pvslib';
@@ -35,13 +37,20 @@ be a record storing meta-information of a library. Keys are semantic agnostic, e
 * \"id\": Library id, assumed to be globally unique.
 * \"dir\": This is an implict key in every record and points to the absolute directory of the library. It's computed 
   automatically by the script. 
-* \"sublibdirs\": Comma separated list of directories, relative to the library, containing sublibraries. These directories 
+* \"sublibdirs\": Colon (\":\") separated list of directories, relative to the library, containing sublibraries. These directories 
   will automatically be added to \$PVS_LIBRARY_PATH by PVS.
-* \"lisploads\": Comma separated list of files, relative to the library, containing lisp code. These files will 
+* \"lisploads\": Colon (\":\") separated list of files, relative to the library, containing lisp code. These files will 
   be automatically loaded by PVS. 
-* \"libdeps\": Comma separated list of library ids, on which the library depend. The scripts checks that these dependencies are available in
+* \"libdeps\": Colon (\":\") separated list of library ids, on which the library depend. The scripts checks that these dependencies are available in
   in \$PVS_LIBRARY_PATH.
 ";
+
+my @keys;
+my $allkeys;
+my $strict;
+my $quiet;
+my $format;
+my $help;
 
 GetOptions('key=s' => \@keys,
 	   'allkeys' => \$allkeys,
@@ -51,7 +60,7 @@ GetOptions('key=s' => \@keys,
 	   'help' => \$help) or
     die "$help_str";
 
-@libnames = @ARGV;
+my @libnames = @ARGV;
 
 $format = $format_default if !$format;
 
@@ -62,13 +71,13 @@ if ($help) {
     exit(1);
 }
 my %pvslibs;     # Hash of all library hashes
-my %dups;        # Hash of ids that are duplicated. The key is the id and the val is a comma separated list of paths to the .pvslib files
-my %nosubdirs;   # Hash of ids without valid subdirs. The key is the id and the val is a comma separated list of directories
-my %nolisploads; # Hash of ids without valid lisp load files. The key is the id and the val is a comma separated list of files
+my %dups;        # Hash of ids that are duplicated. The key is the id and the val is a list of paths to the .pvslib files
+my %nosubdirs;   # Hash of ids without valid subdirs. The key is the id and the val is a list of directories
+my %nolisploads; # Hash of ids without valid lisp load files. The key is the id and the val is a list of files
+my %libdeps;     # Hash of library depencies. The key is the library id and the val is a list of ids that depend on it.
 my @noids;       # List of .pvslib without ids
 my @nopvslib;    # List of libraries without .pvslib
 my @foundlibs;   # List of found libraries that need to be processed
-my %libdeps;     # Hash of library depencies. The key is the library id and the val is a comma separated list of ids that depend on it.
 
 my $pvslibrarypath = $ENV{PVS_LIBRARY_PATH};
 my @dirs = split(':',$pvslibrarypath);
@@ -77,66 +86,71 @@ foreach my $dir (@dirs) {
     my %data;
     open(FH, '<', "$dir/$filename");
     while(<FH>) {
-      next if /^\s*#/;  # Skip comments
+      $_ =~ s/#.*$//;
+      next if /^\s*$/;  # Skip empty lines
       my @fields = split(':',$_);
-      s{^\s+|\s+$}{}g foreach @fields; # Trim spaces
-      $fields[1] =~ s/\s+#.*$//;  # Remove comments
-      $data{$fields[0]} = $fields[1];
+      next if scalar(@fields) < 2;
+      s{^\s+|\s+$}{}g foreach @fields; # Trim spaces of all fields
+      my $key = shift @fields;
+      $data{$key} = \@fields;
     }
     close(FH);
-    $data{'dir'} = $dir;
-    if ($data{'id'}) {
-      my $libid = $data{'id'};
+    my @thisdir;
+    push @thisdir, $dir;
+    $data{'dir'} = \@thisdir;
+    my $libid = $data{'id'}[0];
+    if ($libid) {
       if ($pvslibs{$libid}) { # id is already in the list
 	# id is duplicated
 	if ($dups{$libid}) { # id is already known to be duplicated
-	  $dups{$libid} = "$dir/$filename,$dups{$libid}";
+	  push @{$dups{$libid}}, "$dir/$filename";
 	} else { # id is a new duplicate
-	  $dups{$libid} = "$pvslibs{$libid}{'dir'},$dir/$filename";
+	  my @thisdup;
+	  push @thisdup, "$pvslibs{$libid}{'dir'}[0]", "$dir/$filename";
+	  $dups{$libid} = \@thisdup;
 	}
       } else {
 	# Only non-duplicated id's are processed
 	$pvslibs{$libid} = \%data;
 
 	# Add sublibs to $pvslibrarypath
-	if ($data{'sublibdirs'}) {
-	  my @subdirs = split(",",$data{'sublibdirs'});
-	  s{^\s+|\s+$}{}g foreach @subdirs; # Trim spaces
+	my @subdirs = @{$data{'sublibdirs'}} if $data{'sublibdirs'};
+	if (@subdirs) {
 	  for my $subdir (@subdirs) {
 	    if ( -d "$dir/$subdir" ) {
 	      push @dirs,"$dir/$subdir";
 	    } elsif ($nosubdirs{$libid}) {
-	      $nosubdirs{$libid} .= ",$dir/$subdir";
+	      push @{$nosubdirs{$libid}},"$dir/$subdir";
 	    } else {
-	      $nosubdirs{$libid} = "$dir/$subdir";
+	      my @thissubdir;
+	      push @thissubdir,"$dir/$subdir";
+	      $nosubdirs{$libid} = \@thissubdir;
 	    }
 	  }
 	}
 
 	# Check lispload files exist
-	if ($data{'lisploads'}) {
-	  my @lisploads = split(",",$data{'lisploads'});
-	  s{^\s+|\s+$}{}g foreach @lisploads; # Trim spaces
-	  for my $lispload (@lisploads) {
-	    next if -e "$dir/$lispload";
-	    if ($nolisploads{$libid}) {
-	      $nolisploads{$libid} .= ",$dir/$lispload";
-	    } else {
-	      $nolisploads{$libid} = "$dir/$lispload";
-	    }
+	my @lisploads = @{$data{'lisploads'}} if $data{'lisploads'};
+	for my $lispload (@lisploads) {
+	  next if -e "$dir/$lispload";
+	  if ($nolisploads{$libid}) {
+	    push @{$nolisploads{$libid}},"$dir/$lispload";
+	  } else {
+	    my @thislisp;
+	    push @thislisp, "$dir/$lispload";
+	    $nolisploads{$libid} = \@thislisp;
 	  }
 	}
-
+	
 	# Check lisp dependencies
-	if ($data{'libdeps'}) {
-	  my @deps = split(",",$data{'libdeps'});
-	  s{^\s+|\s+$}{}g foreach @deps; # Trim spaces
-	  for my $dep (@deps) {
-	    if ($libdeps{$dep}) {
-	      $libdeps{$dep} .= ",$libid";
-	    } else {
-	      $libdeps{$dep} = "$libid";
-	    }
+	my @deps = @{$data{'libdeps'}} if $data{'libdeps'};
+	for my $dep (@deps) {
+	  if ($libdeps{$dep}) {
+	    push @{$libdeps{$dep}},"$libid";
+	  } else {
+	    my @thisdep;
+	    push @thisdep, $libid;
+	    $libdeps{$dep} = \@thisdep;
 	  }
 	}
 	
@@ -163,16 +177,20 @@ if (!$quiet) {
   $msg = join ",", @noids;
   $checkmsg .= "Warning: $filename without library id ($msg)\n" if $msg;
   for my $id (keys %dups) {
-    $checkmsg .= "Warning: Duplicated library id $id ($dups{$id})\n";
+    my $msgstr = join ":", @{$dups{$id}}; 
+    $checkmsg .= "Warning: Duplicated library id $id ($msgstr)\n";
   }
   for my $id (keys %nosubdirs) {
-    $checkmsg .= "Warning: Library sub directories of library $id not found ($nosubdirs{$id})\n";
+    my $msgstr = join ":", @{$nosubdirs{$id}}; 
+    $checkmsg .= "Warning: Library sub directories of library $id not found ($msgstr)\n";
   }    
   for my $id (keys %nolisploads) {
-    $checkmsg .= "Warning: Lisp load files of library $id not found ($nolisploads{$id})\n";
+    my $msgstr = join ":", @{$nolisploads{$id}}; 
+    $checkmsg .= "Warning: Lisp load files of library $id not found ($msgstr)\n";
   }
   for my $id (keys %libdeps) {
-    $checkmsg .= "Warning: Library id $id not found. Other libraries depend on it ($libdeps{$id})\n"
+    my $msgstr = join ":", @{$libdeps{$id}}; 
+    $checkmsg .= "Warning: Library id $id not found. Other libraries depend on it ($msgstr)\n"
       if !$pvslibs{$id};
   }
 }
@@ -209,7 +227,8 @@ for my $libid (@foundlibs) {
     }
     my $n = $#datakeys;
     for my $key ( @datakeys ) {
-      print "$key:$data{$key}";
+      my $valstr = join ":", @{$data{$key}};
+      print "$key:$valstr";
       print "|" if $n; 
       $n--;
     }
@@ -217,7 +236,7 @@ for my $libid (@foundlibs) {
   } elsif ($format) {
     my $str = $format;
     for my $key ( @datakeys ) {
-      $str =~ s/<$key>/$data{$key}/g;
+      $str =~ s/<$key>/@{$data{$key}}/g;
     }
     $str =~ s/<.+>//g;
     print "$str\n";
