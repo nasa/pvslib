@@ -94,10 +94,3 @@
 
 ;;; LOADING .pvslib FILES
 (extra-load-pvslibs)
-
-;; set *nasalib-version*
-(defvar *nasalib-version*
-  (format nil "~av-~a (~a)"
-	  (extra-pvslib-keyval "NASALib" "id")
-	  (extra-pvslib-keyval "NASALib" "version")
-	  (extra-pvslib-keyval "NASALib" "date")))
