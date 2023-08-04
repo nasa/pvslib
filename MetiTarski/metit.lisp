@@ -115,7 +115,7 @@
 	   (newcounter *metit-id-counter*)))))
 
 (defun metit-archs ()
-  (let ((pvs-metit (format nil "~aMetiTarski" (extra-pvs-nasalib))))
+  (let ((pvs-metit (format nil "~aMetiTarski" (nasalib-path))))
     (when (uiop:directory-exists-p pvs-metit)
       (setq *pvs-metit* pvs-metit)
       (setq *metit-archs* (mapcar #'(lambda (path) (car (last (pathname-directory path))))
