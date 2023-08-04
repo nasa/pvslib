@@ -121,17 +121,6 @@
 	   (sklisp (extra-reset-oracle-label ',name)))))
        ,docmsg ,format))))
 
-;; Executes command in the operating system and returns a pair (status . string)
-
-(defun extra-system-call (command)
-  (multiple-value-bind (out err status)
-      (uiop:run-program command
-	:input "//dev//null"
-	:output '(:string :stripped t)
-	:error-output :output ; shared out string; err will be nil
-	:ignore-error-status t)
-    (cons status (string-trim '(#\Space #\Newline) out))))
-
 ;; Load filename from dir relative to a path in *pvs-library-path*
 (defun extra-load-from-lib (lib filename)
   (let* ((dir
@@ -140,6 +129,16 @@
                when (file-exists-p p) return p)))
     (when dir
       (libload (format nil "~a/~a" dir filename)))))
+
+;; Executes command in the operating system and returns a pair (status . string)
+(defun extra-system-call (command)
+  (multiple-value-bind (out err status)
+      (uiop:run-program command
+	:input "//dev//null"
+	:output '(:string :stripped t)
+	:error-output :output ; shared out string; err will be nil
+	:ignore-error-status t)
+    (cons status (string-trim '(#\Space #\Newline) out))))
 
 ;; Get the absolute path to the PVS NASA library -- DEPRECATED use (nasalib-path) instead
 (defun extra-pvs-nasalib ()
@@ -247,6 +246,43 @@
 		       (= n 0)
 		       (subseq s d))))))))
 
+;; Rounding modes are
+;; 0: to zero
+;; 1: to infinity (away from zero)
+;; 2: to negative infinity (floor)
+;; 3: to positive infinity (ceiling)
+(defun ratio2decimal-with-rounding-mode (r rounding precision)
+  (ratio2decimal r (or (= rounding 3) (and (= rounding 1) (> r 0))
+		       (and (= rounding 0) (< r 0)))
+		 precision))
+
+;; Converts real number r to string. If rational can be represented by a finite decimal, it prints its excact represenation.
+;; Otherwise, it uses precision and rounding, where the precision represents the accuracy  10^-precision and rounding as
+;; in ratio2decimal-with-rounding-mode
+(defun real2decimal (r rounding precision)
+  (let ((prec (decimal-precision-of-rat r)))
+    (if (>= prec 0)
+	(multiple-value-bind (s x)
+	    (decimals:format-decimal-number r :round-magnitude (- prec))
+	  s)
+      (ratio2decimal-with-rounding-mode r rounding precision))))
+
+(defun count-div-10-5-2 (den div acc)
+  (multiple-value-bind (d m)
+      (floor den div)
+    (cond ((= m 0)    (count-div-10-5-2 d div (1+ acc)))
+	  ((= div 10) (count-div-10-5-2 den 5 acc))
+	  ((= div 5)  (count-div-10-5-2 den 2 acc))
+	  ((= den 1)  acc)
+	  (t          -1))))
+
+(defun decimal-precision-of-rat (rat)  ;; return nil if rat is not a ratio
+  (when (rationalp rat)
+    (let ((den (denominator rat)))
+      (cond ((= den 1) 0)        ;; An integer
+	    ((= (mod den 3) 0) -1) ;; Divisible by 3, infinite decimal
+	    (t (count-div-10-5-2 den 10 0))))))
+    
 (defun is-var-decl-expr (expr)
   (and (name-expr? expr)
        (let ((decl (declaration (resolution expr))))
@@ -846,7 +882,7 @@ evaluations. This strategy will introduce, as hypotheses, the equalities for tho
 ;; Return the list of variables.
 (defun extra-get-var-ranges (fms vars)
   (setq *extra-varranges* (make-hash-table :test #'equal)) 
-  (let ((uvars  (remove-if #'listp vars)))
+  (let ((uvars (remove-if #'listp vars)))
     (loop for fm in fms
 	  do (if (negation? fm)
 		 (get-var-range-from-formula (args1 fm) uvars t)
