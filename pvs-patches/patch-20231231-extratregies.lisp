@@ -1,6 +1,6 @@
 ;;
 ;; extrategies.lisp
-;; Release: Extrategies-7.1.0 (11/05/20)
+;; Release: Extrategies-8.0 (08/04/2023)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -63,7 +63,7 @@
       (setf (get-label torcl) nil))))
 
 (defun extra-trust-oracle (orcl info &optional internal?) ; Set a trusted oracle
-  (let ((torcl (make-TrustedOracle :name orcl :internal internal? :info info)))
+  (let ((torcl (make-TrustedOracle :name (string orcl) :internal internal? :info info)))
     (when (not (is-trusted-oracle orcl))
       (setf (gethash orcl *extra-trusted-oracles*) torcl))))
 
@@ -121,17 +121,16 @@
 	   (sklisp (extra-reset-oracle-label ',name)))))
        ,docmsg ,format))))
 
-;; Load file from library
+;; Load filename from dir relative to a path in *pvs-library-path*
 (defun extra-load-from-lib (lib filename)
-  (let* ((dir 
-	  (loop for d in *pvs-library-path*
-		for p = (merge-pathnames (make-pathname :name lib) d)
-		when (file-exists-p p) return p)))
+  (let* ((dir
+         (loop for d in *pvs-library-path*
+               for p = (merge-pathnames (make-pathname :name lib) d)
+               when (file-exists-p p) return p)))
     (when dir
       (libload (format nil "~a/~a" dir filename)))))
 
 ;; Executes command in the operating system and returns a pair (status . string)
-
 (defun extra-system-call (command)
   (multiple-value-bind (out err status)
       (uiop:run-program command
@@ -141,9 +140,9 @@
 	:ignore-error-status t)
     (cons status (string-trim '(#\Space #\Newline) out))))
 
-;; Get the absolute path to the PVS NASA library
+;; Get the absolute path to the PVS NASA library -- DEPRECATED use (nasalib-path) instead
 (defun extra-pvs-nasalib ()
-  (loop for path in *pvs-library-path* when (probe-file (format nil "~aRELEASE/nasalib.lisp" path)) return path))
+  (loop for path in *pvs-library-path* when (probe-file (format nil "~a.nasalib" path)) return path))
 
 ;;; Utility functions and additional strategies
 
@@ -195,7 +194,7 @@
 		    (record-expr? expr))
 	       (let ((prexpr (member (car fons) (assignments expr)
 				     :test #'(lambda (f a)
-					       (string= (id (caar (arguments a))) f)))))
+					       (string-equal (id (caar (arguments a))) f)))))
 		 (when prexpr
 		   (get-expr-from-obj-rec (expression (car prexpr)) (cdr fons))))))
       expr)))
@@ -843,7 +842,7 @@ evaluations. This strategy will introduce, as hypotheses, the equalities for tho
 	 (neg    (is-prefix-operator varexpr '-))
 	 (nrel   (if neg (not-relation rel) rel))
 	 (islb   (or (equal nrel '>=) (equal nrel '>))))
-    (if (and (is-function-expr varexpr 'abs)
+    (if (and (is-function-expr varexpr '|abs|)
 	     (not islb))
 	(get-var-range-from-abs (args1 varexpr) fmexpr closed)
       (let* ((expr (extra-get-expr fmexpr))
@@ -866,12 +865,12 @@ evaluations. This strategy will introduce, as hypotheses, the equalities for tho
       (when rel 
 	(cond ((or (is-variable-expr? (args1 fm) vars)
 		   (and (or (is-prefix-operator (args1 fm) '-)
-			    (is-function-expr (args1 fm) 'abs))  
+			    (is-function-expr (args1 fm) '|abs|))  
 			(is-variable-expr? (args1 (args1 fm)) vars)))
 	       (get-var-range-from-rel (args1 fm) (args2 fm) rel))
 	      ((or (is-variable-expr? (args2 fm) vars)
 		   (and (or (is-prefix-operator (args2 fm) '-) 
-			    (is-function-expr (args2 fm) 'abs))
+			    (is-function-expr (args2 fm) '|abs|))
 			(is-variable-expr? (args1 (args2 fm)) vars)))
 	       (get-var-range-from-rel (args2 fm) (args1 fm) (neg-relation rel))))))))
 
@@ -1084,7 +1083,7 @@ ADVANCED USE: If LABL has the form (:pairing LAB1 ... LABn), PAIRING? is set to 
 		(tccs-expression e :label labtcc :tcc-step tcc-step)
 		(branch (discriminate (name name e) (labl !nlx))
 			((then (when fnums (replace !nlx !nml))
-			       (let ((flagdir (equal dir 'rl)))
+			       (let ((flagdir (string-equal dir 'rl)))
 				 (when@ flagdir (swap-rel !nlx)))
 			       (when hide? (hide !nlx)))
 			 (then
@@ -1419,8 +1418,8 @@ specified as in WITH-FRESH-LABELS.")
 			  when (or e (and (cadr b) (listp (cadr b))))
 			  append
 			  (let* ((opt-tcc (enabled-option-flag ':tccs (cdr b) t))
-				 (va      (format nil "*~a-tccs*" (car b)))
-				 (la      (format nil "~a-tccs" (car b)))
+				 (va      (format nil "*~a-~a*" (car b) 'tccs))
+				 (la      (format nil "~a-~a" (car b) 'tccs))
 				 (stp     (if (listp opt-tcc) opt-tcc '(extra-tcc-step)))
 				 (tcc     (when opt-tcc
 					    (list stp (intern va :pvs) (list 'quote (freshlabel la))))))
