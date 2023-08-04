@@ -32,7 +32,7 @@
 	      (loop for dir in (gethash "sublibdirs" pvslib-record)
 		    for dirname = (merge-pathnames pvslib-dir (make-pathname :name dir))
 		    append
-		    (if (file-exists-p dirname)
+		    (if (uiop:directory-exists-p dirname)
 			(let ((newdir (format nil "~a/" dirname)))
 			  (unless (member newdir *pvs-library-path* :test #'equal)
 			    (push newdir *pvs-library-path*)
