@@ -50,7 +50,7 @@
 	   while line
 	   unless (string= line "")
 	   do
-	   (let ((keyval (mapcar #'(LAMBDA(x)(string-trim '(#\Space) x))
+	   (let ((keyval (mapcar #'(lambda (x)(string-trim '(#\Space) x))
 				 (split line #\:))))
 	     (when (>= (length keyval) 2)
 	       (setf (gethash (car keyval) pvslib-record) (cdr keyval))))))
