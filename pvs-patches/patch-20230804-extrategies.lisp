@@ -1,6 +1,6 @@
 ;;
 ;; extrategies.lisp
-;; Release: Extrategies-7.1.0 (11/05/20)
+;; Release: Extrategies-8.0 (08/04/2023)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -121,15 +121,6 @@
 	   (sklisp (extra-reset-oracle-label ',name)))))
        ,docmsg ,format))))
 
-;; Load file from library
-(defun extra-load-from-lib (lib filename)
-  (let* ((dir 
-	  (loop for d in *pvs-library-path*
-		for p = (merge-pathnames (make-pathname :name lib) d)
-		when (file-exists-p p) return p)))
-    (when dir
-      (libload (format nil "~a/~a" dir filename)))))
-
 ;; Executes command in the operating system and returns a pair (status . string)
 
 (defun extra-system-call (command)
@@ -141,9 +132,18 @@
 	:ignore-error-status t)
     (cons status (string-trim '(#\Space #\Newline) out))))
 
-;; Get the absolute path to the PVS NASA library
+;; Load filename from dir relative to a path in *pvs-library-path*
+(defun extra-load-from-lib (lib filename)
+  (let* ((dir
+         (loop for d in *pvs-library-path*
+               for p = (merge-pathnames (make-pathname :name lib) d)
+               when (file-exists-p p) return p)))
+    (when dir
+      (libload (format nil "~a/~a" dir filename)))))
+
+;; Get the absolute path to the PVS NASA library -- DEPRECATED use (nasalib-path) instead
 (defun extra-pvs-nasalib ()
-  (loop for path in *pvs-library-path* when (probe-file (format nil "~aRELEASE/nasalib.lisp" path)) return path))
+  (loop for path in *pvs-library-path* when (probe-file (format nil "~a.nasalib" path)) return path))
 
 ;;; Utility functions and additional strategies
 
