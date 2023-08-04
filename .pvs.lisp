@@ -1,5 +1,5 @@
-(defparameter *extra-pvslibs* (make-hash-table :test #'string=))
-(defparameter *extra-pvslib-deps* (make-hash-table :test #'string=))
+(defparameter *extra-pvslibs* (make-hash-table :test #'equal))
+(defparameter *extra-pvslib-deps* (make-hash-table :test #'equal))
 
 ;; Remove anything after # and trim
 (defun remove-str-after-sharp (str)
@@ -43,7 +43,7 @@
 
 ;; Fill the hash table *extra-pvslibs*
 (defun extra-hash-pvslib (pvslib-dir pvslib-path)
-  (let* ((pvslib-record (make-hash-table :test #'string=)))
+  (let* ((pvslib-record (make-hash-table :test #'equal)))
     (with-open-file
      (stream pvslib-path)
      (loop for line = (remove-str-after-sharp (read-line stream nil))
