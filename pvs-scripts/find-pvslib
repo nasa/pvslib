@@ -6,7 +6,7 @@ use Getopt::Long;
 my $filename = '.pvslib';
 my $format_default = "<id> - <dir>";
 
-my $help_str = "find-pvslib [ --help | <options> ] [<libname>]*
+my $help_str = "$0 [ --help | <options> ] [<libname>]*
 Find all library records in \$PVS_LIBRARY_PATH whose id matches any <libname>. By default, <libname> is case 
 insensitive and partial unless the flag --strict is provided. Exit with an error if a record matching a <libname> 
 is not found in \$PVS_LIBRARY_PATH.
@@ -23,12 +23,17 @@ Valid <options> are
                              key value. By default, <formatstr> is \"$format_default\".  
 --quiet                    : Fail silently if records in .pvslib files are not well-formed, e.g., they don't have a 
                              unique id, etc. 
+--cleanpath                : Set library path to empty and ignore \$PVS_LIBRARY_PATH. This option should be used in 
+                             combination with --addpath or --addcurrentdir
+--addpath <path>           : Add <path> to library path, where <path> is a colon separated list of directories. More 
+                             than one --path option could be provided. 
+--addcurrentdir            : Add current directory to library path.
 
 Examples of use: 
-find-pvslib                                      <--- Print all records using default format
-find-pvslib --format \"<id> <version> (<date>)\"   <--- Print all records in the provided format 
-find-pvslib NASALib --strict --allkeys           <--- Print all keys of the record of NASALib using default format
-find-pvslib nasa --key dir --key date            <--- Print keys id (implicit), dir, and date of all library records 
+$0                                      <--- Print all records using default format
+$0 --format \"<id> <version> (<date>)\"   <--- Print all records in the provided format 
+$0 NASALib --strict --allkeys           <--- Print all keys of the record of NASALib using default format
+$0 nasa --key dir --key date            <--- Print keys id (implicit), dir, and date of all library records 
                                                       matching (case insensitive and partial) the string \"nasa\"
 
 Technical Note: This command searches a file called $filename in the root of each directory in \$PVS_LIBRARY_PATH. This file
@@ -50,6 +55,9 @@ my $allkeys;
 my $strict;
 my $quiet;
 my $format;
+my $cleanpath;
+my @addpath;
+my $addcurrentdir;
 my $help;
 
 GetOptions('key=s' => \@keys,
@@ -57,6 +65,9 @@ GetOptions('key=s' => \@keys,
 	   'strict' => \$strict,
 	   'quiet!' => \$quiet,
 	   'format=s' => \$format,
+	   'cleanpath' => \$cleanpath,
+	   'addpath=s' => \@addpath,
+	   'addcurrentdir' => \$addcurrentdir,
 	   'help' => \$help) or
     die "$help_str";
 
@@ -79,7 +90,12 @@ my @noids;       # List of .pvslib without ids
 my @nopvslib;    # List of libraries without .pvslib
 my @foundlibs;   # List of found libraries that need to be processed
 
+$addcurrentdir = "." if $addcurrentdir; 
 my $pvslibrarypath = $ENV{PVS_LIBRARY_PATH};
+$pvslibrarypath = "" if $cleanpath;
+$pvslibrarypath .= ":".join ":", @addpath if @addpath;
+$pvslibrarypath = "$addcurrentdir:$pvslibrarypath" if $addcurrentdir;
+
 my @dirs = split(':',$pvslibrarypath);
 foreach my $dir (@dirs) {
   if (-e "$dir/$filename") {
@@ -228,7 +244,8 @@ for my $libid (@foundlibs) {
     }
     my $n = $#datakeys;
     for my $key ( @datakeys ) {
-      my $valstr = join ":", @{$data{$key}};
+      my $valstr = "";
+      $valstr = join ":", @{$data{$key}} if $data{$key};
       print "$key:$valstr";
       print "|" if $n; 
       $n--;
