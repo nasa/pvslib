@@ -43,6 +43,7 @@
 ;; values are returned.
 
 (defun match-regexp (regexp match-string &key shortest (return :string))
+  (declare (ignore shortest))
   (let* ((match-fn (if (eq return ':index)
 		       #'pregexp-match-positions
 		       #'pregexp-match))
@@ -654,7 +655,14 @@ undoing proof attempt." just-rule)
   (loop for i from 0 below n collect i))
 
 (defun number-items (items &optional (start 1) (incr 1))
-  (loop for i from start by incr for e in items collect i))
+  ;; SO - SBCL doesn't like this loop when incr is negative; replaced with recursion
+  ;;  (loop for i from start by incr for e in items collect i)
+  (number-items* items start incr nil))
+
+(defun number-items* (items start incr accum)
+  (if (null items)
+      (nreverse accum)
+      (number-items* (cdr items) (+ start incr) incr (cons start accum))))
 
 (defun bag-intersection (a b)
   (cond ((null a) nil)
@@ -798,7 +806,7 @@ undoing proof attempt." just-rule)
 			  (if (or (member (car proof) *pvs-rulebase-names*)
 				  (eql (elt symb (- (length symb) 1)) #\$))
 			      proof
-			      (cons (intern (format nil "~A$" symb))
+			      (cons (intern (format nil "~A$" symb) :pvs)
 				    (cdr proof))))
 		        (mapcar #'subst-proof proof)))
 		   (t proof))))

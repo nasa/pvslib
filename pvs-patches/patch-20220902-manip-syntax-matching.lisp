@@ -624,7 +624,7 @@
 	      (let* ((patt-str (subseq (string syn-var) 3))
 		     (class-posn (search "?_?" patt-str))
 		     (class-str (subseq patt-str (+ class-posn 3))))
-		 (and (typep expr (cdr (assoc (intern class-str)
+		 (and (typep expr (cdr (assoc (intern class-str :pvs)
 					      *pvs-syntax-name-alist*)))
 		      (if (string= (subseq patt-str 0 class-posn) "")
 			  '??
@@ -632,7 +632,7 @@
 		          (intern (format nil "??~A"
 ;		          (intern (format nil "_~A"
 					  (subseq patt-str
-						  0 class-posn)))))))))
+						  0 class-posn)) :pvs)))))))
 	 (patt-var (or list-expr-patt-var
 		       ;;;;; following maybe should be consp ???
 		       (and (not (listp expr))

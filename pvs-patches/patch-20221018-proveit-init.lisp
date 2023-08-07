@@ -386,34 +386,35 @@
        (format texfile "To generate PDF files type: pdflatex main-<formula>.tex~%")))
     (read-strategies-files)
     (dolist (theory theories)
-      (let ((thf (car (member theory thfs :test #'eq-thf))))
-	(if (null thf)   
-	    (pvs-message "Proving theory ~a" (id theory))
-	  (pvs-message "Proving formulas ~a in theory ~a" 
-		       (cdr thf) (id theory)))
-	(let ((*justifications-changed?* nil))
-	  (dolist (decl (provable-formulas theory))
-	    (let ((dof (member (format nil "~a" (id decl)) (cdr thf) 
-			       :test #'string=)))
-	      (when (or (null thf) dof)
-		(setq *last-proof* (pvs-prove-decl decl retry?))
-		(when txtproofs
-		  (with-open-file 
-		   (*standard-output*
-		    (ensure-directories-exist 
-		     (pathname (format nil "pvstxt/~a.txt" (id decl))))
-		    :direction :output
-		    :if-does-not-exist :create
-		    :if-exists :supersede)
-		   (report-proof *last-proof*)))
-		(when texproofs
-		  (latex-proof (format nil "~a.tex" (id decl)) t)
-		  (rename-file (format nil "~a.tex" (id decl)) 
-			       (format nil "pvstex/~a.tex" (id decl)))
-		  (rename-file "pvs-files.tex"
-			       (format nil "pvstex/main-~a.tex" (id decl)))))))
-	  (when (and save-proofs? *justifications-changed?*)
-	    (save-all-proofs (current-theory))))))))
+      (with-context theory
+	(let ((thf (car (member theory thfs :test #'eq-thf))))
+	  (if (null thf)   
+	      (pvs-message "Proving theory ~a" (id theory))
+	      (pvs-message "Proving formulas ~a in theory ~a" 
+			   (cdr thf) (id theory)))
+	  (let ((*justifications-changed?* nil))
+	    (dolist (decl (provable-formulas theory))
+	      (let ((dof (member (format nil "~a" (id decl)) (cdr thf) 
+				 :test #'string=)))
+		(when (or (null thf) dof)
+		  (setq *last-proof* (pvs-prove-decl decl retry?))
+		  (when txtproofs
+		    (with-open-file 
+			(*standard-output*
+			 (ensure-directories-exist 
+			  (pathname (format nil "pvstxt/~a.txt" (id decl))))
+			 :direction :output
+			 :if-does-not-exist :create
+			 :if-exists :supersede)
+		      (report-proof *last-proof*)))
+		  (when texproofs
+		    (latex-proof (format nil "~a.tex" (id decl)) t)
+		    (rename-file (format nil "~a.tex" (id decl)) 
+				 (format nil "pvstex/~a.tex" (id decl)))
+		    (rename-file "pvs-files.tex"
+				 (format nil "pvstex/main-~a.tex" (id decl)))))))
+	    (when (and save-proofs? *justifications-changed?*)
+	      (save-all-proofs (current-theory)))))))))
 
 ;;
 ;;
