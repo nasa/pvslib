@@ -141,8 +141,8 @@
     (cons status (string-trim '(#\Space #\Newline) out))))
 
 ;; Get the absolute path to the PVS NASA library -- DEPRECATED use (nasalib-path) instead
-(defun extra-pvs-nasalib ()
-  (loop for path in *pvs-library-path* when (probe-file (format nil "~a.nasalib" path)) return path))
+;;(defun extra-pvs-nasalib ()
+;;  (loop for path in *pvs-library-path* when (probe-file (format nil "~a.nasalib" path)) return path))
 
 ;;; Utility functions and additional strategies
 
@@ -224,65 +224,82 @@
 	 (loop for e in (exprs expr)
 	       append (get-vars-from-expr-rec e but)))))
 
-;; The parameter numbr is a lisp number (ratio), over is a boolean,
-;; and n is the number of decimals in the output. The output is a string representing
+;; The parameter rat is a rational number, over is a boolean, and precision
+;; is the number of decimals in the output. The output is a string representing
 ;; a decimal number that is exact to the original one up to the n-1 decimal.
 ;; Furthermore, if over is t, then the output is an over-approximation. Otherwise, the
 ;; output is an under-approximation.
-(defun ratio2decimal (numbr over n)
-  (cond ((integerp numbr)
-	 (format nil "~d" numbr))
-	((numberp numbr)
-	 (let* ((r (abs (* numbr (expt 10 n))))
-		(i (truncate r)))
-	   (if (= i r)
-	       (format nil "~:[-~;~]~a" (>= numbr 0) (exact-fp (abs numbr)))
-	     (let* ((f (format nil "~~~a,'0d" (1+ n)))
-		    (s (format nil f (+ i (if (iff over (< numbr 0)) 0 1))))
-		    (d (- (length s) n)))
-	       (format nil "~:[-~;~]~a~:[.~;~]~a"
-		       (>= numbr 0)
-		       (subseq s 0 d)
-		       (= n 0)
-		       (subseq s d))))))))
+(defun ratio2decimal (rat over precision)
+  (assert (rationalp rat))
+  (let ((rounder (if (>= rat 0)
+		     (if over #'cl:ceiling #'cl:truncate)
+		   (if over #'cl:truncate #'cl:floor))))
+    (decimals:format-decimal-number
+     rat :rounder rounder :round-magnitude (- precision))))
 
+;; Converts rational number to decimal string representation using rounding mode and precision.
 ;; Rounding modes are
 ;; 0: to zero
 ;; 1: to infinity (away from zero)
 ;; 2: to negative infinity (floor)
 ;; 3: to positive infinity (ceiling)
-(defun ratio2decimal-with-rounding-mode (r rounding precision)
-  (ratio2decimal r (or (= rounding 3) (and (= rounding 1) (> r 0))
-		       (and (= rounding 0) (< r 0)))
-		 precision))
+(defun ratio2decimal-with-rounding-mode (rat rounding precision)
+  (assert (and (<= rounding 3) (>= rounding 0)))
+  (let ((over (or (= rounding 3) (and (= rounding 1) (> rat 0))
+		  (and (= rounding 0) (< rat 0)))))
+    (ratio2decimal rat over precision)))
 
-;; Converts real number r to string. If rational can be represented by a finite decimal, it prints its excact represenation.
-;; Otherwise, it uses precision and rounding, where the precision represents the accuracy  10^-precision and rounding as
-;; in ratio2decimal-with-rounding-mode
-(defun real2decimal (r rounding precision)
-  (let ((prec (decimal-precision-of-rat r)))
-    (if (>= prec 0)
-	(multiple-value-bind (s x)
-	    (decimals:format-decimal-number r :round-magnitude (- prec))
-	  s)
-      (ratio2decimal-with-rounding-mode r rounding precision))))
+;; Compute the multiplicative order of n and r, when n and r are co-primes. Return 0 if they are
+;; not comprime. NOTE: The period of an infinite fraction m/n is the (mult-ord n 10), 
+;; assuming that n doesn't have factors of 2 or 5. 
+(defun mult-ord (n r)
+  (if (> (gcd r n) 1) 0
+      (loop for k from 1
+	    for v = r then (* v r)
+	    when (= 1 (mod v n))
+	    do (return k))))
 
-(defun count-div-10-5-2 (den div acc)
+;; Count the numbers of 10,5,2 factors in den. Return 2 values, the count and the reminder
+(defun count-div-10-5-2 (den &optional (div 10) (acc 0))
   (multiple-value-bind (d m)
       (floor den div)
     (cond ((= m 0)    (count-div-10-5-2 d div (1+ acc)))
 	  ((= div 10) (count-div-10-5-2 den 5 acc))
 	  ((= div 5)  (count-div-10-5-2 den 2 acc))
-	  ((= den 1)  acc)
-	  (t          -1))))
+	  ((= den 1)  (values acc 0))
+	  (t          (values acc den)))))
 
-(defun decimal-precision-of-rat (rat)  ;; return nil if rat is not a ratio
-  (when (rationalp rat)
-    (let ((den (denominator rat)))
-      (cond ((= den 1) 0)        ;; An integer
-	    ((= (mod den 3) 0) -1) ;; Divisible by 3, infinite decimal
-	    (t (count-div-10-5-2 den 10 0))))))
-    
+;; Compute the decimal precision of a rational number. Return 2 values the first one is
+;; number of non-repeating decimals. The second one is the period of the decimal. This is only computed
+;; if multord? is t. If the second value is 0, the rational has a finite decimal representation.
+;; This function assumes that rat is a rational number
+(defun decimal-precision-of-rat (rat &optional (multord? t))
+  (assert (rationalp rat))
+  (let ((den (denominator rat)))
+    (if (= den 1) (values 0 0) ;; An integer
+      (multiple-value-bind (fprec rem)
+	  (count-div-10-5-2 den)
+	(if (= rem 0) (values fprec 0)
+	  (values fprec (if multord? (mult-ord rem 10) -1)))))))
+
+;; Compute the finite decimal precision of a rational number. Return -1, it the rational number
+;; doesn't have a finite representation.
+(defun finite-precision-of-rat (rat)
+  (multiple-value-bind
+      (finp infp)
+      (decimal-precision-of-rat rat nil)
+    (if (= infp 0) finp -1)))
+
+;; Converts real number r to string. If real can be represented by a finite decimal, it prints its exact representation.
+;; Otherwise, it uses precision and rounding, where the precision represents the accuracy 10^-precision and rounding as
+;; in ratio2decimal-with-rounding-mode
+(defun real2decimal (r rounding precision)
+  (let* ((rat  (rational r))
+	 (finp (finite-precision-of-rat rat)))
+    (if (>= finp 0)
+	(decimals:format-decimal-number rat :round-magnitude (- finp))
+      (ratio2decimal-with-rounding-mode rat rounding precision))))
+
 (defun is-var-decl-expr (expr)
   (and (name-expr? expr)
        (let ((decl (declaration (resolution expr))))
