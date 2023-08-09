@@ -1,0 +1,86 @@
+#!/bin/bash
+
+## This script is used to run regression tests on PVSio examples
+
+usage() {
+
+    echo "Usage: $0 [<options>]<test-theory>
+
+Script requires <test-theory>.pvs, <test-theory>.in (input data), <test-theory>.
+gold (expected output).
+
+Available <options>:
+-h | --help		: Print this message
+-f | --force		: Force generation of <test-theory>.gold. This flag is set by
+     			  default when <test-theory>.gold doesn't exist.
+--diff <diff-program>   : Use <diff-program>. By default use diff.
+"
+    exit 0
+}
+
+diff="diff"
+
+while [ $# -gt 0 ]
+do
+    case $1 in
+        -h|-help|--help)    
+            usage;;
+	-f|-force|--force)    
+            force=y;;
+	-diff|--diff)
+	    shift
+	    diff=$1;;
+        -*)
+            echo "Error: unknown option $1"
+            echo "Type $0 -h for help"
+            exit 1;;
+        *) theory=$1;;
+    esac
+    shift 
+done
+
+if [ -z "$theory" ];
+then
+    usage
+    exit 1
+fi
+
+theory=${theory%.*}
+
+if [ ! -f "$theory.pvs" ];
+then
+    echo "Theory $theory not found"
+    exit 1
+fi
+
+if [ ! -f "$theory.in" ];
+then
+    echo "Input data $theory.in not found"
+    exit 1
+fi
+
+pvsio=`which pvsio`
+if [ -z "$pvsio" ];
+then
+    echo "Utility pvsio not found in the path"
+    exit 1
+fi
+
+diff=`which $diff`
+if [ -z "$diff" ];
+then
+    echo "Utility diff not found in the path"
+    exit 1
+fi
+
+sed -e "s/\s*#.*//" -e "/^$/d" < $theory.in | $pvsio @$theory 1>$theory.out 2>/dev/null
+sed -n -e "/^<PVSio>/,/^$/p" < $theory.out > $theory.mold
+
+if [ ! -f "$theory.gold" -o "$force" ];
+then
+    echo "Generating "$theory.gold
+    mv $theory.mold $theory.gold
+else
+    $diff $theory.mold $theory.gold 
+fi
+
