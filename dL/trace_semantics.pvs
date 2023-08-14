@@ -47,11 +47,9 @@ BEGIN
 
   FiniteTrace : TYPE = (finite_trace?)
 
-  lastState(trace:FiniteTrace): Environment = state(last(trace))
-
   trace_semantic_rel(hp:HP)(trace:Trace) : INDUCTIVE bool =
     (assign?(hp) AND length(trace) = 2 AND
-		     LET envi = nth(trace,0),
+		     LET envi = car(trace),
 		         envo = nth(trace,1),
 		         l = assigns(hp) IN
 		     state?(envi) AND
@@ -65,7 +63,7 @@ BEGIN
     OR
     (diff?(hp) AND
       ((length(trace) = 1 AND
-        LET env = nth(trace,0) IN
+        LET env = car(trace) IN
         ((state?(env) AND be(hp)(state(env)))
         OR
         (state_diff?(env) AND
@@ -74,8 +72,6 @@ BEGIN
               env_at_t(odes(hp),fs,s0(env))(r))
             AND
             FORALL(t:(D(env))): be(hp)(behavior(env)(t))))
-        %       EXISTS(D:(dd?)):
-	      %           semantic_rel_diff(D,odes(hp),be(hp),state(envi),state(envo)))
         OR
         (inf_diff?(env) AND
          EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),s0(env)))):
@@ -85,7 +81,7 @@ BEGIN
          FORALL(t:(hp(0))): be(hp)(inf_behavior(env)(t))))))
         OR
         (length(trace)=2 AND
-          LET envi = nth(trace,0),
+          LET envi = car(trace),
               envo = nth(trace,1) IN
               (state?(envi) AND
           error?(envo) AND
@@ -95,7 +91,7 @@ BEGIN
     OR
     (any?(hp) AND
       length(trace) = 2 AND
-		  LET envi = nth(trace,0),
+		  LET envi = car(trace),
 		      envo = nth(trace,1) IN
 		  (state?(envi) AND
 		   state?(envo) AND
@@ -106,32 +102,31 @@ BEGIN
     (test?(hp) AND
       ((length(trace)=1
         AND
-        LET envi = nth(trace,0) IN
+        LET envi = car(trace) IN
 		      state?(envi) AND
 		      be(hp)(state(envi)))
         OR
 		    (length(trace)=2 AND
-		      LET envi = nth(trace,0),
+		      LET envi = car(trace),
 		          envo = nth(trace,1) IN
-		      not be(hp)(state(envi)) AND
 		      state?(envi) AND
-		      error?(envo)
+		      error?(envo) AND
+		      NOT be(hp)(state(envi))
 		     ))
     )
     OR
     (seq?(hp) AND
       ((EXISTS (trace1, trace2:Trace):
-        (trace_semantic_rel(stm1(hp))(trace1) AND
-			   trace_semantic_rel(stm2(hp))(trace2) AND
-			   finite_trace?(trace1) AND
-			   final_env(trace1)=init_env(trace2) AND
-         % need to change to
-         IF state?(last(trace1))
+       (trace_semantic_rel(stm1(hp))(trace1) AND
+			  trace_semantic_rel(stm2(hp))(trace2) AND
+			  finite_trace?(trace1) AND
+			  final_env(trace1)=init_env(trace2) AND
+        IF state?(last(trace1))
           THEN trace = append(rdc(trace1),trace2)
         ELSIF state?(car(trace2))
           THEN trace = append(trace1,cdr(trace2))
-         ELSE trace = append(trace1,trace2)
-         ENDIF))
+        ELSE trace = append(trace1,trace2)
+        ENDIF))
 		    OR
 			  ((error?(last(trace)) OR inf_diff?(last(trace))) AND
 		        trace_semantic_rel(stm1(hp))(trace)))
@@ -147,15 +142,6 @@ BEGIN
     ((length(trace)=1 AND state?(car(trace)))
       OR
       trace_semantic_rel(SEQ(stm(hp),hp))(trace))
-      % (EXISTS (trace1, trace2:Trace):
-      %   (trace_semantic_rel(stm(hp))(trace1) AND
-			%    trace_semantic_rel(hp)(trace2) AND
-			%    finite_trace?(trace1) AND
-			%    final_env(trace1)=init_env(trace2) AND
-      %    IF last(trace1)=car(trace2) THEN trace = append(trace1,cdr(trace2)) ELSE trace = append(trace1,trace2) ENDIF))
-		  %   OR
-			%   ((error?(last(trace)) OR inf_diff?(last(trace))) AND
-		  %       trace_semantic_rel(stm(hp))(trace)))
     )
 
 % Prove it!!
@@ -169,20 +155,20 @@ BEGIN
                              AND init_env(trace) = env
 
 %--------------------------------
-% ---     SOUNDNESS           ---
+% ---     CORRECTNESS         ---
 %--------------------------------
 
-  % @QED trace_semantics_sound_assign proved by ltitolo on Tue, 28 Mar 2023 01:40:58 GMT
-  trace_semantics_sound_assign: LEMMA
+  % @QED trace_semantics_correct_assign proved by ltitolo on Mon, 31 Jul 2023 17:04:29 GMT
+  trace_semantics_correct_assign: LEMMA
     FORALL(trace:FiniteTrace,assigns:Assigns) :
-      LET envi = state(car(trace)),
+      LET envi = init_env(trace),
           envo = final_env(trace) IN
       trace_semantic_rel(ASSIGN(assigns))(trace)
       IMPLIES
       semantic_rel(ASSIGN(assigns))(envi)(envo)
 
-  % @QED trace_semantics_sound_diff proved by ltitolo on Tue, 28 Mar 2023 01:41:08 GMT
-  trace_semantics_sound_diff: LEMMA
+  % @QED trace_semantics_correct_diff proved by ltitolo on Thu, 03 Aug 2023 18:50:55 GMT
+  trace_semantics_correct_diff: LEMMA
     FORALL(trace:FiniteTrace,odes:ODEs,be:BoolExpr) :
       LET envi = init_env(trace),
           envo = final_env(trace) IN
@@ -190,8 +176,8 @@ BEGIN
       IMPLIES
       semantic_rel(DIFF(odes,be))(envi)(envo)
 
-  % @QED trace_semantics_sound_any proved by ltitolo on Tue, 28 Mar 2023 01:40:13 GMT
-  trace_semantics_sound_any: LEMMA
+  % @QED trace_semantics_correct_any proved by ltitolo on Thu, 03 Aug 2023 14:48:31 GMT
+  trace_semantics_correct_any: LEMMA
     FORALL(trace:FiniteTrace,anyvar:nat,anyset:[real->BoolExpr]) :
       LET envi = init_env(trace),
           envo = final_env(trace) IN
@@ -199,8 +185,8 @@ BEGIN
       IMPLIES
       semantic_rel(ANY(anyvar,anyset))(envi)(envo)
 
-  % @QED trace_semantics_sound_test proved by ltitolo on Tue, 28 Mar 2023 01:40:41 GMT
-  trace_semantics_sound_test: LEMMA
+  % @QED trace_semantics_correct_test proved by ltitolo on Thu, 03 Aug 2023 17:07:45 GMT
+  trace_semantics_correct_test: LEMMA
     FORALL(trace:FiniteTrace,be:BoolExpr) :
       LET envi = init_env(trace),
           envo = final_env(trace) IN
@@ -208,8 +194,8 @@ BEGIN
       IMPLIES
       semantic_rel(TEST(be))(envi)(envo)
 
-  % @QED trace_semantics_sound_seq proved by ltitolo on Tue, 28 Mar 2023 01:39:55 GMT
-  trace_semantics_sound_seq: LEMMA
+
+  trace_semantics_correct_seq: LEMMA
     FORALL (stm1,stm2: HP):
       ((FORALL(trace:FiniteTrace) :
           LET envi = init_env(trace),
@@ -229,8 +215,8 @@ BEGIN
         trace_semantic_rel(SEQ(stm1,stm2))(trace)
         IMPLIES semantic_rel(SEQ(stm1,stm2))(envi)(envo)
 
-  % @QED trace_semantics_sound_union proved by ltitolo on Tue, 28 Mar 2023 01:51:27 GMT
-  trace_semantics_sound_union: LEMMA
+  % @QED trace_semantics_correct_union proved by ltitolo on Fri, 11 Aug 2023 16:31:52 GMT
+  trace_semantics_correct_union: LEMMA
     FORALL (stm1,stm2: HP):
       ((FORALL(trace:FiniteTrace) :
           LET envi = init_env(trace),
