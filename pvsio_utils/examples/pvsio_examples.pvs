@@ -1,0 +1,193 @@
+%% Examples of use of PVSio 8.0
+%% Cesar Munoz 
+%% http://shemesh.larc.nasa.gov/people/cam/PVSio
+%% NASA LaRC
+
+pvsio_examples : THEORY
+BEGIN
+
+  %% Print to stdout 
+  hello_world : void =
+    println("Hello World")
+ 
+  %%% Print welcome message 
+  main : void =
+    println("+"+pad(50,"-")+"+") &
+    println("|"+center(50,"PVSio "+pvsio_version)+"|")&
+    println("|"+center(50,date)+"|")&
+    print("+"+pad(50,"-")+"+") 
+
+  %% Print with formated string
+  pp : void =
+    LET l = (: 1,2,3,4 :),
+        b = odd?(length(l)),
+        n = (12/7)^5,
+        r = (# x:= 1, y:= 2 #) IN
+    printf("PVS Values:~%") &	
+    printf("  List: ~a~%  Boolean: ~a~%  Rational Number: ~a~%  Record: ~a~%",
+           {| l,b,n,r |}) &
+    printf("Formated Values:~%") &	
+    printf("  List: ~{~a~^,~}~%",{| l |}) &
+    printf("  Boolean: ~:[*false*~;*true*~]~%",{| b |}) &
+    printf("  Number: ~,2f~%",n) &
+    printf("  Decimal (precision 10): ~-10/pvs:d/~%",1/3) &
+    print("  ... and most Common Lisp format's directives.")
+
+  IMPORTING reals@sqrt
+  
+  %% Read from stdin a string and a number, check if number is
+  %% non-negative, and compute sqrt.
+  hello_you : void =
+     LET name = query_line("What is your name?") IN
+     println("Hi "+name) &
+     LET r = query_real(name+", enter a non-negative real number:") IN
+     assert(r>=0,format("Sorry ~a, ~a is < 0",{| name, r |})) &
+     print("The sqrt of "+r+" is "+sqrt(r))
+
+  %% Catch a NotARealNumber exception and return 0 instead
+  catch_NARN : real = 
+     catch(NotARealNumber,
+	   query_real("Enter a real number:"),
+           0) 
+
+  %% Read a file, the imperative way
+  cat : void =
+    LET f=fopenin("pvsio_welcome.sh") IN
+    while(not eof?(f),println(fread_line(f))) &
+    fclose(f)
+
+  %% Read a file, the functional way
+  more(n:nat) : void =
+    LET f = fopenin("pvsio_examples.pvs") IN
+    try(FORALL(i:below(n)):
+        IF NOT eof?(f) THEN
+          println(fread_line(f)) 
+        ELSE 
+          fail
+        ENDIF,
+        fclose(f))
+
+  %% Iterate a function on a file 
+  copy_with_line_numbers : void =
+    LET f  = fopenout(create,"pvsio_examples_with_line_numbers.txt"),
+        nf = fmap_line(fopenin("pvsio_examples.pvs"),
+                       1,
+                       LAMBDA(s:string,l:nat):
+                         prog(fprintf(f,"[~3,'0d]~a~%",{|(l,s)|}),l+1)) IN
+    print("*** Check the content of pvsio_with_line_numbers.txt in the working directory") &
+    fclose(f)
+
+  %% Use mutable variable
+  woow(x:int) : void =
+    LET lvar = ref[int](x) IN
+    println("The value of lvar is "+val(lvar)) &
+    set[int](lvar,x+1) &
+    print("The new value of lvar is "+val(lvar))
+
+  %% Use global variables
+  gvar : Global[int,0]
+
+  WOOW(x:int) : void = 
+    println("The original of gvar is "+val(gvar)) &
+    set(gvar,x) &
+    print("The current value of gvar is "+val(gvar))
+
+  %% Exception handling
+
+  NegDiscriminant : ExceptionTag[real] = "NegDiscriminat"
+
+  % Throw an exception if discriminant is neg
+  safe_quadratic(a:nzreal,b,c:real) : [real,real] =
+    LET d = sq(b)-4*a*c IN
+    IF d < 0 THEN 
+      throw(NegDiscriminant,d)
+    ELSE
+       LET sqrt_d = sqrt(d) IN
+       ((-b+sqrt_d)/(2*a),(-b-sqrt_d)/(2*a))
+    ENDIF
+
+ % Catch exception if discriminat is neg
+  quadratic_io(a:nzreal,b,c:real) : void =
+    catch(NegDiscriminant,
+      LET (r1,r2) = safe_quadratic(a,b,c) IN
+      printf("Roots of ~ax^2 + ~ax + ~a = 0 are (~a,~a)",{|(a,b,c,r1,r2)|}),
+      LAMBDA (exc:Exception[real]) : 
+        printf("Discriminant of ~ax^2 + ~ax + ~a = 0 is ~a, which is a negative number",
+	      {| (a,b,c,val(exc)) |}))
+    	
+  LessThan0 : ExceptionTag[int] = "LessThan0"
+  GreaterThan100  : ExceptionTag[int] = "GreaterThan100"
+
+  int_0_100 : int =
+    LET i = query_int("Enter a number between 0 and 100") IN
+    IF i < 0 THEN throw(LessThan0,i)
+    ELSIF i > 100 then throw(GreaterThan100,i)
+    ELSE i
+    ENDIF
+
+  %% Catch several exceptions
+  read_0_100 : int =  
+    catch((: LessThan0, GreaterThan100 :),
+	  int_0_100,
+	  LAMBDA (exc:Exception[int]):
+	    LET mssg = printf("Number ~a is not between 0 and 100. Returning 0~%",val(exc))
+	    IN 0)
+	     
+  %% PVS parsing and printing
+
+  Point : TYPE = [# x : real, y: real #]
+
+  zero : Point = str2pvs("(# x := 0, y:= 0#)")
+   
+  rec2str(p:Point):string = pvs2str(p)
+
+  %% Parse and print decimals
+  dec_parser : void =
+    LET r = decstr2rat("1.23456789") IN
+    printf("~a",r)
+
+  rat_formats : void =
+    LET lr : list[rat] = (: -1, 1/2, -1/7, 50/99, -20435934594359/349543959345934 :) IN
+    FORALL(i:below(length(lr))):
+      LET r : rat = nth(lr,i) IN
+        set[nat](PRECISION,6) &   % Set default precision to 10
+        set[RoundingMode](ROUNDING,TowardsZero) &   % Set default rounding to TowardsZero
+	printf("Rational without formatting: ~a~%",r) & 
+        printf("  Decimal when possible, otherwise rational: ~a~%",
+	       rat2str(r)) & 
+        printf("  Pretty-printed decimal with overlines indicating period and ellipsis indicating truncation: ~a~%",
+	       pp_rat(r)) &
+        printf("  Precise decimal with non repeating digits and period until default precision (~a): ~a~%",{|val(PRECISION),
+	       rat2decstr(r)|}) &
+	LET precision: nat = 10,
+	    rounding : RoundingMode = TowardsInfnty,
+	    zeros    : bool = TRUE IN
+          printf("  Decimal given precision (~a) and default rounding mode (~a): ~a~%",{|precision, val(ROUNDING),
+	         rat2decstr(r,precision) |}) &
+          printf("  Decimal given precision (~a) and rounding mode (~a): ~a~%", {|precision,rounding,
+  	         rat2decstr(r,10,TowardsInfnty)|}) &         
+          printf("  Decimal given precision (~a), rounding mode (~a), and trailing zeros (~a): ~a~%", {| precision, rounding, zeros,
+	         rat2decstr_with_zeros(r,10,TowardsInfnty,TRUE)|})
+	
+  dec_formatter : void =
+    LET r = 1/3 IN
+    printf("~-10/pvs:d/~%",r) &  %% 10 decimals
+    printf("~-20/pvs:d/",r)      %% 20 decimals
+
+  %% ... and many other things.
+  % But, semantic attachments may produce surprising results:
+
+  paradox: bool =
+    (RANDOM=RANDOM) % often evaluates to FALSE!
+
+  not_a_paradox: bool =
+    LET r = RANDOM IN
+      r = r         % evaluates to TRUE
+
+  a_fact : LEMMA 
+    RANDOM = RANDOM % is trivially TRUE!
+
+  test : LEMMA
+     1=0
+
+END pvsio_examples
