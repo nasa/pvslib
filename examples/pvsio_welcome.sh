@@ -1,2 +1,1 @@
-#!/bin/sh
-../../pvsio @pvsio_examples:welcome 2>/dev/null
+../pvsio_utils/examples/pvsio_welcome.sh
