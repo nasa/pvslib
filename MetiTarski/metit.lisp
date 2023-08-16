@@ -145,6 +145,31 @@
   (when al
     (cons (caar al) (cons (cdar al) (merge-assoc (cdr al))))))
 
+;;
+;; The PVS variables are converted into a MetiTarski representation (uppercase) and are
+;; made distinct by appending *metit-id-counter*. This is required because a user
+;; might use both cases in a specification and we need to differentiate between x and X.
+;; In this case they would be converted to X1 and X2.
+;;
+
+(defun metit-id-name (id)
+  (intern (format nil "~a~a" (string-upcase id) (funcall *metit-id-counter*))))
+
+;;
+;; metit-interpretation : Translate pvs symbol to the MetiTarski representation. Ensures
+;; that the resolution (the real meaning of the symbol) is what we want. This is due
+;; to the massive overloading in PVS (anything can be overloaded). 
+;; Answers the question: is + actually the + for the reals?
+;;
+
+(defun metit-interpretation (name-expr)
+  (assert (name-expr? name-expr))
+  (let* ((id-assoc (cdr (assoc (id name-expr) *metit-interpreted-names*)))
+	 (mod-assoc (cdr (assoc (id (module-instance
+				     (resolution name-expr)))
+				id-assoc))))
+    mod-assoc))
+
 (defun translate-to-metitarski-global-variable (expr)
   (or
    (cdr (assoc expr *metit-gsubs* :test #'tc-eq))
@@ -175,16 +200,6 @@
 
 (defmethod translate-to-metitarski* ((expr string-expr) bindings)
   (error "string ~a cannot be handled" expr))
-
-;;
-;; The PVS variables are converted into a MetiTarski representation (uppercase) and are
-;; made distinct by appending *metit-id-counter*. This is required because a user
-;; might use both cases in a specification and we need to differentiate between x and X.
-;; In this case they would be converted to X1 and X2.
-;;
-
-(defun metit-id-name (id)
-  (intern (format nil "~a~a" (string-upcase id) (funcall *metit-id-counter*))))
 
 ;;
 ;; (argument expr) return a tuple of the arguments of expr
@@ -252,21 +267,6 @@
 	   (error "type of ~a must be real." (id (car bind-decls)))))
 	(t (values bindings (nreverse accum)))))
 
-;;
-;; metit-interpretation : Translate pvs symbol to the MetiTarski representation. Ensures
-;; that the resolution (the real meaning of the symbol) is what we want. This is due
-;; to the massive overloading in PVS (anything can be overloaded). 
-;; Answers the question: is + actually the + for the reals?
-;;
-
-(defun metit-interpretation (name-expr)
-  (assert (name-expr? name-expr))
-  (let* ((id-assoc (cdr (assoc (id name-expr) *metit-interpreted-names*)))
-	 (mod-assoc (cdr (assoc (id (module-instance
-				     (resolution name-expr)))
-				id-assoc))))
-    mod-assoc))
- 
 (defmethod translate-to-metitarski* ((expr binding-expr) bindings)
   (error "expression ~a cannot be handled." expr))
 
