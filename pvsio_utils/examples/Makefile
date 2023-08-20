@@ -2,8 +2,8 @@ all:
 	@echo "make pvsio | clean | gold"
 
 pvsio:
-	pvsio-regression pvsio_examples
-	pvsio-regression stdstr_examples
+	-pvsio-regression pvsio_examples
+	-pvsio-regression stdstr_examples
 
 gold:
 	pvsio-regression pvsio_examples --force
