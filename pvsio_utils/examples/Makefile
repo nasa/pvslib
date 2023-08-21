@@ -10,4 +10,4 @@ gold:
 	pvsio-regression stdstr_examples --force
 
 clean:
-	rm -f *.mold *.log *.tmp *.out *~
+	rm -f *.mold *.log *.tmp *.out *~ orphaned-proofs.prf
