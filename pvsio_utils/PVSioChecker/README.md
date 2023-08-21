@@ -1,6 +1,6 @@
-# Animation
+# PVSioChecker
 
-This library provides functionalities to facilitate and automate the animation of PVS specifications.
+This library provides functionalities to run differential testing with PVSio
 
 ## Highlights
 
