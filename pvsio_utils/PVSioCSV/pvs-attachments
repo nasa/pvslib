@@ -1,70 +1,16 @@
-(attachments
-  str_util
+(defun csv_data2str (data rounding precision quotechar)
+  (cond ((numberp data) (ratio2decimal-with-rounding-mode data rounding precision))
+	((stringp data) (format nil "~a~a~a" quotechar data quotechar))
+	((null data) "FALSE")
+	((eql data t) "TRUE")
+	(t (throw-pvsio-exc "PVSioCSVError" (format nil "Type of ~a is not supported" data)))))
 
-  (defattach |str_length| (s)
-    (length s))
-
-  (defattach |str_split| (str delim)
-   "Splits the string STR using DELIM as delimiter."
-   (split str (char delim 0))))
-
-(attachments
- |time_fun|
- 
- (defattach |real_time| ()
-   "Real time"
-   (get-internal-real-time))
- 
- (defattach |run_time| ()
-   "Run time"
-   (get-internal-run-time))
-
- (defattach |internal_time_units| ()
-   "Units of internal time"
-   internal-time-units-per-second))
- 
-(attachments
- |pathname|
-
- (defattach |pathname_path| (name)
-   "Path (list of directories) of pathname"
-   (let ((dirs (pathname-directory name)))
-     (if (equal (car dirs) ':absolute)
-	 (cons "/" (cdr dirs))
-       (cdr dirs))))
- 
- (defattach |pathname_name| (name)
-   "Name of pathname"
-   (pathname-name name))
-
- (defattach |pathname_type| (name)
-   "Type of pathname"
-   (pathname-type name)))
-
-(attachments
- |pvsio_checker|
- 
- (defattach |real2str| (r n m)
-   "Converts real number r to string, where the integer n represents the precision 10^-n, and m is the rounding mode
-    (0: to zero, 1: to infinity (away from zero), 2: to negative infinity (floor), 3: to positive infinity (ceiling)"
-   (ratio2decimal r (or (= m 3) (and (= m 1) (> r 0)) (and (= m 0) (< r 0))) n)))
-
-(attachments
- |csv_writerow|
-
- (defattach |write_row| (wrt row)
-   (using
-    ((get_stream  "csv_writer_stream")
-     (get_dialect "csv_writer_dialect")
-     (get_delim   "csv_dialect_delimeter")
-     (get_qchar   "csv_dialect_quotechar"))
-    (let*((stream (funcall get_stream  wrt))
-	  (dialect(funcall get_dialect wrt))
-	  (delim  (funcall get_delim   dialect))
-	  (qchar  (funcall get_qchar   dialect))
-	  (fmt-str(case qchar
-		    (0 (format nil "~~{~~:[~~a~~;'~~a'~~]~~^~a ~~}~~%" delim))
-		    (1 (format nil "~~{~~:[~~a~~;~~s~~]~~^~a ~~}~~%" delim))
-		    (otherwise (attach-error (format nil "[csv_writerow.write_row] Unknown type of quote char: ~a" qchar)))))
-	  (pro-row(loop for x across row collect (stringp x) collect x)))
-      (not (format stream fmt-str pro-row))))))
+(defattach |csv_writerow.write_row_lisp| (stream separator quotechar rounding precision row)
+  "A simple CSV writer of rows that doesn't require CSVData (as defined in csv_reader.pvs)"
+  (if (arrayp row)
+      (let ((fmt-str (format nil "~~{~~a~~^~a~~}~~%" separator))
+	    (pro-row (loop for data across row 
+			   collect
+			   (csv_data2str data rounding precision quotechar))))
+	(not (format stream fmt-str pro-row)))
+    (not (format stream "~a~%" row))))

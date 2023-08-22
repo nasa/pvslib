@@ -1,0 +1,63 @@
+% Usage Examples of csv_reader and csv_writer
+
+csv_examples : THEORY
+BEGIN
+
+  IMPORTING PVSioCSV@top
+
+  Spec: list[CSVFieldSpec] = (: Integer, String, Rational, Decimal, BooleanOrNull :)
+
+  % Read file test1.csv using Spec and MSEXCEL_DIALECT (separator is ",", strings are doublequoted) 
+  ex1: list[CSVDataFromSpec(Spec)] =
+    LET filename = "test1.csv"
+    IN readCSV(filename,Spec)
+
+  % Write ex1 records in text2.csv using MSEXCEL_DIALECT
+  ex2: void =
+    LET filename = "test2.csv",
+        writer = csv_writer(filename) 
+    IN printf("Writing ~a~%",filename) &
+       writeCSV(writer,ex1)
+
+  % Write ex1 records in stdout using back quotes as string quotes 
+  ex2a : void =
+    LET writer = csv_writer_stdout(MSEXCEL_DIALECT) IN
+    writeCSV(set_quotechar(writer,backquote),ex1)
+
+  % Create a new dialect using ":" as separator and singlequote as string quotes, and "#" as comments
+  NewDialect : CSVDialect = csv_dialect(":",singlequote,"#")
+
+  % Write ex1 records in test3.csv using NewDialect
+  ex2b : void =
+    LET filename = "test3.csv",
+        writer = csv_writer(filename,NewDialect),
+	stream = csv_writer_stream(writer),
+	commentstr = csv_writer_commentstr(writer) IN
+    printf("Writing ~a~%",filename) &
+    fprintf(stream,"~a ~a~%", {| commentstr, filename |}) & % Writing a header as a comment 
+    writeCSV(writer,ex1)
+
+  % Read file test3.csv using Spec as data spec and NewDialect as dialect
+  ex3 : list[CSVDataFromSpec(Spec)] =
+    LET filename = "test3.csv" IN
+    readCSV(filename,NewDialect,Spec)
+
+  % Re-open test3.csv and append the first and third records of ex1 in using NewDialect
+  ex4 : void =
+    LET writer = csv_writer_append("test3.csv",NewDialect) IN
+    printf("Writing ~a",csv_writer_filename(writer)) &
+    ifthen(length(ex1) >= 4,
+      writeCSVRecord(writer,nth(ex1,0)) &
+      writeCSVRecord(writer,nth(ex1,3))) &
+    close_csv_writer(writer)
+
+  % A simple CSV writer that doesn't require data specs
+  ex5 : void =
+    LET writer : CSVWriter = csv_writer_stdout IN
+      write_rows(writer,(:
+        (1,"Hi, this",4,TRUE),
+        (2,"is",1/3,FALSE),
+        (3,"a",1/2,TRUE),
+        (4,"test",6.2,FALSE):))
+
+END csv_examples

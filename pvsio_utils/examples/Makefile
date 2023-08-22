@@ -4,6 +4,8 @@ all:
 pvsio:
 	-pvsio-regression pvsio_examples
 	-pvsio-regression stdstr_examples
+	-pvsio-regression csv_util_examples
+	-pvsio-regression csv_examples
 
 gold:
 	pvsio-regression pvsio_examples --force

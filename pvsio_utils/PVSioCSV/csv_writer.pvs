@@ -1,27 +1,37 @@
-% This theory is based on the csv python package.
-csv_writer: THEORY
+csv_writer : THEORY
 BEGIN
 
-  QuoteChar: TYPE = { SINGLE_QUOTE, DOUBLE_QUOTE }
+  IMPORTING csv_reader
 
-  CSVDialect: TYPE = [# dlmt: {s: string | length(s) = 1},    % delimiter
-  	     	        qchr: QuoteChar  #] % quote char
+  toString(datafield: CSVData,qchar:StringChar): string
+  = CASES datafield OF
+       null_field: "",
+       str_field(s): format("~a~a~a",{| qchar,s,qchar |}),
+       int_field(i): rat2str(i),
+       rat_field(r): rat2str(r),
+       dec_field(d,prec) : rat2decstr(d,prec,Truncate),
+       bool_field(b): bool2str(b)
+    ENDCASES
 
-  % CSVDialect's observers
-  csv_dialect_delimeter(dialect: CSVDialect): string = dialect`dlmt
-  csv_dialect_quotechar(dialect: CSVDialect): QuoteChar = dialect`qchr
+  toString(datafield: CSVData): string =
+    toString(datafield,doublequote)
 
-  % Predefined dialects
-  MSEXCEL_DIALECT: CSVDialect = (# dlmt := ",", qchr:= DOUBLE_QUOTE #)
-  SQCOMMA_DIALECT: CSVDialect = (# dlmt := ",", qchr:= SINGLE_QUOTE #)  
+  CSVRecord : TYPE = list[CSVData]
 
-  CSVWriter: TYPE = [# outs: OStream,       % output stream
-                       dlct: CSVDialect #]  % csv dialect to be used by the writer
+  CSVRecordToString(dlct:CSVDialect)(record: CSVRecord) : string =
+    LET row = map(LAMBDA (datafield: CSVData): toString(datafield,dlct`qchr))(record),
+        fmt = "~{~a~^"+dlct`dlmt+"~}" IN
+      format(fmt,{| row |})
 
-  csv_writer_stream(writer: CSVWriter): OStream = writer`outs 
-  csv_writer_dialect(writer: CSVWriter): CSVDialect = writer`dlct 
+  writeCSVRecord(writer:CSVWriter,record:CSVRecord) : void =
+    fprintf(writer`outs,"~a~%",CSVRecordToString(writer`dlct)(record))
 
-  csv_writer(csvfilename: string, dialect: CSVDialect): CSVWriter =
-    (# outs := fopenout(create,csvfilename) , dlct := dialect #)
+  writeCSV(writer:CSVWriter,records: list[CSVRecord]) : RECURSIVE void =
+    IF null?(records) THEN close_csv_writer(writer)
+    ELSE 
+      writeCSVRecord(writer,car(records)) &
+      writeCSV(writer,cdr(records))
+    ENDIF
+    MEASURE records BY <<
 
 END csv_writer
