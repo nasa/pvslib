@@ -50,32 +50,35 @@ BEGIN
 	   query_real("Enter a real number:"),
            0) 
 
-  %% Read a file, the imperative way
+  %% Read a file 
   cat : void =
-    LET f=fopenin("pvsio_welcome.sh") IN
-    while(not eof?(f),println(fread_line(f))) &
-    fclose(f)
+    %% with_open_file guarantees that file is closed before leaving the execution
+    with_openin_file("pvsio_welcome.sh", LAMBDA(f:IStream):
+      while(NOT eof?(f),println(fread_line(f))))  
 
-  %% Read a file, the functional way
   more(n:nat) : void =
-    LET f = fopenin("pvsio_examples.pvs") IN
-    try(FORALL(i:below(n)):
-        IF NOT eof?(f) THEN
-          println(fread_line(f)) 
-        ELSE 
-          fail
-        ENDIF,
-        fclose(f))
+    with_openin_file("pvsio_examples.pvs", LAMBDA(f:IStream):
+      try(FORALL(i:below(n)):
+          IF NOT eof?(f) THEN
+            println(fread_line(f)) 
+          ELSE 
+            fail
+          ENDIF))
 
   %% Iterate a function on a file 
   copy_with_line_numbers : void =
-    LET f  = fopenout(create,"pvsio_examples_with_line_numbers.tmp"),
-        nf = fmap_line(fopenin("pvsio_examples.pvs"),
-                       1,
-                       LAMBDA(s:string,l:nat):
-                         prog(fprintf(f,"[~3,'0d]~a~%",{|(l,s)|}),l+1)) IN
-    print("*** Check the content of pvsio_with_line_numbers.tmp in the working directory") &
-    fclose(f)
+    LET fout = fopenout(create,"pvsio_examples_with_line_numbers.tmp"),
+        fin  = fopenin("pvsio_examples.pvs"),
+        lns  = unwind_protect(
+                 fmap_line(fin,
+                           1,  % Initial value of an accumulator for the line numbers read from fin
+                           LAMBDA(s:string,l:posnat):
+                           prog(% Writing a line in fout
+			        fprintf(fout,"[~3,'0d]~a~%",{|(l,s)|}),
+				% Increasing the line number for the accumulator
+			        l+1)),
+                 fclose(fout) & fclose(fin)) IN
+    printf("*** ~a lines written in pvsio_with_line_numbers.tmp",lns-1)
 
   %% Use mutable variable
   woow(x:int) : void =
