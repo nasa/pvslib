@@ -33,3 +33,53 @@
                     restargs assign-expr bindings
                     livevars)))
     `(nd-rec-tup-update ,expr ,pos ,newval)))
+
+;; Return module when expr is a PVSio global variable, i.e., of type stdprog.Global or stdglobal.Global
+(defun pvsio-global-variable (expr)
+  (let* ((decl       (declaration expr))
+	 (decltype   (when decl (declared-type decl))))
+    (and (type-name? decltype)
+	 (eq '|Global| (id decltype))
+	 (let* ((resolution (when decltype (car (resolutions decltype))))
+		(mod        (when resolution (module-instance resolution))))
+	   (when (and mod (member (id mod) '(|stdprog| |stdglobal|)))
+	     mod)))))
+
+(defun undefined (expr &optional message)
+  "Creates and compiles a new function, returning the name.  If the expr is
+a const-decl, of type 'Global', creates an attachment instance (part of
+PVSio).  Otherwise creates an 'undefined' function, which invokes an error
+if called."
+  (let* ((th       (string (if (declaration? expr)
+			       (id (module expr))
+			     (id (current-theory)))))
+	 (nm       (when (const-decl? expr) (string (id expr))))
+	 (nargs    (when nm (arity expr)))
+	 (mod      (and nm (= nargs 0) (pvsio-global-variable expr))))
+    (if mod
+	(let* ((fname (gentemp "global"))
+	       (act   (actuals mod))
+	       (doc (format nil "Global mutable variable of type ~a" 
+			    (car act)))
+	       (arg (if (eq '|stdprog| (id mod))
+			'(cons nil t)
+		      `(list ,(pvs2cl (expr (cadr act))))))
+	       (fbody `(progn 
+			 (defparameter ,fname ,arg)
+			 (defattach-th-nm ,th ,(id expr) () ,doc ,fname))))
+	  (eval fbody)
+	  (makesym "pvsio_~a_~a_~a" th nm nargs))
+      (let* ((fname (gentemp "undefined"))
+	     (msg-fmt
+	      (or message
+		  "Hit uninterpreted term ~a during evaluation (undefined)"))
+	     (fbody (if (and nargs (> nargs 0))
+			`(defun ,fname (&rest x)
+			   (declare (ignore x))
+			   (uninterpreted-fun ,expr ,msg-fmt))
+		      `(defun ,fname (&rest x)
+			 (declare (ignore x))
+			 (uninterpreted ,expr ,msg-fmt)))))
+	(eval fbody)
+	(compile fname)
+	fname))))

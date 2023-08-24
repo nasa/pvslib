@@ -1,0 +1,239 @@
+csv_reader: THEORY
+BEGIN
+
+  IMPORTING csv_writer_def,
+            structures@listn
+
+  CSVLine : Global[nat]
+
+  CSVFieldSpec : TYPE+ = { String, Rational, Decimal, Integer, Boolean,
+                           StringOrNull, RationalOrNull, DecimalOrNull, IntegerOrNull, BooleanOrNull }
+
+  CSVData: DATATYPE
+  BEGIN
+    str_field(str_val: string):str? % Strings are stored without the quotechar 
+    int_field(int_val: int):int?
+    rat_field(rat_val: rat):rat?   % Rationals are printed as decimals, when posible.
+    		      		   % Otherwise, they are printed as rationals
+    dec_field(rat_val: rat, precision:nat): dec? % Decimals are printed at the given precision
+    bool_field(bool_val: boolean): bool?
+    null_field: null? 
+  END CSVData
+
+   real2rat_field(r:real) : (rat?) =
+     LET rat = rational(r) IN
+       rat_field(rat)
+
+   rat2dec_field(rat:rat) : (dec?) =
+     LET precision = val(PRECISION),
+         (finp,infp) = decimal_precision(rat,precision) IN
+     IF infp = 0 THEN
+       dec_field(rat,finp)
+     ELSE
+       dec_field(rat,val(PRECISION))
+     ENDIF   
+
+   real2dec_field(r:real) : (dec?) =
+     rat2dec_field(rational(r))
+
+   rat_field2dec_field(rf:(rat?)) : (dec?) =
+     rat2dec_field(rat_val(rf))
+
+   dec_field2rat_field(df:(dec?)) : (rat?) =
+     rat_field(rat_val(df))
+
+  %% Well Formet CSVData with respect to specification
+  wf_CSVData?(spec:CSVFieldSpec)(d:CSVData) : bool =
+    CASES spec OF
+      String: str?(d),
+      Integer: int?(d),
+      Rational: rat?(d), 
+      Decimal: dec?(d), 
+      Boolean: bool?(d),
+      StringOrNull: str?(d) OR null?(d),
+      IntegerOrNull: int?(d) OR null?(d),
+      RationalOrNull: rat?(d) OR null?(d),
+      DecimalOrNull: dec?(d) OR null?(d),
+      BooleanOrNull: bool?(d) OR null?(d)
+    ENDCASES     
+
+  CSVDataFromSpec(spec: list[CSVFieldSpec]): TYPE+
+  = {l: listn[CSVData](length(spec)) | 
+     FORALL(i:below(length(spec))): wf_CSVData?(nth(spec,i))(nth(l,i))}
+
+  getField(spec: list[CSVFieldSpec])(data: CSVDataFromSpec(spec), i: below(length(data)))
+  : (wf_CSVData?(nth(spec,i)))
+  = nth(data,i)
+
+  % to prove getField-related TCCs use csv-tcc strategy
+
+  csv_data_from_spec_field_bool
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Boolean
+      IMPLIES LET d = getField(spec)(data,i) IN bool?(d) 
+
+  csv_data_from_spec_field_bool_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = BooleanOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN bool?(d) OR null?(d)
+
+  csv_data_from_spec_field_rat
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Rational
+      IMPLIES LET d = getField(spec)(data,i) IN rat?(d)
+
+  csv_data_from_spec_field_rat_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = RationalOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN rat?(d) OR null?(d)
+
+  csv_data_from_spec_field_dec
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Decimal
+      IMPLIES LET d = getField(spec)(data,i) IN dec?(d)
+
+  csv_data_from_spec_field_dec_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = DecimalOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN dec?(d) OR null?(d)
+
+  csv_data_from_spec_field_int
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = Integer
+      IMPLIES LET d = getField(spec)(data,i) IN int?(d) 
+
+  csv_data_from_spec_field_int_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = IntegerOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN int?(d) OR null?(d)
+
+  csv_data_from_spec_field_str
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = String 
+      IMPLIES LET d = getField(spec)(data,i) IN str?(d) 
+
+  csv_data_from_spec_field_str_OR_null
+  : LEMMA
+    FORALL(spec: list[CSVFieldSpec], data: CSVDataFromSpec(spec), i: below(length(data)))
+    : nth(spec,i) = StringOrNull
+      IMPLIES LET d = getField(spec)(data,i) IN str?(d) OR null?(d)
+
+  PVSioCSVError : ExceptionTag[string] = "PVSioCSVError"
+
+  % May throw PVSioCSVError or NotAQuotedString Token is trimmed
+  processCSVField(fin:IStream,fieldspec:CSVFieldSpec,token:string,
+                  qchar:StringChar,field:posnat) : (wf_CSVData?(fieldspec)) =
+    IF length(token) = 0 AND
+       (fieldspec = IntegerOrNull OR fieldspec = RationalOrNull OR fieldspec = DecimalOrNull OR
+        fieldspec = BooleanOrNull OR fieldspec = StringOrNull) THEN
+      null_field
+    ELSE   
+      catch[(wf_CSVData?(fieldspec))](
+      (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :) ,
+      IF fieldspec = Integer OR fieldspec = IntegerOrNull
+        THEN int_field(str2int(token))
+      ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
+        THEN rat_field(str2real(token))
+      ELSIF fieldspec = Decimal OR fieldspec = DecimalOrNull
+        THEN
+        LET pos = strfind(".",token),
+	    len = length(token), 
+	    decpos = IF pos = -1 THEN len ELSE pos+1 ENDIF
+	IN dec_field(rational(decstr2rat(token)),max(0,len-decpos)) %% Keeps the orignal precision of the decimal
+      ELSIF fieldspec = Boolean OR fieldspec = BooleanOrNull
+        THEN bool_field(str2boolean(token))
+      ELSIF %%  fieldspec = String OR fieldspec = StringOrNull
+        quotedstring?(qchar)(token) THEN str_field(unquote_string(qchar)(token))
+      ELSE throw(NotAQuotedString,token)
+      ENDIF,
+      LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF,
+          flstr = pvs2str(fieldspec),
+	  msg   = format("Value ~s doesn't satisfy spec ~a in field ~a of line~a in ~a",
+		         {| token,flstr,field,lnstr,filename(fname(fin)) |}) 
+      IN throw(PVSioCSVError,msg)
+      )
+    ENDIF 
+
+  % May throw PVSioCSVError
+  processCSVLine(fin:IStream,spec: list[CSVFieldSpec],
+                 tokens: list[string] | length(spec) <= length(tokens),
+                 qchar: StringChar, field: posnat)
+  : RECURSIVE CSVDataFromSpec(spec)
+  = IF null?(spec) THEN null
+    ELSE
+      LET fieldspec=car(spec),
+    	  token=car(tokens),
+	  rest: list[CSVData] = processCSVLine(fin,cdr(spec),cdr(tokens),qchar,field+1)
+      IN cons(processCSVField(fin,fieldspec,token,qchar,field),rest)
+    ENDIF
+  MEASURE tokens BY <<
+
+  empty_line(line:string,commentstr:string) : bool =
+    LET trln = trim(line) IN
+      trln = "" OR (commentstr /= "" AND strfind(commentstr,trln) = 0)
+
+  % May throw PVSioCSVError
+  readln_csv(fin:IStream,dlct:CSVDialect):string =
+    LET lvar = ref[string]("") IN
+      prog(while (NOT eof?(fin) AND empty_line(val(lvar),dlct`cmmt),
+             do_unless(undef(CSVLine),set[nat](CSVLine,val[nat](CSVLine)+1)) &
+             set[string](lvar,fread_line(fin))),
+           LET result = val(lvar) IN
+	   IF empty_line(result,dlct`cmmt) THEN
+	      LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF IN
+              throw(PVSioCSVError,format("No available input in line~a of ~a",
+	                                               {| lnstr, filename(fname(fin)) |}))
+	   ELSE result
+	   ENDIF)
+
+  % May throw PVSioCSVError
+  readCSVRecordln(fin: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
+  : CSVDataFromSpec(data_spec)
+  = LET line   = readln_csv(fin,dlct),
+    	tokens = map(trim)(strsplit_with_quotechar(line, dlct`dlmt, dlct`qchr)),
+	delta  = length(data_spec) - length(tokens)
+    IN IF delta > 0
+       THEN
+         LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF,
+	     mssg  = format("Line~a of ~a has ~a fewer fields (~{~a~^,~}) than data specifications (~{~a~^,~})",
+	                    {| lnstr, filename(fname(fin)), delta, {| tokens |}, {| data_spec |} |}) IN
+         throw(PVSioCSVError,mssg)
+       ELSE processCSVLine(fin,data_spec,tokens,dlct`qchr,1) ENDIF
+
+  readCSVRecord(fin: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
+  : MACRO CSVDataFromSpec(data_spec) =
+     readCSVRecordln(fin,dlct,data_spec)
+
+  readCSV(fin: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
+  : list[CSVDataFromSpec(data_spec)] =
+    LET ret  = ref[list[CSVDataFromSpec(data_spec)]](null)
+    IN with_mutable[nat,list[CSVDataFromSpec(data_spec)]](CSVLine,0,
+         prog(
+	   while(NOT eof?(fin),
+       	     LET data: CSVDataFromSpec(data_spec) =
+	         readCSVRecordln(fin,dlct,data_spec)
+	     IN
+	       set(ret,append(val(ret),(: data :)))),
+	   val(ret)))
+
+  % Read CSV file using given dialect and data spec
+  readCSV(file: string, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
+  : list[CSVDataFromSpec(data_spec)] =
+    with_openin_file(file,LAMBDA(fin:IStream):
+      readCSV(fin,dlct,data_spec))
+
+  % read CSV file using MSEXCEL_DIALECT and given data spec
+  readCSV(file: string, data_spec: list[CSVFieldSpec]) 
+  : list[CSVDataFromSpec(data_spec)] =
+  readCSV(file,MSEXCEL_DIALECT,data_spec)
+
+END csv_reader

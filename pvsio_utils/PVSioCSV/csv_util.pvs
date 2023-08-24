@@ -1,0 +1,67 @@
+csv_util: THEORY
+BEGIN
+
+  IMPORTING pvsio_utils@top
+  
+  NotAQuotedString : ExceptionTag[string] = "NotAQuotedString"
+
+  %% Is string str of the form Q...., where Q is the quotechar, e.g., \", \', etc.
+  left_quotedstring?(quotechar:StringChar)(str:string): bool =
+    LET len = length(str) IN
+      len >= 1 AND
+      LET prefix  = substring(str,0,0) IN
+        strcompare(prefix,quotechar) = 0
+
+  %% Is string str of the form ...Q, where Q is the quotechar, e.g., \", \', etc.
+  right_quotedstring?(quotechar:StringChar)(str:string): bool =
+    LET len = length(str) IN
+      len >= 1 AND
+      LET postfix = substring(str,len-1,len-1) IN
+        strcompare(postfix,quotechar) = 0
+
+  %% Is string str of the form Q....Q, where Q is the quotechar, e.g., \", \', etc.
+  quotedstring?(quotechar:StringChar)(str:string): bool =
+    LET len = length(str) IN
+      len >= 2 AND
+      LET prefix  = substring(str,0,0),
+          postfix = substring(str,len-1,len-1) IN
+        strcompare(prefix,postfix) = 0 AND
+        strcompare(prefix,quotechar) = 0
+
+  unquote_string(quotechar:StringChar)(str:(quotedstring?(quotechar))): string =
+    substring(str,1,length(str)-2)
+
+  strsplit_with_qchar_rec(tokens: list[string], separator,quotechar: StringChar, leftstr: string):
+    RECURSIVE list[string] =
+    LET inside_str : bool = length(leftstr) > 0 IN
+    IF null?(tokens) THEN
+      IF inside_str THEN (: leftstr :) ELSE tokens
+      ENDIF
+    ELSE
+      LET token    = car(tokens),
+          str_trim = trim(token),
+	  lstr     = left_quotedstring?(quotechar)(str_trim),
+	  rstr     = right_quotedstring?(quotechar)(str_trim) IN
+        IF inside_str THEN % leftstr is not empty
+	  LET newstr = format("~a~a~a",{| leftstr, separator, token |}) IN
+	  IF rstr THEN
+	      cons(newstr,strsplit_with_qchar_rec(cdr(tokens),separator,quotechar,""))
+	  ELSE
+	      strsplit_with_qchar_rec(cdr(tokens),separator,quotechar,newstr)
+	  ENDIF
+	ELSE 
+ 	  IF lstr AND (rstr IMPLIES length(str_trim) = 1) THEN
+ 	    strsplit_with_qchar_rec(cdr(tokens),separator,quotechar,token)
+          ELSE % leftstr is empty
+	    cons(token,strsplit_with_qchar_rec(cdr(tokens),separator,quotechar,""))
+	  ENDIF
+	ENDIF
+    ENDIF
+    MEASURE tokens BY <<
+
+  %% Split str using separator, but avoid splitting within quotechar 
+  strsplit_with_quotechar(str: string, separator,quotechar: StringChar): list[string] =
+    LET split = strsplit(str,separator) IN
+    strsplit_with_qchar_rec(split,separator,quotechar,"")
+
+END csv_util

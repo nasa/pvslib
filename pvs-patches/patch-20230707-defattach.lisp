@@ -1,6 +1,6 @@
 ;;
 ;; defattach.lisp
-;; Release: PVSio-7.1.0 (11/05/20)
+;; Release: PVSio-8.0 (08/04/2023)
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;; NASA Langley Research Center
@@ -198,14 +198,14 @@ Lisp definition:
 		    "Function ~a.~a is defined as a semantic attachment. 
 It cannot be evaluated in a formal proof." 
 		    theory name))
-	   (newargs (append args (list '&optional '*the-pvs-type*)))
+	   (newargs (append args (list '&optional 'the-pvs-type_)))
 	   (newbody (if (attachment-primitive attachment)
 			(cdr dobo)
-		      (cons `(when *in-checker* 
+		      (cons `(unless *in-evaluator* 
 			       (error 'pvsio-inprover :format-control ,mssg))
 			    (cdr dobo)))))
       (append `(defun ,fnm ,newargs)
-	      (cons '(declare (ignorable *the-pvs-type*)) decls)
+	      (cons '(declare (ignorable the-pvs-type_)) decls)
 	      (cons newdoc newbody)))))
 
 ;; Primitive attachments are TRUSTED
@@ -292,10 +292,8 @@ It cannot be evaluated in a formal proof."
 
 ;; Reports running-time errors in attachments
 (defmacro attach-error (&optional msg)
-  "Reports an error in the execution of the semantic attachment. It returns to the PVSio prompt, when running interactively."
-  `(if (find-restart 'return-to-pvsio)
-       (invoke-restart (format nil "~%ERROR: ~a" ,msg))
-       (throw '*pvsio-error* (or (when ,msg (format t "~%ERROR: ~a" ,msg)) t))))
+  "Reports an error in the execution of a semantic attachment."
+  `(throw-pvsio-exc "PVSioError" (when ,msg (format nil "~a" ,msg))))
 
 ;; Macros to access global variables by name
 

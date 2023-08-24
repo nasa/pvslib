@@ -1,0 +1,167 @@
+(defun replace-string (string part replacement &key (test #'char=))
+  "Returns a new string in which all the occurences of the part 
+is replaced with replacement."
+  (with-output-to-string (out)
+    (loop with part-length = (length part)
+          for old-pos = 0 then (+ pos part-length)
+          for pos = (search part string
+                            :start2 old-pos
+                            :test test)
+          do (write-string string out
+                           :start old-pos
+                           :end (or pos (length string)))
+          when pos do (write-string replacement out)
+          while pos)))
+
+;; Oveline: <char> Ctrl-x 8 305 
+(defparameter *ol-digits* '("0̅" "1̅" "2̅" "3̅" "4̅" "5̅" "6̅" "7̅" "8̅" "9̅"))
+(defparameter *ellipsis* '("¨" . "¨̅"))
+
+(defun replace-ol-digits (acc &optional (n 0) (ol *ol-digits*))
+  (if (null ol) acc
+    (replace-ol-digits (replace-string acc (format nil "~a" n) (car ol))
+		       (1+ n) (cdr ol))))
+;; Pretty prints decimal using overline to indicate repeating digits. Finp is the precision of the
+;; non-repeating digits. Truncated indicates that the infinite representation was truncated.
+(defun pp-decstr (str finp truncated)
+  (let ((pos (position #\. str)))
+    (if pos
+	(let* ((fixp (+ pos finp 1))
+	       (pre  (subseq str 0 (min fixp (length str))))
+	       (pos  (when (< fixp (length str)) (subseq str fixp (length str))))
+	       (npos (when pos (replace-ol-digits pos)))
+	       (ell  (when truncated (if (>= fixp (length str)) (car *ellipsis*) (cdr *ellipsis*)))))
+	  (format nil "~a~@[~a~]~@[~a~]" pre npos ell))
+      str)))
+
+(defun pp-rat (r &optional (precision 6))
+  "Pretty prints rational numbers using overline to indicate repeating digits and ellipsis when decimal
+expansion is truncated. If maxinfp is negative, the rational is printed in decimal representation if the
+representation is finite. Otherwise, it prints its rational form."
+  (multiple-value-bind (finp infp)
+      (decimal-precision-of-rat r precision)
+    (let ((str (ratio2decimal-with-rounding-mode r 0 (min precision (+ finp infp)) t)))
+	(pp-decstr str finp (> (+ finp infp) precision)))))
+
+(attachments
+  |stdstr_util|
+
+  (defattach |substring| (s i j)
+    "If i <= j returns substring S[i..j]. Otherwise, returns substring
+S[j..i]. Empty if indices are out of range  
+NOTE: Name changed in PVS-8.0 from substr to substring to avoid clash
+with charstring.substr"
+    (cond ((and (<= 0 i) (<= i j) (< j (length s)))
+	   (subseq s i (+ j 1)))
+	  ((and (<= 0 j) (<= j i) (< i (length s)))
+	   (reverse (subseq s j (+ i 1)))	 )
+	  (t "")))
+  
+  (defattach |strreplace| (s part replacement)
+    "Returns a new string in which all the occurences of part in s 
+is replaced with replacement."
+    (replace-string s part replacement))
+  
+  (defattach |strsplit| (str separator)
+    "Splits the string STR using SEPARATOR as separator."
+    (split str (char separator 0)))
+  
+  (defattach |strfind_from_end| (s1 s2)
+    "Index of rightmost occurrence of S1 in S2 or -1 if S1 doesn't occur in S2"
+    (or (search s1 s2 :from-end t :test #'char=) -1))
+
+  (defprimitive |strconcat| (s1 s2)
+    "Concatenates S1 and S2"
+    (format nil "~a~a" s1 s2))
+  
+  (defattach |rat2decstr_with_zeros| (r precision rounding zeros)
+    "Converts rational number to string decimal representation using given precision, i.e., natural number n
+denoting 10^(-n), and rounding mode, i.e, TowardsZero, TowardsInfnty, TowardsNegInfnty, TowardsPosInfnty.
+Displays trailing zeroes when zeros is set to TRUE"
+    (ratio2decimal-with-rounding-mode r rounding precision zeros))
+  
+  (defattach |pp_decstr| (str finp truncated)
+    "Pretty prints decimal using overline to indicate repeating digits. Finp is the precision of the
+non-repeating digits. Truncated indicates that the infinite representation was truncated."
+    (pp-decstr str finp truncated))
+  (defattach |pathname_path| (name)
+    "Path (list of directories) of pathname"
+    (let ((dirs (pathname-directory name)))
+      (if (equal (car dirs) ':absolute)
+	  (cons "/" (cdr dirs))
+	(cdr dirs))))
+  
+)
+
+(attachments
+  |stdmath_util|
+
+  (defattach |rational| (x)
+    "Returns a rational number that is close to the real number (identity when input is rational)"
+    (if (floatp x) (rationalize x) x))
+
+  (defprimitive |rat2numden| (r)
+    "Returns numerator and denominator of rational number"
+    (pvs2cl_tuple (numerator r) (denominator r)))
+  
+(defattach |decimal_precision| (r maxperiod)
+  "Compute the decimal precision of a rational number. Return 2 values. The first one is the number of
+non-repeating digits. If maxperiod is negative, the second value is the period of the repeating
+digits. Computing the period is expensive for rationals with large denominators. Therefore, if
+maxperiod is non-negative, the second value is the minimum between the period and maxperiod+1.
+In either case, if the second value is 0, the rational has a finite decimal representation."
+  (multiple-value-bind
+   (finp infp)
+   (decimal-precision-of-rat r maxperiod)
+   (pvs2cl_tuple finp infp)))
+  
+)
+
+(attachments
+ |stdcatch_util|
+
+ (defattach |throw| (exc)
+  "Throws the exception EXC"
+  (let ((str-tag (elt exc 0))
+	(val     (elt exc 1)))
+    (throw-pvsio-exc str-tag val)))
+
+)
+
+(attachments
+ |stdsys_util|
+ 
+ (defattach |real_time| ()
+   "Real time"
+   (get-internal-real-time))
+ 
+ (defattach |run_time| ()
+   "Run time"
+   (get-internal-run-time))
+
+ (defattach |internal_time_units| ()
+   "Units of internal time"
+   internal-time-units-per-second)
+
+ (defattach |system_call| (call)
+   "Make a system call and return status and output string"
+   (let ((output (extra-system-call call)))
+     (pvs2cl_record (car output) (cdr output))))
+ 
+)
+ 
+(attachments
+ |stdprog_util|
+
+(defattach |reset| (v)
+  "Reset the mutable variable V to undefined"
+  (setf (car v) nil)
+  (setf (cdr v) t))
+
+(defattach |unwind_protect_lift| (ft fcu)
+   "Evaluate ft, returning its value. The cleanup code fcu will be evaluated if control leaves ft."
+   (unwind-protect
+       (pvs-funcall ft nil)
+     (pvs-funcall fcu nil)))
+)
+ 

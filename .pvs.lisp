@@ -1,5 +1,6 @@
 (defparameter *extra-pvslibs* (make-hash-table :test #'equal))
 (defparameter *extra-pvslib-deps* (make-hash-table :test #'equal))
+(defparameter *extra-preludelibs* '())
 
 ;; Remove anything after # and trim
 (defun remove-str-after-sharp (str)
@@ -18,6 +19,9 @@
 	    (progn
 	      (setf (gethash "dir" pvslib-record) (list pvslib-dir))
 	      (setf (gethash libid *extra-pvslibs*) pvslib-record)
+	      (let ((preludelib (gethash "preludelib" pvslib-record)))
+		(when preludelib
+		  (push libid *extra-preludelibs*)))
 	      (loop for lispload in (gethash "lisploads" pvslib-record)
 		    for lispname = (merge-pathnames pvslib-dir (make-pathname :name lispload))
 		    do
@@ -65,11 +69,24 @@
 	(let ((morelibs (extra-hash-pvslib pvslib-dir pvslib-path)))
 	  (extra-load-pvslibs-rec (append morelibs (cdr libs))))))))
 
+(defun extra-pvslib-keyval (id key)
+  (let ((pvslib (gethash id *extra-pvslibs*)))
+    (when id
+      (let ((val (gethash key pvslib)))
+	(if (cdr val) val ;; List of values
+	  (car val))))))  ;; Only one value
+
 ;; Loop for all .pvslib files in the *pvs-library-path*
 (defun extra-load-pvslibs ()
   (clrhash *extra-pvslibs*)
   (clrhash *extra-pvslib-deps*)
+  (setf *extra-preludelibs* '())
   (extra-load-pvslibs-rec *pvs-library-path*)
+  (dolist (id *extra-preludelibs*)
+    (let ((libdir (extra-pvslib-keyval id "dir")))
+      (format t "Loading prelude library ~a (~a)~%" id libdir)
+      ;;(load-prelude-library libdir) [CM] Not working
+      ))
   (loop for id being the hash-keys of *extra-pvslib-deps*
 	using (hash-value deps)
 	when (not (gethash id *extra-pvslibs*))
@@ -84,13 +101,6 @@
 	      using (hash-value val)
 	      do (format t "~a:~{~a~^:~}|" key val))
 	(format t "~%")))
-
-(defun extra-pvslib-keyval (id key)
-  (let ((pvslib (gethash id *extra-pvslibs*)))
-    (when id
-      (let ((val (gethash key pvslib)))
-	(if (cdr val) val ;; List of values
-	  (car val))))))  ;; Only one value
 
 ;;; LOADING .pvslib FILES
 (extra-load-pvslibs)

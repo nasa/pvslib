@@ -1,0 +1,37 @@
+csv_writer : THEORY
+BEGIN
+
+  IMPORTING csv_reader
+
+  toString(datafield: CSVData,qchar:StringChar): string
+  = CASES datafield OF
+       null_field: "",
+       str_field(s): format("~a~a~a",{| qchar,s,qchar |}),
+       int_field(i): rat2str(i),
+       rat_field(r): rat2str(r),
+       dec_field(d,prec) : rat2decstr(d,prec,Truncate),
+       bool_field(b): bool2str(b)
+    ENDCASES
+
+  toString(datafield: CSVData): string =
+    toString(datafield,doublequote)
+
+  CSVRecord : TYPE = list[CSVData]
+
+  CSVRecordToString(dlct:CSVDialect)(record: CSVRecord) : string =
+    LET row = map(LAMBDA (datafield: CSVData): toString(datafield,dlct`qchr))(record),
+        fmt = "~{~a~^"+dlct`dlmt+"~}" IN
+      format(fmt,{| row |})
+
+  writeCSVRecord(writer:CSVWriter,record:CSVRecord) : void =
+    fprintf(writer`outs,"~a~%",CSVRecordToString(writer`dlct)(record))
+
+  writeCSV(writer:CSVWriter,records: list[CSVRecord]) : RECURSIVE void =
+    IF null?(records) THEN close_csv_writer(writer)
+    ELSE 
+      writeCSVRecord(writer,car(records)) &
+      writeCSV(writer,cdr(records))
+    ENDIF
+    MEASURE records BY <<
+
+END csv_writer
