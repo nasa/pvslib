@@ -25,7 +25,7 @@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
 %  Control flow: try@, try-then, try-then@, finalize, finalize*, touch,
-%    for, for@, when, when@, unless, unless@, when-label, when-label@,
+%    for, for*, when, when@, unless, unless@, when-label, when-label@,
 %    unless-label, unless-label@, if-label, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
@@ -1914,43 +1914,34 @@ the sequent is labeled LABEL.")
 LABEL. Otherwise, applies ELSE-STEP.")
 
 (defhelper for__ (n step)
-  (if (numberp n)
-      (if (<= n 0)
-	  (skip)
-	(let ((m (- n 1)))
-	  (then step
-		(for__$ m step))))
-    (unless n
-     (repeat* step)))
+  (let ((doit (or (null n) (and (numberp n) (<= n 0)))))
+    (when doit 
+      (let ((prevn (when (numberp n) (1- n))))
+	(try step (if (equal (get-goalnum *ps*) 1)
+		      (for__$ prevn step)
+		    (skip))
+	     (skip)))))
   "[Extrategies] Internal strategy." "")
 
 (defstep for (n &rest steps)
-  (when steps
-    (let ((step (cons 'then steps)))
+  (when steps 
+    (let ((step `(then@ ,@steps)))
       (for__$ n step)))
-  "[Extrategies] Iterates N times STEP1 ... STEPn, or until it does nothing if N is nil,
-along all the branches."
-  "Iterating ~1@*~a ~@*~a times along all the branches")
+  "[Extrategies] Successively apply STEP along main branch until it does nothing or, if N is not null, until N is reached."
+  "Applying step ~a times")
 
-(defhelper for@__ (n step)
-  (if (numberp n)
-      (if (<= n 0)
-	  (skip)
-	(let ((m (- n 1)))
-	  (then@
-	   step
-	   (for@__$ m step))))
-    (unless@ n
-     (repeat step)))
+(defhelper for*__ (n step)
+  (let ((doit (or (null n) (and (numberp n) (<= n 0)))))
+    (when doit 
+      (let ((prevn (when (numberp n) (1- n))))
+	(try step (for*__$ prevn step) (skip)))))
   "[Extrategies] Internal strategy." "")
 
-(defstep for@ (n &rest steps)
+(defstrat for* (n &rest steps)
   (when steps
-    (let ((step (cons 'then@ steps)))
-      (for@__$ n step)))
-  "[Extrategies] Iterates N times STEP1 ... STEPn, or until it does nothing if N is nil,
-along the first branch."
-  "Iterating ~1@*~a ~@*~a times along the first branch")
+      (let ((step `(then@ ,@steps)))
+	(for*__$ n step)))
+  "Successively apply STEP until it does nothing or, if N is not null, until N is reached.")
 
 ;; Skolem, let-in, let-def
 

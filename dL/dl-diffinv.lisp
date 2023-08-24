@@ -68,18 +68,17 @@ sequent is pretty-printed unless PP? is set to nil."
   "Applying lemma dl_dI to DDL formula ~a")
 
 (defhelper dl-subdift__ ()
-  (let ((rws   *dl-dift-rws*)
+  (let ((rws  *dl-dift-rws*)
 	(drws *dl-domain-rws*)
-	(drup *dl-derup-rws*)
-	(exprmv '(~ + "max_var(%)")))
-    (then
+	(drup *dl-derup-rws*))
+    (then@
      (try (expand "SUB_DIFT")
 	  (repeat (expand "DIFT"))
 	  (skip))
      (expand "SUB_DIFTRe")
      (repeat
-      (try-then
-       ((eval-expr exprmv)
+      (try-then@
+       ((match "max_var(%)" step (with-tccs (eval-expr "%1")))
 	(replaces -1))))
      (branch
       (then@
