@@ -1,0 +1,54 @@
+%% Index of global key/value store
+
+kv_index : THEORY
+BEGIN
+
+  kv_Index : TYPE = [nat,ARRAY[nat->[string,string]]]
+  kv_empty : kv_Index = (0,LAMBDA(i:nat):("",""))
+
+  % Stores a list of indices and the types of their values
+  GlobalIndex : Global[kv_Index,kv_empty]
+
+  kv_length : MACRO nat = val(GlobalIndex)`1
+  kv_index  : MACRO [nat->[[string,string]]] = val(GlobalIndex)`2
+
+  kv_find_index_rec(key:string,N:nat,i:upto(N)) : RECURSIVE nat = 
+    IF i >= N THEN N
+    ELSE
+      LET (nam,typ) = kv_index(i) IN
+      IF nam = key THEN i
+      ELSE kv_find_index_rec(key,N,i+1)
+      ENDIF
+    ENDIF
+    MEASURE N-i
+ 
+  % Find key in index. Return kv_length if key is not in index
+  kv_find_index(key:string) : nat =
+    kv_find_index_rec(key,kv_length,0)
+
+  kv_add_index(key,typ:string) : void =
+    LET k = kv_find_index(key) IN
+    set(GlobalIndex,val(GlobalIndex) WITH
+      [`1 := max(k+1,kv_length),
+       `2 := kv_index WITH [(k) := (key,typ)]])
+
+  IMPORTING structures@array2list[[string,string]]
+
+  kv_list : list =
+    array2list(kv_length)(kv_index)
+
+  kv_reset : void =
+    set(GlobalIndex,kv_empty)
+
+  PVSioKeyValError : ExceptionTag[string] = "PVSioKeyValError"
+
+  % Throws exception if key is not found in the index
+  kv_typeof(key:string) : string =
+    LET k =  kv_find_index(key) IN
+    IF k >= kv_length THEN
+      throw(PVSioKeyValError,format("Key ~s not found in KeyVal index",key))
+    ELSE
+      kv_index(k)`2
+    ENDIF
+
+END kv_index

@@ -127,6 +127,26 @@ trailing zeros when significant"
   "Signals the error message MSSG to the ground evaluator"
   (error 'pvsio-error :message mssg))
 
+(defattach |new| ()
+  "Creates a new mutable variable with an undefined value"
+  (pvsio_new_gvar))
+
+(defattach |ref| (value)
+  "Creates a mutable variable and sets it to given value"
+  (pvsio_ref_gvar value))
+
+(defattach |def| (gvar value)
+  "Sets mutable variable gvar to given value"
+  (pvsio_def_gvar gvar value))
+
+(defattach |val_lisp| (gvar)
+  "Returns value of mutable variable. Throws exception UndefinedMutableVariable when undefined?(gvar)"
+  (pvsio_val_gvar gvar))
+
+(defattach |undef| (gvar)
+  "Returns TRUE if mutable variable is undefined"
+  (pvsio_undef_gvar gvar))
+
 (defattach |loop_lift| (f)
    "Applies F in an infinite loop"
    (handler-case 

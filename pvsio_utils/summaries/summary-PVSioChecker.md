@@ -1,65 +1,34 @@
-# Summary for `pvsio_utils`
-Run started at 21:56:42 8/27/2023.
+# Summary for `PVSioChecker`
+Run started at 21:50:48 8/27/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **14**   | **14**    | **14**    | **0**  | **0.438 s**   |
+| **totals** | **13**   | **13**    | **13**    | **0**  | **2.108 s**   |
 |top|0|0|0|0|0.000|
-|stdlang_utils|0|0|0|0|0.000|
-|stdmath_utils|1|1|1|0|0.083|
-|stdstr_utils|11|11|11|0|0.355|
-|stdcatch_utils|0|0|0|0|0.000|
-|stdprog_utils|0|0|0|0|0.000|
-|stdsys_utils|0|0|0|0|0.000|
-|stdmutable_utils|0|0|0|0|0.000|
-|stdio_utils|2|2|2|0|0.000|
-|stdpvs_utils|0|0|0|0|0.000|
+|pvsio_checker|13|13|13|0|2.108|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
-## `stdlang_utils`
-No formula declaration found.
-## `stdmath_utils`
+## `pvsio_checker`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|rat2numden_TCC1|✅ proved - complete|shostak|0.083|
-
-## `stdstr_utils`
-
-| Formula | Proof Status | Decision Procedure | Time |
-| ---     | ---          | ---                | ---  |
-|strfind_from_end_TCC1|✅ proved - complete|shostak|0.019|
-|strconcat_TCC1|✅ proved - complete|shostak|0.038|
-|split_filename_TCC1|✅ proved - complete|shostak|0.032|
-|split_filename_TCC2|✅ proved - complete|shostak|0.016|
-|split_filename_TCC3|✅ proved - complete|shostak|0.056|
-|split_filename_TCC4|✅ proved - complete|shostak|0.027|
-|filename_without_extension_TCC1|✅ proved - complete|shostak|0.063|
-|charcode_j|✅ proved - complete|shostak|0.000|
-|doublequote_j|✅ proved - complete|shostak|0.010|
-|singlequote_j|✅ proved - complete|shostak|0.047|
-|backquote_j|✅ proved - complete|shostak|0.047|
-
-## `stdcatch_utils`
-No formula declaration found.
-## `stdprog_utils`
-No formula declaration found.
-## `stdsys_utils`
-No formula declaration found.
-## `stdmutable_utils`
-No formula declaration found.
-## `stdio_utils`
-
-| Formula | Proof Status | Decision Procedure | Time |
-| ---     | ---          | ---                | ---  |
-|with_openin_file_TCC1|✅ proved - complete|shostak|0.000|
-|with_openout_file_TCC1|✅ proved - complete|shostak|0.000|
-
-## `stdpvs_utils`
-No formula declaration found.## Platform information 
+|print_etc_TCC1|✅ proved - incomplete|shostak|0.106|
+|check_list_it_TCC1|✅ proved - complete|shostak|0.025|
+|check_list_it_TCC2|✅ proved - complete|shostak|0.020|
+|check_list_it_TCC3|✅ proved - complete|shostak|0.025|
+|check_list_it_TCC4|✅ proved - complete|shostak|0.010|
+|check_list_it_TCC5|✅ proved - complete|shostak|0.027|
+|check_list_it_TCC6|✅ proved - complete|shostak|0.018|
+|check_list_it_TCC7|✅ proved - complete|shostak|0.724|
+|check_list_it_TCC8|✅ proved - complete|shostak|0.656|
+|check_list_it_TCC9|✅ proved - complete|shostak|0.362|
+|check_list_it_TCC10|✅ proved - complete|shostak|0.020|
+|check_list_it_TCC11|✅ proved - complete|shostak|0.027|
+|check_list_it_TCC12|✅ proved - complete|shostak|0.088|
+## Platform information 
 |  |  |
 |---|---|
 | PVS Version | 7.1.0 |

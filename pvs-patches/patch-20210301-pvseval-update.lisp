@@ -59,11 +59,11 @@ if called."
     (if mod
 	(let* ((fname (gentemp "global"))
 	       (act   (actuals mod))
-	       (doc (format nil "Global mutable variable of type ~a" 
-			    (car act)))
+	       (doc (format nil "Global mutable variable ~a of type ~a" 
+			    nm (car act)))
 	       (arg (if (eq '|stdprog| (id mod))
-			'(cons nil t)
-		      `(list ,(pvs2cl (expr (cadr act))))))
+			`(pvsio_new_gvar ,nm)
+		      `(pvsio_ref_gvar ,(pvs2cl (expr (cadr act))) ,nm)))
 	       (fbody `(progn 
 			 (defparameter ,fname ,arg)
 			 (defattach-th-nm ,th ,(id expr) () ,doc ,fname))))

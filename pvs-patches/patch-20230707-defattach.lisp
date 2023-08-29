@@ -295,21 +295,47 @@ It cannot be evaluated in a formal proof."
   "Reports an error in the execution of a semantic attachment."
   `(throw-pvsio-exc "PVSioError" (when ,msg (format nil "~a" ,msg))))
 
-;; Macros to access global variables by name
+;; Global variables are represented by a list (name val1 val2 ... valn). Name is
+;; non-empty for mutable variables of type Global.
 
-(defmacro pvsio_set_gvar (pvsio-global-var value)
-  "Sets a value ('value') to a PVSio global variable ('pvsio-global-var')."
-  `(progn (when (cdr ,pvsio-global-var) (setf (cdr ,pvsio-global-var) nil))
-          (setf (car ,pvsio-global-var) ,value)))
+(defun pvsio_new_gvar (&optional name)
+  "Creates a new mutable variable with an undefined value"
+  (list name))
 
-(defmacro pvsio_get_gvar (pvsio-global-var)
-  "Gets the value of a PVSio global variable ('pvsio-global-var')."
-  `(car ,pvsio-global-var))
+(defun pvsio_ref_gvar (value &optional name)
+  "Creates a new mutable variable and sets it to given value"
+  (list name value))
+
+(defun pvsio_def_gvar (gvar value)
+  "Sets mutable variable gvar to given value"
+  (setf (cdr gvar) (list value)))
+
+(defun pvsio_undef_gvar (gvar)
+  "Returns TRUE if mutable variable is undefined"
+  (unless (cdr gvar) t))
+
+(defun pvsio_val_gvar (gvar)
+  "Returns value of mutable variable. Throws exception UndefinedMutableVariable when undefined?(gvar)"
+  (if (cdr gvar)
+      (cadr gvar)
+    (throw-pvsio-exc "UndefinedMutableVariable" (format nil "Mutable variable~@[ ~a~] is undefined" (car gvar)))))
+
+(defun pvsio_reset_gvar (gvar)
+  "Sets mutable variable to undefined"
+  (setf (cdr gvar) nil))
+
+(defun pvsio_push_gvar (gvar value)
+  "Pushes value to the top of the mutable variable and skips"
+  (and (push value (cdr gvar)) t))
+
+(defun pvsio_pop_gvar (gvar)
+  "Pops value of the mutable variable and fails silently when mutable variable is undefined"
+  (and (pop (cdr gvar)) t))
 
 (defmacro pvsio_get_gvar_by_name (name-str)
   "Returns the current value of a PVSio Global variable. It assumes the variable is defined."
-  `(using ((rec ,name-str)) (pvsio_get_gvar (funcall rec))))
+  `(using ((rec ,name-str)) (pvsio_val_gvar (funcall rec))))
 
 (defmacro pvsio_set_gvar_by_name (name-str value)
   "Sets a value to a PVSio Global variable."
-  `(using ((rec ,name-str)) (pvsio_set_gvar (funcall rec) ,value)))
+  `(using ((rec ,name-str)) (pvsio_def_gvar (funcall rec) ,value)))

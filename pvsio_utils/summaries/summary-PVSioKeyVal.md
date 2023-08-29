@@ -1,64 +1,27 @@
-# Summary for `pvsio_utils`
-Run started at 21:56:42 8/27/2023.
+# Summary for `PVSioKeyVal`
+Run started at 21:51:4 8/27/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **14**   | **14**    | **14**    | **0**  | **0.438 s**   |
+| **totals** | **4**   | **4**    | **4**    | **0**  | **0.217 s**   |
 |top|0|0|0|0|0.000|
-|stdlang_utils|0|0|0|0|0.000|
-|stdmath_utils|1|1|1|0|0.083|
-|stdstr_utils|11|11|11|0|0.355|
-|stdcatch_utils|0|0|0|0|0.000|
-|stdprog_utils|0|0|0|0|0.000|
-|stdsys_utils|0|0|0|0|0.000|
-|stdmutable_utils|0|0|0|0|0.000|
-|stdio_utils|2|2|2|0|0.000|
-|stdpvs_utils|0|0|0|0|0.000|
+|kv_index|4|4|4|0|0.217|
+|kv_store|0|0|0|0|0.000|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
-## `stdlang_utils`
-No formula declaration found.
-## `stdmath_utils`
+## `kv_index`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|rat2numden_TCC1|✅ proved - complete|shostak|0.083|
+|kv_find_index_rec_TCC1|✅ proved - complete|shostak|0.014|
+|kv_find_index_rec_TCC2|✅ proved - complete|shostak|0.095|
+|kv_find_index_rec_TCC3|✅ proved - complete|shostak|0.088|
+|kv_find_index_TCC1|✅ proved - complete|shostak|0.020|
 
-## `stdstr_utils`
-
-| Formula | Proof Status | Decision Procedure | Time |
-| ---     | ---          | ---                | ---  |
-|strfind_from_end_TCC1|✅ proved - complete|shostak|0.019|
-|strconcat_TCC1|✅ proved - complete|shostak|0.038|
-|split_filename_TCC1|✅ proved - complete|shostak|0.032|
-|split_filename_TCC2|✅ proved - complete|shostak|0.016|
-|split_filename_TCC3|✅ proved - complete|shostak|0.056|
-|split_filename_TCC4|✅ proved - complete|shostak|0.027|
-|filename_without_extension_TCC1|✅ proved - complete|shostak|0.063|
-|charcode_j|✅ proved - complete|shostak|0.000|
-|doublequote_j|✅ proved - complete|shostak|0.010|
-|singlequote_j|✅ proved - complete|shostak|0.047|
-|backquote_j|✅ proved - complete|shostak|0.047|
-
-## `stdcatch_utils`
-No formula declaration found.
-## `stdprog_utils`
-No formula declaration found.
-## `stdsys_utils`
-No formula declaration found.
-## `stdmutable_utils`
-No formula declaration found.
-## `stdio_utils`
-
-| Formula | Proof Status | Decision Procedure | Time |
-| ---     | ---          | ---                | ---  |
-|with_openin_file_TCC1|✅ proved - complete|shostak|0.000|
-|with_openout_file_TCC1|✅ proved - complete|shostak|0.000|
-
-## `stdpvs_utils`
+## `kv_store`
 No formula declaration found.## Platform information 
 |  |  |
 |---|---|
