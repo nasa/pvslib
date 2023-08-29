@@ -1,20 +1,20 @@
 # Summary for `pvsio_utils`
-Run started at 21:56:42 8/27/2023.
+Run started at 22:44:3 8/28/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **14**   | **14**    | **14**    | **0**  | **0.438 s**   |
+| **totals** | **14**   | **14**    | **14**    | **0**  | **0.450 s**   |
 |top|0|0|0|0|0.000|
 |stdlang_utils|0|0|0|0|0.000|
-|stdmath_utils|1|1|1|0|0.083|
-|stdstr_utils|11|11|11|0|0.355|
+|stdmath_utils|1|1|1|0|0.091|
+|stdstr_utils|11|11|11|0|0.350|
 |stdcatch_utils|0|0|0|0|0.000|
 |stdprog_utils|0|0|0|0|0.000|
 |stdsys_utils|0|0|0|0|0.000|
 |stdmutable_utils|0|0|0|0|0.000|
-|stdio_utils|2|2|2|0|0.000|
+|stdio_utils|2|2|2|0|0.009|
 |stdpvs_utils|0|0|0|0|0.000|
 ## Detailed Summary 
 ## `top`
@@ -25,23 +25,23 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|rat2numden_TCC1|✅ proved - complete|shostak|0.083|
+|rat2numden_TCC1|✅ proved - complete|shostak|0.091|
 
 ## `stdstr_utils`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|strfind_from_end_TCC1|✅ proved - complete|shostak|0.019|
-|strconcat_TCC1|✅ proved - complete|shostak|0.038|
-|split_filename_TCC1|✅ proved - complete|shostak|0.032|
-|split_filename_TCC2|✅ proved - complete|shostak|0.016|
-|split_filename_TCC3|✅ proved - complete|shostak|0.056|
-|split_filename_TCC4|✅ proved - complete|shostak|0.027|
-|filename_without_extension_TCC1|✅ proved - complete|shostak|0.063|
+|strfind_from_end_TCC1|✅ proved - complete|shostak|0.008|
+|strconcat_TCC1|✅ proved - complete|shostak|0.045|
+|split_filename_TCC1|✅ proved - complete|shostak|0.030|
+|split_filename_TCC2|✅ proved - complete|shostak|0.025|
+|split_filename_TCC3|✅ proved - complete|shostak|0.055|
+|split_filename_TCC4|✅ proved - complete|shostak|0.026|
+|filename_without_extension_TCC1|✅ proved - complete|shostak|0.069|
 |charcode_j|✅ proved - complete|shostak|0.000|
-|doublequote_j|✅ proved - complete|shostak|0.010|
-|singlequote_j|✅ proved - complete|shostak|0.047|
-|backquote_j|✅ proved - complete|shostak|0.047|
+|doublequote_j|✅ proved - complete|shostak|0.009|
+|singlequote_j|✅ proved - complete|shostak|0.046|
+|backquote_j|✅ proved - complete|shostak|0.037|
 
 ## `stdcatch_utils`
 No formula declaration found.
@@ -55,7 +55,7 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|with_openin_file_TCC1|✅ proved - complete|shostak|0.000|
+|with_openin_file_TCC1|✅ proved - complete|shostak|0.009|
 |with_openout_file_TCC1|✅ proved - complete|shostak|0.000|
 
 ## `stdpvs_utils`
