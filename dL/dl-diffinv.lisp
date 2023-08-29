@@ -42,8 +42,8 @@
 	      (then
 	       (replaces castr! :dir rl)
 	       (expand* nnqb_ "normalize")
-	       (repeat (expand "normalize_rec"))
-	       (repeat (expand "neg_rel"))
+	       (for nil (expand "normalize_rec"))
+	       (for nil (expand "neg_rel"))
 	       ;; (spread
 	       ;; 	(dl-subdift__$)
 	       ;;  ((dl-nqboolder__)
@@ -58,8 +58,8 @@
 	     (typepred nnqb_)
 	     (hide -1)
 	     (replaces -1)
-	     (repeat (expand "nqb_to_be"))
-	     (repeat (expand "nqb_rel"))))))))))
+	     (for nil (expand "nqb_to_be"))
+	     (for nil (expand "nqb_rel"))))))))))
   "Applies the rule dl_dI to a DDL formula in the right hand side of
 a DDL sequent in formula FNUM. The specific formula in the DDL sequent
 can be specified with the option DLFNUM. If FNUM is not provided, the
@@ -73,17 +73,17 @@ sequent is pretty-printed unless PP? is set to nil."
 	(drup *dl-derup-rws*))
     (then@
      (try (expand "SUB_DIFT")
-	  (repeat (expand "DIFT"))
+	  (for nil (expand "DIFT"))
 	  (skip))
      (expand "SUB_DIFTRe")
-     (repeat
+     (for nil
       (try-then@
-       ((match "max_var(%)" step (with-tccs (eval-expr "%1")))
+       ((match "max_var(%)" step (with-tccs (eval-expr "%1" :quiet? t)))
 	(replaces -1))))
      (branch
       (then@
        ;; [M3] expand names introduced by applying (skoletin*), if any
-       (repeat* (match - "%1 = %2" 
+       (for* nil (match - "%1 = %2" 
 			step (then 
 			      (let ((doit (let ((lhs-expr (extra-get-expr "%1")))
 					    (and (name-expr? lhs-expr)
@@ -107,12 +107,12 @@ sequent is pretty-printed unless PP? is set to nil."
 	(split 1)
 	((else
 	  (dl-nqboolder__)
-	  (repeat (dl-subddt__)))))
+	  (for nil (dl-subddt__)))))
        (then
 	(hide-all-but 1)
-	(else* (eval-formula 1)
+	(else* (eval-formula 1 :quiet? t)
 	       (prove-derivable_up-goal)
-	       (repeat*
+	       (for* nil
 		(then
 		 (rewrite* drws)
 		 (rewrite* drup)))))))))
@@ -124,12 +124,12 @@ sequent is pretty-printed unless PP? is set to nil."
 	(exprsv '(~ ~ "same_var(%,%)")))
     (when expr
       (with-fresh-names
-       ((dt expr :tccs? (eval-formula 1)))
+       ((dt expr :tccs? (eval-formula 1 :quiet? t)))
        (reveal *dt*)
-       (repeat
+       (for nil
 	(try-then
 	 ((expand "ddt" *dt*)
-	  (eval-expr exprsv)
+	  (eval-expr exprsv :quiet? t)
 	  (replaces -1)
 	  (replaces *dt* :dir rl)))))))
   "Internal strategy. Applies ddt differentiaion rules."
@@ -138,7 +138,7 @@ sequent is pretty-printed unless PP? is set to nil."
 (defhelper dl-nqboolder__ ()
   (let ((drws *dl-domain-rws*) (drre *dl-diffre-rws*))
     (then (expand "derivable_M_nqbool?")
-	  (repeat* (then
+	  (for* nil (then
 		    (rewrite* drre) 
 		    (rewrite* drws)))
 	  (prove-diff_re-goal)))
@@ -194,9 +194,9 @@ sequent is pretty-printed unless PP? is set to nil."
 			   (drup *dl-derup-rws*))
 			(then
 			 (hide-all-but 1)
-			 (else* (eval-formula 1)
+			 (else* (eval-formula 1 :quiet? t)
 				(prove-derivable_up-goal)
-				(repeat*
+				(for* nil
 				 (then
 				  (rewrite* drws)
 				  (rewrite* drup) 

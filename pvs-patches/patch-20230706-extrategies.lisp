@@ -1930,6 +1930,20 @@ LABEL. Otherwise, applies ELSE-STEP.")
   "[Extrategies] Successively apply STEP along main branch until it does nothing or, if N is not null, until N is reached."
   "Applying steps ~a times along main branch")
 
+(defhelper for*__ (n step)
+  (let ((doit (or (null n) (and (numberp n) (> n 0)))))
+    (when doit 
+      (let ((prevn (when (numberp n) (1- n))))
+	(try step (for*__$ prevn step) (skip)))))
+  "[Extrategies] Internal strategy." "")
+
+(defstep for* (n &rest steps)
+  (when steps 
+    (let ((step `(then@ ,@steps)))
+      (for*__$ n step)))
+  "[Extrategies] Successively apply STEP until it does nothing or, if N is not null, until N is reached."
+  "Applying steps ~a times")
+
 ;; Skolem, let-in, let-def
 
 (defun skeep-formula (fn expr)
