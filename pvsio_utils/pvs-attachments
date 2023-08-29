@@ -160,32 +160,57 @@ In either case, if the second value is 0, the rational has a finite decimal repr
 (attachments
  |stdprog_utils|
 
-(defattach |reset| (gvar)
-  "Sets mutable variable to undefined"
-  (pvsio_reset_gvar gvar))
-
-(defattach |push_lisp| (gvar value)
-  "Pushes value to the top of the mutable variable and skips"
-  (pvsio_push_gvar gvar value))
-
-(defattach |pop_lisp| (gvar)
-  "Pops value of the mutable variable and fails silently when mutable variable is undefined"
-  (pvsio_pop_gvar gvar))
-
-(defattach |unwind_protect_lift| (ft fcu)
+ (defattach |to_lisp_| (pvs)
+   "Translates PVS object to Lisp"
+   pvs)
+ 
+ (defattach |reset| (gvar)
+   "Sets mutable variable to undefined"
+   (pvsio_reset_gvar gvar))
+ 
+ (defattach |push_lisp| (gvar value)
+   "Pushes value to the top of the mutable variable and skips"
+   (pvsio_push_gvar gvar value))
+ 
+ (defattach |pop_lisp| (gvar)
+   "Pops value of the mutable variable and fails silently when mutable variable is undefined"
+   (pvsio_pop_gvar gvar))
+ 
+ (defattach |unwind_protect_lift| (ft fcu)
    "Evaluate ft, returning its value. The cleanup code fcu will be evaluated if control leaves ft."
    (unwind-protect
        (pvs-funcall ft nil)
      (pvs-funcall fcu nil)))
+
+)
+
+(attachments
+ |stdio_utils|
+
+ (defattach |fwrite_lisp| (f typ pvs)
+   "Writes a PVS object to output stream, so that it can be retrieved afterwards by fread"
+   (or (format f "~s~%" (cons typ pvs)) t))
+
 )
 
 (attachments
  |stdpvs_utils|
 
  (defattach |type_of_domain_lisp| (e)
-  (declare (ignore e))		      
-  "Returns the string value of the type of E"
-  (let* ((the-domain (domain (domain the-pvs-type_))))
-    (format nil "~a" (or (print-type the-domain) the-domain))))
-
+   (declare (ignore e))		      
+   "Returns the string value of the type of E"
+   (let* ((the-domain (domain (domain the-pvs-type_))))
+     (format nil "~a" (or (print-type the-domain) the-domain))))
+ 
+ (defattach |fread_lisp| (f typ)
+   "Reads an PVS object of type T from an input stream written by fwrite"
+   (let* ((type-pvs (read f))
+	  (the-type1 (pc-typecheck (pc-parse (car type-pvs) 'type-expr)))
+	  (the-type2 (pc-typecheck (pc-parse typ 'type-expr))))
+     (if (subtype-of? the-type1 the-type2)
+	 (cdr type-pvs)
+       (throw-pvsio-exc
+	"CantTranslateBack"
+	(format nil "Read value has type ~a, which is not a sub-type of ~a" the-type1 the-type2)))))
+ 
 )
