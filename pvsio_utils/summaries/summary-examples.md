@@ -1,20 +1,20 @@
 # Summary for `examples`
-Run started at 22:53:17 8/28/2023.
+Run started at 17:56:25 8/30/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **24**   | **24**    | **24**    | **0**  | **4.213 s**   |
+| **totals** | **26**   | **26**    | **26**    | **0**  | **4.506 s**   |
 |top|0|0|0|0|0.000|
-|primes|11|11|11|0|2.269|
-|pvsio_examples|4|4|4|0|0.520|
+|primes|11|11|11|0|2.152|
+|pvsio_examples|6|6|6|0|0.896|
 |stdsys_examples|0|0|0|0|0.000|
-|stdstr_examples|1|1|1|0|0.047|
+|stdstr_examples|1|1|1|0|0.057|
 |stdpvs_examples|2|2|2|0|0.010|
 |stdmutable_examples|0|0|0|0|0.000|
-|csv_utils_examples|1|1|1|0|0.040|
-|csv_examples|5|5|5|0|1.327|
+|csv_utils_examples|1|1|1|0|0.050|
+|csv_examples|5|5|5|0|1.341|
 |kv_examples|0|0|0|0|0.000|
 |prime_factorization_checker|0|0|0|0|0.000|
 ## Detailed Summary 
@@ -24,25 +24,27 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|prime?_TCC1|✅ proved - incomplete|shostak|0.111|
-|prime_factorization_rec_TCC1|✅ proved - complete|shostak|0.000|
-|prime_factorization_rec_TCC2|✅ proved - complete|shostak|0.030|
+|prime?_TCC1|✅ proved - incomplete|shostak|0.102|
+|prime_factorization_rec_TCC1|✅ proved - complete|shostak|0.010|
+|prime_factorization_rec_TCC2|✅ proved - complete|shostak|0.020|
 |prime_factorization_rec_TCC3|✅ proved - incomplete|shostak|0.082|
-|prime_factorization_rec_TCC4|✅ proved - incomplete|shostak|0.146|
-|prime_factorization_rec_TCC5|✅ proved - incomplete|shostak|0.387|
-|prime_factorization_rec_TCC6|✅ proved - incomplete|shostak|0.598|
-|prime_factorization_rec_TCC7|✅ proved - incomplete|shostak|0.304|
-|prime_factorization_rec_TCC8|✅ proved - incomplete|shostak|0.308|
+|prime_factorization_rec_TCC4|✅ proved - incomplete|shostak|0.126|
+|prime_factorization_rec_TCC5|✅ proved - incomplete|shostak|0.367|
+|prime_factorization_rec_TCC6|✅ proved - incomplete|shostak|0.581|
+|prime_factorization_rec_TCC7|✅ proved - incomplete|shostak|0.274|
+|prime_factorization_rec_TCC8|✅ proved - incomplete|shostak|0.278|
 |prime_factorization_TCC1|✅ proved - complete|shostak|0.157|
-|prime_factorization_TCC2|✅ proved - complete|shostak|0.146|
+|prime_factorization_TCC2|✅ proved - complete|shostak|0.155|
 
 ## `pvsio_examples`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|hello_you_TCC1|✅ proved - complete|shostak|0.386|
+|hello_you_TCC1|✅ proved - complete|shostak|0.377|
 |cat_TCC1|✅ proved - complete|shostak|0.010|
-|safe_quadratic_TCC1|✅ proved - incomplete|shostak|0.114|
+|safe_quadratic_TCC1|✅ proved - incomplete|shostak|0.107|
+|pp_rat_off_TCC1|✅ proved - complete|shostak|0.205|
+|pp_rat_on_TCC1|✅ proved - complete|shostak|0.187|
 |a_fact|✅ proved - complete|shostak|0.010|
 
 ## `stdsys_examples`
@@ -51,14 +53,14 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|ex0_TCC1|✅ proved - complete|shostak|0.047|
+|ex0_TCC1|✅ proved - complete|shostak|0.057|
 
 ## `stdpvs_examples`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|ex_write_TCC1|✅ proved - complete|shostak|0.000|
-|ex_read_TCC1|✅ proved - complete|shostak|0.010|
+|ex_write_TCC1|✅ proved - complete|shostak|0.010|
+|ex_read_TCC1|✅ proved - complete|shostak|0.000|
 
 ## `stdmutable_examples`
 No formula declaration found.
@@ -66,17 +68,17 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|ex2_TCC1|✅ proved - complete|shostak|0.040|
+|ex2_TCC1|✅ proved - complete|shostak|0.050|
 
 ## `csv_examples`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |NewDialect_TCC1|✅ proved - complete|shostak|0.046|
-|ex4_TCC1|✅ proved - complete|shostak|0.000|
+|ex4_TCC1|✅ proved - complete|shostak|0.010|
 |ex4_TCC2|✅ proved - complete|shostak|0.080|
-|ex4_TCC3|✅ proved - incomplete|shostak|0.353|
-|ex4_TCC4|✅ proved - incomplete|shostak|0.848|
+|ex4_TCC3|✅ proved - incomplete|shostak|0.354|
+|ex4_TCC4|✅ proved - incomplete|shostak|0.851|
 
 ## `kv_examples`
 No formula declaration found.

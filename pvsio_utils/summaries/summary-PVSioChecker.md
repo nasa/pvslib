@@ -1,13 +1,13 @@
 # Summary for `PVSioChecker`
-Run started at 22:52:55 8/28/2023.
+Run started at 17:56:4 8/30/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **13**   | **13**    | **13**    | **0**  | **1.915 s**   |
+| **totals** | **13**   | **13**    | **13**    | **0**  | **2.064 s**   |
 |top|0|0|0|0|0.000|
-|pvsio_checker|13|13|13|0|1.915|
+|pvsio_checker|13|13|13|0|2.064|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -15,19 +15,19 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|print_etc_TCC1|✅ proved - incomplete|shostak|0.096|
+|print_etc_TCC1|✅ proved - incomplete|shostak|0.110|
 |check_list_it_TCC1|✅ proved - complete|shostak|0.024|
-|check_list_it_TCC2|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC3|✅ proved - complete|shostak|0.014|
+|check_list_it_TCC2|✅ proved - complete|shostak|0.023|
+|check_list_it_TCC3|✅ proved - complete|shostak|0.020|
 |check_list_it_TCC4|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC5|✅ proved - complete|shostak|0.016|
-|check_list_it_TCC6|✅ proved - complete|shostak|0.018|
-|check_list_it_TCC7|✅ proved - complete|shostak|0.597|
-|check_list_it_TCC8|✅ proved - complete|shostak|0.635|
-|check_list_it_TCC9|✅ proved - complete|shostak|0.350|
+|check_list_it_TCC5|✅ proved - complete|shostak|0.017|
+|check_list_it_TCC6|✅ proved - complete|shostak|0.027|
+|check_list_it_TCC7|✅ proved - complete|shostak|0.679|
+|check_list_it_TCC8|✅ proved - complete|shostak|0.656|
+|check_list_it_TCC9|✅ proved - complete|shostak|0.363|
 |check_list_it_TCC10|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC11|✅ proved - complete|shostak|0.017|
-|check_list_it_TCC12|✅ proved - complete|shostak|0.088|
+|check_list_it_TCC11|✅ proved - complete|shostak|0.018|
+|check_list_it_TCC12|✅ proved - complete|shostak|0.087|
 ## Platform information 
 |  |  |
 |---|---|
