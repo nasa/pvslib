@@ -25,7 +25,7 @@
 %  Programming: mapstep, mapstep@, with-fresh-labels, with-fresh-labels@,
 %    with-fresh-names, with-fresh-names@
 %  Control flow: try@, try-then, try-then@, finalize, finalize*, touch,
-%    for, when, when@, unless, unless@, when-label, when-label@,
+%    for, for@, when, when@, unless, unless@, when-label, when-label@,
 %    unless-label, unless-label@, if-label, sklisp
 %  Let-in: skoletin, skoletin*, redlet, redlet*
 %  Quantifiers: skeep, skeep*, skodef, skodef*, insteep, insteep*, unroll
@@ -1915,34 +1915,34 @@ LABEL. Otherwise, applies ELSE-STEP.")
 
 (defhelper for__ (n step)
   (let ((doit (or (null n) (and (numberp n) (> n 0)))))
-    (when doit 
+    (when doit
+      (let ((prevn (when (numberp n) (1- n))))
+	(try step (for__$ prevn step) (skip)))))
+  "[Extrategies] Internal strategy." "")
+
+(defstep for (n &rest steps)
+  (when steps
+    (let ((step `(then@ ,@steps)))
+      (for__$ n step)))
+  "[Extrategies] Successively apply STEPS until it does nothing or, if N is not null, until N is reached."
+  "Applying steps ~a times")
+
+(defhelper for@__ (n step)
+  (let ((doit (or (null n) (and (numberp n) (> n 0)))))
+    (when doit
       (let ((prevn (when (numberp n) (1- n))))
 	(try step (if (equal (get-goalnum *ps*) 1)
-		      (for__$ prevn step)
+		      (for@__$ prevn step)
 		    (skip))
 	     (skip)))))
   "[Extrategies] Internal strategy." "")
 
-(defstep for (n &rest steps)
-  (when steps 
+(defstep for@ (n &rest steps)
+  (when steps
     (let ((step `(then@ ,@steps)))
-      (for__$ n step)))
-  "[Extrategies] Successively apply STEP along main branch until it does nothing or, if N is not null, until N is reached."
+      (for@__$ n step)))
+  "[Extrategies] Successively apply STEPS along main branch until it does nothing or, if N is not null, until N is reached."
   "Applying steps ~a times along main branch")
-
-(defhelper for*__ (n step)
-  (let ((doit (or (null n) (and (numberp n) (> n 0)))))
-    (when doit 
-      (let ((prevn (when (numberp n) (1- n))))
-	(try step (for*__$ prevn step) (skip)))))
-  "[Extrategies] Internal strategy." "")
-
-(defstep for* (n &rest steps)
-  (when steps 
-    (let ((step `(then@ ,@steps)))
-      (for*__$ n step)))
-  "[Extrategies] Successively apply STEP until it does nothing or, if N is not null, until N is reached."
-  "Applying steps ~a times")
 
 ;; Skolem, let-in, let-def
 

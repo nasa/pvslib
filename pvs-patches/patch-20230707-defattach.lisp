@@ -332,10 +332,7 @@ It cannot be evaluated in a formal proof."
   "Pops value of the mutable variable and fails silently when mutable variable is undefined"
   (and (pop (cdr gvar)) t))
 
-(defmacro pvsio_get_gvar_by_name (name-str)
+(defun pvsio_get_gvar_by_name (name)
   "Returns the current value of a PVSio Global variable. It assumes the variable is defined."
-  `(using ((rec ,name-str)) (pvsio_val_gvar (funcall rec))))
-
-(defmacro pvsio_set_gvar_by_name (name-str value)
-  "Sets a value to a PVSio Global variable."
-  `(using ((rec ,name-str)) (pvsio_def_gvar (funcall rec) ,value)))
+  (let ((gvar (eval (pvs2cl (extra-get-expr name)))))
+    (pvsio_val_gvar gvar)))

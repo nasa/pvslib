@@ -14,7 +14,7 @@
 	  (unroll)
 	  ((then
 	    (flatten)
-	    (for nil (expand "nth"))
+	    (for@ nil (expand "nth"))
 	    (try  ;; Match for the constant case
 	     (match 1 "cnst(%1) = cnst(%2)" step (inst?)) (assert)
 	     ;; If that doesn't work, match for the val case
@@ -42,7 +42,7 @@
 			    (match "get_index( %1 )(%2)" step
 				   (then (eval-expr "get_index(%1)(%2)" :quiet? t)(replace -1)(hide -1))))
 		       (assert))))
-	    (for nil (expand "nth"))
+	    (for@ nil (expand "nth"))
 	    (try (match 2 "cnst(%1) = cnst(%2)" step (inst 2 "%1")) (assert)
 		 (try (match 3 "val(%1) = cnst(%2) + val(%3)" step
 			     (then (inst 3 "0" "%1")
@@ -118,20 +118,20 @@
 	(then
 	 (when quiet? (rewrite-msg-off))
 	 (deftactic simplify_init_zip_sol nil
-	   (for nil (then (expand "init_zip_sol") (for nil (expand "length")))))
-	 (deftactic expand_in_map_ex nil (for nil (expand "in_map_ex")))	 
-	 (deftactic lift_them_all nil (for nil (lift-if)))
+	   (for@ nil (then (expand "init_zip_sol") (for@ nil (expand "length")))))
+	 (deftactic expand_in_map_ex nil (for@ nil (expand "in_map_ex")))	 
+	 (deftactic lift_them_all nil (for@ nil (lift-if)))
 	 (deftactic simplify_evaluable_ites nil
-	   (for nil
+	   (for@ nil
 	    (match "%a{if_}" step
 		   (let ((ite $aj) (guard (args1 ite)))
 		     (then (eval-expr guard :quiet? t) (replace -1 :hide? t))))))
 	 (deftactic simplify_Y_sol_ex nil
-	   (for nil
+	   (for@ nil
 	    (then (expand "Y_sol_ex" -1 1) (expand "get_val_cnst_id_ex")
 		  (expand "is_val_not_in_map?") (expand "is_cnst?")
 		  (expand_in_map_ex) (simplify_nth) (beta)
-		  (for nil (rewrites "env_nat_shift_cnst"))
+		  (for@ nil (rewrites "env_nat_shift_cnst"))
 		  (rewrites ("env_nat_shift_0_val"
 			     "env_c_val"
 			     "env_nat_shift_1_val"))
@@ -198,10 +198,10 @@
 		       (format nil "NOT (~a < length(~a))" index
 			       pvs-list)))
 		  (branch (case length-str)
-			  ((then (hide-all-but 1) (for nil (expand "length"))
+			  ((then (hide-all-but 1) (for@ nil (expand "length"))
 				 (assert))
 			   (branch (case case-str)
-				   ((then (hide-all-but 1) (for nil (expand "nth")))
+				   ((then (hide-all-but 1) (for@ nil (expand "nth")))
 				    (then (hide -2) (replace -1 :hide? t)))))))
 	      (skip-msg "Couldn't represent pvs list in lisp"))))
   ""
@@ -229,9 +229,9 @@
 	  (then
 	   (when quiet? (rewrite-msg-off))
 	   (deftactic simplify_init_zip_sol (&optional (tac-fnum -1))
-	     (for nil (then (expand "init_zip_sol" tac-fnum) (for nil (expand "length" tac-fnum)))))
-	   (deftactic expand_in_map_ex (&optional (tac-fnum -1)) (for nil (expand "in_map_ex" tac-fnum)))
-	   (deftactic lift_them_all () (for nil (lift-if)))
+	     (for@ nil (then (expand "init_zip_sol" tac-fnum) (for@ nil (expand "length" tac-fnum)))))
+	   (deftactic expand_in_map_ex (&optional (tac-fnum -1)) (for@ nil (expand "in_map_ex" tac-fnum)))
+	   (deftactic lift_them_all () (for@ nil (lift-if)))
 	   (deftactic simplify_evaluable_ites ()
 	     (let ((ite (extra-get-expr '(~ -1 "%{if_}"))))
 	       (when ite
@@ -245,7 +245,7 @@
 		   (expand_in_map_ex tac-fnum)
 		   (simplify_nth)
 		   (beta tac-fnum)
-		   (for nil (rewrites "env_nat_shift_cnst" :fnums tac-fnum))
+		   (for@ nil (rewrites "env_nat_shift_cnst" :fnums tac-fnum))
 		   (rewrites ("env_nat_shift_0_val"
 			      "env_c_val"
 			      "env_nat_shift_1_val") :fnums tac-fnum)
@@ -264,8 +264,8 @@
 	      (hide-all-but (solution_lemma Z_def '-))
 	      (expand "zs" Z_def)
 	      (simplify_init_zip_sol |Z_def|)
-	      (for nil (simplify_nth))
-	      (for nil (simplify_Y_sol_ex Z_def))
+	      (for@ nil (simplify_nth))
+	      (for@ nil (simplify_Y_sol_ex Z_def))
 	      (expand "UPTO" solution_lemma)
 	      (dl-skolem skolem-constant solution_lemma)
 	      (dl-flatten solution_lemma)
@@ -391,7 +391,7 @@
 (defhelper dl-simplify-zip-sol (fnum)
   (let ((fnum (extra-get-fnum fnum)))
     (then
-     (for nil
+     (for@ nil
       (match fnum "%1=zs(%2,Y_sol_ex(%%))"
 	     step (let((name (args1 $1j))
 		       (excluding (cons name (get-de-bruijn-names(args2 $1j)))))
@@ -399,12 +399,12 @@
 		     (expand "zs")
 		     (expand "Y_sol_ex")
 		     (grind :exclude excluding)))))
-     (for nil
+     (for@ nil
       (match fnum "IF %1 THEN %2 ELSE %3 ENDIF" step (then (eval-expr "%1" :quiet? t) (replace -1 * :hide? t) (assert))))
-     (for nil
+     (for@ nil
       (match fnum "get_index(%1)(%2)" step (then (eval-expr $1s :quiet? t)(replace -1 * :hide? t))))
      (match fnum "nth(%1,%2)"
-	    step  (for nil (expand "nth" fnum)))
+	    step  (for@ nil (expand "nth" fnum)))
      (dl-pp-zip-sol fnum)))
   "Simplifies the equality in FNUM if it has the form NAME = zs(ODE, Y_sol_ex(ODE))"
   "Simplifying zipped solution")
