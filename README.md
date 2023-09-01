@@ -10,7 +10,7 @@ It consists of a collection of formal development (i.e.,
 [NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
-The current version of NASALib is 7.1.1 (1/30/23) and requires [PVS 7.1](http://pvs.csl.sri.com/).
+The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http://pvs.csl.sri.com/).
 
 # Libraries
 
@@ -63,7 +63,10 @@ Currently, NASALib consists of 64 libraries, containing about 35K proven formula
 | [power](./power/README.md) | Generalized Power function (without ln/exp) |
 | [probability](./probability/README.md) | Probability theory |
 | [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts |
-| [PVSioChecker](./PVSioChecker/README.md) | Animation of PVS specifications |
+| [pvsio_utils](./pvsio_utils/README.md) | Additions to PVSio, a library for animation of PVS specifications |
+| [pvsio_utils/PVSioChecker](./pvsio_utils/PVSioChecker/README.md) | A PVSio library for differential testing |
+| [pvsio_utils/PVSioCSV](./pvsio_utils/PVSioCSV/README.md) | A PVSio library for reading and writing Comma Separated Value files |
+| [pvsio_utils/PVSioKeyVal](./pvsio_utils/PVSioKeyVal/README.md) | A PVSio simple key/value store |
 | [reals](./reals/README.md) | Summations, sup, inf, sqrt over the reals, absolute value, etc |
 | [Riemann](./Riemann/README.md) |  Riemann integral |
 | [scott](./scott/README.md) | Scott topology |
@@ -185,7 +188,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Ariane Alves Almeida, University of Brasilia, Brazil
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA
 * Ben Di Vito, NASA (retired), USA
-* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), formerly at NASA, USA
+* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France 
 * Concepción Vidal, University of La Coruña, Spain
 * David Griffioen,CWI, The Netherlands
@@ -257,4 +260,4 @@ Enjoy it.
 
 [The NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
 
-Contact: [Mariano Moscato](http://marianomoscato.github.io)
+Contact: [César Muñoz](http://shemesh.larc.nasa.gov/people/cam)
