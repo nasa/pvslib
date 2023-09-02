@@ -6,8 +6,8 @@ to aid in research related to theorem proving  sponsored by NASA
 (https://shemesh.larc.nasa.gov/fm/pvs/).
 It consists of a collection of formal development (i.e.,
 <i>libraries</i>) written in the Prototype Verification System
-([PVS](http://pvs.csl.sri.com)), contributed by SRI, NASA,NIA, and the PVS community, and maintained by the
-[NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
+([PVS](http://pvs.csl.sri.com)), contributed by SRI, NASA, NIA, and the PVS community, and maintained by the
+[Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
 The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http://pvs.csl.sri.com/).
@@ -185,6 +185,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Ariane Alves Almeida, University of Brasilia, Brazil
 * [Bruno Dutertre](http://www.csl.sri.com/users/bruno), SRI, USA
 * Ben Di Vito, NASA (retired), USA
+* Ben Hocking, Dependable Computing, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * Clément Blaudeau, EPFL, Switzerland and Ecole Polytechnique, France 
 * Concepción Vidal, University of La Coruña, Spain
@@ -208,13 +209,14 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * John Siratt, formerly at University of Arkansas at Little Rock, USA
 * Katherine Cordwell, CMU, USA
 * Kristin Rozier, formerly at NASA, USA
-* [Laura Titolo](https://lauratitolo.github.io/), NIA & NASA, USA
-* [Lee Pike](http://corp.galois.com/lee-pike), formerly at Galois, USA
-* [Marco A. Feliú](https://www.nianet.org/directory/research-staff/marco-feliu/), NIA, USA
-* [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA, USA
+* [Laura Titolo](https://lauratitolo.github.io/), AMA Inc. & NASA, USA
+* Lee Pike, formerly at NASA, USA
+* Marco A. Feliú, AMA Inc., USA
+* Mariano Moscato, AMA Inc., USA
 * [Mauricio Ayala-Rincón](http://www.mat.unb.br/~ayala), University of Brasilia, Brazil
 * [Natarajan Shankar](http://www.csl.sri.com/users/shankar), SRI, USA
 * Pablo Ascariz, formerly at University of La Coruña, Spain
+* Paolo Masci, AMA Inc. & NASA, USA
 * [Paul Miner](http://shemesh.larc.nasa.gov/people/psm), NASA, USA
 * Pedro Cabalar, University of La Coruña, Spain
 * Radu Siminiceanu, formerly at NIA, USA
@@ -255,6 +257,6 @@ tools are also included as appropriate.
 
 Enjoy it.
 
-[The NASA/NIA Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
+[The Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
 
 Contact: [César Muñoz](http://shemesh.larc.nasa.gov/people/cam)
