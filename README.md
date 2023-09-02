@@ -64,9 +64,6 @@ Currently, NASALib consists of 64 libraries, containing about 35K proven formula
 | [probability](./probability/README.md) | Probability theory |
 | [PVS0](./PVS0/README.md) | Formalization of fundamental computability concepts |
 | [pvsio_utils](./pvsio_utils/README.md) | Additions to PVSio, a PVS standard library for animation of PVS specifications |
-| [pvsio_utils/PVSioChecker](./pvsio_utils/PVSioChecker/README.md) | A PVSio library for differential testing |
-| [pvsio_utils/PVSioCSV](./pvsio_utils/PVSioCSV/README.md) | A PVSio library for reading and writing Comma Separated Value files |
-| [pvsio_utils/PVSioKeyVal](./pvsio_utils/PVSioKeyVal/README.md) | A PVSio simple key/value store |
 | [reals](./reals/README.md) | Summations, sup, inf, sqrt over the reals, absolute value, etc |
 | [Riemann](./Riemann/README.md) |  Riemann integral |
 | [scott](./scott/README.md) | Scott topology |
