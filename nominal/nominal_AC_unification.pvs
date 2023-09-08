@@ -1,0 +1,774 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%          (3) Johannes Kepler University 
+% 
+% Paper: "Nominal AC-Matching"
+% 
+% Contains definitions regarding a unification problem and extends some notions such as 
+% substitutions to it. 
+%
+% Some proofs in this theory follow the same line of corresponding proofs in the 
+% theory of first-order AC-unification.
+% However, since the grammar of the terms is different, reusing these
+% proofs is done manually (it's interactive theorem proving not fully automated reasoning). 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_AC_unification: THEORY
+BEGIN
+	IMPORTING nominal_AC_fresh_subs, list_aux_equational_reasoning2parameters[nominal_AC_term, nominal_AC_term]
+
+a, b: VAR atom
+Delta, G, G1, Nabla: VAR fresh_context 
+sigma, sigma_, sigma1, delta, gamma: VAR sub
+rho: VAR renaming
+lst_sub: VAR list[sub]
+vars2avoid, set_vars, PV, PV2, V1, V2: VAR finite_set[variable]
+args1, args2: VAR args
+X: VAR variable
+pi: VAR perm
+t, s, t1: VAR nominal_AC_term
+f: VAR string
+
+i, j: VAR nat 
+
+% a unification pair (t, s) is composed of terms t and s that must be unified
+unif_pair: TYPE = [nominal_AC_term, nominal_AC_term]
+unif_pair, unif_pair1, up: VAR unif_pair
+
+% in our PVS formalisation, we represent a unification problem as a list of unification pairs
+unif_prb: TYPE = list[unif_pair]
+unif_prb, unif_prb1, unif_prb2, P, P1, P2: VAR unif_prb
+lst_unif_prb: VAR list[unif_prb]
+
+    IMPORTING list_aux_equational_reasoning[unif_pair]
+
+
+% defines when a term is a member of a unification pair
+member(t, unif_pair): bool = (t = unif_pair`1 OR t = unif_pair`2)
+
+% defines when a term is a member of a unification problem
+member(t, unif_prb): RECURSIVE bool =
+   IF null?(unif_prb) THEN FALSE
+   ELSE LET unif_pair = car(unif_prb) IN
+    	IF t = unif_pair`1 OR t = unif_pair`2 THEN TRUE
+	ELSE member(t, cdr(unif_prb)) 
+	ENDIF 
+   ENDIF
+MEASURE unif_prb BY << 
+   
+% extends membership to a lst of unification problems
+member(t, lst_unif_prb): RECURSIVE bool =
+   IF null?(lst_unif_prb) THEN FALSE
+   ELSE LET unif_prb = car(lst_unif_prb) IN member(t, unif_prb) OR member(t, cdr(lst_unif_prb)) 
+   ENDIF
+MEASURE lst_unif_prb BY << 
+
+% left-hand side and right-hand side of a unification problem
+lhs(unif_prb): args = first_proj(unif_prb)
+rhs(unif_prb): args = sec_proj(unif_prb) 
+
+% no_var? no_var_pair? no_pair?
+no_var?(unif_prb): bool = FORALL t: member(t, unif_prb) IMPLIES NOT var?(t)
+
+no_var_pair?(unif_prb): bool = FORALL t: member(t, unif_prb) IMPLIES NOT var?(t) AND NOT pair?(t)
+
+no_pair?(unif_prb): bool = FORALL t: member(t, unif_prb) IMPLIES NOT pair?(t)
+
+% variables of a unification pair
+vars(unif_pair): finite_set[variable] =
+    LET (t, s) = unif_pair IN union(vars(t), vars(s))
+
+% variables of a unification problem
+vars(unif_prb): RECURSIVE finite_set[variable] =
+    IF null?(unif_prb) THEN emptyset
+    ELSE LET unif_pair = car(unif_prb) IN
+    	     union(vars(unif_pair), vars(cdr(unif_prb)))
+    ENDIF
+MEASURE unif_prb BY << 
+
+% variables of a list of unification problem
+vars(lst_unif_prb): RECURSIVE finite_set[variable] =
+    IF null?(lst_unif_prb) THEN emptyset
+    ELSE LET unif_prb = car(lst_unif_prb) IN
+    	     union(vars(unif_prb), vars(cdr(lst_unif_prb)))
+    ENDIF
+MEASURE lst_unif_prb BY << 
+
+% subterms of a unification pair
+subterms(unif_pair): finite_set[nominal_AC_term] =
+    LET (t, s) = unif_pair IN union(subterms(t), subterms(s))
+
+% subterms of a unification problem.
+subterms(unif_prb): RECURSIVE finite_set[nominal_AC_term] =
+    IF null?(unif_prb) THEN emptyset
+    ELSE LET unif_pair = car(unif_prb) IN
+    	     union(subterms(unif_pair), subterms(cdr(unif_prb)))
+    ENDIF
+MEASURE unif_prb BY << 
+
+% subterms of a list of unification problems
+subterms(lst_unif_prb): RECURSIVE finite_set[nominal_AC_term] =
+    IF null?(lst_unif_prb) THEN emptyset
+    ELSE LET unif_prb = car(lst_unif_prb) IN
+    	     union(subterms(unif_prb), subterms(cdr(lst_unif_prb)))
+    ENDIF
+MEASURE lst_unif_prb BY << 
+
+% check if sigma unifies a unification pair
+unifies?(G, sigma, unif_pair): bool = 
+    LET (t, s) = unif_pair IN equal?(G)(subs(sigma)(t), subs(sigma)(s))
+
+unifiable?(t, s): bool =
+    EXISTS sigma, G: unifies?(G, sigma, (t, s))
+
+% check if sigma unifies a unification problem
+unifies?(G, sigma, unif_prb): RECURSIVE bool =
+    IF null?(unif_prb) THEN TRUE 
+    ELSE LET unif_pair = car(unif_prb) IN
+         unifies?(G, sigma, unif_pair) AND unifies?(G, sigma, cdr(unif_prb))
+    ENDIF
+MEASURE unif_prb BY << 
+
+% apply sigma to an unification pair
+apply_sub(sigma, unif_pair): unif_pair =
+   LET (t, s) = unif_pair IN (subs(sigma)(t), subs(sigma)(s))
+ 
+
+% apply sigma to all equations of both sides of a unification problem
+apply_sub(sigma, unif_prb): RECURSIVE unif_prb =
+    IF null?(unif_prb) THEN null
+    ELSE LET unif_pair = car(unif_prb) IN 
+         cons(apply_sub(sigma, unif_pair), apply_sub(sigma, cdr(unif_prb)))
+    ENDIF
+MEASURE unif_prb BY << 
+
+%  Definition of solution to a quintuple
+solves?(Delta, delta)(Nabla, P, sigma, V1, PV): bool =
+    nominal_AC_fresh_subs(Delta)(delta, Nabla) AND unifies?(Delta, delta, P) AND 
+    more_general?(Delta)(sigma, delta, V1) AND disjoint?(dom(delta), PV) AND
+    well_formed?(delta)
+
+% This is a particular case of "solves?", where the set V1 is the set of all
+% variables. 
+is_sol?(Delta, delta)(Nabla, P, sigma, PV): bool =
+    nominal_AC_fresh_subs(Delta)(delta, Nabla) AND unifies?(Delta, delta, P) AND 
+    more_general?(Delta)(sigma, delta) AND disjoint?(dom(delta), PV) AND
+    well_formed?(delta)
+
+% definition of (Delta, delta) being an instance of (Nabla, sigma) that does not instantiate
+% the variables in PV
+is_instance?(Delta, delta)(Nabla, sigma, PV): bool = is_sol?(Delta, delta)(Nabla, null, sigma, PV)
+
+% definition of (Delta, delta) being an instance of (Nabla, sigma) restricted to V1 that does not instantiate
+% the variables in PV
+is_instance?(Delta, delta)(Nabla, sigma, V1, PV): bool = solves?(Delta, delta)(Nabla, null, sigma, V1, PV)
+
+% size of a unification pair
+size(unif_pair): nat =
+    LET (t, s) = unif_pair IN size(t) + size(s) 
+
+% size of a unification problem
+size(unif_prb): RECURSIVE nat =
+    IF null?(unif_prb) THEN 0
+    ELSE LET unif_pair = car(unif_prb) in
+    	 size(unif_pair) + size(cdr(unif_prb))
+    ENDIF
+MEASURE unif_prb BY << 
+     
+% lst of vars in an unif_pair
+lst_vars(unif_pair): list[variable] =
+    LET (t, s) = unif_pair IN append(lst_vars(t), lst_vars(s))
+  
+% lst of vars in an unif_prb
+lst_vars(unif_prb): RECURSIVE list[variable] =
+    IF null?(unif_prb) THEN null
+    ELSE LET unif_pair = car(unif_prb) in
+    	 append(lst_vars(unif_pair), lst_vars(cdr(unif_prb)))
+    ENDIF
+MEASURE unif_prb BY << 
+
+% returns true if it's an ac unification pair 
+ac_prb?(unif_pair): bool =
+   LET (t, s) = unif_pair IN ac_app?(t) AND ac_app?(s) AND ac_sym(t) = ac_sym(s) 
+
+% returns true if all members of unif_prb are ac_problems
+all_ac_prb?(unif_prb): bool =
+   FORALL unif_pair: 
+   member(unif_pair, unif_prb) IMPLIES ac_prb?(unif_pair)
+
+exists_ac?(P): bool = EXISTS up: member(up, P) AND ac_prb?(up)
+
+   
+% select greater
+select_greater(t, s): nominal_AC_term =
+   IF size(t) >= size(s) THEN t
+   ELSE s
+   ENDIF
+
+select_greater(unif_prb): RECURSIVE nominal_AC_term =
+   IF null?(unif_prb) THEN unit
+   ELSE LET (t, s) = car(unif_prb),
+            t1 = select_greater(t, s) IN
+        IF length(unif_prb) = 1 THEN t1
+	ELSE LET t2 = select_greater(cdr(unif_prb)) IN
+	     IF size(t1) >= size(t2) THEN t1
+	     ELSE t2
+	     ENDIF
+	ENDIF
+   ENDIF
+MEASURE unif_prb BY << 
+
+well_formed?(unif_pair): bool = well_formed?(unif_pair`1) AND well_formed?(unif_pair`2)
+
+well_formed?(unif_prb): bool =
+   FORALL t:
+     (member(t, subterms(unif_prb)) AND ac_app?(t) IMPLIES num_arg(ac_sym(t), t) > 1) AND
+     (member(t, unif_prb) IMPLIES NOT pair?(t))
+
+alm_well_formed?(unif_pair): bool = alm_well_formed?(unif_pair`1) AND alm_well_formed?(unif_pair`2)
+
+alm_well_formed?(unif_prb): bool =
+   FORALL t: member(t, unif_prb) IMPLIES alm_well_formed?(t)
+    
+subset?(unif_prb, unif_prb1): bool =
+   FORALL unif_pair:
+       member(unif_pair, unif_prb) IMPLIES member(unif_pair, unif_prb1)
+
+% if t = <t1, ..., tn> and s = <s1, ..., sn>
+% returns the unification problem [(t1, s1), ..., (tn, sn)]
+% also returns a boolean to indicate if the decomposition was possible or not
+decompose(t, s): RECURSIVE [unif_prb, bool] = 
+   IF pair?(t) AND pair?(s) THEN
+      LET (unif_prb1, bool1) = decompose(term1(t), term1(s)),
+	  (unif_prb2, bool2) = decompose(term2(t), term2(s)) IN 
+	  (append(unif_prb1, unif_prb2), bool1 AND bool2)
+   ELSIF pair?(t) OR pair?(s) THEN (null, FALSE)
+   ELSE (cons((t, s), null), TRUE)
+   ENDIF
+MEASURE t BY << 
+
+% returns true if all the variables in the right-hand side are protected 
+match_problem?(unif_prb, PV): bool =
+   FORALL X: member(X, vars(rhs(unif_prb))) IMPLIES member(X, PV)
+
+
+%%%%%%%%%%%%%%%%%% Theorems and Lemmas
+% first_proj
+first_proj_unif_prb: LEMMA
+   length(args1) = length(args2) IMPLIES 
+   first_proj(pareate(args1, args2)) = args1
+
+% member
+member_unif_prb_equiv: LEMMA
+   member(t, unif_prb) IFF
+   EXISTS unif_pair:
+    (t = unif_pair`1 OR t = unif_pair`2) AND member(unif_pair, unif_prb)
+
+member_unif_prb_append: LEMMA
+   member(t, append(unif_prb1, unif_prb2)) IFF
+   (member(t, unif_prb1) OR member(t, unif_prb2))
+
+member_unif_prb_append2: LEMMA 
+   member(unif_pair, append(unif_prb1, unif_prb2)) IFF
+   (member(unif_pair, unif_prb1) OR member(unif_pair, unif_prb2))
+
+member_lst_unif_prb_equiv: LEMMA
+   member(t, lst_unif_prb) IFF
+   EXISTS unif_prb:
+    member(t, unif_prb) AND member(unif_prb, lst_unif_prb)
+
+is_finite_mem_unif_prb: LEMMA
+    is_finite({t | member(t, unif_prb)})
+
+% lhs/rhs
+member_lhs_rhs: LEMMA
+   member(t, unif_prb) IFF (member(t, lhs(unif_prb)) OR member(t, rhs(unif_prb)))
+
+lhs_rhs_len: LEMMA
+   length(lhs(P)) = length(rhs(P))
+
+member_lhs_pareate: LEMMA
+   member(t, lhs(pareate(args1, args2))) IMPLIES member(t, args1) 
+
+lhs_pareate: LEMMA 
+   length(args1) = length(args2) IMPLIES lhs(pareate(args1, args2)) = args1
+
+rhs_pareate: LEMMA
+   length(args1) = length(args2) IMPLIES rhs(pareate(args1, args2)) = args2
+
+member_rhs_pareate: LEMMA
+   member(t, rhs(pareate(args1, args2))) IMPLIES member(t, args2)
+
+member_rhs_append: LEMMA
+   member(t, rhs(append(unif_prb1, unif_prb2))) IFF
+   (member(t, rhs(unif_prb1)) OR member(t, rhs(unif_prb2)))
+
+member_lhs_append: LEMMA
+   member(t, lhs(append(unif_prb1, unif_prb2))) IFF
+   (member(t, lhs(unif_prb1)) OR member(t, lhs(unif_prb2)))
+
+% vars no_var_pair
+vars_unif_prb: LEMMA
+   member(X, vars(unif_prb)) IFF
+   EXISTS t:
+      member(t, unif_prb) AND member(X, vars(t))
+
+vars_unif_prb_append: LEMMA 
+   member(X, vars(append(unif_prb1, unif_prb2))) IFF
+   (member(X, vars(unif_prb1)) OR member(X, vars(unif_prb2)))
+
+vars_lst_unif_prb: LEMMA
+   member(X, vars(lst_unif_prb)) IFF
+   EXISTS t:
+      member(t, lst_unif_prb) AND member(X, vars(t))
+
+lst_vars_append: LEMMA
+   lst_vars(append(unif_prb, unif_prb1)) = append(lst_vars(unif_prb), lst_vars(unif_prb1))
+
+vars_lst_vars_unif_prb: LEMMA
+   vars(unif_prb) = list2set(lst_vars(unif_prb))
+
+vars_lst_vars_flatten_lst_unif_prb: LEMMA
+   vars(lst_unif_prb) = list2set(lst_vars(flatten(lst_unif_prb)))
+
+no_var_pair_append: LEMMA
+    no_var_pair?(append(unif_prb, unif_prb1)) = (no_var_pair?(unif_prb) AND no_var_pair?(unif_prb1))
+
+no_pair_append: LEMMA 
+    no_pair?(append(unif_prb, unif_prb1)) = (no_pair?(unif_prb) AND no_pair?(unif_prb1))
+
+all_ac_prb_no_var_pair: LEMMA
+    all_ac_prb?(unif_prb) IMPLIES no_var_pair?(unif_prb) 
+
+all_ac_prb_is_ac: LEMMA
+    all_ac_prb?(unif_prb) AND member(t, unif_prb) IMPLIES
+    ac_app?(t) 
+
+% size
+size_app_unif_prb: LEMMA
+    size(append(unif_prb1, unif_prb2)) = size(unif_prb1) + size(unif_prb2)
+
+size_lhs_mem: LEMMA 
+    member(t, lhs(P)) IMPLIES size(t) <= size(lhs(P))
+
+size_lhs_nth: LEMMA 
+    i < length(P) AND j < length(P) AND NOT i = j IMPLIES
+    size(nth(P, i)`1) + size(nth(P, j)`1) <= size(lhs(P))
+    
+% subterms 
+subterms_mem: LEMMA
+    member(t, subterms(unif_prb)) IFF
+    EXISTS unif_pair:
+    	   member(t, subterms(unif_pair)) AND member(unif_pair, unif_prb) 
+
+subterms_mem_unif_prb: LEMMA
+    member(s, subterms(unif_prb)) IFF
+    EXISTS t:
+          member(s, subterms(t)) AND member(t, unif_prb)
+
+subterms_mem_lst_unif_prb: LEMMA
+    member(s, subterms(lst_unif_prb)) IFF
+    EXISTS t:
+          member(s, subterms(t)) AND member(t, lst_unif_prb)
+
+subterms_append: LEMMA
+    member(t, subterms(append(unif_prb1, unif_prb2))) IFF
+    (member(t, subterms(unif_prb1)) OR member(t, subterms(unif_prb2)))
+
+subterms_pareate: LEMMA
+    member(t, subterms(pareate(args1, args2))) IMPLIES (member(t, subterms(args1)) OR member(t, subterms(args2)))
+
+% subset of a unification problem
+subset_vars: LEMMA
+   subset?(unif_prb1, unif_prb2) IMPLIES subset?(vars(unif_prb1), vars(unif_prb2))
+
+subset_unif_prb_append: LEMMA
+   (subset?(unif_prb, unif_prb1) IMPLIES subset?(unif_prb, append(unif_prb1, unif_prb2))) AND
+   (subset?(unif_prb, unif_prb2) IMPLIES subset?(unif_prb, append(unif_prb1, unif_prb2))) 
+
+
+% unifies?
+unifies?_append: LEMMA
+    unifies?(G, sigma, append(unif_prb1, unif_prb2)) =
+    (unifies?(G, sigma, unif_prb1) AND unifies?(G, sigma, unif_prb2))
+
+unifies?_pareate: LEMMA
+    length(args1) = length(args2) AND unifies?(G, sigma, pareate(args1, args2))
+    IMPLIES equal?(G)(subs(sigma)(args1), subs(sigma)(args2))
+
+unifies?_lhs_rhs: LEMMA
+    unifies?(G, sigma, P) IMPLIES equal?(G)(subs(sigma)(lhs(P)), subs(sigma)(rhs(P)))
+
+unifies?_equiv: LEMMA
+    unifies?(G, sigma, unif_prb) IFF
+    FORALL unif_pair: member(unif_pair, unif_prb) IMPLIES unifies?(G, sigma, unif_pair)
+
+unifies?_equal: LEMMA
+    equal?(G)(sigma, sigma1) AND unifies?(G, sigma, unif_prb) IMPLIES
+    unifies?(G, sigma1, unif_prb)
+
+unifies?_equal_alt: LEMMA 
+    equal?(G)(sigma, sigma1, set_vars) AND unifies?(G, sigma, unif_prb) AND subset?(vars(unif_prb), set_vars)
+    IMPLIES unifies?(G, sigma1, unif_prb)
+
+unifies?_subset: LEMMA
+   subset?(unif_prb, unif_prb1) AND unifies?(G, sigma, unif_prb1) IMPLIES unifies?(G, sigma, unif_prb) 
+
+unifies?_append_disjoint: LEMMA
+    unifies?(G, append(sigma1, sigma), unif_prb) AND disjoint?(dom(sigma), vars(unif_prb))
+    IMPLIES unifies?(G, sigma1, unif_prb)
+
+unifies?_append_disjoint2: LEMMA
+    unifies?(G, sigma1, unif_prb) AND disjoint?(dom(sigma), vars(unif_prb))
+    IMPLIES unifies?(G, append(sigma1, sigma), unif_prb)
+
+unifies?_append_disjoint3: LEMMA 
+    disjoint?(dom(sigma), vars(unif_prb)) IMPLIES 
+    unifies?(G, append(sigma1, sigma), unif_prb) = unifies?(G, sigma1, unif_prb)
+
+    
+% apply_sub
+apply_sub_mem: LEMMA
+    member(t, apply_sub(sigma, unif_prb)) IFF
+    EXISTS s:
+       member(s, unif_prb) AND t = subs(sigma)(s)
+
+apply_sub_unif_pair: LEMMA
+    member(unif_pair, apply_sub(sigma, unif_prb)) IFF
+    EXISTS unif_pair1:
+       member(unif_pair1, unif_prb) AND unif_pair = apply_sub(sigma, unif_pair1) 
+
+apply_sub_subterms: LEMMA
+    member(t, subterms(apply_sub(sigma, unif_prb))) IMPLIES
+    EXISTS s: 
+       (member(s, subterms(unif_prb)) AND
+       (t = subs(sigma)(s) OR (var?(s) AND member(t, ext(p(s))(subterms(img(sigma)))))))
+
+apply_sub_rhs: LEMMA
+    member(t, rhs(apply_sub(sigma, unif_prb))) IFF 
+    EXISTS s:
+        (member(s, rhs(unif_prb)) AND t = subs(sigma)(s))
+
+apply_sub_null: LEMMA
+    apply_sub(null, unif_prb) = unif_prb
+
+apply_sub_append: LEMMA
+    apply_sub(sigma, append(unif_prb1, unif_prb2)) = append(apply_sub(sigma, unif_prb1), apply_sub(sigma, unif_prb2))
+
+apply_sub_sub_append: LEMMA
+    apply_sub(sigma, apply_sub(sigma1, unif_prb)) = apply_sub(append(sigma, sigma1), unif_prb)
+
+apply_sub_len: LEMMA
+    length(apply_sub(sigma, unif_prb)) = length(unif_prb)
+
+apply_sub_nth: LEMMA 
+    i < length(unif_prb) IMPLIES
+    nth(apply_sub(sigma, unif_prb), i) = apply_sub(sigma, nth(unif_prb, i))
+
+apply_sub_first_proj: LEMMA
+    subs(sigma)(first_proj(unif_prb)) = first_proj(apply_sub(sigma, unif_prb))
+
+apply_sub_sec_proj: LEMMA
+    subs(sigma)(sec_proj(unif_prb)) = sec_proj(apply_sub(sigma, unif_prb))
+
+apply_sub_subset_unif_prb: LEMMA 
+    subset?(unif_prb, apply_sub(sigma, unif_prb1)) IMPLIES 
+    EXISTS unif_prb2:
+       subset?(unif_prb2, unif_prb1) AND unif_prb = apply_sub(sigma, unif_prb2)
+
+apply_sub_pareate: LEMMA  
+    pareate(subs(sigma)(args1), subs(sigma)(args2)) = apply_sub(sigma, pareate(args1, args2))
+
+apply_sub_elim_var_unif_pair: LEMMA
+    member(X, dom(sigma)) AND NOT member(X, vars(img(sigma))) 
+    IMPLIES NOT member(X, vars(apply_sub(sigma, unif_pair)))
+
+apply_sub_elim_var: LEMMA
+    member(X, dom(sigma)) AND NOT member(X, vars(img(sigma))) 
+    IMPLIES NOT member(X, vars(apply_sub(sigma, unif_prb)))
+
+apply_sub_elim_var2: LEMMA 
+    idempotent?(sigma) IMPLIES disjoint?(dom(sigma), vars(apply_sub(sigma, unif_prb)))
+
+apply_sub_elim_var3: LEMMA 
+    NOT member(X, vars(t)) IMPLIES 
+    NOT member(X, vars(apply_sub(cons((X, ext(pi)(t)), null), P)))
+    
+apply_sub_vars: LEMMA 
+    subset?(vars(apply_sub(sigma, unif_prb)), union(vars(img(sigma)), vars(unif_prb)))
+
+apply_sub_no_pair: LEMMA
+    no_pair?(unif_prb) AND no_pair?(img(sigma)) IMPLIES no_pair?(apply_sub(sigma, unif_prb))
+
+apply_sub_no_var_pair: LEMMA
+    no_var_pair?(unif_prb) IMPLIES no_var_pair?(apply_sub(sigma, unif_prb))
+
+apply_sub_all_ac: LEMMA
+    all_ac_prb?(unif_prb) IMPLIES all_ac_prb?(apply_sub(sigma, unif_prb))
+
+ac_prb_renaming: LEMMA 
+    ac_prb?(unif_pair) IFF ac_prb?(apply_sub(rho, unif_pair))
+
+all_ac_prb_renaming: LEMMA 
+    all_ac_prb?(unif_prb) IFF all_ac_prb?(apply_sub(rho, unif_prb))
+
+apply_sub_unifies: LEMMA 
+   unifies?(G, sigma, apply_sub(sigma1, unif_prb)) IFF unifies?(G, append(sigma, sigma1), unif_prb)
+
+apply_sub_unifies2: LEMMA 
+   unifies?(G, sigma, apply_sub(sigma1, unif_pair)) IFF unifies?(G, append(sigma, sigma1), unif_pair)
+
+apply_sub_eq: LEMMA 
+   equal_syn?(sigma, sigma1, vars(unif_prb)) IMPLIES 
+   apply_sub(sigma, unif_prb) = apply_sub(sigma1, unif_prb)
+ 
+apply_sub_no_effect: LEMMA  
+   disjoint?(dom(sigma), vars(unif_prb)) IMPLIES 
+   apply_sub(sigma, unif_prb) = unif_prb
+
+% select_greater
+select_greater_cor: LEMMA
+   NOT null?(unif_prb) IMPLIES member(select_greater(unif_prb), unif_prb) AND 
+   FORALL t: member(t, unif_prb) IMPLIES size(t) <= size(select_greater(unif_prb))
+
+% well_formed:
+well_formed_unif_prb: LEMMA 
+   well_formed?(unif_prb) IFF (FORALL t: member(t, unif_prb) IMPLIES well_formed?(t))
+
+well_formed_apply_sub: LEMMA
+   well_formed?(unif_prb) AND well_formed?(sigma)
+   IMPLIES well_formed?(apply_sub(sigma, unif_prb))
+
+well_formed_subset: LEMMA 
+   subset?(unif_prb, unif_prb1) AND well_formed?(unif_prb1) IMPLIES well_formed?(unif_prb) 
+
+well_formed_unif_prb_append: LEMMA 
+   well_formed?(append(unif_prb, unif_prb1)) IFF (well_formed?(unif_prb) AND well_formed?(unif_prb1))
+
+unifies?_impossible: LEMMA
+   (FORALL t1:
+    count(t1, get_args(f)(s), equal?(G)) >= count(t1, get_args(f)(t), equal?(G)))
+   AND are_ac?(t, s, f)
+   AND NOT same_count?(get_args(f)(t), get_args(f)(s), equal?(G)) AND nominal_AC_fresh_subs(G1)(delta, G) 
+   IMPLIES NOT unifies?(G1, delta, (t, s))
+
+unifies?_impossible2: LEMMA  
+   unifies?(G, sigma, (t, s)) AND NOT var?(t) AND well_formed?(t) IMPLIES  
+   ord(t) = ord(s) OR (var?(s) AND NOT (member(V(s), vars(t))))
+
+unifies?_impossible3: LEMMA 
+   unifies?(G, sigma, (t, s)) AND disjoint?(dom(sigma), PV) AND var?(s) AND well_formed?(t) IMPLIES   
+   (var?(t) AND V(s) = V(t)) OR (var?(t) AND (NOT member(V(t), vars(s))) AND (NOT member(V(t), PV)))
+   OR ((NOT member(V(s), vars(t))) AND (NOT member(V(s), PV)))
+
+unifies?_impossible4: LEMMA 
+   unifies?(G, sigma, (t, s)) AND var?(t) AND NOT var?(s) AND disjoint?(dom(sigma), PV) AND
+   well_formed?(s) IMPLIES ((NOT member(V(t), PV)) AND (NOT member(V(t), vars(s))))
+   
+
+
+remove_common_not_null_count: LEMMA
+   (EXISTS t1:
+       count(t1, args1, equal?(G)) > count(t1, args2, equal?(G)))
+   IMPLIES NOT null?(remove_common(args1, args2, equal?(G)))
+
+remove_common_not_null_unifies: LEMMA 
+   unifies?(G1, delta, (t, s)) AND NOT equal?(G)(t, s) AND are_ac?(t, s, f) AND
+   nominal_AC_fresh_subs(G1)(delta, G)  IMPLIES  
+   (NOT null?(remove_common(get_args(f)(t), get_args(f)(s), equal?(G))) AND
+    NOT null?(remove_common(get_args(f)(s), get_args(f)(t), equal?(G))))
+
+remove_common_args_cor: LEMMA
+   LET (t1, s1) = remove_common(t, s, f, G) IN
+   unifies?(G1, delta, (t, s)) AND NOT equal?(G)(t, s) AND are_ac?(t, s, f)
+   AND nominal_AC_fresh_subs(G1)(delta, G) IMPLIES  
+   remove_common(get_args(f)(t), get_args(f)(s), equal?(G)) =
+   remove_common(get_args(f)(t1), get_args(f)(s1), equal?(G))
+
+get_args_remove_common: LEMMA
+   LET (t1, s1) = remove_common(t, s, f, G) IN
+   unifies?(G1, delta, (t, s)) AND NOT equal?(G)(t, s) AND are_ac?(t, s, f) AND 
+   nominal_AC_fresh_subs(G1)(delta, G) IMPLIES 
+   get_args(f)(t1) = remove_common(get_args(f)(t), get_args(f)(s), equal?(G))
+
+remove_common_eq: LEMMA 
+    LET (t1, s1) = remove_common(t, s, f, G) IN 
+    NOT equal?(G)(t, s) AND are_ac?(t, s, f) AND unifies?(G1, delta, (t, s)) AND
+    nominal_AC_fresh_subs(G1)(delta, G) IMPLIES 
+    equal?(G1)(subs(delta)(t1), subs(delta)(s1))
+
+remove_common_no_common_args: LEMMA 
+   LET (t1, s1) = remove_common(t, s, f, G) IN 
+   unifies?(G1, delta, (t, s)) AND NOT equal?(G)(t, s) AND are_ac?(t, s, f) AND
+   nominal_AC_fresh_subs(G1)(delta, G) IMPLIES 
+   no_common_args?(get_args(f)(t1), get_args(f)(s1), G)
+
+remove_common_eq2: LEMMA 
+    LET (t1, s1) = remove_common(t, s, f, G) IN 
+    NOT null?(remove_common(get_args(f)(t), get_args(f)(s), equal?(G)))
+    AND NOT null?(remove_common(get_args(f)(s), get_args(f)(t), equal?(G))) AND
+    are_ac?(t, s, f) AND unifies?(G1, delta, (t1, s1)) AND
+    nominal_AC_fresh_subs(G1)(delta, G) IMPLIES equal?(G1)(subs(delta)(t), subs(delta)(s))
+
+remove_common_vars: LEMMA 
+   LET (t1, s1) = remove_common(t, s, f, G) IN
+   subset?(vars(t1, s1), vars(t, s))
+   
+remove_common_alm_well_formed?: LEMMA  
+   LET (t1, s1) = remove_common(t, s, f, G) IN
+   unifies?(G1, delta, (t, s)) AND NOT equal?(G)(t, s) AND are_ac?(t, s, f) AND
+   nominal_AC_fresh_subs(G1)(delta, G) AND well_formed?((t, s)) IMPLIES
+   alm_well_formed?((t1, s1)) 
+
+% decompose
+decompose_num_arg: LEMMA 
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   bool1 IMPLIES num_arg(t) = num_arg(s) 
+   
+decompose_subterm: LEMMA   
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   bool1 IMPLIES subterms(unif_prb) = subterms((t, s))
+
+decompose_subterm2: LEMMA     
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   subset?(subterms(unif_prb), subterms((t, s)))
+
+decompose_correct: LEMMA    
+   LET (unif_prb, bool1) = decompose(t, s) IN bool1 IMPLIES 
+   unifies?(G, sigma, (t, s)) = unifies?(G, sigma, unif_prb)
+
+decompose_correct_app: LEMMA    
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   bool1 AND well_formed?(sigma) IMPLIES 
+   unifies?(G, sigma, (app(f, t), app(f, s))) = unifies?(G, sigma, unif_prb)
+
+decompose_correct_abs1: LEMMA    
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   bool1 AND well_formed?(sigma) IMPLIES 
+   unifies?(G, sigma, (abs(a, t), abs(a, s))) = unifies?(G, sigma, unif_prb)
+
+decompose_correct_abs2: LEMMA    
+   LET pi = cons((a, b), null),  
+      (unif_prb, bool1) = decompose(t, ext(pi)(s)) IN
+   bool1 AND well_formed?(sigma) AND a /= b AND fresh(G)(a, subs(sigma)(s)) IMPLIES 
+   unifies?(G, sigma, (abs(a, t), abs(b, s))) = unifies?(G, sigma, unif_prb)
+
+decompose_no_pair: LEMMA 
+   no_pair?(decompose(t, s)`1)
+
+decompose_not_fail: LEMMA   
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   well_formed?(sigma) AND unifies?(G, sigma, (t, s))
+   IMPLIES bool1 
+
+decompose_not_fail2: LEMMA 
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   well_formed?(sigma) AND unifies?(G, sigma, (app(f, t), app(f, s)))
+   IMPLIES bool1 
+
+decompose_app_well_formed: LEMMA 
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   well_formed?(sigma) AND well_formed?((app(f, t), app(f, s))) AND bool1
+   IMPLIES well_formed?(unif_prb)
+
+decompose_well_formed: LEMMA 
+   LET unif_prb = decompose(t, s)`1 IN
+   well_formed?(app(f, t), app(f, s)) IMPLIES well_formed?(unif_prb) 
+
+decompose_well_formed_abs: LEMMA  
+   LET unif_prb = decompose(t, s)`1 IN
+   well_formed?(abs(a, t), abs(b, s)) IMPLIES well_formed?(unif_prb) 
+
+decompose_size: LEMMA 
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   size(unif_prb) <= size((t, s))
+
+decompose_ren: LEMMA 
+   decompose(t, s)`2 IFF decompose(subs(rho)(t), subs(rho)(s))`2
+
+decompose_ren1: LEMMA 
+   decompose(subs(rho)(t), subs(rho)(s))`1 = apply_sub(rho, decompose(t, s)`1)
+
+decompose_ext: LEMMA 
+   decompose(t, s)`2 = decompose(t, ext(pi)(s))`2
+   
+decompose_not_fail3: LEMMA 
+   LET (unif_prb, bool1) = decompose(t, s) IN
+   well_formed?(sigma) AND unifies?(G, sigma, (abs(a, t), abs(b, s)))
+   IMPLIES bool1 
+
+decompose_vars: LEMMA 
+   subset?(vars(decompose(t, s)`1), vars(t, s))
+
+decompose_vars_rhs: LEMMA  
+   subset?(vars(rhs(decompose(t, s)`1)), vars(s))
+
+% match_problem 
+match_prb_append: LEMMA 
+   match_problem?(append(P1, P2), PV) = (match_problem?(P1, PV) AND match_problem?(P2, PV))
+
+match_prb_apply_sub: LEMMA 
+    match_problem?(P, PV) AND subset?(vars(img(sigma)), PV) IMPLIES 
+    match_problem?(apply_sub(sigma, P), PV)
+
+match_prb_subset: LEMMA
+    subset?(P1, P) AND match_problem?(P, PV) IMPLIES match_problem?(P1, PV)
+
+% used by inst_step or in the algorithm of unification
+unifies_more_general_sub_no_effect: LEMMA
+    unifies?(Delta, delta, apply_sub(sigma1, P)) AND
+    more_general?(Delta)(append(sigma1, sigma), delta) AND
+    disjoint?(dom(sigma), vars(P)) AND idempotent?(sigma1) AND
+    disjoint?(dom(sigma), vars(img(sigma1)))
+    IMPLIES unifies?(Delta, delta, P)
+
+unifies_is_more_general_basic_sub: LEMMA 
+    more_general?(G)(sigma, delta) AND unifies?(G, delta, (t, s)) AND 
+    var?(t) AND NOT member(V(t), vars(s)) AND
+    disjoint?(dom(sigma), vars(t, s)) IMPLIES 
+    (LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null) IN
+         more_general?(G)(append(sigma1, sigma), delta)) 
+
+unifies_is_equal_sub: LEMMA 
+    unifies?(G, delta, (t, s)) AND var?(t) AND NOT member(V(t), vars(s)) IMPLIES 
+    (LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null) IN
+         equal?(G)(delta, append(delta, sigma1)))
+
+unifies_sub_no_effect: LEMMA
+    unifies?(Delta, append(delta, append(sigma1, sigma)), apply_sub(sigma1, (t, s)))
+    AND disjoint?(dom(sigma), vars(img(sigma1))) AND idempotent?(sigma1) AND 
+    disjoint?(dom(sigma), vars(t, s)) IMPLIES 
+    unifies?(Delta, append(delta, append(sigma1, sigma)), (t, s))
+
+unifies_basic_sub: LEMMA
+    LET delta = cons((X, ext(reverse(pi))(s)), null) IN
+    disjoint?(dom(sigma), add(X, vars(s))) AND NOT member(X, vars(s)) IMPLIES 
+    unifies?(Delta, append(append(sigma1, delta), sigma), (pi * X, s))
+
+unifies_nominal_AC_fresh_subs: LEMMA 
+    unifies?(Delta, delta, (t, s)) AND var?(t) AND var?(s) AND V(t) = V(s)
+    AND disjoint?(dom(delta), vars(s)) IMPLIES 
+    nominal_AC_fresh_subs(Delta)(delta, fc(DS(p(t), p(s)), V(t)))
+
+% solves
+solves_elim_append: LEMMA 
+   equal?(Delta)(delta, append(gamma, delta), V1) AND subset?(vars(Nabla), V1)
+   AND subset?(V1, V2) AND solves?(Delta, append(gamma, delta))(Nabla, null, sigma, V2, PV2)
+   AND disjoint?(dom(delta), PV) AND well_formed?(delta) AND contained?(delta, V1)
+   IMPLIES solves?(Delta, delta)(Nabla, null, sigma, V1, PV)
+
+is_instance_equal_syn: LEMMA
+   is_instance?(Delta, delta)(Nabla, sigma_, V1, PV) AND
+   equal_syn?(sigma, sigma_, V2) AND subset?(V2, V1) 
+   IMPLIES 
+   is_instance?(Delta, delta)(Nabla, sigma, V2, PV)
+   
+END nominal_AC_unification 

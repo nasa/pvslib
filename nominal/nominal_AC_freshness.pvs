@@ -1,0 +1,164 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%          (3) Johannes Kepler University 
+% 
+% Paper: "Nominal AC-Matching"
+% 
+% Contains lemmas about freshness. 
+%
+% Some proofs in this theory follow the same line of corresponding proofs in the 
+% theory of nominal syntactic unification (in that theory, the file is
+% "syntactic_freshness".pvs).
+% However, since the grammar of the terms is different, reusing these
+% proofs is done manually (it's interactive theorem proving not fully automated reasoning). 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_AC_freshness: THEORY
+BEGIN
+
+	IMPORTING nominal_AC_term_properties
+
+fresh_context: TYPE = list[[atom,variable]]
+
+	Delta, Nabla: VAR fresh_context
+	a, b: VAR atom
+	pi,pi1,pi2: VAR perm
+	t: VAR nominal_AC_term
+	f: VAR string
+	i: VAR nat
+
+% Delta derivates that a is fresh in t or
+% a is fresh in t under the context Delta.
+fresh(Delta)(a, t): RECURSIVE bool =
+   CASES t OF
+   	 at(b): a/=b,
+	 *(pm,v): member((act(reverse(pm))(a),v),Delta),
+	 unit: TRUE,
+	 pair(t1,t2): fresh(Delta)(a,t1) AND fresh(Delta)(a,t2),
+	 abs(b,bd): IF a=b THEN TRUE
+	 	       ELSE fresh(Delta)(a,bd)
+		    ENDIF,
+	 app(sl,ag): fresh(Delta)(a,ag), 
+	 ac_app(sl, ag): fresh(Delta)(a, ag)
+   ENDCASES
+   MEASURE t BY <<
+
+% Permutations (applied to atom and term) do not change freshness.
+ext_preserves_fresh: LEMMA 
+   fresh(Delta)(act(pi)(a), ext(pi)(t)) = fresh(Delta)(a, t)
+
+% If two permutations have the same action, then freshness is invariant 
+% with respect to the application of them to a term.
+ds_fresh_invariance: LEMMA
+   act(pi1) = act(pi2) IMPLIES 
+   	     fresh(Delta)(a,ext(pi1)(t)) = fresh(Delta)(a,ext(pi2)(t))
+
+% Alternation of a permutation and its reverse to the atom and the term
+% in a freshness judgement.
+ext_reverse_fresh: LEMMA
+   fresh(Delta)(a,ext(pi)(t)) = fresh(Delta)(act(reverse(pi))(a), t)
+
+% Enlarging contexts preserves freshness.
+fresh_weakening: LEMMA
+   (FORALL(ax:[atom,variable]): member(ax,Delta) => member(ax,Nabla))
+    AND fresh(Delta)(a, t) => fresh(Nabla)(a, t)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	l: VAR list[atom]
+	X, Y: VAR variable
+  Delta1, Delta2: VAR [fresh_context, bool]
+
+% Context formed by a#X such that a is in the list l.
+fc(l, X): RECURSIVE fresh_context =
+   CASES l OF
+   	 null: null,
+	 cons(head,tail): cons((head,X), fc(tail,X))
+   ENDCASES
+   MEASURE l BY <<
+
+% Characterisation of 'fc'.
+fc_member: LEMMA
+   member((a,Y), fc(l,X)) = (member(a, l) AND Y=X)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Concatenation of contexts and conjuction of booleans.
+% If some of the booleans are FALSE, the context is emptied.
+x(Delta1, Delta2): [fresh_context, bool] =
+   IF Delta1`2 AND Delta2`2 THEN (append(Delta1`1,Delta2`1), TRUE)
+      ELSE ((::),FALSE)
+   ENDIF
+
+% Function that computes the minimal context which derivates a#t.
+% Definition 3.12
+fresh?(a, t): RECURSIVE [fresh_context, bool] =
+   CASES t OF
+   	 at(b): ((::) , a /= b),
+	 *(pm,X): ((:(act(reverse(pm))(a),X):),TRUE),
+	 unit: ((::), TRUE),
+	 pair(t1,t2): x(fresh?(a, t1), fresh?(a, t2)),
+	 abs(b,bd): IF a = b THEN ((::), TRUE)
+	 	       ELSE fresh?(a, bd) ENDIF,
+	 app(f,ag): fresh?(a, ag),
+	 ac_app(f, ag): fresh?(a, ag)
+   ENDCASES
+   MEASURE t BY <<
+
+IMPORTING list_aux_equational_reasoning[[atom,variable]]
+
+% Soundness of fresh?
+fresh?_is_fresh: LEMMA 
+   fresh?(a,t) = (Delta,TRUE) => fresh(Delta)(a,t)
+
+% Alternation of a permutation and its reverse to the atom and the term
+% in a freshness problem.
+ext_reverse_fresh?: LEMMA
+   fresh?(a,ext(pi)(t)) = fresh?(act(reverse(pi))(a), t)
+
+% If the fresh? returns FALSE, then the resulting context is empty
+not_fresh_is_null: LEMMA
+   NOT fresh?(a, t)`2 IMPLIES fresh?(a,t)`1 = (::)
+
+% Completeness of fresh?
+fresh?_complete: LEMMA
+   LET (Nabla,b) = fresh?(a, t) IN
+   fresh(Delta)(a, t) IMPLIES b AND
+   (FORALL (b, X): member((b, X), Nabla) => member((b, X), Delta))
+
+%% nominal_AC_freshness
+fresh_select_num_arg1: LEMMA
+    num_arg(f, t) = 1 AND fresh(Delta)(a, select(f, t)(i))
+    IMPLIES fresh(Delta)(a, t)
+
+fresh_delete_select: LEMMA 
+    (fresh(Delta)(a, select(f, t)(i)) AND fresh(Delta)(a, delete(f, t)(i)))
+    IFF fresh(Delta)(a, t)
+
+% definition of variables that appear in a context
+vars(Delta): RECURSIVE finite_set[variable] = 
+   IF null?(Delta) THEN emptyset 
+   ELSE LET (a, X) = car(Delta) IN add(X, vars(cdr(Delta)))
+   ENDIF
+MEASURE Delta by << 
+
+vars_append_context: LEMMA 
+    vars(append(Delta, Nabla)) = union(vars(Delta), vars(Nabla))
+
+vars_mem_context: LEMMA
+    member(X, vars(Delta)) IFF (EXISTS a, Y: member((a, Y), Delta) AND X = Y)
+
+vars_fresh?: LEMMA 
+    subset?(vars(fresh?(a, t)`1), vars(t))
+
+vars_fc: LEMMA 
+    subset?(vars(fc(l, X)), singleton(X)) 
+
+END nominal_AC_freshness

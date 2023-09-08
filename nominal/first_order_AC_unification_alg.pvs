@@ -1,0 +1,169 @@
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London, 
+%          (3) Johannes Kepler University 
+% 
+% Paper: "A Certified Algorithm for AC-Unification"
+% 
+% This theory contains the first-order AC-unification algorithm along with the proofs
+% of correctness and completeness
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+first_order_AC_unification_alg: THEORY
+BEGIN
+	IMPORTING first_order_AC_rename_input, list_aux_equational_reasoning[sub], termination_alg 
+
+nice_input: TYPE = {input: [unif_prb, sub, finite_set[variable]] | nice_input?(input)}
+
+	IMPORTING list_aux_equational_reasoning2parameters[nice_input, sub]
+
+X: VAR variable
+t, s: VAR first_order_AC_term
+sigma, sigma1, delta, gamma, gamma_: VAR sub
+vars2avoid, fixed_vars: VAR finite_set[variable]
+unif_pair: VAR unif_pair
+unif_prb: VAR unif_prb
+unif_prb1: VAR unif_prb
+id: VAR sub
+input, input_: VAR nice_input
+rho: VAR renaming
+
+% the AC-unification algorithm. In our paper we refer to it as ACUnif.
+% input is a triple of the form (P, σ, V). 
+unify(input): RECURSIVE list[sub] =
+  LET (unif_prb, sigma, vars2avoid) = input IN 
+  IF null?(unif_prb) THEN cons(sigma, null)
+  ELSE LET
+     (unif_pair, unif_prb1) = choose_unif_pair(unif_prb), 
+     (t, s) = unif_pair IN 
+     IF var?(s) AND (NOT member(V(s), vars(t))) THEN LET
+     	sigma1 = cons((V(s), t), null), 
+	new_sigma = append(sigma1, sigma), 
+	new_unif_prb = apply_sub(sigma1, unif_prb1) IN
+	unify(new_unif_prb, new_sigma, vars2avoid) 
+
+     ELSE CASES t OF
+        const(a):
+	  IF s = const(a) THEN unify(unif_prb1, sigma, vars2avoid)
+	  ELSE null
+	  ENDIF,
+
+	variable(X):
+	  IF (NOT member(X, vars(s))) THEN LET
+	    sigma1 = cons((X, s), null), 
+	    new_sigma = append(sigma1, sigma), 
+	    new_unif_prb = apply_sub(sigma1, unif_prb1) IN
+	    unify(new_unif_prb, new_sigma, vars2avoid)
+	  ELSIF s = variable(X) THEN unify(unif_prb1, sigma, vars2avoid) 
+	  ELSE null
+	  ENDIF,
+
+	unit:
+	  IF s = unit THEN unify(unif_prb1, sigma, vars2avoid)  
+	  ELSE null 
+	  ENDIF,
+
+	app(f, arg):
+	  IF NOT app?(s) OR f /= f_sym(s) OR NOT decompose(arg, arg(s))`2 THEN null 
+	  ELSE LET dec_unif_prb = decompose(arg, arg(s))`1,
+	       	   new_unif_prb = append(dec_unif_prb, unif_prb1) IN
+		   unify(new_unif_prb, sigma, vars2avoid)
+	  ENDIF,
+
+	ac_app(f, ac_arg):
+	  IF NOT ac_app?(s) OR f /= ac_sym(s) THEN null
+	  ELSE LET
+	     input_lst = first_order_AC_apply_ac_step(unif_prb, null, sigma, vars2avoid), 
+	     lst_results = map(unify)(input_lst) IN 
+	     flatten(lst_results) 
+	  ENDIF
+        ENDCASES
+    ENDIF
+  ENDIF
+MEASURE lex4(card(vars_not_ac(input`1)), card(vars_under2more(input`1)),
+	card(admissible_subterms(input`1)), size(input`1))
+
+
+%%%%%%%%%%%% LEMMAS
+% some properties of the substitutions computed, needed for the lemmas of soundness and completeness
+unify_subs: LEMMA 
+   LET (unif_prb, sigma, vars2avoid) = input IN 
+   member(delta, unify(unif_prb, sigma, vars2avoid)) IMPLIES
+   EXISTS sigma1:
+      delta = append(sigma1, sigma)
+
+unify_well_formed: LEMMA  
+   LET (unif_prb, sigma, vars2avoid) = input IN 
+   member(delta, unify(unif_prb, sigma, vars2avoid)) IMPLIES
+   well_formed?(delta) 
+
+renamed_inputs_unify_alg: LEMMA  
+   renamed_inputs?(input, input_, fixed_vars) AND member(gamma_, unify(input_)) IMPLIES
+   EXISTS rho, gamma: 
+       member(gamma, unify(input)) AND equal_syn?(gamma_, append(rho, gamma), fixed_vars)
+
+% correctness of instantiation
+unify_alg_correct_sub: LEMMA  
+    LET sigma1 = cons((X, t), null), new_sigma = append(sigma1, sigma),
+        new_unif_prb = apply_sub(sigma1, unif_prb1) IN
+    (NOT member(X, vars(t))) AND member(variable(X), unif_prb) AND member(t, unif_prb)
+    AND nice_input?(unif_prb, sigma, vars2avoid) AND subset?(unif_prb1, unif_prb) AND 
+    unifies?(delta, new_unif_prb) AND member(delta, unify(new_unif_prb, new_sigma, vars2avoid))
+    IMPLIES
+    unifies?(delta, (variable(X), t)) AND unifies?(delta, unif_prb1)
+  
+% Main theorem to prove the corollary of Soundness. Here, "input" is of type nice input (see line 14, 26). 
+unify_alg_correct: THEOREM  
+    LET (unif_prb, sigma, vars2avoid) = input IN 
+    member(delta, unify(unif_prb, sigma, vars2avoid))
+    IMPLIES unifies?(delta, unif_prb)
+
+% corollary of correctness, corollary from the previous lemma
+unify_alg_correct_cor: COROLLARY
+    well_formed?((t, s)) AND member(delta, unify(cons((t, s), null), null, vars(t, s))) 
+    IMPLIES unifies?(delta, cons((t, s), null))
+
+% used in the proof of completeness for the instantiation case
+unify_alg_complete_sub: LEMMA    
+    LET sigma1 = cons((X, t), null), new_sigma = append(sigma1, sigma),
+        new_unif_prb = apply_sub(sigma1, unif_prb1) IN
+    (NOT member(X, vars(t))) AND member(variable(X), unif_pair) AND member(t, unif_pair)
+    AND member(unif_pair, unif_prb) AND nice_input?(unif_prb, sigma, vars2avoid) AND
+    subset?(unif_prb1, unif_prb) AND 
+    unifies?(delta, unif_prb) AND more_general?(sigma, delta) IMPLIES
+    more_general?(new_sigma, delta) AND unifies?(delta, apply_sub(sigma1, unif_prb1))
+
+% main theorem to prove the corollary of completeness. As was the case for soudness, here input is of type "nice_input". 
+unify_alg_complete: THEOREM 
+    LET (unif_prb, sigma, vars2avoid) = input IN 
+    unifies?(delta, unif_prb) AND more_general?(sigma, delta) AND contained?(delta, vars2avoid)
+    AND well_formed?(delta) IMPLIES 
+    EXISTS gamma:
+       member(gamma, unify(unif_prb, sigma, vars2avoid)) AND 
+       more_general?(gamma, delta, vars2avoid)
+
+% corollary of completeness for the algorithm 
+unify_alg_complete_cor: COROLLARY 
+    well_formed?((t, s)) AND unifies?(delta, (t, s))  
+    AND contained?(delta, vars2avoid) AND subset?(vars(t, s), vars2avoid) AND well_formed?(delta)
+    IMPLIES 
+    EXISTS gamma: 
+       member(gamma, unify(cons((t, s), null), null, vars2avoid)) AND
+       more_general?(gamma, delta, vars2avoid)
+
+% completeness after we remove the hypthesis $\delta \subseteq V$
+unify_alg_complete_cor2: LEMMA   
+    well_formed?((t, s)) AND unifies?(delta, (t, s)) AND well_formed?(delta)
+    IMPLIES
+    EXISTS gamma:
+       member(gamma, unify(cons((t, s), null), null, vars(t, s))) AND
+       more_general?(gamma, delta, vars(t, s))
+       
+    
+END first_order_AC_unification_alg 
