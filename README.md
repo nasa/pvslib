@@ -55,6 +55,7 @@ Currently, NASALib consists of 64 libraries, containing about 35K proven formula
 | [metric_space](./metric_space/README.md) | Domains with a distance metric, continuity and uniform continuity |
 | [mv_analysis](./mv_analysis/README.md) | Multivariate real analysis: norms, limits, continuity, derivatives, optimization, etc. |
 | [mult_poly](./mult_poly/README.md) | Multivariate polynomials and semi-algebriac sets. |
+| [nominal](./nominal/README.md) | Nominal equational reasoning and a first-order AC-unification algorithm |
 | [numbers](./numbers/README.md) | Elementary number theory |
 | [ODEs](./ODEs/README.md) | Ordinary Differential Equations |
 | [orders](./orders/README.md) | Abstract orders, lattices, fix points |
@@ -196,6 +197,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Esther Conrad, NASA, USA
 * Felicidad Aguado, University of La Coruña, Spain
 * Flavio L.C. de Moura, University of Brasilia, Brazil
+* [Gabriel Ferreira Silva](https://gabriel951.github.io/), University of Brasilia, Brazil
 * [Gilles Dowek](https://who.rocq.inria.fr/Gilles.Dowek/index-en.html), INRIA, France
 * [George Hagen](http://shemesh.larc.nasa.gov/people/geh), NASA, USA
 * Gilberto Perez, University of La Coruña, Spain

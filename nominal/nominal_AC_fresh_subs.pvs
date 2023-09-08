@@ -1,0 +1,268 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%          (3) Johannes Kepler University 
+% 
+% Paper: "Nominal AC-Matching"
+% 
+% Contains the functions "fresh_subs" and "fresh_subs?" and lemmas about their
+% correctness and completeness. 
+%
+% Some proofs in this theory follow the same line of corresponding proofs in the 
+% theory of nominal syntactic unification (in that theory, the file is "syntactic_substitution".pvs).
+% However, since the grammar of the terms is different, reusing these
+% proofs is done manually (it's interactive theorem proving not fully automated reasoning). 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_AC_fresh_subs: THEORY
+BEGIN
+
+	IMPORTING nominal_AC_substitution
+
+t, t1, t2, s, u, w: VAR nominal_AC_term
+X,Y: VAR variable
+pi, pi1: VAR perm
+a, b: VAR atom
+f: VAR string
+args, args1, args2: VAR args
+set_vars, set_vars1, V1, V1_, PV: VAR finite_set[variable]
+
+Delta, Nabla, Nabla1, Nabla2, G, G1: VAR fresh_context
+sigma, gamma, lambda1, sigma1, delta: VAR sub
+
+coef, coef2, lst_nat: VAR list[nat]
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The function fresh_subs applies a substituion sigma to every variable in a 
+% context Nabla and verifies if freshness holds in the context Delta.
+% For example, if Nabla = ((a1,X1), (a2,X2), ..., (an,Xn)), then what should be
+% verified is whether Delta |- ai # Xi.sigma , for all i: 1 <= i <= n.
+% This is done recursively.
+
+nominal_AC_fresh_subs(Delta)(sigma, Nabla): RECURSIVE bool =
+   CASES Nabla OF
+   	 null: TRUE,
+	 cons(head, tail): fresh(Delta)(head`1, subs(sigma)((::)*head`2))
+	 	    	   AND nominal_AC_fresh_subs(Delta)(sigma, tail)
+   ENDCASES
+   MEASURE Nabla BY <<
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The next function is used in the unification algorithm.
+% fresh_subs? does something very similar to fresh_subs. It applies a substitution
+% sigma to a context Nabla (to variables) and builds a context where freshness
+% holds, if possible.
+nominal_AC_fresh_subs?(sigma, Nabla): RECURSIVE [fresh_context, bool] =
+   CASES Nabla OF
+   	 null: ((::), TRUE),
+	 cons(head, tail): x(fresh?(head`1, subs(sigma)((::)*head`2)),
+	 	    	     nominal_AC_fresh_subs?(sigma, tail))
+   ENDCASES
+   MEASURE Nabla BY <<
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LEMMAS
+% fresh_subs
+nominal_AC_fresh_subs_character: LEMMA
+   nominal_AC_fresh_subs(Delta)(sigma, Nabla) = 
+   (FORALL (ax:[atom, variable]): member(ax,Nabla) IMPLIES fresh(Delta)(ax`1, subs(sigma)((::)*ax`2)))
+
+nominal_AC_fresh_subs_append_context: LEMMA
+   nominal_AC_fresh_subs(Delta)(sigma, append(Nabla1, Nabla2)) =
+   (nominal_AC_fresh_subs(Delta)(sigma, Nabla1) AND nominal_AC_fresh_subs(Delta)(sigma, Nabla2))
+
+nominal_AC_fresh_subs_append_subs: LEMMA
+   disjoint?(dom(sigma1), vars(Nabla)) IMPLIES 
+   nominal_AC_fresh_subs(Delta)(append(sigma, sigma1), Nabla) = nominal_AC_fresh_subs(Delta)(sigma, Nabla)
+
+nominal_AC_fresh_subs_append_subs2: LEMMA 
+   disjoint?(dom(sigma), union(vars(Nabla), vars(img(sigma1)))) 
+   IMPLIES nominal_AC_fresh_subs(Delta)(append(sigma, sigma1), Nabla) = nominal_AC_fresh_subs(Delta)(sigma1, Nabla)
+
+nominal_AC_fresh_subs_weakening: LEMMA 
+   nominal_AC_fresh_subs(Nabla1)(sigma, Delta) AND
+   (FORALL (a, X): member((a, X), Nabla1) => member((a, X), Nabla2)) IMPLIES
+   nominal_AC_fresh_subs(Nabla2)(sigma, Delta)
+
+nominal_AC_fresh_subs_fresh: LEMMA 
+   nominal_AC_fresh_subs(G1)(sigma, G) AND fresh(G)(a, t) IMPLIES fresh(G1)(a, subs(sigma)(t))
+
+nominal_AC_fresh_subs_equal: LEMMA 
+   equal?(G1)(sigma, sigma1) IMPLIES nominal_AC_fresh_subs(G1)(sigma, G) = nominal_AC_fresh_subs(G1)(sigma1, G)
+
+nominal_AC_fresh_subs_equal2: LEMMA  
+   equal?(G1)(sigma, sigma1, V1) AND subset?(vars(G), V1)
+   IMPLIES nominal_AC_fresh_subs(G1)(sigma, G) = nominal_AC_fresh_subs(G1)(sigma1, G)
+
+nominal_AC_fresh_subs_disjoint_dom: LEMMA 
+   disjoint?(dom(sigma), vars(Delta)) IMPLIES nominal_AC_fresh_subs(Delta)(sigma, Delta) 
+
+% substitution and their connection with fresh_subs
+subs_equal?: LEMMA  
+    equal?(G)(t, s) AND nominal_AC_fresh_subs(G1)(sigma, G) 
+    IMPLIES
+    equal?(G1)(subs(sigma)(t), subs(sigma)(s))
+
+subs_perm?: LEMMA
+    perm?(G)(args1, args2) AND nominal_AC_fresh_subs(G1)(sigma, G) IMPLIES
+    perm?(G1)(subs(sigma)(args1), subs(sigma)(args2))
+
+subs_perm?_get_args: LEMMA 
+    perm?(G)(args1, args2) AND nominal_AC_fresh_subs(G1)(sigma, G) IMPLIES
+    perm?(G1)(flatten(map(get_args(f))(map(subs(sigma))(args1))), flatten(map(get_args(f))(map(subs(sigma))(args2))))
+
+subs_same_count: LEMMA 
+    same_count?(args1, args2, equal?(G)) AND nominal_AC_fresh_subs(G1)(sigma, G) IMPLIES
+    same_count?(subs(sigma)(args1), subs(sigma)(args2), equal?(G1))
+
+equal_sub_res_append: LEMMA 
+   equal?(G)(sigma, sigma1, set_vars) AND nominal_AC_fresh_subs(G1)(delta, G) IMPLIES
+   equal?(G1)(append(delta, sigma), append(delta, sigma1), set_vars)
+
+equal_sub_nominal_AC_fresh_subs_append: LEMMA 
+   equal?(G)(sigma, sigma1) AND nominal_AC_fresh_subs(G1)(delta, G) IMPLIES
+   equal?(G1)(append(delta, sigma), append(delta, sigma1))
+
+more_general_append2: LEMMA 
+     more_general?(G)(sigma, delta) AND subset?(vars(G), V1) AND disjoint?(dom(gamma), V1)
+     IMPLIES more_general?(G)(sigma, append(gamma, delta))
+
+subs_count_ge: LEMMA
+   (FORALL t1: count(t1, get_args(f)(s), equal?(G)) >= count(t1, get_args(f)(t), equal?(G)))
+   AND nominal_AC_fresh_subs(G1)(sigma, G) 
+   IMPLIES 
+   (FORALL t2: count(t2, get_args(f)(subs(sigma)(s)), equal?(G1))
+                >= count(t2, get_args(f)(subs(sigma)(t)), equal?(G1)))
+
+count_subs_count_elem: LEMMA 
+    LET (no_rep_args, coef) = count_elem(null, null, get_args(f)(t), equal?(G)) IN 
+    nominal_AC_fresh_subs(G1)(sigma, G) IMPLIES 
+    count(s, subs(sigma)(t), f, G1) = dot_product(count_vec(subs(sigma)(no_rep_args), f, G1)(s) , coef)
+
+count_subs_subset_aux: LEMMA   
+   LET (no_rep_args, coef) = count_elem(null, null, args1, equal?(G)), 
+       (no_rep_args1, coef1) = count_coef(args2, args1, equal?(G)) IN 
+   subset_lst?(args1, args2) AND dif_elem?(args2, equal?(G)) AND nominal_AC_fresh_subs(G1)(sigma, G) 
+   IMPLIES 
+   dot_product(count_vec(subs(sigma)(no_rep_args), f, G1)(s), coef) =
+   dot_product(count_vec(subs(sigma)(no_rep_args1), f, G1)(s), coef1)
+
+count_subs_subset: LEMMA   
+    LET (no_rep_args, coef) = count_coef(args1, get_args(f)(t), equal?(G)) IN 
+    subset_lst?(get_args(f)(t), args1) AND dif_elem?(args1, equal?(G)) AND
+    nominal_AC_fresh_subs(G1)(sigma, G) IMPLIES
+    count(s, subs(sigma)(t), f, G1) = dot_product(count_vec(subs(sigma)(no_rep_args), f, G1)(s), coef)
+
+count_subs_subset2: LEMMA   
+    LET (no_rep_args, coef) = count_coef(args1, get_args(f)(t), equal?(G)) IN 
+    subset_lst?(get_args(f)(t), args1) AND dif_elem?(args1, equal?(G)) AND
+    nominal_AC_fresh_subs(G1)(delta, G) AND
+    disjoint?(union(vars(img(delta)), vars(G)), dom(sigma))
+    AND disjoint?(dom(delta), vars(args1)) IMPLIES
+    count(s, subs(sigma)(t), f, G1) = dot_product(count_vec(subs(sigma)(no_rep_args), f, G1)(s), coef)
+
+%%%%%%%%%
+% fresh_subs?
+nominal_AC_fresh_subs?_var: LEMMA 
+   subset?(vars(nominal_AC_fresh_subs?(sigma, Nabla)`1), union(vars(img(sigma)), vars(Nabla)))
+
+% Applying Identity subs to a freshness context does not affect it.
+nominal_AC_fresh_subs?_null: LEMMA
+   nominal_AC_fresh_subs?((::), Delta) = (Delta, TRUE)
+
+% Characterization of the function fresh_subs?
+nominal_AC_fresh_subs?_character: LEMMA   
+   nominal_AC_fresh_subs?(sigma, Delta)`2 =
+   (FORALL(a,X): member((a,X),Delta) IMPLIES fresh?(a, subs(sigma)((::)*X))`2)
+
+% (Delta o Nabla).sigma = (Delta.sigma and Nabla.sigma)
+nominal_AC_fresh_subs?_append_context: LEMMA
+   nominal_AC_fresh_subs?(sigma, append(Delta,Nabla)) =
+       x(nominal_AC_fresh_subs?(sigma, Delta), nominal_AC_fresh_subs?(sigma, Nabla))
+
+% If Delta.sigma is consistent, then forall (a,X) in Delta
+% Delta.sigma|-- a # X.sigma  .
+nominal_AC_fresh_subs?_is_fresh: LEMMA
+   LET (Nabla, b) = nominal_AC_fresh_subs?(sigma, Delta) IN
+   b IMPLIES FORALL(a,X): member((a,X),Delta) IMPLIES
+                    fresh(Nabla)(a, subs(sigma)((::)*X))
+
+% If Delta.sigma is consistent, then
+% Delta|--a # t  implies  Delta.sigma|--a # t.sigma
+nominal_AC_fresh_subs?_is_fresh2: LEMMA
+   LET (Nabla, b) = nominal_AC_fresh_subs?(sigma, Delta) IN
+   b AND fresh(Delta)(a, t) IMPLIES
+            fresh(Nabla)(a, subs(sigma)(t))
+
+% If <a#t> is consistent (via function fresh?), then 
+% <a#t.sigma> = <a#t>.sigma.
+nominal_AC_fresh_subs?_is_fresh3: LEMMA
+   fresh?(a, subs(sigma)(t)) = x(nominal_AC_fresh_subs?(sigma, fresh?(a,t)`1), 
+   	     		       	 ((::),fresh?(a,t)`2))
+
+% This is a very technical lemma. It says that if Delta.gamma is consistent,
+% then Delta.(gamma o sigma) = (Delta.gamma).sigma .
+% On the other hand, if Delta.gamma is inconsistent then so is 
+% (Delta.gamma).sigma .
+nominal_AC_fresh_subs?_append: LEMMA
+   nominal_AC_fresh_subs?(append(sigma, gamma),Delta) =
+        x(nominal_AC_fresh_subs?(sigma,nominal_AC_fresh_subs?(gamma,Delta)`1),
+	  ((::),nominal_AC_fresh_subs?(gamma,Delta)`2))
+
+% The next two lemmas claim that if Delta.sigma is consistent and 
+% Delta |- t~s then sigma also preserves alpha-equivalence.
+nominal_AC_fresh_subs?_alpha_aux: LEMMA
+   LET SOL = nominal_AC_fresh_subs?((:(X,u):), Delta) IN
+   SOL`2 AND equal?(Delta)(t, s)
+   IMPLIES equal?(SOL`1)(subs((X,u), t), subs((X,u), s))
+
+% If Delta.sigma is consistent, then (~ is the alpha-equivalent relation)
+% Delta|--t~s   implies   Delta.sigma|--t.sigma~s.sigma   . 
+nominal_AC_fresh_subs?_alpha: LEMMA
+   LET (Nabla, b) = nominal_AC_fresh_subs?(sigma, Delta) IN
+   b AND equal?(Delta)(t, s)
+   IMPLIES equal?(Nabla)(subs(sigma)(t), subs(sigma)(s))
+
+% Completeness of 'fresh_subs?' with respect to 'fresh_subs'.
+nominal_AC_fresh_subs?_complete: LEMMA
+   LET (NABLA, b) = nominal_AC_fresh_subs?(sigma, Nabla) IN
+   nominal_AC_fresh_subs(Delta)(sigma, Nabla) IMPLIES b AND 
+   (FORALL (a, X): member((a, X), NABLA) => member((a, X), Delta))
+
+% Soundness of 'fresh_subs?' with respect to 'fresh_subs'.
+nominal_AC_fresh_subs?_is_nominal_AC_fresh_subs: LEMMA
+   LET (Delta, b) = nominal_AC_fresh_subs?(sigma, Nabla) IN
+   b IMPLIES nominal_AC_fresh_subs(Delta)(sigma, Nabla)
+
+% If Nabla.gamma is consistent,
+% Delta|--Nabla.(gamma o sigma) = Delta|-- (Nabla.gamma).sigma
+nominal_AC_fresh_subs_o_nominal_AC_fresh_subs?: LEMMA
+   nominal_AC_fresh_subs(Delta)(append(sigma, gamma), Nabla) =
+      (nominal_AC_fresh_subs(Delta)(sigma, nominal_AC_fresh_subs?(gamma, Nabla)`1) AND nominal_AC_fresh_subs?(gamma, Nabla)`2)
+
+nominal_AC_fresh_subs?_complete2: LEMMA 
+   LET (Nabla1, b) = nominal_AC_fresh_subs?(sigma, Nabla) IN 
+   equal?(G)(delta, append(delta, sigma)) IMPLIES 
+   nominal_AC_fresh_subs(G)(delta, Nabla) = (nominal_AC_fresh_subs(G)(delta, Nabla1) AND b)    
+
+nominal_AC_fresh_subs?_subs_no_effect: LEMMA 
+   LET (Nabla1, b) = nominal_AC_fresh_subs?(sigma, Nabla) IN 
+   disjoint?(dom(sigma), vars(Nabla)) IMPLIES 
+   nominal_AC_fresh_subs?(sigma, Nabla) = (Nabla, TRUE)
+
+%%%%%%%%%%%%%%%%%%%%% necessary lemmas related to functions nominal_AC_fresh_subs and similar ones
+% useful lemmas that appeared in the the proof of completeness
+aux_lemma_fresh_sub1: LEMMA
+   fresh(Nabla)(a, subs(sigma)(t))
+   => nominal_AC_fresh_subs(Nabla)(sigma, fresh?(a, t)`1)
+
+% auxiliar lemma for aux_lemma_fresh_sub
+fresh_alpha_equivalent: LEMMA
+   fresh(Nabla)(a, t) AND equal?(Nabla)(t, s) => fresh(Nabla)(a, s)
+
+END nominal_AC_fresh_subs

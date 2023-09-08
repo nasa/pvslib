@@ -1,0 +1,159 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez(2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Ana Cristina Rocha Oliveira(1)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London, 
+%          (3) Johannes Kepler University 
+% 
+% Papers that use this theory: 
+%   1. "Completeness in PVS of a Nominal Unification Algorithm"
+%   2. "Formalising Nominal C-unification Generalised With Protected Variables"
+%   3. "A Certified Algorithm for AC-Unification"
+%   4. "Nominal AC-Matching"
+%
+% This subtheory receives two parameters "T1" and "T2" and 
+% contains very specific functions for dealing with lists in the
+% context of equational reasoning (specially unification and matching). 
+% 
+% It differs from "list_aux_equational_reasoning" because it receives two parameters
+% T1 and T2 instead of only one. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+list_aux_equational_reasoning2parameters [T1, T2: TYPE]: THEORY
+ BEGIN
+	IMPORTING list_aux_equational_reasoning[T1], list_aux_equational_reasoning[T2]
+
+  f: VAR [T1 -> T2]
+  f_set: VAR [T1 -> finite_set[T2]]
+  f_lst: VAR [T1 -> list[T1]]
+  f_lst2: VAR [list[T1] -> list[T2]]
+  f_lst3: VAR [T1 -> list[T2]]
+
+  i, n: VAR nat
+  
+  x: VAR T2 
+  y, y1: VAR T1
+  fin_set: VAR finite_set[T2]
+
+  l1, l2: VAR list[T1]
+  lst_of_lsts: VAR list[list[T1]]
+  mult: VAR list[nat]
+
+  %%% parameters taken from list_aux_equational_reasoning2 
+  lst, lst1: VAR list[T1]
+  lst2: VAR list[T2]
+  lst_pair, lst_pair1, lst_pair2: VAR list[[T1, T2]]
+  lst_pair_: VAR list[[list[T1], T2]]
+  pair: VAR [T1, T2]
+  pair_: VAR [list[T1], T2]
+  f_: VAR [[T1, T2] -> T1]
+  x_, x1_: VAR T1
+  y_: VAR T2
+  
+
+map_append2: LEMMA
+    map(f)(append(l1, l2)) = append(map(f)(l1), map(f)(l2))
+
+map_member: LEMMA
+    member(fin_set, map(f_set)(l1)) IFF 
+    EXISTS y:
+    member(y, l1) AND fin_set = f_set(y)
+
+map_member2: LEMMA
+    member(y, l1) IMPLIES member(f_set(y), map(f_set)(l1))
+
+map_member3: LEMMA
+    member(x, map(f)(l1)) = EXISTS (n: below[length(l1)]): x = f(nth(l1, n))
+
+map_member4: LEMMA
+    member(x, map(f)(l1)) IFF EXISTS y: member(y, l1) AND x = f(y)
+    
+mem_union_map: LEMMA
+    member(x, Union(list2set(map(f_set)(l1)))) IFF
+    EXISTS y:
+        member(y, l1) AND member(x, f_set(y))
+
+mem_flatten_map: LEMMA % the next lemma is more specific
+    member(y1, flatten(map(f_lst)(l1))) IMPLIES 
+    EXISTS y: 
+       member(y, l1) AND member(y1, f_lst(y))
+
+mem_flatten_map2: LEMMA
+    member(x, flatten(map(f_lst3)(l1))) IFF
+    EXISTS y:
+       member(y, l1) AND member(x, f_lst3(y))
+        
+func_flatten_map: LEMMA
+    (EXISTS f:
+    	FORALL l1: 
+        f_lst2(l1) = map(f)(l1))
+    IMPLIES
+    f_lst2(flatten(lst_of_lsts)) = flatten(map(f_lst2)(lst_of_lsts))
+
+func_flatten_map2: LEMMA
+    (f_lst2(null) = null AND FORALL l1, l2: f_lst2(append(l1, l2)) = append(f_lst2(l1), f_lst2(l2))) IMPLIES
+    f_lst2(flatten(lst_of_lsts)) = flatten(map(f_lst2)(lst_of_lsts))
+
+remove_map: LEMMA 
+    remove(map(f)(l1), n) = map(f)(remove(l1, n))
+
+%%% lemmas that came from list_aux_equational_reasoning2
+first_proj(pair): T1 = pair`1
+
+% receives a list of the form [[x1, y1], ..., [xn, yn]]
+% returns [x1, ..., xn]
+first_proj(lst_pair): RECURSIVE list[T1] = 
+    IF null?(lst_pair) THEN null
+    ELSE LET x = car(lst_pair)`1 IN
+         cons(x, first_proj(cdr(lst_pair)))
+    ENDIF
+MEASURE lst_pair BY << 
+
+first_proj(lst_pair_): RECURSIVE list[list[T1]] = 
+    IF null?(lst_pair_) THEN null
+    ELSE cons(car(lst_pair_)`1, first_proj(cdr(lst_pair_)))
+    ENDIF
+MEASURE lst_pair_ BY << 
+
+% receives a list of the form [[x1, y1], ..., [xn, yn]]
+% returns [y1, ..., yn]
+sec_proj(lst_pair): RECURSIVE list[T2] = 
+    IF null?(lst_pair) THEN null
+    ELSE LET y = car(lst_pair)`2 IN
+         cons(y, sec_proj(cdr(lst_pair)))
+    ENDIF
+MEASURE lst_pair BY << 
+
+first_proj_nth_mem: LEMMA
+    n < length(lst_pair) IMPLIES 
+    member(nth(lst_pair, n)`1, first_proj(lst_pair)) 
+
+first_proj_is_map: LEMMA
+   EXISTS f_:
+        FORALL lst_pair:  first_proj(lst_pair) = map(f_)(lst_pair)
+
+first_proj_mem: LEMMA
+   member(x_, first_proj(lst_pair)) IFF
+   EXISTS pair:
+      member(pair, lst_pair) AND x_ = pair`1
+
+sec_proj_mem: LEMMA
+   member(y_, sec_proj(lst_pair)) IFF
+   EXISTS pair:
+      member(pair, lst_pair) AND y_ = pair`2
+
+sec_proj_append: LEMMA
+   member(y_, sec_proj(append(lst_pair, lst_pair1))) IFF
+   (member(y_, sec_proj(lst_pair)) OR member(y_, sec_proj(lst_pair1)))
+
+first_proj_mem_flatten: LEMMA
+   member(x_, flatten(first_proj(lst_pair_))) IFF 
+   EXISTS pair_:
+   member(pair_, lst_pair_) AND member(x_, pair_`1)
+
+END list_aux_equational_reasoning2parameters
