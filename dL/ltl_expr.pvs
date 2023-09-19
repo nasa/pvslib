@@ -1,0 +1,215 @@
+ltl_expr : THEORY
+BEGIN
+
+  IMPORTING bool_expr
+  IMPORTING trace_semantics
+  IMPORTING reals@bounded_reals,
+            even_more_list_props[TraceState]
+
+  TraceBoolExpr : TYPE = [ Trace -> bool ]
+
+  State_Trace(P:BoolExpr)(trace:Trace): bool = P(init_env(trace))
+
+  cut_inf_diff(trace:Trace|inf_diff?(car(trace)), T:(hp(0))): Trace =
+   (: INF_DIFF(inf_behavior(car(trace))(T), LAMBDA(t:(hp(0))): inf_behavior(car(trace))(T+t)) :)
+
+  cut_state_diff(trace:Trace |state_diff?(car(trace)), T:(D(car(trace)))): {tt:Trace|length(tt)=length(trace)} =
+  LET c = car(trace) IN
+  IF T < max_ci(D(c))
+    THEN cons(STATE_DIFF(closed_interval(0,max_ci(D(c))-T) ,behavior(c)(T), LAMBDA(t:(closed_interval(0,max_ci(D(c))-T))): behavior(c)(T+t)),cdr(trace))
+  ELSE cons(STATE(behavior(c)(max_ci(D(c)))),cdr(trace))
+  ENDIF
+
+  cut_state_zero: LEMMA
+  FORALL(trace:Trace |state_diff?(car(trace))): cut_state_diff(trace,0) = trace
+
+  cut_inf_zero: LEMMA
+  FORALL(trace:Trace |inf_diff?(car(trace))): cut_inf_diff(trace,0) = trace
+
+% STATE FORMULAS %
+
+  ALLRUNS_st(hp:HP,f:BoolExpr)(env0:Environment): bool =
+    FORALL (trace:(finite_trace?)):
+      init_env(trace) = env0 AND trace_semantic_rel(hp)(trace)
+      IMPLIES f(final_env(trace))
+
+  SOMERUNS_st(hp:HP,f:BoolExpr)(env0:Environment): bool =
+    EXISTS (trace:(finite_trace?)):
+      init_env(trace) = env0 AND trace_semantic_rel(hp)(trace) AND f(final_env(trace))
+
+  ALLRUNS_tr(hp:HP,f:TraceBoolExpr)(env0:Environment): bool =
+    FORALL (trace:(valid_trace?)):
+      init_env(trace) = env0 AND trace_semantic_rel(hp)(trace)
+      IMPLIES
+      f(trace)
+
+  SOMERUNS_tr(hp:HP,f:TraceBoolExpr)(env0:Environment): bool =
+    EXISTS (trace:(valid_trace?)):
+      init_env(trace) = env0 AND trace_semantic_rel(hp)(trace) AND
+      f(trace)
+
+  ALLRUNS_eq: LEMMA
+    FORALL (hp:HP,f:BoolExpr):
+      ALLRUNS_st(hp,f) = ALLRUNS(hp,f)
+
+  SOMERUNS_eq: LEMMA
+    FORALL (hp:HP,f:BoolExpr):
+      SOMERUNS_st(hp,f) = SOMERUNS(hp,f)
+
+% TRACE FORMULAS %
+
+  DLSTATE(P:BoolExpr)(trace:Trace): bool = P(init_env(trace))
+
+  DLTLOR(P,Q:BoolExpr): MACRO TraceBoolExpr = DLSTATE(DLOR(P,Q))
+  DLTLAND(P,Q:BoolExpr): MACRO TraceBoolExpr = DLSTATE(DLAND(P,Q))
+  DLTLNOT(P:BoolExpr): MACRO TraceBoolExpr = DLSTATE(DLNOT(P))
+  DLTLIMPLIES(P,Q: BoolExpr): MACRO TraceBoolExpr = DLSTATE(DLIMPLIES(P,Q))
+  DLTLFORALL(qQ:QBoolExpr): MACRO TraceBoolExpr = DLSTATE(DLFORALL(qQ))
+  DLTLEXISTS(qQ:QBoolExpr): MACRO TraceBoolExpr = DLSTATE(DLEXISTS(qQ))
+
+  DLNOT_tr(f:TraceBoolExpr)(trace:Trace): bool = NOT f(trace)
+
+  DLGLOBALLY(f:TraceBoolExpr)(trace:Trace): bool =
+    FORALL (suffix:Trace | suffix?(suffix,trace)):
+        LET c = car(suffix) IN
+    IF  state?(c)
+      THEN f(suffix)
+    ELSIF  state_diff?(c)
+      THEN FORALL(t:(D(c))): f(cut_state_diff(suffix,t))
+    ELSIF  inf_diff?(c)
+      THEN FORALL(t:(hp(0))): f(cut_inf_diff(suffix,t))
+    ELSE TRUE
+    ENDIF
+
+
+  DLEVENTUALLY(f:TraceBoolExpr)(trace:Trace): bool =
+    EXISTS (suffix:Trace | suffix?(suffix,trace)
+                            AND NOT error?(car(suffix))):
+    LET c = car(suffix) IN
+    IF  state?(c)
+      THEN f(suffix)
+    ELSIF  state_diff?(c)
+      THEN EXISTS(t:(D(c))): f(cut_state_diff(suffix,t))
+    ELSE EXISTS(t:(hp(0))): f(cut_inf_diff(suffix,t))
+    ENDIF
+
+
+% NORMALIZED TRACE FORMULAS FOR FINITE TRACES %
+
+  normDLGLOBALLY(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(final_env(trace)) AND DLGLOBALLY(State_Trace(g))(trace)
+  ELSE DLGLOBALLY(State_Trace(g))(trace)
+  ENDIF
+
+  normDLEVENTUALLY(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(final_env(trace)) OR DLEVENTUALLY(State_Trace(g))(trace)
+  ELSE DLEVENTUALLY(State_Trace(g))(trace)
+  ENDIF
+
+  normDLGE(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(final_env(trace))
+  ELSE DLGLOBALLY(DLEVENTUALLY(State_Trace(g)))(trace)
+  ENDIF
+
+  normDLEG(f,g:BoolExpr)(trace:Trace): bool =
+  IF finite_trace?(trace)
+    THEN f(final_env(trace))
+  ELSE DLEVENTUALLY(DLGLOBALLY(State_Trace(g)))(trace)
+  ENDIF
+
+
+% Some useful lemmas on the normalized trace formulas
+
+norm_implies_DLGLOBALLY: LEMMA
+FORALL(f,g:BoolExpr,trace:Trace): normDLGLOBALLY(f,g)(trace) IMPLIES DLGLOBALLY(State_Trace(g))(trace)
+
+DLEVENTUALLY_implies_norm: LEMMA
+FORALL(f,g:BoolExpr,trace:Trace): DLEVENTUALLY(State_Trace(g))(trace) IMPLIES normDLEVENTUALLY(f,g)(trace)
+
+DLGLOBALLY_FORALL: LEMMA
+FORALL(g:BoolExpr,trace:Trace):
+DLGLOBALLY(State_Trace(g))(trace) IFF (FORALL(i:below(length(trace))):
+LET c = nth(trace,i) IN
+  ((i=length(trace)-1 AND error?(c)) OR
+   (state?(c) AND g(state(c))) OR
+   (state_diff?(c) AND FORALL(t:(D(c))): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND FORALL(t:(hp(0))): g(inf_behavior(c)(t)))))
+
+DLGLOBALLY_append: LEMMA
+FORALL(g:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(DLGLOBALLY(State_Trace(g))(trace1) AND DLGLOBALLY(State_Trace(g))(trace2) IFF DLGLOBALLY(State_Trace(g))(append(trace1,trace2)))
+
+normDLGLOBALLY_append: LEMMA
+FORALL(P,Q:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(DLGLOBALLY(State_Trace(Q))(trace1) AND normDLGLOBALLY(P,Q)(trace2) IFF normDLGLOBALLY(P,Q)(append(trace1,trace2)))
+
+
+DLEVENTUALLY_EXISTS: LEMMA
+FORALL(g:BoolExpr,trace:Trace):
+DLEVENTUALLY(State_Trace(g))(trace) IFF (EXISTS(i:below(length(trace))):
+LET c = nth(trace,i) IN
+   NOT error?(c) AND
+   ((state?(c) AND g(state(c))) OR
+   (state_diff?(c) AND EXISTS(t:(D(c))): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND EXISTS(t:(hp(0))): g(inf_behavior(c)(t)))))
+
+DLEVENTUALLY_append: LEMMA
+FORALL(g:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(DLEVENTUALLY(State_Trace(g))(trace1) OR DLEVENTUALLY(State_Trace(g))(trace2) IFF DLEVENTUALLY(State_Trace(g))(append(trace1,trace2)))
+
+normDLEVENTUALLY_append: LEMMA
+FORALL(P,Q:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(DLEVENTUALLY(State_Trace(Q))(trace1) OR normDLEVENTUALLY(P,Q)(trace2) IFF normDLEVENTUALLY(P,Q)(append(trace1,trace2)))
+
+DLGE_nth: LEMMA
+FORALL(g:BoolExpr,trace:Trace):
+DLGLOBALLY(DLEVENTUALLY(State_Trace(g)))(trace) IFF FORALL(j:below(length(trace))): error?(nth(trace,j)) OR (EXISTS(i:below(length(trace)-j)):
+LET c = nth(trace,i+j) IN
+NOT error?(c) AND
+IF i=0
+  THEN
+   ((state?(c) AND g(state(c))) OR
+   (state_diff?(c) AND  FORALL(T:(D(c))): EXISTS(t:(D(c))|t>=T): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND FORALL(T:(hp(0))): EXISTS(t:(hp(0))|t>=T): g(inf_behavior(c)(t))))
+ELSE
+  ((state?(c) AND g(state(c))) OR
+   (state_diff?(c) AND EXISTS(t:(D(c))): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND EXISTS(t:(hp(0))): g(inf_behavior(c)(t))))
+ENDIF)
+
+normDLGE_append: LEMMA
+FORALL(P,Q:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(normDLGE(P,Q)(trace2) IFF normDLGE(P,Q)(append(trace1,trace2)))
+
+DLEG_nth: LEMMA
+FORALL(g:BoolExpr,trace:Trace):
+DLEVENTUALLY(DLGLOBALLY(State_Trace(g)))(trace) IFF EXISTS(j:below(length(trace))): NOT error?(nth(trace,j)) AND (FORALL(i:below(length(trace)-j)):
+LET c = nth(trace,i+j) IN
+(i+j=length(trace)-1 AND error?(c)) OR
+(state?(c) AND g(state(c))) OR
+(IF i=0
+  THEN
+   (state_diff?(c) AND EXISTS(T:(D(c))): FORALL(t:(D(c))|t>=T): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND EXISTS(T:(hp(0))): FORALL(t:(hp(0))|t>=T): g(inf_behavior(c)(t)))
+ELSE
+   (state_diff?(c) AND FORALL(t:(D(c))): g(behavior(c)(t))) OR
+   (inf_diff?(c) AND FORALL(t:(hp(0))): g(inf_behavior(c)(t)))
+ENDIF))
+
+normDLEG_append: LEMMA
+FORALL(P,Q:BoolExpr,trace1,trace2:Trace):
+wf_trace?(append(trace1,trace2)) IMPLIES
+(normDLEG(P,Q)(trace2) IFF normDLEG(P,Q)(append(trace1,trace2)))
+
+
+
+
+END ltl_expr
