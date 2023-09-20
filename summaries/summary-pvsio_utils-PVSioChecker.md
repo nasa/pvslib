@@ -1,13 +1,13 @@
 # Summary for `pvsio_utils/PVSioChecker`
-Run started at 17:10:10 9/1/2023.
+Run started at 0:17:24 9/20/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **13**   | **13**    | **13**    | **0**  | **2.189 s**   |
+| **totals** | **13**   | **13**    | **13**    | **0**  | **2.104 s**   |
 |top|0|0|0|0|0.000|
-|pvsio_checker|13|13|13|0|2.189|
+|pvsio_checker|13|13|13|0|2.104|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -15,19 +15,19 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|print_etc_TCC1|✅ proved - incomplete|shostak|0.133|
-|check_list_it_TCC1|✅ proved - complete|shostak|0.030|
-|check_list_it_TCC2|✅ proved - complete|shostak|0.019|
-|check_list_it_TCC3|✅ proved - complete|shostak|0.030|
+|print_etc_TCC1|✅ proved - incomplete|shostak|0.124|
+|check_list_it_TCC1|✅ proved - complete|shostak|0.020|
+|check_list_it_TCC2|✅ proved - complete|shostak|0.020|
+|check_list_it_TCC3|✅ proved - complete|shostak|0.020|
 |check_list_it_TCC4|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC5|✅ proved - complete|shostak|0.031|
+|check_list_it_TCC5|✅ proved - complete|shostak|0.022|
 |check_list_it_TCC6|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC7|✅ proved - complete|shostak|0.708|
-|check_list_it_TCC8|✅ proved - complete|shostak|0.682|
-|check_list_it_TCC9|✅ proved - complete|shostak|0.379|
+|check_list_it_TCC7|✅ proved - complete|shostak|0.690|
+|check_list_it_TCC8|✅ proved - complete|shostak|0.671|
+|check_list_it_TCC9|✅ proved - complete|shostak|0.370|
 |check_list_it_TCC10|✅ proved - complete|shostak|0.020|
 |check_list_it_TCC11|✅ proved - complete|shostak|0.020|
-|check_list_it_TCC12|✅ proved - complete|shostak|0.097|
+|check_list_it_TCC12|✅ proved - complete|shostak|0.087|
 ## Platform information 
 |  |  |
 |---|---|

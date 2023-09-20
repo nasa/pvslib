@@ -1,45 +1,45 @@
 # Summary for `vect_analysis`
-Run started at 14:28:20 9/1/2023.
+Run started at 21:39:23 9/19/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **551**   | **551**    | **551**    | **0**  | **1:7.823 s**   |
+| **totals** | **551**   | **551**    | **551**    | **0**  | **1:4.529 s**   |
 |top|0|0|0|0|0.000|
-|limit_vect_real|45|45|45|0|4.435|
-|limit_vect|28|28|28|0|1.822|
+|limit_vect_real|45|45|45|0|4.706|
+|limit_vect|28|28|28|0|1.912|
 |cont_vect|15|15|15|0|0.504|
 |metric_vect|0|0|0|0|0.000|
-|deriv_sigma|15|15|15|0|2.476|
-|deriv_real_vect_def|18|18|18|0|1.112|
-|vect_fun_ops|2|2|2|0|0.114|
-|deriv_dot_prod|5|5|5|0|0.906|
-|deriv_real_vect|22|22|22|0|1.081|
-|deriv_real_vect2|38|38|38|0|2.982|
-|vect_fun_ops_rv|2|2|2|0|0.106|
-|deriv_cont_2D|3|3|3|0|0.104|
-|cont_real_vect2|22|22|22|0|3.625|
-|limit_real_vect2|23|23|23|0|1.903|
-|vect_metric_space|3|3|3|0|0.145|
-|vect3_metric_space|3|3|3|0|0.178|
-|vect3_Heine|9|9|9|0|2.477|
-|limit_vect2_real|46|46|46|0|3.581|
-|limit_vect3_real|45|45|45|0|3.677|
-|limit_vect2_vect2|24|24|24|0|1.370|
-|cont_vect2_real|30|30|30|0|1.091|
-|cont_vect3_real|30|30|30|0|1.060|
-|cont_vect2_vect2|17|17|17|0|0.535|
-|vect2_cont_comp|7|7|7|0|0.893|
-|vect2_cont_comp2|2|2|2|0|0.357|
-|vect2_cont_dot|5|5|5|0|6.722|
-|vect_cont_2D|31|31|31|0|3.328|
-|vect_deriv_2D|8|8|8|0|1.706|
-|vect_chain_rule|9|9|9|0|0.624|
-|four_vects_2D_continuity|17|17|17|0|9.126|
-|vect2_metric_space|3|3|3|0|0.133|
-|vect2_Heine|9|9|9|0|2.360|
-|vect_vect_2D_continuity|15|15|15|0|7.290|
+|deriv_sigma|15|15|15|0|2.631|
+|deriv_real_vect_def|18|18|18|0|1.122|
+|vect_fun_ops|2|2|2|0|0.124|
+|deriv_dot_prod|5|5|5|0|0.915|
+|deriv_real_vect|22|22|22|0|1.110|
+|deriv_real_vect2|38|38|38|0|2.974|
+|vect_fun_ops_rv|2|2|2|0|0.100|
+|deriv_cont_2D|3|3|3|0|0.105|
+|cont_real_vect2|22|22|22|0|3.524|
+|limit_real_vect2|23|23|23|0|1.920|
+|vect_metric_space|3|3|3|0|0.169|
+|vect3_metric_space|3|3|3|0|0.164|
+|vect3_Heine|9|9|9|0|2.445|
+|limit_vect2_real|46|46|46|0|3.618|
+|limit_vect3_real|45|45|45|0|3.617|
+|limit_vect2_vect2|24|24|24|0|1.361|
+|cont_vect2_real|30|30|30|0|1.112|
+|cont_vect3_real|30|30|30|0|1.085|
+|cont_vect2_vect2|17|17|17|0|0.572|
+|vect2_cont_comp|7|7|7|0|0.900|
+|vect2_cont_comp2|2|2|2|0|0.344|
+|vect2_cont_dot|5|5|5|0|6.276|
+|vect_cont_2D|31|31|31|0|2.830|
+|vect_deriv_2D|8|8|8|0|1.455|
+|vect_chain_rule|9|9|9|0|0.527|
+|four_vects_2D_continuity|17|17|17|0|7.899|
+|vect2_metric_space|3|3|3|0|0.127|
+|vect2_Heine|9|9|9|0|2.097|
+|vect_vect_2D_continuity|15|15|15|0|6.284|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -47,103 +47,103 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|1.169|
-|cv_in_domain|✅ proved - incomplete|shostak|0.139|
-|cv_sum|✅ proved - incomplete|shostak|0.352|
-|cv_neg|✅ proved - incomplete|shostak|0.188|
-|cv_diff|✅ proved - incomplete|shostak|0.039|
-|cv_prod|✅ proved - incomplete|shostak|0.520|
-|cv_const|✅ proved - incomplete|shostak|0.040|
-|cv_scal|✅ proved - incomplete|shostak|0.045|
-|cv_inv|✅ proved - incomplete|shostak|0.438|
-|cv_div|✅ proved - incomplete|shostak|0.084|
-|lim_fun_lemma|✅ proved - incomplete|shostak|0.030|
-|lim_fun_def|✅ proved - incomplete|shostak|0.034|
+|cv_unique|✅ proved - incomplete|shostak|1.138|
+|cv_in_domain|✅ proved - incomplete|shostak|0.150|
+|cv_sum|✅ proved - incomplete|shostak|0.355|
+|cv_neg|✅ proved - incomplete|shostak|0.203|
+|cv_diff|✅ proved - incomplete|shostak|0.050|
+|cv_prod|✅ proved - incomplete|shostak|0.540|
+|cv_const|✅ proved - incomplete|shostak|0.050|
+|cv_scal|✅ proved - incomplete|shostak|0.046|
+|cv_inv|✅ proved - incomplete|shostak|0.458|
+|cv_div|✅ proved - incomplete|shostak|0.085|
+|lim_fun_lemma|✅ proved - incomplete|shostak|0.025|
+|lim_fun_def|✅ proved - incomplete|shostak|0.040|
 |convergence_equiv|✅ proved - incomplete|shostak|0.030|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.064|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.065|
 |lim_in_domain|✅ proved - incomplete|shostak|0.030|
-|sum_fun_convergent|✅ proved - incomplete|shostak|0.055|
-|neg_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.040|
-|prod_fun_convergent|✅ proved - incomplete|shostak|0.044|
+|sum_fun_convergent|✅ proved - incomplete|shostak|0.045|
+|neg_fun_convergent|✅ proved - incomplete|shostak|0.060|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.062|
+|prod_fun_convergent|✅ proved - incomplete|shostak|0.070|
 |const_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|scal_fun_convergent|✅ proved - incomplete|shostak|0.045|
-|inv_fun_convergent|✅ proved - incomplete|shostak|0.060|
-|div_fun_convergent|✅ proved - incomplete|shostak|0.056|
-|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_sum_fun|✅ proved - incomplete|shostak|0.050|
+|scal_fun_convergent|✅ proved - incomplete|shostak|0.054|
+|inv_fun_convergent|✅ proved - incomplete|shostak|0.070|
+|div_fun_convergent|✅ proved - incomplete|shostak|0.065|
+|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_sum_fun|✅ proved - incomplete|shostak|0.054|
 |lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_neg_fun|✅ proved - incomplete|shostak|0.025|
-|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
-|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_prod_fun|✅ proved - incomplete|shostak|0.036|
-|lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.010|
-|lim_const_fun|✅ proved - incomplete|shostak|0.030|
+|lim_neg_fun|✅ proved - incomplete|shostak|0.040|
+|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.040|
+|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.025|
+|lim_prod_fun|✅ proved - incomplete|shostak|0.050|
+|lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_const_fun|✅ proved - incomplete|shostak|0.020|
 |lim_scal_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_scal_fun|✅ proved - incomplete|shostak|0.030|
-|lim_inv_fun_TCC1|✅ proved - incomplete|shostak|0.016|
+|lim_scal_fun|✅ proved - incomplete|shostak|0.045|
+|lim_inv_fun_TCC1|✅ proved - incomplete|shostak|0.020|
 |lim_inv_fun|✅ proved - incomplete|shostak|0.050|
-|lim_div_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_div_fun|✅ proved - incomplete|shostak|0.035|
-|convergence_order|✅ proved - incomplete|shostak|0.225|
-|convergence_lower_bound|✅ proved - incomplete|shostak|0.040|
-|convergence_upper_bound|✅ proved - incomplete|shostak|0.045|
-|lim_le1|✅ proved - incomplete|shostak|0.040|
-|lim_ge1|✅ proved - incomplete|shostak|0.035|
-|lim_order1|✅ proved - incomplete|shostak|0.056|
+|lim_div_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_div_fun|✅ proved - incomplete|shostak|0.040|
+|convergence_order|✅ proved - incomplete|shostak|0.235|
+|convergence_lower_bound|✅ proved - incomplete|shostak|0.045|
+|convergence_upper_bound|✅ proved - incomplete|shostak|0.040|
+|lim_le1|✅ proved - incomplete|shostak|0.036|
+|lim_ge1|✅ proved - incomplete|shostak|0.040|
+|lim_order1|✅ proved - incomplete|shostak|0.045|
 
 ## `limit_vect`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|0.114|
+|cv_unique|✅ proved - incomplete|shostak|0.115|
 |cv_in_domain|✅ proved - incomplete|shostak|0.045|
-|cv_sum|✅ proved - incomplete|shostak|0.224|
-|cv_neg|✅ proved - incomplete|shostak|0.083|
+|cv_sum|✅ proved - incomplete|shostak|0.225|
+|cv_neg|✅ proved - incomplete|shostak|0.084|
 |cv_diff|✅ proved - incomplete|shostak|0.054|
 |cv_const|✅ proved - incomplete|shostak|0.030|
-|cv_scal|✅ proved - incomplete|shostak|0.267|
-|lim_TCC1|✅ proved - incomplete|shostak|0.024|
+|cv_scal|✅ proved - incomplete|shostak|0.282|
+|lim_TCC1|✅ proved - incomplete|shostak|0.030|
 |lim_fun_lemma|✅ proved - incomplete|shostak|0.040|
-|lim_fun_def|✅ proved - incomplete|shostak|0.030|
-|convergence_equiv|✅ proved - incomplete|shostak|0.034|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.040|
-|lim_in_domain|✅ proved - incomplete|shostak|0.025|
+|lim_fun_def|✅ proved - incomplete|shostak|0.035|
+|convergence_equiv|✅ proved - incomplete|shostak|0.030|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.034|
+|lim_in_domain|✅ proved - incomplete|shostak|0.030|
 |sum_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|neg_fun_convergent|✅ proved - incomplete|shostak|0.478|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.023|
-|const_fun_convergent|✅ proved - incomplete|shostak|0.020|
+|neg_fun_convergent|✅ proved - incomplete|shostak|0.499|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.034|
+|const_fun_convergent|✅ proved - incomplete|shostak|0.030|
 |scal_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.020|
+|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.025|
 |lim_sum_fun|✅ proved - incomplete|shostak|0.030|
-|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.010|
+|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
 |lim_neg_fun|✅ proved - incomplete|shostak|0.020|
-|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.025|
+|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.025|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
 |lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_const_fun|✅ proved - incomplete|shostak|0.020|
-|lim_scal_fun_TCC1|✅ proved - incomplete|shostak|0.026|
+|lim_const_fun|✅ proved - incomplete|shostak|0.025|
+|lim_scal_fun_TCC1|✅ proved - incomplete|shostak|0.020|
 |lim_scal_fun|✅ proved - incomplete|shostak|0.040|
 
 ## `cont_vect`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|continuity_def|✅ proved - incomplete|shostak|0.030|
-|continuity_def2|✅ proved - incomplete|shostak|0.035|
+|continuity_def|✅ proved - incomplete|shostak|0.026|
+|continuity_def2|✅ proved - incomplete|shostak|0.030|
 |sum_continuous_vv|✅ proved - incomplete|shostak|0.040|
-|diff_continuous_vv|✅ proved - incomplete|shostak|0.040|
-|const_continuous_vv|✅ proved - incomplete|shostak|0.036|
-|neg_continuous_vv|✅ proved - incomplete|shostak|0.080|
-|continuous_vv_fun_TCC1|✅ proved - incomplete|shostak|0.034|
+|diff_continuous_vv|✅ proved - incomplete|shostak|0.034|
+|const_continuous_vv|✅ proved - incomplete|shostak|0.040|
+|neg_continuous_vv|✅ proved - incomplete|shostak|0.086|
+|continuous_vv_fun_TCC1|✅ proved - incomplete|shostak|0.040|
 |sum_fun_continuous_vv|✅ proved - incomplete|shostak|0.030|
-|diff_fun_continuous_vv|✅ proved - incomplete|shostak|0.035|
+|diff_fun_continuous_vv|✅ proved - incomplete|shostak|0.025|
 |const_fun_continuous_vv|✅ proved - incomplete|shostak|0.020|
-|neg_fun_continuous_vv|✅ proved - incomplete|shostak|0.020|
+|neg_fun_continuous_vv|✅ proved - incomplete|shostak|0.030|
 |sum_cont_fun|✅ proved - incomplete|shostak|0.030|
-|diff_cont_fun|✅ proved - incomplete|shostak|0.030|
-|const_cont_fun|✅ proved - incomplete|shostak|0.014|
+|diff_cont_fun|✅ proved - incomplete|shostak|0.023|
+|const_cont_fun|✅ proved - incomplete|shostak|0.020|
 |neg_cont_fun|✅ proved - incomplete|shostak|0.030|
 
 ## `metric_vect`
@@ -154,17 +154,17 @@ No formula declaration found.
 | ---     | ---          | ---                | ---  |
 |IMP_derivatives_TCC1|✅ proved - complete|shostak|0.010|
 |IMP_derivatives_TCC2|✅ proved - complete|shostak|0.010|
-|sigma_derivable_TCC1|✅ proved - incomplete|shostak|0.123|
-|sigma_derivable_TCC2|✅ proved - incomplete|shostak|0.110|
-|sigma_derivable_TCC3|✅ proved - incomplete|shostak|0.171|
-|sigma_derivable|✅ proved - incomplete|shostak|0.933|
-|deriv_sigma_TCC1|✅ proved - incomplete|shostak|0.160|
-|deriv_sigma_TCC2|✅ proved - incomplete|shostak|0.165|
-|deriv_sigma_TCC3|✅ proved - incomplete|shostak|0.182|
-|deriv_sigma_TCC4|✅ proved - incomplete|shostak|0.060|
-|deriv_sigma_TCC5|✅ proved - incomplete|shostak|0.151|
-|deriv_sigma_TCC6|✅ proved - incomplete|shostak|0.161|
-|deriv_sigma_TCC7|✅ proved - incomplete|shostak|0.210|
+|sigma_derivable_TCC1|✅ proved - incomplete|shostak|0.134|
+|sigma_derivable_TCC2|✅ proved - incomplete|shostak|0.120|
+|sigma_derivable_TCC3|✅ proved - incomplete|shostak|0.192|
+|sigma_derivable|✅ proved - incomplete|shostak|0.976|
+|deriv_sigma_TCC1|✅ proved - incomplete|shostak|0.166|
+|deriv_sigma_TCC2|✅ proved - incomplete|shostak|0.173|
+|deriv_sigma_TCC3|✅ proved - incomplete|shostak|0.193|
+|deriv_sigma_TCC4|✅ proved - incomplete|shostak|0.070|
+|deriv_sigma_TCC5|✅ proved - incomplete|shostak|0.163|
+|deriv_sigma_TCC6|✅ proved - incomplete|shostak|0.171|
+|deriv_sigma_TCC7|✅ proved - incomplete|shostak|0.223|
 |deriv_sigma_TCC8|✅ proved - incomplete|shostak|0.030|
 |deriv_sigma|✅ proved - incomplete|shostak|0.000|
 
@@ -173,40 +173,40 @@ No formula declaration found.
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |IMP_derivatives_TCC1|✅ proved - complete|shostak|0.010|
-|IMP_derivatives_TCC2|✅ proved - complete|shostak|0.010|
-|deriv_TCC1|✅ proved - incomplete|shostak|0.081|
-|sum_derivable|✅ proved - incomplete|shostak|0.060|
-|diff_derivable|✅ proved - incomplete|shostak|0.068|
-|neg_derivable|✅ proved - incomplete|shostak|0.040|
-|scal_derivable|✅ proved - incomplete|shostak|0.066|
+|IMP_derivatives_TCC2|✅ proved - complete|shostak|0.012|
+|deriv_TCC1|✅ proved - incomplete|shostak|0.070|
+|sum_derivable|✅ proved - incomplete|shostak|0.070|
+|diff_derivable|✅ proved - incomplete|shostak|0.060|
+|neg_derivable|✅ proved - incomplete|shostak|0.050|
+|scal_derivable|✅ proved - incomplete|shostak|0.057|
 |const_derivable|✅ proved - incomplete|shostak|0.030|
 |deriv_sum_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_sum|✅ proved - incomplete|shostak|0.177|
-|deriv_neg_TCC1|✅ proved - incomplete|shostak|0.020|
-|deriv_neg|✅ proved - incomplete|shostak|0.108|
+|deriv_sum|✅ proved - incomplete|shostak|0.175|
+|deriv_neg_TCC1|✅ proved - incomplete|shostak|0.030|
+|deriv_neg|✅ proved - incomplete|shostak|0.110|
 |deriv_diff_TCC1|✅ proved - incomplete|shostak|0.030|
 |deriv_diff|✅ proved - incomplete|shostak|0.144|
 |deriv_const_TCC1|✅ proved - incomplete|shostak|0.020|
-|deriv_const|✅ proved - incomplete|shostak|0.054|
+|deriv_const|✅ proved - incomplete|shostak|0.050|
 |deriv_scal_TCC1|✅ proved - incomplete|shostak|0.020|
-|deriv_scal|✅ proved - incomplete|shostak|0.144|
+|deriv_scal|✅ proved - incomplete|shostak|0.154|
 
 ## `vect_fun_ops`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|diff_function|✅ proved - complete|shostak|0.090|
-|negneg_function|✅ proved - incomplete|shostak|0.024|
+|diff_function|✅ proved - complete|shostak|0.084|
+|negneg_function|✅ proved - incomplete|shostak|0.040|
 
 ## `deriv_dot_prod`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_derivatives_TCC1|✅ proved - complete|shostak|0.020|
-|IMP_derivatives_TCC2|✅ proved - complete|shostak|0.010|
-|dot_prod_derivable|✅ proved - incomplete|shostak|0.193|
+|IMP_derivatives_TCC1|✅ proved - complete|shostak|0.010|
+|IMP_derivatives_TCC2|✅ proved - complete|shostak|0.020|
+|dot_prod_derivable|✅ proved - incomplete|shostak|0.203|
 |deriv_dot_prod_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_dot_prod|✅ proved - incomplete|shostak|0.653|
+|deriv_dot_prod|✅ proved - incomplete|shostak|0.652|
 
 ## `deriv_real_vect`
 
@@ -214,26 +214,26 @@ No formula declaration found.
 | ---     | ---          | ---                | ---  |
 |IMP_deriv_real_vect_def_TCC1|✅ proved - complete|shostak|0.020|
 |IMP_deriv_real_vect_def_TCC2|✅ proved - complete|shostak|0.020|
-|deriv_TCC1|✅ proved - incomplete|shostak|0.057|
-|sum_derivable_vfun|✅ proved - incomplete|shostak|0.050|
-|neg_derivable_vfun|✅ proved - incomplete|shostak|0.050|
-|diff_derivable_vfun|✅ proved - incomplete|shostak|0.039|
+|deriv_TCC1|✅ proved - incomplete|shostak|0.060|
+|sum_derivable_vfun|✅ proved - incomplete|shostak|0.040|
+|neg_derivable_vfun|✅ proved - incomplete|shostak|0.051|
+|diff_derivable_vfun|✅ proved - incomplete|shostak|0.040|
 |dot_derivable_vfun|✅ proved - incomplete|shostak|0.040|
-|scal_derivable_vfun|✅ proved - incomplete|shostak|0.060|
+|scal_derivable_vfun|✅ proved - incomplete|shostak|0.056|
 |const_derivable_vfun|✅ proved - incomplete|shostak|0.030|
-|inv_derivable_vfun|✅ proved - incomplete|shostak|0.049|
-|derivable_sum|✅ proved - incomplete|shostak|0.030|
+|inv_derivable_vfun|✅ proved - incomplete|shostak|0.040|
+|derivable_sum|✅ proved - incomplete|shostak|0.040|
 |derivable_diff|✅ proved - incomplete|shostak|0.030|
 |derivable_scal|✅ proved - incomplete|shostak|0.030|
-|derivable_neg|✅ proved - incomplete|shostak|0.028|
-|derivable_const|✅ proved - incomplete|shostak|0.030|
-|deriv_sum_vfun|✅ proved - incomplete|shostak|0.096|
-|deriv_neg_vfun|✅ proved - incomplete|shostak|0.060|
-|deriv_diff_vfun|✅ proved - incomplete|shostak|0.084|
+|derivable_neg|✅ proved - incomplete|shostak|0.040|
+|derivable_const|✅ proved - incomplete|shostak|0.020|
+|deriv_sum_vfun|✅ proved - incomplete|shostak|0.100|
+|deriv_neg_vfun|✅ proved - incomplete|shostak|0.069|
+|deriv_diff_vfun|✅ proved - incomplete|shostak|0.080|
 |deriv_dot_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_dot_vfun|✅ proved - incomplete|shostak|0.105|
-|deriv_scal_vfun|✅ proved - incomplete|shostak|0.073|
-|deriv_const_vfun|✅ proved - incomplete|shostak|0.070|
+|deriv_dot_vfun|✅ proved - incomplete|shostak|0.115|
+|deriv_scal_vfun|✅ proved - incomplete|shostak|0.084|
+|deriv_const_vfun|✅ proved - incomplete|shostak|0.075|
 
 ## `deriv_real_vect2`
 
@@ -241,520 +241,520 @@ No formula declaration found.
 | ---     | ---          | ---                | ---  |
 |IMP_derivatives_TCC1|✅ proved - complete|shostak|0.020|
 |IMP_derivatives_TCC2|✅ proved - complete|shostak|0.020|
-|deriv_rv_TCC1|✅ proved - incomplete|shostak|0.064|
-|deriv_rv_TCC2|✅ proved - incomplete|shostak|0.030|
+|deriv_rv_TCC1|✅ proved - incomplete|shostak|0.060|
+|deriv_rv_TCC2|✅ proved - incomplete|shostak|0.040|
 |sum_derivable_rv|✅ proved - incomplete|shostak|0.103|
-|diff_derivable_rv|✅ proved - incomplete|shostak|0.083|
-|neg_derivable_rv|✅ proved - incomplete|shostak|0.063|
-|prod_derivable_rv|✅ proved - incomplete|shostak|0.125|
-|dot_derivable_rv|✅ proved - incomplete|shostak|0.125|
+|diff_derivable_rv|✅ proved - incomplete|shostak|0.084|
+|neg_derivable_rv|✅ proved - incomplete|shostak|0.073|
+|prod_derivable_rv|✅ proved - incomplete|shostak|0.120|
+|dot_derivable_rv|✅ proved - incomplete|shostak|0.129|
 |sqv_derivable_rv|✅ proved - incomplete|shostak|0.030|
 |const_derivable_rv|✅ proved - incomplete|shostak|0.030|
-|scal_derivable_rv|✅ proved - incomplete|shostak|0.075|
+|scal_derivable_rv|✅ proved - incomplete|shostak|0.076|
 |prod_id_derivable_rv|✅ proved - incomplete|shostak|0.040|
 |deriv_sum_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_sum_vfun|✅ proved - incomplete|shostak|0.165|
-|deriv_diff_vfun_TCC1|✅ proved - incomplete|shostak|0.034|
-|deriv_diff_vfun|✅ proved - incomplete|shostak|0.145|
+|deriv_sum_vfun|✅ proved - incomplete|shostak|0.159|
+|deriv_diff_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
+|deriv_diff_vfun|✅ proved - incomplete|shostak|0.153|
 |deriv_neg_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_neg_vfun|✅ proved - incomplete|shostak|0.124|
-|deriv_prod_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_prod_vfun|✅ proved - incomplete|shostak|0.363|
-|deriv_dot_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_dot_vfun|✅ proved - incomplete|shostak|0.474|
-|deriv_sqv_vfun_TCC1|✅ proved - incomplete|shostak|0.035|
+|deriv_neg_vfun|✅ proved - incomplete|shostak|0.115|
+|deriv_prod_vfun_TCC1|✅ proved - incomplete|shostak|0.034|
+|deriv_prod_vfun|✅ proved - incomplete|shostak|0.359|
+|deriv_dot_vfun_TCC1|✅ proved - incomplete|shostak|0.020|
+|deriv_dot_vfun|✅ proved - incomplete|shostak|0.450|
+|deriv_sqv_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
 |deriv_sqv_vfun|✅ proved - incomplete|shostak|0.100|
 |deriv_const_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
-|deriv_const_vfun|✅ proved - incomplete|shostak|0.044|
-|deriv_scal_vfun_TCC1|✅ proved - incomplete|shostak|0.020|
-|deriv_scal_vfun|✅ proved - incomplete|shostak|0.215|
-|deriv_prod_id_vfun_TCC1|✅ proved - incomplete|shostak|0.020|
+|deriv_const_vfun|✅ proved - incomplete|shostak|0.055|
+|deriv_scal_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
+|deriv_scal_vfun|✅ proved - incomplete|shostak|0.209|
+|deriv_prod_id_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
 |deriv_prod_id_vfun|✅ proved - incomplete|shostak|0.085|
-|d_sum_vfun|✅ proved - incomplete|shostak|0.035|
+|d_sum_vfun|✅ proved - incomplete|shostak|0.030|
 |d_diff_vfun|✅ proved - incomplete|shostak|0.030|
 |d_neg_vfun|✅ proved - incomplete|shostak|0.030|
-|d_prod_vfun|✅ proved - incomplete|shostak|0.020|
-|d_dot_vfun|✅ proved - incomplete|shostak|0.025|
-|d_const_vfun|✅ proved - incomplete|shostak|0.030|
-|d_scal_vfun|✅ proved - incomplete|shostak|0.030|
+|d_prod_vfun|✅ proved - incomplete|shostak|0.035|
+|d_dot_vfun|✅ proved - incomplete|shostak|0.030|
+|d_const_vfun|✅ proved - incomplete|shostak|0.020|
+|d_scal_vfun|✅ proved - incomplete|shostak|0.025|
 
 ## `vect_fun_ops_rv`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|diff_function|✅ proved - complete|shostak|0.056|
-|negneg_function|✅ proved - complete|shostak|0.050|
+|diff_function|✅ proved - complete|shostak|0.060|
+|negneg_function|✅ proved - complete|shostak|0.040|
 
 ## `deriv_cont_2D`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|derivable_rv_cont_rv_TCC1|✅ proved - complete|shostak|0.020|
+|derivable_rv_cont_rv_TCC1|✅ proved - complete|shostak|0.030|
 |derivable_rv_cont_rv_TCC2|✅ proved - complete|shostak|0.020|
-|derivable_rv_cont_rv|✅ proved - incomplete|shostak|0.064|
+|derivable_rv_cont_rv|✅ proved - incomplete|shostak|0.055|
 
 ## `cont_real_vect2`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|continuity_def|✅ proved - incomplete|shostak|0.070|
-|continuity_def2|✅ proved - incomplete|shostak|0.030|
-|continuous_iff_comps|✅ proved - incomplete|shostak|1.088|
-|cont_rv_iff_comps|✅ proved - incomplete|shostak|1.089|
-|sum_continuous_rv|✅ proved - incomplete|shostak|0.040|
-|diff_continuous_rv|✅ proved - incomplete|shostak|0.053|
-|const_continuous_rv|✅ proved - incomplete|shostak|0.030|
-|scal_continuous_rv|✅ proved - incomplete|shostak|0.525|
-|prod_continuous_rv|✅ proved - incomplete|shostak|0.113|
-|neg_continuous_rv|✅ proved - incomplete|shostak|0.040|
-|sum_cont_rv_fun|✅ proved - incomplete|shostak|0.034|
+|continuity_def|✅ proved - incomplete|shostak|0.060|
+|continuity_def2|✅ proved - incomplete|shostak|0.040|
+|continuous_iff_comps|✅ proved - incomplete|shostak|1.081|
+|cont_rv_iff_comps|✅ proved - incomplete|shostak|1.070|
+|sum_continuous_rv|✅ proved - incomplete|shostak|0.051|
+|diff_continuous_rv|✅ proved - incomplete|shostak|0.040|
+|const_continuous_rv|✅ proved - incomplete|shostak|0.040|
+|scal_continuous_rv|✅ proved - incomplete|shostak|0.508|
+|prod_continuous_rv|✅ proved - incomplete|shostak|0.110|
+|neg_continuous_rv|✅ proved - incomplete|shostak|0.035|
+|sum_cont_rv_fun|✅ proved - incomplete|shostak|0.030|
 |diff_cont_rv_fun|✅ proved - incomplete|shostak|0.040|
 |const_cont_rv_fun|✅ proved - incomplete|shostak|0.030|
-|const_vfun_cont_rv|✅ proved - incomplete|shostak|0.040|
-|scal_cont_rv_fun|✅ proved - incomplete|shostak|0.044|
-|prod_cont_rv_fun|✅ proved - incomplete|shostak|0.124|
-|neg_cont_rv_fun|✅ proved - incomplete|shostak|0.040|
-|continuous_rv_fun_TCC1|✅ proved - incomplete|shostak|0.060|
-|sum_fun_continuous_rv|✅ proved - incomplete|shostak|0.045|
+|const_vfun_cont_rv|✅ proved - incomplete|shostak|0.025|
+|scal_cont_rv_fun|✅ proved - incomplete|shostak|0.040|
+|prod_cont_rv_fun|✅ proved - incomplete|shostak|0.114|
+|neg_cont_rv_fun|✅ proved - incomplete|shostak|0.030|
+|continuous_rv_fun_TCC1|✅ proved - incomplete|shostak|0.055|
+|sum_fun_continuous_rv|✅ proved - incomplete|shostak|0.030|
 |diff_fun_continuous_rv|✅ proved - incomplete|shostak|0.030|
 |const_fun_continuous_rv|✅ proved - incomplete|shostak|0.030|
-|neg_fun_continuous_rv|✅ proved - incomplete|shostak|0.030|
+|neg_fun_continuous_rv|✅ proved - incomplete|shostak|0.035|
 
 ## `limit_real_vect2`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|0.394|
+|cv_unique|✅ proved - incomplete|shostak|0.379|
 |cv_in_domain|✅ proved - incomplete|shostak|0.114|
 |cv_sum|✅ proved - incomplete|shostak|0.316|
 |cv_neg|✅ proved - incomplete|shostak|0.164|
-|cv_diff|✅ proved - incomplete|shostak|0.070|
-|cv_const|✅ proved - incomplete|shostak|0.044|
+|cv_diff|✅ proved - incomplete|shostak|0.064|
+|cv_const|✅ proved - incomplete|shostak|0.050|
 |cv_scal|✅ proved - incomplete|shostak|0.288|
-|lim_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_TCC1|✅ proved - incomplete|shostak|0.040|
 |lim_fun_lemma|✅ proved - incomplete|shostak|0.035|
-|lim_fun_def|✅ proved - incomplete|shostak|0.030|
-|convergence_equiv|✅ proved - incomplete|shostak|0.030|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.042|
+|lim_fun_def|✅ proved - incomplete|shostak|0.040|
+|convergence_equiv|✅ proved - incomplete|shostak|0.034|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.040|
 |lim_in_domain|✅ proved - incomplete|shostak|0.040|
 |sum_fun_convergent|✅ proved - incomplete|shostak|0.036|
 |neg_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.040|
-|const_fun_convergent|✅ proved - incomplete|shostak|0.025|
-|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.020|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.044|
+|const_fun_convergent|✅ proved - incomplete|shostak|0.020|
+|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.030|
 |lim_sum_fun|✅ proved - incomplete|shostak|0.040|
-|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_neg_fun|✅ proved - incomplete|shostak|0.035|
-|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
+|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.026|
+|lim_neg_fun|✅ proved - incomplete|shostak|0.030|
+|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.020|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.040|
 
 ## `vect_metric_space`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.085|
-|vectors_metric_space|✅ proved - incomplete|shostak|0.040|
-|vect_subset_metric_space|✅ proved - incomplete|shostak|0.020|
+|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.095|
+|vectors_metric_space|✅ proved - incomplete|shostak|0.044|
+|vect_subset_metric_space|✅ proved - incomplete|shostak|0.030|
 
 ## `vect3_metric_space`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.104|
-|vect3_subset_metric_space|✅ proved - incomplete|shostak|0.044|
-|vect3_metric_space|✅ proved - incomplete|shostak|0.030|
+|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.094|
+|vect3_subset_metric_space|✅ proved - incomplete|shostak|0.050|
+|vect3_metric_space|✅ proved - incomplete|shostak|0.020|
 
 ## `vect3_Heine`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_cross_metric_real_fun_TCC1|✅ proved - complete|shostak|0.020|
-|IMP_cross_metric_real_fun_TCC2|✅ proved - incomplete|shostak|0.030|
-|curried_min_exists_3D|✅ proved - incomplete|shostak|0.459|
-|curried_min_is_cont_3D_TCC1|✅ proved - incomplete|shostak|0.371|
-|curried_min_is_cont_3D|✅ proved - incomplete|shostak|0.387|
-|curried_min_is_cont_3D_ed_TCC1|✅ proved - incomplete|shostak|0.362|
-|curried_min_is_cont_3D_ed|✅ proved - incomplete|shostak|0.502|
-|multiary_Heine_3D|✅ proved - incomplete|shostak|0.149|
-|multiary_Heine_3D_ed|✅ proved - incomplete|shostak|0.197|
+|IMP_cross_metric_real_fun_TCC1|✅ proved - complete|shostak|0.034|
+|IMP_cross_metric_real_fun_TCC2|✅ proved - incomplete|shostak|0.020|
+|curried_min_exists_3D|✅ proved - incomplete|shostak|0.449|
+|curried_min_is_cont_3D_TCC1|✅ proved - incomplete|shostak|0.372|
+|curried_min_is_cont_3D|✅ proved - incomplete|shostak|0.369|
+|curried_min_is_cont_3D_ed_TCC1|✅ proved - incomplete|shostak|0.358|
+|curried_min_is_cont_3D_ed|✅ proved - incomplete|shostak|0.504|
+|multiary_Heine_3D|✅ proved - incomplete|shostak|0.152|
+|multiary_Heine_3D_ed|✅ proved - incomplete|shostak|0.187|
 
 ## `limit_vect2_real`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|0.422|
-|cv_in_domain|✅ proved - incomplete|shostak|0.114|
-|cv_sum|✅ proved - incomplete|shostak|0.339|
-|cv_neg|✅ proved - incomplete|shostak|0.171|
-|cv_diff|✅ proved - incomplete|shostak|0.049|
-|cv_prod|✅ proved - incomplete|shostak|0.469|
-|cv_const|✅ proved - incomplete|shostak|0.040|
-|cv_scal|✅ proved - incomplete|shostak|0.046|
-|cv_inv|✅ proved - incomplete|shostak|0.379|
-|cv_div|✅ proved - incomplete|shostak|0.074|
-|lim_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_fun_lemma|✅ proved - incomplete|shostak|0.040|
-|lim_fun_def|✅ proved - incomplete|shostak|0.035|
-|convergence_equiv|✅ proved - incomplete|shostak|0.030|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.044|
+|cv_unique|✅ proved - incomplete|shostak|0.413|
+|cv_in_domain|✅ proved - incomplete|shostak|0.107|
+|cv_sum|✅ proved - incomplete|shostak|0.336|
+|cv_neg|✅ proved - incomplete|shostak|0.161|
+|cv_diff|✅ proved - incomplete|shostak|0.050|
+|cv_prod|✅ proved - incomplete|shostak|0.460|
+|cv_const|✅ proved - incomplete|shostak|0.050|
+|cv_scal|✅ proved - incomplete|shostak|0.050|
+|cv_inv|✅ proved - incomplete|shostak|0.359|
+|cv_div|✅ proved - incomplete|shostak|0.085|
+|lim_TCC1|✅ proved - incomplete|shostak|0.035|
+|lim_fun_lemma|✅ proved - incomplete|shostak|0.030|
+|lim_fun_def|✅ proved - incomplete|shostak|0.040|
+|convergence_equiv|✅ proved - incomplete|shostak|0.035|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.040|
 |lim_in_domain|✅ proved - incomplete|shostak|0.030|
-|sum_fun_convergent|✅ proved - incomplete|shostak|0.056|
-|neg_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|prod_fun_convergent|✅ proved - incomplete|shostak|0.044|
-|const_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|scal_fun_convergent|✅ proved - incomplete|shostak|0.046|
-|inv_fun_convergent|✅ proved - incomplete|shostak|0.060|
-|div_fun_convergent|✅ proved - incomplete|shostak|0.045|
+|sum_fun_convergent|✅ proved - incomplete|shostak|0.055|
+|neg_fun_convergent|✅ proved - incomplete|shostak|0.040|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.037|
+|prod_fun_convergent|✅ proved - incomplete|shostak|0.050|
+|const_fun_convergent|✅ proved - incomplete|shostak|0.020|
+|scal_fun_convergent|✅ proved - incomplete|shostak|0.054|
+|inv_fun_convergent|✅ proved - incomplete|shostak|0.050|
+|div_fun_convergent|✅ proved - incomplete|shostak|0.056|
 |lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_sum_fun|✅ proved - incomplete|shostak|0.050|
+|lim_sum_fun|✅ proved - incomplete|shostak|0.045|
 |lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_neg_fun|✅ proved - incomplete|shostak|0.036|
+|lim_neg_fun|✅ proved - incomplete|shostak|0.030|
 |lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
-|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_prod_fun|✅ proved - incomplete|shostak|0.045|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.040|
+|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.026|
+|lim_prod_fun|✅ proved - incomplete|shostak|0.050|
 |lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_const_fun|✅ proved - incomplete|shostak|0.020|
+|lim_const_fun|✅ proved - incomplete|shostak|0.030|
 |lim_scal_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_scal_fun|✅ proved - incomplete|shostak|0.040|
-|lim_inv_fun_TCC1|✅ proved - incomplete|shostak|0.027|
-|lim_inv_fun|✅ proved - incomplete|shostak|0.040|
-|lim_div_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_div_fun|✅ proved - incomplete|shostak|0.050|
-|convergence_order|✅ proved - incomplete|shostak|0.200|
-|convergence_lower_bound|✅ proved - incomplete|shostak|0.050|
-|convergence_upper_bound|✅ proved - incomplete|shostak|0.035|
+|lim_scal_fun|✅ proved - incomplete|shostak|0.046|
+|lim_inv_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_inv_fun|✅ proved - incomplete|shostak|0.050|
+|lim_div_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_div_fun|✅ proved - incomplete|shostak|0.046|
+|convergence_order|✅ proved - incomplete|shostak|0.215|
+|convergence_lower_bound|✅ proved - incomplete|shostak|0.040|
+|convergence_upper_bound|✅ proved - incomplete|shostak|0.036|
 |lim_le1|✅ proved - incomplete|shostak|0.040|
-|lim_ge1|✅ proved - incomplete|shostak|0.045|
-|lim_order1|✅ proved - incomplete|shostak|0.050|
+|lim_ge1|✅ proved - incomplete|shostak|0.046|
+|lim_order1|✅ proved - incomplete|shostak|0.045|
 
 ## `limit_vect3_real`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|0.454|
+|cv_unique|✅ proved - incomplete|shostak|0.448|
 |cv_in_domain|✅ proved - incomplete|shostak|0.114|
-|cv_sum|✅ proved - incomplete|shostak|0.340|
-|cv_neg|✅ proved - incomplete|shostak|0.170|
-|cv_diff|✅ proved - incomplete|shostak|0.048|
+|cv_sum|✅ proved - incomplete|shostak|0.342|
+|cv_neg|✅ proved - incomplete|shostak|0.169|
+|cv_diff|✅ proved - incomplete|shostak|0.040|
 |cv_prod|✅ proved - incomplete|shostak|0.470|
-|cv_const|✅ proved - incomplete|shostak|0.045|
-|cv_scal|✅ proved - incomplete|shostak|0.050|
-|cv_inv|✅ proved - incomplete|shostak|0.380|
-|cv_div|✅ proved - incomplete|shostak|0.085|
-|lim_fun_lemma|✅ proved - incomplete|shostak|0.030|
-|lim_fun_def|✅ proved - incomplete|shostak|0.045|
-|convergence_equiv|✅ proved - incomplete|shostak|0.030|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.045|
+|cv_const|✅ proved - incomplete|shostak|0.040|
+|cv_scal|✅ proved - incomplete|shostak|0.055|
+|cv_inv|✅ proved - incomplete|shostak|0.359|
+|cv_div|✅ proved - incomplete|shostak|0.080|
+|lim_fun_lemma|✅ proved - incomplete|shostak|0.036|
+|lim_fun_def|✅ proved - incomplete|shostak|0.040|
+|convergence_equiv|✅ proved - incomplete|shostak|0.035|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.040|
 |lim_in_domain|✅ proved - incomplete|shostak|0.030|
-|sum_fun_convergent|✅ proved - incomplete|shostak|0.050|
-|neg_fun_convergent|✅ proved - incomplete|shostak|0.037|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.040|
-|prod_fun_convergent|✅ proved - incomplete|shostak|0.045|
-|const_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|scal_fun_convergent|✅ proved - incomplete|shostak|0.050|
-|inv_fun_convergent|✅ proved - incomplete|shostak|0.055|
-|div_fun_convergent|✅ proved - incomplete|shostak|0.050|
-|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.026|
-|lim_sum_fun|✅ proved - incomplete|shostak|0.050|
+|sum_fun_convergent|✅ proved - incomplete|shostak|0.045|
+|neg_fun_convergent|✅ proved - incomplete|shostak|0.030|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.045|
+|prod_fun_convergent|✅ proved - incomplete|shostak|0.050|
+|const_fun_convergent|✅ proved - incomplete|shostak|0.020|
+|scal_fun_convergent|✅ proved - incomplete|shostak|0.056|
+|inv_fun_convergent|✅ proved - incomplete|shostak|0.050|
+|div_fun_convergent|✅ proved - incomplete|shostak|0.056|
+|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_sum_fun|✅ proved - incomplete|shostak|0.040|
 |lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_neg_fun|✅ proved - incomplete|shostak|0.030|
-|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.026|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.040|
-|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_prod_fun|✅ proved - incomplete|shostak|0.050|
-|lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.016|
+|lim_neg_fun|✅ proved - incomplete|shostak|0.040|
+|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.020|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
+|lim_prod_fun_TCC1|✅ proved - incomplete|shostak|0.036|
+|lim_prod_fun|✅ proved - incomplete|shostak|0.040|
+|lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.020|
 |lim_const_fun|✅ proved - incomplete|shostak|0.030|
 |lim_scal_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_scal_fun|✅ proved - incomplete|shostak|0.050|
+|lim_scal_fun|✅ proved - incomplete|shostak|0.046|
 |lim_inv_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_inv_fun|✅ proved - incomplete|shostak|0.055|
+|lim_inv_fun|✅ proved - incomplete|shostak|0.060|
 |lim_div_fun_TCC1|✅ proved - incomplete|shostak|0.030|
-|lim_div_fun|✅ proved - incomplete|shostak|0.050|
-|convergence_order|✅ proved - incomplete|shostak|0.215|
-|convergence_lower_bound|✅ proved - incomplete|shostak|0.046|
-|convergence_upper_bound|✅ proved - incomplete|shostak|0.040|
-|lim_le1|✅ proved - incomplete|shostak|0.045|
-|lim_ge1|✅ proved - incomplete|shostak|0.040|
+|lim_div_fun|✅ proved - incomplete|shostak|0.045|
+|convergence_order|✅ proved - incomplete|shostak|0.214|
+|convergence_lower_bound|✅ proved - incomplete|shostak|0.040|
+|convergence_upper_bound|✅ proved - incomplete|shostak|0.045|
+|lim_le1|✅ proved - incomplete|shostak|0.040|
+|lim_ge1|✅ proved - incomplete|shostak|0.036|
 |lim_order1|✅ proved - incomplete|shostak|0.055|
 
 ## `limit_vect2_vect2`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|cv_unique|✅ proved - incomplete|shostak|0.229|
-|cv_in_domain|✅ proved - incomplete|shostak|0.085|
-|cv_sum|✅ proved - incomplete|shostak|0.273|
-|cv_neg|✅ proved - incomplete|shostak|0.122|
-|cv_diff|✅ proved - incomplete|shostak|0.082|
-|cv_const|✅ proved - incomplete|shostak|0.030|
-|lim_TCC1|✅ proved - incomplete|shostak|0.032|
-|lim_fun_lemma|✅ proved - incomplete|shostak|0.040|
-|lim_fun_def|✅ proved - incomplete|shostak|0.040|
-|convergence_equiv|✅ proved - incomplete|shostak|0.025|
-|convergent_in_domain|✅ proved - incomplete|shostak|0.050|
+|cv_unique|✅ proved - incomplete|shostak|0.215|
+|cv_in_domain|✅ proved - incomplete|shostak|0.075|
+|cv_sum|✅ proved - incomplete|shostak|0.266|
+|cv_neg|✅ proved - incomplete|shostak|0.114|
+|cv_diff|✅ proved - incomplete|shostak|0.090|
+|cv_const|✅ proved - incomplete|shostak|0.024|
+|lim_TCC1|✅ proved - incomplete|shostak|0.040|
+|lim_fun_lemma|✅ proved - incomplete|shostak|0.030|
+|lim_fun_def|✅ proved - incomplete|shostak|0.035|
+|convergence_equiv|✅ proved - incomplete|shostak|0.040|
+|convergent_in_domain|✅ proved - incomplete|shostak|0.045|
 |lim_in_domain|✅ proved - incomplete|shostak|0.030|
-|sum_fun_convergent|✅ proved - incomplete|shostak|0.035|
-|neg_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|diff_fun_convergent|✅ proved - incomplete|shostak|0.035|
+|sum_fun_convergent|✅ proved - incomplete|shostak|0.040|
+|neg_fun_convergent|✅ proved - incomplete|shostak|0.035|
+|diff_fun_convergent|✅ proved - incomplete|shostak|0.030|
 |const_fun_convergent|✅ proved - incomplete|shostak|0.030|
-|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_sum_fun_TCC1|✅ proved - incomplete|shostak|0.025|
 |lim_sum_fun|✅ proved - incomplete|shostak|0.030|
-|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.026|
-|lim_neg_fun|✅ proved - incomplete|shostak|0.020|
-|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_diff_fun|✅ proved - incomplete|shostak|0.030|
+|lim_neg_fun_TCC1|✅ proved - incomplete|shostak|0.020|
+|lim_neg_fun|✅ proved - incomplete|shostak|0.030|
+|lim_diff_fun_TCC1|✅ proved - incomplete|shostak|0.030|
+|lim_diff_fun|✅ proved - incomplete|shostak|0.037|
 |lim_const_fun_TCC1|✅ proved - incomplete|shostak|0.020|
-|lim_const_fun|✅ proved - incomplete|shostak|0.026|
+|lim_const_fun|✅ proved - incomplete|shostak|0.030|
 
 ## `cont_vect2_real`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|continuity_def|✅ proved - incomplete|shostak|0.050|
-|continuity_def2|✅ proved - incomplete|shostak|0.030|
+|continuity_def|✅ proved - incomplete|shostak|0.040|
+|continuity_def2|✅ proved - incomplete|shostak|0.035|
 |sum_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|diff_continuous_vr|✅ proved - incomplete|shostak|0.036|
-|prod_continuous_vr|✅ proved - incomplete|shostak|0.040|
-|const_continuous_vr|✅ proved - incomplete|shostak|0.060|
-|scal_continuous_vr|✅ proved - incomplete|shostak|0.035|
+|diff_continuous_vr|✅ proved - incomplete|shostak|0.040|
+|prod_continuous_vr|✅ proved - incomplete|shostak|0.036|
+|const_continuous_vr|✅ proved - incomplete|shostak|0.050|
+|scal_continuous_vr|✅ proved - incomplete|shostak|0.040|
 |neg_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|div_continuous_vr|✅ proved - incomplete|shostak|0.060|
-|inv_continuous_vr|✅ proved - incomplete|shostak|0.056|
-|expt_continuous_vr|✅ proved - incomplete|shostak|0.093|
-|sum_cont_vr_fun|✅ proved - incomplete|shostak|0.034|
+|div_continuous_vr|✅ proved - incomplete|shostak|0.056|
+|inv_continuous_vr|✅ proved - incomplete|shostak|0.060|
+|expt_continuous_vr|✅ proved - incomplete|shostak|0.097|
+|sum_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
 |diff_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|prod_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
+|prod_cont_vr_fun|✅ proved - incomplete|shostak|0.035|
 |const_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|scal_cont_vr_fun|✅ proved - incomplete|shostak|0.025|
+|scal_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
 |neg_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|div_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|inv_cont_vr_fun|✅ proved - incomplete|shostak|0.026|
+|div_cont_vr_fun|✅ proved - incomplete|shostak|0.036|
+|inv_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
 |expt_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|continuous_vr_fun_TCC1|✅ proved - incomplete|shostak|0.040|
-|sum_fun_continuous_vr|✅ proved - incomplete|shostak|0.035|
+|continuous_vr_fun_TCC1|✅ proved - incomplete|shostak|0.045|
+|sum_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
 |diff_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|prod_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|prod_fun_continuous_vr|✅ proved - incomplete|shostak|0.036|
 |const_fun_continuous_vr|✅ proved - incomplete|shostak|0.020|
-|scal_fun_continuous_vr|✅ proved - incomplete|shostak|0.036|
-|neg_fun_continuous_vr|✅ proved - incomplete|shostak|0.020|
-|div_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|inv_fun_continuous_vr|✅ proved - incomplete|shostak|0.035|
+|scal_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|neg_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|div_fun_continuous_vr|✅ proved - incomplete|shostak|0.036|
+|inv_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
 |expt_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
 
 ## `cont_vect3_real`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|continuity_def|✅ proved - incomplete|shostak|0.040|
+|continuity_def|✅ proved - incomplete|shostak|0.046|
 |continuity_def2|✅ proved - incomplete|shostak|0.030|
-|sum_continuous_vr|✅ proved - incomplete|shostak|0.026|
+|sum_continuous_vr|✅ proved - incomplete|shostak|0.040|
 |diff_continuous_vr|✅ proved - incomplete|shostak|0.030|
 |prod_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|const_continuous_vr|✅ proved - incomplete|shostak|0.055|
+|const_continuous_vr|✅ proved - incomplete|shostak|0.060|
 |scal_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|neg_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|div_continuous_vr|✅ proved - incomplete|shostak|0.055|
-|inv_continuous_vr|✅ proved - incomplete|shostak|0.060|
-|expt_continuous_vr|✅ proved - incomplete|shostak|0.096|
+|neg_continuous_vr|✅ proved - incomplete|shostak|0.035|
+|div_continuous_vr|✅ proved - incomplete|shostak|0.050|
+|inv_continuous_vr|✅ proved - incomplete|shostak|0.056|
+|expt_continuous_vr|✅ proved - incomplete|shostak|0.092|
 |sum_cont_vr_fun|✅ proved - incomplete|shostak|0.040|
-|diff_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|prod_cont_vr_fun|✅ proved - incomplete|shostak|0.025|
+|diff_cont_vr_fun|✅ proved - incomplete|shostak|0.033|
+|prod_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
 |const_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
 |scal_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|neg_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|div_cont_vr_fun|✅ proved - incomplete|shostak|0.036|
-|inv_cont_vr_fun|✅ proved - incomplete|shostak|0.020|
-|expt_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
-|continuous_vr_fun_TCC1|✅ proved - incomplete|shostak|0.045|
+|neg_cont_vr_fun|✅ proved - incomplete|shostak|0.032|
+|div_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
+|inv_cont_vr_fun|✅ proved - incomplete|shostak|0.030|
+|expt_cont_vr_fun|✅ proved - incomplete|shostak|0.032|
+|continuous_vr_fun_TCC1|✅ proved - incomplete|shostak|0.040|
 |sum_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|diff_fun_continuous_vr|✅ proved - incomplete|shostak|0.040|
-|prod_fun_continuous_vr|✅ proved - incomplete|shostak|0.026|
-|const_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|diff_fun_continuous_vr|✅ proved - incomplete|shostak|0.036|
+|prod_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|const_fun_continuous_vr|✅ proved - incomplete|shostak|0.020|
 |scal_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|neg_fun_continuous_vr|✅ proved - incomplete|shostak|0.020|
-|div_fun_continuous_vr|✅ proved - incomplete|shostak|0.026|
+|neg_fun_continuous_vr|✅ proved - incomplete|shostak|0.027|
+|div_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
 |inv_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
-|expt_fun_continuous_vr|✅ proved - incomplete|shostak|0.030|
+|expt_fun_continuous_vr|✅ proved - incomplete|shostak|0.026|
 
 ## `cont_vect2_vect2`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |continuity_def|✅ proved - incomplete|shostak|0.030|
-|continuity_def2|✅ proved - incomplete|shostak|0.025|
+|continuity_def2|✅ proved - incomplete|shostak|0.030|
 |sum_continuous_vv|✅ proved - incomplete|shostak|0.040|
-|diff_continuous_vv|✅ proved - incomplete|shostak|0.030|
-|const_continuous_vv|✅ proved - incomplete|shostak|0.056|
+|diff_continuous_vv|✅ proved - incomplete|shostak|0.036|
+|const_continuous_vv|✅ proved - incomplete|shostak|0.060|
 |identity_continuous_vv|✅ proved - incomplete|shostak|0.030|
 |neg_continuous_vv|✅ proved - incomplete|shostak|0.030|
-|sum_cont_vv_fun|✅ proved - incomplete|shostak|0.030|
-|diff_cont_vv_fun|✅ proved - incomplete|shostak|0.035|
-|const_cont_vv_fun|✅ proved - incomplete|shostak|0.020|
+|sum_cont_vv_fun|✅ proved - incomplete|shostak|0.036|
+|diff_cont_vv_fun|✅ proved - incomplete|shostak|0.030|
+|const_cont_vv_fun|✅ proved - incomplete|shostak|0.030|
 |neg_cont_vv_fun|✅ proved - incomplete|shostak|0.040|
-|id_cont_vv_fun|✅ proved - incomplete|shostak|0.020|
-|continuous_vv_fun_TCC1|✅ proved - incomplete|shostak|0.036|
+|id_cont_vv_fun|✅ proved - incomplete|shostak|0.026|
+|continuous_vv_fun_TCC1|✅ proved - incomplete|shostak|0.030|
 |sum_fun_continuous_vv|✅ proved - incomplete|shostak|0.040|
-|diff_fun_continuous_vv|✅ proved - incomplete|shostak|0.030|
+|diff_fun_continuous_vv|✅ proved - incomplete|shostak|0.034|
 |const_fun_continuous_vv|✅ proved - incomplete|shostak|0.020|
-|neg_fun_continuous_vv|✅ proved - incomplete|shostak|0.023|
+|neg_fun_continuous_vv|✅ proved - incomplete|shostak|0.030|
 
 ## `vect2_cont_comp`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|comp_vv_vv_cont|✅ proved - incomplete|shostak|0.050|
-|comp_rv_vr_cont|✅ proved - incomplete|shostak|0.132|
-|comp_vr_vv_cont|✅ proved - incomplete|shostak|0.092|
+|comp_vv_vv_cont|✅ proved - incomplete|shostak|0.063|
+|comp_rv_vr_cont|✅ proved - incomplete|shostak|0.131|
+|comp_vr_vv_cont|✅ proved - incomplete|shostak|0.091|
 |comp_rr_vr_cont|✅ proved - incomplete|shostak|0.145|
-|comp_vv_rv_cont|✅ proved - incomplete|shostak|0.114|
-|comp_rv_rr_cont|✅ proved - incomplete|shostak|0.187|
-|comp_vr_rv_cont|✅ proved - incomplete|shostak|0.173|
+|comp_vv_rv_cont|✅ proved - incomplete|shostak|0.111|
+|comp_rv_rr_cont|✅ proved - incomplete|shostak|0.185|
+|comp_vr_rv_cont|✅ proved - incomplete|shostak|0.174|
 
 ## `vect2_cont_comp2`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|comp_tt_vt_cont|✅ proved - incomplete|shostak|0.152|
-|comp_rv_tt_cont|✅ proved - incomplete|shostak|0.205|
+|comp_tt_vt_cont|✅ proved - incomplete|shostak|0.145|
+|comp_rv_tt_cont|✅ proved - incomplete|shostak|0.199|
 
 ## `vect2_cont_dot`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|dot_cont_vr|✅ proved - incomplete|shostak|1.322|
-|dot_cont_rr|✅ proved - incomplete|shostak|1.509|
-|scal_cont_rv|✅ proved - incomplete|shostak|2.024|
-|scal_cont_vv|✅ proved - incomplete|shostak|1.827|
-|scal_scal_cont_rv|✅ proved - incomplete|shostak|0.040|
+|dot_cont_vr|✅ proved - incomplete|shostak|1.294|
+|dot_cont_rr|✅ proved - incomplete|shostak|1.476|
+|scal_cont_rv|✅ proved - incomplete|shostak|1.866|
+|scal_cont_vv|✅ proved - incomplete|shostak|1.604|
+|scal_scal_cont_rv|✅ proved - incomplete|shostak|0.036|
 
 ## `vect_cont_2D`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|const_cont_vv|✅ proved - incomplete|shostak|0.033|
-|const_cont_rv|✅ proved - incomplete|shostak|0.040|
+|const_cont_vv|✅ proved - incomplete|shostak|0.030|
+|const_cont_rv|✅ proved - incomplete|shostak|0.030|
 |const_cont_vr|✅ proved - incomplete|shostak|0.030|
-|pair_cont_rv|✅ proved - incomplete|shostak|0.587|
-|pair_cont_vv|✅ proved - incomplete|shostak|0.490|
-|x_cont_vr|✅ proved - incomplete|shostak|0.189|
-|y_cont_vr|✅ proved - incomplete|shostak|0.173|
+|pair_cont_rv|✅ proved - incomplete|shostak|0.496|
+|pair_cont_vv|✅ proved - incomplete|shostak|0.427|
+|x_cont_vr|✅ proved - incomplete|shostak|0.165|
+|y_cont_vr|✅ proved - incomplete|shostak|0.157|
 |id_cont_vv|✅ proved - incomplete|shostak|0.020|
-|mult_cont_vr|✅ proved - incomplete|shostak|0.054|
+|mult_cont_vr|✅ proved - incomplete|shostak|0.050|
 |scal_mult_cont_vr|✅ proved - incomplete|shostak|0.030|
-|div_cont_vr|✅ proved - incomplete|shostak|0.060|
-|scal_div1_cont_vr|✅ proved - incomplete|shostak|0.054|
-|scal_div2_cont_vr|✅ proved - incomplete|shostak|0.060|
-|add_cont_vv|✅ proved - incomplete|shostak|0.033|
-|add_cont_vr|✅ proved - incomplete|shostak|0.060|
-|add_cont_rv|✅ proved - incomplete|shostak|0.040|
-|sub_cont_vv|✅ proved - incomplete|shostak|0.064|
-|sub_cont_vr|✅ proved - incomplete|shostak|0.040|
+|div_cont_vr|✅ proved - incomplete|shostak|0.048|
+|scal_div1_cont_vr|✅ proved - incomplete|shostak|0.040|
+|scal_div2_cont_vr|✅ proved - incomplete|shostak|0.044|
+|add_cont_vv|✅ proved - incomplete|shostak|0.030|
+|add_cont_vr|✅ proved - incomplete|shostak|0.050|
+|add_cont_rv|✅ proved - incomplete|shostak|0.034|
+|sub_cont_vv|✅ proved - incomplete|shostak|0.060|
+|sub_cont_vr|✅ proved - incomplete|shostak|0.030|
 |sub_cont_rv|✅ proved - incomplete|shostak|0.040|
-|neg_cont_vr|✅ proved - incomplete|shostak|0.042|
-|neg_cont_vv|✅ proved - incomplete|shostak|0.040|
-|neg_cont_rv|✅ proved - incomplete|shostak|0.040|
-|scal_scal_cont_vv|✅ proved - incomplete|shostak|0.041|
-|sqv_cont|✅ proved - incomplete|shostak|0.050|
-|neg_cont|✅ proved - incomplete|shostak|0.040|
-|abs_cont_vr|✅ proved - incomplete|shostak|0.071|
-|max_cont_vr|✅ proved - incomplete|shostak|0.562|
-|min_cont_vr|✅ proved - incomplete|shostak|0.192|
-|sq_cont_vr|✅ proved - incomplete|shostak|0.070|
-|sqv_cont_vr|✅ proved - incomplete|shostak|0.043|
-|sqv_cont_rr|✅ proved - incomplete|shostak|0.040|
+|neg_cont_vr|✅ proved - incomplete|shostak|0.040|
+|neg_cont_vv|✅ proved - incomplete|shostak|0.030|
+|neg_cont_rv|✅ proved - incomplete|shostak|0.034|
+|scal_scal_cont_vv|✅ proved - incomplete|shostak|0.040|
+|sqv_cont|✅ proved - incomplete|shostak|0.040|
+|neg_cont|✅ proved - incomplete|shostak|0.035|
+|abs_cont_vr|✅ proved - incomplete|shostak|0.070|
+|max_cont_vr|✅ proved - incomplete|shostak|0.454|
+|min_cont_vr|✅ proved - incomplete|shostak|0.153|
+|sq_cont_vr|✅ proved - incomplete|shostak|0.063|
+|sqv_cont_vr|✅ proved - incomplete|shostak|0.030|
+|sqv_cont_rr|✅ proved - incomplete|shostak|0.030|
 
 ## `vect_deriv_2D`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_deriv_real_vect2_TCC1|✅ proved - complete|shostak|0.020|
+|IMP_deriv_real_vect2_TCC1|✅ proved - complete|shostak|0.010|
 |IMP_deriv_real_vect2_TCC2|✅ proved - complete|shostak|0.020|
-|detsv_diff|✅ proved - incomplete|shostak|0.144|
+|detsv_diff|✅ proved - incomplete|shostak|0.139|
 |detsvp_deriv_TCC1|✅ proved - incomplete|shostak|0.030|
-|detsvp_deriv|✅ proved - incomplete|shostak|0.757|
-|sqvdot_diff|✅ proved - incomplete|shostak|0.148|
-|sqvdot_deriv_TCC1|✅ proved - incomplete|shostak|0.030|
-|sqvdot_deriv|✅ proved - incomplete|shostak|0.557|
+|detsvp_deriv|✅ proved - incomplete|shostak|0.638|
+|sqvdot_diff|✅ proved - incomplete|shostak|0.112|
+|sqvdot_deriv_TCC1|✅ proved - incomplete|shostak|0.033|
+|sqvdot_deriv|✅ proved - incomplete|shostak|0.473|
 
 ## `vect_chain_rule`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|composition_derivable_vfun_TCC1|✅ proved - complete|shostak|0.030|
+|composition_derivable_vfun_TCC1|✅ proved - complete|shostak|0.020|
 |composition_derivable_vfun_TCC2|✅ proved - complete|shostak|0.030|
-|composition_derivable_vfun_TCC3|✅ proved - incomplete|shostak|0.030|
+|composition_derivable_vfun_TCC3|✅ proved - incomplete|shostak|0.021|
 |composition_derivable_vfun_TCC4|✅ proved - incomplete|shostak|0.030|
-|composition_derivable_vfun|✅ proved - incomplete|shostak|0.123|
-|deriv_comp_vfun_TCC1|✅ proved - incomplete|shostak|0.040|
+|composition_derivable_vfun|✅ proved - incomplete|shostak|0.104|
+|deriv_comp_vfun_TCC1|✅ proved - incomplete|shostak|0.030|
 |deriv_comp_vfun_TCC2|✅ proved - incomplete|shostak|0.030|
-|deriv_comp_vfun_TCC3|✅ proved - incomplete|shostak|0.030|
-|deriv_comp_vfun|✅ proved - incomplete|shostak|0.281|
+|deriv_comp_vfun_TCC3|✅ proved - incomplete|shostak|0.020|
+|deriv_comp_vfun|✅ proved - incomplete|shostak|0.242|
 
 ## `four_vects_2D_continuity`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|div_vvr_TCC1|✅ proved - complete|shostak|0.040|
-|sum_vvv_cont|✅ proved - incomplete|shostak|0.415|
-|sum_vvr_cont|✅ proved - incomplete|shostak|0.609|
-|diff_vvv_cont|✅ proved - incomplete|shostak|0.452|
-|scal_vvv_cont|✅ proved - incomplete|shostak|0.577|
-|dot_vvv_cont|✅ proved - incomplete|shostak|2.021|
-|prod_vvr_cont|✅ proved - incomplete|shostak|0.665|
+|div_vvr_TCC1|✅ proved - complete|shostak|0.041|
+|sum_vvv_cont|✅ proved - incomplete|shostak|0.353|
+|sum_vvr_cont|✅ proved - incomplete|shostak|0.527|
+|diff_vvv_cont|✅ proved - incomplete|shostak|0.377|
+|scal_vvv_cont|✅ proved - incomplete|shostak|0.486|
+|dot_vvv_cont|✅ proved - incomplete|shostak|1.719|
+|prod_vvr_cont|✅ proved - incomplete|shostak|0.576|
 |const_vvr_cont|✅ proved - incomplete|shostak|0.053|
-|scal_vvr_vvv_cont|✅ proved - incomplete|shostak|1.505|
-|scal_vvr_cont|✅ proved - incomplete|shostak|0.641|
-|div_vvr_cont|✅ proved - incomplete|shostak|1.138|
-|input1_vvv_cont|✅ proved - incomplete|shostak|0.048|
-|input2_vvv_cont|✅ proved - incomplete|shostak|0.050|
-|input3_vvv_cont|✅ proved - incomplete|shostak|0.043|
-|input4_vvv_cont|✅ proved - incomplete|shostak|0.050|
-|max_vvr_cont|✅ proved - incomplete|shostak|0.555|
-|norm_vvv_cont|✅ proved - incomplete|shostak|0.264|
+|scal_vvr_vvv_cont|✅ proved - incomplete|shostak|1.365|
+|scal_vvr_cont|✅ proved - incomplete|shostak|0.562|
+|div_vvr_cont|✅ proved - incomplete|shostak|0.975|
+|input1_vvv_cont|✅ proved - incomplete|shostak|0.040|
+|input2_vvv_cont|✅ proved - incomplete|shostak|0.038|
+|input3_vvv_cont|✅ proved - incomplete|shostak|0.040|
+|input4_vvv_cont|✅ proved - incomplete|shostak|0.037|
+|max_vvr_cont|✅ proved - incomplete|shostak|0.482|
+|norm_vvv_cont|✅ proved - incomplete|shostak|0.228|
 
 ## `vect2_metric_space`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.053|
-|vect2_subset_metric_space|✅ proved - incomplete|shostak|0.050|
+|IMP_metric_spaces_TCC1|✅ proved - incomplete|shostak|0.046|
+|vect2_subset_metric_space|✅ proved - incomplete|shostak|0.051|
 |vect2_metric_space|✅ proved - incomplete|shostak|0.030|
 
 ## `vect2_Heine`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|IMP_cross_metric_real_fun_TCC1|✅ proved - complete|shostak|0.021|
-|IMP_cross_metric_real_fun_TCC2|✅ proved - incomplete|shostak|0.030|
-|curried_min_exists_2D|✅ proved - incomplete|shostak|0.504|
-|curried_min_is_cont_2D_TCC1|✅ proved - incomplete|shostak|0.403|
-|curried_min_is_cont_2D|✅ proved - incomplete|shostak|0.000|
-|curried_min_is_cont_2D_ed_TCC1|✅ proved - incomplete|shostak|0.431|
-|curried_min_is_cont_2D_ed|✅ proved - incomplete|shostak|0.592|
-|multiary_Heine_2D|✅ proved - incomplete|shostak|0.164|
-|multiary_Heine_2D_ed|✅ proved - incomplete|shostak|0.215|
+|IMP_cross_metric_real_fun_TCC1|✅ proved - complete|shostak|0.020|
+|IMP_cross_metric_real_fun_TCC2|✅ proved - incomplete|shostak|0.020|
+|curried_min_exists_2D|✅ proved - incomplete|shostak|0.000|
+|curried_min_is_cont_2D_TCC1|✅ proved - incomplete|shostak|0.474|
+|curried_min_is_cont_2D|✅ proved - incomplete|shostak|0.378|
+|curried_min_is_cont_2D_ed_TCC1|✅ proved - incomplete|shostak|0.357|
+|curried_min_is_cont_2D_ed|✅ proved - incomplete|shostak|0.502|
+|multiary_Heine_2D|✅ proved - incomplete|shostak|0.153|
+|multiary_Heine_2D_ed|✅ proved - incomplete|shostak|0.193|
 
 ## `vect_vect_2D_continuity`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|div_vvr_TCC1|✅ proved - complete|shostak|0.040|
-|sum_vvv_cont|✅ proved - incomplete|shostak|0.333|
-|sum_vvr_cont|✅ proved - incomplete|shostak|0.306|
-|diff_vvv_cont|✅ proved - incomplete|shostak|0.356|
-|scal_vvv_cont|✅ proved - incomplete|shostak|0.387|
-|dot_vvv_cont|✅ proved - incomplete|shostak|1.707|
-|prod_vvr_cont|✅ proved - incomplete|shostak|0.580|
-|const_vvr_cont|✅ proved - incomplete|shostak|0.067|
-|scal_vvr_vvv_cont|✅ proved - incomplete|shostak|1.216|
-|scal_vvr_cont|✅ proved - incomplete|shostak|0.387|
-|div_vvr_cont|✅ proved - incomplete|shostak|1.084|
-|nzv_vvv_cont|✅ proved - incomplete|shostak|0.040|
-|s_vvv_cont|✅ proved - incomplete|shostak|0.040|
-|max_vvr_cont|✅ proved - incomplete|shostak|0.495|
-|norm_vvv_cont|✅ proved - incomplete|shostak|0.252|
+|div_vvr_TCC1|✅ proved - complete|shostak|0.030|
+|sum_vvv_cont|✅ proved - incomplete|shostak|0.285|
+|sum_vvr_cont|✅ proved - incomplete|shostak|0.269|
+|diff_vvv_cont|✅ proved - incomplete|shostak|0.287|
+|scal_vvv_cont|✅ proved - incomplete|shostak|0.330|
+|dot_vvv_cont|✅ proved - incomplete|shostak|1.481|
+|prod_vvr_cont|✅ proved - incomplete|shostak|0.507|
+|const_vvr_cont|✅ proved - incomplete|shostak|0.069|
+|scal_vvr_vvv_cont|✅ proved - incomplete|shostak|1.070|
+|scal_vvr_cont|✅ proved - incomplete|shostak|0.332|
+|div_vvr_cont|✅ proved - incomplete|shostak|0.919|
+|nzv_vvv_cont|✅ proved - incomplete|shostak|0.030|
+|s_vvv_cont|✅ proved - incomplete|shostak|0.030|
+|max_vvr_cont|✅ proved - incomplete|shostak|0.432|
+|norm_vvv_cont|✅ proved - incomplete|shostak|0.213|
 ## Platform information 
 |  |  |
 |---|---|

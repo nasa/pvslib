@@ -1,13 +1,13 @@
 # Summary for `MetiTarski`
-Run started at 15:55:17 9/1/2023.
+Run started at 23:4:53 9/19/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **33**   | **33**    | **33**    | **0**  | **2.534 s**   |
+| **totals** | **33**   | **33**    | **33**    | **0**  | **2.425 s**   |
 |top|0|0|0|0|0.000|
-|metit_examples|33|33|33|0|2.534|
+|metit_examples|33|33|33|0|2.425|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -15,39 +15,39 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|simple|✅ proved - complete|shostak|0.195|
+|simple|✅ proved - complete|shostak|0.147|
 |simple_abs|✅ proved - complete|shostak|0.090|
-|sqrtx3_TCC1|✅ proved - complete|shostak|0.055|
+|sqrtx3_TCC1|✅ proved - complete|shostak|0.045|
 |sqrtx3|✅ proved - incomplete|shostak|0.030|
-|tr_35_TCC1|✅ proved - incomplete|shostak|0.040|
-|tr_35|✅ proved - incomplete|shostak|0.190|
+|tr_35_TCC1|✅ proved - incomplete|shostak|0.050|
+|tr_35|✅ proved - incomplete|shostak|0.200|
 |tr_35_le_TCC1|✅ proved - incomplete|shostak|0.040|
 |tr_35_le|✅ proved - incomplete|shostak|0.040|
-|sqrt23|✅ proved - incomplete|shostak|0.035|
+|sqrt23|✅ proved - incomplete|shostak|0.038|
 |sin6sqrt2|✅ proved - incomplete|shostak|0.030|
 |G_TCC1|✅ proved - complete|shostak|0.030|
-|A_and_S|✅ proved - incomplete|shostak|0.030|
+|A_and_S|✅ proved - incomplete|shostak|0.040|
 |r_TCC1|✅ proved - complete|shostak|0.030|
-|r_TCC2|✅ proved - complete|shostak|0.020|
+|r_TCC2|✅ proved - complete|shostak|0.030|
 |atan_implementation|✅ proved - incomplete|shostak|0.030|
 |ajn|✅ proved - complete|shostak|0.080|
-|double_quad_simple_min|✅ proved - incomplete|shostak|0.781|
+|double_quad_simple_min|✅ proved - incomplete|shostak|0.739|
 |ex1_ba_TCC1|✅ proved - complete|shostak|0.030|
 |ex1_ba_TCC2|✅ proved - complete|shostak|0.100|
 |ex1_ba|✅ proved - incomplete|shostak|0.030|
-|ex2_ba_TCC1|✅ proved - complete|shostak|0.060|
+|ex2_ba_TCC1|✅ proved - complete|shostak|0.050|
 |ex2_ba|✅ proved - incomplete|shostak|0.020|
-|ex3_ba_TCC1|✅ proved - complete|shostak|0.058|
-|ex3_ba|✅ proved - incomplete|shostak|0.030|
-|ex4_ba|✅ proved - incomplete|shostak|0.040|
-|ex5_ba_TCC1|✅ proved - complete|shostak|0.190|
-|ex5_ba|✅ proved - incomplete|shostak|0.020|
-|ex6_ba|✅ proved - incomplete|shostak|0.020|
-|ex7_ba|✅ proved - incomplete|shostak|0.030|
-|quadratic|✅ proved - incomplete|shostak|0.040|
-|Tunnel_3_IL|✅ proved - incomplete|shostak|0.040|
+|ex3_ba_TCC1|✅ proved - complete|shostak|0.040|
+|ex3_ba|✅ proved - incomplete|shostak|0.020|
+|ex4_ba|✅ proved - incomplete|shostak|0.030|
+|ex5_ba_TCC1|✅ proved - complete|shostak|0.170|
+|ex5_ba|✅ proved - incomplete|shostak|0.030|
+|ex6_ba|✅ proved - incomplete|shostak|0.040|
+|ex7_ba|✅ proved - incomplete|shostak|0.040|
+|quadratic|✅ proved - incomplete|shostak|0.036|
+|Tunnel_3_IL|✅ proved - incomplete|shostak|0.030|
 |Tunnel_3_IL_LU|✅ proved - incomplete|shostak|0.040|
-|Ayad_Marche|✅ proved - incomplete|shostak|0.040|
+|Ayad_Marche|✅ proved - incomplete|shostak|0.030|
 ## Platform information 
 |  |  |
 |---|---|

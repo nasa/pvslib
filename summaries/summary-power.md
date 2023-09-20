@@ -1,23 +1,23 @@
 # Summary for `power`
-Run started at 14:38:29 9/1/2023.
+Run started at 21:49:3 9/19/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **307**   | **307**    | **307**    | **0**  | **43.084 s**   |
+| **totals** | **307**   | **307**    | **307**    | **0**  | **41.447 s**   |
 |top|0|0|0|0|0.000|
-|rational_props_aux|8|8|8|0|0.393|
-|exponentiation_aux|1|1|1|0|0.191|
-|nn_root|40|40|40|0|5.062|
-|root|58|58|58|0|7.796|
-|nn_rational_expt|24|24|24|0|6.095|
-|nnreal_expt|31|31|31|0|11.602|
-|real_expt|67|67|67|0|4.503|
-|nn_log|24|24|24|0|1.960|
-|log|36|36|36|0|3.316|
+|rational_props_aux|8|8|8|0|0.432|
+|exponentiation_aux|1|1|1|0|0.200|
+|nn_root|40|40|40|0|5.355|
+|root|58|58|58|0|7.382|
+|nn_rational_expt|24|24|24|0|5.562|
+|nnreal_expt|31|31|31|0|10.082|
+|real_expt|67|67|67|0|3.904|
+|nn_log|24|24|24|0|1.743|
+|log|36|36|36|0|2.920|
 |real_fun_power|1|1|1|0|0.010|
-|ln_exp_def|17|17|17|0|2.156|
+|ln_exp_def|17|17|17|0|3.857|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -25,335 +25,335 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|denominator_TCC1|✅ proved - complete|shostak|0.086|
-|numerator_TCC1|✅ proved - complete|shostak|0.100|
+|denominator_TCC1|✅ proved - complete|shostak|0.090|
+|numerator_TCC1|✅ proved - complete|shostak|0.120|
 |rational_def|✅ proved - complete|shostak|0.030|
-|denominator_int|✅ proved - complete|shostak|0.080|
+|denominator_int|✅ proved - complete|shostak|0.082|
 |numerator_int|✅ proved - complete|shostak|0.020|
-|numerator_is_zero|✅ proved - complete|shostak|0.017|
+|numerator_is_zero|✅ proved - complete|shostak|0.020|
 |numerator_pos|✅ proved - complete|shostak|0.010|
-|numerator_neg|✅ proved - complete|shostak|0.050|
+|numerator_neg|✅ proved - complete|shostak|0.060|
 
 ## `exponentiation_aux`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|expt_lower_bound|✅ proved - complete|shostak|0.191|
+|expt_lower_bound|✅ proved - complete|shostak|0.200|
 
 ## `nn_root`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |continuous_alt_hat_TCC1|✅ proved - complete|shostak|0.020|
-|continuous_alt_hat_TCC2|✅ proved - complete|shostak|0.020|
-|continuous_alt_hat|✅ proved - complete|shostak|1.584|
-|hat_bijective_TCC1|✅ proved - complete|shostak|0.010|
-|hat_bijective|✅ proved - complete|shostak|0.762|
-|nn_root_0n|✅ proved - complete|shostak|0.107|
+|continuous_alt_hat_TCC2|✅ proved - complete|shostak|0.030|
+|continuous_alt_hat|✅ proved - complete|shostak|1.694|
+|hat_bijective_TCC1|✅ proved - complete|shostak|0.000|
+|hat_bijective|✅ proved - complete|shostak|0.819|
+|nn_root_0n|✅ proved - complete|shostak|0.121|
 |nn_root_1n|✅ proved - complete|shostak|0.060|
 |nn_root_x1|✅ proved - complete|shostak|0.040|
-|nn_root_strict_increasing|✅ proved - complete|shostak|0.209|
-|nn_root_expt|✅ proved - complete|shostak|0.070|
-|expt_nn_root_TCC1|✅ proved - complete|shostak|0.020|
+|nn_root_strict_increasing|✅ proved - complete|shostak|0.218|
+|nn_root_expt|✅ proved - complete|shostak|0.080|
+|expt_nn_root_TCC1|✅ proved - complete|shostak|0.010|
 |expt_nn_root|✅ proved - complete|shostak|0.090|
-|nn_root_is_0|✅ proved - complete|shostak|0.040|
-|nn_root_pos|✅ proved - complete|shostak|0.013|
+|nn_root_is_0|✅ proved - complete|shostak|0.045|
+|nn_root_pos|✅ proved - complete|shostak|0.010|
 |nn_root_gt1|✅ proved - complete|shostak|0.040|
-|nn_root_lt1|✅ proved - complete|shostak|0.042|
-|mult_nn_root|✅ proved - complete|shostak|0.251|
-|inv_nn_root_TCC1|✅ proved - complete|shostak|0.005|
-|inv_nn_root|✅ proved - complete|shostak|0.090|
-|div_nn_root|✅ proved - complete|shostak|0.096|
-|nn_root_mult|✅ proved - complete|shostak|0.107|
-|nn_root_increasing|✅ proved - complete|shostak|0.046|
-|nn_root_decreasing|✅ proved - complete|shostak|0.099|
+|nn_root_lt1|✅ proved - complete|shostak|0.050|
+|mult_nn_root|✅ proved - complete|shostak|0.261|
+|inv_nn_root_TCC1|✅ proved - complete|shostak|0.006|
+|inv_nn_root|✅ proved - complete|shostak|0.100|
+|div_nn_root|✅ proved - complete|shostak|0.106|
+|nn_root_mult|✅ proved - complete|shostak|0.106|
+|nn_root_increasing|✅ proved - complete|shostak|0.066|
+|nn_root_decreasing|✅ proved - complete|shostak|0.113|
 |nn_root_upper_bound|✅ proved - complete|shostak|0.130|
-|nn_root_bijective|✅ proved - complete|shostak|0.110|
-|continuous_alt_nn_root|✅ proved - complete|shostak|0.724|
+|nn_root_bijective|✅ proved - complete|shostak|0.130|
+|continuous_alt_nn_root|✅ proved - complete|shostak|0.715|
 |both_sides_nn_root_lt|✅ proved - complete|shostak|0.020|
-|both_sides_nn_root_le|✅ proved - complete|shostak|0.015|
-|both_sides_nn_root_gt|✅ proved - complete|shostak|0.020|
-|both_sides_nn_root_ge|✅ proved - complete|shostak|0.010|
-|both_sides_nn_root|✅ proved - complete|shostak|0.025|
+|both_sides_nn_root_le|✅ proved - complete|shostak|0.025|
+|both_sides_nn_root_gt|✅ proved - complete|shostak|0.010|
+|both_sides_nn_root_ge|✅ proved - complete|shostak|0.020|
+|both_sides_nn_root|✅ proved - complete|shostak|0.021|
 |both_sides_nn_root_lt1_lt|✅ proved - complete|shostak|0.020|
-|both_sides_nn_root_lt1_le|✅ proved - complete|shostak|0.017|
+|both_sides_nn_root_lt1_le|✅ proved - complete|shostak|0.023|
 |both_sides_nn_root_lt1_gt|✅ proved - complete|shostak|0.020|
 |both_sides_nn_root_lt1_ge|✅ proved - complete|shostak|0.010|
-|both_sides_nn_root_gt1_lt|✅ proved - complete|shostak|0.020|
-|both_sides_nn_root_gt1_le|✅ proved - complete|shostak|0.027|
+|both_sides_nn_root_gt1_lt|✅ proved - complete|shostak|0.024|
+|both_sides_nn_root_gt1_le|✅ proved - complete|shostak|0.020|
 |both_sides_nn_root_gt1_gt|✅ proved - complete|shostak|0.010|
 |both_sides_nn_root_gt1_ge|✅ proved - complete|shostak|0.020|
-|both_sides_nn_root_eq|✅ proved - complete|shostak|0.043|
+|both_sides_nn_root_eq|✅ proved - complete|shostak|0.052|
 
 ## `root`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|expt_exp|✅ proved - incomplete|shostak|0.100|
+|expt_exp|✅ proved - incomplete|shostak|0.109|
 |nn_root_def_TCC1|✅ proved - complete|shostak|0.010|
 |nn_root_def|✅ proved - incomplete|shostak|0.150|
-|root_nn_TCC1|✅ proved - incomplete|shostak|0.010|
-|root_nn_TCC2|✅ proved - incomplete|shostak|0.000|
-|root_nn_root_pos_rew|✅ proved - incomplete|shostak|0.050|
-|root_TCC1|✅ proved - incomplete|shostak|0.230|
+|root_nn_TCC1|✅ proved - incomplete|shostak|0.018|
+|root_nn_TCC2|✅ proved - incomplete|shostak|0.040|
+|root_nn_root_pos_rew|✅ proved - incomplete|shostak|0.040|
+|root_TCC1|✅ proved - incomplete|shostak|0.000|
 |root_TCC2|✅ proved - incomplete|shostak|0.070|
-|root_TCC3|✅ proved - complete|shostak|0.070|
+|root_TCC3|✅ proved - complete|shostak|0.080|
 |root_TCC4|✅ proved - incomplete|shostak|0.100|
-|root_root_nn_rew_TCC1|✅ proved - complete|shostak|0.050|
+|root_root_nn_rew_TCC1|✅ proved - complete|shostak|0.060|
 |root_root_nn_rew|✅ proved - incomplete|shostak|0.040|
-|root_0n|✅ proved - incomplete|shostak|0.010|
+|root_0n|✅ proved - incomplete|shostak|0.020|
 |root_1n|✅ proved - incomplete|shostak|0.020|
 |root_x1_TCC1|✅ proved - complete|shostak|0.010|
-|root_x1|✅ proved - incomplete|shostak|0.010|
+|root_x1|✅ proved - incomplete|shostak|0.019|
 |root_nn_root_rew|✅ proved - incomplete|shostak|0.070|
 |root_expt_TCC1|✅ proved - complete|shostak|0.010|
-|root_expt_TCC2|✅ proved - complete|shostak|0.090|
-|root_expt|✅ proved - incomplete|shostak|0.343|
+|root_expt_TCC2|✅ proved - complete|shostak|0.080|
+|root_expt|✅ proved - incomplete|shostak|0.358|
 |expt_root_TCC1|✅ proved - incomplete|shostak|0.010|
-|expt_root|✅ proved - incomplete|shostak|0.400|
+|expt_root|✅ proved - incomplete|shostak|0.392|
 |root_is_0|✅ proved - incomplete|shostak|0.080|
-|root_pos|✅ proved - incomplete|shostak|0.088|
-|root_neg|✅ proved - incomplete|shostak|0.090|
-|root_gt1|✅ proved - incomplete|shostak|0.103|
-|root_lt1|✅ proved - incomplete|shostak|0.110|
+|root_pos|✅ proved - incomplete|shostak|0.095|
+|root_neg|✅ proved - incomplete|shostak|0.084|
+|root_gt1|✅ proved - incomplete|shostak|0.090|
+|root_lt1|✅ proved - incomplete|shostak|0.098|
 |neg_root_TCC1|✅ proved - complete|shostak|0.050|
 |neg_root_TCC2|✅ proved - complete|shostak|0.050|
-|neg_root|✅ proved - incomplete|shostak|0.123|
-|mult_root_TCC1|✅ proved - complete|shostak|0.040|
+|neg_root|✅ proved - incomplete|shostak|0.110|
+|mult_root_TCC1|✅ proved - complete|shostak|0.034|
 |mult_root_TCC2|✅ proved - complete|shostak|0.010|
 |mult_root_TCC3|✅ proved - complete|shostak|0.060|
-|mult_root|✅ proved - incomplete|shostak|0.518|
-|inv_root_TCC1|✅ proved - complete|shostak|0.050|
+|mult_root|✅ proved - incomplete|shostak|0.468|
+|inv_root_TCC1|✅ proved - complete|shostak|0.040|
 |inv_root_TCC2|✅ proved - incomplete|shostak|0.020|
-|inv_root|✅ proved - incomplete|shostak|0.753|
+|inv_root|✅ proved - incomplete|shostak|0.705|
 |div_root_TCC1|✅ proved - complete|shostak|0.060|
 |div_root_TCC2|✅ proved - complete|shostak|0.060|
-|div_root_TCC3|✅ proved - complete|shostak|0.053|
+|div_root_TCC3|✅ proved - complete|shostak|0.060|
 |div_root_TCC4|✅ proved - incomplete|shostak|0.030|
-|div_root|✅ proved - incomplete|shostak|0.174|
+|div_root|✅ proved - incomplete|shostak|0.172|
 |root_mult_TCC1|✅ proved - complete|shostak|0.170|
-|root_mult_TCC2|✅ proved - incomplete|shostak|0.030|
-|root_mult|✅ proved - incomplete|shostak|0.334|
+|root_mult_TCC2|✅ proved - incomplete|shostak|0.020|
+|root_mult|✅ proved - incomplete|shostak|0.323|
 |root_increasing_TCC1|✅ proved - complete|shostak|0.010|
-|root_increasing_TCC2|✅ proved - complete|shostak|0.010|
-|root_increasing|✅ proved - incomplete|shostak|0.107|
+|root_increasing_TCC2|✅ proved - complete|shostak|0.013|
+|root_increasing|✅ proved - incomplete|shostak|0.100|
 |root_decreasing_TCC1|✅ proved - complete|shostak|0.010|
 |root_decreasing_TCC2|✅ proved - complete|shostak|0.010|
-|root_decreasing|✅ proved - incomplete|shostak|0.104|
-|continuous_alt_root_TCC1|✅ proved - complete|shostak|0.084|
-|continuous_alt_root_TCC2|✅ proved - complete|shostak|0.090|
-|continuous_alt_root|✅ proved - incomplete|shostak|1.370|
-|root_root_pos_rew|✅ proved - incomplete|shostak|0.021|
-|root_root_real_rew|✅ proved - incomplete|shostak|0.150|
+|root_decreasing|✅ proved - incomplete|shostak|0.103|
+|continuous_alt_root_TCC1|✅ proved - complete|shostak|0.090|
+|continuous_alt_root_TCC2|✅ proved - complete|shostak|0.095|
+|continuous_alt_root|✅ proved - incomplete|shostak|1.307|
+|root_root_pos_rew|✅ proved - incomplete|shostak|0.020|
+|root_root_real_rew|✅ proved - incomplete|shostak|0.143|
 |root_type_TCC1|✅ proved - incomplete|shostak|0.020|
-|root_type|✅ proved - incomplete|shostak|0.901|
+|root_type|✅ proved - incomplete|shostak|0.866|
 
 ## `nn_rational_expt`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|nn_rational_expt_TCC1|✅ proved - complete|shostak|0.010|
-|nn_rational_expt_nat_rew_TCC1|✅ proved - complete|shostak|0.010|
-|nn_rational_expt_nat_rew|✅ proved - complete|shostak|0.020|
-|nn_rational_expt_root_rew|✅ proved - complete|shostak|0.182|
-|nn_rational_expt_rat_rew|✅ proved - complete|shostak|0.528|
-|nn_rational_expt_strict_increasing|✅ proved - complete|shostak|0.112|
-|nn_rational_expt_0q|✅ proved - complete|shostak|0.040|
-|nn_rational_expt_1q|✅ proved - complete|shostak|0.074|
-|nn_rational_expt_x1|✅ proved - complete|shostak|0.020|
-|nn_rational_expt_is_0|✅ proved - complete|shostak|0.050|
-|nn_rational_expt_pos|✅ proved - complete|shostak|0.020|
+|nn_rational_expt_TCC1|✅ proved - complete|shostak|0.017|
+|nn_rational_expt_nat_rew_TCC1|✅ proved - complete|shostak|0.000|
+|nn_rational_expt_nat_rew|✅ proved - complete|shostak|0.010|
+|nn_rational_expt_root_rew|✅ proved - complete|shostak|0.172|
+|nn_rational_expt_rat_rew|✅ proved - complete|shostak|0.494|
+|nn_rational_expt_strict_increasing|✅ proved - complete|shostak|0.103|
+|nn_rational_expt_0q|✅ proved - complete|shostak|0.036|
+|nn_rational_expt_1q|✅ proved - complete|shostak|0.070|
+|nn_rational_expt_x1|✅ proved - complete|shostak|0.010|
+|nn_rational_expt_is_0|✅ proved - complete|shostak|0.045|
+|nn_rational_expt_pos|✅ proved - complete|shostak|0.010|
 |nn_rational_expt_gt1|✅ proved - complete|shostak|0.086|
-|nn_rational_expt_lt1|✅ proved - complete|shostak|0.035|
-|mult_nn_rational_expt|✅ proved - complete|shostak|0.144|
-|inv_nn_rational_expt_TCC1|✅ proved - complete|shostak|0.010|
+|nn_rational_expt_lt1|✅ proved - complete|shostak|0.037|
+|mult_nn_rational_expt|✅ proved - complete|shostak|0.130|
+|inv_nn_rational_expt_TCC1|✅ proved - complete|shostak|0.000|
 |inv_nn_rational_expt|✅ proved - complete|shostak|0.086|
-|div_nn_rational_expt|✅ proved - complete|shostak|0.090|
-|nn_rational_expt_plus|✅ proved - complete|shostak|1.022|
-|nn_rational_expt_times|✅ proved - complete|shostak|0.723|
-|nn_rational_expt_decreasing|✅ proved - complete|shostak|0.152|
-|nn_rational_expt_increasing|✅ proved - complete|shostak|0.154|
-|nn_rational_expt_def|✅ proved - complete|shostak|0.259|
-|continuous_alt_nn_rational_expt|✅ proved - complete|shostak|0.305|
-|nn_rational_expt_approx_gt1|✅ proved - complete|shostak|1.963|
+|div_nn_rational_expt|✅ proved - complete|shostak|0.105|
+|nn_rational_expt_plus|✅ proved - complete|shostak|0.989|
+|nn_rational_expt_times|✅ proved - complete|shostak|0.674|
+|nn_rational_expt_decreasing|✅ proved - complete|shostak|0.133|
+|nn_rational_expt_increasing|✅ proved - complete|shostak|0.138|
+|nn_rational_expt_def|✅ proved - complete|shostak|0.236|
+|continuous_alt_nn_rational_expt|✅ proved - complete|shostak|0.262|
+|nn_rational_expt_approx_gt1|✅ proved - complete|shostak|1.719|
 
 ## `nnreal_expt`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|nnreal_expt_TCC1|✅ proved - complete|shostak|0.055|
-|nnreal_expt_TCC2|✅ proved - complete|shostak|0.100|
-|nnreal_expt_TCC3|✅ proved - complete|shostak|0.107|
-|nnreal_expt_TCC4|✅ proved - complete|shostak|0.100|
-|nnreal_expt_rat_rew|✅ proved - complete|shostak|0.292|
-|nnreal_expt_nat_rew_TCC1|✅ proved - complete|shostak|0.000|
-|nnreal_expt_nat_rew|✅ proved - complete|shostak|0.020|
-|nnreal_expt_root_rew|✅ proved - complete|shostak|0.040|
-|nnreal_expt_0a|✅ proved - complete|shostak|0.132|
+|nnreal_expt_TCC1|✅ proved - complete|shostak|0.051|
+|nnreal_expt_TCC2|✅ proved - complete|shostak|0.070|
+|nnreal_expt_TCC3|✅ proved - complete|shostak|0.091|
+|nnreal_expt_TCC4|✅ proved - complete|shostak|0.076|
+|nnreal_expt_rat_rew|✅ proved - complete|shostak|0.275|
+|nnreal_expt_nat_rew_TCC1|✅ proved - complete|shostak|0.010|
+|nnreal_expt_nat_rew|✅ proved - complete|shostak|0.010|
+|nnreal_expt_root_rew|✅ proved - complete|shostak|0.030|
+|nnreal_expt_0a|✅ proved - complete|shostak|0.104|
 |nnreal_expt_1a|✅ proved - complete|shostak|0.010|
-|nnreal_expt_x1|✅ proved - complete|shostak|0.070|
-|nnreal_expt_pos|✅ proved - complete|shostak|0.282|
-|nnreal_expt_is_0|✅ proved - complete|shostak|0.030|
-|nnreal_expt_gt1|✅ proved - complete|shostak|0.246|
-|nnreal_expt_lt1|✅ proved - complete|shostak|0.211|
-|inv_nnreal_expt_TCC1|✅ proved - complete|shostak|0.000|
-|inv_nnreal_expt|✅ proved - complete|shostak|0.911|
-|mult_nnreal_expt|✅ proved - complete|shostak|1.732|
-|div_nnreal_expt|✅ proved - complete|shostak|0.110|
-|nnreal_expt_decreasing|✅ proved - complete|shostak|0.257|
-|nnreal_expt_increasing|✅ proved - complete|shostak|0.263|
-|nnreal_expt_strict_increasing|✅ proved - complete|shostak|0.119|
-|continuous_alt_nnreal_expt2|✅ proved - complete|shostak|2.950|
-|nnreal_bijective1_TCC1|✅ proved - complete|shostak|0.040|
-|nnreal_bijective1|✅ proved - complete|shostak|0.000|
-|nnreal_bijective2_TCC1|✅ proved - complete|shostak|0.050|
-|nnreal_bijective2|✅ proved - complete|shostak|0.148|
-|nnreal_expt_def_gt1_TCC1|✅ proved - complete|shostak|0.109|
-|nnreal_expt_def_gt1|✅ proved - complete|shostak|0.477|
-|nnreal_expt_plus|✅ proved - complete|shostak|1.441|
-|nnreal_expt_times|✅ proved - complete|shostak|1.300|
+|nnreal_expt_x1|✅ proved - complete|shostak|0.060|
+|nnreal_expt_pos|✅ proved - complete|shostak|0.249|
+|nnreal_expt_is_0|✅ proved - complete|shostak|0.026|
+|nnreal_expt_gt1|✅ proved - complete|shostak|0.215|
+|nnreal_expt_lt1|✅ proved - complete|shostak|0.199|
+|inv_nnreal_expt_TCC1|✅ proved - complete|shostak|0.010|
+|inv_nnreal_expt|✅ proved - complete|shostak|0.783|
+|mult_nnreal_expt|✅ proved - complete|shostak|1.545|
+|div_nnreal_expt|✅ proved - complete|shostak|0.091|
+|nnreal_expt_decreasing|✅ proved - complete|shostak|0.238|
+|nnreal_expt_increasing|✅ proved - complete|shostak|0.239|
+|nnreal_expt_strict_increasing|✅ proved - complete|shostak|0.116|
+|continuous_alt_nnreal_expt2|✅ proved - complete|shostak|2.759|
+|nnreal_bijective1_TCC1|✅ proved - complete|shostak|0.044|
+|nnreal_bijective1|✅ proved - complete|shostak|0.892|
+|nnreal_bijective2_TCC1|✅ proved - complete|shostak|0.035|
+|nnreal_bijective2|✅ proved - complete|shostak|0.147|
+|nnreal_expt_def_gt1_TCC1|✅ proved - complete|shostak|0.100|
+|nnreal_expt_def_gt1|✅ proved - complete|shostak|0.438|
+|nnreal_expt_plus|✅ proved - complete|shostak|0.000|
+|nnreal_expt_times|✅ proved - complete|shostak|1.169|
 
 ## `real_expt`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|caret_TCC1|✅ proved - complete|shostak|0.030|
+|caret_TCC1|✅ proved - complete|shostak|0.010|
 |caret_TCC2|✅ proved - complete|shostak|0.050|
 |caret_TCC3|✅ proved - complete|shostak|0.010|
 |real_expt_nnreal_rew_TCC1|✅ proved - complete|shostak|0.010|
 |real_expt_nnreal_rew|✅ proved - complete|shostak|0.010|
-|real_expt_int_rew_TCC1|✅ proved - complete|shostak|0.030|
-|real_expt_int_rew|✅ proved - complete|shostak|0.178|
-|real_expt_root_rew_TCC1|✅ proved - complete|shostak|0.060|
-|real_expt_root_rew_TCC2|✅ proved - complete|shostak|0.050|
-|real_expt_root_rew|✅ proved - incomplete|shostak|0.075|
+|real_expt_int_rew_TCC1|✅ proved - complete|shostak|0.010|
+|real_expt_int_rew|✅ proved - complete|shostak|0.159|
+|real_expt_root_rew_TCC1|✅ proved - complete|shostak|0.050|
+|real_expt_root_rew_TCC2|✅ proved - complete|shostak|0.040|
+|real_expt_root_rew|✅ proved - incomplete|shostak|0.070|
 |real_expt_x0_TCC1|✅ proved - complete|shostak|0.010|
-|real_expt_x0|✅ proved - complete|shostak|0.030|
+|real_expt_x0|✅ proved - complete|shostak|0.020|
 |real_expt_1a|✅ proved - complete|shostak|0.020|
 |real_expt_0x|✅ proved - complete|shostak|0.010|
-|real_expt_x1_TCC1|✅ proved - complete|shostak|0.010|
+|real_expt_x1_TCC1|✅ proved - complete|shostak|0.000|
 |real_expt_x1|✅ proved - complete|shostak|0.010|
 |real_expt_pos_TCC1|✅ proved - complete|shostak|0.000|
-|real_expt_pos|✅ proved - complete|shostak|0.055|
-|real_expt_is_0|✅ proved - complete|shostak|0.100|
-|real_expt_gt1|✅ proved - complete|shostak|0.188|
-|real_expt_lt1|✅ proved - complete|shostak|0.161|
+|real_expt_pos|✅ proved - complete|shostak|0.060|
+|real_expt_is_0|✅ proved - complete|shostak|0.099|
+|real_expt_gt1|✅ proved - complete|shostak|0.152|
+|real_expt_lt1|✅ proved - complete|shostak|0.143|
 |inv_real_expt_TCC1|✅ proved - complete|shostak|0.010|
-|inv_real_expt_TCC2|✅ proved - complete|shostak|0.020|
-|inv_real_expt|✅ proved - complete|shostak|0.174|
-|mult_real_expt_TCC1|✅ proved - complete|shostak|0.020|
-|mult_real_expt_TCC2|✅ proved - complete|shostak|0.020|
-|mult_real_expt_TCC3|✅ proved - complete|shostak|0.030|
-|mult_real_expt|✅ proved - complete|shostak|0.214|
-|div_real_expt_TCC1|✅ proved - complete|shostak|0.040|
-|div_real_expt|✅ proved - complete|shostak|0.153|
+|inv_real_expt_TCC2|✅ proved - complete|shostak|0.010|
+|inv_real_expt|✅ proved - complete|shostak|0.140|
+|mult_real_expt_TCC1|✅ proved - complete|shostak|0.009|
+|mult_real_expt_TCC2|✅ proved - complete|shostak|0.010|
+|mult_real_expt_TCC3|✅ proved - complete|shostak|0.020|
+|mult_real_expt|✅ proved - complete|shostak|0.210|
+|div_real_expt_TCC1|✅ proved - complete|shostak|0.043|
+|div_real_expt|✅ proved - complete|shostak|0.140|
 |real_expt_neg_TCC1|✅ proved - complete|shostak|0.010|
-|real_expt_neg|✅ proved - complete|shostak|0.100|
-|real_expt_plus_TCC1|✅ proved - complete|shostak|0.060|
-|real_expt_plus|✅ proved - complete|shostak|0.885|
+|real_expt_neg|✅ proved - complete|shostak|0.090|
+|real_expt_plus_TCC1|✅ proved - complete|shostak|0.040|
+|real_expt_plus|✅ proved - complete|shostak|0.788|
 |real_expt_minus_TCC1|✅ proved - complete|shostak|0.010|
-|real_expt_minus|✅ proved - complete|shostak|0.144|
-|real_expt_times_TCC1|✅ proved - complete|shostak|0.050|
-|real_expt_times|✅ proved - complete|shostak|0.413|
-|real_expt_decreasing_TCC1|✅ proved - complete|shostak|0.004|
-|real_expt_decreasing_TCC2|✅ proved - complete|shostak|0.000|
-|real_expt_decreasing|✅ proved - complete|shostak|0.174|
+|real_expt_minus|✅ proved - complete|shostak|0.117|
+|real_expt_times_TCC1|✅ proved - complete|shostak|0.040|
+|real_expt_times|✅ proved - complete|shostak|0.368|
+|real_expt_decreasing_TCC1|✅ proved - complete|shostak|0.010|
+|real_expt_decreasing_TCC2|✅ proved - complete|shostak|0.010|
+|real_expt_decreasing|✅ proved - complete|shostak|0.156|
 |real_expt_increasing_TCC1|✅ proved - complete|shostak|0.010|
 |real_expt_increasing_TCC2|✅ proved - complete|shostak|0.010|
-|real_expt_increasing|✅ proved - complete|shostak|0.193|
-|real_expt_strict_increasing_TCC1|✅ proved - complete|shostak|0.010|
-|real_expt_strict_increasing_TCC2|✅ proved - complete|shostak|0.010|
+|real_expt_increasing|✅ proved - complete|shostak|0.177|
+|real_expt_strict_increasing_TCC1|✅ proved - complete|shostak|0.000|
+|real_expt_strict_increasing_TCC2|✅ proved - complete|shostak|0.000|
 |real_expt_strict_increasing|✅ proved - complete|shostak|0.020|
 |real_expt_strict_decreasing_TCC1|✅ proved - complete|shostak|0.010|
 |real_expt_strict_decreasing_TCC2|✅ proved - complete|shostak|0.020|
-|real_expt_strict_decreasing|✅ proved - complete|shostak|0.187|
+|real_expt_strict_decreasing|✅ proved - complete|shostak|0.167|
 |both_sides_real_expt_lt_TCC1|✅ proved - complete|shostak|0.000|
-|both_sides_real_expt_lt|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt_le|✅ proved - complete|shostak|0.030|
-|both_sides_real_expt_gt|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt_ge|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt|✅ proved - complete|shostak|0.030|
+|both_sides_real_expt_lt|✅ proved - complete|shostak|0.029|
+|both_sides_real_expt_le|✅ proved - complete|shostak|0.020|
+|both_sides_real_expt_gt|✅ proved - complete|shostak|0.010|
+|both_sides_real_expt_ge|✅ proved - complete|shostak|0.010|
+|both_sides_real_expt|✅ proved - complete|shostak|0.016|
 |both_sides_real_expt_lt1_lt_TCC1|✅ proved - complete|shostak|0.010|
-|both_sides_real_expt_lt1_lt|✅ proved - complete|shostak|0.025|
-|both_sides_real_expt_lt1_le|✅ proved - complete|shostak|0.030|
+|both_sides_real_expt_lt1_lt|✅ proved - complete|shostak|0.030|
+|both_sides_real_expt_lt1_le|✅ proved - complete|shostak|0.020|
 |both_sides_real_expt_lt1_gt|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt_lt1_ge|✅ proved - complete|shostak|0.030|
-|both_sides_real_expt_gt1_lt_TCC1|✅ proved - complete|shostak|0.010|
-|both_sides_real_expt_gt1_lt|✅ proved - complete|shostak|0.025|
-|both_sides_real_expt_gt1_le|✅ proved - complete|shostak|0.030|
+|both_sides_real_expt_lt1_ge|✅ proved - complete|shostak|0.015|
+|both_sides_real_expt_gt1_lt_TCC1|✅ proved - complete|shostak|0.000|
+|both_sides_real_expt_gt1_lt|✅ proved - complete|shostak|0.020|
+|both_sides_real_expt_gt1_le|✅ proved - complete|shostak|0.020|
 |both_sides_real_expt_gt1_gt|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt_gt1_ge|✅ proved - complete|shostak|0.020|
-|both_sides_real_expt_eq|✅ proved - complete|shostak|0.065|
+|both_sides_real_expt_gt1_ge|✅ proved - complete|shostak|0.016|
+|both_sides_real_expt_eq|✅ proved - complete|shostak|0.060|
 
 ## `nn_log`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|log_gt1_TCC1|✅ proved - complete|shostak|0.050|
-|log_lt1_TCC1|✅ proved - complete|shostak|0.033|
+|log_gt1_TCC1|✅ proved - complete|shostak|0.034|
+|log_lt1_TCC1|✅ proved - complete|shostak|0.040|
 |nn_log_TCC1|✅ proved - complete|shostak|0.020|
-|nn_log_TCC2|✅ proved - complete|shostak|0.020|
+|nn_log_TCC2|✅ proved - complete|shostak|0.010|
 |nn_log_TCC3|✅ proved - complete|shostak|0.020|
-|nn_log_expt_TCC1|✅ proved - complete|shostak|0.074|
-|nn_log_expt|✅ proved - complete|shostak|0.151|
-|nn_expt_log|✅ proved - complete|shostak|0.169|
-|nn_log_plus_TCC1|✅ proved - complete|shostak|0.146|
-|nn_log_plus|✅ proved - complete|shostak|0.400|
-|nn_log_1_TCC1|✅ proved - complete|shostak|0.020|
-|nn_log_1|✅ proved - complete|shostak|0.030|
+|nn_log_expt_TCC1|✅ proved - complete|shostak|0.065|
+|nn_log_expt|✅ proved - complete|shostak|0.140|
+|nn_expt_log|✅ proved - complete|shostak|0.158|
+|nn_log_plus_TCC1|✅ proved - complete|shostak|0.145|
+|nn_log_plus|✅ proved - complete|shostak|0.347|
+|nn_log_1_TCC1|✅ proved - complete|shostak|0.010|
+|nn_log_1|✅ proved - complete|shostak|0.026|
 |nn_log_ne1x_TCC1|✅ proved - complete|shostak|0.020|
-|nn_log_ne1x|✅ proved - complete|shostak|0.013|
-|nn_log_gt1_TCC1|✅ proved - complete|shostak|0.000|
-|nn_log_gt1_TCC2|✅ proved - complete|shostak|0.010|
-|nn_log_gt1|✅ proved - complete|shostak|0.194|
-|nn_inv_base_log_TCC1|✅ proved - complete|shostak|0.085|
+|nn_log_ne1x|✅ proved - complete|shostak|0.020|
+|nn_log_gt1_TCC1|✅ proved - complete|shostak|0.010|
+|nn_log_gt1_TCC2|✅ proved - complete|shostak|0.000|
+|nn_log_gt1|✅ proved - complete|shostak|0.167|
+|nn_inv_base_log_TCC1|✅ proved - complete|shostak|0.076|
 |nn_inv_base_log_TCC2|✅ proved - complete|shostak|0.000|
-|nn_inv_base_log_TCC3|✅ proved - complete|shostak|0.060|
-|nn_inv_base_log|✅ proved - complete|shostak|0.320|
-|nn_log_increasing_TCC1|✅ proved - complete|shostak|0.030|
+|nn_inv_base_log_TCC3|✅ proved - complete|shostak|0.050|
+|nn_inv_base_log|✅ proved - complete|shostak|0.288|
+|nn_log_increasing_TCC1|✅ proved - complete|shostak|0.020|
 |nn_log_increasing_TCC2|✅ proved - complete|shostak|0.020|
-|nn_log_increasing|✅ proved - complete|shostak|0.075|
+|nn_log_increasing|✅ proved - complete|shostak|0.057|
 
 ## `log`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|log_TCC1|✅ proved - complete|shostak|0.070|
-|log_expt_TCC1|✅ proved - complete|shostak|0.010|
+|log_TCC1|✅ proved - complete|shostak|0.050|
+|log_expt_TCC1|✅ proved - complete|shostak|0.000|
 |log_expt_TCC2|✅ proved - complete|shostak|0.010|
-|log_expt|✅ proved - complete|shostak|0.186|
-|expt_log_TCC1|✅ proved - complete|shostak|0.020|
-|expt_log|✅ proved - complete|shostak|0.421|
-|log_1|✅ proved - complete|shostak|0.020|
-|log_ne1x|✅ proved - complete|shostak|0.040|
-|inv_base_log_TCC1|✅ proved - complete|shostak|0.016|
-|inv_base_log|✅ proved - complete|shostak|0.408|
-|log_inv|✅ proved - complete|shostak|0.221|
-|log_mult|✅ proved - complete|shostak|0.731|
-|log_div|✅ proved - complete|shostak|0.150|
-|log_xz_TCC1|✅ proved - complete|shostak|0.010|
+|log_expt|✅ proved - complete|shostak|0.163|
+|expt_log_TCC1|✅ proved - complete|shostak|0.010|
+|expt_log|✅ proved - complete|shostak|0.389|
+|log_1|✅ proved - complete|shostak|0.015|
+|log_ne1x|✅ proved - complete|shostak|0.020|
+|inv_base_log_TCC1|✅ proved - complete|shostak|0.010|
+|inv_base_log|✅ proved - complete|shostak|0.361|
+|log_inv|✅ proved - complete|shostak|0.196|
+|log_mult|✅ proved - complete|shostak|0.664|
+|log_div|✅ proved - complete|shostak|0.130|
+|log_xz_TCC1|✅ proved - complete|shostak|0.000|
 |log_xz_TCC2|✅ proved - complete|shostak|0.010|
 |log_xz|✅ proved - complete|shostak|0.074|
 |log_increasing_TCC1|✅ proved - complete|shostak|0.010|
 |log_increasing|✅ proved - complete|shostak|0.040|
 |log_decreasing_TCC1|✅ proved - complete|shostak|0.010|
-|log_decreasing|✅ proved - complete|shostak|0.050|
-|log_is_0|✅ proved - complete|shostak|0.065|
-|log_pos|✅ proved - complete|shostak|0.055|
-|log_neg|✅ proved - complete|shostak|0.040|
-|log_increasing1|✅ proved - complete|shostak|0.158|
-|log_decreasing1|✅ proved - complete|shostak|0.263|
+|log_decreasing|✅ proved - complete|shostak|0.045|
+|log_is_0|✅ proved - complete|shostak|0.046|
+|log_pos|✅ proved - complete|shostak|0.060|
+|log_neg|✅ proved - complete|shostak|0.035|
+|log_increasing1|✅ proved - complete|shostak|0.129|
+|log_decreasing1|✅ proved - complete|shostak|0.234|
 |both_sides_log_gt1_lt_TCC1|✅ proved - complete|shostak|0.010|
-|both_sides_log_gt1_lt|✅ proved - complete|shostak|0.024|
-|both_sides_log_gt1_le|✅ proved - complete|shostak|0.030|
-|both_sides_log_gt1_gt|✅ proved - complete|shostak|0.014|
+|both_sides_log_gt1_lt|✅ proved - complete|shostak|0.020|
+|both_sides_log_gt1_le|✅ proved - complete|shostak|0.020|
+|both_sides_log_gt1_gt|✅ proved - complete|shostak|0.015|
 |both_sides_log_gt1_ge|✅ proved - complete|shostak|0.020|
 |both_sides_log_lt1_lt_TCC1|✅ proved - complete|shostak|0.010|
 |both_sides_log_lt1_lt|✅ proved - complete|shostak|0.020|
-|both_sides_log_lt1_le|✅ proved - complete|shostak|0.024|
-|both_sides_log_lt1_gt|✅ proved - complete|shostak|0.010|
+|both_sides_log_lt1_le|✅ proved - complete|shostak|0.020|
+|both_sides_log_lt1_gt|✅ proved - complete|shostak|0.014|
 |both_sides_log_lt1_ge|✅ proved - complete|shostak|0.020|
-|both_sides_log|✅ proved - complete|shostak|0.046|
+|both_sides_log|✅ proved - complete|shostak|0.040|
 
 ## `real_fun_power`
 
@@ -365,23 +365,23 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|nn_rational_expt_def|✅ proved - incomplete|shostak|0.170|
-|nnreal_expt_def|✅ proved - incomplete|shostak|0.000|
-|real_expt_def_TCC1|✅ proved - complete|shostak|0.010|
-|real_expt_def|✅ proved - incomplete|shostak|0.135|
-|nn_log_def_TCC1|✅ proved - complete|shostak|0.020|
-|nn_log_def_TCC2|✅ proved - incomplete|shostak|0.030|
-|nn_log_def|✅ proved - incomplete|shostak|0.077|
-|log_def_TCC1|✅ proved - incomplete|shostak|0.030|
-|log_def|✅ proved - incomplete|shostak|0.226|
-|log_continuous|✅ proved - incomplete|shostak|0.197|
+|nn_rational_expt_def|✅ proved - incomplete|shostak|0.145|
+|nnreal_expt_def|✅ proved - incomplete|shostak|1.687|
+|real_expt_def_TCC1|✅ proved - complete|shostak|0.000|
+|real_expt_def|✅ proved - incomplete|shostak|0.140|
+|nn_log_def_TCC1|✅ proved - complete|shostak|0.030|
+|nn_log_def_TCC2|✅ proved - incomplete|shostak|0.025|
+|nn_log_def|✅ proved - incomplete|shostak|0.070|
+|log_def_TCC1|✅ proved - incomplete|shostak|0.028|
+|log_def|✅ proved - incomplete|shostak|0.236|
+|log_continuous|✅ proved - incomplete|shostak|0.200|
 |log_derivable_TCC1|✅ proved - complete|shostak|0.110|
-|log_derivable_TCC2|✅ proved - complete|shostak|0.040|
-|log_derivable_TCC3|✅ proved - incomplete|shostak|0.033|
-|log_derivable|✅ proved - incomplete|shostak|0.233|
+|log_derivable_TCC2|✅ proved - complete|shostak|0.050|
+|log_derivable_TCC3|✅ proved - incomplete|shostak|0.025|
+|log_derivable|✅ proved - incomplete|shostak|0.234|
 |real_expt_continuous|✅ proved - incomplete|shostak|0.130|
-|real_expt_derivable_TCC1|✅ proved - incomplete|shostak|0.122|
-|real_expt_derivable|✅ proved - incomplete|shostak|0.593|
+|real_expt_derivable_TCC1|✅ proved - incomplete|shostak|0.132|
+|real_expt_derivable|✅ proved - incomplete|shostak|0.615|
 ## Platform information 
 |  |  |
 |---|---|

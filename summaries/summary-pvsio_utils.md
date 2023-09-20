@@ -1,15 +1,15 @@
 # Summary for `pvsio_utils`
-Run started at 17:10:7 9/1/2023.
+Run started at 0:17:22 9/20/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **14**   | **14**    | **14**    | **0**  | **0.453 s**   |
+| **totals** | **14**   | **14**    | **14**    | **0**  | **0.486 s**   |
 |top|0|0|0|0|0.000|
 |stdlang_utils|0|0|0|0|0.000|
-|stdmath_utils|1|1|1|0|0.089|
-|stdstr_utils|11|11|11|0|0.355|
+|stdmath_utils|1|1|1|0|0.111|
+|stdstr_utils|11|11|11|0|0.366|
 |stdcatch_utils|0|0|0|0|0.000|
 |stdprog_utils|0|0|0|0|0.000|
 |stdsys_utils|0|0|0|0|0.000|
@@ -25,23 +25,23 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|rat2numden_TCC1|✅ proved - complete|shostak|0.089|
+|rat2numden_TCC1|✅ proved - complete|shostak|0.111|
 
 ## `stdstr_utils`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |strfind_from_end_TCC1|✅ proved - complete|shostak|0.009|
-|strconcat_TCC1|✅ proved - complete|shostak|0.045|
-|split_filename_TCC1|✅ proved - complete|shostak|0.042|
-|split_filename_TCC2|✅ proved - complete|shostak|0.014|
-|split_filename_TCC3|✅ proved - complete|shostak|0.056|
+|strconcat_TCC1|✅ proved - complete|shostak|0.052|
+|split_filename_TCC1|✅ proved - complete|shostak|0.032|
+|split_filename_TCC2|✅ proved - complete|shostak|0.024|
+|split_filename_TCC3|✅ proved - complete|shostak|0.057|
 |split_filename_TCC4|✅ proved - complete|shostak|0.026|
-|filename_without_extension_TCC1|✅ proved - complete|shostak|0.062|
-|charcode_j|✅ proved - complete|shostak|0.008|
-|doublequote_j|✅ proved - complete|shostak|0.009|
+|filename_without_extension_TCC1|✅ proved - complete|shostak|0.073|
+|charcode_j|✅ proved - complete|shostak|0.000|
+|doublequote_j|✅ proved - complete|shostak|0.008|
 |singlequote_j|✅ proved - complete|shostak|0.047|
-|backquote_j|✅ proved - complete|shostak|0.037|
+|backquote_j|✅ proved - complete|shostak|0.038|
 
 ## `stdcatch_utils`
 No formula declaration found.

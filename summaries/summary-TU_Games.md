@@ -1,16 +1,16 @@
 # Summary for `TU_Games`
-Run started at 21:49:3 9/1/2023.
+Run started at 4:53:14 9/20/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **24**   | **24**    | **24**    | **0**  | **1.643 s**   |
+| **totals** | **24**   | **24**    | **24**    | **0**  | **1.598 s**   |
 |top|0|0|0|0|0.000|
 |players_set|0|0|0|0|0.000|
-|coalition_fun|7|7|7|0|0.375|
-|imputations|3|3|3|0|0.135|
-|tu_game|14|14|14|0|1.133|
+|coalition_fun|7|7|7|0|0.368|
+|imputations|3|3|3|0|0.124|
+|tu_game|14|14|14|0|1.106|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -21,39 +21,39 @@ No formula declaration found.
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |coalition_fun_TCC1|✅ proved - complete|shostak|0.023|
-|subsets_are_finite|✅ proved - complete|shostak|0.105|
+|subsets_are_finite|✅ proved - complete|shostak|0.108|
 |tot_S_0|✅ proved - incomplete|shostak|0.038|
-|tot_distrib|✅ proved - incomplete|shostak|0.044|
-|tot_mult_const|✅ proved - incomplete|shostak|0.007|
+|tot_distrib|✅ proved - incomplete|shostak|0.035|
+|tot_mult_const|✅ proved - incomplete|shostak|0.017|
 |tot_distrib_sub|✅ proved - incomplete|shostak|0.081|
-|tot_div_const|✅ proved - incomplete|shostak|0.077|
+|tot_div_const|✅ proved - incomplete|shostak|0.066|
 
 ## `imputations`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|subset_core_I|✅ proved - incomplete|shostak|0.036|
-|subset_I_PI|✅ proved - incomplete|shostak|0.042|
-|subset_PI_FP|✅ proved - incomplete|shostak|0.057|
+|subset_core_I|✅ proved - incomplete|shostak|0.026|
+|subset_I_PI|✅ proved - incomplete|shostak|0.051|
+|subset_PI_FP|✅ proved - incomplete|shostak|0.047|
 
 ## `tu_game`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|solution_concept_TCC1|✅ proved - incomplete|shostak|0.047|
-|a_test|✅ proved - incomplete|shostak|0.008|
-|test_param|✅ proved - incomplete|shostak|0.010|
-|tau_v_TCC1|✅ proved - complete|shostak|0.016|
-|tau_x_TCC1|✅ proved - complete|shostak|0.125|
+|solution_concept_TCC1|✅ proved - incomplete|shostak|0.057|
+|a_test|✅ proved - incomplete|shostak|0.009|
+|test_param|✅ proved - incomplete|shostak|0.000|
+|tau_v_TCC1|✅ proved - complete|shostak|0.025|
+|tau_x_TCC1|✅ proved - complete|shostak|0.114|
 |bstar_TCC1|✅ proved - incomplete|shostak|0.030|
-|affinestar_TCC1|✅ proved - incomplete|shostak|0.093|
-|interch_impl_desir|✅ proved - complete|shostak|0.047|
-|interch_is_sym|✅ proved - complete|shostak|0.055|
-|DES_implies_ETP|✅ proved - incomplete|shostak|0.019|
+|affinestar_TCC1|✅ proved - incomplete|shostak|0.085|
+|interch_impl_desir|✅ proved - complete|shostak|0.048|
+|interch_is_sym|✅ proved - complete|shostak|0.044|
+|DES_implies_ETP|✅ proved - incomplete|shostak|0.020|
 |SIVA_implies_NE|✅ proved - incomplete|shostak|0.027|
 |PO_core|✅ proved - incomplete|shostak|0.048|
 |affine_bij|✅ proved - complete|shostak|0.076|
-|COV_core|✅ proved - incomplete|shostak|0.532|
+|COV_core|✅ proved - incomplete|shostak|0.523|
 ## Platform information 
 |  |  |
 |---|---|

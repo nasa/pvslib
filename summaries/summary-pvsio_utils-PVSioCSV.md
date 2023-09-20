@@ -1,17 +1,17 @@
 # Summary for `pvsio_utils/PVSioCSV`
-Run started at 17:10:16 9/1/2023.
+Run started at 0:17:31 9/20/2023.
 
 _Note_: Time below is expressed in format DD:HH:MM:SS.SSS.
 ## Grand Totals 
 |            | Formulas | Attempted | Succeeded | Missing | Total Time |
 | ---:       | :---:    | :---:     | :---:     | :---:   | ---        |
-| **totals** | **43**   | **43**    | **43**    | **0**  | **4.310 s**   |
+| **totals** | **43**   | **43**    | **43**    | **0**  | **4.407 s**   |
 |top|0|0|0|0|0.000|
-|csv_utils|6|6|6|0|0.447|
-|csv_writer_def|1|1|1|0|0.050|
-|csv_reader|31|31|31|0|3.483|
-|csv_writer|3|3|3|0|0.204|
-|csv_writerow|2|2|2|0|0.126|
+|csv_utils|6|6|6|0|0.569|
+|csv_writer_def|1|1|1|0|0.067|
+|csv_reader|31|31|31|0|3.451|
+|csv_writer|3|3|3|0|0.198|
+|csv_writerow|2|2|2|0|0.122|
 ## Detailed Summary 
 ## `top`
 No formula declaration found.
@@ -19,69 +19,69 @@ No formula declaration found.
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|strsplit_with_qchar_rec_TCC1|✅ proved - complete|shostak|0.052|
-|strsplit_with_qchar_rec_TCC2|✅ proved - incomplete|shostak|0.012|
-|strsplit_with_qchar_rec_TCC3|✅ proved - complete|shostak|0.157|
-|strsplit_with_qchar_rec_TCC4|✅ proved - complete|shostak|0.104|
-|strsplit_with_qchar_rec_TCC5|✅ proved - complete|shostak|0.066|
-|strsplit_with_qchar_rec_TCC6|✅ proved - complete|shostak|0.056|
+|strsplit_with_qchar_rec_TCC1|✅ proved - complete|shostak|0.086|
+|strsplit_with_qchar_rec_TCC2|✅ proved - incomplete|shostak|0.026|
+|strsplit_with_qchar_rec_TCC3|✅ proved - complete|shostak|0.183|
+|strsplit_with_qchar_rec_TCC4|✅ proved - complete|shostak|0.133|
+|strsplit_with_qchar_rec_TCC5|✅ proved - complete|shostak|0.074|
+|strsplit_with_qchar_rec_TCC6|✅ proved - complete|shostak|0.067|
 
 ## `csv_writer_def`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|MSEXCEL_DIALECT_TCC1|✅ proved - complete|shostak|0.050|
+|MSEXCEL_DIALECT_TCC1|✅ proved - complete|shostak|0.067|
 
 ## `csv_reader`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
 |CSVDataFromSpec_TCC1|✅ proved - complete|shostak|0.000|
-|CSVDataFromSpec_TCC2|✅ proved - complete|shostak|0.313|
+|CSVDataFromSpec_TCC2|✅ proved - complete|shostak|0.341|
 |getField_TCC1|✅ proved - complete|shostak|0.010|
 |getField_TCC2|✅ proved - complete|shostak|0.045|
-|csv_data_from_spec_field_bool|✅ proved - complete|shostak|0.086|
-|csv_data_from_spec_field_bool_OR_null|✅ proved - complete|shostak|0.111|
-|csv_data_from_spec_field_rat|✅ proved - complete|shostak|0.086|
+|csv_data_from_spec_field_bool|✅ proved - complete|shostak|0.096|
+|csv_data_from_spec_field_bool_OR_null|✅ proved - complete|shostak|0.104|
+|csv_data_from_spec_field_rat|✅ proved - complete|shostak|0.087|
 |csv_data_from_spec_field_rat_OR_null|✅ proved - complete|shostak|0.107|
-|csv_data_from_spec_field_dec|✅ proved - complete|shostak|0.087|
-|csv_data_from_spec_field_dec_OR_null|✅ proved - complete|shostak|0.097|
-|csv_data_from_spec_field_int|✅ proved - complete|shostak|0.078|
+|csv_data_from_spec_field_dec|✅ proved - complete|shostak|0.086|
+|csv_data_from_spec_field_dec_OR_null|✅ proved - complete|shostak|0.107|
+|csv_data_from_spec_field_int|✅ proved - complete|shostak|0.079|
 |csv_data_from_spec_field_int_OR_null|✅ proved - complete|shostak|0.098|
-|csv_data_from_spec_field_str|✅ proved - complete|shostak|0.077|
+|csv_data_from_spec_field_str|✅ proved - complete|shostak|0.078|
 |csv_data_from_spec_field_str_OR_null|✅ proved - complete|shostak|0.098|
 |processCSVField_TCC1|✅ proved - complete|shostak|0.068|
-|processCSVField_TCC2|✅ proved - complete|shostak|0.068|
+|processCSVField_TCC2|✅ proved - complete|shostak|0.058|
 |processCSVField_TCC3|✅ proved - complete|shostak|0.068|
-|processCSVField_TCC4|✅ proved - complete|shostak|0.145|
-|processCSVField_TCC5|✅ proved - complete|shostak|0.329|
-|processCSVField_TCC6|✅ proved - complete|shostak|0.157|
-|processCSVField_TCC7|✅ proved - complete|shostak|0.105|
-|processCSVField_TCC8|✅ proved - complete|shostak|0.106|
+|processCSVField_TCC4|✅ proved - complete|shostak|0.132|
+|processCSVField_TCC5|✅ proved - complete|shostak|0.322|
+|processCSVField_TCC6|✅ proved - complete|shostak|0.154|
+|processCSVField_TCC7|✅ proved - complete|shostak|0.107|
+|processCSVField_TCC8|✅ proved - complete|shostak|0.097|
 |processCSVLine_TCC1|✅ proved - complete|shostak|0.074|
-|processCSVLine_TCC2|✅ proved - complete|shostak|0.068|
-|processCSVLine_TCC3|✅ proved - complete|shostak|0.047|
-|processCSVLine_TCC4|✅ proved - complete|shostak|0.145|
-|processCSVLine_TCC5|✅ proved - complete|shostak|0.118|
-|processCSVLine_TCC6|✅ proved - complete|shostak|0.376|
-|processCSVLine_TCC7|✅ proved - complete|shostak|0.017|
-|readCSVRecordln_TCC1|✅ proved - incomplete|shostak|0.289|
-|readCSV_TCC1|✅ proved - complete|shostak|0.010|
+|processCSVLine_TCC2|✅ proved - complete|shostak|0.058|
+|processCSVLine_TCC3|✅ proved - complete|shostak|0.058|
+|processCSVLine_TCC4|✅ proved - complete|shostak|0.125|
+|processCSVLine_TCC5|✅ proved - complete|shostak|0.114|
+|processCSVLine_TCC6|✅ proved - complete|shostak|0.370|
+|processCSVLine_TCC7|✅ proved - complete|shostak|0.016|
+|readCSVRecordln_TCC1|✅ proved - incomplete|shostak|0.288|
+|readCSV_TCC1|✅ proved - complete|shostak|0.006|
 
 ## `csv_writer`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|toString_TCC1|✅ proved - incomplete|shostak|0.007|
+|toString_TCC1|✅ proved - incomplete|shostak|0.010|
 |writeCSV_TCC1|✅ proved - complete|shostak|0.010|
-|writeCSV_TCC2|✅ proved - incomplete|shostak|0.187|
+|writeCSV_TCC2|✅ proved - incomplete|shostak|0.178|
 
 ## `csv_writerow`
 
 | Formula | Proof Status | Decision Procedure | Time |
 | ---     | ---          | ---                | ---  |
-|write_rows_TCC1|✅ proved - complete|shostak|0.010|
-|write_rows_TCC2|✅ proved - complete|shostak|0.116|
+|write_rows_TCC1|✅ proved - complete|shostak|0.020|
+|write_rows_TCC2|✅ proved - complete|shostak|0.102|
 ## Platform information 
 |  |  |
 |---|---|
