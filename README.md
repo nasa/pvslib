@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http
 
 # Libraries
 
-Currently, NASALib consists of 64 libraries, containing about 35K proven formulas.
+Currently, NASALib consists of 63 top-level libraries, containing about 38K proven formulas in total.
 
 | Library  | Description | 
 | --- | --- | 
@@ -37,10 +37,7 @@ Currently, NASALib consists of 64 libraries, containing about 35K proven formula
 | [extended_nnreal](./extended_nnreal/README.md) | Extended non-negative reals |
 | [fast_approx](./fast_approx/README.md) | Approximations of standard numerical functions |
 | [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols |
-| [float/axm_bnd](./float/README.md) | Floating point arithmetic (Axiomatic IEEE-754) |
-| [float/fnd_bnd](./float/README.md) | Floating point arithmetic (Foundational generic) |
-| [float/fnd_unb](./float/README.md) | Floating point arithmetic (Foundational IEEE-754)|
-| [float/ieee854](./float/README.md) | Floating point arithmetic (Foundational IEEE-854)|
+| [float](./float/README.md) | Floating point arithmetic  |
 | [graphs](./graphs/README.md) | Graph theory |
 | [interval_arith](./interval_arith/README.md) | Interval arithmetic and numerical approximations. Includes automated strategies numerical for computing numerical approximations and interval for checking satisfiability and validity of simply quantified real-valued formulas. This development includes a formalization of Allen interval temporal logic |
 | [ints](./ints/README.md) | Integer division, gcd, mod, prime factorization, min, max |
@@ -55,7 +52,7 @@ Currently, NASALib consists of 64 libraries, containing about 35K proven formula
 | [metric_space](./metric_space/README.md) | Domains with a distance metric, continuity and uniform continuity |
 | [mv_analysis](./mv_analysis/README.md) | Multivariate real analysis: norms, limits, continuity, derivatives, optimization, etc. |
 | [mult_poly](./mult_poly/README.md) | Multivariate polynomials and semi-algebriac sets. |
-| [nominal](./nominal/README.md) | Nominal equational reasoning and a first-order AC-unification algorithm |
+| [nominal](./nominal/README.md) | Nominal equational reasoning |
 | [numbers](./numbers/README.md) | Elementary number theory |
 | [ODEs](./ODEs/README.md) | Ordinary Differential Equations |
 | [orders](./orders/README.md) | Abstract orders, lattices, fix points |
@@ -229,6 +226,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Thiago Mendonça Ferreira Ramos, University of Brasilia, Brazil
 * Thomas Norris
 * Víctor Carreño, NASA (retired), USA
+* Washington Luis Ribeiro de Carvalho Segundo, University of Brasília, Brazil
 
 If we have incorrectly attributed a PVS development or you have
 contributed to NASALib and your name is not included here, please let
