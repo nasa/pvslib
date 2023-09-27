@@ -1,10 +1,10 @@
-# PVSioChecker
+# PVSioKeyVal
 
-This library provides functionalities to run differential testing with PVSio
+This library implements a simple key/value store for PVSio
 
 ## Highlights
 
-![dependency graph](./PVSioChecker-zoomed.svg "Dependency Graph")
+![dependency graph](./PVSioKeyVal-zoomed.svg "Dependency Graph")
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
@@ -14,4 +14,4 @@ This library provides functionalities to run differential testing with PVSio
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./PVSioChecker.svg "Dependency Graph")
+![dependency graph](./PVSioKeyVal.svg "Dependency Graph")

@@ -1,10 +1,10 @@
-# PVSioChecker
+# PVSioCSV
 
-This library provides functionalities to run differential testing with PVSio
+This library provides functionalities to read and write Comma Separated Value (CSV) files
 
 ## Highlights
 
-![dependency graph](./PVSioChecker-zoomed.svg "Dependency Graph")
+![dependency graph](./PVSioCSV-zoomed.svg "Dependency Graph")
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
@@ -14,4 +14,4 @@ This library provides functionalities to run differential testing with PVSio
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./PVSioChecker.svg "Dependency Graph")
+![dependency graph](./PVSioCSV.svg "Dependency Graph")
