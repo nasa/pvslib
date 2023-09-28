@@ -1,0 +1,194 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez(2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Ana Cristina Rocha Oliveira(1)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London, 
+%          (3) Johannes Kepler University 
+% 
+% Papers that use this theory: 
+%   1. "Completeness in PVS of a Nominal Unification Algorithm"
+%   2. "Formalising Nominal C-unification Generalised With Protected Variables"
+%   3. "A Certified Algorithm for AC-Unification"
+%   4. "Nominal AC-Matching"
+%
+% This subtheory receives one parameter "T"
+% contains very specific functions for dealing with lists in the
+% context of equational reasoning (specially unification and matching). 
+% 
+% It differs from "list_aux_equational_reasoning" because it imports
+% "list_aux_equational_reasoning" sometimes with parameter "T", sometimes with
+% parameter "list[T]" and so on.  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+list_aux_equational_reasoning_more [T: TYPE]: THEORY 
+BEGIN
+    IMPORTING list_aux_equational_reasoning[T], list_aux_equational_reasoning[list[T]], 
+              list_aux_equational_reasoning[nat], list_aux_equational_reasoning[[T, T]],
+              list_aux_equational_reasoning[number]
+
+i, j, n: VAR nat
+
+lst_nat1, lst_nat2: VAR list[nat]
+fin_set_nat, fin_set_nat1: VAR finite_set[nat]
+fin_set: VAR finite_set[T]
+
+x, y: VAR T
+h: VAR [list[T] -> T]
+f: VAR [T -> list[T]]
+
+lst, lst1, lst2: VAR list[T]
+lst_of_lsts: VAR list[list[T]]
+
+coef, coef1: VAR list[nat]
+
+% an equivalence definition
+equiv: TYPE = {R: PRED[[T, T]]| equivalence?(R)}
+equal?: VAR equiv
+
+count_elem_tcc_solver: LEMMA 
+    every[number](LAMBDA (x: number): number_field_pred(x) AND real_pred(x) AND rational_pred(x)
+    AND integer_pred(x) AND (x >= 0) AND (x > 0))(count_elem(null, null, lst2, equal?)`2)
+
+select_greater(fin_set_nat): nat = select_greater[nat](finset2list(fin_set_nat))
+
+select_greater_finset2list2set: LEMMA 
+   select_greater[nat](finset2list(list2set(lst_nat1))) = select_greater[nat](lst_nat1)
+
+select_greater_subset: LEMMA
+   subset?(fin_set_nat, fin_set_nat1) IMPLIES 
+   select_greater(fin_set_nat) <= select_greater(fin_set_nat1)
+
+dif_elem_from_min2max: LEMMA 
+   dif_elem?[nat](from_min2max[nat](i, j), =) 
+
+get_repeat_lst_map: LEMMA
+    map(h)(get_repeat_lst(lst, n)) = get_repeat_lst(h(lst), n)
+
+get_repeat_lst_map2: LEMMA
+    map(f)(get_repeat_lst(x, n)) = get_repeat_lst(f(x), n)
+
+get_lst_mult_map: LEMMA
+    map(h)(get_lst_mult(lst_of_lsts, coef)) = get_lst_mult(map(h)(lst_of_lsts), coef)
+    
+get_lst_mult_map2: LEMMA
+    map(f)(get_lst_mult(lst, coef)) = get_lst_mult(map(f)(lst), coef)
+
+get_repeat_lst_map_count: LEMMA
+    map(count(x, equal?))(get_repeat_lst(null, n)) = get_repeat_lst(0, n)
+
+map_split: LEMMA
+    split(map(h)(lst_of_lsts), n)`1 = map(h)(split[list[T]](lst_of_lsts, n)`1)
+
+map_split2: LEMMA
+    split(map(h)(lst_of_lsts), n)`2 = map(h)(split[list[T]](lst_of_lsts, n)`2)
+
+no_null_entries_get_lst_mult: LEMMA 
+    no_null_entries?(lst_of_lsts) IMPLIES 
+    no_null_entries?(get_lst_mult(lst_of_lsts, coef))
+
+split_no_null_entries?1: LEMMA
+    no_null_entries?(lst_of_lsts) IMPLIES no_null_entries?(split(lst_of_lsts, n)`1)
+
+split_no_null_entries?2: LEMMA
+    no_null_entries?(lst_of_lsts) IMPLIES no_null_entries?(split(lst_of_lsts, n)`2)
+
+split_get_repeat_lst1: LEMMA
+    i <= n IMPLIES split(get_repeat_lst(lst, n), i)`1 = get_repeat_lst(lst, i)
+
+split_get_repeat_lst2: LEMMA
+    i <= n IMPLIES split(get_repeat_lst(lst, n), i)`2 = get_repeat_lst(lst, n - i)
+
+count_flatten_get_repeat_lst: LEMMA
+   count(x, flatten(get_repeat_lst(lst, n)), equal?) = count(x, lst, equal?) * n
+
+count_get_lst_mult_dot_product: LEMMA
+    count(x, flatten(get_lst_mult(lst_of_lsts, coef)), equal?) =
+    dot_product(map(count(x, equal?))(lst_of_lsts), coef)
+
+cart_prod_nth: LEMMA
+    i < length(cartesian_product(lst1, lst2)) IMPLIES
+    EXISTS j, n: 
+    j < length(lst1) AND n < length(lst2) AND
+    nth(cartesian_product(lst1, lst2), i) = (nth(lst1, j), nth(lst2, n))
+
+% count_elem
+count_elem_nth_lt: LEMMA  
+    LET (new_lst, new_coef) = count_elem(lst, coef, lst2, equal?) IN
+    length(lst) = length(coef) AND n < length(lst) AND dif_elem?(lst, equal?) IMPLIES 
+    LET x = nth(new_lst, n) IN
+	x = nth(lst, n) AND
+	nth(new_coef, n) = nth(coef, n) + count(x, lst2, equal?)
+
+count_elem_len_remove: LEMMA 
+    LET (new_lst, new_coef) = count_elem(lst, coef, lst2, equal?), 
+        (new_lst1, new_coef1) = count_elem(lst, coef1, remove(lst2, x, equal?), equal?) IN
+	member(x, lst) IMPLIES length(new_lst1) = length(new_lst)  
+
+count_elem_nth_gt_remove: LEMMA 
+    LET (new_lst, new_coef) = count_elem(lst, coef, lst2, equal?), 
+        (new_lst1, new_coef1) = count_elem(lst, coef1, remove(lst2, x, equal?), equal?) IN
+    member(x, lst) AND n >= length(lst) AND n < length(new_lst) AND length(lst) = length(coef) AND
+    length(coef1) = length(lst) AND dif_elem?(lst, equal?) IMPLIES 
+    nth(new_lst, n) = nth(new_lst1, n) AND nth(new_coef, n) = nth(new_coef1, n)   
+ 
+count_elem_num_dif: LEMMA 
+    dif_elem?(lst, equal?) IMPLIES 
+    length(count_elem(lst, coef, lst2, equal?)`1) = num_dif(append(lst, lst2), equal?)
+
+count_elem_nth_gt: LEMMA 
+    LET (new_lst, new_coef) = count_elem(lst, coef, lst2, equal?), 
+        (new_lst1, new_coef1) = count_elem(null, null, remove(lst2, lst, equal?), equal?) IN
+    n < length(new_lst) AND n >= length(lst) AND dif_elem?(lst, equal?) AND
+    length(lst) = length(coef) IMPLIES
+    nth(new_lst, n) = nth(new_lst1, n - length(lst))
+    
+count_elem_nth_gt2: LEMMA  
+    LET (new_lst, new_coef) = count_elem(lst, coef, lst2, equal?), 
+        (new_lst1, new_coef1) = count_elem(null, null, remove(lst2, lst, equal?), equal?) IN
+    n < length(new_lst) AND n >= length(lst) AND dif_elem?(lst, equal?) AND
+    length(lst) = length(coef) IMPLIES
+    nth(new_coef, n) = nth(new_coef1, n - length(lst))
+
+count_elem2_len: LEMMA 
+    length(count_elem2(lst, equal?)`1) = num_dif(lst, equal?)
+
+count_elem2_mem: LEMMA 
+    member(x, count_elem2(lst, equal?)`1) IMPLIES member(x, lst)
+
+count_elem2_mem2: LEMMA 
+    member(x, lst) IMPLIES
+    EXISTS y: equal?(x, y) AND member(y, count_elem2(lst, equal?)`1)
+
+count_elem2_same_len: LEMMA 
+    length(count_elem2(lst, equal?)`1) = length(count_elem2(lst, equal?)`2)
+
+count_elem2_cor: LEMMA 
+    count_elem2(lst, equal?) = count_elem(null, null, lst, equal?)
+
+count_elem_remove: LEMMA 
+    LET (new_lst, new_coef) = count_elem(null, null, lst, equal?) IN
+    i < length(new_lst) IMPLIES 
+    LET x = nth(new_lst, i) IN
+    (remove(new_lst, i), remove(new_coef, i)) = count_elem(null, null, remove(lst, x, equal?), equal?)
+
+count_elem_mem_nth: LEMMA  
+    LET (new_lst, new_coef) = count_elem(null, null, lst, equal?) IN
+    member(x, lst) IMPLIES
+    EXISTS i:
+       i < length(new_lst) AND equal?(x, nth(new_lst, i)) AND
+       nth(new_coef, i) = count(x, lst, equal?)  
+
+count_elem2_dif_elem: LEMMA 
+    dif_elem?(count_elem2(lst, equal?)`1, equal?)
+
+dot_product_nth: LEMMA 
+    i < length(lst_nat1) AND i < length(lst_nat2) IMPLIES
+    dot_product(lst_nat1, lst_nat2) =
+    nth(lst_nat1, i) * nth(lst_nat2, i) + dot_product(remove(lst_nat1, i), remove(lst_nat2, i))
+
+END list_aux_equational_reasoning_more

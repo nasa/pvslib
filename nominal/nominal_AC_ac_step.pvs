@@ -1,0 +1,360 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%          (3) Johannes Kepler University 
+% 
+% Paper: "Nominal AC-Matching"
+% 
+% In this file we have the lemmas for the AC part of the nominal AC-matching
+% algorithm.  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_AC_ac_step: THEORY
+BEGIN
+	IMPORTING aux_nominal_AC_unification, nominal_AC_inst_step
+
+pre_nice_input: TYPE = [fresh_context, unif_prb, sub, finite_set[variable], finite_set[variable]]
+
+        IMPORTING list_aux_equational_reasoning[pre_nice_input]
+
+i, n: VAR nat
+
+f: VAR string
+
+X: VAR variable
+
+pi, pi1: VAR perm
+t, s: VAR nominal_AC_term 
+
+G, G1, Delta: VAR fresh_context
+
+new_vars2avoid, vars2avoid, vars2avoid1, V, V1, PV, PV1: VAR finite_set[variable]
+
+lst_vars2avoid, lst_V: VAR list[variable]
+
+unif_pair, up: VAR unif_pair
+sigma, sigma1, delta, gamma: VAR sub
+
+P, P1, P2, PI, Pu, Ps, unseen_unif_prb, seen_unif_prb, unif_prb, unif_prb1, unif_prb2: VAR unif_prb
+
+ac_results_subs: VAR list[[fresh_context, unif_prb, sub]]
+
+ac_sol, ac_sol1, ac_sol2: VAR [unif_prb, sub, finite_set[variable]]
+
+nice_input?(G, P, sigma, V, PV): bool =
+   idempotent?(sigma) AND disjoint?(vars(P), dom(sigma)) AND 
+   contained?(sigma, V) AND subset?(vars(P), V) AND
+   subset?(vars(G), V) AND subset?(PV, V) AND
+   well_formed?(P) AND well_formed?(sigma) AND match_problem?(P, PV)
+
+nice_input: TYPE = {input: [fresh_context, unif_prb, sub, finite_set[variable],
+                            finite_set[variable]] | nice_input?(input)}
+
+input, input1, input2: VAR nice_input 
+
+input1_: VAR pre_nice_input
+
+% returns the size of the equation s =? t in P whose size is the biggest
+max_size(P): RECURSIVE nat =  
+  IF null?(P) THEN 0
+  ELSE max(size(car(P)), max_size(cdr(P)))
+  ENDIF
+MEASURE P BY << 
+
+num_size(P, n): RECURSIVE nat =
+  IF null?(P) THEN 0
+  ELSE IF size(car(P)) = n THEN 1 + num_size(cdr(P), n)
+       ELSE num_size(cdr(P), n)
+       ENDIF
+  ENDIF
+MEASURE P BY << 
+
+% returns the number of equations in P whose size is equal to the maximum size
+num_max_size(P): nat = num_size(P, max_size(P))
+
+choose_eq(P): RECURSIVE [unif_pair, unif_prb] = 
+   IF null?(P) THEN ((unit, unit), null)
+   ELSE IF size(car(P)) = max_size(P) THEN (car(P), cdr(P)) 
+        ELSE LET (up, P1) = choose_eq(cdr(P)) IN 
+	         (up, cons(car(P), P1))
+	ENDIF 
+   ENDIF
+MEASURE P BY << 
+
+input_apply_ac(ac_results_subs, G, P, sigma, V, PV): RECURSIVE list[pre_nice_input] = 
+   IF null?(ac_results_subs) THEN null 
+   ELSE LET 
+       (G1, P1, sigma1) = car(ac_results_subs), 
+       new_P = append(P1, apply_sub(sigma1, P)), 
+       new_sigma = append(sigma1, sigma),  
+       input = (G1, new_P, new_sigma, V, PV) IN 
+       cons(input, input_apply_ac(cdr(ac_results_subs), G, P, sigma, V, PV))
+   ENDIF
+MEASURE ac_results_subs BY << 
+
+
+%%%%%%%%%%%%%%%%%%%%% LEMMAS
+% nice input
+nice_input_subterms: LEMMA   
+   nice_input?(G, P, sigma, V, PV) AND
+   subset?(subterms(P1), subterms(P)) AND subset?(vars(rhs(P1)), vars(rhs(P))) AND no_pair?(P1) IMPLIES
+   nice_input?(G, P1, sigma, V, PV)
+
+nice_input_cdr: LEMMA
+   nice_input?(G, P, sigma, V, PV) AND NOT null?(P) IMPLIES nice_input?(G, cdr(P), sigma, V, PV) 
+
+nice_input_cons: LEMMA
+   nice_input?(G, cons(up, P), sigma, V, PV) IFF
+   (nice_input?(G, cons(up, null), sigma, V, PV) AND nice_input?(G, P, sigma, V, PV))
+
+nice_input_apply_sub: LEMMA   
+   LET sigma1 = cons((X, ext(reverse(pi))(s)), null), G1 = nominal_AC_fresh_subs?(sigma1, G)`1 IN 
+   nice_input?(G, P, sigma, V, PV) AND member(pi * X, P) AND member(s, rhs(P)) AND
+   NOT member(X, vars(s)) AND subset?(P1, P) AND NOT null?(P) IMPLIES
+   nice_input?(append(G1, G), apply_sub(sigma1, P1), append(sigma1, sigma), V, PV)
+
+nice_input_decompose: LEMMA  
+   nice_input?(G, P, sigma, V, PV) AND member(t, P) AND member(s, rhs(P)) AND NOT null?(P)
+   AND app?(t) AND app?(s) AND same_func?(t, s) AND subset?(P1, P) IMPLIES
+   nice_input?(G, append(decompose(arg(t), arg(s))`1, P1), sigma, V, PV)
+
+nice_input_dec_abs: LEMMA  
+   nice_input?(G, P, sigma, V, PV) AND member(t, P) AND member(s, rhs(P)) AND NOT null?(P)
+   AND abs?(t) AND abs?(s) AND subset?(P1, P) IMPLIES
+   nice_input?(G, append(decompose(body(t), ext(pi)(body(s)))`1, P1), sigma, V, PV)
+
+nice_input_dec_abs2: LEMMA 
+   nice_input?(G, P, sigma, V, PV) AND member(t, P) AND member(s, rhs(P)) AND NOT null?(P)
+   AND abs?(t) AND abs?(s) AND subset?(P1, P) IMPLIES
+   (LET G1 = fresh?(abstr(t), body(s))`1 IN
+   nice_input?(append(G1, G), append(decompose(body(t), ext(pi)(body(s)))`1, P1), sigma, V, PV))
+
+nice_input_initial_problem: LEMMA 
+   subset?(vars(t, s), V) AND well_formed?((t, s)) IMPLIES
+   nice_input?(null, cons((t, s), null), null, V, vars(s))
+
+nice_input_initial_problem2: LEMMA 
+   subset?(vars(t, s), V) AND well_formed?((t, s)) IMPLIES
+   nice_input?(null, cons((t, s), null), null, V, vars(t, s))
+
+nice_input_fc: LEMMA 
+    nice_input?(G, P, sigma, V, PV) AND subset?(P1, P) AND member(X, vars(P)) IMPLIES 
+    nice_input?(append(fc(DS(pi, pi1), X), G), P1, sigma, V, PV) 
+
+% input_apply_ac
+input_apply_ac_mem: LEMMA 
+    member(input1_, input_apply_ac(ac_results_subs, G, P, sigma, V, PV)) IFF 
+    EXISTS G1, P1, sigma1: 
+        member((G1, P1, sigma1), ac_results_subs) AND 
+	input1_`1 = G1 AND input1_`2 = append(P1, apply_sub(sigma1, P))
+	AND input1_`3 = append(sigma1, sigma) AND input1_`4 = V AND input1_`5 = PV
+
+% max_size, num_max_size
+max_size_unif_pair: LEMMA
+   NOT null?(P) IMPLIES EXISTS up: member(up, P) AND size(up) = max_size(P)
+
+max_size_append: LEMMA 
+   max_size(append(P, P1)) = max(max_size(P), max_size(P1))
+
+max_size_correct: LEMMA 
+   member(up, P) IMPLIES size(up) <= max_size(P) 
+
+max_size_decompose: LEMMA 
+   max_size(decompose(t, s)`1) <= size(t, s)
+
+max_size_decompose_ext: LEMMA
+   max_size(decompose(t, s)`1) = max_size(decompose(t, ext(pi)(s))`1)
+
+num_size_append: LEMMA
+   num_size(append(P, P1), n) = num_size(P, n) + num_size(P1, n)
+
+num_size0: LEMMA 
+   n > max_size(P) IMPLIES num_size(P, n) = 0
+
+% choose_eq:
+choose_eq_mem: LEMMA
+   member(t, choose_eq(P)`2) IMPLIES member(t, P)
+
+choose_eq_mem1: LEMMA
+   NOT null?(P) IMPLIES member(choose_eq(P)`1, P)
+
+choose_eq_subterms: LEMMA 
+   NOT null?(P) IMPLIES subset?(subterms(choose_eq(P)`2), subterms(P))
+
+choose_eq2_subset: LEMMA
+   subset?(choose_eq(P)`2, P)
+
+choose_eq_vars_rhs: LEMMA
+   subset?(vars(rhs(choose_eq(P)`2)), vars(rhs(P)))
+
+choose_eq_vars_rhs2: LEMMA 
+   match_problem?(P, PV) IMPLIES subset?(vars(choose_eq(P)`1`2), PV)
+
+choose_eq_vars: LEMMA
+   subset?(vars(choose_eq(P)`2), vars(P)) AND subset?(vars(choose_eq(P)`1), vars(P))
+
+choose_eq_no_pair: LEMMA
+   well_formed?(P) IMPLIES no_pair?(choose_eq(P)`2)
+
+choose_eq_well_formed: LEMMA
+   well_formed?(P) IMPLIES (well_formed?(choose_eq(P)`1) AND well_formed?(choose_eq(P)`2))
+
+choose_eq_max_size_aux: LEMMA 
+   LET P1 = choose_eq(P)`2 IN 
+   NOT null?(P) IMPLIES max_size(P) = size(choose_eq(P)`1) AND 
+   (max_size(P) > max_size(P1) OR
+     (max_size(P) = max_size(P1) AND num_size(P, max_size(P)) = num_size(P1, max_size(P1)) + 1))
+
+choose_eq_max_size: LEMMA 
+   LET P1 = choose_eq(P)`2 IN 
+   NOT null?(P) IMPLIES max_size(P) = size(choose_eq(P)`1) AND 
+   (max_size(P) > max_size(P1) OR (max_size(P) = max_size(P1) AND num_max_size(P) = num_max_size(P1) + 1))
+
+choose_eq_unifies: LEMMA 
+    NOT null?(P) IMPLIES    
+    unifies?(Delta, delta, P) = (unifies?(Delta, delta, choose_eq(P)`1) AND
+    		    	         unifies?(Delta, delta, choose_eq(P)`2))
+
+choose_eq_nice_input: LEMMA 
+   nice_input?(G, P, sigma, V, PV) AND NOT null?(P) IMPLIES nice_input?(G, choose_eq(P)`2, sigma, V, PV)
+
+choose_eq_nice_input2: LEMMA 
+   LET (G, P, sigma, V, PV) = input,
+       (up, P1) = choose_eq(P), (t, s) = up IN
+   NOT null?(P) IMPLIES nice_input?(G, cons((t, s), P1), sigma, V, PV)
+
+% impossible cases that are used in the proof of completeness 
+choose_eq_not_unifies_atom: LEMMA 
+    LET (up, P1) = choose_eq(P) IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND atom?(up`1)
+    AND disjoint?(dom(delta), PV) AND NOT null?(P) IMPLIES up`2 = at(a(up`1))
+
+choose_eq_not_unifies_var: LEMMA
+    LET (up, P1) = choose_eq(P), (t, s) = up IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND var?(t) AND
+    disjoint?(dom(delta), PV) AND NOT null?(P) IMPLIES 
+    ((NOT member(V(t), vars(s))) AND (NOT member(V(t), PV)))
+    OR (var?(s) AND V(t) = V(s))
+
+choose_eq_not_unifies_unit: LEMMA
+    LET (up, P1) = choose_eq(P) IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND unit?(up`1)
+    AND disjoint?(dom(delta), PV) AND NOT null?(P) IMPLIES up`2 = unit 
+
+choose_eq_not_unifies_app: LEMMA
+    LET (up, P1) = choose_eq(P), (t, s) = up IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND app?(t) AND NOT null?(P) AND  
+    disjoint?(dom(delta), PV) AND well_formed?(delta) IMPLIES
+    app?(s) AND f_sym(t) = f_sym(s) AND decompose(arg(t), arg(s))`2
+
+choose_eq_not_unifies_abs: LEMMA 
+    LET (up, P1) = choose_eq(P), (t, s) = up IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND abs?(t) AND NOT null?(P) AND  
+    disjoint?(dom(delta), PV) AND well_formed?(delta) IMPLIES
+    abs?(s) AND decompose(body(t), body(s))`2
+
+choose_eq_not_unifies_ac_app: LEMMA 
+    LET (up, P1) = choose_eq(P), (t, s) = up IN 
+    unifies?(G, delta, up) AND match_problem?(P, PV) AND ac_app?(t) AND NOT null?(P)
+    AND disjoint?(dom(delta), PV) IMPLIES is_ac_sym?(s, ac_sym(t)) 
+
+%%% apply ac
+apply_ac(input): list[nice_input] = 
+   LET (G, P, sigma, V, PV) = input IN 
+   IF null?(P) OR NOT ac_prb?(car(P)) THEN null 
+   ELSE LET 
+     (t, s) = car(P), P1 = cdr(P) IN 
+     IF equal?(G)(t, s) THEN cons((G, P1, sigma, V, PV), null)
+     ELSE LET
+	lst_V = finset2list[variable](V),
+	ac_results = first_proj(solve_ac(G, s, t, lst_V, ac_sym(t), PV)),
+	new_V = vars(sec_proj(solve_ac(G, s, t, lst_V, ac_sym(t), PV))),
+	ac_results_subs = inst_step(PV, G, ac_results) IN 
+	input_apply_ac(ac_results_subs, G, P1, sigma, new_V, PV)
+     ENDIF 
+   ENDIF
+
+
+% lemmas
+apply_ac_is_nice_input: LEMMA 
+    member((G1, P1, sigma1, V1, PV1), apply_ac(input)) IMPLIES
+    nice_input?(G1, P1, sigma1, V1, PV1)
+
+apply_ac_mem5: LEMMA
+    member(input1, apply_ac(input)) IMPLIES input1`5 = input`5
+
+apply_ac_vars: LEMMA
+    LET P = input`2, P1 = input1`2 IN 
+    member(input1, apply_ac(input)) IMPLIES subset?(vars(P1), vars(P))
+
+apply_ac_vars2: LEMMA 
+    LET V = input`4, V1 = input1`4 IN 
+    member(input1, apply_ac(input)) IMPLIES subset?(V, V1)
+
+apply_ac_vars_ctx: LEMMA 
+   LET (G, P, sigma, V, PV) = input, (G1, P1, sigma1, V1, PV1) = input1 IN
+   member(input1, apply_ac(input)) IMPLIES
+   subset?(vars(G1), union(vars(P), vars(G)))
+
+apply_ac_max_size_le: LEMMA
+   LET (G, P, sigma, V, PV) = input IN
+   (NOT null?(P) AND ac_prb?(car(P)) AND NOT equal?(G)(car(P)`1, car(P)`2) AND
+   LET (t, s) = car(P), P1 = cdr(P), 
+	lst_V = finset2list[variable](V),
+	ac_results = first_proj(solve_ac(G, s, t, lst_V, ac_sym(t), PV)),
+	ac_results_subs = inst_step(PV, G, ac_results) IN   
+   member((G1, PI, sigma1), ac_results_subs) AND
+   vars(append(PI, apply_sub(sigma1, P1))) = vars(P))
+   IMPLIES 
+   max_size(PI) < size(car(P)`1) + size(car(P)`2)
+
+apply_ac_apply_sub_no_effect: LEMMA 
+   LET (G, P, sigma, V, PV) = input IN
+   (NOT null?(P) AND ac_prb?(car(P)) AND NOT equal?(G)(car(P)`1, car(P)`2) AND
+   LET (t, s) = car(P), P1 = cdr(P), 
+	lst_V = finset2list[variable](V),
+	ac_results = first_proj(solve_ac(G, s, t, lst_V, ac_sym(t), PV)),
+	ac_results_subs = inst_step(PV, G, ac_results) IN   
+   member((G1, PI, sigma1), ac_results_subs) AND
+   vars(append(PI, apply_sub(sigma1, P1))) = vars(P))
+   IMPLIES 
+   apply_sub(sigma1, cdr(P)) = cdr(P)
+
+apply_ac_sound: LEMMA
+   LET (G, P, sigma, V, PV) = input IN 
+   (NOT null?(P) AND
+   LET (up, P1) = choose_eq(P), (t, s) = up IN 
+   ac_prb?((t, s)) AND
+   member(input1, apply_ac(G, cons((t, s), P1), sigma, V, PV))
+   AND is_sol?(Delta, delta)(input1`1, input1`2, input1`3, input1`5))
+   IMPLIES is_sol?(Delta, delta)(G, P, sigma, PV)
+
+apply_ac_complete: LEMMA 
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   ac_prb?((t, s)) AND NOT null?(P) AND is_sol?(Delta, delta)(G, P, sigma, PV)
+   AND contained?(delta, V) AND subset?(vars(Delta), V)
+   IMPLIES EXISTS gamma, input1: 
+      member(input1, apply_ac(G, cons((t, s), P1), sigma, V, PV)) AND 
+      is_sol?(Delta, append(gamma, delta))(input1`1, input1`2, input1`3, input1`5)
+      AND well_formed?(gamma, PV) AND subset?(dom(gamma), difference(input1`4, V)) AND
+      contained?(gamma, input1`4)
+
+apply_ac_complete2: LEMMA  
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   ac_prb?((t, s)) AND NOT null?(P) AND is_sol?(Delta, delta)(G, P, sigma, PV)
+   AND contained?(delta, V) AND subset?(vars(Delta), V)
+   IMPLIES EXISTS gamma, input1: 
+      member(input1, apply_ac(G, cons((t, s), P1), sigma, V, PV)) AND 
+      is_sol?(Delta, append(gamma, delta))(input1`1, input1`2, input1`3, input1`5) AND 
+      contained?(append(gamma, delta), input1`4) AND subset?(vars(Delta), input1`4)
+      AND equal?(Delta)(delta, append(gamma, delta), V) 
+
+END nominal_AC_ac_step

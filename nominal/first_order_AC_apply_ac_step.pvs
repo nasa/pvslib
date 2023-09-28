@@ -1,0 +1,315 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London, 
+%          (3) Johannes Kepler University 
+% 
+% Paper: "A Certified Algorithm for AC-Unification"
+% 
+% This part contains the definition of function first_order_apply_ac_step, along
+% withe the lemmas needed to prove correctness and completeness. 
+%%%%%%%%%%%%%%%%%%%%%%%
+
+first_order_AC_apply_ac_step: THEORY
+BEGIN
+	IMPORTING aux_first_order_AC_unification
+
+
+% after we call "apply_ac_step" we obtain, together with the unification problem, a substitution computed
+% in the instantiation step and a set of variables to avoid. So, we define the type "ac_sol_simp"  
+ac_sol_simp: TYPE = [unif_prb, sub, finite_set[variable]]
+
+        IMPORTING list_aux_equational_reasoning[ac_sol_simp],
+	          list_aux_equational_reasoning2parameters[[unif_prb, unif_prb, sub, finite_set[variable]], ac_sol_simp],
+		  list_aux_equational_reasoning[basic_sub]
+
+i: VAR nat
+
+f: VAR string
+
+X: VAR variable
+
+t, s: VAR first_order_AC_term 
+
+new_vars2avoid, vars2avoid, vars2avoid1, V1: VAR finite_set[variable]
+
+lst_vars2avoid, lst_V: VAR list[variable]
+
+sigma, sigma1, delta, gamma: VAR sub
+
+unseen_unif_prb, seen_unif_prb, unif_prb, unif_prb1, unif_prb2: VAR unif_prb
+
+ac_results_subs: VAR list[[unif_prb, sub]]
+ac_sol_simp_lst: VAR list[ac_sol_simp]
+
+ac_sol, ac_sol1, ac_sol2: VAR ac_sol_simp
+
+input, input1, input2: VAR [unif_prb, unif_prb, sub, finite_set[variable]]
+
+apply_ac_output: VAR [unif_prb, sub, finite_set[variable]]
+
+% removes the unification pairs that are equivalent
+simplify(unif_prb): RECURSIVE unif_prb =
+   IF null?(unif_prb) THEN null
+   ELSE LET (t, s) = car(unif_prb) IN 
+        IF equal?(t, s) THEN simplify(cdr(unif_prb))
+	ELSE cons((t, s), simplify(cdr(unif_prb)))
+	ENDIF
+   ENDIF
+MEASURE unif_prb BY << 
+
+% this function is called by "apply_ac_step"
+% it returns a list of inputs and we will call "apply_ac_step" for each input
+input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb, seen_unif_prb, sigma, vars2avoid):
+ RECURSIVE list[[unif_prb, unif_prb, sub, finite_set[variable]]] = 
+   IF null?(ac_results_subs) THEN null
+   ELSE LET
+        (unif_prb1, delta) = car(ac_results_subs),
+        new_unseen_unif_prb = apply_sub(delta, unseen_unif_prb),
+	new_seen_unif_prb = append(unif_prb1, apply_sub(delta, seen_unif_prb)),
+	new_sigma = append(delta, sigma),
+	input = (new_unseen_unif_prb, new_seen_unif_prb, new_sigma, vars2avoid) IN 
+	cons(input, input_first_order_AC_apply_ac_step(cdr(ac_results_subs), unseen_unif_prb,
+		    			 seen_unif_prb, sigma, vars2avoid))
+   ENDIF
+MEASURE length(ac_results_subs)
+
+% this is needed for a TCC of the next function
+input_first_order_AC_apply_ac_step1_len: LEMMA
+    member(input, input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+    IMPLIES length(input`1) = length(unseen_unif_prb)
+
+% initially, this function is called with (unif_prb, null, sigma, vars2avoid)
+% recursively apply "solve_ac" to every unification pair in "unseen_unif_prb" and instantiates the
+% variables that it can by calling "instantiate_step". 
+% storing the results in (seen_unif_prb, sigma, vars2avoid)
+first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid): RECURSIVE list[ac_sol_simp] = 
+   IF NOT all_ac_prb?(unseen_unif_prb) THEN null
+   ELSIF null?(unseen_unif_prb) THEN cons((seen_unif_prb, sigma, vars2avoid), null)
+   ELSE LET
+     unif_pair = car(unseen_unif_prb),
+     (t, s) = unif_pair IN
+     IF equal?(t, s) THEN first_order_AC_apply_ac_step(cdr(unseen_unif_prb), seen_unif_prb, sigma, vars2avoid)
+     ELSE LET
+	cur_vars2avoid = union(vars(unseen_unif_prb), union(vars2avoid, vars(seen_unif_prb))),
+	lst_vars2avoid = finset2list[variable](cur_vars2avoid),
+	ac_results = first_proj(solve_ac(t, s, lst_vars2avoid, ac_sym(t))),
+	new_vars2avoid = vars(sec_proj(solve_ac(t, s, lst_vars2avoid, ac_sym(t)))),
+	ac_results_subs = instantiate_step(ac_results) IN 
+	IF null?(ac_results_subs) THEN null
+	ELSE LET
+	    input_lst = input_first_order_AC_apply_ac_step(ac_results_subs, cdr(unseen_unif_prb), seen_unif_prb,
+	    	      					    sigma, new_vars2avoid) IN
+	    flatten(map(first_order_AC_apply_ac_step)(input_lst))
+	ENDIF
+     ENDIF
+   ENDIF
+MEASURE length(unseen_unif_prb)
+
+next_input?(input1, input2): bool =
+  LET unseen_unif_prb = input1`1,
+        seen_unif_prb = input1`2,
+	sigma = input1`3,
+	vars2avoid = input1`4 IN 
+  IF NOT null?(unseen_unif_prb) AND all_ac_prb?(unseen_unif_prb) AND
+     equal?(car(unseen_unif_prb)`1, car(unseen_unif_prb)`2) THEN
+          input2 = (cdr(unseen_unif_prb), seen_unif_prb, sigma, vars2avoid)
+  ELSE NOT null?(unseen_unif_prb) AND all_ac_prb?(unseen_unif_prb) AND
+  LET 
+       unif_pair = car(unseen_unif_prb),
+       (t, s) = unif_pair, 
+       cur_vars2avoid = union(vars(unseen_unif_prb), union(vars2avoid, vars(seen_unif_prb))),
+       lst_vars2avoid = finset2list[variable](cur_vars2avoid),
+       ac_results = first_proj(solve_ac(t, s, lst_vars2avoid, ac_sym(t))),
+       new_vars2avoid = vars(sec_proj(solve_ac(t, s, lst_vars2avoid, ac_sym(t)))),
+       ac_results_subs = instantiate_step(ac_results) IN 
+       member(input2, input_first_order_AC_apply_ac_step(ac_results_subs, cdr(unseen_unif_prb), seen_unif_prb,
+	   			sigma, new_vars2avoid))
+  ENDIF
+    
+% returns True if (unif_prb, sigma, vars2avoid) is a nice input. False otherwise. 
+nice_input?(unif_prb, sigma, vars2avoid): bool =
+   idempotent?(sigma) AND disjoint?(vars(unif_prb), dom(sigma)) AND 
+   contained?(sigma, vars2avoid) AND subset?(vars(unif_prb), vars2avoid) AND
+   well_formed?(unif_prb) AND well_formed?(sigma) 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% - Lemmas
+% input_apply_ac_step
+input_first_order_AC_apply_ac_step_mem: LEMMA
+    member(input, input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb,
+                                      seen_unif_prb, sigma, vars2avoid)) IMPLIES
+    EXISTS unif_prb1, delta:
+        member((unif_prb1, delta), ac_results_subs) AND
+	input`1 = apply_sub(delta, unseen_unif_prb) AND
+	input`2 = append(unif_prb1, apply_sub(delta, seen_unif_prb)) AND
+	input`3 = append(delta, sigma) AND 
+	input`4 = vars2avoid
+
+input_first_order_AC_apply_ac_step_mem2: LEMMA 
+    (EXISTS unif_prb1, delta:
+        member((unif_prb1, delta), ac_results_subs) AND
+	input`1 = apply_sub(delta, unseen_unif_prb) AND
+	input`2 = append(unif_prb1, apply_sub(delta, seen_unif_prb)) AND
+	input`3 = append(delta, sigma) AND 
+	input`4 = vars2avoid)
+    IMPLIES
+    member(input, input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb,
+                                      seen_unif_prb, sigma, vars2avoid)) 
+
+input_first_order_AC_apply_ac_step_sigma_null: LEMMA
+    member(input, input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb,
+                                      seen_unif_prb, sigma, vars2avoid)) IFF
+    EXISTS input2:
+      member(input2, input_first_order_AC_apply_ac_step(ac_results_subs, unseen_unif_prb,
+                                      seen_unif_prb, null, vars2avoid))
+      AND input`1 = input2`1 AND input`2 = input2`2 AND
+          input`3 = append(input2`3, sigma) AND input`4 = input2`4
+
+
+% nice_input / next input
+nice_input_apply_sub: LEMMA 
+   LET sigma1 = cons((X, s), null) IN 
+   nice_input?(unif_prb, sigma, vars2avoid) AND member(variable(X), unif_prb) AND member(s, unif_prb) AND
+   NOT member(X, vars(s)) AND (FORALL t: member(t, unif_prb1) IMPLIES member(t, unif_prb)) IMPLIES
+   nice_input?(apply_sub(sigma1, unif_prb1), append(sigma1, sigma), vars2avoid)
+
+   
+nice_input_subterms: LEMMA  
+   nice_input?(unif_prb, sigma, vars2avoid) AND
+   subset?(subterms(unif_prb1), subterms(unif_prb)) AND no_pair?(unif_prb1) IMPLIES
+   nice_input?(unif_prb1, sigma, vars2avoid)
+
+nice_input_cdr: LEMMA    
+   NOT null?(unif_prb) AND nice_input?(unif_prb, sigma, vars2avoid) 
+   IMPLIES nice_input?(cdr(unif_prb), sigma, vars2avoid)
+
+nice_input_vars: LEMMA  
+   nice_input?(unif_prb, sigma, vars2avoid) AND subset?(vars2avoid, vars2avoid1) IMPLIES
+   nice_input?(unif_prb, sigma, vars2avoid1)
+
+next_input_nice_input: LEMMA    
+   next_input?(input1, input2) AND nice_input?(append(input1`1, input1`2), input1`3, input1`4) IMPLIES 
+   nice_input?(append(input2`1, input2`2), input2`3, input2`4)
+
+nice_input_first_order_AC_apply_ac_step: LEMMA   
+   member(apply_ac_output, first_order_AC_apply_ac_step(unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND nice_input?(append(unif_prb, seen_unif_prb), sigma, vars2avoid) IMPLIES 
+   nice_input?(apply_ac_output`1, apply_ac_output`2, apply_ac_output`3)
+
+nice_input_decompose: LEMMA    
+   nice_input?(unif_prb, sigma, vars2avoid) AND 
+   app?(t) AND app?(s) AND member(t, unif_prb) AND member(s, unif_prb) IMPLIES 
+   nice_input?(decompose(arg(t), arg(s))`1, sigma, vars2avoid)
+
+nice_input_append: LEMMA  
+   nice_input?(append(unif_prb, unif_prb1), sigma, vars2avoid) IFF
+   (nice_input?(unif_prb, sigma, vars2avoid) AND nice_input?(unif_prb1, sigma, vars2avoid))
+
+nice_input_choose: LEMMA 
+   nice_input?(unif_prb, sigma, vars2avoid) IMPLIES
+   nice_input?(choose_unif_pair(unif_prb)`2, sigma, vars2avoid)
+
+nice_input_solve_ac: LEMMA  
+   LET V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))) IN 
+   nice_input?(unif_prb, sigma, vars2avoid) AND member(t, unif_prb) AND member(s, unif_prb)
+   AND list2set(lst_V) = vars2avoid AND member(unif_prb1, first_proj(solve_ac(t, s, lst_V, f)))
+   IMPLIEs nice_input?(unif_prb1, sigma, V1) 
+
+nice_input_apply_sub_inst_step: LEMMA  
+   LET sigma1 = instantiate_step(unif_prb1, null, null)`2 IN
+   nice_input?(unif_prb, sigma, vars2avoid) AND 
+   subset?(unif_prb1, unif_prb) AND subset?(unif_prb2, unif_prb) IMPLIES 
+   nice_input?(apply_sub(sigma1, unif_prb2), append(sigma1, sigma), vars2avoid)
+
+% apply_ac_step
+first_order_AC_apply_ac_step_sigma_null: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   IFF EXISTS ac_sol1:
+      member(ac_sol1, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid)) AND
+      ac_sol`1 = ac_sol1`1 AND ac_sol`2 = append(ac_sol1`2, sigma) AND ac_sol`3 = ac_sol1`3 
+
+first_order_AC_apply_ac_step_sub: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid))
+   AND NOT member(X, vars(unseen_unif_prb)) AND member(X, vars2avoid) IMPLIES 
+   NOT member(variable(X), sec_proj(ac_sol`2))
+
+first_order_AC_apply_ac_step_vars: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid))
+   AND NOT member(X, vars(append(unseen_unif_prb, seen_unif_prb))) AND member(X, vars2avoid)
+   IMPLIES NOT member(X, vars(ac_sol`1))
+
+first_order_AC_apply_ac_step_sub_vars_img: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid))
+   AND NOT member(X, vars(unseen_unif_prb)) AND member(X, vars2avoid)
+   IMPLIES NOT member(X, vars(img(ac_sol`2)))
+   
+first_order_AC_apply_ac_step_sub_idempotent: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid))
+   IMPLIES idempotent?(ac_sol`2)
+
+first_order_AC_apply_ac_step_well_formed: LEMMA 
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND well_formed?(sigma) AND well_formed?(unseen_unif_prb) IMPLIES well_formed?(ac_sol`2)
+
+first_order_AC_apply_ac_step_sub_dom: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, null, vars2avoid))
+   AND NOT member(X, vars(unseen_unif_prb)) AND member(X, vars2avoid)
+   IMPLIES NOT member(X, dom(ac_sol`2))
+
+first_order_AC_apply_ac_step_sub_decompose: LEMMA 
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   IMPLIES EXISTS delta: 
+      ac_sol`2 = append(delta, sigma)
+
+first_order_AC_apply_ac_step_vars2avoid: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND subset?(vars(append(unseen_unif_prb, seen_unif_prb)), vars2avoid) AND
+   subset?(dom(sigma), vars2avoid)  
+   IMPLIES subset?(vars2avoid, ac_sol`3) AND subset?(dom(ac_sol`2), ac_sol`3)
+   AND subset?(vars(ac_sol`1), ac_sol`3)
+
+first_order_AC_apply_ac_step_vars2avoid_cor: LEMMA 
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND nice_input?(append(unseen_unif_prb, seen_unif_prb), sigma, vars2avoid) 
+   IMPLIES subset?(vars2avoid, ac_sol`3) 
+
+first_order_AC_apply_ac_step_disjoint_vars: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND disjoint?(vars(append(unseen_unif_prb, seen_unif_prb)), dom(sigma)) AND
+   subset?(dom(sigma), vars2avoid) IMPLIES disjoint?(vars(ac_sol`1), dom(ac_sol`2))
+
+first_order_AC_apply_ac_step_unifies_seen: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND unifies?(delta, ac_sol`1) AND (EXISTS sigma1: delta = append(sigma1, ac_sol`2))
+   AND subset?(dom(sigma), vars2avoid) AND
+   disjoint?(dom(sigma), union(vars(seen_unif_prb), vars(unseen_unif_prb)))
+   IMPLIES unifies?(delta, seen_unif_prb) 
+   
+% soundness of apply_ac_step
+first_order_AC_apply_ac_step_sound: LEMMA
+   member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid))
+   AND unifies?(delta, ac_sol`1) AND (EXISTS sigma1: delta = append(sigma1, ac_sol`2))
+   AND subset?(dom(sigma), vars2avoid) AND 
+   disjoint?(dom(sigma), union(vars(seen_unif_prb), vars(unseen_unif_prb)))
+   IMPLIES unifies?(delta, unseen_unif_prb)
+
+% completeness of apply_ac_step
+first_order_AC_apply_ac_step_complete: LEMMA 
+   unifies?(delta, append(unseen_unif_prb, seen_unif_prb)) AND all_ac_prb?(unseen_unif_prb)
+   AND well_formed?(delta) AND nice_input?(append(unseen_unif_prb, seen_unif_prb), sigma, vars2avoid)
+   AND contained?(delta, vars2avoid) AND more_general?(sigma, delta) IMPLIES
+   EXISTS ac_sol, gamma:
+      member(ac_sol, first_order_AC_apply_ac_step(unseen_unif_prb, seen_unif_prb, sigma, vars2avoid)) AND
+      unifies?(append(gamma, delta), ac_sol`1) AND 
+      subset?(dom(gamma), difference(ac_sol`3, vars2avoid)) AND 
+      well_formed?(gamma) AND subset?(vars(img(gamma)), ac_sol`3)
+      AND more_general?(ac_sol`2, append(gamma, delta))
+
+END first_order_AC_apply_ac_step
+

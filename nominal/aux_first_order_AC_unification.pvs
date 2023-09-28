@@ -1,0 +1,1368 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London, 
+%          (3) Johannes Kepler University 
+% 
+% Paper: "A Certified Algorithm for AC-Unification"
+% 
+% This file contains functions "solve_ac" and "instantiate_step" and other small
+% functions, along with lemmas of correctness and completeness for them.  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+aux_first_order_AC_unification: THEORY
+BEGIN
+	IMPORTING first_order_AC_unification, diophantine, list_aux_equational_reasoning[number], list_aux_equational_reasoning[args], list_aux_equational_reasoning[basic_sub],
+	list_aux_equational_reasoning[unif_pair], list_aux_equational_reasoning[dio_matrix], list_aux_equational_reasoning[bool],
+	list_aux_equational_reasoning_more[first_order_AC_term], list_aux_equational_reasoning[unif_prb], list_aux_equational_reasoning2parameters[unif_prb, list[variable]],
+	list_aux_equational_reasoning2parameters[list[unif_prb], unif_prb], list_aux_equational_reasoning2parameters[args, first_order_AC_term], list_aux_equational_reasoning2parameters[nat, bool], 
+	list_aux_equational_reasoning2parameters[list[unif_prb], [list[unif_prb], finite_set[variable]]],
+	list_aux_equational_reasoning2parameters[args, nat], list_aux_equational_reasoning2parameters[args, args], list_aux_equational_reasoning2parameters[first_order_AC_term, list[nat]],
+	list_aux_equational_reasoning2parameters[list[unif_prb], finite_set[variable]], list_aux_equational_reasoning2parameters[unif_prb, finite_set[variable]],
+	list_aux_equational_reasoning2parameters[variable, first_order_AC_term], list_aux_equational_reasoning_more[nat]
+		  
+
+% this type is used in small parts of the code, but I am mostrly using using ac_sol
+ac_sol: TYPE = [unif_prb, list[variable]]
+
+% an ac solution is a unification problem and a list of variables to stay away
+ac_sol2: TYPE = [unif_prb, finite_set[variable]]
+
+% we can simplify an ac-solution and instantiate variables. Therefore, we define
+
+	IMPORTING list_aux_equational_reasoning[ac_sol], list_aux_equational_reasoning2parameters[dio_matrix, ac_sol]
+
+sigma, delta, sigma2, gamma, gamma1: VAR sub
+rho: VAR renaming
+
+X, Y: VAR variable
+
+unif_pair, unif_pair2: VAR unif_pair
+unif_prb, unif_prb1, unif_prb2, seen_unif_prb, unseen_unif_prb: VAR unif_prb
+ac_results_so_far, lst_unif_prb, lst_unif_prb1, lst_unif_prb2: VAR list[unif_prb]
+
+ac_results_subs: VAR list[[unif_prb, sub]]
+
+sym: VAR string
+
+t, s, t1, t2, tsigma: VAR first_order_AC_term
+args, args1: VAR args
+lst_args, lst_args1, lst_args2: VAR list[args]
+
+mult_t1, mult_t2: VAR list[posnat]
+row, col, coef, coef_matrix_col: VAR list[nat]
+bound, i, n, num_col: VAR nat
+
+dio_sol_matrix, dio_matrix, dio_matrix1, coef_matrix, dio, D: VAR dio_matrix
+submatrix_sol_lst, dio_matrix_lst: VAR list[dio_matrix]
+
+vars2avoid, new_vars2avoid, lst_V, lst_V_: VAR list[variable]
+
+set_vars2avoid, V: VAR finite_set[variable]
+
+ac_sol: VAR ac_sol
+ac_sol_lst: VAR list[ac_sol]
+
+lst_unif_prb_and_subs: VAR list[[unif_prb, sub]]
+lst_new_input: VAR list[[unif_prb, sub, finite_set[variable]]]
+
+f: VAR ac_symbol
+
+% this corresponds to function elimcom in Fages paper. Eliminates common arguments from "t1" and "t2", where "t1" and "t2"
+% should be AC-function applications headed by "sym". 
+elim_com_arg(t1, t2, sym): [args, list[nat], list[nat]] =
+     LET
+     % get arguments of t1 and t2
+     args1 = get_args(sym)(t1), args2 = get_args(sym)(t2),
+     % remove common elements
+     no_rep_args1 = remove_common(args1, args2, equal?), 
+     no_rep_args2 = remove_common(args2, args1, equal?),  
+     % get arguments of t1 and their multiplicity
+     (new_args_t1, new_coef_t1) = count_elem(null, null, no_rep_args1, equal?), 
+     % get arguments of t2 and their multiplicity
+     (new_args_t2, new_coef_t2) = count_elem(null, null, no_rep_args2, equal?)
+     IN (append(new_args_t1, new_args_t2), new_coef_t1, new_coef_t2)
+
+elim_com_arg_pos: LEMMA
+   member(n, elim_com_arg(t1, t2, sym)`2) IMPLIES n > 0 
+   
+elim_com_arg_pos2: LEMMA
+   member(n, elim_com_arg(t1, t2, sym)`3) IMPLIES n > 0 
+
+% check if column i is empty (all coeficients equal to 0)
+% you must make sure dio_matrix is a matrix and i < num_col_dio_matrix 
+empty_col?(dio_matrix)(i): bool =
+    LET col_i = get_col_i[nat](dio_matrix, i) IN 
+    	IF (FORALL n: member(n, col_i) => n = 0) THEN TRUE
+    	ELSE FALSE
+    	ENDIF
+
+% Constraint 1: Every column has at least one coefficient greater than 0 
+const1?(dio_matrix, num_col): bool =
+    FORALL i: i >= 1 AND i <= num_col IMPLIES NOT empty_col?(dio_matrix)(i)
+     
+% Constraint 2: One coefficient is equal to one, the others are zero 
+const2?(col): bool =
+    IF count[nat](1, col) = 1 AND count[nat](0, col) = length[nat](col) - 1 THEN TRUE
+    ELSE FALSE
+    ENDIF
+
+% returns false if column "i" corresponds to a non-variable argument and does not satisfy constraint 2
+% returns true otherwise
+if_non_var_const2_col?(dio_matrix, args)(i): bool = 
+    IF i > length(args) OR i = 0 THEN FALSE 
+    ELSE LET arg = nth(args, i-1) IN 
+    	     IF var?(arg) THEN TRUE
+	     ELSE LET col_i = get_col_i[nat](dio_matrix, i) IN
+	     	      const2?(col_i)
+	     ENDIF
+    ENDIF
+
+% returns true if all columns that correspond to a non-variable argument satisfy constraint 2
+if_non_var_const2?(dio_matrix, args): bool =
+     LET lst_non_var_const2 =
+     	 map(if_non_var_const2_col?(dio_matrix, args))(from_min2max[nat](1, length(args))) IN
+     IF member(FALSE, lst_non_var_const2) THEN FALSE
+     ELSE TRUE
+     ENDIF
+
+% a nice submatrix is one that satisfies constraint 1 and for every column that is not a variable
+% satisfies constraint 2
+nice_submatrix?(dio_matrix, args): bool =
+     length(args) > 0 AND matrix?(dio_matrix, length(args)) AND
+     const1?(dio_matrix, length(args)) AND if_non_var_const2?(dio_matrix, args)
+
+% receives a list of dio matrix
+% returns a list of the ones that satisfy the property of being nice
+get_nice_submatrices(dio_matrix_lst, args): RECURSIVE list[dio_matrix] =
+    IF null?(dio_matrix_lst) THEN null
+    ELSE LET dio_matrix = car(dio_matrix_lst) IN
+    	 IF nice_submatrix?(dio_matrix, args) AND NOT null?(dio_matrix) THEN
+	    cons(dio_matrix, get_nice_submatrices(cdr(dio_matrix_lst), args))
+	 ELSE get_nice_submatrices(cdr(dio_matrix_lst), args)
+	 ENDIF
+    ENDIF
+MEASURE dio_matrix_lst BY << 
+
+% extract the relevant submatrices. Each submatrix corresponds to one ac-solution
+% this corresponds to function "partit" in Fages article about termination
+extract_submatrices(dio_sol_matrix, args): list[dio_matrix] =
+    % check that the dio_sol_matrix is not only a list of lists but also a matrix
+    IF nonmatrix?(dio_sol_matrix) THEN null
+    ELSE LET all_submatrices = get_all_sublists(dio_sol_matrix) 
+    	     IN get_nice_submatrices(all_submatrices, args)
+    ENDIF
+    	   
+% add to lst_args[i] the term "t" the amount of times specified in row[i] for each i
+add_new_arg(lst_args, row, t): RECURSIVE list[args] = 
+    IF null?(lst_args) OR null?(row) THEN lst_args
+    ELSE LET args = car(lst_args), 
+    	     args2 = get_repeat_lst(t, car(row)), 
+	     new_args = append(args, args2) IN 
+	     cons(new_args, add_new_arg(cdr(lst_args), cdr(row), t))
+    ENDIF
+MEASURE row BY << 
+
+% return a variable that is not in vars2avoid
+get_new_var(vars2avoid): variable = select_greater[nat](vars2avoid) + 1
+
+% the initial call to this function should be with lst_args = [null, ..., null]
+% each row in dio_matrix gives rise to a new variable 
+% add the new_variable to lst_args[i] the amount of times indicated in row[i],
+% i ranges from 1 <= "i" <= length(lst_args)
+get_pre_new_args(lst_args, dio_matrix, vars2avoid): RECURSIVE [list[args], list[variable]] = 
+     IF null?(dio_matrix) THEN (lst_args, vars2avoid)
+     ELSE LET row = car(dio_matrix), 
+     	      new_var = get_new_var(vars2avoid), 
+	      new_lst_args = add_new_arg(lst_args, row, variable(new_var)), 
+	      new_vars2avoid = cons(new_var, vars2avoid) 
+	      IN get_pre_new_args(new_lst_args, cdr(dio_matrix), new_vars2avoid)
+     ENDIF
+MEASURE dio_matrix BY << 
+
+% this function is used in "dio_matrix2ac_sol"
+% this function receives args = [t1, ... ,tn] and construct an AC-function headed by "sym"
+% whoser arguments are [t1, ..., tn].
+% the only exception is if the args = [X] and X is a variable,
+% in this case the function returns X 
+get_ac_from_args_gt1(sym)(args): first_order_AC_term =
+    IF null?(args) OR length(args) /= 1 THEN get_ac_from_args(sym)(args)
+    ELSE car(args) 
+    ENDIF
+
+
+% this corresponds to function "trans" in Fages paper
+dio_matrix2ac_sol(args, vars2avoid, sym)(dio_matrix): ac_sol = 
+     LET num_col = length(args), 
+     % get list of list of args
+     null_lst = get_repeat_lst[args](null, num_col), 
+     (pre_new_args, new_vars2avoid) = get_pre_new_args(null_lst, dio_matrix, vars2avoid),
+     % for each "args" in pre_new_args, make the corresponding ac term whose args are "args"
+     new_args = map(get_ac_from_args_gt1(sym))(pre_new_args), 
+     % pareate
+     new_unif_prb = pareate(args, new_args) IN
+     (new_unif_prb, new_vars2avoid) 
+
+% in Fages paper about termination, this corresponds to function "dio"
+solve_ac(t1, t2, vars2avoid, sym): list[ac_sol] =
+    LET
+%    eliminate common arguments from t1 and t2, obtaining the different arguments on each one
+%    and their multiplicity
+     (args, mult_t1, mult_t2) = elim_com_arg(t1, t2, sym),
+%    calculate upper bound from which we can solve the diophantine equation
+     bound = calculate_upper_bound(mult_t1, mult_t2),
+%    solve diophantine equation until the upper bound 
+     dio_sol_matrix = dio_solver(mult_t1, mult_t2, bound),
+%    extract "nice" submatrices of solutions
+     submatrix_sol_lst = extract_submatrices(dio_sol_matrix, args), 
+%    for every diophantine submatrix obtain the corresponding unification solution
+     results = map(dio_matrix2ac_sol(args, vars2avoid, sym))(submatrix_sol_lst) 
+     IN results
+
+% auxiliar function used in "construct_sub" 
+construct_sub_aux(args, coef_matrix_col): RECURSIVE args = 
+   IF null?(args) OR null?(coef_matrix_col) THEN null
+   ELSE LET A1 = car(args), c1 = car(coef_matrix_col) IN
+        append(get_repeat_lst(A1, c1), construct_sub_aux(cdr(args), cdr(coef_matrix_col)))
+   ENDIF
+MEASURE args BY << 
+
+% constructs the substitution needed for the proof of the "solve_ac_unify_complete_no_common" lemma
+construct_sub(dio, coef_matrix, args, vars2avoid, f): RECURSIVE sub =
+   IF null?(dio) THEN null 
+   ELSE LET new_var = get_new_var(vars2avoid),
+   	new_vars2avoid = cons(new_var, vars2avoid),  	
+	args_t = construct_sub_aux(args, get_col_i(coef_matrix, 1)), 
+	t = get_ac_from_args_gt1(f)(args_t) IN 
+   	cons((new_var, t), construct_sub(cdr(dio), elim_col1[nat](coef_matrix), args, new_vars2avoid, f))
+   ENDIF
+MEASURE dio BY << 
+
+% try to unify two terms t and s by instantiating them (may skip) 
+% returns
+%   1 - a substitution "sigma", indicating the substitution if it happened
+%   2 - a boolean "skip" indicating that the terms can't be unified via a simple instantiation
+%       and therefore we skipped 
+%   3 - a boolean "impossible" indicating that the terms can't be unified
+instantiate_step(t, s): [sub, bool, bool] =  
+   IF var?(s) THEN
+        IF (NOT member(V(s), vars(t))) THEN LET
+	    sigma = cons((V(s), t), null), skip = FALSE, impossible = FALSE IN
+	    (sigma, skip, impossible) 
+	ELSIF var?(t) AND V(t) = V(s) THEN LET
+	    sigma = null, skip = FALSE, impossible = FALSE IN 
+	    (sigma, skip, impossible) 
+	ELSE LET 
+	    sigma = null, skip = FALSE, impossible = TRUE IN
+	    (sigma, skip, impossible) 
+	ENDIF
+   ELSIF var?(t) THEN
+        IF (NOT member(V(t), vars(s))) THEN LET
+	    sigma = cons((V(t), s), null), skip = FALSE, impossible = FALSE IN
+	    (sigma, skip, impossible) 
+	ELSE LET 
+	    sigma = null, skip = FALSE, impossible = TRUE IN
+	    (sigma, skip, impossible) 
+	ENDIF
+   ELSE LET sigma = null, skip = TRUE, impossible = FALSE IN
+   	(sigma, skip, impossible) 
+   ENDIF
+
+% this function is refered in our paper as "instStep"
+% receives:
+%	1 - list of unification problem we still have not tried to instantiate
+%       2 - list of unification problem we already have tried to instantiate
+% 	2 - the substitution "sigma" computed so far
+% returns:
+%	1 - the unification problem after we make all the instantiations
+% 	2 - the substitution computed
+% 	3 - a boolean that is TRUE if one of the unification pairs
+% 	    gave an impossible substitution
+instantiate_step(unseen_unif_prb, seen_unif_prb, sigma): RECURSIVE [unif_prb, sub, bool] =
+   IF null?(unseen_unif_prb) THEN (seen_unif_prb, sigma, FALSE) 
+   ELSE LET 
+   	(t, s) = car(unseen_unif_prb),
+   	(delta, skip, fail) = instantiate_step(t, s) IN
+	IF fail THEN (null, sigma, TRUE)
+	ELSIF skip THEN  
+	     instantiate_step(cdr(unseen_unif_prb), cons((t, s), seen_unif_prb), sigma)
+	ELSE LET
+	     new_unseen_unif_prb = apply_sub(delta, cdr(unseen_unif_prb)), 
+	     new_seen_unif_prb = apply_sub(delta, seen_unif_prb), 
+	     new_sigma = append(delta, sigma) IN
+	     instantiate_step(new_unseen_unif_prb, new_seen_unif_prb, new_sigma)
+	ENDIF
+   ENDIF
+MEASURE length(unseen_unif_prb)
+
+% extends "instantiate_step" to a list of unification problems
+% if a unification problem fails when we try to instantiate it, it is removed from the list
+instantiate_step(lst_unif_prb): RECURSIVE list[[unif_prb, sub]] =
+    IF null?(lst_unif_prb) THEN null
+    ELSE LET
+    	 unif_prb = car(lst_unif_prb),
+    	 (new_unif_prb, sigma, fail) = instantiate_step(unif_prb, null, null) IN 
+	 IF fail THEN instantiate_step(cdr(lst_unif_prb))
+	 ELSE cons((new_unif_prb, sigma), instantiate_step(cdr(lst_unif_prb)))
+	 ENDIF
+    ENDIF
+MEASURE lst_unif_prb BY << 
+
+% choose the first non-ac unification problem it encounters
+choose_not_ac(seen_unif_prb, unseen_unif_prb): RECURSIVE [unif_pair, unif_prb] =
+   IF null?(unseen_unif_prb) THEN ((unit, unit), seen_unif_prb)
+   ELSE LET unif_pair = car(unseen_unif_prb) IN
+   	IF ac_prb?(unif_pair) THEN choose_not_ac(cons(unif_pair, seen_unif_prb), cdr(unseen_unif_prb))
+	ELSE (unif_pair, append(seen_unif_prb, cdr(unseen_unif_prb)))
+	ENDIF
+   ENDIF
+MEASURE unseen_unif_prb BY << 
+
+% in our paper, this function is refered as choose. 
+% choose the unification pair that will be simplified
+% prioritizes non-AC unification problems, if possible
+% return (unif_pair, remaining_unification_problems)
+% should be passed with unif_prb different than null
+choose_unif_pair(unif_prb): [unif_pair, unif_prb] = 
+   IF null?(unif_prb) THEN ((unit, unit), unif_prb)
+   ELSIF all_ac_prb?(unif_prb) THEN (car(unif_prb), cdr(unif_prb))
+   ELSE choose_not_ac(null, unif_prb) 
+   ENDIF
+
+
+%%%%%%%%%%%%%%%%%%%%%%% Theorems
+% get nice submatrices and get_all_sublists
+get_nice_submatrices_mem: LEMMA
+   member(dio_matrix, get_nice_submatrices(dio_matrix_lst, args)) IMPLIES
+   member(dio_matrix, dio_matrix_lst)
+   
+get_all_sublists_dio_cor: LEMMA 
+   member(dio_matrix1, get_all_sublists(dio_matrix)) AND 
+   dio_matrix_correct?(dio_matrix, mult_t1, mult_t2) IMPLIES
+   dio_matrix_correct?(dio_matrix1, mult_t1, mult_t2)
+
+get_nice_submatrices_cor: LEMMA
+   member(dio_matrix1, get_nice_submatrices(dio_matrix_lst, args)) IMPLIES
+   nice_submatrix?(dio_matrix1, args)
+
+get_nice_submatrix_cor2: LEMMA
+   nice_submatrix?(dio_matrix1, args) AND member(dio_matrix1, dio_matrix_lst)
+   AND NOT null?(dio_matrix1) IMPLIES 
+   member(dio_matrix1, get_nice_submatrices(dio_matrix_lst, args))
+
+get_nice_submatrices_not_null: LEMMA
+   member(dio_matrix1, get_nice_submatrices(dio_matrix_lst, args)) IMPLIES
+   NOT null?(dio_matrix1)
+
+% constraints 1 and 2
+const2_sum1: LEMMA 
+   const2?(col) IMPLIES sum(col) = 1
+
+const2_sum: LEMMA 
+   const2?(col) IFF sum(col) = 1
+
+if_non_var_const2_cor: LEMMA
+   if_non_var_const2?(dio_matrix, args) AND i < length(args) AND
+   NOT var?(nth(args, i)) IMPLIES const2?(get_col_i(dio_matrix, i+1))
+
+if_non_var_const2_cor2: LEMMA 
+   (FORALL i: i < length(args) AND NOT var?(nth(args, i)) IMPLIES
+     const2?(get_col_i(dio_matrix, i+1)))
+   IMPLIES if_non_var_const2?(dio_matrix, args)
+
+const1_implies_non_empty_row_n: LEMMA
+   matrix?(dio_matrix, n) AND const1?(dio_matrix, n) AND i < n IMPLIES
+   EXISTS row: member(row, dio_matrix) AND nth(row, i) > 0 
+
+empty_col_get_repeat_lst: LEMMA 
+   matrix?(dio_matrix, n) AND empty_col?(dio_matrix)(i) AND i > 0 AND i <= n
+   IMPLIES get_col_i[nat](dio_matrix, i) = get_repeat_lst(0, length(dio_matrix))
+
+get_nice_submatrices_ren: LEMMA  
+    get_nice_submatrices(dio_matrix_lst, args) =
+    get_nice_submatrices(dio_matrix_lst, subs(rho)(args))
+
+
+% add new arg
+add_new_arg_mem: LEMMA
+   member(t1, add_new_arg(lst_args, row, t)) IMPLIES
+   member(t1, lst_args) OR t1 = t
+
+add_new_arg_subs: LEMMA 
+   add_new_arg(map(subs(sigma))(lst_args), row, subs(sigma)(t)) =
+   map(subs(sigma))(add_new_arg(lst_args, row, t))
+
+% extract submatrices
+extract_submatrices_cor: LEMMA
+   dio_matrix_correct?(dio_matrix, mult_t1, mult_t2) AND 
+   member(dio_matrix1, extract_submatrices(dio_matrix, args))
+   IMPLIES dio_matrix_correct?(dio_matrix1, mult_t1, mult_t2) 
+   
+extract_submatrices_nice: LEMMA
+   member(dio_matrix1, extract_submatrices(dio_matrix, args)) IMPLIES
+   nice_submatrix?(dio_matrix1, args)
+
+extract_submatrices_mem: LEMMA 
+   (member(dio_matrix1, get_all_sublists(dio_matrix)) AND nice_submatrix?(dio_matrix1, args) AND
+    matrix?(dio_matrix) AND NOT null?(dio_matrix1)) IFF member(dio_matrix1, extract_submatrices(dio_matrix, args))
+   
+extract_submatrices_ren: LEMMA 
+   extract_submatrices(dio, args) = extract_submatrices(dio, subs(rho)(args))
+
+% get_new_var, add_new_arg_len
+get_new_var_select_greater: LEMMA
+    select_greater[nat](cons(get_new_var(vars2avoid), vars2avoid)) =
+    select_greater[nat](vars2avoid) + 1
+
+get_new_var_correct: LEMMA
+    NOT member(get_new_var(vars2avoid), vars2avoid)
+
+get_new_var_shift: LEMMA  
+    LET Z = select_greater[nat](lst_V), Z_ = select_greater[nat](lst_V_),
+        lst_V1 = cons(get_new_var(lst_V), lst_V),
+	lst_V1_ = cons(get_new_var(lst_V_), lst_V_) IN 
+    Z <= Z_ AND n > 0 IMPLIES 
+    shift(lst_V, lst_V_, n) = append(cons((Z+1, variable(Z_ + 1)), null), shift(lst_V1, lst_V1_, n-1))    
+
+add_new_arg_len: LEMMA
+    length(add_new_arg(lst_args, row, t)) = length(lst_args)
+
+add_new_arg_split: LEMMA
+    split(add_new_arg(lst_args, row, t), n)`1 =
+    add_new_arg(split(lst_args, n)`1, split[nat](row, n)`1, t)
+
+add_new_arg_split2: LEMMA
+    split(add_new_arg(lst_args, row, t), n)`2 =
+    add_new_arg(split(lst_args, n)`2, split[nat](row, n)`2, t)
+
+add_new_arg_all_var?: LEMMA
+    all_var?(lst_args) IMPLIES all_var?(add_new_arg(lst_args, row, variable(n)))
+
+add_new_arg_null_nth: LEMMA
+    n < length(lst_args) AND length(lst_args) = length(row) AND null?(nth(add_new_arg(lst_args, row, t), n))
+    IMPLIES null?(nth(lst_args, n)) AND nth(row, n) = 0
+    
+add_new_arg_nth_len: LEMMA
+    n < length(lst_args) AND length(row) = length(lst_args) IMPLIES 
+    length(nth(add_new_arg(lst_args, row, t), n)) = length(nth(lst_args, n)) + nth(row, n)
+    
+add_new_arg_nth: LEMMA 
+    n < length(lst_args) AND length(lst_args) = length(row) IMPLIES
+    nth(add_new_arg(lst_args, row, t), n) = append(nth(lst_args, n), get_repeat_lst(t, nth(row, n)))
+
+map_count_add_new_arg: LEMMA
+    length(row) = length(lst_args) IMPLIES
+    map(count(t1, equal?))(add_new_arg(lst_args, row, t2)) = 
+    IF equal?(t1, t2) THEN sum_lsts(map(count(t1, equal?))(lst_args), row)
+    ELSE map(count(t1, equal?))(lst_args)
+    ENDIF
+    
+dot_product_count_add_new_arg: LEMMA
+    length(lst_args) = length(row) IMPLIES
+    IF equal?(t, s) THEN
+	dot_product(map(count(t, equal?))(add_new_arg(lst_args, row, s)), coef) =
+	dot_product(map(count(t, equal?))(lst_args), coef) + dot_product(row, coef)
+    ELSE
+	dot_product(map(count(t, equal?))(add_new_arg(lst_args, row, s)), coef) =
+	dot_product(map(count(t, equal?))(lst_args), coef)
+    ENDIF
+        
+add_new_arg_var: LEMMA
+    subset?(vars(add_new_arg(lst_args, row, t)), union(vars(lst_args), vars(t)))
+
+% get_pre_new_args
+get_pre_new_args_mem_mem_var: LEMMA
+    member(args, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1) AND member(t, args) IMPLIES
+    member(t, lst_args) OR var?(t)
+
+get_pre_new_args_mem_var: LEMMA
+    member(args, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1) AND
+    NOT member(X, vars(lst_args)) AND member(X, vars(args)) IMPLIES
+    NOT member(X, vars2avoid)
+
+get_pre_new_args_len: LEMMA
+    length(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1) = length(lst_args) 
+
+get_pre_new_args_not_null_aux: LEMMA 
+    matrix?(dio_matrix, length(lst_args)) AND n < length(lst_args) AND
+    (NOT null?(nth(lst_args, n)) OR EXISTS row: member(row, dio_matrix) AND nth(row, n) > 0)
+    IMPLIES
+    NOT null?(nth(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, n))
+
+get_pre_new_args_not_null: LEMMA
+    member(args1, get_pre_new_args(lst_args, dio_matrix1, vars2avoid)`1) AND
+    member(dio_matrix1, extract_submatrices(dio_matrix, args)) AND length(lst_args) = length(args) 
+    IMPLIES NOT null?(args1)
+
+get_pre_new_args_all_var?: LEMMA
+    all_var?(lst_args) IMPLIES
+    all_var?(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1)
+    
+get_pre_new_args_all_var?2: LEMMA
+    member(args, get_pre_new_args(get_repeat_lst(null, n), dio_matrix, vars2avoid)`1)
+    IMPLIES all_var?(args)
+
+split_get_pre_new_args: LEMMA
+    split(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, n)`1 = 
+    get_pre_new_args(split(lst_args, n)`1, split_matrix[nat](dio_matrix, n)`1, vars2avoid)`1
+
+split_get_pre_new_args2: LEMMA
+    split(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, n)`2 = 
+    get_pre_new_args(split(lst_args, n)`2, split_matrix[nat](dio_matrix, n)`2, vars2avoid)`1
+
+get_pre_new_args_null_nth: LEMMA
+    n < length(lst_args) AND matrix?(dio_matrix, length(lst_args)) AND
+    null?(nth(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, n)) IMPLIES
+    null?(nth(lst_args, n)) AND empty_col?(dio_matrix)(n+1)
+    
+no_null_get_pre_new_args: LEMMA
+    const1?(dio_matrix, length(lst_args)) AND length(lst_args) > 0 AND
+    matrix?(dio_matrix, length(lst_args)) IMPLIES
+    no_null_entries?(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1)
+
+no_null_get_pre_new_args2: LEMMA
+    nice_submatrix?(dio_matrix, args) AND length(args) = length(lst_args) IMPLIES 
+    no_null_entries?(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1)
+
+get_pre_new_args_nth: LEMMA 
+    LET V1 = select_greater[nat](vars2avoid),
+        new_var_lst = var_lst(from_min2max[nat](V1 + 1, V1 + length(D))) IN
+    i < length(lst_args) AND matrix?(D, length(lst_args)) IMPLIES 
+    nth(get_pre_new_args(lst_args, D, vars2avoid)`1, i) = 
+    append(nth(lst_args, i), get_lst_mult(new_var_lst, get_col_i(D, i+1)))
+
+get_pre_new_args_count: LEMMA
+    matrix?(dio_matrix, length(lst_args)) IMPLIES
+    dot_product(map(count(t, equal?))(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1), mult_t1) =
+    IF var?(t) AND V(t) > select_greater[nat](vars2avoid) AND
+       V(t) <= select_greater[nat](vars2avoid) + length(dio_matrix) THEN
+       LET n = V(t) - select_greater[nat](vars2avoid) IN 
+       dot_product(nth(dio_matrix, n-1), mult_t1) +
+       dot_product(map(count(t, equal?))(lst_args), mult_t1)
+    ELSE dot_product(map(count(t, equal?))(lst_args), mult_t1)   
+    ENDIF
+
+get_pre_new_args_nth_len: LEMMA
+    n < length(lst_args) AND matrix?(dio_matrix, length(lst_args)) IMPLIES 
+    length(nth(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, n)) =
+    length(nth(lst_args, n)) + sum(get_col_i(dio_matrix, n+1))
+
+get_pre_new_args2_var_member: LEMMA
+    member(X, vars2avoid) IMPLIES 
+    member(X, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`2)
+
+get_pre_new_args12_var_subset: LEMMA
+    subset?(vars(lst_args), vars2avoid) AND 
+    member(X, vars(get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1)) IMPLIES
+    member(X, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`2)
+    
+get_pre_new_args2: LEMMA 
+    LET V1 = select_greater[nat](vars2avoid) IN 
+    member(X, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`2) IFF
+    member(X, append(from_min2max[nat](V1 + 1, V1 + length(dio_matrix)), vars2avoid))
+
+get_pre_new_args_var_subset: LEMMA 
+    LET V1 = select_greater[nat](vars2avoid) IN 
+    member(args, get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1) IMPLIES 
+    subset?(vars(args), union(list2set(from_min2max[nat](V1 + 1, V1 + length(dio_matrix))),
+    			      vars(lst_args)))
+
+get_pre_new_args_dot_product: LEMMA
+    LET new_lst_args = get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, 
+        (lst_args1, lst_args2) = split(lst_args, length(mult_t1)), 
+        (new_lst_args1, new_lst_args2) = split(new_lst_args, length(mult_t1)) IN 
+    dio_matrix_correct?(dio_matrix, mult_t1, mult_t2) AND 
+    dot_product(map(count(t, equal?))(lst_args1), mult_t1) =
+    dot_product(map(count(t, equal?))(lst_args2), mult_t2) AND
+    matrix?(dio_matrix, length(lst_args))
+    IMPLIES
+    dot_product(map(count(t, equal?))(new_lst_args1), mult_t1) =
+    dot_product(map(count(t, equal?))(new_lst_args2), mult_t2)
+    
+get_pre_new_args_same_count: LEMMA 
+    LET new_lst_args = get_pre_new_args(lst_args, dio_matrix, vars2avoid)`1, 
+        (lst_args1, lst_args2) = split(lst_args, length(mult_t1)), 
+        (new_lst_args1, new_lst_args2) = split(new_lst_args, length(mult_t1)) IN 
+    dio_matrix_correct?(dio_matrix, mult_t1, mult_t2) AND 
+    matrix?(dio_matrix, length(lst_args)) AND 
+    same_count?(flatten(get_lst_mult(lst_args1, mult_t1)),
+    		flatten(get_lst_mult(lst_args2, mult_t2)), equal?)
+    IMPLIES
+    same_count?(flatten(get_lst_mult(new_lst_args1, mult_t1)),
+    		flatten(get_lst_mult(new_lst_args2, mult_t2)), equal?)
+
+get_pre_new_args_subs_sel: LEMMA  
+    select_greater[nat](dom(sigma)) <= select_greater[nat](lst_V) IMPLIES 
+    map(subs(sigma))(get_pre_new_args(lst_args, dio, lst_V)`1) = 
+    get_pre_new_args(map(subs(sigma))(lst_args), dio, lst_V)`1
+
+% get_ac_from_args_gt1
+get_ac_from_args_gt1_ac_var: LEMMA
+    member(args, get_pre_new_args(get_repeat_lst[args](null, n),
+                              dio_matrix, vars2avoid)`1) IMPLIES  
+    (is_ac_sym?(get_ac_from_args_gt1(f)(args), f) OR var?(get_ac_from_args_gt1(f)(args)))
+
+get_ac_from_args_gt1_is_var: LEMMA 
+    var?(get_ac_from_args_gt1(f)(args)) IFF (length(args) = 1 AND var?(car(args)))
+
+get_ac_from_args_gt1_vars: LEMMA
+    vars(get_ac_from_args_gt1(f)(args)) = vars(args) 
+
+get_ac_from_args_gt1_all_var: LEMMA
+    all_var?(lst_args) AND no_null_entries?(lst_args) IMPLIES  
+    map(get_args(f))((map(get_ac_from_args_gt1(f))(lst_args))) = lst_args
+    
+get_ac_from_args_gt1_get_repeat_lst: LEMMA
+    map(get_ac_from_args_gt1(f), get_repeat_lst(args, n)) = 
+    get_repeat_lst(get_ac_from_args_gt1(f)(args), n)
+
+get_ac_from_args_gt1_get_lst_mult: LEMMA
+    map(get_ac_from_args_gt1(f))(get_lst_mult(lst_args, coef)) =
+    get_lst_mult(map(get_ac_from_args_gt1(f))(lst_args), coef)
+
+get_ac_from_args_gt1_subs: LEMMA
+    subs(sigma)(get_ac_from_args_gt1(f)(args)) = get_ac_from_args_gt1(f)(subs(sigma)(args))
+
+get_ac_from_args_gt1_subs_map: LEMMA
+    map(subs(sigma))(map(get_ac_from_args_gt1(f))(lst_args)) = 
+    map(get_ac_from_args_gt1(f))(map(subs(sigma))(lst_args))
+
+get_ac_from_args_gt1_get_args_mem: LEMMA
+    member(t, get_args(f)(get_ac_from_args_gt1(f)(args)))
+    AND NOT null?(args) IMPLIES
+    EXISTS s:
+        member(s, args) AND member(t, get_args(f)(s))
+
+get_ac_from_args_gt1_get_args: LEMMA
+    NOT null?(args) IMPLIES
+    get_args(f)(get_ac_from_args_gt1(f)(args)) = flatten(map(get_args(f))(args))
+
+get_ac_from_args_gt1_get_args2: LEMMA 
+    NOT null?(args) AND no_pair_ac?(f, args) IMPLIES 
+    get_args(f)(get_ac_from_args_gt1(f)(args)) = args
+
+get_ac_from_args_gt1_get_args_map: LEMMA
+    no_null_entries?(lst_args) IMPLIES
+    flatten(map(get_args(f) o get_ac_from_args_gt1(f))(lst_args)) = flatten(map(get_args(f))(flatten(lst_args)))
+
+get_ac_from_args_gt1_get_args_same_count_aux: LEMMA
+     same_count?[first_order_AC_term](lst_args, lst_args1, equal?)
+     AND no_null_entries?(lst_args) AND no_null_entries?(lst_args1) IMPLIES
+     count(t, flatten(map(get_args(f))(flatten(lst_args))), equal?)  <= 
+     count(t, flatten(map(get_args(f))(flatten(lst_args1))), equal?)
+
+get_ac_from_args_gt1_get_args_same_count: LEMMA
+    same_count?[first_order_AC_term](lst_args, lst_args1, equal?)
+    AND no_null_entries?(lst_args) AND no_null_entries?(lst_args1) IMPLIES
+    same_count?[first_order_AC_term](map(get_args(f))(map(get_ac_from_args_gt1(f))(lst_args)),
+		map(get_args(f))(map(get_ac_from_args_gt1(f))(lst_args1)),
+		equal?)
+
+get_ac_from_args_gt1_select_gt: LEMMA  
+    member(t, map(get_ac_from_args_gt1(f))(get_pre_new_args(get_repeat_lst[args](null, n), dio, lst_V)`1))
+    AND member(X, vars(t)) IMPLIES X > select_greater[nat](lst_V)
+
+% elim_com_arg
+elim_com_arg_everyTCC2: LEMMA
+   every[number](LAMBDA (x: number): number_field_pred(x) AND real_pred(x) AND rational_pred(x)
+              AND integer_pred(x) AND (x >= 0) AND (x > 0))(elim_com_arg(t, s, f)`2)
+
+elim_com_arg_len: LEMMA
+   LET (args, mult_t1, mult_t2) = elim_com_arg(t1, t2, f) IN
+       length(args) = length(mult_t1) + length(mult_t2)
+   
+elim_com_arg_mem: LEMMA
+   member(t, elim_com_arg(t1, t2, f)`1) IMPLIES
+   member(t, get_args(f)(t1)) OR member(t, get_args(f)(t2))
+
+elim_com_arg_vars: LEMMA  
+   subset?(vars(elim_com_arg(t1, t2, f)`1), vars((t1, t2)))
+
+elim_com_arg_correct: LEMMA
+   LET (args, mult_t1, mult_t2) = elim_com_arg(t1, t2, f),
+       (args1, args2) = split(args, length(mult_t1)),  
+       args1_cor_mult = get_lst_mult(args1, mult_t1),
+       args2_cor_mult = get_lst_mult(args2, mult_t2), 
+       new_t1 = get_ac_from_args(f)(args1_cor_mult),
+       new_t2 = get_ac_from_args(f)(args2_cor_mult)
+       IN are_ac?(t1, t2, f) AND unifies?(sigma, (new_t1, new_t2))
+       AND NOT null?(args1) AND NOT null?(args2) IMPLIES
+       unifies?(sigma, (t1, t2)) 
+
+elim_com_arg_solve_ac_null: LEMMA
+   LET (args, mult_t1, mult_t2) = elim_com_arg(t1, t2, f),
+       (args1, args2) = split(args, length(mult_t1)) IN
+   null?(args1) OR null?(args2) IMPLIES
+   solve_ac(t1, t2, vars2avoid, f) = null
+
+elim_com_arg_null_args_mult: LEMMA
+   LET (args, mult_t1, mult_t2) = elim_com_arg(t1, t2, f),
+       (args1, args2) = split(args, length(mult_t1)) IN
+   (null?(args1) IFF null?(mult_t1)) AND (null?(args2) IFF null?(mult_t2))
+
+elim_com_arg_count: LEMMA
+   count(t, elim_com_arg(t1, t2, f)`1, =) <= 1
+
+elim_com_arg_no_common_arg: LEMMA 
+   LET (args_t, coef_t) = count_elem2(get_args(f)(t), equal?),
+       (args_s, coef_s) = count_elem2(get_args(f)(s), equal?) IN 
+   no_common_args?(get_args(f)(t), get_args(f)(s)) IMPLIES 
+   elim_com_arg(t, s, f)`1 = append(args_t, args_s) AND 
+   elim_com_arg(t, s, f)`2 = coef_t AND elim_com_arg(t, s, f)`3 = coef_s
+   
+elim_com_arg_remove_common: LEMMA 
+   LET t1 = remove_common(t, s, f)`1, s1 = remove_common(t, s, f)`2 IN 
+   unifiable?(t, s) AND NOT equal?(t, s) AND are_ac?(t, s, f) IMPLIES 
+   elim_com_arg(t, s, f) = elim_com_arg(t1, s1, f)
+
+% dio_matrix2ac_sol, construct_sub
+dio_matrix2ac_len: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN 
+       length(unif_prb1) = length(args)
+
+dio_matrix2ac_mem_lhs: LEMMA  
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN 
+       member(t, lhs(unif_prb1)) IMPLIES member(t, args)
+
+dio_matrix2ac_mem_lhs_nth: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN 
+       i < length(args) IMPLIES nth(unif_prb1, i)`1 = nth(args, i)
+  
+dio_matrix2ac_mem_var_rhs: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix),
+       V1 = select_greater[nat](vars2avoid) IN 
+       member(t, rhs(unif_prb1)) IMPLIES
+       subset?(vars(t), list2set(from_min2max[nat](V1 + 1, V1 + length(dio_matrix))))
+
+dio_matrix2ac_mem_rhs: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN
+   member(t, rhs(unif_prb1)) IMPLIES var?(t) OR is_ac_sym?(t, f)
+
+dio_matrix2ac_mem_rhs_well_formed: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN
+   const1?(dio_matrix, length(args)) AND length(args) > 0 AND 
+   matrix?(dio_matrix, length(args)) AND member(t, rhs(unif_prb1)) AND well_formed?(args)
+   IMPLIES well_formed?(t) 
+
+dio_matrix2ac_mem_rhs_get_args: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix),
+       V1 = select_greater[nat](vars2avoid) IN
+   member(t, rhs(unif_prb1)) AND member(s, get_args(f)(t)) AND
+   const1?(dio_matrix, length(args)) AND length(args) > 0 AND
+   matrix?(dio_matrix, length(args)) IMPLIES
+   var?(s) AND member(V(s), list2set(from_min2max[nat](V1 + 1, V1 + length(dio_matrix))))
+
+dio_matrix2ac_count_coef: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix),
+       V1 = select_greater[nat](vars2avoid),
+       new_var_lst = var_lst(from_min2max[nat](V1 + 1, V1 + length(dio_matrix))) IN
+   i < length(args) AND matrix?(dio_matrix, length(args)) AND const1?(dio_matrix, length(args))
+   IMPLIES
+   count_coef(new_var_lst, get_args(f)(nth(unif_prb1, i)`2), equal?)`2 = get_col_i[nat](dio_matrix, i+1)
+
+dio_matrix2ac_new_vars: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix),
+       V1 = select_greater[nat](vars2avoid),
+       vars2avoid1 = from_min2max[nat](V1 + 1, V1 + length(dio_matrix)) IN
+       member(X, new_vars2avoid) IFF member(X, append(vars2avoid1, vars2avoid))
+       
+dio_matrix2ac_is_var_sum: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix) IN 
+       i < length(args) AND matrix?(dio_matrix, length(args)) IMPLIES 
+       (var?(nth(unif_prb1, i)`2) IFF sum(get_col_i[nat](dio_matrix, i+1)) = 1)
+
+% construct_sub
+construct_sub_aux_mem: LEMMA 
+   member(t, construct_sub_aux(args, coef_matrix_col)) IMPLIES member(t, args)
+
+construct_sub_aux_not_null: LEMMA 
+   length(args) = length(coef_matrix_col) AND NOT all_zero?(coef_matrix_col) IMPLIES
+   NOT null?(construct_sub_aux(args, coef_matrix_col))
+
+construct_sub_aux_count: LEMMA
+   i < length(args) AND length(args) = length(col) AND dif_elem?(args, equal?) IMPLIES 
+   count(nth(args, i), construct_sub_aux(args, col), equal?) = nth(col, i)
+
+construct_sub_aux_count2: LEMMA 
+   i < length(args) AND length(args) = length(col) AND NOT all_zero?(col) AND no_pair_ac?(f, args)
+   AND dif_elem?(args, equal?) IMPLIES 
+   count(nth(args, i), get_ac_from_args_gt1(f)(construct_sub_aux(args, col)), f) = nth(col, i)
+   
+construct_sub_mem_dom: LEMMA 
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f),
+       V1 = select_greater[nat](vars2avoid) IN 
+   supset_dom(delta) = list2set(from_min2max[nat](V1 + 1, V1 + length(dio_matrix)))
+
+construct_sub_mem_dom_cor: LEMMA 
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f),
+       V1 = select_greater[nat](vars2avoid) IN 
+   member(X, dom(delta)) IMPLIES NOT member(X, vars2avoid)
+   
+construct_sub_well_formed: LEMMA  
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f) IN
+   well_formed?(args) AND length(coef_matrix) = length(args) AND no_zero_col?(coef_matrix, length(dio_matrix))
+   IMPLIES well_formed?(delta) 
+
+construct_sub_vars_img: LEMMA 
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f) IN
+   subset?(vars(img(delta)), vars(args))
+
+construct_sub_mem_get_args: LEMMA 
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f), 
+       V1 = select_greater[nat](vars2avoid) IN 
+   member(X, from_min2max[nat](V1 + 1, V1 + length(dio_matrix))) AND 
+   subset?(vars(args), list2set(vars2avoid)) AND member(s, get_args(f)(subs(delta)(X)))
+   AND length(coef_matrix) = length(args) AND no_zero_col?(coef_matrix, length(dio_matrix))
+   AND no_pair_ac?(f, args) IMPLIES member(s, args)  
+
+construct_sub_mem_get_args_dio_matrix2ac_sol: LEMMA 
+   LET (unif_prb1, new_vars2avoid) = dio_matrix2ac_sol(args, vars2avoid, f)(dio_matrix), 
+       delta = construct_sub(dio_matrix, coef_matrix, args1, vars2avoid, f) IN
+   const1?(dio_matrix, length(args)) AND length(args) > 0 AND matrix?(dio_matrix, length(args)) AND
+   subset?(vars(args1), list2set(vars2avoid)) AND length(coef_matrix) = length(args1)
+   AND no_zero_col?(coef_matrix, length(dio_matrix)) AND no_pair_ac?(f, args1) 
+   AND member(t, rhs(unif_prb1)) AND member(s, get_args(f)(subs(delta)(t)))
+   IMPLIES member(s, args1)
+
+construct_sub_count_nth: LEMMA 
+   LET delta = construct_sub(dio_matrix, coef_matrix, args, vars2avoid, f), 
+       V1 = select_greater[nat](vars2avoid),  
+       new_var_lst = var_lst(from_min2max[nat](V1 + 1, V1 + length(dio_matrix))) IN
+    i < length(args) AND length(coef_matrix) = length(args) AND
+    no_zero_col?(coef_matrix, length(dio_matrix)) AND dif_elem?(args, equal?)
+    AND no_pair_ac?(f, args) AND subset?(vars(args), list2set(vars2avoid)) IMPLIES 
+    count_vec(subs(delta)(new_var_lst), f)(nth(args, i)) = nth(coef_matrix, i)
+
+% solve_ac
+solve_ac_args_not_null: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) IMPLIES
+    LET args = elim_com_arg(t, s, f)`1 IN NOT null?(args)
+
+solve_ac_no_pair: LEMMA
+    member(unif_prb2, first_proj(solve_ac(t, s, vars2avoid, f)))
+    IMPLIES no_pair?(unif_prb2)
+
+solve_ac_vars_vars2avoid: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    member(t1, subterms(unif_prb)) AND NOT member(t1, subterms((t, s))) AND
+    member(X, vars(t1)) IMPLIES NOT member(X, vars2avoid) 
+
+solve_ac_vars_rhs: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    member(variable(X), rhs(unif_prb)) IMPLIES NOT member(X, vars2avoid)
+
+solve_ac_mem_lhs: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND
+    member(t1, lhs(unif_prb)) IMPLIES
+    (member(t1, get_args(f)(t)) OR member(t1, get_args(f)(s)))
+    
+solve_ac_mem_rhs: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND
+    member(t1, rhs(unif_prb)) IMPLIES (var?(t1) OR
+    is_ac_sym?(t1, f) AND all_var?(get_args(f)(t1)))
+
+solve_ac_lhs_im_under: LEMMA
+    member(unif_prb, first_proj(solve_ac(t1, t2, vars2avoid, f))) AND
+    is_ac_sym?(t1, f) AND is_ac_sym?(t2, f) AND member(variable(X), lhs(unif_prb))
+    IMPLIES EXISTS s:
+        im_under?(X, s) AND (s = t1 OR s = t2)
+
+solve_ac_disjoint_lhs_rhs: LEMMA 
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND
+    subset?(vars((t, s)), vars2avoid) IMPLIES
+    disjoint?(list2set(lhs(unif_prb)), list2set(rhs(unif_prb)))
+    
+solve_ac_func: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    func?(t1) AND member(t1, subterms(unif_prb)) AND NOT member(t1, subterms((t, s)))
+    IMPLIES is_ac_sym?(t1, f)
+    
+solve_ac_same_func: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    func?(t1) AND member(t1, subterms(unif_prb)) AND NOT member(t1, subterms((t, s))) AND
+    func?(t2) AND member(t2, subterms(unif_prb)) AND NOT member(t2, subterms((t, s))) 
+    IMPLIES same_func?(t1, t2)
+
+solve_ac_func_rhs: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    func?(t1) AND member(t1, subterms(t2)) AND member(t2, rhs(unif_prb))
+    IMPLIES is_ac_sym?(t1, f)
+
+solve_ac_rhs_is_temp: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND
+    member(unif_pair, unif_prb) AND t1 = unif_pair`2 AND NOT var?(t1)
+    AND subset?(vars((t, s)), vars2avoid) 
+    IMPLIES temp?(unif_pair, unif_prb)
+
+solve_ac_sec_proj_vars: LEMMA
+    NOT null?(solve_ac(t, s, vars2avoid, f)) IMPLIES 
+    subset?(list2set(vars2avoid), vars(sec_proj(solve_ac(t, s, vars2avoid, f))))
+
+solve_ac_sec_proj_vars_not_null: LEMMA   
+   LET V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))),
+       Z = select_greater[nat](lst_V), 
+       Z1 = select_greater[nat](finset2list[nat](V1)) IN 
+   NOT null?(solve_ac(t, s, lst_V, f)) IMPLIES 
+   union(lst_V, from_min2max[nat](Z+1, Z1)) = V1
+
+solve_ac_sec_proj_vars_select_gt: LEMMA  
+   LET V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))),
+       Z = select_greater[nat](lst_V), 
+       Z1 = select_greater[nat](finset2list[nat](V1)) IN 
+   NOT null?(solve_ac(t, s, lst_V, f)) IMPLIES Z1 >= 1 + Z
+
+solve_ac_sec_proj_vars_dio: LEMMA  
+   LET (args, mult_t1, mult_t2) = elim_com_arg(t, s, f),  
+       V1 = vars(sec_proj(solve_ac(t, s, lst_V, f))),
+       Z = select_greater[nat](lst_V), 
+       Z1 = select_greater[nat](finset2list[nat](V1)) IN 
+   member(dio, extract_submatrices(dio_solver(mult_t1, mult_t2, calculate_upper_bound(mult_t1, mult_t2)), args))
+   IMPLIES Z1 >= Z + length(dio)  
+
+solve_ac_first_proj_sec_proj_vars: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    member(X, vars(unif_prb)) AND subset?(vars(t, s), vars2avoid) IMPLIES 
+    member(X, vars(sec_proj(solve_ac(t, s, vars2avoid, f))))
+
+solve_ac_vars: LEMMA
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND 
+    member(X, vars(unif_prb)) IMPLIES member(X, vars(t, s)) OR NOT member(X, vars2avoid)
+
+solve_ac_well_formed: LEMMA 
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f))) AND
+    well_formed?(t) AND well_formed?(s) IMPLIES well_formed?(unif_prb)
+
+% soundness of solve_ac
+solve_ac_unify_sound: LEMMA 
+    member(unif_prb, first_proj(solve_ac(t, s, vars2avoid, f)))
+    AND unifies?(sigma, unif_prb) AND is_ac_sym?(t, f) AND is_ac_sym?(s, f)
+    IMPLIES unifies?(sigma, (t, s))
+
+% completeness of solve_ac, after we have eliminated the common terms from "t" and "s"
+solve_ac_unify_complete_no_common: LEMMA 
+    unifies?(delta, (t, s)) AND is_ac_sym?(t, f) AND is_ac_sym?(s, f) AND
+    no_common_args?(get_args(f)(t), get_args(f)(s)) AND 
+    subset?(dom(delta), vars2avoid) AND subset?(vars(img(delta)), vars2avoid)
+    AND subset?(vars(t, s), vars2avoid) AND well_formed?(delta) AND alm_well_formed?(cons((t, s), null))
+    IMPLIES EXISTS unif_prb, gamma, new_vars2avoid: 
+       member((unif_prb, new_vars2avoid), solve_ac(t, s, vars2avoid, f)) AND 
+       unifies?(append(gamma, delta), unif_prb) AND 
+       subset?(dom(gamma), difference(list2set(new_vars2avoid), list2set(vars2avoid)))
+       AND subset?(vars(img(gamma)), new_vars2avoid) 
+       AND well_formed?(gamma)
+
+% completeness of solve_ac. 
+% notice that the hypothesis that dom(δ) ⊂ V and that vars(img(̣δ)) ⊂ V are written more succintly
+% in our paper as δ ⊂ V. 
+solve_ac_unify_complete: LEMMA 
+    unifies?(delta, (t, s)) AND is_ac_sym?(t, f) AND is_ac_sym?(s, f) AND
+    NOT equal?(t, s) AND 
+    subset?(dom(delta), vars2avoid) AND subset?(vars(img(delta)), vars2avoid) AND
+    subset?(vars(t, s), vars2avoid) AND well_formed?(delta) AND well_formed?(cons((t, s), null))
+    IMPLIES EXISTS unif_prb, gamma, new_vars2avoid: 
+       member((unif_prb, new_vars2avoid), solve_ac(t, s, vars2avoid, f)) AND 
+       unifies?(append(gamma, delta), unif_prb) AND 
+       subset?(dom(gamma), difference(list2set(new_vars2avoid), list2set(vars2avoid)))
+       AND subset?(vars(img(gamma)), new_vars2avoid) 
+       AND well_formed?(gamma)
+
+% choose not ac 
+choose_not_ac_seen: LEMMA
+   member(unif_pair, seen_unif_prb) IMPLIES member(unif_pair, choose_not_ac(seen_unif_prb, unseen_unif_prb)`2)
+
+choose_not_ac_unseen: LEMMA
+   LET result = choose_not_ac(seen_unif_prb, unseen_unif_prb) IN 
+   member(unif_pair, unseen_unif_prb)
+   IMPLIES
+   (unif_pair = result`1 OR member(unif_pair, result`2))
+    
+choose_not_ac_mem1: LEMMA
+   NOT all_ac_prb?(unif_prb) IMPLIES 
+   member(choose_not_ac(seen_unif_prb, unif_prb)`1, unif_prb)
+
+choose_not_ac_mem2: LEMMA
+   member(unif_pair, choose_not_ac(seen_unif_prb, unseen_unif_prb)`2) IMPLIES 
+   member(unif_pair, seen_unif_prb) OR member(unif_pair, unseen_unif_prb)  
+
+choose_not_ac2_size: LEMMA
+   NOT all_ac_prb?(unseen_unif_prb) IMPLIES
+   size(choose_not_ac(seen_unif_prb, unseen_unif_prb)`2) <
+   size(seen_unif_prb) + size(unseen_unif_prb)
+
+choose_not_ac_size: LEMMA
+   NOT all_ac_prb?(unseen_unif_prb) IMPLIES 
+   size(choose_not_ac(seen_unif_prb, unseen_unif_prb)`2) + size(choose_not_ac(seen_unif_prb, unseen_unif_prb)`1) = 
+   size(seen_unif_prb) + size(unseen_unif_prb) 
+
+choose_not_ac_not_ac: LEMMA
+   NOT ac_prb?(choose_not_ac(seen_unif_prb, unseen_unif_prb)`1)
+
+choose_not_ac_ren1: LEMMA 
+   choose_not_ac(apply_sub(rho, seen_unif_prb), apply_sub(rho, unseen_unif_prb))`1 =
+   apply_sub(rho, choose_not_ac(seen_unif_prb, unseen_unif_prb)`1)
+
+choose_not_ac_ren2: LEMMA 
+   choose_not_ac(apply_sub(rho, seen_unif_prb), apply_sub(rho, unseen_unif_prb))`2 =
+   apply_sub(rho, choose_not_ac(seen_unif_prb, unseen_unif_prb)`2)
+
+% choose_unif
+choose_unif_pair_mem: LEMMA
+    member(unif_pair, unif_prb) IMPLIES
+    (unif_pair = choose_unif_pair(unif_prb)`1 OR
+    member(unif_pair, choose_unif_pair(unif_prb)`2))
+
+choose_unif_pair_mem_alt: LEMMA
+    member(t, unif_prb) IMPLIES 
+    (member(t, choose_unif_pair(unif_prb)`1) OR
+    member(t, choose_unif_pair(unif_prb)`2))
+
+choose_unif_pair_mem1: LEMMA
+    NOT null?(unif_prb) IMPLIES 
+    member(choose_unif_pair(unif_prb)`1, unif_prb) 
+
+% alternative version of "choose_unif_pair_mem1"
+choose_unif_pair_mem1_alt: LEMMA
+    NOT null?(unif_prb) AND member(t, choose_unif_pair(unif_prb)`1) IMPLIES
+    member(t, unif_prb)
+    
+choose_unif_pair_mem2: LEMMA
+    member(unif_pair, choose_unif_pair(unif_prb)`2) IMPLIES
+    member(unif_pair, unif_prb)
+
+choose_unif_pair_mem2_alt: LEMMA
+    member(t, choose_unif_pair(unif_prb)`2) IMPLIES
+    member(t, unif_prb)
+
+choose_unif_size2: LEMMA
+    NOT null?(unif_prb) IMPLIES 
+    size(choose_unif_pair(unif_prb)`2) < size(unif_prb) 
+
+choose_unif_correct: LEMMA
+    ac_prb?(choose_unif_pair(unif_prb)`1) IMPLIES 
+    all_ac_prb?(unif_prb)
+
+choose_unif_size: LEMMA
+    NOT null?(unif_prb) IMPLIES 
+    size(unif_prb) = size(choose_unif_pair(unif_prb)`1) + size(choose_unif_pair(unif_prb)`2)
+
+choose_unif_subset: LEMMA
+    subset?(choose_unif_pair(unif_prb)`2, unif_prb)
+
+choose_unif_unifies?: LEMMA  
+    NOT null?(unif_prb) IMPLIES 
+    unifies?(sigma, unif_prb) =
+    (unifies?(sigma, choose_unif_pair(unif_prb)`1) AND unifies?(sigma, choose_unif_pair(unif_prb)`2))
+
+choose_unif_well_formed_no_pair: LEMMA 
+    well_formed?(unif_prb) IMPLIES no_pair?(choose_unif_pair(unif_prb)`2)
+
+% instantiate step
+instantiate_step_skip: LEMMA
+    LET skip = instantiate_step(t, s)`2 IN
+    skip IMPLIES (NOT var?(t) AND NOT var?(s))
+
+instantiate_step_delta_null: LEMMA
+    LET (delta, skip, fail) = instantiate_step(t, s) IN
+    NOT skip AND NOT fail AND delta = null IMPLIES var?(t) AND t = s
+
+instantiate_step_unif: LEMMA
+    LET (delta, skip, fail) = instantiate_step(t, s) IN
+    NOT skip and NOT fail IMPLIES subs(delta)(t) = subs(delta)(s)
+    
+instantiate_step_append: LEMMA
+    instantiate_step(append(lst_unif_prb1, lst_unif_prb2)) =
+    append(instantiate_step(lst_unif_prb1), instantiate_step(lst_unif_prb2))
+
+instantiate_step_opt: LEMMA
+    member((X, t1), instantiate_step(t, s)`1) IMPLIES
+    (variable(X) = t AND t1 = s OR variable(X) = s AND t1 = t)
+    
+instantiate_step_dom: LEMMA
+    member(X, dom(instantiate_step(t, s)`1)) IMPLIES (variable(X) = t OR variable(X) = s)
+
+instantiate_step_supset_dom_dom2: LEMMA
+    member(X, supset_dom(instantiate_step(t, s)`1)) IMPLIES member(X, dom(instantiate_step(t, s)`1))
+
+instantiate_step_img: LEMMA
+    img(instantiate_step(t, s)`1) = emptyset OR
+    img(instantiate_step(t, s)`1) = singleton(t) OR
+    (img(instantiate_step(t, s)`1) = singleton(s) AND NOT var?(s))
+    
+instantiate_step_dom_img: LEMMA
+    LET sigma = instantiate_step(t, s)`1, skip = instantiate_step(t, s)`2,
+    	fail = instantiate_step(t, s)`3 IN
+    NOT fail AND NOT skip AND NOT null?(sigma) IMPLIES
+    (var?(s) AND dom(sigma) = singleton(V(s)) AND img(sigma) = singleton(t)) OR
+    (NOT var?(s) AND var?(t) AND dom(sigma) = singleton(V(t)) AND img(sigma) = singleton(s))
+
+instantiate_step_img_cont: LEMMA  
+    contained?(instantiate_step(t, s)`1, vars(t, s))
+
+instantiate_step_fail: LEMMA
+    LET sigma = instantiate_step(t, s)`1, fail = instantiate_step(t, s)`3 IN
+    NOT fail IMPLIES idempotent?(sigma) 
+
+instantiate_step_fail_ren: LEMMA 
+   (FORALL X: 
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, vars(t, s)))
+   IMPLIES
+   instantiate_step(t, s)`3 = instantiate_step(subs(rho)(t), subs(rho)(s))`3 AND
+   instantiate_step(t, s)`2 = instantiate_step(subs(rho)(t), subs(rho)(s))`2 
+
+instantiate_step_sub_ren: LEMMA   
+   LET t_ = subs(rho)(t), s_ = subs(rho)(s), 
+       sigma = instantiate_step(t, s)`1,
+       sigma_ = instantiate_step(t_, s_)`1 IN 
+   (FORALL X: 
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V))
+   AND subset?(vars(t, s), V) IMPLIES 
+   equal_syn?(append(sigma_, rho), append(rho, sigma), V)
+    
+ 
+instantiate_step_idempotent2: LEMMA
+    idempotent?(instantiate_step(t, s)`1)
+
+instantiate_step_fail_null: LEMMA
+    LET fail = instantiate_step(unif_prb, seen_unif_prb, sigma)`3
+    IN fail AND NOT null?(unif_prb) IMPLIES instantiate_step(unif_prb, seen_unif_prb, sigma)`1 = null
+
+instantiate_step_fail2: LEMMA
+    LET fail = instantiate_step(unif_prb, seen_unif_prb, sigma)`3
+    IN fail IMPLIES instantiate_step(unif_prb, seen_unif_prb, sigma)`1 = null
+
+instantiate_step_idempotent: LEMMA
+    LET delta = instantiate_step(unif_prb, seen_unif_prb, sigma)`2 IN
+    idempotent?(sigma) AND disjoint?(vars(unif_prb), dom(sigma)) IMPLIES 
+    idempotent?(delta)
+
+instantiate_step_idempotent3: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    idempotent?(delta)     
+
+instantiate_step_sub: LEMMA
+    member((unif_prb1, sigma), instantiate_step(lst_unif_prb)) IMPLIES
+    idempotent?(sigma)  
+
+instantiate_step_sub_append: LEMMA
+    LET delta = instantiate_step(unif_prb, seen_unif_prb, sigma)`2,
+        delta1 = instantiate_step(unif_prb, seen_unif_prb, null)`2 IN 
+	delta = append(delta1, sigma)
+
+instantiate_step_sub_append_cor: LEMMA 
+    instantiate_step(unif_prb, null, sigma)`2 =
+    append(instantiate_step(unif_prb, null, null)`2, sigma)
+
+instantiate_step2_no_effect: LEMMA
+    instantiate_step(unif_prb, unif_prb1, sigma)`2 =
+    instantiate_step(unif_prb, unif_prb2, sigma)`2
+
+instantiate_step2_no_effect_cor: LEMMA
+    instantiate_step(unif_prb, unif_prb1, sigma)`2 =
+    instantiate_step(unif_prb, null, sigma)`2
+
+instantiate_step3_no_effect: LEMMA
+    instantiate_step(unif_prb, unif_prb1, sigma)`3 =
+    instantiate_step(unif_prb, unif_prb2, sigma)`3
+
+instantiate_step3_no_effect_cor: LEMMA 
+    instantiate_step(unif_prb, unif_prb1, sigma)`3 =
+    instantiate_step(unif_prb, null, sigma)`3
+    
+instantiate_step3_no_effect2: LEMMA
+    instantiate_step(unif_prb, unif_prb1, sigma)`3 =
+    instantiate_step(unif_prb, unif_prb1, sigma2)`3
+    
+instantiate_step3_no_effect2_cor: LEMMA 
+    instantiate_step(unif_prb, unif_prb1, sigma)`3 =
+    instantiate_step(unif_prb, unif_prb1, null)`3
+    
+instantiate_step1_sub: LEMMA
+    instantiate_step(unif_prb, seen_unif_prb, append(sigma, sigma2))`1 =
+    instantiate_step(unif_prb, seen_unif_prb, sigma2)`1 
+
+instantiate_step1_sub2: LEMMA
+    instantiate_step(unif_prb, seen_unif_prb, sigma)`1 =
+    instantiate_step(unif_prb, seen_unif_prb, null)`1 
+
+instantiate_step1_append: LEMMA
+    LET delta = instantiate_step(unif_prb, seen_unif_prb, null)`2,
+        fail = instantiate_step(unif_prb, seen_unif_prb, null)`3 IN 
+    NOT fail IMPLIES
+    instantiate_step(unif_prb, seen_unif_prb, null)`1 = 
+    append(instantiate_step(unif_prb, null, null)`1, apply_sub(delta, seen_unif_prb))
+
+instantiate_step1_mem: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(t, instantiate_step(unif_prb, null, null)`1) IMPLIES 
+    EXISTS s:
+       NOT var?(s) AND member(s, unif_prb) AND t = subs(delta)(s)
+
+instantiate_step1_mem_unif_pair: LEMMA 
+    LET delta = instantiate_step(unif_prb, seen_unif_prb, null)`2 IN 
+    member(unif_pair2, instantiate_step(unif_prb, seen_unif_prb, null)`1) IMPLIES 
+    EXISTS unif_pair:
+       member(unif_pair, append(unif_prb, seen_unif_prb)) AND unif_pair2 = apply_sub(delta, unif_pair)
+
+instantiate_step1_subset: LEMMA  
+    LET (unif_prb2, delta, fail) = instantiate_step(unif_prb, null, null) IN 
+    EXISTS unif_prb1:
+       unif_prb2 = apply_sub(delta, unif_prb1) AND subset?(unif_prb1, unif_prb)
+
+instantiate_step2_mem: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(t, img(delta)) AND NOT var?(t) IMPLIES 
+    EXISTS s:
+       NOT var?(s) AND member(s, unif_prb) AND t = subs(delta)(s)
+
+instantiate_step2_mem_var: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(variable(X), img(delta)) IMPLIES member(variable(X), unif_prb)
+    
+% please prefer "instantiate_step_mem2"
+instantiate_step_mem: LEMMA
+    member((unif_prb, sigma), instantiate_step(lst_unif_prb)) IMPLIES
+    EXISTS unif_prb1:
+	 member(unif_prb1, lst_unif_prb) AND 
+         unif_prb = instantiate_step(unif_prb1, null, null)`1 AND
+	 sigma = instantiate_step(unif_prb1, null, null)`2
+
+instantiate_step_mem2: LEMMA
+    member((unif_prb, sigma), instantiate_step(lst_unif_prb)) IMPLIES
+    EXISTS unif_prb1:
+	 member(unif_prb1, lst_unif_prb) AND 
+         unif_prb = instantiate_step(unif_prb1, null, null)`1 AND
+	 sigma = instantiate_step(unif_prb1, null, null)`2 AND
+	 NOT instantiate_step(unif_prb1, null, null)`3
+	 
+instantiate_step_mem3: LEMMA  
+    (EXISTS unif_prb1: 
+	 member(unif_prb1, lst_unif_prb) AND 
+         unif_prb = instantiate_step(unif_prb1, null, null)`1 AND
+	 sigma = instantiate_step(unif_prb1, null, null)`2 AND
+	 NOT instantiate_step(unif_prb1, null, null)`3)
+    IMPLIES member((unif_prb, sigma), instantiate_step(lst_unif_prb))
+
+instantiate_step_no_var_pair: LEMMA
+    unif_prb1 = instantiate_step(unif_prb2, null, null)`1 AND no_pair?(unif_prb2)
+    IMPLIES no_var_pair?(unif_prb1) 
+
+instantiate_step_no_pair_img: LEMMA
+     no_pair?(unif_prb) IMPLIES no_pair?(img(instantiate_step(unif_prb, null, null)`2))
+
+instantiate_step_sub_im_under: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(t, subterms(img(delta))) AND im_under?(X, t) AND no_pair?(unif_prb) IMPLIES
+    EXISTS Y, s:
+        member(s, subterms(unif_prb)) AND subs(delta)(Y) = variable(X)
+	AND im_under?(Y, s) AND same_func?(t, s)
+
+instantiate_step_var_member: LEMMA
+     LET delta = instantiate_step(unif_prb, null, null)`2 IN 
+     X /= Y AND subs(delta)(X) = variable(Y) IMPLIES
+     member(variable(X), unif_prb) AND member(variable(Y), unif_prb)
+
+instantiate_step_rhs_not_id: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2,
+        fail = instantiate_step(unif_prb, null, null)`3 IN 
+    NOT fail AND member(variable(X), rhs(unif_prb)) AND NOT member(variable(X), lhs(unif_prb))
+    IMPLIES subs(delta)(X) /= variable(X)
+
+instantiate_step_sub_nice_aux: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member((X, t), delta) IMPLIES member(variable(X), unif_prb) AND
+    subset?(vars(t), vars(unif_prb))
+    
+instantiate_step_supset_dom_dom: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(X, supset_dom(delta)) IMPLIES member(X, dom(delta))
+
+instantiate_step_sub_nice: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    nice?(delta) 
+    
+instantiate_step_dom2: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(X, dom(delta)) IMPLIES member(variable(X), unif_prb)
+
+instantiate_step_sec_proj: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    member(variable(X), sec_proj(delta)) IMPLIES member(variable(X), unif_prb)
+
+instantiate_step_vars_img: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    subset?(vars(img(delta)), vars(unif_prb))
+
+instantiate_step_cont: LEMMA 
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN
+    contained?(delta, vars(unif_prb))
+    
+instantiate_step_not_temp_unif_pair: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN 
+    member(t, instantiate_step(unif_prb, null, null)`1)
+    IMPLIES EXISTS s, unif_pair:
+       NOT var?(s) AND t = subs(delta)(s) AND member(s, unif_pair) AND member(unif_pair, unif_prb) 
+       AND NOT temp?(unif_pair, unif_prb)
+    
+instantiate_step_get_args: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN 
+    member(t, img(delta)) AND member(s, get_args(f)(t)) IMPLIES
+    EXISTS t1: 
+       member(t1, unif_prb) AND
+       EXISTS t2: 
+          member(t2, get_args(f)(t1)) AND s = subs(delta)(t2) AND ord(t2) = ord(s) 
+    
+instantiate_step_unifies: LEMMA
+    LET delta = instantiate_step(unif_prb, null, null)`2,
+        fail = instantiate_step(unif_prb, null, null)`3 IN
+    (EXISTS gamma: sigma = append(gamma, append(delta, gamma1)))
+    AND unifies?(sigma, instantiate_step(unif_prb, null, null)`1) AND NOT fail
+    AND disjoint?(dom(gamma1), vars(unif_prb)) IMPLIES  
+    unifies?(sigma, unif_prb)
+
+instantiate_step_unifies_sub: LEMMA 
+    LET delta = instantiate_step(unif_prb, null, null)`2,
+        fail = instantiate_step(unif_prb, null, null)`3 IN
+        unifies?(sigma, unif_prb) AND NOT fail
+    IMPLIES equal?(sigma, append(sigma, delta))
+
+instantiate_step_unifies_not_fail: LEMMA 
+    LET fail = instantiate_step(unif_prb, null, null)`3 IN
+        unifies?(sigma, unif_prb) AND well_formed?(unif_prb) IMPLIES NOT fail
+    
+instantiate_step_lst_mem: LEMMA 
+    LET (unif_prb1, delta, fail) = instantiate_step(unif_prb, null, null) IN 
+    unifies?(sigma, unif_prb) AND well_formed?(unif_prb) AND member(unif_prb, lst_unif_prb)
+    IMPLIES member((unif_prb1, delta), instantiate_step(lst_unif_prb))
+
+instantiate_step_well_formed: LEMMA 
+    LET delta = instantiate_step(unif_prb, null, null)`2 IN  
+    well_formed?(unif_prb) IMPLIES well_formed?(delta)
+
+instantiate_step_ren2: LEMMA  
+   LET sigma = instantiate_step(unif_prb, null, null)`2,
+       sigma_ = instantiate_step(apply_sub(rho, unif_prb), null, null)`2 IN 
+   (FORALL X: 
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V))
+   AND subset?(vars(unif_prb), V) IMPLIES 
+   equal_syn?(append(sigma_, rho), append(rho, sigma), V)
+     
+instantiate_step_ren3: LEMMA
+   (FORALL X: 
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, V)) 
+   AND subset?(vars(unif_prb), V) IMPLIES 
+   instantiate_step(unif_prb, null, null)`3 =
+   instantiate_step(apply_sub(rho, unif_prb), null, null)`3    
+
+instantiate_step_ren1: LEMMA 
+   (FORALL X: 
+      member(X, vars(img(rho))) AND NOT member(X, dom(rho)) IMPLIES NOT member(X, vars(unif_prb)))
+    IMPLIES
+    instantiate_step(apply_sub(rho, unif_prb), null, null)`1 =
+    apply_sub(rho, instantiate_step(unif_prb, null, null)`1)
+
+END aux_first_order_AC_unification 

@@ -1,0 +1,308 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon(1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1) 
+%          Temur Kutsia (3)
+%          Daniele Nantes Sobrinho (1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%          (3) Johannes Kepler University 
+% 
+% Paper: "Nominal AC-Matching"
+% 
+% This theory contains the lemmas of correctness and completeness for the nominal AC-matching 
+% algorithm. 
+% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nominal_AC_ac_match_alg: THEORY
+BEGIN
+	IMPORTING nominal_AC_variant_inputs, list_aux_equational_reasoning[sub]
+
+
+IMPORTING list_aux_equational_reasoning2parameters[nice_input, [fresh_context, sub]]
+
+Delta, Nabla, Nabla_, G, G1, Gamma, Gamma1, Gamma_, Gamma1_: VAR fresh_context
+pi: VAR perm
+
+a: VAR atom
+X: VAR variable
+t, s: VAR nominal_AC_term
+sigma, sigma_, sigma1, sigma1_, delta, gamma, gamma_: VAR sub
+vars2avoid, fixed_vars, FV, V, V_, PV: VAR finite_set[variable]
+
+up, unif_pair: VAR unif_pair
+unif_prb, P, P1: VAR unif_prb
+unif_prb1: VAR unif_prb
+id: VAR sub
+input, input_: VAR nice_input
+rho: VAR renaming
+
+% the AC-matching algorithm. In our paper we refer to it as ACMatch.
+ac_match(input): RECURSIVE list[[fresh_context, sub]] =
+  LET (G, P, sigma, V, PV) = input IN 
+  IF null?(P) THEN cons((G, sigma), null)
+  ELSE LET
+     (up, P1) = choose_eq(P), 
+     (t, s) = up IN 
+
+     CASES t OF
+        at(a):
+	  IF s = at(a) THEN ac_match(G, P1, sigma, V, PV)
+	  ELSE null
+	  ENDIF,
+
+	*(pi, X):
+	  IF (NOT member(X, vars(s))) AND (NOT member(X, PV))  THEN LET
+	    sigma1 = cons((X, ext(reverse(pi))(s)), null),
+	    (G1, bool1) = nominal_AC_fresh_subs?(sigma1, G), 
+	    new_G = append(G1, G), 
+	    new_sigma = append(sigma1, sigma), 
+	    new_P = apply_sub(sigma1, P1) IN 
+	    IF bool1 THEN ac_match(new_G, new_P, new_sigma, V, PV)
+	    ELSE null 
+	    ENDIF
+
+	  ELSIF var?(s) AND X = V(s) THEN LET
+	    new_G = append(fc(DS(pi, p(s)), X), G) IN
+	    ac_match(new_G, P1, sigma, V, PV)
+	  ELSE null
+	  ENDIF,
+
+	unit:
+	  IF s = unit THEN ac_match(G, P1, sigma, V, PV)  
+	  ELSE null 
+	  ENDIF,
+
+	app(f, arg):
+	  IF NOT app?(s) OR f /= f_sym(s) OR NOT decompose(arg, arg(s))`2 THEN null 
+	  ELSE LET dec_P = decompose(arg, arg(s))`1,
+	       	   new_P = append(dec_P, P1) IN
+		   ac_match(G, new_P, sigma, V, PV)
+	  ENDIF,
+
+        abs(a, bd):
+	  IF NOT abs?(s) OR NOT decompose(bd, body(s))`2 THEN null 
+	  ELSIF a = abstr(s) THEN LET
+	        dec_P = decompose(bd, body(s))`1, 
+	        new_P = append(dec_P, P1) IN 
+	  	ac_match(G, new_P, sigma, V, PV)	
+	  ELSE LET
+	       (G1, bool1) = fresh?(a, body(s)),
+	       new_G = append(G1, G), 
+	       pi = cons((a, abstr(s)), null), 
+	       dec_P = decompose(bd, ext(pi)(body(s)))`1, 
+	       new_P = append(dec_P, P1) IN 
+	       IF bool1 THEN ac_match(new_G, new_P, sigma, V, PV)
+	       ElSE null
+	       ENDIF
+	  ENDIF, 
+
+	ac_app(f, ac_arg):
+	  IF NOT ac_app?(s) OR f /= ac_sym(s) THEN null
+	  ELSE LET
+	     input_lst = apply_ac(G, cons((t, s), P1), sigma, V, PV), 
+	     lst_results = map(ac_match)(input_lst) IN 
+	     flatten(lst_results) 
+	  ENDIF
+        ENDCASES
+    ENDIF
+MEASURE lex3(card(vars(input`2)), max_size(input`2), num_max_size(input`2))
+
+%%%%%%%%%%%% LEMMAS
+ac_match_sound_inst: LEMMA 
+   LET (G, P, sigma, V, PV) = input IN 
+   (NOT null?(P) AND
+   LET (up, P1) = choose_eq(P), (t, s) = up IN 
+   var?(t) AND NOT member(V(t), vars(s)) AND 
+   LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null),
+       (G1, bool1) = nominal_AC_fresh_subs?(sigma1, G), 
+       new_G = append(G1, G), 
+       new_sigma = append(sigma1, sigma), 
+       new_P = apply_sub(sigma1, P1) IN 
+   is_sol?(Delta, delta)(new_G, new_P, new_sigma, PV)) IMPLIES
+   is_sol?(Delta, delta)(G, P, sigma, PV)
+
+ac_match_sound_abs: LEMMA
+   LET (G, P, sigma, V, PV) = input IN 
+   (NOT null?(P) AND 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN 
+   abs?(t) AND abs?(s) AND decompose(body(t), body(s))`2 AND
+   abstr(t) /= abstr(s) AND 
+   LET (G1, bool1) = fresh?(abstr(t), body(s)),
+       new_G = append(G1, G), 
+       pi = cons((abstr(t), abstr(s)), null), 
+       dec_P = decompose(body(t), ext(pi)(body(s)))`1, 
+       new_P = append(dec_P, P1) IN 
+   bool1 AND is_sol?(Delta, delta)(new_G, new_P, sigma, PV)) IMPLIES
+   is_sol?(Delta, delta)(G, P, sigma, PV)
+
+ac_match_sound: LEMMA 
+   LET (Gamma, P, sigma, V, PV) = input IN 
+   is_sol?(Delta, delta)(Gamma1, null, sigma1, PV) AND 
+   member((Gamma1, sigma1), ac_match(input)) IMPLIES
+   is_sol?(Delta, delta)(Gamma, P, sigma, PV)
+
+ac_match_sound_cor: LEMMA 
+   is_sol?(Delta, delta)(Gamma, null, sigma, vars(s)) AND well_formed?((t, s)) AND
+   member((Gamma, sigma), ac_match(null, cons((t, s), null), null, vars(t, s), vars(s))) IMPLIES 
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(s)) 
+
+ac_match_sound_equality_check: LEMMA 
+   is_sol?(Delta, delta)(Gamma, null, sigma, vars(t, s)) AND well_formed?((t, s)) AND
+   member((Gamma, sigma), ac_match(null, cons((t, s), null), null, vars(t, s), vars(t, s))) IMPLIES 
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(t, s)) 
+
+ac_match_vars_ctx: LEMMA 
+  LET (G, P, sigma, V, PV) = input IN 
+  member((G1, sigma1), ac_match(input)) IMPLIES 
+  subset?(vars(G1), union(vars(G), vars(P)))
+
+ac_match_completeness_inst: LEMMA 
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   is_sol?(Delta, delta)(G, P, sigma, PV) AND
+   NOT null?(P) AND var?(t) AND NOT member(V(t), vars(s)) IMPLIES 
+   (LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null),
+       (G1, bool1) = nominal_AC_fresh_subs?(sigma1, G), 
+       new_G = append(G1, G), 
+       new_sigma = append(sigma1, sigma), 
+       new_P = apply_sub(sigma1, P1) IN 
+   bool1 IMPLIES is_sol?(Delta, delta)(new_G, new_P, new_sigma, PV))
+
+ac_match_completeness_inst2: LEMMA 
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   is_sol?(Delta, delta)(G, P, sigma, PV) AND
+   NOT null?(P) AND var?(t) AND NOT member(V(t), vars(s)) IMPLIES 
+   (LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null),
+       (G1, bool1) = nominal_AC_fresh_subs?(sigma1, G), 
+       new_G = append(G1, G), 
+       new_sigma = append(sigma1, sigma), 
+       new_P = apply_sub(sigma1, P1) IN bool1)
+
+ac_match_completeness_inst3: LEMMA 
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   is_sol?(Delta, delta)(G, P, sigma, PV) AND
+   NOT null?(P) AND var?(t) AND var?(s) AND V(t) = V(s) IMPLIES 
+   (LET new_G = append(fc(DS(p(t), p(s)), V(t)), G) IN
+        is_sol?(Delta, delta)(new_G, P1, sigma, PV))
+
+ac_match_completeness_abs: LEMMA 
+   LET (G, P, sigma, V, PV) = input,  
+       (up, P1) = choose_eq(P), (t, s) = up IN 
+   is_sol?(Delta, delta)(G, P, sigma, PV) AND
+   NOT null?(P) AND abs?(t) AND abs?(s) AND abstr(t) /= abstr(s) AND
+   decompose(body(t), body(s))`2 IMPLIES 
+   (LET (G1, bool1) = fresh?(abstr(t), body(s)),
+	new_G = append(G1, G), 
+	pi = cons((abstr(t), abstr(s)), null), 
+	dec_P = decompose(body(t), ext(pi)(body(s)))`1, 
+	new_P = append(dec_P, P1) IN 
+	bool1 AND is_sol?(Delta, delta)(new_G, new_P, sigma, PV))
+
+% main lemma of completeness with hypothesis $\delta \subseteq V$
+ac_match_completeness: LEMMA 
+   LET (Gamma, P, sigma, V, PV) = input IN 
+   is_sol?(Delta, delta)(Gamma, P, sigma, PV) AND contained?(delta, V)
+   AND subset?(vars(Delta), V) IMPLIES 
+   EXISTS Gamma1, sigma1: 
+      member((Gamma1, sigma1), ac_match(input)) AND
+      solves?(Delta, delta)(Gamma1, null, sigma1, V, PV)
+
+% completeness for matching with the set V generic
+ac_match_completeness_match_aux: LEMMA 
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(s))
+   AND contained?(delta, V) AND subset?(vars(Delta), V) AND subset?(vars(t, s), V) AND
+   well_formed?((t, s)) IMPLIES 
+   EXISTS Gamma1, sigma1: 
+      member((Gamma1, sigma1), ac_match(null, cons((t, s), null), null, V, vars(s))) AND
+      is_instance?(Delta, delta)(Gamma1, sigma1, V, vars(s))
+
+% completeness for AC equality check with the set V generic
+ac_match_completeness_eq_check_aux: LEMMA 
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(t, s))
+   AND contained?(delta, V) AND subset?(vars(Delta), V) AND subset?(vars(t, s), V) AND
+   well_formed?((t, s)) IMPLIES 
+   EXISTS Gamma1, sigma1: 
+      member((Gamma1, sigma1), ac_match(null, cons((t, s), null), null, V, vars(t, s))) AND
+      is_instance?(Delta, delta)(Gamma1, sigma1, V, vars(t, s))
+
+
+% correctness of variant inputs 
+ac_match_var_inp_choose_eq: LEMMA
+   LET (up, P1) = choose_eq(P) IN 
+      nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV)
+      AND var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P) IMPLIES 
+      var_inputs?((G, P1, sigma, V, PV), (G, P1, sigma_, V_, PV), FV)
+
+ac_match_var_inp_var: LEMMA 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN  
+   nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV)
+   AND var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P) AND
+   var?(t) AND NOT member(V(t), vars(s)) IMPLIES 
+   (LET sigma1 = cons((V(t), ext(reverse(p(t)))(s)), null),
+        (G1, bool1) = nominal_AC_fresh_subs?(sigma1, G), new_G = append(G1, G), 
+	new_P = apply_sub(sigma1, P1) IN 
+   var_inputs?((new_G, new_P, append(sigma1, sigma), V, PV), (new_G, new_P, append(sigma1, sigma_), V_, PV), FV))
+
+ac_match_var_inp_var2: LEMMA 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN  
+   nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV) AND 
+   var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P)
+   AND var?(t) AND var?(s) IMPLIES 
+   (LET G2 = fc(DS(p(t), p(s)), V(t)), new_G = append(G2, G) IN 
+    var_inputs?((new_G, P1, sigma, V, PV), (new_G, P1, sigma_, V_, PV), FV))
+
+ac_match_var_inp_app: LEMMA 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN  
+   nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV) AND 
+   var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P)
+   AND app?(t) AND app?(s) AND same_func?(t, s) IMPLIES
+   (LET dec_P = decompose(arg(t), arg(s))`1, new_P = append(dec_P, P1) IN
+   var_inputs?((G, new_P, sigma, V, PV), (G, new_P, sigma_, V_, PV), FV))
+
+ac_match_var_inp_abs: LEMMA 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN  
+   nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV) AND 
+   var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P)
+   AND abs?(t) AND abs?(s) IMPLIES
+   (LET dec_P = decompose(body(t), body(s))`1, new_P = append(dec_P, P1) IN 
+   var_inputs?((G, new_P, sigma, V, PV), (G, new_P, sigma_, V_, PV), FV))
+
+ac_match_var_inp_abs2: LEMMA 
+   LET (up, P1) = choose_eq(P), (t, s) = up IN  
+   nice_input?(G, P, sigma_, V_, PV) AND nice_input?(G, P, sigma, V, PV) AND 
+   var_inputs?((G, P, sigma, V, PV), (G, P, sigma_, V_, PV), FV) AND NOT null?(P)
+   AND abs?(t) AND abs?(s) IMPLIES
+   (LET G1  = fresh?(abstr(t), body(s))`1,
+	new_G = append(G1, G), dec_P = decompose(body(t), ext(pi)(body(s)))`1,
+	new_P = append(dec_P, P1) IN  
+   var_inputs?((new_G, new_P, sigma, V, PV), (new_G, new_P, sigma_, V_, PV), FV))
+
+ac_match_var_inputs: LEMMA
+   var_inputs?(input, input_, FV) AND member((Gamma1, sigma1_), ac_match(input_)) IMPLIES 
+   EXISTS sigma1: 
+      member((Gamma1, sigma1), ac_match(input)) AND equal_syn?(sigma1_, sigma1, FV)
+
+% completeness for matching 
+ac_match_completeness_match: LEMMA 
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(s)) AND 
+   well_formed?((t, s)) IMPLIES 
+   EXISTS Gamma1, sigma1: 
+      member((Gamma1, sigma1), ac_match(null, cons((t, s), null), null, vars(t, s), vars(s))) AND
+      is_instance?(Delta, delta)(Gamma1, sigma1, vars(t, s), vars(s))
+
+% completeness for equality checking
+ac_match_completeness_equality: LEMMA
+   is_sol?(Delta, delta)(null, cons((t, s), null), null, vars(t, s)) AND 
+   well_formed?((t, s)) IMPLIES 
+   EXISTS Gamma1, sigma1: 
+      member((Gamma1, sigma1), ac_match(null, cons((t, s), null), null, vars(t, s), vars(t, s))) AND
+      is_instance?(Delta, delta)(Gamma1, sigma1, vars(t, s), vars(t, s))
+
+
+
+END nominal_AC_ac_match_alg 

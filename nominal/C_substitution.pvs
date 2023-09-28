@@ -1,0 +1,551 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+% Authors: 
+%          Mauricio Ayala-Rincon (1)
+%          Maribel Fernandez (2)
+%          Gabriel Ferreira Silva (1)
+%          Daniele Nantes Sobrinho (1)
+%          Ana Cristina Rocha Oliveira(1)
+%
+%          (1) Universidade de Brasilia, (2) King's College London
+%
+% Paper: "Formalising Nominal C-unification Generalised With Protected Variables"
+% 
+% This subtheory contains specifications and formalisations
+% of substitution in the nominal setting, in the presence of C function symbols. 
+%
+% Most proofs in this theory are based on the corresponding proofs from the nominal syntactic
+% unification "syntactic_substitution" theory, extending those to also handle commutative functions. 
+% Reusing these proofs is done manually (it's interactive theorem proving not fully automated reasoning).
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+C_substitution: THEORY
+BEGIN
+
+	IMPORTING C_alpha_equivalence
+
+	t,s,u,w: VAR C_term
+	X,Y: VAR variable
+	pi, pi1: VAR perm
+	a, b: VAR atom
+	f: VAR symbol
+	
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Nuclear substitution:
+% The function subs exchanges the variable X by the term s inside the term t.
+% This is the action of a basic substitution in a term.
+subs(X,s)(t): RECURSIVE C_term =
+   CASES t OF
+   	 at(a): at(a),
+	 *(pm, Y): IF X = Y THEN ext(pm)(s)
+	      	    ELSE pm * Y
+		 ENDIF,
+	 unit: unit,
+	 pair(t1, t2): pair(subs(X,s)(t1), subs(X,s)(t2)),
+	 abs(a, bd): abs(a, subs(X,s)(bd)),
+	 app(f, ag): app(f, subs(X,s)(ag)),
+	 c_app(f, ag): c_app(f, pair(subs(X,s)(term1(ag)), subs(X, s)(term2(ag))))
+   ENDCASES
+   MEASURE t BY <<
+
+% The action of nuclear substitutions and permutations commutes.
+subs_perm_comm: LEMMA 
+   subs(X,s)(ext(pi)(t)) = ext(pi)(subs(X,s)(t))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The function Subs takes a list sigma of basic substitutions and applies them 
+% recursively to a term t.
+
+Sub: TYPE = list[[variable, C_term]]
+
+	sigma, sigma1, lambda1, gamma: VAR Sub
+	Id: Sub = (::)
+% Action of substitutions over terms. Close to the notion of triangular
+% substitutions.
+Subs(sigma)(t): RECURSIVE C_term =
+   CASES sigma OF
+   	 null : t,
+	 cons(head,tail): subs(head)(Subs(tail)(t))
+   ENDCASES
+   MEASURE sigma BY <<
+
+% The action of substitutions and permutations commutes.
+Subs_perm_comm: LEMMA
+   Subs(sigma)(ext(pi)(t)) = ext(pi)(Subs(sigma)(t))
+
+% Substitution does not change atoms.
+Subs_atom: LEMMA
+   Subs(sigma)(at(a)) = at(a)
+
+% how a substitution may change a permuted variable
+Subs_susp: LEMMA
+   Subs(sigma)(pi * X) = ext(pi)(Subs(sigma)((::) * X))
+   
+% Substitution does not change unit.
+Subs_unit: LEMMA
+   Subs(sigma)(unit) = unit
+
+% Substitution over a pair is a pair.
+Subs_pair: LEMMA
+   Subs(sigma)(pair(t,s)) = pair(Subs(sigma)(t), Subs(sigma)(s))
+
+% Substitution over an abstraction is an abstraction.
+Subs_abs: LEMMA
+   Subs(sigma)(abs(a,t)) = abs(a, Subs(sigma)(t))
+
+% Substitution over an application is a application.
+Subs_app: LEMMA
+   Subs(sigma)(app(f, t)) = app(f, Subs(sigma)(t))
+
+% Substitution over a c_application is a c_application
+Subs_c_app: LEMMA
+   Subs(sigma)(c_app(f, pair(t, s))) = c_app(f, Subs(sigma)(pair(t,s)))
+   
+% Applying an append of two substitutions to terms is equal 
+% to apply one by one.
+Subs_append: LEMMA
+   Subs(append(sigma,gamma))(t) = Subs(sigma)(Subs(gamma)(t))
+
+% If a term is not a variable, then a substitution preserves 
+% the structure of such term.
+Subs_ord: LEMMA  
+   NOT susp?(t) IMPLIES ord(Subs(sigma)(t)) = ord(t)
+
+% Substitutions do not eliminate freshness inconsistencies.
+Subs_fresh: LEMMA
+   fresh?(a, Subs(sigma)(t))`2 IMPLIES fresh?(a, t)`2
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+	Delta, Nabla, Nabla1, Nabla2: VAR fresh_context
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The function fresh_subs applies a substituion sigma to every variable in a 
+% context Nabla and verifies if freshness holds in the context Delta.
+% For example, if Nabla = ((a1,X1), (a2,X2), ..., (an,Xn)), then what should be
+% verified is whether Delta |- ai # Xi.sigma , for all i: 1 <= i <= n.
+% This is done recursively.
+
+C_fresh_subs(Delta)(sigma, Nabla): RECURSIVE bool =
+   CASES Nabla OF
+   	 null: TRUE,
+	 cons(head, tail): fresh(Delta)(head`1, Subs(sigma)((::)*head`2))
+	 	    	   AND C_fresh_subs(Delta)(sigma, tail)
+   ENDCASES
+   MEASURE Nabla BY <<
+
+% Characterisation of fresh_subs.
+C_fresh_subs_character: LEMMA
+   C_fresh_subs(Delta)(sigma, Nabla) = 
+   (FORALL (ax:[atom, variable]): member(ax,Nabla) IMPLIES fresh(Delta)(ax`1, Subs(sigma)((::)*ax`2)))
+
+% Verifying fresh_subs for an append of two contexts is equal
+% to verify them separately.
+C_fresh_subs_append_context: LEMMA
+   C_fresh_subs(Delta)(sigma, append(Nabla1, Nabla2)) =
+   (C_fresh_subs(Delta)(sigma, Nabla1) AND C_fresh_subs(Delta)(sigma, Nabla2))
+
+% Generalisation of weakening of freshness contexts to fresh_subs.
+C_fresh_subs_weakening: LEMMA 
+   C_fresh_subs(Nabla1)(sigma, Delta) AND
+   (FORALL (a, X): member((a, X), Nabla1) => member((a, X), Nabla2)) IMPLIES
+   C_fresh_subs(Nabla2)(sigma, Delta)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The next function is used in the unification algorithm.
+% fresh_subs? does something very similar to fresh_subs. It applies a substitution
+% sigma to a context Nabla (to variables) and builds a context where freshness
+% holds, if possible.
+C_fresh_subs?(sigma, Nabla): RECURSIVE [fresh_context, bool] =
+   CASES Nabla OF
+   	 null: ((::), TRUE),
+	 cons(head, tail): x(fresh?(head`1, Subs(sigma)((::)*head`2)),
+	 	    	     C_fresh_subs?(sigma, tail))
+   ENDCASES
+   MEASURE Nabla BY <<
+
+% Applying Identity subs to a freshness context does not affect it.
+C_fresh_subs?_null: LEMMA
+   C_fresh_subs?((::), Delta) = (Delta, TRUE)
+
+% Characterization of the function fresh_subs?
+C_fresh_subs?_character: LEMMA   
+   C_fresh_subs?(sigma, Delta)`2 =
+   (FORALL(a,X): member((a,X),Delta) IMPLIES fresh?(a, Subs(sigma)((::)*X))`2)
+
+% (Delta o Nabla).sigma = (Delta.sigma and Nabla.sigma)
+C_fresh_subs?_append_context: LEMMA
+   C_fresh_subs?(sigma, append(Delta,Nabla)) =
+       x(C_fresh_subs?(sigma, Delta), C_fresh_subs?(sigma, Nabla))
+
+% If Delta.sigma is consistent, then forall (a,X) in Delta
+% Delta.sigma|-- a # X.sigma  .
+C_fresh_subs?_is_fresh: LEMMA
+   LET (Nabla, b) = C_fresh_subs?(sigma, Delta) IN
+   b IMPLIES FORALL(a,X): member((a,X),Delta) IMPLIES
+                    fresh(Nabla)(a, Subs(sigma)((::)*X))
+
+% If Delta.sigma is consistent, then
+% Delta|--a # t  implies  Delta.sigma|--a # t.sigma
+C_fresh_subs?_is_fresh2: LEMMA
+   LET (Nabla, b) = C_fresh_subs?(sigma, Delta) IN
+   b AND fresh(Delta)(a, t) IMPLIES
+            fresh(Nabla)(a, Subs(sigma)(t))
+
+% If <a#t> is consistent (via function fresh?), then 
+% <a#t.sigma> = <a#t>.sigma.
+C_fresh_subs?_is_fresh3: LEMMA
+   fresh?(a, Subs(sigma)(t)) = x(C_fresh_subs?(sigma, fresh?(a,t)`1), 
+   	     		       	 ((::),fresh?(a,t)`2))
+
+% This is a very technical lemma. It says that if Delta.gamma is consistent,
+% then Delta.(gamma o sigma) = (Delta.gamma).sigma .
+% On the other hand, if Delta.gamma is inconsistent then so is 
+% (Delta.gamma).sigma .
+C_fresh_subs?_append: LEMMA
+   C_fresh_subs?(append(sigma,gamma),Delta) =
+        x(C_fresh_subs?(sigma,C_fresh_subs?(gamma,Delta)`1),
+	  ((::),C_fresh_subs?(gamma,Delta)`2))
+
+% The next two lemmas claim that if Delta.sigma is consistent and 
+% Delta |- t~s then sigma also preserves alpha-equivalence.
+C_fresh_subs?_alpha_aux: LEMMA
+   LET SOL = C_fresh_subs?((:(X,u):), Delta) IN
+   SOL`2 AND alpha(Delta)(t, s)
+   IMPLIES alpha(SOL`1)(subs(X,u)(t), subs(X,u)(s))
+
+% If Delta.sigma is consistent, then (~ is the alpha-equivalent relation)
+% Delta|--t~s   implies   Delta.sigma|--t.sigma~s.sigma   . 
+C_fresh_subs?_alpha: LEMMA
+   LET (Nabla, b) = C_fresh_subs?(sigma, Delta) IN
+   b AND alpha(Delta)(t, s)
+   IMPLIES alpha(Nabla)(Subs(sigma)(t), Subs(sigma)(s))
+
+% Completeness of 'fresh_subs?' with respect to 'fresh_subs'.
+C_fresh_subs?_complete: LEMMA
+   LET (NABLA, b) = C_fresh_subs?(sigma, Nabla) IN
+   C_fresh_subs(Delta)(sigma, Nabla) IMPLIES b AND 
+   (FORALL (a, X): member((a, X), NABLA) => member((a, X), Delta))
+
+% Soundness of 'fresh_subs?' with respect to 'fresh_subs'.
+C_fresh_subs?_is_C_fresh_subs: LEMMA
+   LET (Delta, b) = C_fresh_subs?(sigma, Nabla) IN
+   b IMPLIES C_fresh_subs(Delta)(sigma, Nabla)
+
+% If Nabla.gamma is consistent,
+% Delta|--Nabla.(gamma o sigma) = Delta|-- (Nabla.gamma).sigma
+C_fresh_subs_o_C_fresh_subs?: LEMMA
+   C_fresh_subs(Delta)(append(sigma, gamma), Nabla) =
+      (C_fresh_subs(Delta)(sigma, C_fresh_subs?(gamma, Nabla)`1) AND C_fresh_subs?(gamma, Nabla)`2)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The next lemmas were especially developed in order to prove termination
+% of the unification algorithm.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% If a variable X does not occur in a term t,
+% then [X->s] does not affect t.
+not_occurs_subs_invariance: LEMMA
+   NOT occurs(X, t) => subs(X, s)(t) = t
+
+% If X occurs in s, then Vars(t) contained in Vars(s.[X->t])  .
+Vars_subs_subset: LEMMA
+   occurs(X, s) IMPLIES    
+   subset?(Vars(t), Vars(subs(X,t)(s)))
+
+% Variables of a pair.
+Vars(t,s): finite_set[variable] = union(Vars(t), Vars(s))
+
+% If X occurs in s and it does not occur in t, then
+% Vars(s[X->t])= Vars(t,s)\{X}
+Vars_union: LEMMA
+   occurs(X, s) AND NOT occurs(X, t) 
+   IMPLIES Vars(subs(X, t)(s)) = remove(X, Vars(t,s))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+Vars_in(u,s)(X,t): bool = subset?(Vars(t), Vars(s,u)) AND 
+		   	  (occurs(X,s) OR occurs(X,u))
+
+% A special type of substitution to guarantee termination of the
+% unification algorithm. The variables of Domain and Image are limited
+% and each nuclear substitution is idempotent.
+Subs_unif(u,s): TYPE = list[{sigma:[variable,C_term]| Vars_in(u,s)(sigma) AND  
+			     		      NOT occurs(sigma`1, sigma`2)}]
+
+% If a substitution has the special type above, then the result of
+% applying it to terms has the set of variables limited.
+Subs_unif_Vars_subset: LEMMA
+   FORALL(gamma: Subs_unif(u,s)):
+   subset?(Vars(Subs(gamma)(w), Subs(gamma)(t)), union(Vars(u,s), Vars(w,t)))
+
+% A substitution with the special type above makes the number of variables
+% decreases.
+Subs_unif_Vars_decrease: LEMMA 
+   FORALL(gamma: Subs_unif(u,s)): gamma /= Id IMPLIES
+   card(Vars(Subs(gamma)(w), Subs(gamma)(t))) < card(union(Vars(u,s), Vars(w,t)))
+
+% Concatenating two substitutions of the type Subs_unif, preserves the
+% type Subs_unif in a special manner.
+Subs_unif_append: LEMMA
+   FORALL(sigma: Subs_unif(u,s), gamma: Subs_unif(Subs(sigma)(w),Subs(sigma)(t))):
+   every(LAMBDA(sigma: [variable,C_term]): Vars_in(pair(u,w),pair(s,t))(sigma) 
+   		       & NOT occurs(sigma`1, sigma`2))(append(gamma, sigma))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% The next lemma are proved in order to obtain completeness of 
+% the unification algorithm.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% If the action of a substitution over a term is an atom, then
+% the original term is an atom or suspended variable.
+Subs_atom2: LEMMA
+   Subs(sigma)(s) = at(a)
+   IMPLIES susp?(s) OR s = at(a)
+
+% If the action of a substitution over a term is unit, then
+% the original term is unit or a suspended variable.
+Subs_unit2: LEMMA
+   Subs(sigma)(s) = unit
+   IMPLIES susp?(s) OR s = unit
+
+% t.sigma has depth less or equal to X.sigma if X occurs in t.
+Subs_depth: LEMMA
+   member(X, Vars(t))
+   IMPLIES depth(Subs(sigma)(pi*X)) <= depth(Subs(sigma)(t))
+
+% t.sigma is deeper than X.sigma if X occurs in t and t is not a variable.
+Subs_depth_not_susp: LEMMA
+   member(X, Vars(t)) AND NOT susp?(t)
+   IMPLIES depth(Subs(sigma)(pi*X)) < depth(Subs(sigma)(t))
+
+% Delta|--t.sigma~p.X.sigma implies X does not occur in t if 
+% t is not a suspended variable.
+alpha_Subs_Vars: LEMMA
+   alpha(Delta)(Subs(sigma)(t), Subs(sigma)(pi*X)) AND NOT susp?(t)
+   IMPLIES NOT member(X, Vars(t))
+
+% Delta|--t.sigma~s.sigma and t is not a suspended variable implies
+% that s=p.X and X is not in t or t and s have the same structure.
+alpha_Subs_ord: LEMMA
+   alpha(Delta)(Subs(sigma)(t), Subs(sigma)(s)) AND NOT susp?(t)
+   IMPLIES (susp?(s) AND NOT member(V(s), Vars(t))) OR ord(t) = ord(s)
+
+% If two substitutions are alpha-equivalent, then the action of them
+% over a term produces alpha-equivalent terms.
+% If Delta|--sigma~gamma , then Delta|-- t.sigma~t.gamma   .
+alpha_Subs_invariance: LEMMA 
+   (FORALL X: alpha(Delta)(Subs(sigma)((::)*X), Subs(gamma)((::)*X)) )
+   IMPLIES alpha(Delta)(Subs(sigma)(t), Subs(gamma)(t))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% return the set of variables on the range of a substitution  
+vars_range_sub(sigma): RECURSIVE finite_set[variable] =
+IF null?(sigma) THEN emptyset
+ELSE LET t = car(sigma)`2 IN
+     	 union(vars_range_sub(cdr(sigma)), Vars(t))
+ENDIF
+MEASURE sigma BY << 
+
+% return the set of variables on the domain of a substitution
+vars_dom_sub(sigma): RECURSIVE finite_set[variable] =
+IF null?(sigma) THEN emptyset
+ELSE LET X = car(sigma)`1 IN
+     	 union(singleton(X), vars_dom_sub(cdr(sigma)))
+ENDIF
+MEASURE sigma BY << 
+
+% return a boolean indicating if sigma is more general than gamma under context Delta. 
+more_gen_sub?(Delta)(sigma, gamma): bool =
+    EXISTS lambda1:
+        FORALL X: alpha(Delta)(Subs(append(lambda1, sigma))((::)*X), Subs(gamma)((::)*X))
+
+% indicates if a substitution is well-behaved.
+well_behaved?(sigma): bool =
+IF FORALL X: member(X, vars_dom_sub(sigma))
+   => (FORALL Y: member(Y, Vars(Subs(sigma)((::) * X))) => NOT member(Y, vars_dom_sub(sigma)))
+   THEN TRUE
+ELSE FALSE
+ENDIF
+
+% boolean that indicates if a substitution is idempotent
+idempotent?(sigma): bool =
+IF (FORALL t: Subs(sigma)(Subs(sigma)(t)) = Subs(sigma)(t))
+   THEN TRUE
+ELSE FALSE
+ENDIF
+
+%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%% Technical, non important or obvious auxiliary lemmas 
+Subs_perm_Var_aux: LEMMA
+   Subs(sigma)(pi * X) = ext(pi)(Subs(sigma)((::) * X))
+
+Subs_perm_Var: LEMMA
+   member(Y, Vars(Subs(sigma)(pi * X))) => member(Y, Vars(Subs(sigma)(pi1 * X)))
+
+vars_dom_sub_append: LEMMA
+   member(X, vars_dom_sub(append(sigma, gamma))) => member(X, vars_dom_sub(sigma)) OR
+                                                    member(X, vars_dom_sub(gamma))
+
+vars_dom_sub_append2: LEMMA
+   vars_dom_sub(append(sigma, gamma)) = union(vars_dom_sub(sigma), vars_dom_sub(gamma))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%% necessary lemmas i added
+% aux lemma for the one below
+member_var_term_sub_aux: LEMMA
+member(X, Vars(subs(Y, s)(t))) => member(X, Vars(t)) OR member(X, vars_range_sub((:(Y, s):)))
+
+% X in var(tsigma) => X in var(t) or x in Range(sigma) 
+member_var_term_sub: LEMMA
+member(X, Vars(Subs(sigma)(t))) => member(X, Vars(t)) OR member(X, vars_range_sub(sigma))
+
+% aux lemma for the one below
+var_not_sub_aux: LEMMA
+NOT member(X, vars_dom_sub((:(Y, s):))) => (member(X, Vars(t)) => member(X, Vars(subs(Y,s)(t))))
+
+% X not in Dom(sigma) => (X in Vars(t) => X in Vars(sigma t)) 
+var_not_sub: LEMMA
+NOT member(X, vars_dom_sub(sigma)) => (member(X, Vars(t)) => member(X, Vars(Subs(sigma)(t))))
+
+% aux lemma for the one below
+sub_skip_term_aux: LEMMA
+   disjoint?(Vars(t), vars_dom_sub((:(Y, s):))) => subs(Y, s)(t) = t
+   
+% if all variables in the term are not in the domain of the substitution, the substitution leave the term intact
+sub_skip_term: LEMMA
+   disjoint?(Vars(t), vars_dom_sub(sigma)) => Subs(sigma)(t) = t
+
+% X in t AND X in t sigma, where sigma is a nuclear substitution. THEN X in Range(sigma) 
+member_var_range_nuc_sub: LEMMA
+   member(X, Vars(t)) AND member(X, Vars(subs(X, s)(t))) => member(X, Vars(s)) 
+
+% aux lemma for the one below 
+suf_cond_idempotent_aux: LEMMA
+   disjoint?(vars_range_sub(sigma), vars_dom_sub(sigma))  =>
+   disjoint?(Vars(Subs(sigma)(t)), vars_dom_sub(sigma)) 
+
+% the lemma below give a sufficient condition for the substitution to be idempotent
+% if dom(sigma) \cap Vars(range(sigma)) = \emptyset, the substitution is idempotent
+suf_cond_idempotent: LEMMA
+   disjoint?(vars_range_sub(sigma), vars_dom_sub(sigma))  
+   => idempotent?(sigma) 
+
+% a well-behaved substitution is idempotent
+well_behaved?_idempotent?: LEMMA
+   well_behaved?(sigma) => idempotent?(sigma) 
+
+% a suficient condition to replace a substitution to an equivalent one in an alpha-equivalence relation
+eq_sub_alpha: LEMMA
+   alpha(Delta)(Subs(gamma)(t), Subs(gamma)(s)) AND 
+   (FORALL X: alpha(Delta)(Subs(sigma)((: :) * X), Subs(gamma)((: :) * X)))
+   => alpha(Delta)(Subs(sigma)(t), Subs(sigma)(s))
+
+% give a sufficient condition to simplify (sigma gamma sigma) to (sigma gamma)  
+suf_cond_simp_sub_append: LEMMA
+   idempotent?(sigma) AND 
+   disjoint?(union(vars_dom_sub(sigma), vars_range_sub(sigma)),
+             vars_dom_sub(gamma)) =>
+   Subs(sigma)(Subs(gamma)(Subs(sigma)(t))) = Subs(sigma)(Subs(gamma)(t))
+
+% a sufficient condition to conclude that:  sigma gamma < lambda1 => sigma < lambda1
+suf_cond_more_gen_sub?_append: LEMMA
+   idempotent?(sigma) AND 
+   disjoint?(union(vars_dom_sub(sigma), vars_range_sub(sigma)),
+             vars_dom_sub(gamma)) AND 
+   more_gen_sub?(Nabla)(append(sigma, gamma), lambda1) => more_gen_sub?(Nabla)(sigma, lambda1)
+
+% a rather obvious lemma. The above one is more sophisticate. 
+suf_cond_more_gen_sub?_append2: LEMMA
+   more_gen_sub?(Nabla)(append(sigma, gamma), lambda1) => more_gen_sub?(Nabla)(gamma, lambda1)
+   
+% if X is in the domain of a well behaved substitution sigma then X is not in sigma t
+well_behaved?_var_disappear: LEMMA 
+   member(X, vars_dom_sub(sigma)) AND well_behaved?(sigma) =>
+   NOT member(X, Vars(Subs(sigma)(t)))
+
+% a sufficient condition to conclude that:
+% well_behaved?(sigma) AND well_behaved?(gamma) => well_behaved?(sigma + gamma)
+suf_cond_idempotent?_append: LEMMA
+   well_behaved?(sigma) AND well_behaved?(gamma) AND
+   disjoint?(union(vars_dom_sub(sigma), vars_range_sub(sigma)), vars_dom_sub(gamma))
+   => well_behaved?(append(sigma, gamma))
+
+% a rather technical lemma for the kind of substitution that appears in the algorithm
+% the kind of this substitution is well_behaved 
+subs_add_alg_well_behaved?: LEMMA
+   NOT member(X, Vars(t)) => well_behaved?((:(X, t):))
+
+% a technical lemma to be used in the proof of completeness
+% a sufficient condition that a nuclear substitution is more general than other
+suf_cond_more_gen_nuc_sub: LEMMA  
+   sigma = (: (X, ext(reverse(pi))(t)) :) AND NOT member(X, Vars(t)) AND
+   alpha(Delta)(Subs(gamma)(pi * X), Subs(gamma)(t))
+   => more_gen_sub?(Delta)(sigma, gamma)
+
+% close to the lemma above, this one
+suf_cond_more_gen_append: LEMMA
+   sigma1 = (: (X, ext(reverse(pi))(t)) :) AND NOT member(X, Vars(t)) AND
+   alpha(Delta)(Subs(gamma)(pi * X), Subs(gamma)(t)) AND 
+   disjoint?(vars_dom_sub(sigma), union(Vars((::)* X), Vars(t))) AND
+   more_gen_sub?(Delta)(sigma, gamma)
+   => more_gen_sub?(Delta)(append(sigma1, sigma), gamma) 
+
+%%%%%%%%%%%%%%%%%%%%% necessary lemmas related to the ord of a C_term
+% auxiliar lemma for the one below
+% the size of a term "t" (that is not a suspension AND such that "t" contains a variable X)
+% is greater than pi * X, even after a substitution
+size_term_gt_var_after_sub: LEMMA
+   member(X, Vars(t)) AND NOT susp?(t) => size(Subs(sigma)(t)) > size(Subs(sigma)(pi * X))
+   
+% a suficient condition for a term to be a suspended variable 
+% needed in the completeness theorem
+suf_cond_term_is_sub: LEMMA
+   member(X, Vars(t)) AND alpha(Delta)(Subs(sigma)(pi * X), Subs(sigma)(t))
+   => susp?(t) 
+
+%%%%%%%%%%%%%%%%%%%%% lemmas that i had to add as I am working with matching
+other_cond_skip_term: LEMMA
+   (disjoint?(Vars(t), vars_dom_sub(gamma)) AND 
+   (FORALL X: alpha(Delta)(Subs(append(lambda1, sigma))((::)*X), Subs(gamma)((::)*X))) AND
+   Subs(sigma)(t) = t)
+   => alpha(Delta)(Subs(lambda1)(t), t)
+
+% another sufficient condition for a term to be a suspended variable, needed in the completeness theorem
+suf_cond_term_is_sub2: LEMMA
+   alpha(Delta)(t, Subs(sigma)(s)) AND susp?(t) => susp?(s) 
+    
+%%%%%%%%%%%%%%%%%%%%% necessary lemmas related to functions C_fresh_subs and similar ones
+% useful lemmas that appeared in the the proof of completeness
+aux_lemma_fresh_sub1: LEMMA
+   fresh(Nabla)(a, Subs(sigma)(t))
+   => C_fresh_subs(Nabla)(sigma, fresh?(a, t)`1)
+
+% auxiliar lemma for aux_lemma_fresh_sub
+fresh_alpha_equivalent: LEMMA
+   fresh(Nabla)(a, t) AND alpha(Nabla)(t, s) => fresh(Nabla)(a, s)
+
+% useful lemma that appear in the proof of correctness
+aux_lemma_fresh_sub_reverse1: LEMMA
+   C_fresh_subs(Nabla)(sigma, fresh?(a, t)`1) AND fresh?(a, t)`2 
+   => fresh(Nabla)(a, Subs(sigma)(t))
+
+% lemma to be used in the theorem of completeness  
+aux_lemma_fresh_sub: LEMMA
+   C_fresh_subs(Nabla)(sigma, Delta) AND more_gen_sub?(Nabla)(gamma, sigma) AND idempotent?(gamma) =>
+   C_fresh_subs(Nabla)(sigma, C_fresh_subs?(gamma, Delta)`1)
+
+% aux lemma for the one below
+aux_lemma_fresh_sub_aux: LEMMA
+   fresh(Nabla)(a, Subs(sigma)(t)) => fresh?(a, t)`2
+
+% lemma to be used in the proof of completeness 
+aux_lemma_fresh_sub2: LEMMA 
+   C_fresh_subs(Nabla)(sigma, Delta) AND more_gen_sub?(Nabla)(gamma, sigma) AND idempotent?(gamma) 
+   => C_fresh_subs?(gamma, Delta)`2
+
+END C_substitution
