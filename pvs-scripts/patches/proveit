@@ -12,8 +12,7 @@
 # is claimed in the United States under Title 17, U.S.Code. All Other
 # Rights Reserved.
 #
-# Mariano Moscato (08/02/2022)
-# National Institute of Aerospace
+# Mariano Moscato (10/11/2023)
 #
 # Script for batch proving in PVS 
 #  
@@ -24,7 +23,12 @@ PVSPATH=@PVSPATH@
 # Nothing below this line should need modification
 #
 
-# if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
+readVersion() {
+    if ! type "$PVSPATH/pvs" > /dev/null 2>&1  || ! VERSION=$($PVSPATH/pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g') ; then
+	printf "PVS could not be located. Please double check PVS installation.\n"
+	exit 1;
+    fi
+}
 
 type "$PVSPATH/pvs"  > /dev/null 2>&1
 if [ $? -eq 0 ]; then
@@ -44,8 +48,6 @@ else
 	fi
     fi
 fi
-
-VERSION=$("$PVSPATH"pvs -raw -E '(format t "~&~%PVSIOVERSION ~a~%~%" *prooflite-version*)(bye)' 2> /dev/null | grep PVSIOVERSION | sed 's/^.*PVSIOVERSION \(.*\)$/\1/g')
 
 PVS_RETURN_VALUE_MISSED_FORMS=142 # PVS' return value indicating missed (ie, not proved) formulas
 
@@ -137,36 +139,41 @@ compile_infile_name() {
       LISPDEPENDENCIES=relative
       # If  <file>, set context to its dirname and pvsfile to its base name
   else
-      PVSCONTEXT=$(cd "$(dirname $ARG)"; pwd -P)
-      PVSFILE=`basename $ARG .pvs`
-      if [ ! -f $PVSCONTEXT/$PVSFILE.pvs ]; then
-	  case $ARG in
-	      *@*) predir=`echo $ARG | sed -e "s/\([^@]*\)@.*/\1/"`
-		   THFS=`echo $ARG | sed -e "s/[^@]*@//"`
-		   if [ -z "$predir" ]; then
-		       PVSCONTEXT=$(pwd -P)
-		   else 
-		       if [ -d "$predir" ]; then
-			   PVSCONTEXT=$predir
-		       else
-			   echo "Error: $predir is not a directory"
-			   exit 1
-		       fi
-		   fi
-		   if [ "$THFS" ]; then
-		       PVSFILE=$THFS
-		       THEORIES=`echo $THFS | sed -e "s/\..*,/,/g" -e "s/\..*//"`
-		   else
-		       echo "Error: At least one theory has to be specified in $ARG"
-		       exit 1
-		   fi;;
-	      *)  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
+      case $ARG in
+	  *@*@*)
+	      echo "Error: at most one @-sign can be provided in $ARG"
+	      exit 1;;
+	  *@*)
+	      predir=`echo $ARG | sed -e "s/\([^@]*\)@.*/\1/"`
+	      THFS=`echo $ARG | sed  -e 's/,$//' -e "s/[^@]*@//"`
+	      if [ -z "$predir" ]; then
+		  PVSCONTEXT=$(pwd -P)
+	      else 
+		  if [ -d "$predir" ]; then
+		      PVSCONTEXT=$predir
+		  else
+		      echo "Error: $predir is not a directory"
+		      exit 1
+		  fi
+	      fi
+	      if [ "$THFS" ]; then
+		  PVSFILE=$THFS
+		  THEORIES=`echo $THFS | sed -e "s/\.[^,]*,/,/g" -e "s/\.[^,]*//"`
+	      else
+		  echo "Error: At least one theory has to be specified in $ARG"
+		  exit 1
+	      fi;;
+	  *)
+	      PVSCONTEXT=$(cd "$(dirname $ARG)" && pwd -P)
+	      PVSFILE=`basename $ARG .pvs`
+	      if [ ! -f $PVSCONTEXT/$PVSFILE.pvs ]; then
+		  FILENOTFOUND="$PVSCONTEXT/$PVSFILE.pvs"
 		  if [ -z "$NOFILE" ]; then
 		      echo "Error: File $FILENOTFOUND not found"
 		      exit 1;
-		  fi;;
-	  esac
-      fi
+		  fi
+	      fi;;
+      esac
   fi
 }
 
@@ -251,6 +258,8 @@ cleanup() {
 # Help print command
 #
 usage() {
+    readVersion
+    
     echo "NAME
   proveit $VERSION -- runs PVS in batch mode
 
@@ -697,6 +706,7 @@ proveit() {
       export PROVEITLISPOUTBASENAME=$BASEOUT
       
       if [ "$DEBUG" ]; then
+	  readVersion
 	  export DEBUG
 	  echo "QUIET=$QUIET"
 	  echo "PROVEITVERSION=$VERSION"
@@ -763,43 +773,44 @@ while [ $# -gt 0 ]
 do
   case $1 in
     --debug)
-      DEBUG=yes;;
+	DEBUG=yes;;
     -h|-help|--help)    
-	  usage
-	  exit 0;;
+	usage
+	exit 0;;
     -version|--version)
-	  echo $VERSION
-	  exit 0;;
+	readVersion
+	echo $VERSION
+	exit 0;;
     .*) 
-      EXT=$1;;
+	EXT=$1;;
     -lisp|--lisp)    
-	  case $2 in
-	      allegro) 
-		  LISP='allegro';;
-	      cmulisp) 
-		  LISP='cmulisp'
-		  PVSBIN='PVSBIN';;
-	      sbclisp)
-		  LISP='sbclisp'
-		  PVSBIN='PVSBIN';;
-	      *) 
-		  echo "Error: Only allegro, cmulisp, and sbcl are currently available"
-		  exit 1;;
-	  esac
-	  if [ "$LISP" ]; then
-	      PVSLISP="-lisp $LISP"
-	  fi
-	  shift;;
+	case $2 in
+	    allegro) 
+		LISP='allegro';;
+	    cmulisp) 
+		LISP='cmulisp'
+		PVSBIN='PVSBIN';;
+	    sbclisp)
+		LISP='sbclisp'
+		PVSBIN='PVSBIN';;
+	    *) 
+		echo "Error: Only allegro, cmulisp, and sbcl are currently available"
+		exit 1;;
+	esac
+	if [ "$LISP" ]; then
+	    PVSLISP="-lisp $LISP"
+	fi
+	shift;;
     -d|-dir|--dir)           
-      OUTDIR=$2
-      if [ ! -e "$OUTDIR" ]; then
-        mkdir $OUTDIR
-      fi
-      if [ ! -d "$OUTDIR" ]; then
-        echo "Error: $OUTDIR is not a directory"
-        exit 1
-      fi
-	  shift;;
+	OUTDIR=$2
+	if [ ! -e "$OUTDIR" ]; then
+            mkdir $OUTDIR
+	fi
+	if [ ! -d "$OUTDIR" ]; then
+            echo "Error: $OUTDIR is not a directory"
+            exit 1
+	fi
+	shift;;
     -t|-top|--top)           
 	TOP=$2
 	shift;;
@@ -827,16 +838,16 @@ do
     --backup-summaries)
 	BACKUP_SUMMARIES=t;;
     -p|-prelude-ext|--prelude-ext) 
-	  PRELUDEXT=`append $2 $PRELUDEXT`
-	  shift;;
+	PRELUDEXT=`append $2 $PRELUDEXT`
+	shift;;
     -disable|--disable) 
-	  DISABLE=`append $2 $DISABLE`
-	  shift;;
+	DISABLE=`append $2 $DISABLE`
+	shift;;
     -disable-oracles|--disable-oracles) 
-	  DISABLE="_";;
+	DISABLE="_";;
     -enable|--enable) 
-	  ENABLE=`append $2 $ENABLE`
-	  shift;;
+	ENABLE=`append $2 $ENABLE`
+	shift;;
     --retry-with-tccs)
 	LISPRETRYWITHTCCS=t;;
     --auto-fix)
