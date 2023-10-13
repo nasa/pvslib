@@ -14,7 +14,7 @@
     (if libid
 	(let ((duplib (gethash libid *extra-pvslibs*)))
 	  (if duplib
-	      (format t "~%Warning: Duplicated library id ~a in ~a and ~a.pvslib~%"
+	      (format t "~&Warning: Duplicated library id ~a in ~a and ~a.pvslib~%"
 		      libid pvslib-path (car (gethash "dir" duplib)))
 	    (progn
 	      (setf (gethash "dir" pvslib-record) (list pvslib-dir))
@@ -39,7 +39,6 @@
 		    (if (uiop:directory-exists-p dirname)
 			(let ((newdir (format nil "~a/" dirname)))
 			  (unless (member newdir *pvs-library-path* :test #'equal)
-			    (push newdir *pvs-library-path*)
 			    (list newdir)))
 		      (format t "~%Warning: Library subdirectory ~a of library ~a not found~%"
 			      dirname libid))))))
@@ -61,13 +60,21 @@
     (extra-pvslib-record pvslib-dir pvslib-path pvslib-record)))
 
 (defun extra-load-pvslibs-rec (libs)
+  "LIBS is assumed to be a list of strings and each string is assumed to
+represent a directory. A file called '.pvslib' is searched for in each
+of such directories. If the file is found, the information contained in it
+is collected and stored in specific global variables (see above).
+
+This function returns the list of directories recognized as sub-libraries
+in all the '.pvslib' files in the directories contained in LIBS."
   (when libs
     (let* ((pvslib-dir  (car libs))
 	   (pvslib-path (merge-pathnames pvslib-dir
 					 (make-pathname :name ".pvslib"))))
-      (when (file-exists-p pvslib-path)
-	(let ((morelibs (extra-hash-pvslib pvslib-dir pvslib-path)))
-	  (extra-load-pvslibs-rec (append morelibs (cdr libs))))))))
+      (if (file-exists-p pvslib-path)
+	  (let((additional-libs (extra-hash-pvslib pvslib-dir pvslib-path)))
+	    (append additional-libs (extra-load-pvslibs-rec (append additional-libs (cdr libs)))))
+	(extra-load-pvslibs-rec (cdr libs))))))
 
 (defun extra-pvslib-keyval (id key)
   (let ((pvslib (gethash id *extra-pvslibs*)))
@@ -81,7 +88,11 @@
   (clrhash *extra-pvslibs*)
   (clrhash *extra-pvslib-deps*)
   (setf *extra-preludelibs* '())
-  (extra-load-pvslibs-rec *pvs-library-path*)
+  (let ((sub-libs (extra-load-pvslibs-rec *pvs-library-path*)))
+    (when sub-libs
+      ;; [M3] The sub-libraries are added to the end of *pvs-library-path*
+      ;; to allow shadowing of libraries.
+      (setf *pvs-library-path* (append *pvs-library-path* sub-libs))))
   (dolist (id *extra-preludelibs*)
     (let ((libdir (extra-pvslib-keyval id "dir")))
       (format t "Loading prelude library ~a (~a)~%" id libdir)
@@ -99,7 +110,7 @@
 	do
 	(loop for key being the hash-keys of rec
 	      using (hash-value val)
-	      do (format t "~a:~{~a~^:~}|" key val))
+	      do (or (format t "~a:~{~a~^:~}|" key val) id))
 	(format t "~%")))
 
 ;;; LOADING .pvslib FILES
