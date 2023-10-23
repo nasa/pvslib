@@ -1,5 +1,4 @@
 hp_def : THEORY
- % Hello There!
  
 %-------------------------------------------------------------------------% 
 %-------------------------------------------------------------------------%
@@ -20,7 +19,7 @@ hp_def : THEORY
 %     -----%
 
 %%--------------------------------------------
-Importing structures@more_list_props
+IMPORTING structures@more_list_props
 %%To have nice properties of lists
 %%--------------------------------------------
 
@@ -31,7 +30,11 @@ Importing structures@more_list_props
 %%--------------------------------------------
 
   Environment : TYPE = [ nat -> real ]
-  
+
+  % Environments are equal at every point except possibly at k
+  eq_env_but_at(env1,env2:Environment,k:nat) : MACRO bool =
+     FORALL(i:nat) : i /= k IMPLIES env1(i) = env2(i)
+
 %%--------------------------------------------
 %%Booleans on environments
 %%--------------------------------------------
@@ -66,11 +69,28 @@ Importing structures@more_list_props
   sqrt(r:RealExpr): MACRO RealExpr = sqrt_safe_re(r)
 
 %%--------------------------------------------
+%%dL Variables : A wrapper around variable indices
+%%--------------------------------------------
+dLVar : DATATYPE
+BEGIN
+  dlvar(dlvar_index:nat) : dlvar?
+END dLVar
+
+dlvar_inj : LEMMA
+  FORALL (v1,v2:dLVar):
+    dlvar_index(v1) = dlvar_index(v2) IMPLIES
+    v1=v2
+
+dlvar_eq : LEMMA
+  FORALL (v:dLVar):
+  dlvar(dlvar_index(v)) = v
+
+%%--------------------------------------------
 %%Building block of variable assignments MapExpr
 % nat is variable, RealExpr is assignment
 %%--------------------------------------------
 
-  MapExpr     : TYPE = [ nat, RealExpr ] 
+  MapExpr     : TYPE = [ dLVar, RealExpr ] 
 
 %%--------------------------------------------
 %%Injective map expression:
@@ -96,6 +116,12 @@ Importing structures@more_list_props
         FORALL (i,j:below(length(l))): i /= j
         IMPLIES nth(l,i)`1 /= nth(l,j)`1
 
+  mapexpr_inj_eq_index : LEMMA
+    FORALL (l:list[MapExpr]):
+      mapexpr_inj(l) IFF
+        FORALL (i,j:below(length(l))): i /= j
+        IMPLIES dlvar_index(nth(l,i)`1) /= dlvar_index(nth(l,j)`1)
+
 %%--------------------------------------------
 %%Define Assigns and ODEs
 % this will be how variables and assignments
@@ -108,7 +134,7 @@ Importing structures@more_list_props
   ODEs        : TYPE = MapExprInj
 
   % null of MapExprInj type
-  null_MapExprInj: JUDGEMENT null[[nat,RealExpr]] HAS_TYPE MapExprInj
+  null_MapExprInj: JUDGEMENT null[[dLVar,RealExpr]] HAS_TYPE MapExprInj
 
   % cdr of MapExprInj is MapExprInj judgement
   cdr_is_MapExprInj : JUDGEMENT
@@ -126,14 +152,14 @@ Importing structures@more_list_props
 %%--------------------------------------------
 
   in_map(me:MapExprInj)(n:nat) : bool =
-    EXISTS (i:below(length(me))): nth(me,i)`1 = n
+    EXISTS (i:below(length(me))): dlvar_index(nth(me,i)`1) = n
 
   % A variable is in_map of a list means it is
   % the first variable or in the cdr of the list
   in_map_cons : LEMMA
     FORALL(mapexpr: MapExpr, me: MapExprInj, i: (in_map(me))) :
       mapexpr_inj(cons(mapexpr, me)) IMPLIES
-        (in_map(cons(mapexpr, me))(i) IFF mapexpr`1 /= i)
+        (in_map(cons(mapexpr, me))(i) IFF dlvar_index(mapexpr`1) /= i)
 	
   %no variable is in the null map
   in_map_null_false : LEMMA
@@ -145,7 +171,7 @@ Importing structures@more_list_props
 %%--------------------------------------------
 
   not_in_map(me:MapExprInj)(n:nat) : bool =
-    FORALL (i:below(length(me))): nth(me,i)`1 /= n
+    FORALL (i:below(length(me))): dlvar_index(nth(me,i)`1) /= n
 
 %%--------------------------------------------
 %% Every variable is not in the null map
@@ -160,7 +186,7 @@ Importing structures@more_list_props
 %%--------------------------------------------
 
   index_of(me:MapExprInj,i:(in_map(me)))(k:below(length(me))) : bool =
-     nth(me,k)`1 = i
+     dlvar_index(nth(me,k)`1) = i
 
   index_of_j : JUDGEMENT
     index_of(me:MapExprInj,i:(in_map(me))) HAS_TYPE (singleton?[below(length[MapExpr](me))])
@@ -171,26 +197,32 @@ Importing structures@more_list_props
   expr_car : LEMMA
     FORALL(mapexpr: MapExpr, me: MapExprInj) :
       mapexpr_inj(cons(mapexpr, me))
-      IMPLIES expr(cons(mapexpr, me))(mapexpr`1) = mapexpr`2
+      IMPLIES expr(cons(mapexpr, me))(dlvar_index(mapexpr`1)) = mapexpr`2
 
   expr_not_car : LEMMA
     FORALL(mapexpr: MapExpr, me: MapExprInj, i: (in_map(me))) :
-      mapexpr`1/=i AND mapexpr_inj(cons(mapexpr, me))
+      dlvar_index(mapexpr`1)/=i AND mapexpr_inj(cons(mapexpr, me))
       IMPLIES expr(cons(mapexpr, me))(i) = expr(me)(i)
 
   null_is_MapExprInj : JUDGEMENT
     null HAS_TYPE MapExprInj
 
-  % This simplifies some strategies
-  same_var(i,j:nat) : bool =
-    i=j
+  same_var(v1,v2:dLVar) : bool =
+    dlvar_index(v1) = dlvar_index(v2)
 
-  pairwise_distinct_vars?(l:list[nat]): bool =
+  different_var?(v1:dLVar)(v2:dLVar) : MACRO bool =
+    NOT same_var(v1,v2)
+
+  same_var_eq : LEMMA
+    FORALL (v1,v2:dLVar):
+    same_var(v1,v2) IFF (v1 = v2)
+
+  pairwise_distinct_vars?(l:list[dLVar]): bool =
     FORALL (i,j:below(length(l))): i /= j IMPLIES NOT same_var(nth(l,i),nth(l,j))
 
   ZeroEnv(n:nat):real = 0 
 
-  val(n:nat)(env:Environment) : real = env(n)
+  val(v:dLVar)(env:Environment) : real = env(dlvar_index(v))
 
   cnst(r:real)(env:Environment) : real = r
 
@@ -205,42 +237,42 @@ Importing structures@more_list_props
 %% max variable of an ode
 %-------------------------------------------------------------------------
 
-  max_var_rec(ode:ODEs,mx:nat) : RECURSIVE nat =
+  max_var_rec(ode:list[MapExpr],mx:nat) : RECURSIVE nat =
     IF null?(ode) THEN mx
-    ELSE max_var_rec(cdr(ode),max(mx,car(ode)`1))
+    ELSE max_var_rec(cdr(ode),max(mx,dlvar_index(car(ode)`1)))
     ENDIF
     MEASURE length(ode)
 
   max_var_rec_pull: LEMMA
-    FORALL(ode:ODEs, mx:nat):
+    FORALL(ode:list[MapExpr], mx:nat):
     max(mx, max_var_rec(ode,0)) = max_var_rec(ode,mx)
 
-  max_var(ode:ODEs) : nat = max_var_rec(ode,0)
+  max_var(ode:list[MapExpr]) : nat = max_var_rec(ode,0)
 
- max_var_max: LEMMA
-   FORALL(ode:ODEs,i:below(length(ode))):
-   nth(ode,i)`1 <= max_var(ode)
+  max_var_max: LEMMA
+    FORALL(ode:list[MapExpr],i:below(length(ode))):
+      dlvar_index(nth(ode,i)`1) <= max_var(ode)
 
- max_var_exist: LEMMA
-   FORALL(ode:{oo:ODEs| cons?(oo)}):
-   EXISTS(i:below(length(ode))):
-   nth(ode,i)`1 = max_var(ode)
+  max_var_exist: LEMMA
+    FORALL(ode:(cons?[MapExpr])):
+      EXISTS(i:below(length(ode))):
+      dlvar_index(nth(ode,i)`1) = max_var(ode)
 
- pigeon_map: LEMMA
- FORALL(f:[nat -> nat],n:posnat):
- (FORALL(i:below(n)):
- f(i) < n-1)
- IMPLIES
- (EXISTS(j1:below(n), j2:{jj2:below(n) | jj2 /= j1}):
- f(j1) = f(j2))
+  pigeon_map: LEMMA
+    FORALL(f:[nat -> nat],n:posnat):
+    (FORALL(i:below(n)):
+      f(i) < n-1)
+     IMPLIES
+    (EXISTS(j1:below(n), j2:{jj2:below(n) | jj2 /= j1}):
+     f(j1) = f(j2))
 
- max_var_length: LEMMA
- FORALL(ode:ODEs):
- max_var(ode) >= length(ode)-1
+  max_var_length: LEMMA
+    FORALL(ode:ODEs):
+      max_var(ode) >= length(ode)-1
 
- nip_max_var: LEMMA
- FORALL(ode:ODEs, i:above(max_var(ode))):
- not_in_map(ode)(i)
+  nip_max_var: LEMMA
+    FORALL(ode:ODEs, i:above(max_var(ode))):
+      not_in_map(ode)(i)
 
   NQB_REL : TYPE = {nqb_eq,nqb_neq,nqb_le,nqb_lt,nqb_ge,nqb_gt}
 

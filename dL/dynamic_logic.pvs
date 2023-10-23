@@ -36,14 +36,14 @@ dynamic_logic : THEORY
 %%--------------------------------------------
 
   l,m: VAR Assigns
-  j,k: VAR nat
+  i,j,k: VAR nat
   re:  VAR RealExpr
   r :  VAR real
 
   Gamma,Delta : VAR Formulas
   P,Q,J,R     : VAR BoolExpr
   A,B         : VAR HP
-  i           : VAR nat
+  v           : VAR dLVar
   qQ          : VAR QBoolExpr
   nnP         : VAR NormNQBool
   Progress    : VAR RealExpr
@@ -554,16 +554,16 @@ dynamic_logic : THEORY
     SOMERUNS(STAR(A),P) = DLOR(P,SOMERUNS(A,SOMERUNS(STAR(A),P)))
 
   % Any operator with a box
-  % [any(x_i,qQ)]P <-> forall(X): qQ(X) -> [x_i := X]P
+  % [any(v)]P <-> forall(x): [v := x]P
   dl_anyb: LEMMA
-    ALLRUNS(ANY(i,qQ),P) =
-    DLFORALL(LAMBDA(X:real):(qQ(X) IMPLIES SUB((:(i,cnst(X)):))(P)))
+    ALLRUNS(ANY(v),P) =
+    DLFORALL(LAMBDA(x:real): SUB((:(v,cnst(x)):))(P))
 
   % Any operator with a diamond
-  % <any(x_i,qQ)>P <-> exists(X:real): qQ(X) /\  [x_i := X]P
+  % <any(v)>P <-> exists(x:real): [v := x]P
   dl_anyd: LEMMA
-    SOMERUNS(ANY(i,qQ),P) =
-    DLEXISTS(LAMBDA(X:real):(qQ(X) AND SUB((:(i,cnst(X)):))(P)))
+    SOMERUNS(ANY(v),P) =
+    DLEXISTS(LAMBDA(x:real): SUB((:(v,cnst(x)):))(P))
     
   % Box with AND
   % [A](P /\ Q) <-> [A]P /\ [A]Q
@@ -676,29 +676,27 @@ dl_Vd: LEMMA
    FORALL (Gamma,Delta)(A)(b:bool):
       ( cons(DLBOOL(b),Gamma) |- ( cons(ALLRUNS(A,DLBOOL(b)),Delta)) )
 
-
 %-------------------------------------------------------------------------
-%% END Axiomatization (dL Axioms, proven in PVS) (not done!) 
+%% END Axiomatization (dL Axioms, proven in PVS) 
 %-------------------------------------------------------------------------
-
 
   %=R
   dl_subr: LEMMA
-  (cons(val(i)=re,Gamma) |- cons(SUB((:(i,re):))(Q),Delta))
+  (cons(val(v)=re,Gamma) |- cons(SUB((:(v,re):))(Q),Delta))
   IMPLIES
-  (cons(val(i)=re,Gamma) |- cons(Q,Delta))
+  (cons(val(v)=re,Gamma) |- cons(Q,Delta))
 
   %=L
   dl_subl: LEMMA
-  (cons(val(i)=re,cons(SUB((: (i,re):))(P), Gamma)) |- Delta)
+  (cons(val(v)=re,cons(SUB((: (v,re):))(P), Gamma)) |- Delta)
   IMPLIES
-  (cons(val(i)=re,cons(P,Gamma)) |- Delta)
+  (cons(val(v)=re,cons(P,Gamma)) |- Delta)
 
   dl_subf: LEMMA
-  FORALL(i:nat | (fresh?(re)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i))):
-  ((cons(val(i)=re, Gamma)) |- cons(P, Delta))
+  FORALL(v:dLVar | (fresh?(re)(dlvar_index(v)) AND fresh?(Gamma)(dlvar_index(v)) and fresh?(Delta)(dlvar_index(v)))):
+  ((cons(val(v)=re, Gamma)) |- cons(P, Delta))
   IMPLIES
-  (Gamma |- cons(SUB((: (i,re) :))(P), Delta))
+  (Gamma |- cons(SUB((: (v,re) :))(P), Delta))
   
 %-------------------------------------------------------------------------
 %% END Propositional sequent calculus proof rules
@@ -754,7 +752,6 @@ dl_Vd: LEMMA
         |-
         DLEXISTSR(LAMBDA (X:RealExpr): SOMERUNS(Ae(X),P)) )
 
-
   % Differential auxiliary
   %  Gamma |- Exists(X):Qe(X),Delta   Exists(X):Qe(X) |- P
   %  Qe(X),Gamma |- (X' = a(x) + b(x)) AND ([x'=f(x),X'=a(x)X+b(x) /\ R]Qe(X)),Delta
@@ -762,15 +759,15 @@ dl_Vd: LEMMA
   %          Gamma |- [x'=f(x) /\ R]P, Delta
   dl_differential_auxiliary: LEMMA
     FORALL (Q:(ddl_dom?))(Gamma,Delta:Formulas)(P:BoolExpr)(ode:ODEs)
-     (a,b:(cont_re?(Q)),G:BoolExpr)( i:(fresh_li?(ode)) | fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i)):
-       ((EXISTS(re:RealExpr | fresh?(re)(i) ): cons(val(i)=re, Gamma)
+     (a,b:(cont_re?(Q)),G:BoolExpr)(v: dLVar |
+       LET i = dlvar_index(v) IN fresh_li?(ode)(i) AND fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND fresh?(Gamma)(i) AND
+                                 fresh?(Delta)(i)):
+       ((EXISTS(re:RealExpr | fresh?(re)(dlvar_index(v)) ): cons(val(v)=re, Gamma)
         |-
-	cons(ALLRUNS(DIFF( cons( (i, a*val(i)+b), ode),Q),G), Delta))
+	cons(ALLRUNS(DIFF( cons( (v, a*val(v)+b), ode),Q),G), Delta))
 	AND ((: G :) |- (: P :))) AND ( Gamma |- (: P :))
         IMPLIES
          (Gamma |-  cons(ALLRUNS(DIFF(ode,Q),P), Delta))
-
-
 
 %-------------------------------------------------------------------------
 %% END stuff used in dl strats
@@ -787,8 +784,6 @@ dl_Vd: LEMMA
   % (Gamma |- J,Delta)     (J |- P)     (J |- [A]J)
   % -----------------------------------------------
   %             Gamma |- [A*]P,Delta
-
-
 
   dl_bounded_loop
   : LEMMA
@@ -1127,9 +1122,7 @@ dl_Vd: LEMMA
       (Gamma |- cons(ALLRUNS(DIFF(ode,Q AND R),P),Delta)) IMPLIES
       (Gamma |- cons(ALLRUNS(DIFF(ode,Q),P),Delta))
 
-
 %% DG
-
 
   % Differential ghost
   % Gamma |- Exists(X):[x'=f(x),X'=a(x)X+b(x) /\ P]Q,Delta
@@ -1138,10 +1131,12 @@ dl_Vd: LEMMA
 
   dl_differential_ghost: LEMMA
         FORALL (Q:(ddl_dom?))(Gamma,Delta:Formulas)(P:BoolExpr)(ode:ODEs)
-     (a,b:(cont_re?(Q)),G:BoolExpr)(i:(fresh_li?(ode)) | fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND fresh?(Gamma)(i) and fresh?(Delta)(i)):
+     (a,b:(cont_re?(Q)),G:BoolExpr)(v:dLVar |
+       LET i = dlvar_index(v) IN fresh_li?(ode)(i) AND fresh?(P)(i) AND fresh?(Q)(i) AND fresh?(a)(i) AND fresh?(b)(i) AND
+                                 fresh?(Gamma)(i) AND fresh?(Delta)(i)):
         (Gamma
         |-
-	cons(DLEXISTSRf(LAMBDA(re:RealExpr): ALLRUNS(SEQ(ASSIGN((:(i,re):)),DIFF( cons( (i, a*val(i)+b), ode),Q)),G),i), Delta))
+	cons(DLEXISTSRf(LAMBDA(re:RealExpr): ALLRUNS(SEQ(ASSIGN((:(v,re):)),DIFF( cons( (v, a*val(v)+b), ode),Q)),G), dlvar_index(v)),Delta))
 	AND ((: G :) |- (: P :)) AND ( Gamma |- (: P :))
         IMPLIES
          (Gamma |-  cons(ALLRUNS(DIFF(ode,Q),P), Delta))
