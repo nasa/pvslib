@@ -6,16 +6,15 @@
     "dl_true_implies" "dl_implies_true" "dl_false_implies" "dl_implies_false"
     "dl_forall_bool" "dl_exists_bool"
     "dl_assignb" "dl_assignd" "dl_anyb" "dl_anyd" "dl_composeb" "dl_composed"
-    "dl_choiceb" "dl_choiced" "dl_testb" "dl_testd" "dl_dualDirectb" "dl_dualDirectd"))
+    "dl_choiceb" "dl_choiced" "dl_testb" "dl_testd"))
 
 (defparameter *dl-sub-rws*
   '("dl_sub_ge" "dl_sub_gt" "dl_sub_le" "dl_sub_lt" "dl_sub_eq" "dl_sub_neq"
     "dl_sub_and" "dl_sub_or" "dl_sub_not" "dl_sub_implies" "dl_sub_iff"
-    "dl_sub_allruns" "dl_sub_someruns" "dl_sub_forall" "dl_sub_exists"
+    "dl_sub_forall" "dl_sub_exists"
     "dl_subre_const" "dl_subre_plus" "dl_subre_neg" "dl_subre_minus"
     "dl_subre_prod_scal1" "dl_subre_prod_scal2" "dl_subre_prod"
-    "dl_subre_exp" "dl_sub_bool" "dl_subre_lambda"
-    "dl_subre_val" "SUB_MapExpr"
+    "dl_subre_exp" "dl_sub_bool" "dl_subre_val" "SUB_MapExpr"
     ))
 
 (defparameter *dl-domain-rws*
@@ -62,7 +61,7 @@
     (try-then
      ((unroll fnum!)
       (for@ nil (expand "nth" fnum!))))))
-  "Unrolls FOALL(n:below(length(...))):..."
+  "Unrolls FORALL(n:below(length(...))):..."
   "Unrolling FORALL(n:below(length(...))):...")
 
 (defun is-null-pvslist (expr)
@@ -395,15 +394,19 @@ sequent is pretty-printed unless PP? is set to nil."
   "Hiding DDL formulas in ~a")
 
 
-(defstep dl-subs (&optional (hp? t))
-  (let ((rws  (append *dl-sub-rws* (when hp? (list "SUB_HP")))))
-    (for@ nil
-     (try-branch
-      (rewrite* rws)
-      ((expand* "SUB_MapVar" "same_var")
-       (then (skosimp* 1)
-	     (eval-formula 1 :quiet? t)))
-      (skip))))
+(defstep dl-subs ()
+  (let ((rws *dl-sub-rws*))
+    (then
+     (for@ nil
+	   (expand* "pairwise_distinct_vars?" "distinct_var?"))
+     (flatten)
+     (for@ nil
+	   (try-branch
+	    (rewrite* rws)
+	    ((then (expand* "SUB_MapVar") (assert))
+	     (then (skosimp* 1)
+		   (eval-formula 1 :quiet? t)))
+	    (skip)))))
   "Internal strategy. Applies DDL substitution rules." 
   "")
 
@@ -463,9 +466,9 @@ unless PP? is set to nil."
   (and (is-function-expr expr "ALLRUNS")
        (is-function-expr (args1 expr) "ASSIGN")))
 
-(defstep dl-assignb (&optional (dlfnum *) fnum (hp? t) (pp? t) dont-fail?)
+(defstep dl-assignb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
   (dl-lemma__$ "dl_assignb" dlfnum fnum
-	       (dl-subs$ hp?)
+	       (dl-subs$)
 	       :equiv? t
 	       :side *
 	       :ftest dl-assignb-lmbd
@@ -481,9 +484,9 @@ unless PP? is set to nil."
   (and (is-function-expr expr "SOMERUNS")
        (is-function-expr (args1 expr) "ASSIGN")))
 
-(defstep dl-assignd (&optional (dlfnum *) fnum (hp? t) (pp? t) dont-fail?)
+(defstep dl-assignd (&optional (dlfnum *) fnum (pp? t) dont-fail?)
   (dl-lemma__$ "dl_assignd" dlfnum fnum
-	       (dl-subs$ hp?)
+	       (dl-subs$)
 	       :equiv? t
 	       :side *
 	       :ftest dl-assignd-lmbd
@@ -630,40 +633,6 @@ formula FNUM. If FNUM is not provided, the first DDL sequent in the
 consequent is used. By default, the DDL sequent is pretty-printed
 unless PP? is set to nil."
   "Applying lemma dl_testd to DDL formula ~a")
-
-(defun dl-dualb-lmbd (expr &optional side)
-  (and (is-function-expr expr "ALLRUNS")
-       (is-function-expr (args1 expr) "DUAL")))
-
-(defstep dl-dualb (&optional (dlfnum *) fnum (pp? t) dont-fail?)
-  (dl-lemma__$ "dl_dualDirectb" dlfnum fnum
-	       :equiv? t
-	       :side *
-	       :ftest dl-dualb-lmbd
-	       :pp? pp?
-	       :dont-fail? dont-fail?)
-  "Applies the lemma dl_dualDirectb to DDL formula DLFNUM of DDL
-sequent in formula FNUM. If FNUM is not provided, the first DDL
-sequent in the consequent is used. By default, the DDL sequent is
-pretty-printed unless PP? is set to nil."
-  "Applying lemma dl_dualDirectb to DDL formula ~a")
-
-(defun dl-duald-lmbd (expr &optional side)
-  (and (is-function-expr expr "SOMERUNS")
-       (is-function-expr (args1 expr) "DUAL")))
-
-(defstep dl-duald (&optional (dlfnum *) fnum (pp? t) dont-fail?)
-  (dl-lemma__$ "dl_dualDirectd" dlfnum fnum
-	       :equiv? t
-	       :side *
-	       :ftest dl-duald-lmbd
-	       :pp? pp?
-	       :dont-fail? dont-fail?)
-  "Applies the lemma dl_dualDirectd to DDL formula DLFNUM of DDL
-sequent in formula FNUM. If FNUM is not provided, the first DDL
-sequent in the consequent is used. By default, the DDL sequent is
-pretty-printed unless PP? is set to nil."
-  "Applying lemma dl_dualDirectd to DDL formula ~a")
 
 ;;
 ;; Logical Tactics

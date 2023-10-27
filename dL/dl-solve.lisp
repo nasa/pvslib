@@ -91,7 +91,7 @@
 ;; 	 (replace assigns dlseq :hide? t)
 ;; 	 ;; @M3 #TODO same here
 ;; 	 ;; (rewrite "dl_assignb")
-;; 	 ;; (dl-subs hp?)
+;; 	 ;; (dl-subs)
 ;; 	 ;; (expand "same_var")
 ;; 	 (delabel (dlseq assigns zip-sol)))
 ;; 	;; Prove cnstlins of ODE
@@ -172,7 +172,7 @@
 		(simplify_init_zip_sol)
 		(simplify_Y_sol_ex)
 		(rewrite "dl_assignb")
-		(dl-subs :hp? nil)
+		(dl-subs)
 		(lift_them_all)
 		(simplify_evaluable_ites)
 		(reveal dlseq)
@@ -279,7 +279,7 @@
 		     (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
 		     (replace Z_def :hide? t)
 		     (beta 1)
-		     (dl-subs :hp? nil))
+		     (dl-subs))
 		  (then ;; on a more complex bexpr, the substitution is done programmatically
 		   (copy solution_lemma)
 		   (replace Z_def solution_lemma :hide? t)
@@ -297,7 +297,7 @@
 		      (reveal Z_def)
 		      (replace Z_def :hide? t)
 		      (beta 1)
-		      (dl-subs :hp? nil))
+		      (dl-subs))
 		     (then
 		      (hide-all-but 1)
 		      (with-tccs (decompose-equality))
@@ -312,7 +312,7 @@
 			 (reveal Z_def)
 			 (replace -1 :hide? t)
 			 (beta 1)
-			 (dl-subs :hp? nil))
+			 (dl-subs))
 			(then
 			 (hide-all-but 1)
 			 (skeep)
