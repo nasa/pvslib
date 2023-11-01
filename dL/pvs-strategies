@@ -221,7 +221,7 @@ PP? is set to nil."
   (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] lem ~a | dlfnum ~a (~a) | fnum ~a (~a) | %->>~a<<-~%"
 				  lem dlfnum (type-of dlfnum) fnum (type-of fnum) *ps*))
 	(dlseq (is-dl-seq fnum))
-	#+pvsdebug (dummy (format t "~&[dl-lemma__] dlseq --> ~a <--~%"  dlseq))
+	#+pvsdebug (dummy (format t "~&[dl-lemma__] dlseq --> ~a <--~%" dlseq))
 	(fn    (car dlseq))
 	(dlfn  (when (and dlseq side)
 		 (let* ((sside (cond ((equal side '-) -1)
@@ -274,7 +274,7 @@ PP? is set to nil."
 	    (then@
 	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 3: about to apply (inst? ~a :where ~a :polarity? ~a) ~%->> ~a <<-~%" nfn! fn! neq *ps*)))
 			  (skip))
-	     (inst? nfn! :where fn! :polarity? neq)	   
+	     (with-tccs (inst? nfn! :where fn! :polarity? neq) :tcc-step (assert))
 	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 4 ~%->> ~a <<-~%" *ps*))) (skip))
 	     (when insts (inst nfn! :terms insts))
 	     #+pvsdebug (let ((dummy (format t "~&[dl-lemma__] 5 ~%->> ~a <<-~%" *ps*))) (skip)))
@@ -308,7 +308,7 @@ PP? is set to nil."
 	     ;;         the kind of TCC and act accordingly.
 	     (then
 	      (relabel lbs nfn!)
-	      (hide-all-but 1)
+	      (hide fn!)
 	      (else*$
 	       ;; TCC on cont_re? conditions
 	       (match "cont_re?(%%)(%%)" step (prove-cont_re-goal))
@@ -399,7 +399,7 @@ sequent is pretty-printed unless PP? is set to nil."
     (then
      (for@ nil
 	   (expand* "pairwise_distinct_vars?" "distinct_var?"))
-     (flatten)
+     (flatten)<
      (for@ nil
 	   (try-branch
 	    (rewrite* rws)
@@ -851,7 +851,7 @@ default, the DDL sequent is pretty-printed unless PP? is set to nil."
       (is-function-expr expr "DLFORALL")
     (is-function-expr expr "DLEXISTS")))
 
-(defstep dl-instt (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
+(defstep dl-inst (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
   (let ((expr (extra-get-expr term *real*)))
     (when expr
       (dl-lemma__$
@@ -1249,19 +1249,13 @@ unless PP? is set to nil."
 
 ;; #TODO degrade to defhelper @M3
 (defstep prove-fresh_re-goal ()
-  (branch
-   (let ((frbws *dl-freshbool-rws*)
-	 (frws *dl-fresh-rws*))
-     (then
-      (for@ nil (expand "fresh_li?"))
-      (for nil (rewrites frbws :fnums 1 :target-fnums 1))
-      (for nil (rewrites frws :fnums 1 :target-fnums 1))
-      (let ((there-is-a-fnum-1 (extra-get-fnum 1)))
-	(when there-is-a-fnum-1
-	  (hide-all-but 1)))
-      (match$ "fresh?(%%)(%%)" step (then (rewrite "fresh?") (prove-fresh_re-goal$)))))
-   (;; to solve " x = G |- " and " |- x /= G" kind of goals 
-    (eval-formula * :quiet? t)))
+  (let ((frws (cons "bool_expr.fresh?" (append *dl-freshbool-rws* *dl-fresh-rws*))))
+    (then
+     (for@ nil
+	   (expand* "pairwise_distinct_vars?" "distinct_var?"))
+     (flatten)
+     (for@ nil (expand "fresh_li?"))
+     (for nil (rewrite* frws :fnums 1 :target-fnums 1))))
    ""
    "")
 
@@ -1769,27 +1763,27 @@ the consequent is used.")
   "Checking if BoolExpr defines an SA set"
   "Checking if ~a defines an SA set")
 
-
 ;;;; JTS additions
 (defun dl-instf-lmbd (expr side)
-    (is-function-expr expr "DLEXISTSRf"))
+  (is-function-expr expr "DLEXISTSRf"))
 
 (defstep dl-instf (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
   (let ((expr (extra-get-expr term "RealExpr")))
-     (then (lemma "dl_existsrRf")
-	  (branch (inst?) ((then (inst -1 expr)
-	  (assert)
-	  (hide 2)
-	  (spread (split) ((dl-pp) (prove-fresh_re-goal))))
-		    (then (skeep)(eval-formula 1 :quiet? t))))))
-  ;  (when expr
-  ;    (dl-lemma__$
-  ;     ("dl_existsrRf") dlfnum fnum
-  ;    :inst-terms expr
-  ;    :side *
-  ;    :ftest dl-instf-lmbd
-  ;    :pp? pp?
-  ;    :dont-fail? dont-fail?)))
+    (when expr
+      (dl-lemma__$
+       ("dl_existsrRf") dlfnum fnum
+       :inst-terms expr
+       :side *
+       :ftest dl-instf-lmbd
+       :pp? pp?
+       :dont-fail? dont-fail?)))
+  
+;     (then (lemma "dl_existsrRf")
+;	  (branch (inst?) ((then (inst -1 expr)
+;	  (assert)
+;	  (hide 2)
+;	  (spread (split) ((dl-pp) (prove-fresh_re-goal))))
+;		    (then (skeep)(eval-formula 1 :quiet? t))))))
   "Instantiates the quantified variable in DDL formula DLFNUM with the
 real number expression TERM. TERM must be a real number
 expression. The formula DLFNUM appears in either the consequent, if
@@ -1798,20 +1792,9 @@ universal, of a DDL sequent in formula FNUM. If FNUM is not provided,
 the first DDL sequent in the consequent is used. By default, the DDL
 sequent is pretty-printed unless PP? is set to nil."
   "Instantiating an existentially quantified DDL formula with ~a")
-;  (then (branch (lemma "dl_existsrRf")
-;		  ( (then 
-;	  (inst?)
-;	  (inst -1 expr)
-;	  (assert)
-;	  (hide 2)
-;	  (spread (split) ((dl-pp)(prove-fresh_re-goal) )))
-;		    (then (skeep)(eval-formula 1 :quiet? t))))))
-
-
 
 (defun dl-subf-lmbd (expr &optional side)
-   (is-function-expr expr "SUB")
-    )
+   (is-function-expr expr "SUB"))
 
 (defstep dl-subf (&optional (dlfnum *) fnum (pp? t) dont-fail?)
   (dl-lemma__$ "dl_subf" dlfnum fnum
@@ -1824,8 +1807,12 @@ consequent is used. By default, the DDL sequent is pretty-printed
 unless PP? is set to nil."
   "Applying lemma dl_composeb to DDL formula ~a")
 
-(defstep dl-inst (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
-  (try  (match "DLEXISTSRf" step  (dl-instf term dlfnum fnum pp? dont-fail?)) (then (dl-composeb)(dl-assignb)(dl-subf)) (dl-instt term dlfnum fnum pp? dont-fail?))
+(defstep dl-inst-re (term &optional (dlfnum *) fnum (pp? t) dont-fail?)
+  (try
+   (match "DLEXISTSRf" step
+	  (dl-instf term dlfnum fnum pp? dont-fail?))
+   (then (dl-composeb)(dl-assignb)(dl-subf))
+   (dl-instt term dlfnum fnum pp? dont-fail?))
   ;(let ((expr (extra-get-expr term *real*)))
   ;  (when expr
   ;    (dl-lemma__$

@@ -12,10 +12,11 @@
 			 eqstr (args2 expr) (cdr pp2)))))
     (when expr
       (branch
-       (then@
-	(when lhs (case-replace lhs :hide? t))
-	(when rhs (case-replace rhs :hide? t))
-	(dl-pp-list-to-listexpr fnum))
+       (with-tccs
+	(then@
+	 (when lhs (case-replace lhs :hide? t))
+	 (when rhs (case-replace rhs :hide? t))
+	 (dl-pp-list-to-listexpr fnum)))
        ((skip)
 	(then
 	 (hide-all-but 1)
