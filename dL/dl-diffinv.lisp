@@ -4,12 +4,10 @@
 
 (defparameter *dl-dift-rws*
   '("ddl_dom_weak"
-
     "dl_dift_val" "dl_dift_const" "dl_dift_plus" "dl_dift_minus" "dl_dift_negative"
     "dl_dift_mult" "dl_dift_exp" "dl_dift_pow"
     ;; "dl_dift_div" ;; TODO @M3 this lemma is missing. Deprecated?
     "dl_dift_sqrt" "dl_dift_divsafe"
-    
     "re_plus_cnst0" "cnst0_plus_re" "sqrt_re_sq"
     "re_minus_cnst0" "cnst0_minus_re"
     "re_prod_cnst0" "cnst0_prod_re" "dl_true_DDL"))
@@ -39,6 +37,7 @@
 	     ((castr! -1 :hide))
 	     (dl-lemma__$
 	      "dl_dI_dlTRUE" dlfn fn!
+	      :finishing-step
 	      (then
 	       (replaces castr! :dir rl)
 	       (expand* nnqb_ "normalize")
@@ -48,8 +47,7 @@
 	       ;; 	(dl-subdift__$)
 	       ;;  ((dl-nqboolder__)
 	       ;; 	 (skip)))
-	       (dl-subdift__$)
-	       ); "dl_true_DDL" 
+	       (dl-subdift__$))
 	      :side +
 	      :pp? pp?
 	      :dont-fail? dont-fail?))
@@ -58,8 +56,7 @@
 	     (typepred nnqb_)
 	     (hide -1)
 	     (replaces -1)
-	     (for@ nil (expand "nqb_to_be"))
-	     (for@ nil (expand "nqb_rel"))))))))))
+	     (for@ nil (expand* "nqb_to_be" "nqb_rel"))))))))))
   "Applies the rule dl_dI to a DDL formula in the right hand side of
 a DDL sequent in formula FNUM. The specific formula in the DDL sequent
 can be specified with the option DLFNUM. If FNUM is not provided, the
