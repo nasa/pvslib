@@ -23,7 +23,14 @@ Main contributions:
   - Quotient rings and properties;
   - Boolean ring and properties; 
   - Chinese Remainder Theorem for Rings;
-  - Chinese Remainder Theorem for the Ring of integers.
+  - Chinese Remainder Theorem for the Ring of integers;
+  - Primality of irreducible elements in Principal Ideal Domains; 
+  - Principal Ideal Domains are Unique Factorization Domains; 
+  - Correctness of the Euclidean gcd algorithm for Euclidean Domains; 
+  - Correctness of the Euclidean gcd algorithm for the rings of integers and Gaussian integers;
+  - Quaternions Algebra and properties;
+  - Hamilton's Quaternions; 
+  - Completeness of 3D rotations using Hamilton's Quaternions.
   
 
 ### Major theorems
@@ -49,7 +56,15 @@ Main contributions:
 | Alternative characterization of principal ideals| `algebra@ring_principal_ideal` | `principal_ideal_charac`| Thaynara de Lima, Andréia Avelar, André Galdino and Mauricio Ayala-Rincón|  
 | Maximal ideals in Commutative Rings| `algebra@ring_with_one_maximal_ideal` | `maximal_ideal_charac`| Thaynara de Lima, Andréia Avelar, André Galdino and Mauricio Ayala-Rincón|  
 | Chinese Remainder Theorem for Rings| `algebra@chinese_remainder_theorem_rings` | `Chinese_Remainder_Theorem` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
-| Chinese Remainder Theorem for the Ring Z|`algebra@chinese_remainder_theorem_Z` | `Chinese_Remainder_Theorem_for_int` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Chinese Remainder Theorem for the Ring Z|`algebra@chinese_remainder_theorem_Z` | `Chinese_Remainder_Theorem_for_int` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Primality of irreducible elements in Principal Ideal Domains| `algebra@principal_ideal_domain` | `PID_prime_el_iff_irreducible` | Thaynara de Lima, André Galdino, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Principal Ideal Domains are Unique Factorization Domains| `algebra@ring_unique_factorization_domain` | `PID_is_UFD` | Thaynara de Lima, André Galdino, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Correctness of the Euclidean gcd algorithm for Euclidean Domains| `algebra@ring_euclidean_algorithm` | `euclidean_gcd_alg_correctness` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Correctness of the Euclidean gcd algorithm for integers instantiating `euclidean_gcd_alg_correctness` | `algebra@ring_euclidean_gcd_algorithm_Z` | `euclidean_gcd_alg_correctness_in_Z` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Correctness of the Euclidean gcd algorithm for Gaussian integers| `algebra@ring_euclidean_gcd_algorithm_Zi` | `euclidean_gcd_alg_in_Zi` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Characterization of Quaternions as Division Rings| `algebra@quaternions` | `quat_div_ring_char` |  Thaynara de Lima, André Galdino, Andréia Avelar, and Mauricio Ayala-Rincón|
+| Completeness of Hamilton's Quaternions 3D rotation| `algebra@quaternions_Hamilton` | `Quaternions_Rotation` | André Galdino, Thaynara de Lima, Andréia Avelar, Bruno Ribeiro, and Mauricio Ayala-Rincón|
+
 
 ![dependency graph](./algebra-zoomed.svg "Dependency Graph")
 
@@ -58,8 +73,9 @@ Main contributions:
 * [Ricky Butler](https://shemesh.larc.nasa.gov/people/rwb/), NASA, USA
 * [André Luiz Galdino](https://galdino.catalao.ufg.br), Federal University of Catalão, Brazil
 * Andréia Borges Avelar, University of Brasília, Brazil
-* Thaynara Arielly de Lima, Federal University of Goiás, Brazil
+* [Thaynara Arielly de Lima](https://thaynaradelima.github.io), Federal University of Goiás, Brazil
 * André Camapum Carvalho de Freitas, Federal University of Goiás, Brazil
+* Bruno Berto de Oliveira Ribeiro, University of Brasília, Brazil
 * [Mauricio Ayala-Rincón](http://www.mat.unb.br/~ayala), University of Brasília, Brazil
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
@@ -70,3 +86,9 @@ Main contributions:
 
 # Dependencies
 ![dependency graph](./algebra.svg "Dependency Graph")
+
+# Recent References
+* M. Ayala-Rincón, T. A. de Lima, A. Borges Avelar, A. L. Galdino. *Formalization of Algebraic Theorems in PVS.* In Proceedings of 24th International Conference on Logic for Programming, Artificial Intelligence and Reasoning LPAR, EPiC Series in Computing, vol. 94:1-10  [doi](https://doi.org/10.29007/7jbv),  2023.
+
+* T. A. de Lima, A. L. Galdino, A. Borges Avelar, and	M. Ayala-Rincón. *Formalization of Ring Theory in PVS - Isomorphism Theorems,	Principal, Prime and Maximal Ideals,Chinese	Remainder Theorem. Journal of Automated Reasoning,  [doi](https://doi.org/10.1007/s10817-021-09593-0),  2021.  
+
