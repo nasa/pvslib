@@ -427,10 +427,21 @@
 		       (format nil "~a:~a:~a ~a/~a/~a" h mi s mo d y)))
 
 (defun relative-lib-path (pathname)
-  "The relative path of a library is the collection name and the library name separated by a slash. For example, the relative path of '/Users/username/pvs/nasalib/structures' is 'nasalib/structures'."
-  (format nil "~{~a/~}" (let ((dir-names
-			       (cdr (pathname-directory pathname))))
-			  (subseq dir-names (max 0 (- (length dir-names) 2))))))
+  "The relative path of a library is the collection id and the library name separated by a slash.
+   If no id can be found for the given PATHNAME, the directory name is used instead.
+   For example, the relative path of '/Users/username/pvs/nasalib/structures' is 'nasalib/structures' when
+   no id can be found for the directory ''/Users/username/pvs/nasalib/'."
+  (let*((dir-names (cdr (pathname-directory pathname)))
+	(collection-id
+	 (extra-get-pvslib-id-from-dir
+	  (format nil "~{/~a~}/" (subseq dir-names 0 (max 0 (- (length dir-names) 1)))))))
+    (if collection-id
+	(format nil "~a/~{~a~}/"
+		;; replacing '/' by '-' in collection ids is safe because '-' is not
+		;; a legal character for libary names.
+		(substitute #\- #\/ collection-id)
+		(last dir-names))
+      (format nil "~{~a/~}" (subseq dir-names (max 0 (- (length dir-names) 2)))))))
 
 (defun qualified-path-name (pathname &optional relative?)
   (let ((lib-path pathname))
