@@ -45,6 +45,6 @@ Term rewrite systems and Robinson unification algorithm.
 
 * A. B. Avelar, A. L. Galdino, F. L. C. de Moura, and M. Ayala-Rincón. First-order unification in the PVS proof assistant. Logic Journal of the IGPL, Volume 22(5), Pages 758-789, [doi](https://doi.org/10.1093/jigpal/jzu012) 2014.
 
-* A.L. Galdino and M. Ayala-Rincón. A Formalization of the Knuth-Bendix(-Huet) Critical Pair Theorem. Journal of Automated Reasonning, [doi](https://doi.org/10.1007/s10817-010-9165-2) 2010.
+* A.L. Galdino and M. Ayala-Rincón. A Formalization of the Knuth-Bendix(-Huet) Critical Pair Theorem. Journal of Automated Reasoning, [doi](https://doi.org/10.1007/s10817-010-9165-2) 2010.
 
 * A.L. Galdino and M. Ayala-Rincón. A Formalization of Newman's and Yokouchi Lemmas in a Higher-Order Language, Journal of Formalized Reasoning, 1(1):39-50, [doi](https://doi.org/10.6092/issn.1972-5787/1347),  2008. 
