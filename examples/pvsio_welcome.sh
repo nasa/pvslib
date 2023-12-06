@@ -1,1 +1,0 @@
-../pvsio_utils/examples/pvsio_welcome.sh
