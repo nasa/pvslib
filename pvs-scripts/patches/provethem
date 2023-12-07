@@ -612,12 +612,245 @@ sub iteratelibs(){
 
   if ($out) {
     print OUTFILE $summary;
-    close(OUTFILE);
   }
 
   return($return_value);
 }
 
+# ad-hoc version of iteratelibs to apply proveit on each library in the scope 
+sub iterate_proveit_on_libs(){
+  $execute="$PROVEIT %OVEROPTS% %OPTS% %DIR%";
+
+  if(!$out){
+    $out="provethem.out";
+    my $tmp_dir = tempdir( CLEANUP => 1 );
+    $out="$tmp_dir/$out";
+  }
+
+  $ret_val_labels{'142'}="MISS";
+
+  $no_printout="t";
+  
+  #
+  
+  print "Executing shell command \"$execute\" on each library.\n" if $verbose;
+  print "With overopts: $overopts.\n" if $verbose && $execute=~/\%OVEROPTS\%/;
+  print "\n";
+
+  #<
+  my $totalformulas = 0;
+  my $totalproofs = 0;
+  my $libs = 0;
+  #>
+  
+  my $return_value=0;
+  my $max_separation=25;
+  while (<INFILE>) {
+    $line = $_;
+    $line =~ s/\#.*$//;
+    $line = trim($line);
+
+    # ommit command-line options
+    next if ($line =~ m/^ *-.*$/);
+    if ($line) {
+      @list = split /:/,$line;
+      $lib = trim($list[0]);
+      $opts = trim($list[1]);
+      if ($lib) {
+	$go = "ok" if ($from eq $lib);
+	last if $before eq $lib;
+
+	if (($go || grep { "$_" eq $lib } @dolist) && 
+	    !(grep { "$_" eq $lib } @butlist)) {
+	  $libs += 1;
+	  if (-d $lib) {
+	    $pathlib = $lib;
+	    $baselib = "";
+	  } elsif (-f $lib) { 
+	    ($baselib,$pathlib,$typelib) = fileparse($lib,qr{\..*});  
+	    $baselib .= $typelib;
+	  } else {
+	    die "$lib is neither a file nor a directory\n";
+	  }
+	  ($exe = $execute) =~ s/\%DIR\%/$pathlib/g;
+	  $exe =~ s/\%FILE\%/$baselib/g;
+	  $exe =~ s/\%OVEROPTS\%/$overopts/g;
+	  $exe =~ s/\%OPTS\%/$opts/g;
+	  $command="";
+	  $command .= "$exe";
+	
+	  if ($command) {
+	    if ($dryrun) {
+	      print "DRY-RUN: $command\n";
+	    } else {
+	      print "Executing shell \"$command\".\n" if $verbose;
+	      my $current_sep=length($lib)+1;
+	      $current_sep=$max_separation>=$current_libname_size?$max_separation:$current_libname_size;
+	      $beginln = sprintf "%-".$current_sep."s",$lib;
+	      $beginln .= "$act... ";
+	      print $beginln;
+	      my $fail_msg;
+	      my $warn_msg;
+	      if (! -d $lib) {
+		$fail = 1;
+		$fail_msg = "Library not found";
+		$proveout="Library $lib not found\n";
+
+		print OUTFILE "$proveout\n" if $out;
+	      } else {
+		$proveout=`$command`;
+
+		if ($? == -1) {
+		  $fail = 127;
+		} else {
+		  $fail = ($? >> 8);
+		}
+
+		print OUTFILE "$proveout\n" if $out;
+		
+		my @warnings = ($proveout =~ m/(Warning[:]? .*)/g);
+		if (@warnings) {
+		  #<
+		  for my $warning ( @warnings ) {
+		    next if ($warning =~ m/Missed \d+ formula/);
+		    $warn_msg .= "*** ".$warning."\n";
+		  }
+		  #>
+		}
+	      
+		my @errors = ($proveout =~ m/(Error[:]? .*)/g);
+		if (@errors) {
+		  $fail_msg = join("\n*** ",@errors);
+		}
+
+		#<
+		if($proveout =~ m/Grand Totals: (\d+) proofs, (\d+) attempted, (\d+) succeeded/){
+		  $current_formulas = $1;
+		  $current_attempted = $2;
+		  $current_proofs = $3;
+		  
+		  $totalformulas += $current_formulas;
+		  $totalproofs += $current_proofs;
+		}
+		#>
+	      }
+
+	      if ($fail > 0) {
+		$status = "FAIL";
+		my $custom_status=$ret_val_labels{$fail};
+		$status=$custom_status if $custom_status;
+		print "[";
+		if ($no_color) {
+		  print $status;
+		} else {
+		  print DARK RED $status; 
+		}
+		#<
+		my $status_message;
+		my $miss   = $current_formulas-$current_attempted;
+		my $unsucc = $current_formulas-$current_proofs;
+		my $comma  = "";
+		my $msguna = "";
+		if ($miss) {
+		  $comma = ", ";
+		  $msguna = "$miss unattempted";
+		}
+		my $msguns = "$comma$unsucc unsuccessful" if $unsucc;
+		$status_message = ": $msguna$msguns / $current_formulas formulas";
+		#>
+		$fail_msg .= " (return value: $fail)" if $verbose;
+		if ($fail_msg) {
+		  #<
+		  print "$status_message]\n*** $fail_msg\n";
+		  $summary .= "$beginln\[$statusstatus_message - $fail_msg]\n";
+		  #>
+		} else {
+		  #<
+		  print "$status_message]\n";
+		  $summary .= "$beginln\[$status$status_message]\n";
+		  #>
+		}
+		# Update my return value
+		$return_value=$fail if ($fail > $return_value);
+	      }
+	    
+	      if ($fail == 0) {
+		$status = $ret_val_labels{0};
+		$status = "OK" if ! $status;
+		print "[";
+		$beginln.= "[";
+		if ($no_color) {
+		  print $status;
+		} else {
+		  print DARK GREEN $status; 
+		}
+		#<
+		$endln = "]\n";
+		$endln = ": $current_proofs proofs".$endln if $current_proofs;
+		#>
+		print $endln;
+		print "\n$proveout\n" if $proveout && !$no_printout;
+		$summary .= "$beginln$status$endln";
+	      }
+	      # Only print warnings if the proveout is not printed
+	      # since warnings are already there.
+	      print "*** $warn_msg\n" if $warn_msg && $no_printout;
+
+	      $depfile = "$lib/pvsbin/$top.dep";
+	      if (-f $depfile) {
+		open (DEPFILE,"$depfile");
+		while (<DEPFILE>) {
+		  $line = $_;
+		  last if $line =~ /:/;
+		  if ($line =~ /^\[WSS\].*$/) {
+		    @list = split /\//,$line;
+		    if (scalar(@list) >= 2) {
+		      my $deplib=$list[scalar(@list)-2];
+		      if ($deplib && $deplib ne $lib && !(grep {$_ eq $deplib} @prelude) &&
+			  !(grep {$_ eq $deplib} @libraries) &&
+			  -d $deplib && -f "$deplib/$top.pvs") {
+			print "*** Warning: Library $deplib is out of order. It should appear before $lib in $file\n";
+		      } 
+		    } else {
+		      print "*** Warning: Cannot check library order. Obsolete dep file for library $lib? Try regenerating it.\n";
+		    }
+		  }
+		}
+		close (DEPFILE);
+	      } elsif ( $checkdep ) {
+		print "*** Warning: File $depfile not found.\n";
+	      }
+	      last if !$force && ($fail > 1) && !$ret_val_labels{$fail};
+	    }
+	  }
+	}
+	push(@libraries,$lib);
+	$go = "ok" if $after eq $lib;
+	last if $to eq $lib;
+      } else {
+	$options .= " $opts";
+      }
+    }
+  }
+  my $mssg = "\n";
+  #<
+  if (!$cleanall && !$clean && !$typecheckonly) {
+    my $missed = $totalformulas-$totalproofs;
+    $mssg .= "*** Grand Totals: $totalproofs proofs / $totalformulas formulas. Missed: $missed formulas.\n";
+  }
+  $mssg .= "*** Number of libraries: $libs\n"; 
+  print $mssg;
+  $summary .= $mssg;
+  #>
+
+  close(INFILE);
+
+  if ($out) {
+    print OUTFILE $summary;
+  }
+
+  return($return_value);
+}
 
 #
 # Main
@@ -714,51 +947,14 @@ my $return_value=0;
 if(!$execute) {
   # If no command has been given, the command to iterate is
   # assumend to be proveit
-  $execute="$PROVEIT %OVEROPTS% %OPTS% %DIR%";
-
-  my $tmp_dir;
- 
-  if(!$out){
-    $out="provethem.out";
-    $tmp_dir = tempdir( CLEANUP => 1 );
-    $out="$tmp_dir/$out";
-  }
-
-  $ret_val_labels{'142'}="MISS";
-
-  $no_printout="t";
-  
-  $return_value=iteratelibs();
-
-  my $totalformulas = 0;
-  my $totalproofs = 0;
-  my $libs = 0;
-
-  if(-f "$out") {
-    open (TMPFILE,"$out") || die "File $out not found\n";
-    while (<TMPFILE>) {
-      my $line=$_;
-      $line = trim($line);
-      if ($line =~ m/Grand Totals: (\d+) proofs, (\d+) attempted, (\d+) succeeded \(([\d\.]+ s)\)/) {
-	$totalformulas += $1;
-	$totalproofs += $3;
-	$libs += 1;
-      }
-    }  
-    close(TMPFILE);
-  }
-
-  my $mssg = "";
-  if (!$cleanall && !$clean && !$typecheckonly) {
-    my $missed = $totalformulas-$totalproofs;
-    $mssg .= "*** Grand Totals: $totalproofs proofs / $totalformulas formulas. Missed: $missed formula";
-    $mssg .= "s" if $missed != 1;
-    $mssg .= ".\n";
-  }
-  print $mssg;
-  $summary .= $mssg;
+  $return_value=iterate_proveit_on_libs();
 } else {
   $return_value=iteratelibs();
 }
+
+if ($out) {
+  close(OUTFILE);
+}
+
 
 exit($return_value);
