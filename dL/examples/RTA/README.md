@@ -1,4 +1,4 @@
-# A Frameowrk for Runtime Assurance
+# A Framework for Runtime Assurance
 
 This development contains a general framework for formalized reasoning of runtime assurance, which is a design-time architecture for safety critical systems. These systems are modeled as hybrid programs, which allowed modeling of continuously evolving and discretely envolving components. 
 
