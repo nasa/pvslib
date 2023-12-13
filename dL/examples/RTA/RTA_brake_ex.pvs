@@ -1,0 +1,172 @@
+RTA_brake_ex  % Welcome 
+		: THEORY
+
+%Created by                     JTS
+%	 	           Jan 2023
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Applying RTA to braking       |%
+%| example with decrete          |%
+%| acceleration controller with  |%
+%| sampling rate. With RTA       |%
+%  archetecture vehicle never    |%
+%  exits safe region      	 |%	     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last updated	          Sept 2023
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%% Importing generic RTA rules,
+%  and an important extension of Plaidypvs in sem_rel_diff_star
+%-------------------------------------------------------------------------
+
+  IMPORTING RTA_gen,
+            sem_rel_diff_star
+
+%-------------------------------------------------------------------------
+%% Define the variables
+%  s is the position of the vechicle
+%  v is the velocity of the vehicle
+%  T is the time variable
+%-------------------------------------------------------------------------
+
+  s: nat = 0
+  v: nat = 1
+  T: nat = 2
+
+%-------------------------------------------------------------------------
+%% Going forward at a constant rate of acceleration
+%-------------------------------------------------------------------------
+  %odes
+  forward_ode(a:real): ODEs =
+  (: (s,val(v)), (v, cnst(a)) :)
+  
+  % DIFF hp
+  forward(a:real): HP =
+  DIFF(forward_ode(a))
+
+  % DIFF hp
+  forward_re(re:RealExpr): HP =
+  DIFF((: (s,val(v)), (v, re) :))
+
+  %unique solution for the foward solution
+  forward_sol_u: LEMMA
+  FORALL(a:real,env:Environment):
+  LET forward_sol(envi:Environment)(i:below(2))(r:real): real =
+    IF i =  0 THEN
+    val(s)(envi)+val(v)(envi)*r+a*r^2/2
+    ELSE val(v)(envi) + a*r
+    ENDIF
+  IN
+  solution_odes_u?(hp(0),forward_ode(a),env)(forward_sol(env))
+
+ %unique solution for the foward solution (with time)
+ forwardt_sol_u: LEMMA
+  FORALL(a:real,env:Environment):
+  LET forward_solt(envi:Environment)(i:below(3))(r:real): real =
+    IF i=0 THEN  val(T)(envi) + r
+    ELSIF i = 1 THEN
+    val(s)(envi)+val(v)(envi)*r+a*r^2/2
+    ELSE val(v)(envi) + a*r
+    ENDIF
+  IN
+  solution_odes_u?(hp(0),cons((T, cnst(1)),
+                             (: (s, val(v)), (v, cnst(a)) :)),env)
+			     (forward_solt(env))
+
+%-------------------------------------------------------------------------
+%% Breaking at a constant rate of de-acceleration
+%-------------------------------------------------------------------------
+  %odes
+  break_ode(a:real): ODEs =
+   (: (s,val(v)), (v,-cnst(a)):)
+
+  %DIFF hp
+  break_stop(a:real): HP =
+  DIFF(break_ode(a), val(v)>=cnst(0))
+
+  %unique solution for braking
+  break_stop_sol_u: LEMMA
+  FORALL(a:real,env:Environment):
+  LET break_sol(envi:Environment)(i:below(2))(r:real): real =
+    IF i = 0 THEN
+    val(s)(envi)+val(v)(envi)*r-a*r^2/2
+    ELSE val(v)(envi) - a*r
+    ENDIF
+  IN
+  solution_odes_u?(hp(0), break_ode(a),env)(break_sol(env))
+
+%-------------------------------------------------------------------------
+%% RTA setup for whole system
+%-------------------------------------------------------------------------
+
+  simple_break_RTA(a:real,D:real,S:BoolExpr | fresh?(S)(T), tau:posreal): HP =
+  RTA_simple(forward(a),break_stop(a),S,tau,T)
+
+  simple_break_RTA_re(re:RealExpr | fresh?(re)(T), a:real,D:real,S:BoolExpr | fresh?(S)(T), tau:posreal): HP =
+  RTA_simple(forward_re(re),break_stop(a),S,tau,T)
+
+%-------------------------------------------------------------------------
+%% Relationship between some parameters related to subsequent proof
+%-------------------------------------------------------------------------
+
+tau_tstar_ineq: LEMMA
+  FORALL(A,W,D,tau:posreal):
+  W-D>0 IMPLIES
+    LET  tstar: real = sqrt((W-D)/A),
+       ttau: real  =  max(sqrt((W-D)/A)- tau,0),
+       star: real = (W-D)/2,
+       stau: real = A*ttau^2/2
+    IN 
+    stau < star
+
+%-------------------------------------------------------------------------
+%% The breaking set-up is safe, meaning with the sample rate tau
+%  the vehicle never gets less that a distance (W-D) to an unsafe region (W)
+%-------------------------------------------------------------------------
+
+ RTA_simple_break_0: LEMMA
+  FORALL(A,W,D,tau:posreal):
+     (W-D > 0 AND tau <= sqrt(((W - D) / A))) IMPLIES
+  LET  tstar: real = sqrt((W-D)/A),
+       ttau: real  =  max(sqrt((W-D)/A)- tau,0),
+       star: real = (W-D)/2,
+       stau: real = A*ttau^2/2,
+       vstar: real = A*tstar,
+       vtau: real = A*ttau,
+       P = val(s) <= cnst(W-D),
+       S = (val(s) <= cnst(stau) AND val(v) <= cnst(vtau)),
+       G = (val(s) <= cnst(star) AND val(v) <= cnst(vstar))
+  IN 
+  ((: (val(s)= cnst(0) AND val(v) = cnst(0)) :) |- (: ALLRUNS(simple_break_RTA(A,D,S,tau),P) :))
+
+
+%-------------------------------------------------------------------------
+%% The breaking set-up is safe, meaning with the sample rate tau
+%  the vehicle never gets less that a distance (W-D) to an unsafe region (W)
+%-------------------------------------------------------------------------
+
+ RTA_simple_break_0_re: LEMMA
+  FORALL(A,W,D,tau:posreal,re:RealExpr | cnst(0) <= re AND re <= cnst(A)):
+     (W-D > 0 AND tau <= sqrt(((W - D) / A))) IMPLIES
+  LET  tstar: real = sqrt((W-D)/A),
+       ttau: real  =  max(sqrt((W-D)/A)- tau,0),
+       star: real = (W-D)/2,
+       stau: real = A*ttau^2/2,
+       vstar: real = A*tstar,
+       vtau: real = A*ttau,
+       P = val(s) <= cnst(W-D),
+       S = (val(s) <= cnst(stau) AND val(v) <= cnst(vtau)),
+       G = (val(s) <= cnst(star) AND val(v) <= cnst(vstar))
+  IN 
+  ((: (val(s)= cnst(0) AND val(v) = cnst(0)) :) |- (: ALLRUNS(simple_break_RTA_re(re,A,D,S,tau),P) :))
+
+% “One run can change your day,
+%  many runs can change your life.”
+%                     — Unknown
+  %~~~ The End ~~%
+  
+
+  END RTA_brake_ex
