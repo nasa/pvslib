@@ -4,13 +4,6 @@ This development contains a general framework for formalized reasoning of runtim
 
 The result here is using the formal verificaiton development **P**roper**l**y **A**ssured **I**mplementation of **D**ifferential Dynamic Logic for H**y**brid **P**rogram **V**erification and **S**pecification, **Plaidypvs**. 
 
-![logo](./Plaidypvs.png "Plaidypvs logo")
-<div style="text-align: right"> Image credit: Esther Conrad </div>
-
-## External Dependencies
-
-![dependency graph](./dL.svg "Dependency Graph")
-
 ## Internal Summary
 
 | Theory Name | Description |
@@ -25,6 +18,7 @@ The result here is using the formal verificaiton development **P**roper**l**y **
 * J Tanner Slagel, NASA, USA
 * [Aaron Dutle](http://shemesh.larc.nasa.gov/people/amd), NASA, USA
 * Lauren White, NASA, USA 
+* César Muñoz, NASA, USA
 
 ## Maintainer
 * J Tanner Slagel, NASA, USA, <j.tanner.slagel@nasa.gov>
