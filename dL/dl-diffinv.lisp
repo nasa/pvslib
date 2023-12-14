@@ -43,11 +43,18 @@
 	       (expand* nnqb_ "normalize")
 	       (for@ nil (expand "normalize_rec"))
 	       (for@ nil (expand "neg_rel"))
+	       
 	       ;; (spread
 	       ;; 	(dl-subdift__$)
 	       ;;  ((dl-nqboolder__)
 	       ;; 	 (skip)))
-	       (dl-subdift__$))
+
+	       ;; 20231214 @M3 dl-subdift__ is failing when trying to evaluate max_var( (: ... :) )
+	       ;;              I'll skip it to try and see how to repair it
+	       ;; (dl-subdift__$)
+	       (skip)
+
+	       )
 	      :side +
 	      :pp? pp?
 	      :dont-fail? dont-fail?))
