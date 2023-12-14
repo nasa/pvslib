@@ -80,10 +80,15 @@ sequent is pretty-printed unless PP? is set to nil."
 	  (for@ nil (expand "DIFT"))
 	  (skip))
      (expand "SUB_DIFTRe")
-     (for@ nil
-      (try-then@
-       ((match "max_var(%)" step (with-tccs (eval-expr "%1" :quiet? t)))
-	(replaces -1))))
+
+     ;; 20231214 @M3 max_var is not evaluable anymore...
+     ;;          TODO remove
+     ;; (for@ nil
+     ;;  (try-then@
+     ;;   ((match "max_var(%)" step (with-tccs (eval-expr "%1" :quiet? t)))
+     ;; 	(replaces -1))))
+     (match "derivable_M_nqbool?(%%)(%%)" step (dl-nqboolder__))
+     
      (branch
       (then@
        ;; [M3] expand names introduced by applying (skoletin*), if any
