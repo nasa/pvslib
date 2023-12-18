@@ -113,16 +113,19 @@ sequent is pretty-printed unless PP? is set to nil."
 							(definition decl)))))))
 				(when doit (replace $1n)))
 			      (hide $1n))))
-       (spread
-	(case "FORALL(a:real, re: RealExpr): a * re = cnst(a) * re")
-	((then@
-	  (rewrite* -1)
-	  (simplify-DIFT_Re-expression$))
-	 (then@
-	  (hide-all-but 1)
-	  (lemma "real_fun_ops[Environment].scal_function")
-	  (expand "const_fun")
-	  (expand "cnst")))))
+       (for@ nil
+	     (match$ "%a{number} * %b"
+	       step
+	       (branch
+		(case "FORALL(a:real, re: RealExpr): a * re = cnst(a) * re")
+		((then@
+		  (rewrite -1))
+		 (then@
+		  (hide-all-but 1)
+		  (lemma "real_fun_ops[Environment].scal_function")
+		  (expand "const_fun")
+		  (expand "cnst"))))))
+       (simplify-DIFT_Re-expression$))
       ((branch
 	(split 1)
 	((else
@@ -142,25 +145,30 @@ sequent is pretty-printed unless PP? is set to nil."
 ;; @author M3
 ;; @notes Use instead of dl-subddt__
 (defhelper dl-compute-ddt__ ()
-  (for@
-   nil
-   (match$
-   "ddt(%a)(dlvar_index(%b))"
-   step (then
-	 (expand "ddt")
-	 (match$
-	  "IF dlvar_index(%c) = dlvar_index(%d) THEN %% ELSE %% ENDIF"
-	  ;; if an IF-THEN-ELSE like this exists in the sequent, is because %c /= %d,
-	  ;; otherwise, the implicit 'assert' applied during the last 'expand' would
-	  ;; have simplified the IF-THEN-ELSE. @M3
-	  step
-	  (let ((match-str (format nil "^dlvar_index(~a) = dlvar_index(~a)$" "%d" "%c")))
-	    (else (match$ match-str step (assert))
-		  (try (typepred "%c")
-		       (replace 1 :hide? t)
-		       (try (typepred "%d") (replace 1 :hide? t) (skip)))))
-	       
-	  ))))
+  (then
+   (match$ "pairwise_distinct_vars?(%%)"
+	   step
+	   (then (repeat (expand "pairwise_distinct_vars?"))
+		 (repeat (expand "distinct_var?"))))
+   (for@
+    nil
+    (match$
+     "ddt(%a)(dlvar_index(%b))"
+     step (then
+	   (expand "ddt")
+	   (match$
+	    "IF dlvar_index(%c) = dlvar_index(%d) THEN %% ELSE %% ENDIF"
+	    ;; if an IF-THEN-ELSE like this exists in the sequent, is because %c /= %d,
+	    ;; otherwise, the implicit 'assert' applied during the last 'expand' would
+	    ;; have simplified the IF-THEN-ELSE. @M3
+	    step
+	    (let ((match-str (format nil "^dlvar_index(~a) = dlvar_index(~a)$" "%d" "%c")))
+	      (else (match$ match-str step (assert))
+		    (try (typepred "%c")
+			 (replace 1 :hide? t)
+			 (try (typepred "%d") (replace 1 :hide? t) (skip)))))
+	    
+	    )))))
   "Internal stragty. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
   "Applying dl-compute-ddt__ helper")
 
