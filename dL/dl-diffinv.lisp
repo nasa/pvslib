@@ -153,10 +153,12 @@ sequent is pretty-printed unless PP? is set to nil."
 	  ;; if an IF-THEN-ELSE like this exists in the sequent, is because %c /= %d,
 	  ;; otherwise, the implicit 'assert' applied during the last 'expand' would
 	  ;; have simplified the IF-THEN-ELSE. @M3
-	  step 
-	  (try (typepred "%c")
-	       (replace 1 :hide? t)
-	       (try (typepred "%d") (replace 1 :hide? t) (skip)))
+	  step
+	  (let ((match-str (format nil "^dlvar_index(~a) = dlvar_index(~a)$" "%d" "%c")))
+	    (else (match$ match-str step (assert))
+		  (try (typepred "%c")
+		       (replace 1 :hide? t)
+		       (try (typepred "%d") (replace 1 :hide? t) (skip)))))
 	       
 	  ))))
   "Internal stragty. Computes expressions of form ddt((: %% :))(dlvar_index(%))."

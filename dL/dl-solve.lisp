@@ -185,7 +185,7 @@
 
 ;; #TODO move to structures? @M3
 (defstep simplify_nth ()
-  (match$ "nth(%a{list},%b{number})" step
+  (match$ "nth(%a,%b)" step
 	  (let ((nth-expr $aj)
 		(pvs-list (args1 nth-expr))
 		(index (args2 nth-expr))
