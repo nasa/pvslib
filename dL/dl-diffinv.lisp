@@ -202,6 +202,12 @@ sequent is pretty-printed unless PP? is set to nil."
 ;;
 ;;
 
+(defun defined-in-MapExprInj? (var-name list-of-mapexpr )
+  (loop for tuple-expr in list-of-mapexpr
+	for i from 0
+	when (string= (princ-to-string (car (exprs tuple-expr))) var-name)
+	return i))
+
 ;; #TODO @M3 downgrade to deflhelper
 (defstep simplify-DIFT_Re-expression ()
   (then

@@ -2,69 +2,76 @@
 ;; dl-solve strategy
 ;;
 
-;; TODO downgrade to defhelper?
+
+
+(defhelper dl-prove-quad_cnst? ()
+  (then   
+   (expand "quad_cnst?")
+   (flatten)
+   ;; var-name is in the list, so it's safe to repeat expand
+   (for@ nil (expand "get_index"))
+   (simplify_nth)
+   (beta)
+   (inst?))
+  "Proves formulas of form quad_cnst?(%l{list})(dlvar_index(%x{name_})) assuming x is defined in the MapExprInj l. Assumes also that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
+  "Applying dl-prove-quad_cnst?")
+
+(defhelper dl-prove-not-in_map ()
+  (then
+   (expand "in_map")
+   (skeep)
+   (typepred "i")
+   (repeat (expand "length" -1))
+   (for@ nil (then (expand "nth")(lift-if)(assert))))
+  "Proves that formulas of form in_map(%l{list})(dlvar_index(%x{name_})) are not true, assuming x is not defined in the MapExprInj l. Assumes also that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
+  "Applying dl-prove-not-in_map")
+
 ;; cnst_lins strategy
-(defstep dl-cnstlins (&optional (fnum 1))
-  ;; Assuming cnst_lins is in first formula
-  (then  (hide-all-but fnum)
-         ;; expand cnst_lins
-	 (expand "cnst_lins?")
-	 ;; unroll by index, and on each branch do the same thing
+(defhelper dl-cnstlins (&optional (fnum 1))
+  (then  (expand "cnst_lins?")
 	 (branch
 	  (unroll)
 	  ((then
 	    (flatten)
-	    (for@ nil (expand "nth"))
-	    (try  ;; Match for the constant case
-	     (match 1 "cnst(%1) = cnst(%2)" step (inst?)) (assert)
-	     ;; If that doesn't work, match for the val case
-	     (try (match 2 "val(%1) = cnst(%2) + val(%3)" step
-			 (then
-			  (inst 2 "0" "%1")
-			  (rewrite "cnst_val_0")
-			  (flatten)
-			  (expand "quad_cnst?")
-			  (flatten)))
-		  (try (eval-formula -1 :quiet? t)
-		       (assert) 
-		       (match "get_index( %1 )(%2)" step
-			      (then (eval-expr "get_index(%1)(%2)" :quiet? t)(replace -1)(hide -1) ))) 
-		  ;; other case
-		  (try (then
-			(rewrite "cnst_val_com")
-			(match 2 "cnst(%1) + val(%2) = cnst(%2) + val(%3)" step
-			       (then (inst 2 "%1" "%2")
-				     (rewrite "cnst_val_0")
-				     (flatten)
-				     (expand "quad_cnst?")
-				     (flatten))))
-		       (try (eval-formula -1 :quiet? t) (assert) 
-			    (match "get_index( %1 )(%2)" step
-				   (then (eval-expr "get_index(%1)(%2)" :quiet? t)(replace -1)(hide -1))))
-		       (assert))))
-	    (for@ nil (expand "nth"))
-	    (try (match 2 "cnst(%1) = cnst(%2)" step (inst 2 "%1")) (assert)
-		 (try (match 3 "val(%1) = cnst(%2) + val(%3)" step
-			     (then (inst 3 "0" "%1")
-				   (rewrite "cnst_val_0")
-				   (flatten)
-				   (expand "quad_cnst?")
-				   (flatten)))
-		      (try (eval-formula -2 :quiet? t) (assert) 
-			   (match "get_index( %1 )(%2)" step
-				  (then (eval-expr "get_index(%1)(%2)" :quiet? t)(replace -1)(hide -1))))
-		      ;; other case
-		      (try (then (rewrite "cnst_val_com")
-				 (match 3 "cnst(%1) + val(%2) = cnst(%2) + val(%3)" step
-					(then (inst 2 "%1" "%2")
-					      (rewrite "cnst_val_0")
-					      (flatten)
-					      (expand "quad_cnst?")
-					      (flatten))))
-			   (try (eval-formula -2 :quiet? t) (assert) 
-				(match "get_index( %1 )(%2)" step
-				       (then (eval-expr "get_index(%1)(%2)" :quiet? t)(replace -1)(hide -1)))))))))))
-  "Determines if MapExprInj is made of constant and linear terms. Used in dl-solve."
+	    (simplify_nth)
+	    (beta)
+	    (match "cnst(%1) = cnst(%2)" step (inst?))
+	    (match$ "val(%a) = cnst(%c) + val(%b)" 
+		    step
+		    (let((var-name "%a"))
+		      (match$  "in_map(%d)(dlvar_index(%e))"
+			      step (let ((in_map-expr $dj)
+					 (pvs-list (args1 (operator in_map-expr)))
+					 (lisp-list (pvslist2list pvs-list))
+					 (in-map-case (defined-in-MapExprInj? var-name (cdr lisp-list))))
+				     (then
+				      (hide-all-but $dn)
+				      (inst 1 "0" var-name)
+				      (rewrite "cnst_val_0")
+				      (flatten)
+				      (if in-map-case
+					  (dl-prove-quad_cnst?)
+					(dl-prove-not-in_map)))))))
+	    (match$ "%op(val(%a), cnst(%d)) = %op(cnst(%c), val(%b))" 
+		    step
+		    (let((var-name "%a")(actual-constant "%d"))
+		      (match$  "in_map(%e)(dlvar_index(%))"
+			       step (let ((in_map-expr $ej)
+					  (pvs-list (args1 (operator in_map-expr)))
+					  (lisp-list (pvslist2list pvs-list))
+					  (in-map-case (defined-in-MapExprInj? var-name (cdr lisp-list))))
+				      (then
+				       (hide-all-but $en)
+				       (inst 1 actual-constant var-name)
+				       (branch
+					(split 1)
+					((rewrite "cnst_val_com")
+					 (then
+					  (flatten)
+					  (if in-map-case
+					      (dl-prove-quad_cnst?)
+					    (dl-prove-not-in_map))))))))))))))
+  "Determines if MapExprInj is made of constant and linear terms. Assumes that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
   "Checking if list is cnst_lins")
 
 ;; (defstep dl-solve (&optional (quiet? t))
@@ -184,8 +191,8 @@
   "Solve it!")
 
 ;; #TODO move to structures? @M3
-(defstep simplify_nth ()
-  (match$ "nth(%a,%b)" step
+(defstep simplify_nth (&optional (fnum *))
+  (match$ fnum "nth(%a,%b{number})" step
 	  (let ((nth-expr $aj)
 		(pvs-list (args1 nth-expr))
 		(index (args2 nth-expr))
@@ -202,10 +209,121 @@
 				 (assert))
 			   (branch (case case-str)
 				   ((then (hide-all-but 1) (for@ nil (expand "nth")))
-				    (then (hide -2) (replace -1 :hide? t)))))))
+				    (then (hide -2) (replace -1 fnum :hide? t)))))))
 	      (skip-msg "Couldn't represent pvs list in lisp"))))
+  "Computes expressions of form nth(%{list},%{number}) in FNUM. FNUM must be a formula number or fnum collection symbol."
+  "Applying simplify_nth")
+
+(defhelper dl-calculate-is_cnst? (flabel)
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+    (then
+     (expand "is_cnst?" flabel)
+     (simplify_nth)
+     (beta flabel)
+     (for@ nil
+	   (then
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "(%op(%a,%b))(%c) = (%op(%a,%b))(%d)" step (expand "%op" fnum)))
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "val(%%)(%%)" step
+		   (then
+		    (expand "val" fnum)
+		    (expand "env_nat_shift" fnum))))))))
+  "Decides formulas of form is_cnst?(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form. Since this is an equality between booleans, after the application of this helper, FLABEL points to an antecedent or a consequent of form %{name}."
+  "Applying dl-decide-is_cnst?")
+
+(defhelper dl-assert-pairwise_distinct_vars? ()
+  (match$ "pairwise_distinct_vars?"
+	     step
+	     (with-fresh-labels (pairwise-distinct-form $1n)
+	       (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
+	       (repeat (expand "distinct_var?" pairwise-distinct-form))
+	       (flatten pairwise-distinct-form)
+	       (assert)
+	       (hide pairwise-distinct-form)))
   ""
-  "")
+  "Applying pairwise_distinct_vars?")
+
+(defhelper dl-calculate-in_map_ex (flabel) ;; TODO integrate into strategy @M3
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+    (then
+     (simplify_nth fnum)
+     (for@ nil (expand "in_map_ex" flabel))
+     (beta flabel)
+     (for@ nil
+	   (then
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
+	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	      (match fnum "val(%%)(%%)" step
+		   (then
+		    (expand "val" fnum)
+		    (expand "env_c" fnum)
+		    (expand "env_nat_shift" fnum))))))
+     (dl-assert-pairwise_distinct_vars?)))
+  "Computes expressions of form in_map_ex(%{list})(%{number}). Assumes FLABEL points to a formula containing an expression of that form."
+  "Applying dl-calculate-in_map_ex")
+
+(defhelper dl-calculate-get_val_cnst_id_ex (flabel)
+  (with-fresh-names (ode)
+   (expand "get_val_cnst_id_ex" flabel)
+   (simplify_nth)
+   (beta flabel)
+   (use "env_c_val")
+   (replace -1 flabel :hide? t)
+   (let ((fnum (lisp (extra-get-fnum flabel))))
+     (match$ fnum "get_index(%a)(%%)" step (then (name ode "%a") (replace -1 flabel :hide? t))))
+   (expand "val" flabel)
+   (expand "env_nat_shift" flabel)
+   (expand ode flabel)
+   (for@ nil (expand "get_index" flabel)))
+  "Decides formulas of form get_val_cnst_id_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
+  "Applying dl-calculate-get_val_cnst_id_ex")
+
+(defstep dl-calculate-Y_sol_ex (flabel)
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+    (then 
+     (expand "Y_sol_ex" flabel)
+     (match$ fnum "%infix(is_cnst?(%a)(%b), is_val_not_in_map?(%a)(%b))" step
+	     (with-fresh-names
+	      (is_val_not_in_map? "is_val_not_in_map?(%a)(%b)" :tccs)
+	      (reveal *is_val_not_in_map?*)
+	      (expand "is_val_not_in_map?" *is_val_not_in_map?*)
+	      (with-fresh-names
+	       (is_const? "is_cnst?(%a)(%b)" :tccs)
+	       (reveal *is_const?*)
+	       (dl-calculate-is_cnst?$ *is_const?*)
+	       (replace *is_const?* (flabel *is_val_not_in_map?*) :hide? t))
+	      (let ((is_val_not_in_map?-fnum (extra-get-fnum *is_val_not_in_map?*)))
+		(match$ is_val_not_in_map?-fnum
+			"in_map_ex(%a)(%b)"
+			step (dl-calculate-in_map_ex$ *is_val_not_in_map?*)))
+	      
+	      ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
+	      ;; the expression is replaced by the calculated definition,
+	      ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
+	      (replace *is_val_not_in_map?* flabel :hide? t)
+	      (hide *is_val_not_in_map?*)))
+     (match$ fnum "get_val_cnst_id_ex(%a)(%b)" step
+	    (with-fresh-names
+	     (get_val_cnst_id_ex
+	      "get_val_cnst_id_ex(%a)(%b)" :tccs)
+	     (reveal *get_val_cnst_id_ex*)
+	     (dl-calculate-get_val_cnst_id_ex$ *get_val_cnst_id_ex*)
+	     (replace *get_val_cnst_id_ex* :dir rl :hide? t)))
+     (beta flabel)
+     (simplify_nth)
+     (match fnum "val(%a{name})(enc_v(%b))" step
+	    (then 
+	     (use "env_c_val")
+	     (replace -1 flabel :hide? t)))))
+  "Decides formulas of form Y_sol_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
+  "Applying dl-decide-Y_sol_ex")
+
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
   (let ((dlseq (or (is-dl-seq fnum) (error-format-if "No dL sequent found~@[ in fnum ~a~]." fnum)))
@@ -237,91 +355,86 @@
 	       (when ite
 		 (let ((guard (args1 ite)))
 		   (then (eval-expr guard :quiet? t) (replace -1 :hide? t))))))
-	   (deftactic simplify_Y_sol_ex (&optional (tac-fnum -1))
-	     (then (expand "Y_sol_ex" tac-fnum 1)
-		   (expand "get_val_cnst_id_ex" tac-fnum)
-		   (expand "is_val_not_in_map?" tac-fnum)
-		   (expand "is_cnst?" tac-fnum)
-		   (expand_in_map_ex tac-fnum)
-		   (simplify_nth)
-		   (beta tac-fnum)
-		   (for@ nil (rewrites "env_nat_shift_cnst" :fnums tac-fnum))
-		   (rewrites ("env_nat_shift_0_val"
-			      "env_c_val"
-			      "env_nat_shift_1_val") :fnums tac-fnum)
-		   (simplify_evaluable_ites)
-		   (let ((actual-fnum (lisp (extra-get-fnum tac-fnum))))
-		     (match actual-fnum "get_index(%a{list})(%)" step
-			  (then (eval-expr $aj :quiet? t) (replace -1 :hide? t) (simplify_nth))))
-		   (beta tac-fnum)))
 	   (lemma lemma-to-use)
 	   (spread
 	    (inst?)
 	    ((then
-	      (with-labels (skoletin) ((solution_lemma Z_def nil)))
+	      (with-labels (skoletin) ((solution_lemma |Z_def| nil)))
 	      (beta solution_lemma)
+	      (branch
 	      (split solution_lemma)
-	      (hide-all-but (solution_lemma Z_def '-))
-	      (expand "zs" Z_def)
-	      (simplify_init_zip_sol |Z_def|)
-	      (for@ nil (simplify_nth))
-	      (for@ nil (simplify_Y_sol_ex Z_def))
-	      (expand "UPTO" solution_lemma)
-	      (dl-skolem skolem-constant solution_lemma)
-	      (dl-flatten solution_lemma)
-	      (rewrite "dl_assignb" :target-fnums solution_lemma)
-	      (rewrite "dl_assignb_restricted" :target-fnums solution_lemma)
-	      (let ((trivial-subst ;; a trivial substitution occurs on a bexpr DLBOOL(TRUE)
-		     (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
-					   "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(DLBOOL(TRUE))))"))))
-		(if trivial-subst
-		    (then
-		     (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
-		     (replace Z_def :hide? t)
-		     (beta 1)
-		     (dl-subs))
-		  (then ;; on a more complex bexpr, the substitution is done programmatically
-		   (copy solution_lemma)
-		   (replace Z_def solution_lemma :hide? t)
-		   (beta solution_lemma)
-		   (spread
-		    (let ((dlforall (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
-							  "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
-			  (subst-dlforall (apply-substitution-on-dlforall dlforall))
-			  (dlforall-z (extra-get-expr '(~ 1 "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
-			  (case-str (format nil "(~a) = (~a)" dlforall-z subst-dlforall)))
-		      (case case-str))
-		    ((then
-		      (hide solution_lemma)
-		      (replace -1 :hide? t)
-		      (reveal Z_def)
-		      (replace Z_def :hide? t)
-		      (beta 1)
-		      (dl-subs))
-		     (then
-		      (hide-all-but 1)
-		      (with-tccs (decompose-equality))
-		      (expand "DLFORALL")
-		      (spread ;; this "in-line lemma" helps to call dl-subs just once on this branch of the proof
-		       (case "FORALL(P,Q: PRED[real]): ((FORALL(x:real): P(x) = Q(x)) IMPLIES ( (FORALL(x:real): P(x)) = (FORALL(x:real): Q(x)) ))")
-		       ((then
-			 (with-tccs(inst?))
-			 (assert)
-			 (hide-all-but 1)
-			 (skeep)
-			 (reveal Z_def)
-			 (replace -1 :hide? t)
-			 (beta 1)
-			 (dl-subs))
-			(then
-			 (hide-all-but 1)
-			 (skeep)
-			 (iff)
-			 (spread (split)
-				 ((then (flatten) (skeep) (inst?) (inst?) (assert))
-				  (then (flatten) (skeep) (inst?) (inst?) (assert)))))))
-		      )))))))
-	     (then (hide-all-but 1) (dl-cnstlins))))
+	      ((then (skip-msg "This branch is supposed to close automatically")(fail))
+	       (then
+		(hide-all-but (solution_lemma |Z_def| '-))
+		(expand "zs" |Z_def|)
+		
+		(simplify_init_zip_sol |Z_def|)
+		(for@ nil (simplify_nth))
+		;; simplify Y_sol_ex(%%) expressions
+		(let ((z_def-fnum (extra-get-fnum '|Z_def|))) ;; just for using in match 20231219 @M3
+		  (for@ nil (match$ z_def-fnum "Y_sol_ex(%a)(%b)"
+				  step (with-fresh-names
+					(Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
+					(reveal *Y_sol_ex*) 
+					(dl-calculate-Y_sol_ex$ *Y_sol_ex*)
+					(replace *Y_sol_ex* :dir rl :hide? t)
+					(beta |Z_def|)))))
+		(expand "UPTO" solution_lemma)
+		(dl-skolem skolem-constant solution_lemma)
+		(dl-flatten solution_lemma)
+		(rewrite "dl_assignb" :target-fnums solution_lemma)
+		(rewrite "dl_assignb_restricted" :target-fnums solution_lemma)
+		(let ((trivial-subst ;; a trivial substitution occurs on a bexpr DLBOOL(TRUE)
+		       (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
+					     "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(DLBOOL(TRUE))))"))))
+		  (if trivial-subst
+		      (then
+		       (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
+		       (replace Z_def :hide? t)
+		       (beta 1)
+		       (dl-subs))
+		    (then ;; on a more complex bexpr, the substitution is done programmatically
+		     (copy solution_lemma)
+		     (replace Z_def solution_lemma :hide? t)
+		     (beta solution_lemma)
+		     (spread
+		      (let ((dlforall (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
+							    "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
+			    (subst-dlforall (apply-substitution-on-dlforall dlforall))
+			    (dlforall-z (extra-get-expr '(~ 1 "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
+			    (case-str (format nil "(~a) = (~a)" dlforall-z subst-dlforall)))
+			(case case-str))
+		      ((then
+			(hide solution_lemma)
+			(replace -1 :hide? t)
+			(reveal Z_def)
+			(replace Z_def :hide? t)
+			(beta 1)
+			(dl-subs))
+		       (then
+			(hide-all-but 1)
+			(with-tccs (decompose-equality))
+			(expand "DLFORALL")
+			(spread ;; this "in-line lemma" helps to call dl-subs just once on this branch of the proof
+			 (case "FORALL(P,Q: PRED[real]): ((FORALL(x:real): P(x) = Q(x)) IMPLIES ( (FORALL(x:real): P(x)) = (FORALL(x:real): Q(x)) ))")
+			 ((then
+			   (with-tccs(inst?))
+			   (assert)
+			   (hide-all-but 1)
+			   (skeep)
+			   (reveal Z_def)
+			   (replace -1 :hide? t)
+			   (beta 1)
+			   (dl-subs))
+			  (then
+			   (hide-all-but 1)
+			   (skeep)
+			   (iff)
+			   (spread (split)
+				   ((then (flatten) (skeep) (inst?) (inst?) (assert))
+				    (then (flatten) (skeep) (inst?) (inst?) (assert)))))))
+			))))))))))
+	     (then (dl-assert-pairwise_distinct_vars?) (hide-all-but 1) (dl-cnstlins))))
 	   (when turn-rw-msg-on? (rewrite-msg-on))))))))
   ""
   "Solve it!")
