@@ -6,9 +6,8 @@
   '("ddl_dom_weak"
     "dl_dift_val" "dl_dift_const" "dl_dift_plus" "dl_dift_minus" "dl_dift_negative"
     "dl_dift_mult" "dl_dift_exp" "dl_dift_pow"
-    ;; "dl_dift_div" ;; TODO @M3 this lemma is missing. Deprecated?
     "dl_dift_sqrt" "dl_dift_divsafe"
-    "re_plus_cnst0" "cnst0_plus_re" "sqrt_re_sq"
+    "re_plus_cnst0" "cnst0_plus_re"
     "re_minus_cnst0" "cnst0_minus_re"
     "re_prod_cnst0" "cnst0_prod_re" "dl_true_DDL"))
 
@@ -43,7 +42,6 @@
 	       (expand* nnqb_ "normalize")
 	       (for@ nil (expand "normalize_rec"))
 	       (for@ nil (expand "neg_rel"))
-
 	       ;; need to solve the three hypothesis of dl_dI_dlTRUE
 	       ;; 1) derivable_M_nqbool?(max_var(ode),DLTRUE)(nnP) AND
 	       ;; 2) ( cons(Q,Gamma) |- cons(nqb_to_be(nnP),Delta) ) AND
@@ -54,18 +52,7 @@
 		  (match "derivable_M_nqbool?(%%)(%%)" step (dl-nqboolder__))
 		  (dl-assert)
 		  (dl-subdift__$))))
-	       
-	       ;; (spread
-	       ;; 	(dl-subdift__$)
-	       ;;  ((dl-nqboolder__)
-	       ;; 	 (skip)))
-
-	       ;; 20231214 @M3 dl-subdift__ is failing when trying to evaluate max_var( (: ... :) )
-	       ;;              I'll skip it to try and see how to repair it
-	       (dl-subdift__$)
-	       ;; (skip)
-
-	       )
+	       (dl-subdift__$))
 	      :side +
 	      :pp? pp?
 	      :dont-fail? dont-fail?))
@@ -91,15 +78,6 @@ sequent is pretty-printed unless PP? is set to nil."
 	  (for@ nil (expand "DIFT"))
 	  (skip))
      (expand "SUB_DIFTRe")
-
-     ;; 20231214 @M3 max_var is not evaluable anymore...
-     ;;          TODO remove
-     ;; (for@ nil
-     ;;  (try-then@
-     ;;   ((match "max_var(%)" step (with-tccs (eval-expr "%1" :quiet? t)))
-     ;; 	(replaces -1))))
-     
-     
      (branch
       (then@
        ;; [M3] expand names introduced by applying (skoletin*), if any
@@ -133,8 +111,7 @@ sequent is pretty-printed unless PP? is set to nil."
 	  (dl-compute-ddt__))))
        (then
 	(hide-all-but 1)
-	(else* (eval-formula 1 :quiet? t)
-	       (prove-derivable_up-goal)
+	(else* (prove-derivable_up-goal)
 	       (for nil
 		(then
 		 (rewrite* drws)
@@ -172,23 +149,6 @@ sequent is pretty-printed unless PP? is set to nil."
   "Internal stragty. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
   "Applying dl-compute-ddt__ helper")
 
-;; TODO Remove
-;; (defhelper dl-subddt__ ()
-;;   (let ((expr    (extra-get-expr '(~ + "ddt(%)(%)")))
-;; 	(exprsv '(~ ~ "same_var(%,%)")))
-;;     (when expr
-;;       (with-fresh-names
-;;        ((dt expr :tccs? (eval-formula 1 :quiet? t)))
-;;        (reveal *dt*)
-;;        (for@ nil
-;; 	(try-then
-;; 	 ((expand "ddt" *dt*)
-;; 	  (then
-;; 	   (try (eval-expr exprsv :quiet? t) (replaces -1) (skip))
-;; 	   (replaces *dt* :dir rl))))))))
-;;   "Internal strategy. Applies ddt differentiaion rules."
-;;   "Applying dl-subddt__ helper")
-
 (defhelper dl-nqboolder__ ()
   (let ((drws *dl-domain-rws*) (drre *dl-diffre-rws*))
     (then (expand "derivable_M_nqbool?")
@@ -202,14 +162,7 @@ sequent is pretty-printed unless PP? is set to nil."
 ;;
 ;;
 
-(defun defined-in-MapExprInj? (var-name list-of-mapexpr )
-  (loop for tuple-expr in list-of-mapexpr
-	for i from 0
-	when (string= (princ-to-string (car (exprs tuple-expr))) var-name)
-	return i))
-
-;; #TODO @M3 downgrade to deflhelper
-(defstep simplify-DIFT_Re-expression ()
+(defhelper simplify-DIFT_Re-expression ()
   (then
    ;; I had to define this tatic to use it with match below, because match
    ;; was having problems building the final step @M3 20231215
@@ -298,8 +251,7 @@ sequent is pretty-printed unless PP? is set to nil."
 			   (drup *dl-derup-rws*))
 			(then
 			 (hide-all-but 1)
-			 (else* (eval-formula 1 :quiet? t)
-				(prove-derivable_up-goal)
+			 (else* (prove-derivable_up-goal)
 				(for nil
 				 (then
 				  (rewrite* drws)

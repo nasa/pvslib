@@ -25,6 +25,12 @@
   "Proves that formulas of form in_map(%l{list})(dlvar_index(%x{name_})) are not true, assuming x is not defined in the MapExprInj l. Assumes also that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
   "Applying dl-prove-not-in_map")
 
+(defun defined-in-MapExprInj? (var-name list-of-mapexpr )
+  (loop for tuple-expr in list-of-mapexpr
+	for i from 0
+	when (string= (princ-to-string (car (exprs tuple-expr))) var-name)
+	return i))
+
 ;; cnst_lins strategy
 (defhelper dl-cnstlins (&optional (fnum 1))
   (then  (expand "cnst_lins?")
