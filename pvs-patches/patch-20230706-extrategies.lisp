@@ -1584,16 +1584,16 @@ CAVEAT:Formulas in the sequent my be reorganized after the application of this s
 
 (defrule deftactic (nm arg_or_step &optional step)
   (let ((stratn  (format nil "local_tactic_~a__" nm))
-	(arg     (when step arg_or_step))
+	(arg     (if step arg_or_step '()))
 	(stp     (list 'localtactic__ nm stratn (or step arg_or_step)))
 	(doc1    (format nil "Local tactic ~a defined in the proof context: ~a"
 			 nm (label *ps*)))
-	(doc2    (format nil "Applying local tactic ~a" nm)))
-    (then (lisp (defstep nm arg stp doc1 doc2)) 
-	  (if (check-name stratn)
-	      (printf "Redefining local tactic ~a" nm)
-	    (then (name stratn "TRUE")
-		  (delete -1)))))
+	(doc2    (format nil "Applying local tactic ~a" nm))
+	(dummy (eval `(defstep ,nm ,arg ,stp ,doc1 ,doc2))))
+    (if (check-name stratn)
+	(printf "Redefining local tactic ~a" nm)
+      (then (name stratn "TRUE")
+	    (delete -1))))
   "[Extrategies] Defines a tactic named NM. A tactic is a strategy that is local to the current branch
 of the proof. NM needs to be a valid identifier in PVS. A tactic definition can be either
 (deftactic NM STEP) or (deftactic NM (ARGUMENTS) STEP). For example,
