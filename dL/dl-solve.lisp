@@ -19,9 +19,8 @@
 (defhelper dl-prove-not-in_map ()
   (then
    (expand "in_map")
-   (skeep)
-   (typepred "i")
-   (repeat (expand "length" -1))
+   (skeep :preds? t)
+   (repeat (expand "length"))
    (for@ nil (then (expand "nth")(lift-if)(assert))))
   "Proves that formulas of form in_map(%l{list})(dlvar_index(%x{name_})) are not true, assuming x is not defined in the MapExprInj l. Assumes also that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
   "Applying dl-prove-not-in_map")
@@ -74,122 +73,6 @@
   "Determines if MapExprInj is made of constant and linear terms. Assumes that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
   "Checking if list is cnst_lins")
 
-;; (defstep dl-solve (&optional (quiet? t))
-;;   (let ((turn-rw-msg-on? (and quiet? (not *rewrite-msg-off*))))
-;;     (then
-;;      (when quiet? (rewrite-msg-off))
-;;      (with-fresh-labels
-;;       (lemma-lbl dlseq assigns zip-sol)
-;;       (spread
-;;        ;; Apply lemma
-;;        (with-labels (dl-lemma__ "solution_domain_ax_cnst_imp_zip" 1 1 :pp? pp? ) (lemma-lbl))
-;;        ((then
-;; 	 (with-labels (skoletin* lemma-lbl) ((dlseq assigns zip-sol UNEXPECTED)))
-;; 	 (dl-skolem "t" dlseq)
-;; 	 (expand "UPTO")
-;; 	 (dl-flatten dlseq)
-;; 	 ;; @M3 #TODO double-check the following match is really needed.
-;; 	 ;;           It does nothing on test.test_cnst_val_lins_complex.
-;; 					; (match "ALLRUNS(ASSIGN(Z(t)),%1)"
-;; 					; 	      step (let ((AZ (freshname "A")))
-;; 					; 		     (name AZ "ALLRUNS(ASSIGN(Z(t)),%1)")))
-;; 	 (with-focus-on zip-sol (dl-simplify-zip-sol$ zip-sol))
-;; 	 (replace zip-sol assigns :hide? t)
-;; 	 (replace assigns dlseq :hide? t)
-;; 	 ;; @M3 #TODO same here
-;; 	 ;; (rewrite "dl_assignb")
-;; 	 ;; (dl-subs)
-;; 	 ;; (expand "same_var")
-;; 	 (delabel (dlseq assigns zip-sol)))
-;; 	;; Prove cnstlins of ODE
-;; 	(dl-cnstlins))))
-;;      (when turn-rw-msg-on? (rewrite-msg-on))))
-;;   ""
-;;   "Solve it!")
-
-;; #TODO investigate/remove @M3
-(defstep BROKEN-dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
-  (let ((dlseq (or (is-dl-seq fnum) (error-format-if "No dL sequent found~@[ in fnum ~a~]." fnum)))
-	(skolem-constant ;; check that SKOLEM-CONSTANT is actually fresh
-	 (if (check-name skolem-constant)
-	     (error-format-if "Provided skolem constant (~a) is not fresh.
-                               Please provide a different one with the SKOLEM-CONSTANT parameter."
-			      skolem-constant)
-	   skolem-constant))
-	(passed-checks (and dlseq skolem-constant)))
-    (when passed-checks
-      (let ((turn-rw-msg-on? (and quiet? (not *rewrite-msg-off*)))
-	    (lemma-to-use (if (let ((lexpr (args1 (cdr dlseq)))) (= 0 (pp-length lexpr)))
-			      "solution_domain_ax_cnst_imp_zip_no_hyp"
-			    "solution_domain_ax_cnst_imp_zip")))
-	(then
-	 (when quiet? (rewrite-msg-off))
-	 (deftactic simplify_init_zip_sol nil
-	   (for@ nil (then (expand "init_zip_sol") (for@ nil (expand "length")))))
-	 (deftactic expand_in_map_ex nil (for@ nil (expand "in_map_ex")))	 
-	 (deftactic lift_them_all nil (for@ nil (lift-if)))
-	 (deftactic simplify_evaluable_ites nil
-	   (for@ nil
-	    (match "%a{if_}" step
-		   (let ((ite $aj) (guard (args1 ite)))
-		     (then (eval-expr guard :quiet? t) (replace -1 :hide? t))))))
-	 (deftactic simplify_Y_sol_ex nil
-	   (for@ nil
-	    (then (expand "Y_sol_ex" -1 1) (expand "get_val_cnst_id_ex")
-		  (expand "is_val_not_in_map?") (expand "is_cnst?")
-		  (expand_in_map_ex) (simplify_nth) (beta)
-		  (for@ nil (rewrites "env_nat_shift_cnst"))
-		  (rewrites ("env_nat_shift_0_val"
-			     "env_c_val"
-			     "env_nat_shift_1_val"))
-		  (match "%a{if_}" step
-			 (let ((ite $aj) (guard (args1 ite)))
-			   (then (eval-expr guard :quiet? t) (replace -1 :hide? t))))
-		  (match "get_index(%a{list})(%)" step
-			 (then (eval-expr $aj :quiet? t) (replace -1 :hide? t) (simplify_nth)))
-		  (beta))))
-	 (lemma lemma-to-use)
-	 (spread
-	  (inst?)
-	  ((then
-	    (with-fresh-labels
-	     (solution_lemma Z_def allruns_assign)
-	     (then
-	      (with-labels (skoletin) ((solution_lemma Z_def nil)))
-	      (beta solution_lemma)
-	      (split solution_lemma)
-	      (hide-all-but (solution_lemma '-))
-	      (expand "UPTO" solution_lemma)
-	      (with-fresh-names
-	       ((allruns_assign_expr))
-	       (then 
-		(dl-skolem skolem-constant solution_lemma)
-		(dl-flatten solution_lemma)
-		(let ((tgt-expr (format nil "ALLRUNS(ASSIGN(Z(~a)),%%)" skolem-constant)))
-		 (match tgt-expr step
-		  (let ((form $1j)) (with-labels
-		   (name allruns_assign_expr form)
-		   allruns_assign))))
-		(replace allruns_assign)
-		(replace Z_def allruns_assign)
-		(label "dlseq" solution_lemma)
-		(hide "dlseq")
-		(hide Z_def)
-		(expand "zs" allruns_assign)
-		(simplify_init_zip_sol)
-		(simplify_Y_sol_ex)
-		(rewrite "dl_assignb")
-		(dl-subs)
-		(lift_them_all)
-		(simplify_evaluable_ites)
-		(reveal dlseq)
-		(replace allruns_assign "dlseq" rl)
-		(hide allruns_assign))))))
-	   (then (hide-all-but 1) (dl-cnstlins))))
-	 (when turn-rw-msg-on? (rewrite-msg-on))))))
-  ""
-  "Solve it!")
-
 ;; #TODO move to structures? @M3
 (defstep simplify_nth (&optional (fnum *))
   (match$ fnum "nth(%a,%b{number})" step
@@ -215,7 +98,7 @@
   "Applying simplify_nth")
 
 (defhelper dl-calculate-is_cnst? (flabel)
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
     (then
      (expand "is_cnst?" flabel)
      (simplify_nth)
@@ -247,7 +130,7 @@
   "Applying pairwise_distinct_vars?")
 
 (defhelper dl-calculate-in_map_ex (flabel) ;; TODO integrate into strategy @M3
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
     (then
      (simplify_nth fnum)
      (for@ nil (expand "in_map_ex" flabel))
@@ -285,7 +168,7 @@
   "Applying dl-calculate-get_val_cnst_id_ex")
 
 (defstep dl-calculate-Y_sol_ex (flabel)
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; just for using in match 20231219 @M3
+  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
     (then 
      (expand "Y_sol_ex" flabel)
      (match$ fnum "%infix(is_cnst?(%a)(%b), is_val_not_in_map?(%a)(%b))" step
@@ -371,7 +254,7 @@
 		(simplify_init_zip_sol |Z_def|)
 		(for@ nil (simplify_nth))
 		;; simplify Y_sol_ex(%%) expressions
-		(let ((z_def-fnum (extra-get-fnum '|Z_def|))) ;; just for using in match 20231219 @M3
+		(let ((z_def-fnum (extra-get-fnum '|Z_def|))) ;; workaround to use label in match statement 20231219 @M3
 		  (for@ nil (match$ z_def-fnum "Y_sol_ex(%a)(%b)"
 				  step (with-fresh-names
 					(Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
@@ -437,7 +320,7 @@
 	     (then (dl-assert-pairwise_distinct_vars?) (hide-all-but 1) (dl-cnstlins))))
 	   (when turn-rw-msg-on? (rewrite-msg-on))))))))
   ""
-  "Solve it!")
+  "Applying dl-solve")
 
 ;;; Substitutions on lambda expressions
 (defun apply-substitution-on-dlforall (dlforall)
