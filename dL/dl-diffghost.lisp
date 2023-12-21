@@ -32,7 +32,7 @@
 					(list e1 e2 (extra-get-expr cut "BoolExpr") name)
 				      (list e1 e2 "_" name))))
 		    (try-branch
-		     (dl-lemma__
+		     (dl-lemma__$
 		      "dl_differential_ghost" dlfnum fnum
 		      :inst-terms inst-terms
 		      :side +

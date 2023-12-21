@@ -129,28 +129,6 @@
   ""
   "Applying pairwise_distinct_vars?")
 
-(defhelper dl-calculate-in_map_ex (flabel) ;; TODO integrate into strategy @M3
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
-    (then
-     (simplify_nth fnum)
-     (for@ nil (expand "in_map_ex" flabel))
-     (beta flabel)
-     (for@ nil
-	   (then
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
-	      (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
-	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
-	      (match fnum "val(%%)(%%)" step
-		   (then
-		    (expand "val" fnum)
-		    (expand "env_c" fnum)
-		    (expand "env_nat_shift" fnum))))))
-     (dl-assert-pairwise_distinct_vars?)))
-  "Computes expressions of form in_map_ex(%{list})(%{number}). Assumes FLABEL points to a formula containing an expression of that form."
-  "Applying dl-calculate-in_map_ex")
-
 (defhelper dl-calculate-get_val_cnst_id_ex (flabel)
   (with-fresh-names (ode)
    (expand "get_val_cnst_id_ex" flabel)
@@ -184,8 +162,25 @@
 	      (let ((is_val_not_in_map?-fnum (extra-get-fnum *is_val_not_in_map?*)))
 		(match$ is_val_not_in_map?-fnum
 			"in_map_ex(%a)(%b)"
-			step (dl-calculate-in_map_ex$ *is_val_not_in_map?*)))
-	      
+			step (let ((flabel *is_val_not_in_map?*))
+			       (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
+				 (then
+				  (simplify_nth fnum)
+				  (for@ nil (expand "in_map_ex" flabel))
+				  (beta flabel)
+				  (for@ nil
+					(then
+					 (let ((fnum (lisp (extra-get-fnum flabel))))
+					   (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
+					 (let ((fnum (lisp (extra-get-fnum flabel))))
+					   (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
+					 (let ((fnum (lisp (extra-get-fnum flabel))))
+					   (match fnum "val(%%)(%%)" step
+						  (then
+						   (expand "val" fnum)
+						   (expand "env_c" fnum)
+						   (expand "env_nat_shift" fnum))))))
+				  (dl-assert-pairwise_distinct_vars?))))))
 	      ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	      ;; the expression is replaced by the calculated definition,
 	      ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
@@ -206,7 +201,6 @@
 	     (replace -1 flabel :hide? t)))))
   "Decides formulas of form Y_sol_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
   "Applying dl-decide-Y_sol_ex")
-
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
   (let ((dlseq (or (is-dl-seq fnum) (error-format-if "No dL sequent found~@[ in fnum ~a~]." fnum)))
@@ -250,7 +244,6 @@
 	       (then
 		(hide-all-but (solution_lemma |Z_def| '-))
 		(expand "zs" |Z_def|)
-		
 		(simplify_init_zip_sol |Z_def|)
 		(for@ nil (simplify_nth))
 		;; simplify Y_sol_ex(%%) expressions

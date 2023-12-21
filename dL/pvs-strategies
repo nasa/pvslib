@@ -215,8 +215,13 @@ PP? is set to nil."
 
 (defun anyterm-lmbd (expr side) t)
 
-;; TODO move back to defhelper
-(defstep dl-lemma__ (lem dlfnum fnum &optional
+(defhelper dl-lemma__close_dl_cont_tcc ()
+  (let ((rws *dl-cont-rws*))
+    (for@$ nil (rewrites rws :fnums 1 :target-fnums 1)))
+  ""
+  "")
+
+(defhelper dl-lemma__ (lem dlfnum fnum &optional
 			   (finishing-step (skip)) inst-terms equiv? side ftest (pp? t) dont-fail?)
   (let (#+pvsdebug (dummy (format t "~&[dl-lemma__] lem ~a | dlfnum ~a (~a) | fnum ~a (~a) | %->>~a<<-~%"
 				  lem dlfnum (type-of dlfnum) fnum (type-of fnum) *ps*))
@@ -294,9 +299,9 @@ PP? is set to nil."
 	     (then  ;; Other branches - let's guess what to do ...
 	      (relabel lbs nfn!)
 	      (hide fn!)
-	      (else*$
+	      (else*
 	       ;; TCC on cont_re? conditions
-	       (match "cont_re?(%%)(%%)" step (prove-cont_re-goal))
+	       (match "cont_re?(%%)(%%)" step (dl-lemma__close_dl_cont_tcc$))
 	       ;; TCC for ddl_dom?(DLBOOL(TRUE))
 	       (match "ddl_dom?(DLBOOL(TRUE))" step (rewrite "dl_true_DDL"))
 	       ;; TCC for ddl_dom_upto?(i)(DLBOOL(TRUE))
@@ -310,29 +315,7 @@ PP? is set to nil."
 			    (simplify_nth)
 			    (assert)))
 	       (match "fresh_li?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
-	       (match "fresh?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
-	       ;; This TCC appears when instantiating ODEs as list of tuples
-	       (then
-		(skeep)
-		   ;; 20231214 @M3 fix in progress in dl-diffinv.lisp:l52
-		   ;;          TODO check if this is needed 
-		   ;;(eval-formula 1 :quiet? t)
-		)
-	       ;; other TCCs
-	       (then
-		(let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 63 ~%")))
-		  (skosimp* 1))
-		(let (#+pvsdebug (dummy (format t "~&[dl-lemma__] 64 ~%")))
-		  ;; (eval-formula 1 :quiet? t)
-		  (then
-		   (expand* (gamma_ delta_)) ;;; #TODO if we don't expand these names, eval-formula does not end
-					   ;;;       maybe an issue of eval-formula and names from with-fresh-names?
-		   ;; 20231214 @M3 fix in progress in dl-diffinv.lisp:l52
-		   ;;          TODO check if this is needed 
-		   ;;(eval-formula 1 :quiet? t)
-		   (skip)
-		   
-		   )))))))
+	       (match "fresh?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))))))
 	   (when pp? (dl-pp nfn!))
 	   (unless dont-fail? (label "**FAIL**" fn!))))))
        (when-label "**FAIL**" (fail)))
@@ -1197,23 +1180,7 @@ consequent is used. By default, the DDL sequent is pretty-printed
 unless PP? is set to nil."
   "Applying lemma dl_dC with case ~a to DDL formula ~a")
 
-;; JTS
-;; New and not working
-(defstep dl-derup () 
-  (let ((drup *dl-derup-rws*)) (rewrite* drup))
-  "Is it derivable_up?"
-  "Is it derivable_up?")
-
-;; New and not working
-(defstep dl-diffre () 
-  (let ((drup *dl-dift-rws*)) (rewrite* drup))
-  "Is it diff_re"
-  "Is it  diff_re")
-;;JTS
-
-;; TODO degrade to defhelper
-;; M3
-(defstep prove-derivable_up-goal ()
+(defhelper prove-derivable_up-goal ()
   (let((dl-operators *dl-derup-operators*)
        (dl-lemmas    *dl-derup-rws*)
        (predicate-name "derivable_up?"))
@@ -1221,24 +1188,14 @@ unless PP? is set to nil."
   "Try to close the branch if the current goal has a consequent of form derivable_up?(%1,%2)(%3)"
   "Applying prove-derivable_up-goal helper")
 
-;; TODO degrade to defhelper
-;; M3
-(defstep prove-diff_re-goal ()
+(defhelper prove-diff_re-goal ()
   (let((dl-operators *dl-diffre-operators*)
        (dl-lemmas *dl-diffre-rws*)
        (predicate-name "diff_re?"))
     (prove-predicate-on-re$ predicate-name dl-operators dl-lemmas))
   "" "")
 
-
 (defparameter *dl-cont-rws* '("cont_re_val" "cont_re_cnst" "cont_re_prod" "cont_re_pow" "cont_re_sum" "cont_re_diff" "cont_re_div"))
-
-;; #TODO degrade to defhelper @M3
-(defstep prove-cont_re-goal ()
-  (let ((rws *dl-cont-rws*))
-    (for nil (rewrites rws :fnums 1 :target-fnums 1)))
-  ""
-  "")
 
 ;;
 
@@ -1248,8 +1205,7 @@ unless PP? is set to nil."
 (defparameter *dl-fresh-rws* '("fresh_re_cnst" "fresh_re_val" "fresh_re_sum" "fresh_re_minus" "fresh_re_prod" "fresh_re_pow"
 			       "fresh_re_exp" "fresh_re_div_safe" "fresh_re_sqrt_safe"))
 
-;; #TODO degrade to defhelper @M3
-(defstep prove-fresh_re-goal ()
+(defhelper prove-fresh_re-goal ()
   (let ((frws (cons "bool_expr.fresh?" (append *dl-freshbool-rws* *dl-fresh-rws*))))
     (then
      (for@ nil
@@ -1257,12 +1213,10 @@ unless PP? is set to nil."
      (flatten)
      (for@ nil (expand "fresh_li?"))
      (for nil (rewrites frws :fnums 1 :target-fnums 1))))
-   ""
-   "")
+   "Proves formulas of form fresh?(%%)."
+   "Proving freshness of variables")
 
-;; TODO degrade to defstrat
-;; M3
-(defstep prove-predicate-on-re (predicate dl-operators dl-lemmas)
+(defstrat prove-predicate-on-re (predicate dl-operators dl-lemmas)
   (let ((match-str (format nil "~a(%1,%2)(%3)" predicate)))
     (match$
    + match-str
@@ -1280,9 +1234,7 @@ unless PP? is set to nil."
 		    (if lemma-name
 			(then
 			 (lemma lemma-name)
-			 ;; (inst -1 diff-bound arg1 domain)
-			 (inst? -1)
-			 )
+			 (inst? -1))
 		      (warning "Unexpected unary argument for ~a application: ~a" predicate arg))
 		  (let ((infix? (infix-application? arg))
 			(arg2 (format nil "~a" (args2 arg)))
@@ -1314,52 +1266,6 @@ unless PP? is set to nil."
   "Try to close the branch if the current goal has a consequent of form PREDICATE(%1,%2)(%3)"
   "Applying prove-predicate-on-re helper")
 
-
-;; #TODO move to general library?
-(defun is-tcc-goal? (&optional (ps *ps*))
-  "Determines if PS is a goal generated from a TCC. PS default value is the current proofstate."
-  (typep *ps* 'tcc-proofstate))
-
-;; #TODO move to general library?
-(defstrat error (msg &rest msg-args)
-  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
-    (fail))
-  "Report error message and fails."
-  "")
-
-;; #TODO redefining unwind-protect, move to manip or rename
-(defstep unwind-protect (main-step cleanup-step)
-  (spread (case "id(true)")
-	  ((then (delete -1) (else main-step (then cleanup-step (fail))))
-	   (then cleanup-step (expand "id"))))
-  "[Manip] Invoke MAIN-STEP followed by CLEANUP-STEP, which is performed
-even if MAIN-STEP leads to a proof of the current goal."
-  "Invoking proof step with cleanup")
-
-
-;; #TODO move to general library?
-(defstrat warning (msg &rest msg-args)
-  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
-    (skip))
-  "Report error message and skips."
-  "")
-
-(defstrat with-verbosity (step quiet?)
-  (if quiet?
-      (let((old-*print-conversions* *print-conversions*)
-	   (dummy (setq *print-conversions* nil))
-	   (old-*rewrite-msg-off* *rewrite-msg-off*)
-	   (dummy (setq *rewrite-msg-off* t)))
-	(unwind-protect$
-	 step
-	 (let 
-	  ((lisp (setq *rewrite-msg-off* old-*rewrite-msg-off*))
-	   (lisp (setq *print-conversions* old-*print-conversions*)))
-	  (skip))))
-    step)
-  "Applies STEP with less user messages (no rewriting messages, no conversion messages, etc.)"
-  "")
-
 (defun dl-translate-rel (op)
   (cond ((equal op '=) "nqb_eq")
 	((equal op '/=) "nqb_neq")
@@ -1386,8 +1292,6 @@ even if MAIN-STEP leads to a proof of the current goal."
 		   (dl-translate-rel (id (operator expr)))
 		   (args1 expr) (args2 expr)))
 	  (t (error "~a is not supported" expr)))))
-
-
 
 (defstep dl-diffweak (&optional (dlfnum +) fnum (pp? t) dont-fail?)
   (dl-lemma__$
@@ -1529,13 +1433,7 @@ sequent is pretty-printed unless PP? is set to nil."
        ;; #TODO finishing steps proposed because of issue #24, double-check it works in the rest of the cases.
        (ground)
        (rewrite* saferws)
-       step
-       ;; (branch
-       ;; 	(rewrite* saferws)
-       ;; 	((then (ground)  step)
-       ;; 	 (then (hide 1)
-       ;; 	       (finalize (grind)))))
-       )))
+       step)))
   "Internal strategy."
   "")
 
@@ -1543,7 +1441,6 @@ sequent is pretty-printed unless PP? is set to nil."
   (let ((dlseq (is-dl-seq fnum))
 	(fn    (car dlseq)))
     (then
-     ;; (match ? "%1 ^ %2" step (let ((isnum (number-expr? (extra-get-expr "%2")))) (when isnum (install-rewrites ("exponentitation.expt" "exponentitation.^"))))) ;; TODO remove
      (install-rewrites ("exponentitation.expt" "exponentitation.^"))
      (when fn
        (with-fresh-labels
@@ -1752,19 +1649,66 @@ DDL sequent in FNUM. If FNUM is not provided, the first DDL sequent in
 the consequent is used.")
 
 ;;
-;; check a boolexpr is SA
-;; LMW
+;; General-use strategies
+;;
+
+;; #TODO move to general library?
+(defun is-tcc-goal? (&optional (ps *ps*))
+  "Determines if PS is a goal generated from a TCC. PS default value is the current proofstate."
+  (typep *ps* 'tcc-proofstate))
+
+;; #TODO move to general library?
+(defstrat error (msg &rest msg-args)
+  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
+    (fail))
+  "Report error message and fails."
+  "")
+
+;; #TODO redefining unwind-protect, move to manip or rename
+(defstep unwind-protect (main-step cleanup-step)
+  (spread (case "id(true)")
+	  ((then (delete -1) (else main-step (then cleanup-step (fail))))
+	   (then cleanup-step (expand "id"))))
+  "[Manip] Invoke MAIN-STEP followed by CLEANUP-STEP, which is performed
+even if MAIN-STEP leads to a proof of the current goal."
+  "Invoking proof step with cleanup")
+
+;; #TODO move to general library?
+(defstrat warning (msg &rest msg-args)
+  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
+    (skip))
+  "Report error message and skips."
+  "")
+
+;; #TODO move to general library?
+(defstrat with-verbosity (step quiet?)
+  (if quiet?
+      (let((old-*print-conversions* *print-conversions*)
+	   (dummy (setq *print-conversions* nil))
+	   (old-*rewrite-msg-off* *rewrite-msg-off*)
+	   (dummy (setq *rewrite-msg-off* t)))
+	(unwind-protect$
+	 step
+	 (let 
+	  ((lisp (setq *rewrite-msg-off* old-*rewrite-msg-off*))
+	   (lisp (setq *print-conversions* old-*print-conversions*)))
+	  (skip))))
+    step)
+  "Applies STEP with less user messages (no rewriting messages, no conversion messages, etc.)"
+  "")
+
 
 (defparameter *bool-SA-rws* '("not_atom" "or_atom" "and_atom" "atomic_be" "Re_sum" "Re_diff" "Re_prod" "Re_expt" "sf_iff_mp"
 			      "sf_val" "sf_cnst"))
-
+;; @info check whether a boolexpr is SA
+;; @author LMW
 (defstrat bool-SA-check ()
   (let ((boolws   *bool-SA-rws*))
        (then (rewrites boolws) (for nil (rewrites boolws :fnums 1 ))))
   "Checking if BoolExpr defines an SA set"
-  "Checking if ~a defines an SA set")
+  "Checking if an SA set is defined")
 
-;;;; JTS additions
+;; @author JTS
 (defun dl-instf-lmbd (expr side)
   (is-function-expr expr "DLEXISTSRf"))
 
@@ -1807,15 +1751,6 @@ unless PP? is set to nil."
 	  (dl-instf term dlfnum fnum pp? dont-fail?))
    (then (dl-composeb)(dl-assignb)(dl-subf))
    (dl-instt term dlfnum fnum pp? dont-fail?))
-  ;(let ((expr (extra-get-expr term *real*)))
-  ;  (when expr
-  ;    (dl-lemma__$
-  ;     ("dl_forallL" "dl_existsR") dlfnum fnum
-   ;    :inst-terms expr
-    ;   :side *
-    ;   :ftest dl-inst-lmbddl0
-    ;   :pp? pp?
-    ;   :dont-fail? dont-fail?))))
   "Instantiates the quantified variable in DDL formula DLFNUM with the
 real number expression TERM. TERM must be a real number
 expression. The formula DLFNUM appears in either the consequent, if
@@ -1825,8 +1760,6 @@ the first DDL sequent in the consequent is used. By default, the DDL
 sequent is pretty-printed unless PP? is set to nil."
   "Instantiating an existentially quantified DDL formula with ~a")
 
-
-
 (defstep dl-boxd (&optional (dlfnum *) (fnum *) (pp? t) dont-fail? (dir rl))
   (then (lemma "dl_boxd") (inst? -1 :where fnum) (replace -1 fnum :dir dir)  (hide -1))
   "Applies the lemma dl_boxd to DDL formula DLFNUM of DDL sequent in
@@ -1834,7 +1767,6 @@ formula FNUM. If FNUM is not provided, the first DDL sequent in the
 consequent is used. By default, the DDL sequent is pretty-printed
 unless PP? is set to nil."
   "Applying lemma dl_boxd to DDL formula ~a")
-
 
 (defun dl-iterateb-lmbd (expr &optional side)
   (and (is-function-expr expr "ALLRUNS")
@@ -1869,7 +1801,6 @@ in formula FNUM. If FNUM is not provided, the first DDL sequent in the
 consequent is used. By default, the DDL sequent is pretty-printed
 unless PP? is set to nil."
   "Applying lemma dl_iterated to DDL formula ~a")
-
 
 (defstep dl-iffR (&optional (dlfnum +) fnum (pp? t) dont-fail?)
   (let ((ftest #'(lambda (expr side) (is-function-expr expr "DLIFF"))))
@@ -1920,7 +1851,6 @@ provided, the first DDL sequent in the consequent is used. By default,
 the DDL sequent is pretty-printed unless PP? is set to nil."
   "Applying lemma dl_constd to DDL formula ~a")
 
-
 (defstep dl-K (&optional (dlfnum +) fnum (pp? t) dont-fail?)
       (dl-lemma__$
        "dl_distimpliesb" dlfnum fnum
@@ -1933,11 +1863,6 @@ sequent can be specified with the option DLFNUM. If FNUM is not
 provided, the first DDL sequent in the consequent is used. By default,
 the DDL sequent is pretty-printed unless PP? is set to nil."
        "Applying lemma dl_distimpliesb to DDL formula ~a")
-
-
-(defun dl-Mb-lmbd (expr &optional side)
-(is-function-expr expr "DLIMPIES")
-)
 
 (defstep dl-Mb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
       (dl-lemma__$
@@ -1952,10 +1877,6 @@ provided, the first DDL sequent in the consequent is used. By default,
 the DDL sequent is pretty-printed unless PP? is set to nil."
        "Applying lemma dl_impliesallrunsb to DDL formula ~a")
 
-(defun dl-Md-lmbd (expr &optional side)
-(is-function-expr expr "DLIMPLIES")
-)
-
 (defstep dl-Md (&optional (dlfnum +) fnum (pp? t) dont-fail?)
       (dl-lemma__$
        "dl_impliesallrunsd" dlfnum fnum
@@ -1968,7 +1889,6 @@ sequent can be specified with the option DLFNUM. If FNUM is not
 provided, the first DDL sequent in the consequent is used. By default,
 the DDL sequent is pretty-printed unless PP? is set to nil."
   "Applying lemma dl_impliesallrunsd to DDL formula ~a")
-
 
 (defstep dl-Vb (&optional (dlfnum +) fnum (pp? t) dont-fail?)
       (dl-lemma__$
