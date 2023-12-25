@@ -1,1 +1,1 @@
-../pvsio_utils/examples/prime-factorization-checker.sh
+../pvsio_utils/pvsio_examples/prime-factorization-checker.sh
