@@ -19,6 +19,7 @@ Popular sorting algorithms as Bubble Sort, Quick Sort, Merge Sort, Insertion Sor
 * Ariane Alves Almeida, University of Brasilia, Brazil
 * Flavio L.C. de Moura, University of Brasilia, Brazil
 * Ana Cristina Rocha Oliveira, University of Brasilia, Brazil
+* [Mauricio Ayala-Rincón](http://www.mat.unb.br/~ayala), University of Brasilia, Brazil
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
