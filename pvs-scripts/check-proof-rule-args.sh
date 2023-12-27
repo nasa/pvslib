@@ -62,7 +62,12 @@ replace_pattern=$replace_pattern";s/(generalize  *\([^ ]*\)  *\([^\" ][^\") ]*\)
 	else
 	    echo "About to run: sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf"
 	    # test # eval "sed -n $replace_pattern \"$lib_name\"/*.prf"
-	    eval "sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf  --exclude='orphaned-proofs.prf'"
+	    if [ -f "orphaned-proofs.prf" ]; then
+		[ -f "orphaned-proofs-prf-bak" ] && echo "Error: I need to overwrite orphaned-proofs-prf-bak, but the file alredy exists. Please free the name and call me again." && exit 1;
+		mv orphaned-proofs.prf orphaned-proofs-prf-bak
+	    fi
+	    eval "sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf "
+	    [ -f "orphaned-proofs-prf-bak" ] && mv orphaned-proofs-prf-bak orphaned-proofs.prf
 	fi
     fi
 
