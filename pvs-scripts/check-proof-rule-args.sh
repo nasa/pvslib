@@ -38,7 +38,15 @@ issue_pattern=$issue_pattern'\|(case  *[^" ][^" ]*'
 replace_pattern=$replace_pattern";s/(case  *\([^\" ][^\") ]*\)/(case \"\\1\"/g"
 
 # hide
-issue_pattern=$issue_pattern'\|(hide  *[^" 0-9(-][^" ]*'
+issue_pattern=$issue_pattern'\|(hide  *[^" 0-9(\+-][^" ]*'
+# hide [ ... ]
+replace_pattern=$replace_pattern";s/(hide  *\[\([0-9+ -]*\)\]/(hide (\\1)/g"
+
+# generalize
+issue_pattern=$issue_pattern'\|(generalize  *[^" ][^" ]*'
+issue_pattern=$issue_pattern'\|(generalize  *"[^" ]"  *[^" ]'
+replace_pattern=$replace_pattern";s/(generalize  *\([^\" ][^\") ]*\)/(generalize \"\\1\"/g"
+replace_pattern=$replace_pattern";s/(generalize  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(generalize \\1 \"\\2\"/g"
 
 # issue_pattern=$issue_pattern'\|^ *[^" 0-9(-][^" ]*'
 
@@ -46,7 +54,7 @@ issue_pattern=$issue_pattern'\|(hide  *[^" 0-9(-][^" ]*'
     # grep "$issue_pattern" "$lib_name"/*.prf
     # eval '$('$command')'
     if [ "$operation_mode" = "d" ]; then
-	grep -n "$issue_pattern" "$lib_name"/*.prf 
+	grep --color -n "$issue_pattern" "$lib_name"/*.prf --exclude='orphaned-proofs.prf'
     else
 	if [ "$operation_mode" = "c" ]; then
 	    total=`grep "$issue_pattern" "$lib_name"/*.prf | grep "^.*[^0]\$" -c`
@@ -54,7 +62,7 @@ issue_pattern=$issue_pattern'\|(hide  *[^" 0-9(-][^" ]*'
 	else
 	    echo "About to run: sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf"
 	    # test # eval "sed -n $replace_pattern \"$lib_name\"/*.prf"
-	    eval "sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf"
+	    eval "sed -i \".bak\" '$replace_pattern' \"$lib_name\"/*.prf  --exclude='orphaned-proofs.prf'"
 	fi
     fi
 
