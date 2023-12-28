@@ -56,9 +56,9 @@ issue_pattern=$issue_pattern"|\(expand\* +$NQTEPARSPC"
 issue_pattern=$issue_pattern"|\(expand\* +$NPARSPC +$NQTEPARSPC"
 # replace_pattern=$replace_pattern";s/\(expand\* +($NQTEPARSPC)/(expand\* \"\\1\"/g"
 # replace_pattern=$replace_pattern";s/\((expand$NPAR*) +($NQTEPARSPC)/(\\1 \"\\2\"/g"
-replace_pattern=$replace_pattern";/\(expand\* /{
+replace_pattern=$replace_pattern";/\(expand\* [^\"]*\)/{
 :expandstarloop
-s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+s/(expand\*[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t expandstarloop
 s/\"expand\*\"/expand\*/g
 }"
@@ -70,11 +70,10 @@ replace_pattern=$replace_pattern";s/\(typepred +($NQTEPARSPC)/(typepred \"\\1\"/
 # # typepred (... name ...)
 issue_pattern=$issue_pattern"|\(typepred +\($NQTEPARSPC$NPAR*\)"
 # replace_pattern=$replace_pattern";s/\(typepred +\(($NQTEPARSPC)/(typepred (\"\\1\"/g"
-replace_pattern=$replace_pattern";/\(typepred /{
+replace_pattern=$replace_pattern";/\(typepred [^\"]*\)/{
 :typepredloop
-s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+s/(typepred[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t typepredloop
-s/\"typepred\"/typepred/g
 }"
 
 # # use
@@ -85,21 +84,20 @@ replace_pattern=$replace_pattern";s/\(use +($NQTEPARSPC)/(use \"\\1\"/g"
 # rewrite
 # (REWRITE/$ LEMMA-OR-FNUM &OPTIONAL (FNUMS *) SUBST (TARGET-FNUMS *) (DIR LR) (ORDER IN) DONT-DELETE?)
 issue_pattern=$issue_pattern"|\(rewrite +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/\(rewrite +($NQTEPARSPC)/(use \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(rewrite +($NQTEPARSPC)/(rewrite \"\\1\"/g"
 
 # # label
 # (LABEL LABEL FNUMS &OPTIONAL PUSH?)
 issue_pattern=$issue_pattern"|\(label +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/\(label +($NQTEPARSPC)/(use \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(label +($NQTEPARSPC)/(label \"\\1\"/g"
 
 # # case
 # (CASE &REST FORMULAS)
 issue_pattern=$issue_pattern"|\(case +$NQTEPARSPC"
-replace_pattern=$replace_pattern";/\(case /{
+replace_pattern=$replace_pattern";/\(case +[^\"]*\)/{
 :caseloop
-s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+s/(case[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t caseloop
-s/\"case\"/case/g
 }"
 
 # # hide
@@ -121,11 +119,16 @@ replace_pattern=$replace_pattern";s/\(generalize +([^ ]*)  *([^\" ][^\") ]*)/\(g
 issue_pattern=$issue_pattern"|\(inst +$FNUM +$NQTEPARSPC"
 issue_pattern=$issue_pattern"|\(inst +$FCOL +$NQTEPARSPC"
 # replace_pattern=$replace_pattern";s/(inst  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(inst \\1 \"\\2\"/g"
-replace_pattern=$replace_pattern";/\(inst /{
+replace_pattern=$replace_pattern";/\(inst +[0-9\*+-]+[^\"]*\)/{
 :instloop
-s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+s/inst( +[0-9\*+-]+[^\)]*[\( ])([^\" \(\)]+)/inst\1\"\2\"/g
 t instloop
-s/\"inst\"/inst/g
+s/\"inst\"/inst/g    
+}
+/\(inst +[[:alnum:]@?!,.{}]+[^\"]*\)/{    
+:instlabelloop
+s/inst([^\)]*[\( ])([^\" \(\)]+)/inst\1\"\2\"/g
+t instlabelloop
 }"
 
 # issue_pattern=$issue_pattern'\|^ *[^" 0-9(-][^" ]*'
