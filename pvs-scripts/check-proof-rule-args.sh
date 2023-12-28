@@ -27,77 +27,129 @@ operation_mode=$2
     echo "The second parameter must indicate the mode of operation: [d]isplay, [c]ount, or [r]eplace" &&
     exit 1;
 
+debug_mode=$3
+
 FNUM='[\^]?[\+-]?[0-9]+'
 FCOL='[\+\*-]?'
-NQTEPARSPC='[^" \)]+'             # no quote, no closing parenthesis, no space
+NPAR='[^\)]'                  # no closing parenthesis
+NPARSPC='[^ \)]+'                  # no closing parenthesis, no space
+NQTEPARSPC='[^" \(\)]+'              # no quote, no closing parenthesis, no space
 NFNUMFCOL='[^\" 0-9\(\+-][^\" ]*'  # no fnum, no fnum collections
+
 
 # induct
 issue_pattern="\(induct +$NQTEPARSPC"
-replace_pattern="s/(induct  *\([^\" ][^\") ]*\)/(induct \"\\1\"/g"
+replace_pattern="s/\(induct  *([^\" ][^\") ]*)/(induct \"\\1\"/g"
 
-# # lemma
+# lemma
+# (LEMMA NAME &OPTIONAL SUBST)
 issue_pattern=$issue_pattern"|\(lemma +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(lemma  *\([^\" ][^\") ]*\)/(lemma \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(lemma +($NQTEPARSPC)/(lemma \"\\1\"/g"
 
 # # expand
 issue_pattern=$issue_pattern"|\(expand +$NFNUMFCOL"
-replace_pattern=$replace_pattern";s/(expand  *\([^\" ][^\") ]*\)/(expand \"\\1\"/g"
+issue_pattern=$issue_pattern"|\(expand +$NPARSPC +$NQTEPARSPC"
+# replace_pattern=$replace_pattern";s/(expand  *\([^\" ][^\") ]*\)/(expand \"\\1\"/g"
 
 # # expand*
-issue_pattern=$issue_pattern"|\(expand\* +$NFNUMFCOL"
-replace_pattern=$replace_pattern";s/(expand\*  *\([^\" ][^\") ]*\)/(expand\* \"\\1\"/g"
+issue_pattern=$issue_pattern"|\(expand\* +$NQTEPARSPC"
+issue_pattern=$issue_pattern"|\(expand\* +$NPARSPC +$NQTEPARSPC"
+# replace_pattern=$replace_pattern";s/\(expand\* +($NQTEPARSPC)/(expand\* \"\\1\"/g"
+# replace_pattern=$replace_pattern";s/\((expand$NPAR*) +($NQTEPARSPC)/(\\1 \"\\2\"/g"
+replace_pattern=$replace_pattern";/\(expand\* /{
+:expandstarloop
+s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+t expandstarloop
+s/\"expand\*\"/expand\*/g
+}"
 
-# # typepred
+# # typepred name
+# (TYPEPRED &REST EXPRS)
 issue_pattern=$issue_pattern"|\(typepred +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(typepred  *\([^\" ][^\") ]*\)/(typepred \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(typepred +($NQTEPARSPC)/(typepred \"\\1\"/g"
+# # typepred (... name ...)
+issue_pattern=$issue_pattern"|\(typepred +\($NQTEPARSPC$NPAR*\)"
+# replace_pattern=$replace_pattern";s/\(typepred +\(($NQTEPARSPC)/(typepred (\"\\1\"/g"
+replace_pattern=$replace_pattern";/\(typepred /{
+:typepredloop
+s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+t typepredloop
+s/\"typepred\"/typepred/g
+}"
 
 # # use
+# (USE/$ LEMMA-NAME &OPTIONAL SUBST (IF-MATCH BEST) (INSTANTIATOR INST?)
 issue_pattern=$issue_pattern"|\(use +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(use  *\([^\" ][^\") ]*\)/(use \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(use +($NQTEPARSPC)/(use \"\\1\"/g"
+
+# rewrite
+# (REWRITE/$ LEMMA-OR-FNUM &OPTIONAL (FNUMS *) SUBST (TARGET-FNUMS *) (DIR LR) (ORDER IN) DONT-DELETE?)
+issue_pattern=$issue_pattern"|\(rewrite +$NQTEPARSPC"
+replace_pattern=$replace_pattern";s/\(rewrite +($NQTEPARSPC)/(use \"\\1\"/g"
 
 # # label
+# (LABEL LABEL FNUMS &OPTIONAL PUSH?)
 issue_pattern=$issue_pattern"|\(label +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(label  *\([^\" ][^\") ]*\)/(label \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(label +($NQTEPARSPC)/(use \"\\1\"/g"
 
 # # case
+# (CASE &REST FORMULAS)
 issue_pattern=$issue_pattern"|\(case +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(case  *\([^\" ][^\") ]*\)/(case \"\\1\"/g"
+replace_pattern=$replace_pattern";/\(case /{
+:caseloop
+s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+t caseloop
+s/\"case\"/case/g
+}"
 
 # # hide
+# (HIDE &REST FNUMS)
 # issue_pattern=$issue_pattern"|\(hide +[^\" 0-9(\+-][^\" ]*"
 issue_pattern=$issue_pattern"|\(hide +$NFNUMFCOL"
-# # hide [ ... ] -> hide ( ... )
-replace_pattern=$replace_pattern";s/(hide  *\[\([0-9+ -]*\)\]/(hide (\\1)/g"
+# # hide [ ... ] -> hide  ... 
+replace_pattern=$replace_pattern";s/\(hide +\[([0-9+ -]*)\]/\(hide \\1/g"
 
 # # generalize
+# (GENERALIZE/$ TERM VAR &OPTIONAL GTYPE (FNUMS *) (SUBTERMS-ONLY? T))
 issue_pattern=$issue_pattern"|\(generalize +$NQTEPARSPC"
 # issue_pattern=$issue_pattern'\|(generalize  *"[^" ]"  *[^" ]'
-replace_pattern=$replace_pattern";s/(generalize  *\([^\" ][^\") ]*\)/(generalize \"\\1\"/g"
-replace_pattern=$replace_pattern";s/(generalize  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(generalize \\1 \"\\2\"/g"
+replace_pattern=$replace_pattern";s/\(generalize +([^\" ][^\") ]*)/\(generalize \"\\1\"/g"
+replace_pattern=$replace_pattern";s/\(generalize +([^ ]*)  *([^\" ][^\") ]*)/\(generalize \\1 \"\\2\"/g"
 
 # inst
+# (INST/$ FNUM &REST TERMS)
 issue_pattern=$issue_pattern"|\(inst +$FNUM +$NQTEPARSPC"
 issue_pattern=$issue_pattern"|\(inst +$FCOL +$NQTEPARSPC"
-replace_pattern=$replace_pattern";s/(inst  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(inst \\1 \"\\2\"/g"
+# replace_pattern=$replace_pattern";s/(inst  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(inst \\1 \"\\2\"/g"
+replace_pattern=$replace_pattern";/\(inst /{
+:instloop
+s/([\( ])([^\" \(\)]+)/\1\"\2\"/g
+t instloop
+s/\"inst\"/inst/g
+}"
 
 # issue_pattern=$issue_pattern'\|^ *[^" 0-9(-][^" ]*'
 
+# replace_pattern=":loop
+# $replace_pattern; t loop"
+
+echo "$replace_pattern" > check-proof-rule-args.re
+
 if [ "$operation_mode" = "d" ]; then
-    echo "About to run: grep --color -n -E '$issue_pattern' $target --exclude='orphaned-proofs.prf'"
+    [ -n "$debug_mode" ] && echo "About to run: grep --color -n -E '$issue_pattern' $target --exclude='orphaned-proofs.prf'"
     eval "grep --color -n -E '$issue_pattern' $target --exclude='orphaned-proofs.prf'"
 else
     if [ "$operation_mode" = "c" ]; then
 	total=`eval "grep --color -n -E '$issue_pattern' $target --exclude='orphaned-proofs.prf' | grep . -c"`
 	echo "$total issues in the proof-rule arguments were detected"
     else
-	echo "About to run: sed -i \".bak\" '$replace_pattern' $target"
+	[ -n "$debug_mode" ] && echo "About to run: sed -i \".bak\" -E '$replace_pattern' $target"
 	# test # eval "sed -n $replace_pattern $target"
 	if [ -f "orphaned-proofs.prf" ]; then
 	    [ -f "orphaned-proofs-prf-bak" ] && echo "Error: I need to overwrite orphaned-proofs-prf-bak, but the file alredy exists. Please free the name and call me again." && exit 1;
 	    mv orphaned-proofs.prf orphaned-proofs-prf-bak
 	fi
-	eval "sed -i \".bak\" '$replace_pattern' $target "
+	eval "sed -i \".bak\" -E '$replace_pattern' $target "
 	[ -f "orphaned-proofs-prf-bak" ] && mv orphaned-proofs-prf-bak orphaned-proofs.prf
     fi
 fi
