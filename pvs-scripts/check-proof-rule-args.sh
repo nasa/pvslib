@@ -62,6 +62,11 @@ s/(expand\*[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t expandstarloop
 s/\"expand\*\"/expand\*/g
 }"
+# expand* multi-line
+replace_pattern=$replace_pattern"
+/[(]expand\*[^)]*$/,/[)]/{
+    s/([[:blank:]])([][[:alnum:]@!?.,]+)/\1\"\2\"/g
+}"
 
 # # typepred name
 # (TYPEPRED &REST EXPRS)
@@ -99,6 +104,11 @@ replace_pattern=$replace_pattern";/\(case +[^\"]*\)/{
 s/(case[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t caseloop
 }"
+# case multi-line
+replace_pattern=$replace_pattern"
+/[(]case[^)]*$/,/[)]/{
+    s/([[:blank:]])([][[:alnum:]@!?.,]+)/\1\"\2\"/g
+}"
 
 # # hide
 # (HIDE &REST FNUMS)
@@ -118,7 +128,7 @@ replace_pattern=$replace_pattern";s/\(generalize +([^ ]*)  *([^\" ][^\") ]*)/\(g
 # (INST/$ FNUM &REST TERMS)
 issue_pattern=$issue_pattern"|\(inst +$FNUM +$NQTEPARSPC"
 issue_pattern=$issue_pattern"|\(inst +$FCOL +$NQTEPARSPC"
-# replace_pattern=$replace_pattern";s/(inst  *\([^ ]*\)  *\([^\" ][^\") ]*\)/(inst \\1 \"\\2\"/g"
+# (inst FNUM TERM1 ... TERMn)
 replace_pattern=$replace_pattern";/\(inst +[0-9\*+-]+[^\"]*\)/{
 :instloop
 s/inst( +[0-9\*+-]+[^\)]*[\( ])([^\" \(\)]+)/inst\1\"\2\"/g
@@ -131,10 +141,6 @@ s/inst([^\)]*[\( ])([^\" \(\)]+)/inst\1\"\2\"/g
 t instlabelloop
 }"
 
-# issue_pattern=$issue_pattern'\|^ *[^" 0-9(-][^" ]*'
-
-# replace_pattern=":loop
-# $replace_pattern; t loop"
 
 echo "$replace_pattern" > check-proof-rule-args.re
 
@@ -148,11 +154,6 @@ else
     else
 	[ -n "$debug_mode" ] && echo "About to run: sed -i \".bak\" -E '$replace_pattern' $target"
 	# test # eval "sed -n $replace_pattern $target"
-	if [ -f "orphaned-proofs.prf" ]; then
-	    [ -f "orphaned-proofs-prf-bak" ] && echo "Error: I need to overwrite orphaned-proofs-prf-bak, but the file alredy exists. Please free the name and call me again." && exit 1;
-	    mv orphaned-proofs.prf orphaned-proofs-prf-bak
-	fi
 	eval "sed -i \".bak\" -E '$replace_pattern' $target "
-	[ -f "orphaned-proofs-prf-bak" ] && mv orphaned-proofs-prf-bak orphaned-proofs.prf
     fi
 fi
