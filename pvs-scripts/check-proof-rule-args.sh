@@ -62,11 +62,13 @@ s/(expand\*[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t expandstarloop
 s/\"expand\*\"/expand\*/g
 }"
+
+# Commented by [CM]
 # expand* multi-line
-replace_pattern=$replace_pattern"
-/[(]expand\*[^)]*$/,/[)]/{
-    s/([[:blank:]])([][[:alnum:]@!?.,]+)/\1\"\2\"/g
-}"
+#replace_pattern=$replace_pattern"
+#/[(]expand\*[^)]*$/,/[)]/{
+#    s/([[:blank:]])([][[:alnum:]@!?.,_]+)/\1\"\2\"/g
+#}"
 
 # # typepred name
 # (TYPEPRED &REST EXPRS)
@@ -105,10 +107,10 @@ s/(case[^\)]*[\( ])([^\" \(\)]+)/\1\"\2\"/g
 t caseloop
 }"
 # case multi-line
-replace_pattern=$replace_pattern"
-/[(]case[^)]*$/,/[)]/{
-    s/([[:blank:]])([][[:alnum:]@!?.,]+)/\1\"\2\"/g
-}"
+#replace_pattern=$replace_pattern"
+#/[(]case[^)]*$/,/[)]/{
+#    s/([[:blank:]])([][[:alnum:]@!?.,]+)/\1\"\2\"/g
+#}"
 
 # # hide
 # (HIDE &REST FNUMS)

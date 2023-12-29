@@ -68,3 +68,7 @@
       (let ((s-expr (read in-file)))
 	(format out-file "~s" (process s-expr)))))))
   
+
+;; Missing
+;;(MEASURE-INDUCT/$ MEASURE VARS &OPTIONAL (FNUM 1) ORDER SKOLEM-TYPEPREDS?)
+;;(SKOLEM FNUM CONSTANTS &OPTIONAL SKOLEM-TYPEPREDS? DONT-SIMPLIFY?)
