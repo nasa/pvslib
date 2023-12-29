@@ -104,15 +104,18 @@
     s-expr))
 
 (defun fix-file (name)
+  (format t "Fixing proofs in ~a~%" (file-namestring name))
   (let* ((in-name name)
 	 (out-name (format nil "~a.new" in-name)))
     (with-open-file
      (in-file (merge-pathnames in-name) :direction :input)
-     (with-open-file
-      (out-file (merge-pathnames out-name) :direction :output
-		:if-exists :supersede)
-      (let ((s-expr (read in-file)))
-	(format out-file "~s" (fix-proofs s-expr)))))))
+     (when in-file
+       (with-open-file
+	(out-file (merge-pathnames out-name) :direction :output
+		  :if-exists :supersede)
+	(let ((s-expr (read in-file nil)))
+	  (when s-expr
+	    (format out-file "~s" (fix-proofs s-expr)))))))))
 
 (defun fix-files (names)
   (let ((names (if (listp names) names (list names))))
