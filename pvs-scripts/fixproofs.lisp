@@ -1,3 +1,6 @@
+(defvar *total-changes* 0)
+(defvar *file-changes* 0)
+
 (defun symbol-or-number (s)
   (or (symbolp s) (numberp s)))
 
@@ -9,7 +12,7 @@
 (defun fixproof-symbol (s &key but (test #'symbolp))
   (let ((but (if (listp but) but (list but))))
     (if (and (funcall test s) (not (member s but)))
-	(format nil "~s" s)
+	(progn (incf *file-changes*) (format nil "~s" s))
       s)))
 
 ;; s | (s1 .. sn) --> "s" | ("s1" .. "sn")
@@ -76,6 +79,7 @@
 
 ;; (step NAME NAME ..) --> (step "name" "name" ..)
 ;; (GENERALIZE/$ TERM VAR &OPTIONAL GTYPE (FNUMS *) (SUBTERMS-ONLY? T))
+;; (NAME-REPLACE/$ RNAME EXPR &OPTIONAL (HIDE? T) &KEY (FNUMS *) ..)
 (defun fix-name-name (s-expr) 
   (cons (car s-expr)
 	(cons (fixproof-symbol (cadr s-expr))
@@ -98,26 +102,30 @@
 	     (fix-fnum-name-or-names s-expr))
 	    ((fixproof-equal (car s-expr) "measure-induct") 
 	     (fix-name-name-or-names s-expr))
-	    ((fixproof-equal (car s-expr) "generalize") 
+	    ((member (car s-expr) '("name-replace" "generalize") :test #'fixproof-equal)
 	     (fix-name-name s-expr))
 	    (t (mapcar #'fix-proofs s-expr)))
     s-expr))
 
 (defun fix-file (name)
-  (format t "Fixing proofs in ~a~%" (file-namestring name))
-  (let* ((in-name name)
+  (let* ((*file-changes* 0)
+	 (in-name name)
 	 (out-name (format nil "~a.new" in-name)))
     (with-open-file
      (in-file (merge-pathnames in-name) :direction :input)
      (when in-file
+       (format t "Fixing proofs in ~a " (file-namestring name))
        (with-open-file
 	(out-file (merge-pathnames out-name) :direction :output
 		  :if-exists :supersede)
 	(let ((s-expr (read in-file nil)))
 	  (when s-expr
-	    (format out-file "~s" (fix-proofs s-expr)))))))))
+	    (format out-file "~s" (fix-proofs s-expr)))))
+       (format t "[~a changes]~%" *file-changes*)
+       (incf *total-changes* *file-changes*)))))
 
 (defun fix-files (names)
   (let ((names (if (listp names) names (list names))))
     (loop for name in names
-	  do (fix-file name))))
+	  do (fix-file name)))
+  (format t "Total Changes: ~a~%" *total-changes*))
