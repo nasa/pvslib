@@ -1,5 +1,22 @@
-(defun nofix-yet (s-expr)
-  s-expr)
+(defun symbol-or-number (s)
+  (or (symbolp s) (numberp s)))
+
+(defun fixproof-equal (s1 s2)
+  (and (symbolp s1)
+       (string-equal s1 s2)))
+
+;; s --> "s"
+(defun fixproof-symbol (s &key but (test #'symbolp))
+  (let ((but (if (listp but) but (list but))))
+    (if (and (funcall test s) (not (member s but)))
+	(format nil "~s" s)
+      s)))
+
+;; s | (s1 .. sn) --> "s" | ("s1" .. "sn")
+(defun fixproof-symbol-or-symbols (s &key but (test #'symbolp))
+  (if (listp s)
+      (mapcar #'(lambda (x) (fixproof-symbol x :but but :test test)) s)
+    (fixproof-symbol s :but but :test test)))
 
 ;; (step NAME ..) --> (step "name" ..)
 ;; (LEMMA NAME &OPTIONAL SUBST)
@@ -65,26 +82,6 @@
 	      (cons (fixproof-symbol (caddr s-expr))
 		    (cdddr s-expr)))))
 
-(defun symbol-or-number (s)
-  (or (symbolp s) (numberp s)))
-
-(defun fixproof-equal (s1 s2)
-  (and (symbolp s1)
-       (string-equal s1 s2)))
-
-;; s --> "s"
-(defun fixproof-symbol (s &key but (test #'symbolp))
-  (let ((but (if (listp but) but (list but))))
-    (if (and (funcall test s) (not (member s but)))
-	(format nil "~s" s)
-      s)))
-
-;; s | (s1 .. sn) --> "s" | ("s1" .. "sn")
-(defun fixproof-symbol-or-symbols (s &key but (test #'symbolp))
-  (if (listp s)
-      (mapcar #'(lambda (x) (fixproof-symbol x :but but :test test)) s)
-    (fixproof-symbol s :but but :test test)))
-
 (defun fix-proofs (s-expr)
   (if (listp s-expr)
       (cond ((member (car s-expr) '("lemma" "use" "rewrite" "expand" "induct" "label") :test #'fixproof-equal)
@@ -117,4 +114,7 @@
       (let ((s-expr (read in-file)))
 	(format out-file "~s" (fix-proofs s-expr)))))))
 
-;(defun fix-directory (dir)
+(defun fix-files (names)
+  (let ((names (if (listp names) names (list names))))
+    (loop for name in names
+	  do (fix-file name))))
