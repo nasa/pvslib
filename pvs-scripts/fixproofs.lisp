@@ -117,6 +117,8 @@
 	     (do-fix s-expr (fix-name-name-or-number s-expr)))
 	    ((member (car s-expr) '("name-replace") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name-name-or-number s-expr :test #'symbol-or-number)))
+	    ((fixproof-equal (car s-expr) "deftactic") ;; Skip everything inside deftactic
+	     s-expr)
 	    (t (mapcar #'fix-proofs s-expr)))
     s-expr))
 
