@@ -1,16 +1,32 @@
 DIR=$( cd "$(dirname "$0")" ; pwd -P )
 
 usage() {
-    echo "Usage: $0 <file> | <directory>"
+    echo "Usage: $0 [--dry-run] <file> | <directory>"
     exit 1
- 
 }
 
-if [ -z "$1" ]; then
+dryrun=""
+
+while [ $# -gt 0 ]
+do
+    case $1 in
+        -h|-help|--help)    
+            usage;;
+        -dry-run|--dry-run)    
+            dryrun=":dry-run t";;
+        -*)
+            echo "Error: unknown option $1"
+            echo "Type $0 -h for help"
+            exit 1;;
+        *) target=$1;;
+    esac
+    shift 
+done
+
+if [ -z "$target" ]; then
     usage
 fi
 
-target=$1
 targetlist="";
 targetlisp="";
 
@@ -41,7 +57,7 @@ else
     targetlist=$target
 fi
 
-pvs -raw -L "$DIR/fixproofs.lisp" -E "(fix-files $targetlisp) (uiop:quit)" 2>/dev/null
+pvs -raw -L "$DIR/fixproofs.lisp" -E "(fix-files $targetlisp $dryrun) (uiop:quit)" 2>/dev/null
 
 for file in $targetlist; do
     if [ -f $file.new ]; then
