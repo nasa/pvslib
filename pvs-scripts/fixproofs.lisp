@@ -130,14 +130,14 @@
     (with-open-file
      (in-file (merge-pathnames in-name) :direction :input)
      (when in-file
-       (format t "Fixing proofs in ~a " (file-namestring name))
+       (format t "Fixing proofs in ~a" (file-namestring name))
        (with-open-file
 	(out-file (merge-pathnames out-name) :direction :output
 		  :if-exists :supersede)
 	(let ((s-expr (read in-file nil)))
 	  (when s-expr
 	    (format out-file "~s" (fix-proofs s-expr)))))
-       (format t "[~a change~:p]~%" *file-changes*)
+       (format t " [~a change~:p]~%" *file-changes*)
        (incf *total-changes* *file-changes*)))))
 
 (defun fix-files (names &key dry-run)
