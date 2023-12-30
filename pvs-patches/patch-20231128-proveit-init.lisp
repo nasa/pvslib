@@ -373,7 +373,7 @@
 ;;
 
 (defun proveit-theories (theories retry? thfs 
-			 &optional txtproofs texproofs use-default-dp? save-proofs?)
+			 &optional txtproofs texproofs use-default-dp? save-proofs? sanitize-proofs?)
   (let ((*use-default-dp?* use-default-dp?))
     (when texproofs
       (with-open-file 
@@ -397,6 +397,12 @@
 	      (let ((dof (member (format nil "~a" (id decl)) (cdr thf) 
 				 :test #'string=)))
 		(when (or (null thf) dof)
+		  (when sanitize-proofs?
+		    (let*((original-proof (justification decl))
+			  (fixed-proof (fix-proofs original-proof)))
+		      (unless (equals original-proof fixed-proof)
+			(setf (justification decl) fixed-proof)
+			(pvs-message "~&*** Warning: applied sanity fixes to proof of ~a.~a" (id (module decl)) (id decl)))))
 		  (setq *last-proof* (pvs-prove-decl decl retry?))
 		  (when txtproofs
 		    (with-open-file 
@@ -459,11 +465,12 @@
   `(let ((envstr (environment-variable ,var-name)))
      (when envstr (read-from-string envstr))))
 
-(defun proveit-on
-    (proveitversion context proveitarg pvsfile import scripts write-scripts
-		    traces force autotop typecheckonly txtproofs texproofs preludext
-		    disabled-oracles enabled-oracles auto-fix? default-proof thfs theories
-		    dependencies alternative-summary-mode debug-mode-on? outdir outbasename)
+(defun proveit-on (proveitversion
+		   context proveitarg pvsfile import scripts write-scripts
+		   traces force autotop typecheckonly txtproofs texproofs preludext
+		   disabled-oracles enabled-oracles auto-fix? default-proof thfs theories
+		   dependencies alternative-summary-mode debug-mode-on? outdir outbasename
+		   sanitize-proofs?)
   (let* ((*print-readably* nil)
 	 (*noninteractive* t)
 	 (*pvs-verbose* (if traces 3 2))
@@ -602,7 +609,9 @@
 	      #+pvsdebug (format t "~%[proveit-init.proveit] before proveit-theories~%") 
 	      (proveit-theories pvstheories force thfs txtproofs texproofs nil
 				;; if auto-fix?, save proofs
-				auto-fix?)
+				;; if sanitize-proofs?, save proofs
+				(or auto-fix? sanitize-proofs?)
+				sanitize-proofs?)
 	      #+pvsdebug (format t "~%[proveit-init.proveit] after proveit-theories~%") 
 	      (setq proveit-return-value
 		    (proveit-status-proof-theories pvstheories thfs))))
@@ -637,7 +646,7 @@
 		    :test #'string=))
 	 (enabled-oracles (remove-duplicates
 		     (read-from-environment-variable "PROVEITLISPENABLE")
-		   :test #'string=))
+		     :test #'string=))
 	 (auto-fix? (read-from-environment-variable "PROVEITLISPAUTOFIX"))
 	 (default-proof (let ((envstr (environment-variable
 				       "PROVEITLISPDEFAULTPROOFSCRIPT")))
@@ -652,11 +661,19 @@
 	 (outdir (let ((name (environment-variable "PROVEITLISPOUTDIR")))
 		   (when (and name (string/= name "")) name)))
 	 (outbasename (let ((name (environment-variable "PROVEITLISPOUTBASENAME")))
-			(when (and name (string/= name "")) name))))
+			(when (and name (string/= name "")) name)))
+	 (sanitize-proofs? (read-from-environment-variable "PROVEITLISPSANITIZEPROOFS")))
+    ;; Additional code for sanitize-proofs
+    (if (fboundp 'nasalib-path)
+	(load (format nil "~a/pvs-scripts/fixproofs.lisp" (nasalib-path)))
+      (progn
+	(format t "~&*** Warning: NASALib path not found, proof sanitization disabled.")
+	(setq sanitize-proofs? nil)))
     (proveit-on proveitversion context proveitarg pvsfile import scripts write-scripts
 		traces force autotop typecheckonly txtproofs texproofs preludext
 		disabled-oracles enabled-oracles auto-fix? default-proof thfs theories
-		dependencies alternative-summary-mode debug-mode-on? outdir outbasename))) 
+		dependencies alternative-summary-mode debug-mode-on? outdir outbasename
+		sanitize-proofs?))) 
 
 (defun collect-top-theories ()
   (let ((files-in-dir
