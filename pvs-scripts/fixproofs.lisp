@@ -94,6 +94,7 @@
 ;; (step NAME NAME ..) --> (step "name" "name" ..)
 ;; (GENERALIZE/$ TERM VAR &OPTIONAL GTYPE (FNUMS *) (SUBTERMS-ONLY? T))
 ;; (NAME-REPLACE/$ RNAME EXPR &OPTIONAL (HIDE? T) &KEY (FNUMS *) ..)
+;; (NAME NAME EXPR)
 (defun fix-name-name-or-number (s-expr &key test) 
   (cons (car s-expr)
 	(cons (fixproof-symbol (cadr s-expr))
@@ -128,7 +129,7 @@
 	     (do-fix s-expr (fix-name-name-or-names s-expr)))
 	    ((member (car s-expr) '("generalize") :test #'fixproof-equal) 
 	     (do-fix s-expr (fix-name-name-or-number s-expr)))
-	    ((member (car s-expr) '("name-replace") :test #'fixproof-equal)
+	    ((member (car s-expr) '("name-replace" "name") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name-name-or-number s-expr :test #'symbol-or-number)))
 	    ((fixproof-equal (car s-expr) "deftactic") ;; Skip everything inside deftactic
 	     s-expr)
