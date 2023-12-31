@@ -26,7 +26,6 @@
 
 ;; (step NAME ..) --> (step "name" ..)
 ;; (LEMMA NAME &OPTIONAL SUBST)
-;; (USE/$ LEMMA-NAME &OPTIONAL SUBST (IF-MATCH BEST) (INSTANTIATOR INST?) ...)
 ;; (REWRITE/$ LEMMA-OR-FNUM &OPTIONAL (FNUMS *) SUBST (TARGET-FNUMS *) ...)
 ;; (EXPAND FUNCTION-NAME &OPTIONAL (FNUM *) OCCURRENCE ...)
 ;; (INDUCT/$ VAR &OPTIONAL (FNUM 1) NAME)
@@ -53,6 +52,16 @@
 	(let ((rest (if (listp (cadr s-expr)) (cadr s-expr) (cdr s-expr))))
 	  (mapcar #'fixproof-symbol
 		  rest))))
+
+;; (step NAME (NAME1 .. NAMEN) ..) --> (step name ("name1" .. "namen") ..)
+;; (LEMMA NAME &OPTIONAL SUBST)
+;; (USE/$ LEMMA-NAME &OPTIONAL SUBST (IF-MATCH BEST) (INSTANTIATOR INST?) ...)
+(defun fix-name-names (s-expr)
+  (cons (car s-expr)
+	(cons (fixproof-symbol (cadr s-expr))
+	      (when (cddr s-expr)
+		(cons (fixproof-symbol-or-symbols (caddr s-expr) :test #'symbol-or-number)
+		      (cdddr s-expr))))))
 
 ;; (step FNUM NAME1 .. NAMEN) --> (step fnum "name1" .. "namen")
 ;; (INST/$ FNUM &REST TERMS)
@@ -99,8 +108,10 @@
 
 (defun fix-proofs (s-expr)
   (if (listp s-expr)
-      (cond ((member (car s-expr) '("lemma" "use" "rewrite" "expand" "induct" "label") :test #'fixproof-equal)
+      (cond ((member (car s-expr) '("rewrite" "expand" "induct" "label") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name s-expr)))
+	    ((member (car s-expr) '("lemma" "use") :test #'fixproof-equal)
+	     (do-fix s-expr (fix-name-names s-expr)))
 	    ((member (car s-expr) '("expand*" "case" "auto-rewrite") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-names s-expr)))
 	    ((member (car s-expr) '("hide") :test #'fixproof-equal)
