@@ -1,0 +1,178 @@
+%%----------------------------------------------------------------------------
+%%
+%% Authors:	
+%% 		Thaynara Arielly de Lima
+%% 		Universidade Federal de Goiás - Brazil
+%%			
+%%		André Luiz Galdino
+%%		Universidade Federal de Catalão - Brazil
+%%
+%%              Andréia Borges Avelar da Silva
+%%		Universidade de Brasília - Brazil
+%%
+%%		Mauricio Ayala-Rincón
+%%		Universidade de Brasília - Brazil
+%%
+%%		Bruno Berto de Oliveira Ribeiro
+%%		Universidade de Brasília - Brazil
+%%----------------------------------------------------------------------------
+%%
+%%	Last version: October 27, 2023
+%%
+%%----------------------------------------------------------------------------
+
+quaternions_Hamilton: THEORY
+
+BEGIN
+IMPORTING quaternions[real,+,*,0,1,-1,-1],
+          ring_nz_closed,
+          reals,
+          reals@sqrt,
+	     vectors@vectors_3D_extra,
+          vectors@vectors_3D_cos,
+          vectors@vectors_4D,
+          vectors@cross_3D,
+          trig@trig_types,
+          trig@trig_inverses,
+	  trig@arccos
+
+
+q: VAR quat
+t: VAR nnreal_quad1_closed
+
+
+Real_part(q: quat): real = q`x
+
+Vector_part(q: quat): Vect3 = (q`y, q`z, q`t)
+
+conversion_quot: LEMMA
+  FORALL(r: real, nz: nzreal): r/nz = number_fields./(r,nz)
+
+quat_is_Real_p_Vector_part: LEMMA 
+     FORALL (q: quat): 
+        q = (Real_part(q), Vector_part(q)`x, Vector_part(q)`y, Vector_part(q)`z)
+
+decompose_eq_Real_Vector_part: LEMMA
+     FORALL (q, p : quat):
+        Real_part(q) = Real_part(p) AND Vector_part(q) = Vector_part(p) IFF
+        q = p
+
+Vector_part_scalar: LEMMA
+     FORALL (k:real, q: quat): Vector_part(k*q) = k * Vector_part(q)
+
+q_prod_Real_Vector_part: LEMMA
+     FORALL (p,q:quat): 
+        Real_part(p * q) = Real_part(p) * Real_part(q) - Vector_part(p) * Vector_part(q) AND 
+        Vector_part(p * q) = Real_part(p) * Vector_part(q) + Real_part(q) * Vector_part(p) + 
+              cross(Vector_part(p), Vector_part(q))
+
+conjugate_Real_vector_part: LEMMA
+     FORALL (q: quat):
+        Real_part(conjugate(q)) = Real_part(q) AND
+        Vector_part(conjugate(q)) = - Vector_part(q)
+
+%Characterization of the rotation operator
+T_q_Real_charac: LEMMA
+     FORALL (q: quat, a: (pure_quat)):
+      Vector_part(T_q(q)(a)) = (sq(q`x) - sq(norm(Vector_part(q)))) * Vector_part(a)  +
+                               (2 * (Vector_part(q) * Vector_part(a))) * Vector_part(q) +
+                               (2 * q`x) * cross(Vector_part(q), Vector_part(a))  
+
+r_angle(a,b:(nzpure_quat)): nnreal_le_pi = angle_between(Vector_part(a),Vector_part(b))
+
+n_rot_axis(a:(pure_quat),b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))): Vect3 =
+   normalize(cross(Vector_part(a), Vector_part(b)))
+
+rot_quat(a:(pure_quat),b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))): quat =
+  LET  rot_angl_halve : nnreal_le_pi = number_fields./(r_angle(a,b), 2),
+       sin_ha = sin(rot_angl_halve),
+       cos_ha = cos(rot_angl_halve), 
+       n = n_rot_axis(a,b)
+  IN (cos_ha,  sin_ha * n`x, sin_ha * n`y, sin_ha * n`z)
+
+
+%———————————————————————————————————————————————————————————————————————————————————————————————————
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Auxiliary definitions to allow PVSio interpretation %  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+
+% This function is necessary for the
+% interpretation of multiplication, since quaternion multiplication characterization
+% inferred from the quaternions axioms, in the abstract theory quaternions.pvs, does 
+% not allows multiplication interpretation.
+mult_QH(u,v:quat) : quat =
+    mk_quat(u`x * v`x - u`y * v`y - u`z * v`z  - u`t * v`t, 
+             u`x * v`y + u`y * v`x +  u`z * v`t - u`t * v`z,
+             u`x * v`z + u`z * v`x -  u`y * v`t +  u`t * v`y,
+             u`x * v`t + u`y * v`z - u`z * v`y + u`t * v`x )
+
+conjugate_(u:quat) : quat = mk_quat(u`x, - u`y, - u`z, - u`t)
+
+
+% Auxiliary equivalence lemma
+conj_quat_eq: LEMMA
+ FORALL(u:quat) : conjugate(u) = conjugate_(u)  
+
+% Auxiliary equivalence lemma for multiplication
+mult_QH_eq: LEMMA
+   FORALL (u,v:quat) : u * v = mult_QH(u,v)
+
+T_q_(q: quat)(v:(pure_quat)): (pure_quat) = mult_QH(mult_QH(q, v), conjugate_(q))
+
+% Auxiliary equivalence lemma for rotation operator T_q
+  T_q_eq: LEMMA
+    FORALL (q: quat, v:(pure_quat)) : T_q(q)(v)  = T_q_(q)(v)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%  To test calculi start PVSio and execute, for instance:    %
+%     LET a = (0,5,0,0), b = (0,3,4,0), rq = rot_quat(a,b)   %
+%     IN T_q_(rq)(a);                                        %
+%                                                            %
+%       End of functions to allow PVSio interpretation       %
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%———————————————————————————————————————————————————————————————————————————————————————————————————
+
+
+% Auxiliary lemma to simplify next proof's of
+% orthogonality with rotat. axis.
+Quat_Rot_Aux0: LEMMA
+     FORALL (a:(pure_quat), b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))): 
+        Vector_part(rot_quat(a, b)) = sin(number_fields./(r_angle(a,b), 2)) * (n_rot_axis(a,b))
+
+% Orthogonality of a and the rotation axis from a to b. 
+Quat_Rot_Aux1: LEMMA
+     FORALL (a:(pure_quat), b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))): 
+        (Vector_part(rot_quat(a, b)) * Vector_part(a)) = 0
+
+Quat_Rot_Aux2: LEMMA
+     FORALL (a:(pure_quat), b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))):
+        LET      q = rot_quat(a, b),
+  	     theta = r_angle(a,b),
+	    norm_q = norm(Vector_part(q)) IN
+        (sq(q`x) - sq(norm_q)) * Vector_part(a) = cos(theta) * Vector_part(a)
+
+Quat_Rot_Aux3: LEMMA
+     FORALL (a:(pure_quat), b:(pure_quat) | norm(Vector_part(a)) = norm(Vector_part(b)) AND
+                                            linearly_independent?(Vector_part(a), Vector_part(b))):
+        LET  q = rot_quat(a, b),
+  	     theta = r_angle(a,b),
+	     norm_q = norm(Vector_part(q)) IN
+        (2*q`x) * cross(Vector_part(q), Vector_part(a)) = Vector_part(b) - cos(theta) * Vector_part(a)
+
+Quaternions_Rotation: THEOREM
+     FORALL (a:(pure_quat), b:(pure_quat) | norm(Vector_part(a)) = norm(Vector_part(b)) AND
+                                            linearly_independent?(Vector_part(a), Vector_part(b))): 
+        LET q = rot_quat(a,b) IN
+        b = T_q(q)(a)
+
+Quaternions_Rotation_Deform: THEOREM
+     FORALL (a:(pure_quat), b:(pure_quat) | linearly_independent?(Vector_part(a), Vector_part(b))): 
+        LET q = (sqrt(number_fields./(norm(Vector_part(b)),norm(Vector_part(a)))))*rot_quat(a, number_fields./(norm(Vector_part(a)),norm(Vector_part(b))) * b) IN
+        b = T_q(q)(a)
+
+END quaternions_Hamilton
