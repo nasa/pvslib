@@ -47,13 +47,11 @@
 	(mapcar #'(lambda (s) (fixproof-symbol s :but but))
 		(cdr s-expr))))
 
-;; (step NAME | (NAME1 .. NAMEN)) --> (step "name1" .. "namen")
+;; (step NAME1 .. NAMEN) --> (step "name1" .. "namen")
 ;; (TYPEPRED &REST EXPRS)
 (defun fix-name-or-names (s-expr)
   (cons (car s-expr)
-	(let ((rest (if (listp (cadr s-expr)) (cadr s-expr) (cdr s-expr))))
-	  (mapcar #'fixproof-symbol
-		  rest))))
+	(mapcar #'fixproof-symbol-or-symbols (cdr s-expr))))
 
 ;; (step NAME (NAME1 .. NAMEN) ..) --> (step name ("name1" .. "namen") ..)
 ;; (LEMMA NAME &OPTIONAL SUBST)
@@ -79,12 +77,13 @@
 (defun fix-fnum-name-or-names (s-expr)
   (cons (car s-expr)
 	(cons (cadr s-expr)
-	      (cons (fixproof-symbol-or-symbols (caddr s-expr))
+	      (cons (fixproof-symbol-or-symbols (caddr s-expr) :but '_)
 		    (cdddr s-expr)))))
 
 
 ;; (step NAME NAME | (NAME1 .. NAMEN) ..) --> (step name "name | ("name1" .. "namen") ..)
-;; (MEASURE-INDUCT/$ MEASURE VARS &OPTIONAL (FNUM 1) ORDER SKOLEM-TYPEPREDS?)
+;; (MEASURE-INDUCT/$ MEASURE VARS &OPTIONAL (FNUM 1) ..)
+;; (MEASURE-INDUCT+/$ MEASURE VARS &OPTIONAL (FNUM 1) ..)
 (defun fix-name-name-or-names (s-expr)
   (cons (car s-expr)
 	(cons (fixproof-symbol (cadr s-expr))
@@ -125,7 +124,7 @@
 	     (do-fix s-expr (fix-fnum-names-or-numbers s-expr)))
 	    ((member (car s-expr) '("skolem") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-fnum-name-or-names s-expr)))
-	    ((member (car s-expr) '("measure-induct") :test #'fixproof-equal)
+	    ((member (car s-expr) '("measure-induct" "measure-induct+") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name-name-or-names s-expr)))
 	    ((member (car s-expr) '("generalize") :test #'fixproof-equal) 
 	     (do-fix s-expr (fix-name-name-or-number s-expr)))
