@@ -19,7 +19,7 @@ BEGIN
       SEQ(stm1,stm2) : size(stm1) + size(stm2),
       UNION(stm1,stm2) : size(stm1) + size(stm2),
       STAR(stm) : 1+size(stm),
-      ANY(anyvar,anyset) : 1
+      ANY(anyvar) : 1
     ENDCASES
   MEASURE hp BY <<
 
@@ -87,8 +87,8 @@ BEGIN
    envi:Environment,t:real)(env:Environment) : bool = 
     (FORALL (i:(not_in_map(odes))) : envi(i) = env(i))
     AND
-    (FORALL (k:below(length(odes))) : LET (i,re) = nth(odes,k) IN
-      fs(k)(t) = env(i))
+    (FORALL (k:below(length(odes))) : LET (vi,re) = nth(odes,k) IN
+      fs(k)(t) = env(dlvar_index(vi)))
       
 %-------------------------------------------------------------------------
 %% There is a unique environement that is (env_at_t?), given a fs, odes,
@@ -106,7 +106,7 @@ BEGIN
      IF not_in_map(odes)(i)
        THEN envi(i)
      ELSE 
-       fs(choose({kk:below(length(odes)) | (i,nth(odes,kk)`2) = nth(odes,kk)}))(t)
+       fs(choose({kk:below(length(odes)) | i = dlvar_index(nth(odes,kk)`1)}))(t)
      ENDIF
 
 %-------------------------------------------------------------------------
@@ -162,10 +162,10 @@ BEGIN
   semantic_rel(hp:HP)(envi:Environment)(envo:Environment) : INDUCTIVE bool =
     (assign?(hp) AND  LET l = assigns(hp) IN
                       (FORALL (i:below(length(l))) :
-                        LET (k,re) = nth(l,i) IN 
-                        envo(k) = re(envi)) AND
+                        LET (vk,re) = nth(l,i) IN 
+                        envo(dlvar_index(vk)) = re(envi)) AND
 		        FORALL (i:(not_in_map(l))) :envo(i) = envi(i)) OR     
-    ((diff?(hp)) AND EXISTS(D:(dd?)): semantic_rel_diff(D,odes(hp),be(hp),envi,envo)) OR
+    ((diff?(hp)) AND ((be(hp)(envi) AND envi=envo) OR EXISTS(D:(dd?)): semantic_rel_diff(D,odes(hp),be(hp),envi,envo))) OR
     (test?(hp) AND be(hp)(envi) AND envo = envi) OR
     (seq?(hp) AND (EXISTS (env:Environment):
                           semantic_rel(stm1(hp))(envi)(env) AND
@@ -173,8 +173,7 @@ BEGIN
     (union?(hp) AND (semantic_rel(stm1(hp))(envi)(envo) OR semantic_rel(stm2(hp))(envi)(envo))) OR
     (star?(hp) AND (envo = envi OR (EXISTS (env:Environment):semantic_rel(stm(hp))(envi)(env) AND
                                     semantic_rel(hp)(env)(envo)))) OR
-    (any?(hp) AND (EXISTS(r:real): anyset(hp)(r)(envi) AND envo(anyvar(hp)) = r) AND
-    	      	  FORALL (i:nat | i /= anyvar(hp)) : envo(i) = envi(i))
+    (any?(hp) AND eq_env_but_at(envi,envo,dlvar_index(anyvar(hp))))
 
 %-------------------------------------------------------------------------
 %% check the freshness of a vaiable index 
@@ -190,18 +189,18 @@ BEGIN
 
   fresh_li?(l:Assigns)(i:nat) : INDUCTIVE bool =
     null?(l) OR
-    (car(l)`1 /= i AND fresh?(car(l)`2)(i) AND
+    (dlvar_index(car(l)`1) /= i AND fresh?(car(l)`2)(i) AND
      fresh_li?(cdr(l))(i))
 
   fresh_assign_nth: LEMMA
   FORALL(l:Assigns,i:(fresh_li?(l)),j:below(length(l))):
-  nth(l,j)`1 /= i
+  dlvar_index(nth(l,j)`1) /= i
   AND
   fresh?(nth(l,j)`2)(i)
 
   fresh_mapexpr_inj: LEMMA
   FORALL(l:  MapExprInj, i:(fresh_li?(l)),re:RealExpr):
-  mapexpr_inj(cons( (i,re), l))
+  mapexpr_inj(cons( (dlvar(i),re), l))
 
   fresh_mapexp_nth_2: LEMMA
   FORALL(l:  MapExprInj, i:(fresh_li?(l)), k:below(length(l))):
@@ -214,7 +213,7 @@ BEGIN
      (seq?(hp) AND fresh_hp?(stm1(hp))(i) AND fresh_hp?(stm2(hp))(i)) OR
      (union?(hp) AND fresh_hp?(stm1(hp))(i) AND fresh_hp?(stm2(hp))(i)) OR
      (star?(hp) AND fresh_hp?(stm(hp))(i)) OR
-     (any?(hp) AND i /= anyvar(hp) AND FORALL(r:real): fresh?(anyset(hp)(r))(i))
+     (any?(hp) AND i /= dlvar_index(anyvar(hp)))
 
 END hp_expr
 

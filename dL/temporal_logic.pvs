@@ -1,0 +1,477 @@
+temporal_logic: THEORY
+  BEGIN 
+    
+    IMPORTING ltl_expr,
+              substitution,
+              trace_bounded_star_semantics,
+              reals@bounded_reals,
+              dynamic_logic,
+              solution_odes_props
+
+%%--------------------------------------------
+%%Define variables 
+%%--------------------------------------------
+
+  l,m: VAR Assigns
+  f:   VAR ODEs
+  j,k: VAR nat
+  re:  VAR RealExpr
+  r :  VAR real
+
+  Gamma,Delta : VAR Formulas
+  P,Q,J,R     : VAR BoolExpr
+  qQ          : VAR QBoolExpr
+  S,T,U,V     : VAR TraceBoolExpr
+  A,B         : VAR HP
+  t           : VAR Trace
+  re1,re2     : VAR RealExpr
+
+
+%---------
+%% Some preliminary lemmas
+%-----------
+
+
+
+
+  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Normalization Rules
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+norm_DLGLOBALLY: LEMMA
+    DLGLOBALLY(State_Trace(P)) = normDLGLOBALLY(DLTRUE,P)
+
+norm_DLEVENTUALLY: LEMMA
+    DLEVENTUALLY(State_Trace(P)) = normDLEVENTUALLY(DLFALSE,P)
+
+norm_DLGE: LEMMA
+    DLGLOBALLY(DLEVENTUALLY(State_Trace(P))) = normDLGE(P,P)
+
+norm_DLEG: LEMMA
+    DLEVENTUALLY(DLGLOBALLY(State_Trace(P))) = normDLEG(P,P)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Normalization of Trace Formulas
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Handled by core of PVS
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Sequential Composition
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [;]⊓ 
+% [A]([B](P ⊓ □Q) ⊓ □Q)
+% -----------------------
+% [A;B](P ⊓ □Q)
+dltl_SEQcap: LEMMA
+    ALLRUNS_tr(A, normDLGLOBALLY(ALLRUNS_tr(B, normDLGLOBALLY(P,Q)), Q)) |-
+    ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))
+
+%  [;]⊓ con
+% [A;B](P ⊓ □Q)
+% -----------------------
+% 〈A〉([B](P ⊓ □Q)) ∨ [A](⊤⊓ □Q)
+dltl_SEQcap_con: LEMMA
+    ALLRUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q)) |-
+    DLOR(SOMERUNS_st(A, ALLRUNS_tr(B, normDLGLOBALLY(P,Q))),ALLRUNS_tr(A, normDLGLOBALLY(DLTRUE,Q)))
+
+%  〈;〉⊓
+% 〈A〉(〈B〉(P ⊓ □Q) ⊓ □Q)
+% =======================
+% 〈A;B〉(P ⊓ □Q)
+dltl_SEQcap_dual: LEMMA
+    SOMERUNS_tr(A, normDLGLOBALLY(SOMERUNS_tr(B, normDLGLOBALLY(P,Q)), Q)) =
+    SOMERUNS_tr(SEQ(A,B), normDLGLOBALLY(P,Q))
+
+%  [;]⊔
+% [A]([B](P ⊔ ◇Q) ⊔ ◇Q)
+% =======================
+% [A;B](P ⊔ ◇Q)
+dltl_SEQcup: LEMMA
+    ALLRUNS_tr(A, normDLEVENTUALLY(ALLRUNS_tr(B, normDLEVENTUALLY(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q)) 
+
+%  〈;〉⊔
+% 〈A〉(〈B〉(P ⊔ ◇Q)) ∨ 〈A;⊥〉(P ⊔ ◇Q)
+% -----------------------
+% 〈A;B〉(P ⊔ ◇Q)
+dltl_SEQcup_dual: LEMMA
+    DLOR(SOMERUNS_st(A, SOMERUNS_tr(B, normDLEVENTUALLY(P,Q))),SOMERUNS_tr(SEQ(A,TEST(DLFALSE)), normDLEVENTUALLY(P,Q))) |-
+    SOMERUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q)) 
+
+%  〈;〉⊔ con
+% 〈A;B〉(P ⊔ ◇Q)
+% -----------------------
+% 〈A〉(〈B〉(P ⊔ ◇Q) ⊔ ◇Q)
+dltl_SEQcup_dual_con: LEMMA
+    SOMERUNS_tr(SEQ(A,B), normDLEVENTUALLY(P,Q)) |-
+    SOMERUNS_tr(A, normDLEVENTUALLY(SOMERUNS_tr(B, normDLEVENTUALLY(P,Q)), Q))
+
+%  [;]◁
+% [A]([B](P ◁ T) ◁ T)
+% =======================
+% [A;B](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_SEQtriangleEG: LEMMA
+    ALLRUNS_tr(A, normDLEG(ALLRUNS_tr(B, normDLEG(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLEG(P,Q))
+
+dltl_SEQtriangleGE: LEMMA
+    ALLRUNS_tr(A, normDLGE(ALLRUNS_tr(B, normDLGE(P,Q)), Q)) =
+    ALLRUNS_tr(SEQ(A,B), normDLGE(P,Q))
+
+%  〈;〉◁
+% 〈A〉(〈B〉(P ◁ T) ◁ T)
+% =======================
+% 〈A;B〉(P ◁ T)
+% where T = □◇Q or ◇□Q
+
+dltl_SEQEG_dual: LEMMA
+    SOMERUNS_tr(A, normDLEG(SOMERUNS_tr(B, normDLEG(P,Q)), Q)) =
+    SOMERUNS_tr(SEQ(A,B), normDLEG(P,Q))
+
+dltl_SEQGE_dual: LEMMA
+    SOMERUNS_tr(A, normDLGE(SOMERUNS_tr(B, normDLGE(P,Q)), Q)) =
+    SOMERUNS_tr(SEQ(A,B), normDLGE(P,Q))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Nondeterministic Choice
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [∪]T
+% [A]T ∧ [B]T
+% =======================
+% [A ∪ B]T
+dltl_choice: LEMMA
+    DLAND(ALLRUNS_tr(A,T), ALLRUNS_tr(B,T)) =
+    ALLRUNS_tr(UNION(A,B),T)
+
+dltl_choice_st: LEMMA
+    DLAND(ALLRUNS_st(A,P), ALLRUNS_st(B,P)) =
+    ALLRUNS_st(UNION(A,B),P)
+
+%  〈∪〉T
+% 〈A〉T ∨〈B〉T
+% =======================
+% 〈A ∪ B〉T
+dltl_choice_dual: LEMMA
+    DLOR(SOMERUNS_tr(A,T), SOMERUNS_tr(B,T)) =
+    SOMERUNS_tr(UNION(A,B),T)
+
+dltl_choice_st_dual: LEMMA
+    DLOR(SOMERUNS_st(A,P), SOMERUNS_st(B,P)) =
+    SOMERUNS_st(UNION(A,B),P)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Test
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [?]⊓
+% ¬P ∨ (Q ∧ R)
+% =======================
+% [?P](Q ⊓ □R)
+dltl_TESTcap_eq: LEMMA
+DLOR(DLNOT(P),DLAND(Q,R)) = ALLRUNS_tr(TEST(P),normDLGLOBALLY(Q,R))
+
+%  〈?〉⊓
+% P ∧ (Q ∧ R)
+% =======================
+% 〈?P〉(Q ⊓ □R)
+dltl_TESTcap_eq_dual: LEMMA
+DLAND(P,DLAND(Q,R)) = SOMERUNS_tr(TEST(P),normDLGLOBALLY(Q,R))
+
+%  [?]⊔
+% (¬P ∨ Q) ∨ R
+% =======================
+% [?P](Q ⊔ ◇R)
+dltl_TESTcup_eq: LEMMA
+DLOR(DLOR(Q,DLNOT(P)),R) = ALLRUNS_tr(TEST(P),normDLEVENTUALLY(Q,R))
+
+%  〈?〉⊔
+% P ∧ (Q ∨ R)
+% =======================
+% 〈?P〉(Q ⊔ ◇R)
+dltl_TESTcup_eq_dual: LEMMA
+DLAND(P,DLOR(Q,R)) = SOMERUNS_tr(TEST(P),normDLEVENTUALLY(Q,R))
+
+%  [?]◁ ◇
+% ¬P ∨ Q
+% =======================
+% [?P](Q ◁ ◇□R)
+dltl_TESTEG_eq: LEMMA
+    DLOR(DLNOT(P),Q) = ALLRUNS_tr(TEST(P),normDLEG(Q,R))
+
+%  〈?〉◁ ◇
+% P ∧ Q
+% =======================
+% 〈?P〉(Q ◁ ◇□R)
+dltl_TESTEG_eq_dual: LEMMA
+    DLAND(P,Q) = SOMERUNS_tr(TEST(P),normDLEG(Q,R))
+
+%  [;]◁ □
+% ¬P ∨ Q
+% =======================
+% [?P](Q ◁ □◇R)
+dltl_TESTGE_eq: LEMMA
+    DLOR(DLNOT(P),Q) = ALLRUNS_tr(TEST(P),normDLGE(Q,R))
+
+%  〈?〉◁ ◇
+% P ∧ Q
+% -----------------------
+% 〈?P〉(Q ◁ □◇R)
+dltl_TESTGE_eq_dual: LEMMA
+    DLAND(P,Q) = SOMERUNS_tr(TEST(P),normDLGE(Q,R))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Assignment
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [:=]⊓
+% P ∧ [x:=l](Q ∧ P)
+% -----------------------
+% [x:=l](Q ⊓ □P)
+dltl_ASSIGNcap: LEMMA
+    DLAND(P,ALLRUNS_st(ASSIGN(l),Q AND P)) = ALLRUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))
+
+%  〈:=〉⊓
+% P ∧ 〈x:=l〉(Q ∧ P)
+% -----------------------
+% 〈x:=l〉(Q ⊓ □P)
+dltl_ASSIGNcap_dual: LEMMA
+    DLAND(P,SOMERUNS_st(ASSIGN(l),Q AND P)) = SOMERUNS_tr(ASSIGN(l),normDLGLOBALLY(Q,P))
+
+%  [:=]⊔
+% P ∨ [x:=l](Q ∨ P)
+% -----------------------
+% [x:=l](Q ⊔ ◇P)
+dltl_ASSIGNcup: LEMMA
+    DLOR(P,ALLRUNS_st(ASSIGN(l),Q OR P)) = ALLRUNS_tr(ASSIGN(l),normDLEVENTUALLY(Q,P))
+
+%  〈:=〉⊔
+% P ∨ 〈x:=l〉(Q ∨ P)
+% -----------------------
+% 〈x:=l〉(Q ⊔ ◇P)
+dltl_ASSIGNcup_dual: LEMMA
+    DLOR(P,SOMERUNS_st(ASSIGN(l),Q OR P)) = SOMERUNS_tr(ASSIGN(l),normDLEVENTUALLY(Q,P))
+
+%  [:=]◁
+% [x:=l]P
+% -----------------------
+% [x:=l](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_ASSIGNEG: LEMMA
+    ALLRUNS_st(ASSIGN(l),P) = ALLRUNS_tr(ASSIGN(l),normDLEG(P,Q))
+
+dltl_ASSIGNGE: LEMMA
+    ALLRUNS_st(ASSIGN(l),P) = ALLRUNS_tr(ASSIGN(l),normDLGE(P,Q))
+
+%  〈:=〉◁
+% 〈x:=l〉P
+% -----------------------
+% 〈x:=l〉(P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_ASSIGNEG_dual: LEMMA
+    SOMERUNS_st(ASSIGN(l),P) = SOMERUNS_tr(ASSIGN(l),normDLEG(P,Q))
+
+dltl_ASSIGNGE_dual: LEMMA
+    SOMERUNS_st(ASSIGN(l),P) = SOMERUNS_tr(ASSIGN(l),normDLGE(P,Q))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Ordinary Differential Equation
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [']⊓
+% ¬Q ∨ P ∧ [x':=f&Q](R ∧ P)
+% =======================
+% [x:=f&Q](R ⊓ □P)
+dltl_DIFFcap: LEMMA
+    (DLAND(P,ALLRUNS_st(DIFF(f,Q),R AND P)) |- ALLRUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P)))
+
+dltl_DIFFcap_eq: LEMMA
+    DLOR(DLNOT(Q),DLAND(P,ALLRUNS_st(DIFF(f,Q),R AND P))) = ALLRUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P))
+
+%  〈'〉⊓
+% (P∧Q∧R) ∨〈x:=f&(P∧Q)〉R ∨ [x:=f](P∧Q)
+% ==============================================
+% 〈x:=f&Q〉(R ⊓ □P)
+dltl_DIFFcap_eq_dual: LEMMA
+FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLOR(DLOR(DLAND(P,DLAND(R,Q)),SOMERUNS_st(DIFF(f,P AND Q),R)),ALLRUNS_st(DIFF(f), P AND Q)) = SOMERUNS_tr(DIFF(f,Q),normDLGLOBALLY(R,P))
+
+
+%  [']⊔
+% (¬P∨Q∨R) ∧ [x:=f&(P∧¬Q)]R ∧〈x:=f〉(¬P∨Q)
+% ==============================================
+% [x:=f&P](R ⊔ ◇Q)
+dltl_DIFFcup_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLAND(DLAND(DLOR(DLNOT(P),DLOR(R,Q)),ALLRUNS_st(DIFF(f,P AND NOT Q),R)),DLOR(DLNOT(P),SOMERUNS_st(DIFF(f), (NOT P) OR Q))) =
+    ALLRUNS_tr(DIFF(f,P),normDLEVENTUALLY(R,Q))
+
+%  〈'〉⊔
+% P ∨ 〈x:=f&Q〉(R∨P)
+% -----------------------
+% [x:=f&P](R ⊔ ◇Q)
+dltl_DIFFcup_dual: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    SOMERUNS_tr(DIFF(f,Q),normDLEVENTUALLY(R,P)) |- DLOR(P,SOMERUNS_st(DIFF(f,Q), R OR P))
+
+dltl_DIFFcup_dual_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLOR(DLAND(Q,DLOR(R,P)),SOMERUNS_st(DIFF(f,Q), R OR P)) =
+    SOMERUNS_tr(DIFF(f,Q),normDLEVENTUALLY(R,P))
+
+%  [']◁ ◇
+% (¬P∨R) ∧ [x:=f&P]R ∧ (〈x:=f〉(¬P) ∨〈x:=f〉[x:=f]Q)
+% =================================================
+% [x:=f&P](R ◁ ◇□Q)
+dltl_DIFFEG_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLAND(DLAND(DLOR(DLNOT(P),R),ALLRUNS_st(DIFF(f,P),R)),DLOR(SOMERUNS_st(DIFF(f,DLTRUE), NOT P),SOMERUNS_st(DIFF(f,DLTRUE), ALLRUNS_st(DIFF(f,DLTRUE),Q)))) =
+    ALLRUNS_tr(DIFF(f,P),normDLEG(R,Q))
+
+%  〈'〉◁ ◇
+% (P∧R) ∨ 〈x:=f&P〉R ∨ ([x:=f]P ∧〈x:=f〉[x:=f]Q)
+% ===============================================
+% 〈x:=f&P〉(R ◁ ◇□Q)
+dltl_DIFFEG_dual_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLOR(DLOR(DLAND(P,R),SOMERUNS_st(DIFF(f,P),R)),DLAND(ALLRUNS_st(DIFF(f,DLTRUE), P),SOMERUNS_st(DIFF(f,DLTRUE), ALLRUNS_st(DIFF(f,DLTRUE),Q)))) =
+    SOMERUNS_tr(DIFF(f,P),normDLEG(R,Q))
+
+%  [']◁ □
+% (¬P∨R) ∧ [x:=f&P]R ∧ (〈x:=f〉(¬P) ∨ [x:=f]〈x:=f〉Q)
+% ===================================================
+% [x:=f&P](R ◁ □◇Q)
+dltl_DIFFGE_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLAND(DLAND(DLOR(DLNOT(P),R),ALLRUNS_st(DIFF(f,P),R)),DLOR(SOMERUNS_st(DIFF(f,DLTRUE), NOT P),ALLRUNS_st(DIFF(f,DLTRUE), SOMERUNS_st(DIFF(f,DLTRUE),Q)))) =
+    ALLRUNS_tr(DIFF(f,P),normDLGE(R,Q))
+
+%  〈'〉◁ □
+% (P∧R) ∨ 〈x:=f&P〉R ∨ ([x:=f]P ∧〈x:=f〉[x:=f]Q)
+% ===============================================
+% 〈x:=f&P〉(R ◁ □◇Q)
+dltl_DIFFGE_dual_eq: LEMMA
+    FORALL(P,Q,R:BoolExpr, f:(ODEs_s?(hp(0)))):
+    DLOR(DLOR(DLAND(P,R),SOMERUNS_st(DIFF(f,P),R)),DLAND(ALLRUNS_st(DIFF(f,DLTRUE), P),ALLRUNS_st(DIFF(f,DLTRUE), SOMERUNS_st(DIFF(f,DLTRUE),Q)))) =
+    SOMERUNS_tr(DIFF(f,P),normDLGE(R,Q))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Repetition
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%  [*]⊓
+% P∧Q ∧ [A*][A](P ⊓ □Q)
+% =======================
+% [A*](P ⊓ □Q)
+dltl_BSTARcap_eq: LEMMA
+equalities[BoolExpr].=( (LAMBDA(env:Environment): (FORALL(i:nat): DLAND(DLAND(P,Q),ALLRUNS_st(BSTAR(A,i),ALLRUNS_tr(A,normDLGLOBALLY(P,Q))))(env))),
+    ( LAMBDA(env:Environment): FORALL(i:nat): ALLRUNS_tr(BSTAR(A,i),normDLGLOBALLY(P,Q))(env)))
+
+dltl_STARcap_eq: LEMMA
+    DLAND(DLAND(P,Q),ALLRUNS_st(STAR(A),ALLRUNS_tr(A,normDLGLOBALLY(P,Q)))) =
+    ALLRUNS_tr(STAR(A),normDLGLOBALLY(P,Q))
+
+%  〈*〉⊔
+% P ∨ 〈A*〉〈A〉(P ⊔ ◇Q)
+% =======================
+% 〈A*〉(P ⊔ ◇Q)
+dltl_STARcup_dual: LEMMA
+    DLOR(DLOR(P,Q),SOMERUNS_st(STAR(A),SOMERUNS_tr(A,normDLEVENTUALLY(P,Q)))) =
+    SOMERUNS_tr(STAR(A),normDLEVENTUALLY(P,Q))
+
+
+%  [*n]⊔
+% P ∨ (Q ∧ [A;A*](Q ⊔ ◇P))
+% =======================  
+% [A*](Q ⊔ ◇P)
+dltl_STARcup: LEMMA
+    DLOR(P,DLAND(Q,ALLRUNS_tr(SEQ(A,STAR(A)),normDLEVENTUALLY(Q,P)))) =
+    ALLRUNS_tr(STAR(A),normDLEVENTUALLY(Q,P))
+
+%  〈*n〉⊓
+% P ∧ (Q ∨ [A;A*](Q ⊓ □P))
+% =======================  
+% [A*](Q ⊓ □P)
+dltl_STARcap_dual: LEMMA
+    DLAND(P,DLOR(Q,SOMERUNS_tr(SEQ(A,STAR(A)),normDLGLOBALLY(Q,P)))) =
+    SOMERUNS_tr(STAR(A),normDLGLOBALLY(Q,P))
+
+%  ind⊔
+% ∀a (P → [a](P ⊔ ◇Q)))
+% -----------------------
+% P → [A*](P ⊔ ◇Q)
+dltl_BSTARindcup: LEMMA
+    FORALL(n:nat)(P,Q)(A):
+      (P |- ALLRUNS_tr(A,normDLEVENTUALLY(P,Q)))
+      IMPLIES (P |- ALLRUNS_tr(BSTAR(A,n),normDLEVENTUALLY(P,Q)))
+
+dltl_STARindcup: LEMMA
+    (P |- ALLRUNS_tr(A,normDLEVENTUALLY(P,Q)))
+      IMPLIES (P |- ALLRUNS_tr(STAR(A),normDLEVENTUALLY(P,Q)))
+
+%  〈*〉◁
+% P ∨ 〈A*〉〈A〉(P ◁ T)
+% =======================
+% 〈A*〉(P ◁ T)
+% where T = □◇Q or ◇□Q
+
+dltl_BSTAREG_dual: LEMMA
+   equalities[BoolExpr].=( (LAMBDA(env:Environment): (EXISTS(i:nat): DLOR(P,SOMERUNS_st(BSTAR(A,i),SOMERUNS_tr(A,normDLEG(P,Q))))(env))), (LAMBDA(env:Environment): (EXISTS(i:nat): SOMERUNS_tr(BSTAR(A,i),normDLEG(P,Q))(env))))
+
+dltl_BSTARGE_dual: LEMMA
+   equalities[BoolExpr].=( (LAMBDA(env:Environment): (EXISTS(i:nat): DLOR(P,SOMERUNS_st(BSTAR(A,i),SOMERUNS_tr(A,normDLGE(P,Q))))(env))),
+    (LAMBDA(env:Environment): (EXISTS(i:nat): SOMERUNS_tr(BSTAR(A,i),normDLGE(P,Q))(env))))
+
+dltl_STAREG_dual: LEMMA
+    DLOR(P,SOMERUNS_st(STAR(A),SOMERUNS_tr(A,normDLEG(P,Q)))) =
+    SOMERUNS_tr(STAR(A),normDLEG(P,Q))
+
+dltl_STARGE_dual: LEMMA
+    DLOR(P,SOMERUNS_st(STAR(A),SOMERUNS_tr(A,normDLGE(P,Q)))) =
+    SOMERUNS_tr(STAR(A),normDLGE(P,Q))
+
+%  [*]◁
+% P ∧ [A*][A](P ◁ T)
+% =======================
+% [A*](P ◁ T)
+% where T = □◇Q or ◇□Q
+dltl_STAREG: LEMMA
+    DLAND(P,ALLRUNS_st(STAR(A),ALLRUNS_tr(A,normDLEG(P,Q)))) =
+    ALLRUNS_tr(STAR(A),normDLEG(P,Q))
+
+dltl_STARGE: LEMMA
+    DLAND(P,ALLRUNS_st(STAR(A),ALLRUNS_tr(A,normDLGE(P,Q)))) =
+    ALLRUNS_tr(STAR(A),normDLGE(P,Q))
+
+%  con⊓
+% ∀a ∀r>0 (qQ(r) → 〈a〉(qQ(r-1) ⊓ □P)
+% -----------------------
+% (∃r qQ(r)) ∧ P → 〈A〉(∃r≤0 qQ(r) ⊓ □P)
+dltl_STARconcap: LEMMA
+    (FORALL(r:real): (qQ(r) |- SOMERUNS_tr(A,normDLGLOBALLY(qQ(r-1),P)))) IMPLIES
+    (DLAND(DLEXISTS(qQ),P) |- SOMERUNS_tr(STAR(A),normDLGLOBALLY(LAMBDA(env:Environment): EXISTS(r:nonpos_real): qQ(r)(env),P)))
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Sandbox
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% [A]□◇P = [A]P for all finite traces
+
+ALLRUNS_st_imp: LEMMA
+FORALL(env0:Environment):
+ALLRUNS_tr(A,normDLGE(P,P))(env0) IMPLIES ALLRUNS_st(A,P)(env0)
+
+ALLRUNS_st_finite_equiv: LEMMA
+FORALL(env0:Environment):
+ALLRUNS_st(A,P)(env0) IFF (FORALL (trace: (finite_trace?)):
+      init_env(trace) = env0 AND trace_semantic_rel(A)(trace) IMPLIES normDLGE(P,P)(trace))
+
+
+
+  END temporal_logic

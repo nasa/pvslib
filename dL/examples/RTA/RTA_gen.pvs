@@ -1,0 +1,116 @@
+RTA_gen  %Welcome
+		: THEORY
+
+
+%Created by                     JTS
+%	 	           Nov 2022
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This Introduces the           |%
+%| generalized|% framework for   |%
+%| RTA. Presents the fundamental |%
+%| theorem of RTA that ensures   |%
+%| safety of the systems based   |%
+%| on properties of the          |%
+%| componenets                   |%     		     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last updated	          Sept 2023
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%% Importing Plaidypvs
+%-------------------------------------------------------------------------
+
+  IMPORTING dL@top
+
+%-------------------------------------------------------------------------
+%% This is a differential equation the same as ODE,
+%  but will stop at least every t = tau
+%  tau is the minimal sample rate
+%-------------------------------------------------------------------------
+
+DIFFt(ode:ODEs,be:BoolExpr)
+ (tau:posreal,switch:BoolExpr)
+  (t:dLVar | fresh_hp?(DIFF(ode,be))(dlvar_index(t))): HP   =
+   STAR(SEQ(TEST(switch),SEQ(ASSIGN( (: (t,cnst(0)) :)),
+   DIFF(cons( (t, cnst(1)), ode), be AND val(t) <= tau))))
+
+%-------------------------------------------------------------------------
+%% Define the monitor of a boolean expression that does not let a HP proceed when the
+%  boolean expression becomes false (more than tau amount of time in the continuous case)
+%-------------------------------------------------------------------------
+
+monitor(switch:BoolExpr,tau:posreal)
+ (alpha:HP,t:dLVar | fresh_hp?(alpha)(dlvar_index(t)) AND fresh?(switch)(dlvar_index(t))): RECURSIVE HP =
+ CASES alpha OF
+   ASSIGN(a) : SEQ(TEST(switch),ASSIGN(a)),
+   DIFF(ode,be) : DIFFt(ode, be)(tau,switch)(t),
+   TEST(be) : TEST(be),
+   SEQ(stm1,stm2) : SEQ(monitor(switch,tau)(stm1,t),monitor(switch,tau)(stm2,t)) ,
+   UNION(stm1,stm2) : UNION(monitor(switch,tau)(stm1,t),monitor(switch,tau)(stm2,t)) ,
+   STAR(stm) : STAR(monitor(switch,tau)(stm,t)) ,
+   ANY(anyvar) : ANY(anyvar)
+  ENDCASES
+  MEASURE alpha by <<
+
+%-------------------------------------------------------------------------
+%% This is the RTA that monitors and the switch is defined to the high conf
+%  but the switch back to low conf is not specified
+%-------------------------------------------------------------------------
+
+RTA_simple(lc,hc:HP,mon:BoolExpr,tau:posreal,
+  t:dLVar | fresh_hp?(lc)(dlvar_index(t))
+          and fresh_hp?(hc)(dlvar_index(t))
+	  and fresh?(mon)(dlvar_index(t)) ): HP =
+   STAR(UNION(SEQ(TEST(mon),monitor(mon,tau)(lc,t)),
+   SEQ(TEST(NOT mon),hc)))
+  
+%-------------------------------------------------------------------------
+%% General Framework - 
+%  If the low confidence controller is safe while in the monitoring space
+%  S with sampling rate tau
+%  and i fthe high confidence controller is always safe
+%  Then the whole RTA system is always safe
+%-------------------------------------------------------------------------
+
+RTA_simple_safe: LEMMA
+  FORALL(S,P:BoolExpr,lc,hc:HP,tau:posreal,
+  t:dLVar | fresh_hp?(lc)(dlvar_index(t)) and fresh_hp?(hc)(dlvar_index(t)) and fresh?(S)(dlvar_index(t))):
+  (P AND ((S => ALLRUNS(monitor(S,tau)(lc,t),P))
+  AND ALLRUNS(hc,P))) => 
+  ALLRUNS(RTA_simple(lc,hc,S,tau,t),P)
+
+%-------------------------------------------------------------------------
+%% 'Fundamental theorem of RTA' this is an expansion of the general framework
+%  that allows a carry-over term G, that is something what will be true
+%  whenever the high confidecne controller exits its perscribed safe region
+%-------------------------------------------------------------------------
+
+RTA_simple_safe_inv: LEMMA
+  FORALL(S,P,G:BoolExpr,lc,hc:HP,tau:posreal,
+  t:dLVar | fresh_hp?(lc)(dlvar_index(t)) and fresh_hp?(hc)(dlvar_index(t)) and fresh?(S)(dlvar_index(t))):
+   ((S => ALLRUNS(monitor(S,tau)(lc,t),DLAND(P,DLOR(G,S))))
+   AND (G => ALLRUNS(STAR(hc),P))) => 
+     (DLAND(P,DLOR(S,G)) IMPLIES ALLRUNS(RTA_simple(lc,hc,S,tau,t),P))
+
+%-------------------------------------------------------------------------
+%% 'Fundamental theorem of RTA' in a Plaidypvs rule format. This is the version
+%  to use while using Plaidypvs, an can be used like another rule of Plaidypvs
+%-------------------------------------------------------------------------
+
+RTA_simple_safe_rule: LEMMA
+  FORALL(S,P,G:BoolExpr,lc,hc:HP,tau:posreal,
+  t:dLVar | fresh_hp?(lc)(dlvar_index(t)) and fresh_hp?(hc)(dlvar_index(t)) and fresh?(S)(dlvar_index(t)),
+  Gamma,Delta : Formulas):
+    (Gamma |- (: DLAND(P,DLOR(S,G)) :))  AND
+    ( (: S :) |- (: ALLRUNS(monitor(S,tau)(lc,t),DLAND(P,DLOR(G,S))) :)) AND
+    ( (: G :) |- (:  ALLRUNS(STAR(hc),P) :) ) IMPLIES
+     (Gamma  |- cons(ALLRUNS(RTA_simple(lc,hc,S,tau,t),P), Delta))
+
+% “We are what we repeatedly do.
+%  Excellence, then, is not an act, but a habit.”
+%                                   — Aristotle
+  %~~~ End ~%
+  END RTA_gen

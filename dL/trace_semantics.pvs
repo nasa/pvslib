@@ -1,0 +1,351 @@
+trace_semantics : THEORY
+BEGIN
+
+  IMPORTING HP,
+            hp_expr,
+            TraceState,
+            ODEs_equiv,
+	    structures@more_list_props,
+	    bounded_star_semantics,
+            substitution,
+            ODEs@more_ci_props
+
+  wf_trace?(trace:list[TraceState]) : bool =
+    cons?(trace) AND (NOT error?(car(trace))) AND
+    FORALL (i:below(length(trace)-1)) :
+      state?(nth(trace,i)) OR state_diff?(nth(trace,i))
+
+  Trace : TYPE = (wf_trace?)
+
+  finite_trace?(trace:Trace) : bool =
+    state?(last(trace)) OR state_diff?(last(trace))
+
+  valid_trace?(trace:Trace) : bool =
+    finite_trace?(trace) OR inf_diff?(last(trace))
+
+  wf_append : LEMMA
+    FORALL (trace1,trace2:Trace):
+      last(trace1) = car(trace2) IMPLIES wf_trace?(append(trace1, cdr(trace2)))
+
+  wf_append_finite: LEMMA
+  FORALL (trace1:(finite_trace?),trace2:Trace):
+      wf_trace?(append(trace1, trace2))
+
+  init_env(trace:Trace): Environment =
+    IF state?(car(trace))
+      THEN state(car(trace))
+      ELSE s0(car(trace))
+    ENDIF
+
+  final_env(trace:(finite_trace?)): Environment =
+    IF state?(last(trace))
+      THEN state(last(trace))
+      ELSE behavior(last(trace))(max_ci(D(last(trace))))
+    ENDIF
+
+  FiniteTrace : TYPE = (finite_trace?)
+
+  trace_semantic_rel(hp:HP)(trace:Trace) : INDUCTIVE bool =
+    (assign?(hp) AND length(trace) = 2 AND
+		     LET envi = car(trace),
+		         envo = nth(trace,1),
+		         l = assigns(hp) IN
+		     state?(envi) AND
+		     state?(envo) AND
+            ((FORALL (i:below(length(l))) :
+              LET (vari,rexpr) = nth(l,i) IN
+                state(envo)(dlvar_index(vari)) = rexpr(state(envi))) AND
+		            FORALL (varj:(not_in_map(l))) :
+                state(envo)(varj) = state(envi)(varj))
+    )
+    OR
+    (diff?(hp) AND
+      ((length(trace) = 1 AND
+        LET env = car(trace) IN
+        ((state?(env) AND be(hp)(state(env)))
+        OR
+        (state_diff?(env) AND
+          EXISTS(fs:(solution_odes_u?(D(env),odes(hp),s0(env)))):
+            (behavior(env) = (LAMBDA (r:(D(env))):
+              env_at_t(odes(hp),fs,s0(env))(r))
+            AND
+            FORALL(t:(D(env))): be(hp)(behavior(env)(t))))
+        OR
+        (inf_diff?(env) AND
+         EXISTS(fs:(solution_odes_u?(hp(0),odes(hp),s0(env)))):
+         (inf_behavior(env) = (LAMBDA (r:(hp(0))):
+           env_at_t(odes(hp),fs,s0(env))(r))
+         AND
+         FORALL(t:(hp(0))): be(hp)(inf_behavior(env)(t))))))
+        OR
+        (length(trace)=2 AND
+          LET envi = car(trace),
+              envo = nth(trace,1) IN
+              (state?(envi) AND
+          error?(envo) AND
+          NOT be(hp)(state(envi)))
+          ))
+    )
+    OR
+    (any?(hp) AND
+      length(trace) = 2 AND
+		  LET envi = car(trace),
+		      envo = nth(trace,1) IN
+		  (state?(envi) AND
+		   state?(envo) AND
+    	      	   FORALL (i:nat | i /= dlvar_index(anyvar(hp))) : state(envo)(i) = state(envi)(i))
+    )
+    OR
+    (test?(hp) AND
+      ((length(trace)=1
+        AND
+        LET envi = car(trace) IN
+		      state?(envi) AND
+		      be(hp)(state(envi)))
+        OR
+		    (length(trace)=2 AND
+		      LET envi = car(trace),
+		          envo = nth(trace,1) IN
+		      state?(envi) AND
+		      error?(envo) AND
+		      NOT be(hp)(state(envi))
+		     ))
+    )
+    OR
+    (seq?(hp) AND
+      ((EXISTS (trace1, trace2:Trace):
+       (trace_semantic_rel(stm1(hp))(trace1) AND
+			  trace_semantic_rel(stm2(hp))(trace2) AND
+			  finite_trace?(trace1) AND
+			  final_env(trace1)=init_env(trace2) AND
+        trace = append(trace1,trace2)
+        ))
+		    OR
+			  ((error?(last(trace)) OR inf_diff?(last(trace))) AND
+		        trace_semantic_rel(stm1(hp))(trace)))
+    )
+    OR
+    (union?(hp) AND
+      (trace_semantic_rel(stm1(hp))(trace)
+        OR
+		   trace_semantic_rel(stm2(hp))(trace))
+    )
+    OR
+    (star?(hp) AND
+    ((length(trace)=1 AND state?(car(trace)))
+      OR
+      trace_semantic_rel(SEQ(stm(hp),hp))(trace))
+    )
+
+
+%--------------------------------
+% ---     CORRECTNESS         ---
+%--------------------------------
+
+  trace_semantics_correct_assign: LEMMA
+    FORALL(trace:FiniteTrace,assigns:Assigns) :
+      LET envi = init_env(trace),
+          envo = final_env(trace) IN
+      trace_semantic_rel(ASSIGN(assigns))(trace)
+      IMPLIES
+      semantic_rel(ASSIGN(assigns))(envi)(envo)
+
+  trace_semantics_correct_diff: LEMMA
+    FORALL(trace:FiniteTrace,odes:ODEs,be:BoolExpr) :
+      LET envi = init_env(trace),
+          envo = final_env(trace) IN
+      trace_semantic_rel(DIFF(odes,be))(trace)
+      IMPLIES
+      semantic_rel(DIFF(odes,be))(envi)(envo)
+
+  trace_semantics_correct_any: LEMMA
+    FORALL(trace:FiniteTrace,anyvar:dLVar) :
+      LET envi = init_env(trace),
+          envo = final_env(trace) IN
+      trace_semantic_rel(ANY(anyvar))(trace)
+      IMPLIES
+      semantic_rel(ANY(anyvar))(envi)(envo)
+
+  trace_semantics_correct_test: LEMMA
+    FORALL(trace:FiniteTrace,be:BoolExpr) :
+      LET envi = init_env(trace),
+          envo = final_env(trace) IN
+      trace_semantic_rel(TEST(be))(trace)
+      IMPLIES
+      semantic_rel(TEST(be))(envi)(envo)
+
+  trace_semantics_correct_seq: LEMMA
+    FORALL (stm1,stm2: HP):
+      ((FORALL(trace:FiniteTrace) :
+          LET envi = init_env(trace),
+              envo = final_env(trace) IN
+          trace_semantic_rel(stm1)(trace)
+        IMPLIES semantic_rel(stm1)(envi)(envo))
+        AND
+        (FORALL(trace:FiniteTrace) :
+          LET envi = init_env(trace),
+              envo = final_env(trace) IN
+          trace_semantic_rel(stm2)(trace)
+        IMPLIES semantic_rel(stm2)(envi)(envo)))
+       IMPLIES
+       FORALL(trace:FiniteTrace) :
+        LET envi = init_env(trace),
+            envo = final_env(trace) IN
+        trace_semantic_rel(SEQ(stm1,stm2))(trace)
+        IMPLIES semantic_rel(SEQ(stm1,stm2))(envi)(envo)
+
+  trace_semantics_correct_union: LEMMA
+    FORALL (stm1,stm2: HP):
+      ((FORALL(trace:FiniteTrace) :
+          LET envi = init_env(trace),
+              envo = final_env(trace) IN
+          trace_semantic_rel(stm1)(trace)
+        IMPLIES semantic_rel(stm1)(envi)(envo))
+        AND
+        (FORALL(trace:FiniteTrace) :
+          LET envi = init_env(trace),
+              envo = final_env(trace) IN
+          trace_semantic_rel(stm2)(trace)
+        IMPLIES semantic_rel(stm2)(envi)(envo)))
+       IMPLIES
+       FORALL(trace:FiniteTrace) :
+        LET envi = init_env(trace),
+            envo = final_env(trace) IN
+        trace_semantic_rel(UNION(stm1,stm2))(trace)
+        IMPLIES semantic_rel(UNION(stm1,stm2))(envi)(envo)
+
+  trace_semantics_correct_star : LEMMA
+  FORALL (hp:HP) :
+     ((FORALL (trace:FiniteTrace):
+        trace_semantic_rel(hp)(trace)
+        IMPLIES
+        semantic_rel(hp)(init_env(trace))(final_env(trace)))
+      IMPLIES
+     (FORALL (trace:FiniteTrace):
+        trace_semantic_rel(STAR(hp))(trace)
+        IMPLIES
+         EXISTS (i:nat) : semantic_rel_bounded_star(i)(STAR(hp))(init_env(trace))(final_env(trace))
+     ))
+
+  trace_semantics_correct: THEOREM
+    FORALL(hp:HP) :
+    FORALL(trace:FiniteTrace) :
+      LET envi = init_env(trace),
+          envo = final_env(trace)
+      IN
+        trace_semantic_rel(hp)(trace) IMPLIES semantic_rel(hp)(envi)(envo)
+
+
+%--------------------------------
+% ---     COMPLETENESS        ---
+%--------------------------------
+
+  trace_semantics_complete_assign: LEMMA
+    FORALL (envi,envo: Environment, assigns:Assigns) :
+      semantic_rel(ASSIGN(assigns))(envi)(envo)
+      IMPLIES
+      EXISTS(trace:FiniteTrace):
+        envi = init_env(trace) AND
+        envo = final_env(trace) AND
+        trace_semantic_rel(ASSIGN(assigns))(trace)
+
+  trace_semantics_complete_diff: LEMMA
+    FORALL (envi,envo: Environment, odes:ODEs,be:BoolExpr) :
+      semantic_rel(DIFF(odes,be))(envi)(envo)
+      IMPLIES
+      EXISTS(trace:FiniteTrace):
+        envi = init_env(trace) AND
+        envo = final_env(trace) AND
+        trace_semantic_rel(DIFF(odes,be))(trace)
+	
+  trace_semantics_complete_any: LEMMA
+    FORALL (envi,envo: Environment, anyvar:dLVar) :
+      semantic_rel(ANY(anyvar))(envi)(envo)
+        IMPLIES
+        EXISTS(trace:FiniteTrace):
+          envi = init_env(trace) AND
+          envo = final_env(trace) AND
+          trace_semantic_rel(ANY(anyvar))(trace)
+
+  trace_semantics_complete_test: LEMMA
+    FORALL (envi,envo: Environment, be:BoolExpr) :
+      semantic_rel(TEST(be))(envi)(envo)
+      IMPLIES
+      EXISTS(trace:FiniteTrace):
+        envi = init_env(trace) AND
+        envo = final_env(trace) AND
+        trace_semantic_rel(TEST(be))(trace)
+	
+  trace_semantics_complete_seq : LEMMA
+    FORALL (stm1,stm2: HP):
+      ((FORALL (envi, envo: Environment):
+          semantic_rel(stm1)(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(stm1)(trace))
+        AND
+        FORALL (envi, envo: Environment):
+          semantic_rel(stm2)(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(stm2)(trace))
+       IMPLIES
+       FORALL (envi, envo: Environment):
+         semantic_rel(SEQ(stm1, stm2))(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(SEQ(stm1, stm2))(trace)
+
+  trace_semantics_complete_union : LEMMA
+    FORALL (stm1,stm2: HP):
+      ((FORALL (envi, envo: Environment):
+          semantic_rel(stm1)(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(stm1)(trace))
+        AND
+        FORALL (envi, envo: Environment):
+          semantic_rel(stm2)(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(stm2)(trace))
+        IMPLIES
+        FORALL (envi, envo: Environment):
+          semantic_rel(UNION(stm1, stm2))(envi)(envo) IMPLIES
+          EXISTS (trace: FiniteTrace):
+                  envi = init_env(trace) AND
+                  envo = final_env(trace) AND
+                  trace_semantic_rel(UNION(stm1, stm2))(trace)
+
+  trace_semantics_complete_star : LEMMA
+    FORALL (hp: HP) :
+        (FORALL (envi, envo: Environment):
+            semantic_rel(hp)(envi)(envo) IMPLIES
+            EXISTS (trace: FiniteTrace):
+                    envi = init_env(trace) AND
+                    envo = final_env(trace) AND
+                    trace_semantic_rel(hp)(trace))
+         IMPLIES
+         FORALL (envi, envo: Environment, i: nat):
+           semantic_rel_bounded_star(i)(STAR(hp))(envi)(envo) IMPLIES
+            EXISTS (trace: FiniteTrace):
+                    envi = init_env(trace) AND
+                    envo = final_env(trace) AND
+                    trace_semantic_rel(STAR(hp))(trace)
+
+  trace_semantics_complete: THEOREM
+    FORALL(hp:HP) :
+    FORALL (envi, envo : Environment) :
+      semantic_rel(hp)(envi)(envo)
+      IMPLIES
+      EXISTS(trace:FiniteTrace):
+        envi = init_env(trace) AND
+        envo = final_env(trace) AND
+        trace_semantic_rel(hp)(trace)
+
+  END trace_semantics

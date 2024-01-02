@@ -24,9 +24,9 @@ BEGIN
   assign_env(l:Assigns,envi,envo:Environment):
     RECURSIVE Environment =
     IF null?(l) THEN envo
-    ELSE LET n = car(l)`1,
+    ELSE LET n = dlvar_index(car(l)`1),
              r = car(l)`2(envi) IN
-         assign_env(cdr(l),envi,envo WITH [`n := r])
+         assign_env(cdr(l),envi,envo WITH [(n) := r])
     ENDIF
   MEASURE length(l)
 
@@ -54,18 +54,18 @@ BEGIN
   assign_env_(l_:Assigns,l:Assigns| mapexpr_inj(append(l_,l)),envi,envo:Environment):
     RECURSIVE Environment =
     IF null?(l) THEN envo
-    ELSE LET n = car(l)`1,
+    ELSE LET n = dlvar_index(car(l)`1),
              r = car(l)`2(envi) IN
-         assign_env_(snoc(l_,car(l)),cdr(l),envi,envo WITH [`n := r])
+         assign_env_(snoc(l_,car(l)),cdr(l),envi,envo WITH [(n) := r])
     ENDIF
   MEASURE length(l)
 
   assign_env__alt_j : RECURSIVE JUDGEMENT
     assign_env_(l_:Assigns,l:Assigns| mapexpr_inj(append(l_,l)),envi:Environment,envo:{ env: Environment
-    	     | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(k) = re(envi) ) })
+    	     | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(dlvar_index(k)) = re(envi) ) })
     HAS_TYPE { env: Environment
     	     | LET l: Assigns = append(l_,l)
-	       IN ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN env(k) = re(envi) ) AND
+	       IN ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN env(dlvar_index(k)) = re(envi) ) AND
   	          FORALL (i:(not_in_map(l))) :env(i) = envo(i) }
 
   assign_env_phantom_eq : LEMMA
@@ -73,12 +73,12 @@ BEGIN
     	    l_:Assigns| mapexpr_inj(append(l_,l)),
     	    envi:Environment,
 	    envo:{ env: Environment
-    	      	   | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(k) = re(envi) ) } )
+    	      	   | ( FORALL (i:below(length(l_))) : LET (k,re) = nth(l_,i) IN env(dlvar_index(k)) = re(envi) ) } )
     : assign_env(l,envi,envo) = assign_env_(l_,l,envi,envo)		   
 
   assign_env_alt : LEMMA
     FORALL(l:Assigns,envi:Environment,envo:Environment):
-      ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN assign_env(l,envi,envo)(k) = re(envi) )
+      ( FORALL (i:below(length(l))) : LET (k,re) = nth(l,i) IN assign_env(l,envi,envo)(dlvar_index(k)) = re(envi) )
       AND
       FORALL (i:(not_in_map(l))): assign_env(l,envi,envo)(i) = envo(i) 
 
@@ -99,16 +99,18 @@ BEGIN
         env(i)
       ENDIF
 	
-  SUB_MapVar(l)(i) : RECURSIVE {re:RealExpr| FORALL(env:Environment): re(env) = SUB_Re(l)(val(i))(env)} =
-    IF null?(l) THEN val(i)
-    ELSIF same_var(car(l)`1,i) THEN car(l)`2
-    ELSE SUB_MapVar(cdr(l))(i)
+  SUB_MapVar(l)(v:dLVar) : RECURSIVE {re:RealExpr| FORALL(env:Environment): re(env) = SUB_Re(l)(val(v))(env)} =
+    IF null?(l) THEN val(v)
+    ELSIF same_var(car(l)`1,v) THEN car(l)`2
+    ELSE SUB_MapVar(cdr(l))(v)
     ENDIF
   MEASURE length(l)
 
-  % val(j)/sigma = if (j,e) in sigma then e else val(j)
+  v : VAR dLVar
+
+  % val(v)/sigma = if (v,e) in sigma then e else val(v)
   dl_subre_val: LEMMA
-    SUB_Re(sigma)(val(j)) = SUB_MapVar(sigma)(j)
+    SUB_Re(sigma)(val(v)) = SUB_MapVar(sigma)(v)
 
   % k/sigma = k
   dl_subre_const: LEMMA
@@ -198,16 +200,16 @@ BEGIN
   IMPORTING structures@for_examples
 
   dl_sub_allruns0_x_neq_y: LEMMA
-    FORALL (z:nat,x,y:nat,rey,re:RealExpr) :
+    FORALL (z,x,y:dLVar,rey,re:RealExpr) :
       LET A      = ASSIGN((: (y,rey) :)),
          sigma  = (: (x,re) :),
          sigmap = (: (x,val(z)) :) IN
-     x /= y AND z /= x AND z /= y AND fresh?(P)(z) IMPLIES
+     x /= y AND z /= x AND z /= y AND fresh?(P)(dlvar_index(z)) IMPLIES
       SUB(sigma)(ALLRUNS(A,P)) =
       ALLRUNS(ASSIGN((: (z,re), (y,SUB_Re(sigma)(rey)) :)),SUB(sigmap)(P))
 
   dl_sub_allruns_assign0_x_eq_y: LEMMA
-    FORALL (x,y:nat,rey,re:RealExpr) :
+    FORALL (x,y:dLVar,rey,re:RealExpr) :
       LET A      = ASSIGN((: (y,rey) :)),
           sigma  = (: (x,re) :),
           Ap     = ASSIGN((: (y,SUB_Re(sigma)(rey)) :)) IN

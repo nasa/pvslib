@@ -1,0 +1,227 @@
+solution_odes_props %Greetings
+
+      	      : THEORY
+	      
+%Created By            Lauren White
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Properties of the solution of |%
+%| odes that are useful         |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Update by:    	    J Tanner Slagel
+%	                   Aug 2023
+%           %- Added some lemmas -%          
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%%Importing differentiationa and realted theories from the analysis library
+% to shifting derivatives 
+%-------------------------------------------------------------------------
+
+IMPORTING differentiation,
+	  analysis@derivatives_shift
+
+%-------------------------------------------------------------------------
+%% Differentiation is preserved through shift to the left by T
+%-------------------------------------------------------------------------
+
+ diff_odes_shift: LEMMA
+ FORALL(ode:ODEs, fs:[below(length(ode)) -> [real -> real]],T:(hp(0))):
+  LET fsh = LAMBDA(i:below(length(ode))): LAMBDA(t:real): fs(i)(t + T)
+  IN
+   derivable_odes?(hp(0), length(ode))(fs)
+   IMPLIES
+   derivable_odes?(hp(0), length(ode))(fsh)
+
+%-------------------------------------------------------------------------
+%% Relationshp between env_at_t of a function and its shift
+%-------------------------------------------------------------------------
+
+ env_at_t_shift: LEMMA
+  FORALL(ode:ODEs, fs:[below(length(ode)) -> [real -> real]],
+   env:Environment, T,t:(hp(0))):
+  LET fsh = LAMBDA(i:below(length(ode))): LAMBDA(t:real): fs(i)(t + T)
+  IN
+   env_at_t(ode,fs,env)(T+t) = env_at_t(ode,fsh,env_at_t(ode,fs,env)(T))(t)
+
+%-------------------------------------------------------------------------
+%% A solution to an ode can be shifted to a solution of an ODE starting
+%  at a different point (the point at T, where T is the shift)
+%-------------------------------------------------------------------------
+   
+ solution_odes_shift: LEMMA
+  FORALL(ode:ODEs, fs:[below(length(ode)) -> [real -> real]],
+   env:Environment, T:(hp(0))):
+  LET fsh = LAMBDA(i:below(length(ode))): LAMBDA(t:real): fs(i)(t + T) IN
+  solution_odes?(hp(0), ode, env)(fs)
+  IMPLIES
+  solution_odes?(hp(0), ode, env_at_t(ode, fs, env)(T))(fsh)
+
+
+%-------------------------------------------------------------------------
+%% Differentiation is preserved through concatination 
+%-------------------------------------------------------------------------
+
+ %hp version
+ diff_odes_cat_hp: LEMMA
+ FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],T:(hp(0))):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+   (derivable_odes?(hp(0), length(ode))(fs1) AND
+   derivable_odes?(hp(0), length(ode))(fs2) AND
+   (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(hp(0))](fs2(k),0)))
+   IMPLIES
+   derivable_odes?(hp(0), length(ode))(fcat)
+
+ %closed interval version
+ diff_odes_cat_ci: LEMMA
+ FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],T:(hp(0)), b: (hp(0)) | b> 0 ):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+   (derivable_odes?(hp(0), length(ode))(fs1) AND
+   derivable_odes?(closed_interval(0,b), length(ode))(fs2) AND
+   (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(closed_interval(0,b))](fs2(k),0)))
+   IMPLIES
+   derivable_odes?(closed_interval(0,b+T), length(ode))(fcat)
+
+ %derivative hp version
+ der_odes_cat_hp: LEMMA
+ FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],T,t:(hp(0))):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+   (derivable_odes?(hp(0), length(ode))(fs1) AND
+   derivable_odes?(hp(0), length(ode))(fs2) AND
+   (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(hp(0))](fs2(k),0)))
+   IMPLIES
+   FORALL(k:below(length(ode))):
+   (deriv[(hp(0))](LAMBDA (s: (hp(0))): fcat(k)(s))(t)
+   = IF t <= T THEN deriv[(hp(0))](fs1(k),t)
+   ELSE deriv[(hp(0))](fs2(k),t-T)
+   ENDIF)
+
+ %derivative closed interval version
+ der_odes_cat_ci: LEMMA
+ FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],T:(hp(0)), b: (hp(0)) | b> 0, t:(closed_interval(0,T+b))):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+   (derivable_odes?(hp(0), length(ode))(fs1) AND
+   derivable_odes?(closed_interval(0,b), length(ode))(fs2) AND
+   (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(closed_interval(0,b))](fs2(k),0)))
+   IMPLIES
+   FORALL(k:below(length(ode))):
+   (deriv[(closed_interval(0,b+T))](fcat(k))(t)
+   = IF t <= T THEN deriv[(hp(0))](fs1(k),t)
+   ELSE deriv[(closed_interval(0,b))](fs2(k),t-T)
+   ENDIF)
+
+%-------------------------------------------------------------------------
+%% Solution odes satisfy pre conditions in previous lemma 
+%-------------------------------------------------------------------------
+
+ %hp version
+ solution_odes_deriv_at_T_hp: LEMMA
+  FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],
+   env:Environment, T:(hp(0))):
+  (solution_odes?(hp(0), ode, env)(fs1) AND
+  solution_odes?(hp(0), ode, env_at_t(ode, fs1, env)(T))(fs2))
+  IMPLIES
+     (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(hp(0))](fs2(k),0))
+
+ %hp version
+ solution_odes_deriv_at_T_ci: LEMMA
+  FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],
+   env:Environment, T:(hp(0)), b: (hp(0)) | b> 0 ):
+  (solution_odes?(hp(0), ode, env)(fs1) AND
+  solution_odes?(closed_interval(0,b), ode, env_at_t(ode, fs1, env)(T))(fs2))
+  IMPLIES
+      (FORALL(k:below(length(ode))): fs2(k)(0)=fs1(k)(T) AND
+   deriv[(hp(0))](fs1(k),T) = deriv[(closed_interval(0,b))](fs2(k),0))
+
+
+%-------------------------------------------------------------------------
+%% You can concatenate a solution with a 'shifted' solution
+%  and get a solution
+%-------------------------------------------------------------------------
+ %hp version
+ solution_odes_hp_conc: LEMMA
+  FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],
+   env:Environment, T:(hp(0))):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+  (solution_odes?(hp(0), ode, env)(fs1) AND
+  solution_odes?(hp(0), ode, env_at_t(ode, fs1, env)(T))(fs2))
+  IMPLIES
+  solution_odes?(hp(0),ode, env)(fcat)
+
+ %closed_interval version
+ solution_odes_ci_conc: LEMMA
+  FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]],
+   env:Environment, T:(hp(0)), b: (hp(0)) | b> 0 ):
+  LET fcat = LAMBDA(i:below(length(ode))):
+             LAMBDA(t:real):
+	      IF t <= T THEN fs1(i)(t)
+	       ELSE fs2(i)(t-T) ENDIF
+  IN
+  (solution_odes?(hp(0), ode, env)(fs1) AND
+  solution_odes?(closed_interval(0,b), ode, env_at_t(ode, fs1, env)(T))(fs2))
+  IMPLIES
+  solution_odes?(closed_interval(0,b+T),ode, env)(fcat)
+
+%-------------------------------------------------------------------------
+%% A unique solution can be shifted to a unique solution with a new starting
+%  point, related to the shift T
+%-------------------------------------------------------------------------
+ 
+ solution_odes_u_shift: LEMMA
+  FORALL(ode:ODEs, fs:[below(length(ode)) -> [real -> real]], env:Environment, T:(hp(0))):
+  LET fsh = LAMBDA(i:below(length(ode))): LAMBDA(t:real): fs(i)(t + T) IN
+  solution_odes_u?(hp(0), ode, env)(fs)
+  IMPLIES
+  solution_odes_u?(hp(0), ode, env_at_t(ode, fs, env)(T))(fsh)
+
+%-------------------------------------------------------------------------
+%% Relationship betwen env_at_t when you have solutions starting at
+%  different points 
+%-------------------------------------------------------------------------
+
+  solution_odes_u_init: LEMMA
+   FORALL(ode:ODEs, fs1,fs2:[below(length(ode)) -> [real -> real]], env:Environment, D:(dd?), b:(D), T:(hp(0))):
+   solution_odes_u?(hp(0), ode, env)(fs1) AND
+   solution_odes_u?(D, ode, env_at_t(ode, fs1, env)(T))(fs2) 
+   IMPLIES
+   env_at_t(ode, fs2, env_at_t(ode, fs1, env)(T))(b) = env_at_t(ode, fs1, env)(b+T)
+
+  %delete this one?
+ % solution_odes_init: LEMMA
+ % FORALL(f:ODEs, fs:[below(length(f)) -> [real -> real]], env:Environment, D:(dd?), T:(hp(0))):
+ %   solution_odes_u?(hp(0), f, env)(fs) IMPLIES
+ %   EXISTS(fs1:[below(lengt
+ %   h(f)) -> [real -> real]]): solution_odes?(D, f, env_at_t(f, fs, env)(T))(fs1) 
+    
+% "The key to change is to let go of fear."
+%                           — Rosanne Cash
+
+  %~~~       The End ~~~%
+  END solution_odes_props

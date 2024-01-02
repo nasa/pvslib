@@ -1,0 +1,84 @@
+%%
+% @theory: return_to_safe_temporal_example
+% @author: lmwhite3
+% @date: Thu, 14 Sep 2023 17:22:59 GMT
+%%
+return_to_safe_temporal_example: THEORY
+  BEGIN
+
+%-----------------------------------
+%% Importing Differential Dynamic Logic
+%-----------------------------------
+  IMPORTING dL@top
+
+%-----------------------------------
+%% Define the variables
+%-----------------------------------
+x: dLVar = dlvar(0)
+y: dLVar = dlvar(1)
+
+% the radius of the circle
+r: posreal
+
+fs_sol_exp(k:posreal,sx:real,sy:real,envi:Environment)(i:below(2)): [real -> real] =
+ IF i = 0 THEN LAMBDA(s:real): (envi(0)-sx)*exp(-k*s)+sx
+ ELSE LAMBDA(s:real): (envi(1)-sy)*exp(-k*s)+sy ENDIF
+
+fs_sol_zero(envi:Environment)(i:below(2)): [real -> real] =
+ IF i = 0 THEN  LAMBDA(s:real): envi(0)
+ ELSE LAMBDA(s:real): envi(1) ENDIF
+ 
+%center of the circle
+s: Environment
+sx: real = s(dlvar_index(x))
+sy: real = s(dlvar_index(y))
+
+Csr:BoolExpr = (val(x)-sx)^2+(val(y)-sy)^2 <= r^2
+S: {SS:BoolExpr| FORALL(env:Environment): Csr(env) IMPLIES SS(env)}
+
+%------------------------------------
+%% The Hybrid Program
+%% ( ?(x,y ∈ Csr);(x'=-k(x-sx),y'=-k(y-sy))) ∪ ( ?(x,y ∈ Csr);(x'=0,y'=0))
+%------------------------------------
+k: posreal
+
+ exp_lip_cont: LEMMA
+ FORALL(envi:Environment,sx,sy:real):
+ let odes = (:(x,-k*(val(x)-sx)), (y,-k*(val(y)-sy)) :) IN
+ cont_ODEs?(hp(0),odes,envi)
+ AND Lip_ODEs?(hp(0),odes,envi)
+
+ exp_ode_sol_u: LEMMA
+ FORALL(envi:Environment,sx,sy:real):
+ let odes = (:(x,-k*(val(x)-sx)), (y,-k*(val(y)-sy)) :) IN
+ EXISTS(fs:(derivable_odes?(hp(0),length(odes)))):
+ solution_odes_u?(hp(0),odes,envi)(fs)
+
+ exp_ode_sol_u_sol: LEMMA
+ FORALL(envi:Environment,sx,sy:real):
+ let odes = (:(x,-k*(val(x)-sx)), (y,-k*(val(y)-sy)) :) IN
+ solution_odes_u?(hp(0),odes,envi)(fs_sol_exp(k,sx,sy,envi))
+
+ zero_lip_cont: LEMMA
+ FORALL(envi:Environment):
+ let odes = (:(x,cnst(0)), (y,cnst(0)) :) IN
+ cont_ODEs?(hp(0),odes,envi)
+ AND Lip_ODEs?(hp(0),odes,envi)
+
+ zero_ode_sol_u: LEMMA
+ FORALL(envi:Environment):
+ let odes = (:(x,cnst(0)), (y,cnst(0)) :) IN
+ EXISTS(fs:(derivable_odes?(hp(0),length(odes)))):
+ solution_odes_u?(hp(0),odes,envi)(fs)
+
+ zero_ode_sol_u_sol: LEMMA
+ FORALL(envi:Environment):
+  let odes = (:(x,cnst(0)), (y,cnst(0)) :) IN
+ solution_odes_u?(hp(0),odes,envi)(fs_sol_zero(envi))
+
+rts:HP = UNION(SEQ(TEST(NOT Csr),DIFF((: x << -k*(val(x)-sx), y << -k*(val(y)-sy) :))),SEQ(TEST(Csr),DIFF((: x << cnst(0), y << cnst(0) :))))
+    
+return_to_Csr: LEMMA
+ALLRUNS_tr(SEQ(rts,TEST(DLFALSE)),DLEVENTUALLY(DLGLOBALLY(State_Trace(S))))
+
+  END return_to_safe_temporal_example

@@ -1,5 +1,5 @@
 flight_turn_example : THEORY
- % Welcome
+% Welcome
 
 %-------------------------------------------------------------------------% 
 %-------------------------------------------------------------------------%
@@ -14,23 +14,14 @@ flight_turn_example : THEORY
 
 
 %-----     %
-  BEGIN
-%     -----%
-
-%%--------------------------------------------
-%%Importing top
-%%--------------------------------------------
-
-
- IMPORTING dL@top
+BEGIN
  
-%%--------------------------------------------
-%%Defining variables
-%%--------------------------------------------
- theta : nat = 0
- x     : nat = 1
- y     : nat = 2
+    IMPORTING dL@top
+    theta : dLVar = dlvar(0)
+    x     : dLVar = dlvar(1)
+    y     : dLVar = dlvar(2)
 
+%     -----%
 
 %%--------------------------------------------
 %%Define turning, straight dynamics
@@ -38,9 +29,9 @@ flight_turn_example : THEORY
 % that we will prove the dyanamics are always on
 %%--------------------------------------------
 
-turn(Q:BoolExpr) : HP = DIFF( (: (x,-val(y)), (y, val(x)) :), Q)
+turn(Q:BoolExpr) : HP = DIFF( (: x << -val(y), y << val(x) :), Q)
 turn_odes: ODEs = (: (x,-val(y)), (y, val(x)) :)
-straight(vx, vy:real) : HP = DIFF( (:(x, cnst(vx)), (y, cnst(vy)) :))
+straight(vx, vy:real) : HP = DIFF( (: x << cnst(vx), y << cnst(vy) :))
 circ?(c:real): BoolExpr  = (val(x)^2 + val(y)^2 = cnst(c)^2)
 line?(a,b,c:real): BoolExpr =  (cnst(a)*val(x) + cnst(b)*val(y) = cnst(c))
 path?(c:real): BoolExpr = (val(x) > 0 AND circ?(c)) OR
@@ -94,14 +85,14 @@ turn_tr(c:real,Q:BoolExpr): HP =
 %% Define solution to both dynamics
 %%--------------------------------------------
  fs_tr(envi:Environment,c:real)(i:below(3))(t:real): real =
-     IF i = 0  THEN c*cos(t+envi(theta)) + (envi(x)-c*cos(envi(theta))) 
-     ELSIF i=1 THEN c*sin(t+envi(theta)) + (envi(y)-c*sin(envi(theta)))
-     ELSE t+envi(theta)
+     IF i = 0  THEN c*cos(t+envi(dlvar_index(theta))) + (envi(dlvar_index(x))-c*cos(envi(dlvar_index(theta)))) 
+     ELSIF i=1 THEN c*sin(t+envi(dlvar_index(theta))) + (envi(dlvar_index(y))-c*sin(envi(dlvar_index(theta))))
+     ELSE t+envi(dlvar_index(theta))
      ENDIF
 
  fs_r(envi:Environment)(i:below(2))(t:real): real =
-     IF i = 0  THEN envi(x)*cos(t) - envi(y)*sin(t)
-     ELSE envi(x)*sin(t) + envi(y)*cos(t)
+     IF i = 0  THEN envi(dlvar_index(x))*cos(t) - envi(dlvar_index(y))*sin(t)
+     ELSE envi(dlvar_index(x))*sin(t) + envi(dlvar_index(y))*cos(t)
       ENDIF
 
 %%--------------------------------------------
@@ -109,13 +100,15 @@ turn_tr(c:real,Q:BoolExpr): HP =
 %  special case
 %%--------------------------------------------
 
+AUTO_REWRITE+ dlvar_inj
+
  fs_tr_r_equiv: LEMMA
  FORALL(envi:Environment,c:real):
- (envi(x) = c AND envi(y) = 0 AND c > 0)
+ (envi(dlvar_index(x)) = c AND envi(dlvar_index(y)) = 0 AND c > 0)
  IMPLIES
- fs_tr(envi WITH [theta := 0 ],c)(0) = fs_r(envi)(0)
+ fs_tr(envi WITH [(dlvar_index(theta)) := 0 ],c)(0) = fs_r(envi)(0)
  AND
- fs_tr(envi WITH [theta := 0 ],c)(1) = fs_r(envi)(1)
+ fs_tr(envi WITH [(dlvar_index(theta)) := 0 ],c)(1) = fs_r(envi)(1)
 
 %%--------------------------------------------
 %% Solutions to dynamics are solutions
@@ -162,7 +155,7 @@ solution_odes_u?(D,turn_odes,envi)(fs_r(envi))
 
 fs_st(c:real,envi:Environment)(i:below(2))(t:real):
  real =
-IF i = 0 THEN -c*t + envi(x) ELSE envi(y)
+IF i = 0 THEN -c*t + envi(dlvar_index(x)) ELSE envi(dlvar_index(y))
 ENDIF
 
 %%--------------------------------------------
@@ -192,10 +185,10 @@ dyn_tr(c:real) :HP = UNION(b1_tr(c),b2(c))
 
 dyn_equiv: LEMMA
 FORALL(ei,eo:Environment,c:real):
-(c> 0 AND ei(x)=c AND ei(y)=0) IMPLIES (
-(EXISTS(r:real): semantic_rel(dyn_tr(c))((ei WITH [theta := 0]))(eo WITH [theta := r]))
+(c> 0 AND ei(dlvar_index(x))=c AND ei(dlvar_index(y))=0) IMPLIES (
+(EXISTS(r:real): semantic_rel(dyn_tr(c))((ei WITH [(dlvar_index(theta)) := 0]))(eo WITH [(dlvar_index(theta)) := r]))
 IFF
-semantic_rel(dyn(c))(ei)((eo WITH [theta := ei(theta)])))
+semantic_rel(dyn(c))(ei)((eo WITH [(dlvar_index(theta)) := ei(dlvar_index(theta))])))
 
 %%--------------------------------------------
 %% Reduce dynamics of loop for non implicit
@@ -205,13 +198,13 @@ semantic_rel(dyn(c))(ei)((eo WITH [theta := ei(theta)])))
 b_star_dyn: LEMMA
 FORALL(k:nat,c:real,ei,eo:Environment):
 (c > 0  AND
-ei(x) = c AND ei(y) = 0) IMPLIES ( 
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
 semantic_rel(BSTAR(dyn(c),k))(ei)(eo)
 IFF
 (ei=eo) OR (
-(k /= 0 AND eo(x) >= 0 AND semantic_rel(turn(val(x)>=0))(ei)(eo))
+(k /= 0 AND eo(dlvar_index(x)) >= 0 AND semantic_rel(turn(val(x)>=0))(ei)(eo))
 OR
-(k > 1 AND eo(x) < 0 AND (EXISTS(en:Environment | en(x) = 0 ): semantic_rel(turn(val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
+(k > 1 AND eo(dlvar_index(x)) < 0 AND (EXISTS(en:Environment | en(dlvar_index(x)) = 0 ): semantic_rel(turn(val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
 
 %%--------------------------------------------
 %% Reduce dyanamics of loop for explicit
@@ -221,13 +214,13 @@ OR
 b_star_dyn_tr: LEMMA
 FORALL(k:nat,c:real,ei,eo:Environment):
 (c > 0  AND
-ei(x) = c AND ei(y) = 0) IMPLIES ( 
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
 semantic_rel(BSTAR(dyn_tr(c),k))(ei)(eo)
 IFF
 (ei=eo) OR (
-(k /= 0 AND eo(x) >= 0 AND semantic_rel(turn_tr(c,val(x)>=0))(ei)(eo))
+(k /= 0 AND eo(dlvar_index(x)) >= 0 AND semantic_rel(turn_tr(c,val(x)>=0))(ei)(eo))
 OR
-(k > 1 AND eo(x) < 0 AND (EXISTS(en:Environment | en(x) = 0 ): semantic_rel(turn_tr(c,val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
+(k > 1 AND eo(dlvar_index(x)) < 0 AND (EXISTS(en:Environment | en(dlvar_index(x)) = 0 ): semantic_rel(turn_tr(c,val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
 
 %%--------------------------------------------
 %% Dynamics equivalence statement
@@ -237,10 +230,10 @@ OR
 b_star_dyns_equiv: LEMMA
 FORALL(k:nat,c:real,ei,eo:Environment):
 (c > 0  AND
-ei(x) = c AND ei(y) = 0) IMPLIES ( 
-(EXISTS(th:real): semantic_rel(BSTAR(dyn_tr(c),k))(ei WITH [theta := 0])(eo WITH [theta := th]))
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
+(EXISTS(th:real): semantic_rel(BSTAR(dyn_tr(c),k))(ei WITH [ (dlvar_index(theta)) := 0])(eo WITH [ (dlvar_index(theta)) := th]))
 IFF
-semantic_rel(BSTAR(dyn(c),k))(ei)(eo WITH [theta := ei(theta)]))
+semantic_rel(BSTAR(dyn(c),k))(ei)(eo WITH [ (dlvar_index(theta)) := ei(dlvar_index(theta))]))
 
 %%--------------------------------------------
 %% Dynamics equivalence statement
@@ -252,10 +245,10 @@ FORALL(c:real,ei,eo:Environment):
 LET alpha = STAR(dyn(c)),
     beta  = STAR(dyn_tr(c))
 IN
-(c> 0 AND ei(x) = c AND ei(y) = 0) IMPLIES (
-  (EXISTS(th:real): semantic_rel(beta)(ei WITH [theta := 0])(eo WITH [ theta := th]))
+(c> 0 AND ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES (
+  (EXISTS(th:real): semantic_rel(beta)(ei WITH [ (dlvar_index(theta)) := 0])(eo WITH [ (dlvar_index(theta)) := th]))
   IFF
-  semantic_rel(alpha)(ei)(eo WITH [theta := ei(theta)]))
+  semantic_rel(alpha)(ei)(eo WITH [ (dlvar_index(theta)) := ei(dlvar_index(theta))]))
 
 %%--------------------------------------------
 %% Coralaries from equvalence of the dynamics
@@ -267,7 +260,7 @@ IN
 %  (with proper assumptions on x,y and c)
 %%--------------------------------------------
 dyns_allruns_equiv: LEMMA
-FORALL(c:real, Q:BoolExpr | fresh?(Q)(theta)):
+FORALL(c:real, Q:BoolExpr | fresh?(Q)(dlvar_index(theta))):
 LET alpha = STAR(dyn(c)),
     beta  = STAR(dyn_tr(c))
 IN
@@ -285,7 +278,7 @@ IN
 %%--------------------------------------------
 
 dyns_someruns_equiv: LEMMA
-FORALL(c:real, Q:BoolExpr | fresh?(Q)(theta)):
+FORALL(c:real, Q:BoolExpr | fresh?(Q)(dlvar_index(theta))):
 LET alpha = STAR(dyn(c)),
     beta  = STAR(dyn_tr(c))
 IN

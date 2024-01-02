@@ -1,0 +1,151 @@
+trace_bounded_star_semantics: THEORY
+  BEGIN 
+    
+
+  IMPORTING ltl_expr
+  IMPORTING bounded_star_semantics
+  IMPORTING orders@orders_nat
+  IMPORTING orders@lex2_generic[nat,HP]
+  %,lt_nat,HP_adt.<<]
+
+
+trace_semantic_rel_bounded_star(i: nat)(hp: HP)(trace:Trace): RECURSIVE bool
+  = CASES hp OF
+      SEQ(stm1,stm2) : (EXISTS (tr1,tr2:Trace)
+      		       : trace_semantic_rel_bounded_star(i)(stm1)(tr1) AND
+			 trace_semantic_rel_bounded_star(i)(stm2)(tr2) AND finite_trace?(tr1) AND 
+       final_env(tr1)=init_env(tr2) AND trace=append(tr1,tr2)) OR (NOT finite_trace?(trace) AND trace_semantic_rel_bounded_star(i)(stm1)(trace)),
+      UNION(stm1,stm2) : trace_semantic_rel_bounded_star(i)(stm1)(trace)
+      		       	 OR trace_semantic_rel_bounded_star(i)(stm2)(trace),
+      STAR(stm)    : length(trace)=1 and state?(car(trace))
+      		     OR ( i>0 AND
+      		       trace_semantic_rel_bounded_star(i-1)(SEQ(stm,STAR(stm)))(trace))
+      ELSE trace_semantic_rel(hp)(trace)
+    ENDCASES
+  MEASURE (i,hp) BY lt_lex2(lt_nat,HP_adt.<<)
+
+  trace_semantic_rel_bounded_star_inc: LEMMA
+  FORALL(hp:HP, trace:Trace, i: nat)
+  : trace_semantic_rel_bounded_star(i)(hp)(trace)
+     IMPLIES FORALL(j: upfrom(i)): trace_semantic_rel_bounded_star(j)(hp)(trace)
+
+  trace_semantic_rel_implies_bounded : LEMMA
+  FORALL(hp:HP, trace:Trace)
+    : trace_semantic_rel(hp)(trace)
+      IMPLIES EXISTS (i: nat): trace_semantic_rel_bounded_star(i)(hp)(trace)
+
+  bounded_implies_trace_semantic_rel : LEMMA
+  FORALL(hp:HP, trace:Trace,i: nat)
+    : trace_semantic_rel_bounded_star(i)(hp)(trace)
+      IMPLIES
+      trace_semantic_rel(hp)(trace)
+
+  %----------------------------------------------------
+  %% Lemmas that relate the bounded iterations BSTAR
+  %% and the iteration HP STAR
+  %----------------------------------------------------
+
+  trace_semantic_rel_bstar_reflexive
+  : LEMMA
+    FORALL(hp:HP, trace:Trace|length(trace)=1 AND state?(car(trace)), i: nat)
+    : trace_semantic_rel(BSTAR(hp,i))(trace)
+
+  trace_semantic_rel_bounded_bstar_trace_semantic_rel_bstar
+  : LEMMA
+    FORALL(hp:HP, trace:Trace, i: nat)
+    : trace_semantic_rel_bounded_star(i)(STAR(hp))(trace)
+      IMPLIES trace_semantic_rel(BSTAR(hp,i))(trace)
+
+  trace_semantic_rel_star_bounded_star
+  : LEMMA
+    FORALL(hp:HP, trace:Trace)
+    : trace_semantic_rel(STAR(hp))(trace)
+      IMPLIES EXISTS (i: nat): trace_semantic_rel(BSTAR(hp,i))(trace)
+
+  trace_semantic_rel_star_bounded_star_con
+  : LEMMA
+    FORALL(hp:HP, trace:Trace,i:nat)
+    :  trace_semantic_rel(BSTAR(hp,i))(trace)
+       IMPLIES trace_semantic_rel(STAR(hp))(trace)
+
+  allruns_st_star: LEMMA
+  FORALL(hp:HP,P:BoolExpr,env:Environment):
+  ALLRUNS_st(STAR(hp),P)(env)
+  IFF
+  FORALL(i:nat): ALLRUNS_st(BSTAR(hp,i),P)(env)
+
+  someruns_st_star: LEMMA
+  FORALL(hp:HP,P:BoolExpr,env:Environment):
+  SOMERUNS_st(STAR(hp),P)(env)
+  IFF
+  EXISTS(i:nat): SOMERUNS_st(BSTAR(hp,i),P)(env)
+
+  allruns_tr_star: LEMMA
+  FORALL(hp:HP,P:TraceBoolExpr,env:Environment):
+  ALLRUNS_tr(STAR(hp),P)(env)
+  IFF
+  FORALL(i:nat): ALLRUNS_tr(BSTAR(hp,i),P)(env)
+
+  someruns_tr_star: LEMMA
+  FORALL(hp:HP,P:TraceBoolExpr,env:Environment):
+  SOMERUNS_tr(STAR(hp),P)(env)
+  IFF
+  EXISTS(i:nat): SOMERUNS_tr(BSTAR(hp,i),P)(env)
+
+  trace_semantic_rel_star_seq: LEMMA
+  FORALL(stm:HP, trace:Trace):
+  (length(trace)=1 AND state?(car(trace))) OR
+    (trace_semantic_rel(SEQ(stm,STAR(stm)))(trace) IFF 
+    trace_semantic_rel(STAR(stm))(trace))
+
+  %----------------------------------------------------
+  %% Lemmas that relate the sequence of BSTAR and an HP
+  %% that allow for the sequential to switch while
+  %% maintaining the temporal property
+  %----------------------------------------------------
+
+  trace_semantic_rel_bounded_star_seq_switch_glob: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLGLOBALLY(P,Q)(trace) IFF normDLGLOBALLY(P,Q)(tr1)) 
+
+  trace_semantic_rel_bounded_star_seq_switch_even: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLEVENTUALLY(P,Q)(trace) IFF normDLEVENTUALLY(P,Q)(tr1))
+
+  trace_semantic_rel_bounded_star_seq_switch_ge: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLGE(P,Q)(trace) IFF normDLGE(P,Q)(tr1))
+                      
+  trace_semantic_rel_bounded_star_seq_switch_eg: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLEG(P,Q)(trace) IFF normDLEG(P,Q)(tr1)) 
+
+% converse of the previous lemmas
+
+trace_semantic_rel_bounded_star_seq_switch_glob_con: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLGLOBALLY(P,Q)(trace) IFF normDLGLOBALLY(P,Q)(tr1))
+
+  trace_semantic_rel_bounded_star_seq_switch_ge_con: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+    trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLGE(P,Q)(trace) IFF normDLGE(P,Q)(tr1))
+                      
+  trace_semantic_rel_bounded_star_seq_switch_eg_con: LEMMA
+  FORALL(stm:HP, i: nat, trace:(valid_trace?), P,Q:BoolExpr):
+     trace_semantic_rel(SEQ(BSTAR(stm,i),stm))(trace)  IMPLIES
+    EXISTS(tr1:(valid_trace?)): trace_semantic_rel(SEQ(stm,BSTAR(stm,i)))(tr1) AND init_env(trace)=init_env(tr1) AND 
+                      (normDLEG(P,Q)(trace) IFF normDLEG(P,Q)(tr1)) 
+
+  END trace_bounded_star_semantics
