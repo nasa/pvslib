@@ -6,6 +6,9 @@
 (defun symbol-or-number (s)
   (or (symbolp s) (numberp s)))
 
+(defun symbol-or-list (s)
+  (or (symbolp s) (listp s)))
+
 (defun fixproof-equal (s1 s2)
   (and (symbolp s1)
        (string-equal s1 s2)))
@@ -40,11 +43,17 @@
 ;; (step NAME1 .. NAMEN) --> (step "name1" .. "namen")
 ;; (EXPAND*/$ &REST NAMES)
 ;; (AUTO-REWRITE &REST NAMES)
-;; (CASE &REST FORMULAS)
 ;; (HIDE &REST FNUMS)
 (defun fix-names (s-expr &key but)
   (cons (car s-expr)
 	(mapcar #'(lambda (s) (fixproof-symbol s :but but))
+		(cdr s-expr))))
+
+;; (step NAME1|LIST1 .. NAMEN|LISTN) --> (step "name1|list1" .. "namen|listn")
+;; (CASE &REST FORMULAS)
+(defun fix-names-or-lists (s-expr &key but)
+  (cons (car s-expr)
+	(mapcar #'(lambda (s) (fixproof-symbol s :but but :test #'symbol-or-list))
 		(cdr s-expr))))
 
 ;; (step NAME1 .. NAMEN) --> (step "name1" .. "namen")
@@ -114,8 +123,10 @@
 	     (do-fix s-expr (fix-name s-expr)))
 	    ((member (car s-expr) '("lemma" "use") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name-names s-expr)))
-	    ((member (car s-expr) '("expand*" "case" "auto-rewrite") :test #'fixproof-equal)
+	    ((member (car s-expr) '("expand*" "auto-rewrite") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-names s-expr)))
+	    ((member (car s-expr) '("case") :test #'fixproof-equal)
+	     (do-fix s-expr (fix-names-or-lists s-expr)))
 	    ((member (car s-expr) '("hide") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-names s-expr :but '(+ - *))))
 	    ((member (car s-expr) '("typepred") :test #'fixproof-equal)
@@ -130,8 +141,8 @@
 	     (do-fix s-expr (fix-name-name-or-number s-expr)))
 	    ((member (car s-expr) '("name-replace" "name") :test #'fixproof-equal)
 	     (do-fix s-expr (fix-name-name-or-number s-expr :test #'symbol-or-number)))
-	    ((member (car s-expr) '("deftactic" "let") :test #'fixproof-equal)
-	     ;; Skip everything inside deftactic,let
+	    ((member (car s-expr) '("deftactic" "let" "invoke") :test #'fixproof-equal)
+	     ;; Skip everything inside deftactic,let, invoke, etc
 	     s-expr)
 	    (t (mapcar #'fix-proofs s-expr)))
     s-expr))
