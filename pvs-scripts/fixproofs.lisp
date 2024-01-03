@@ -3,11 +3,16 @@
 (defparameter *dry-run* nil)
 (defparameter *changed* nil)
 
+(defun no-key-symbol (s)
+  (and (symbolp s)
+       (let ((pos (position #\: (format nil "~s" s))))
+	 (or (null pos) (> pos 0)))))
+
 (defun symbol-or-number (s)
-  (or (symbolp s) (numberp s)))
+  (or (no-key-symbol s) (numberp s)))
 
 (defun symbol-or-list (s)
-  (or (symbolp s) (listp s)))
+  (or (no-key-symbol s) (listp s)))
 
 (defun fixproof-equal (s1 s2)
   (and (symbolp s1)
@@ -15,7 +20,7 @@
 
 ;; s --> "s"
 (defun fixproof-symbol (s &key but test)
-  (let ((test (or test #'symbolp))
+  (let ((test (or test #'no-key-symbol))
 	(but  (if (listp but) but (list but))))
     (if (and  (funcall test s) (not (member s but)))
 	(progn (incf *file-changes*) (setq *changed* t) (format nil "~s" s))
