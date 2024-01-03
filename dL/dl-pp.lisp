@@ -40,7 +40,7 @@ DDL sequent in the consequent is used."
 			(pvs-list-expr (make!-list-expr list-of-exprs (type(car list-of-exprs))))
 			(case-str      (format nil "(%1) = ~a" pvs-list-expr)))
 		       (case-replace case-str :hide? t))
-		   (let ((dummy (error-format-if "Cannot transform ~a to a list-expr" original-pvs-list)))
+		   (let ((dummy (error-format-if "Cannot transform ~a to a list-expr" original-cons)))
 		     (fail)))))))
   "Converts cons(%%) expressions into (: %% :) expressions in FNUM."
   "Converting cons into list-expressions in ~a")
