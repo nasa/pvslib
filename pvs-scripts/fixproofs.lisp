@@ -159,9 +159,9 @@
        (with-open-file
 	(out-file (merge-pathnames out-name) :direction :output
 		  :if-exists :supersede)
-	(let ((s-expr (read in-file nil)))
-	  (when s-expr
-	    (format out-file "~s" (fix-proofs s-expr)))))
+	(loop for s-expr = (read in-file nil)
+	      while s-expr
+	      do (format out-file "~s" (fix-proofs s-expr))))
        (format t " [~a change~:p]~%" *file-changes*)
        (incf *total-changes* *file-changes*)))))
 
