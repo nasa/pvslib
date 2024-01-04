@@ -1,0 +1,174 @@
+extended_float
+[ radix     : above(1),
+  precision : above(1),
+  dExp      : { d: posnat | d > 2*(precision-1) - 1 }
+] : THEORY BEGIN
+
+  %
+  % Unbounded floating-point numbers
+  %
+
+  IMPORTING float_unbounded@float[radix]
+  IMPORTING float_unbounded@float_props_rounding[radix,precision,dExp]
+  
+  %
+  %
+  %
+
+  min_exp       : negint  = -dExp
+  
+  max_exp       : posint  = dExp - 2*(precision-1) + 1
+  
+  min_pos_value : posreal = radix^min_exp
+  
+  max_pos_value : posreal = (radix^precision - 1) * radix^max_exp
+
+  % exponent boundaries for fractional representation of the significand.
+  emax: above(1) = max_exp + precision - 1
+
+  min_pos_value__min_pos_unb_canonic_float__eq
+  : LEMMA
+    min_pos_value = minimum_positive_bounded_value(given_format)
+
+  efloat: DATATYPE
+  BEGIN
+    inf(positive?: bool): infinite?
+    nan(signaling?: bool): nan?
+    zero(positive?: bool): zero?
+    nzfinite(val: {v: unb_canonic_float | Fexp(v) <= max_exp AND Fnum(v) /= 0}): nzfinite?
+  END efloat
+
+  is_finite?(d:efloat): bool = zero?(d) OR nzfinite?(d)
+%  AUTO_REWRITE+ is_finite? %M3 is this needed?
+
+  normal?(d: efloat): bool = nzfinite?(d) AND Fnormal?(given_format)(val(d))
+  subnormal?(d: efloat): bool = nzfinite?(d) AND Fsubnormal?(given_format)(val(d))
+
+  is_numeric?(d:efloat): bool = NOT nan?(d)
+
+  is_pos_inf?(d:efloat): bool = infinite?(d) AND positive?(d)
+  is_neg_inf?(d:efloat): bool = infinite?(d) AND NOT positive?(d)
+
+  is_pos_zero?(d:efloat): bool = zero?(d) AND positive?(d)
+  is_neg_zero?(d:efloat): bool = zero?(d) AND NOT positive?(d)
+
+  neginf: efloat = inf(FALSE)
+  AUTO_REWRITE+ neginf
+  
+  posinf: efloat = inf(TRUE)
+  AUTO_REWRITE+ posinf
+
+  inf_exclusive: LEMMA NOT inf(TRUE) = inf(FALSE)
+  AUTO_REWRITE+ inf_exclusive
+
+  negzero: efloat = zero(FALSE)
+  AUTO_REWRITE+ negzero
+  
+  poszero: efloat = zero(TRUE)
+  AUTO_REWRITE+ poszero
+
+  zero_inclusive: LEMMA FORALL(x: efloat) : zero?(x) = (x = zero(TRUE) OR x = zero(FALSE))
+  AUTO_REWRITE+ zero_inclusive
+
+  zero_exclusive: LEMMA NOT zero(TRUE) = zero(FALSE)
+  AUTO_REWRITE+ zero_exclusive
+
+  qnan: efloat = nan(FALSE)
+  AUTO_REWRITE+ qnan
+
+  snan: efloat = nan(TRUE)
+  AUTO_REWRITE+ snan
+
+  nznfinite?(d:efloat): bool
+  = nzfinite?(d) AND Fnum(val(d)) < 0
+
+  negative?(d:efloat): bool
+  = (infinite?(d) AND NOT positive?(d)) OR (zero?(d) AND NOT positive?(d)) OR nznfinite?(d)
+
+  nzpfinite?(d:efloat): bool
+  = nzfinite?(d) AND Fnum(val(d)) > 0
+
+  positive?(d:efloat): bool
+  = (infinite?(d) AND positive?(d)) OR (zero?(d) AND positive?(d)) OR nzpfinite?(d)
+
+  %
+  % Projection of extended floats
+  %
+
+  % Projection
+  
+  prj_ef(f: (is_finite?)): real
+  = IF zero?(f) THEN 0
+    ELSE prj_ucf(val(f)) ENDIF
+
+  safe_prjct(f: efloat): real
+  = IF is_finite?(f)
+    THEN prj_ef(f)
+    ELSE max_pos_value+1 % any real outside the exactly representable range
+    ENDIF
+
+  projection_on_nzfinite
+  : LEMMA
+    FORALL(f: (nzfinite?)): NOT prj_ef(f) = 0
+
+  %
+  % Representable reals
+  %
+
+  exactly_representable_as_pair_of_integers?(x: real): bool
+  = EXISTS(f: (Fbounded?(given_format))): FtoR(f) = x AND Fexp(f) <= max_exp
+
+  % Reals which are exactly representable by extended floats
+  xef_real: TYPE+ = (exactly_representable_as_pair_of_integers?) CONTAINING 0
+
+  % @QED xef_real_0_j proved by mmoscato on Fri, 15 Jul 2022 02:35:37 GMT
+  xef_real_0_j: JUDGEMENT 0 HAS_TYPE xef_real
+
+  % @QED xef_real_1_j proved by mmoscato on Fri, 15 Jul 2022 02:59:42 GMT
+  xef_real_1_j: JUDGEMENT 1 HAS_TYPE xef_real
+
+  min_pos_value_xef_real
+  : JUDGEMENT
+    min_pos_value HAS_TYPE xef_real
+
+  max_pos_value_xef_real
+  : JUDGEMENT
+    max_pos_value HAS_TYPE xef_real
+
+  xef_real_upper_bound
+  : LEMMA
+    FORALL(x: xef_real): x <= max_pos_value
+
+  xef_real_lower_bound
+  : LEMMA
+    FORALL(x: xef_real): -max_pos_value <= x
+
+  xef_real_not_zero_prj_rnd_ucf
+  : THEOREM
+    FORALL(x: xef_real): NOT x = 0 implies prj_ucf(rnd_ucf(x)) = x
+
+  %
+  % as_float is an operation that given an exactly representable real
+  % returns the floating point value that represents it.
+  %
+  as_float_existence
+  : Lemma
+    exists(ftor: [x: xef_real -> {f: efloat | IF x=0 THEN f=poszero ELSE nzfinite?(f) AND FtoR(val(f)) = x ENDIF}]): true
+
+  as_float(x: xef_real): {f: efloat | IF x=0 THEN f=poszero ELSE nzfinite?(f) AND FtoR(val(f)) = x ENDIF}
+
+  %
+  %
+  %
+
+  flip_sign_j
+  : JUDGEMENT
+    FORALL(f: (nzfinite?))
+    : Fopp(val(f))
+      HAS_TYPE {v: unb_canonic_float[radix, precision, dExp] | Fexp(v) <= max_exp AND Fnum(v) /= 0}
+
+  flip_sign(f: (nzfinite?)): efloat
+  = nzfinite(Fopp(val(f)))
+  AUTO_REWRITE+ flip_sign
+
+END extended_float
