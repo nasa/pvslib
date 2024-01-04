@@ -59,9 +59,17 @@ fi
 
 pvs -raw -L "$DIR/fixproofs.lisp" -E "(fix-files $targetlisp $dryrun) (uiop:quit)" 2>/dev/null
 
+if [ "$dryrun" ]; then
+    echo "** DRY RUN **"
+fi
+
 for file in $targetlist; do
     if [ -f $file.new ]; then
-	mv -f $file $file.bak
-	mv $file.new $file
+	if [ "$dryrun" ]; then
+	    rm -f $file.new
+	else
+ 	    mv -f $file $file.bak
+	    mv $file.new $file
+	fi
     fi
 done
