@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http
 
 # Libraries
 
-Currently, NASALib consists of 62 top-level libraries, containing about 38K proven formulas in total.
+Currently, NASALib consists of 62 _top-level_ libraries, containing about 38K proven formulas in total.
 
 | Library  | Description | 
 | --- | --- | 
@@ -232,7 +232,7 @@ If we have incorrectly attributed a PVS development or you have
 contributed to NASALib and your name is not included here, please let
 us know.
 
-If you want to contribute please read this [guide](docs/DEVEL-GUIDE.md).
+If you want to contribute please read this [guide](CONTRIBUTING.md).
 
 DISCLAIMER
 --
@@ -259,4 +259,7 @@ Enjoy it.
 
 [The Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm)
 
-Contact: [César Muñoz](http://shemesh.larc.nasa.gov/people/cam)
+## Maintainers
+
+[César Muñoz](http://shemesh.larc.nasa.gov/people/cam)
+[Mariano Moscato](http://marianomoscato.github.io)
