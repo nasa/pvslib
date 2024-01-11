@@ -1,0 +1,143 @@
+#!/bin/bash
+
+function print_usage {
+    myself=$(basename $0)
+    echo
+    echo "Usage: $myself <summaries directory> ['dont-kill' | <timeout in secs.> [ <refresh in secs.> ] ]"
+    echo
+    echo "$myself tries to determine if proveit is non-responsive by checking the summary files in "
+    echo "the directory provided. It checks the size of the youngest summary file every REFRESH seconds."
+    echo "If no change is detected after TIMEOUT seconds, the proveit process is killed, unless the "
+    echo "DONT-KILL option is enabled. The default value for REFRESH is half the timeout provided."
+    echo "The default value for TIMEOUT is 60 seconds."
+    echo
+    echo "  For instance,"
+    echo "     $myself summaries        looks into the summaries folder, every 30 secs with a timeout of 60"
+    echo "     $myself summaries 40     looks into the summaries folder, every 20 secs with a timeout of 40"
+    echo "     $myself summaries 50 10  looks into the summaries folder, every 10 secs with a timeout of 50"
+}
+
+if [[ $1 == "-h" ]] || [[ $1 == "-help" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]] || [[ $1 == "-?" ]]; then
+    print_usage
+    exit 0
+fi
+
+SUMMARIES_DIR=$1
+
+[[ -z $SUMMARIES_DIR ]] || ! [[ -d $SUMMARIES_DIR ]] &&
+	echo "Error: summaries directory cannot be found" &&
+	print_usage &&
+	exit 1;
+
+TIMEOUT=$2
+
+[[ -z $TIMEOUT ]] && TIMEOUT="60";
+
+if [[ $TIMEOUT == 'dont-kill' ]]; then
+    TIMEOUT=''
+    echo 'Just monitor, not going to try and kill proveit...'
+else
+    if ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] ; then
+	echo "Timeout provided is not valid"
+	print_usage
+	exit 1
+    fi
+    echo "Timeout: $TIMEOUT secs."
+fi
+
+REFRESH=$(($TIMEOUT/2))
+
+if ! [[ -z $TIMEOUT ]]; then
+    if ! [[ -z $3 ]]; then
+	REFRESH=$3;
+
+	if ! [[ "$REFRESH" =~ ^[0-9]+$ ]] ; then
+	    echo "Refresh provided is not valid"
+	    print_usage
+	    exit 1
+	fi
+    fi
+fi
+
+echo "Refresh: $REFRESH secs."
+
+file_size_cmd="stat -c %s"
+eval $file_size_cmd" ." &> /dev/null
+if ! [[ $? == 0 ]]; then
+    file_size_cmd="stat -f%z"
+    eval $file_size_cmd" ." &> /dev/null
+    if ! [[ $? == 0 ]]; then
+	echo "Error: Couldn't start stat command."
+	exit 1
+    fi
+fi
+
+moreRecentlyModifiedSummaryFile=`ls -ltr $SUMMARIES_DIR/*.summary | tail -1 | awk '{print $9}'`
+moreRecentlyModifiedSummaryFile=`basename $moreRecentlyModifiedSummaryFile`
+currentLibrary="${moreRecentlyModifiedSummaryFile%.*}"
+currentLibrary="${currentLibrary/-//}"
+currentProveitPID=`ps aux | grep "[^]]/bin/sh .*proveit.*$currentLibrary" | awk '{print $2}'`
+
+
+waitUntilItStopsToGrow() # log-file pvs-pid
+{
+    fileSize=`eval $file_size_cmd" $1"`
+    while true
+    do
+        sleep $REFRESH;
+	fileSizeNew=`eval $file_size_cmd" $1"`
+
+        if [ "$fileSize" == "$fileSizeNew" ]
+        then
+	    secs_since_last_refresh=$((secs_since_last_refresh + REFRESH))
+            echo "[$(date +'%r') - No changes noted in $1 (after $secs_since_last_refresh secs.).]"
+	    [ ! -z "$TIMEOUT" ] && if (( $TIMEOUT <= $secs_since_last_refresh )); then
+		echo "[$(date +'%r') - Timeout reached ($TIMEOUT secs.). Trying to kill $2]"
+		kill $2
+		break
+	    fi
+	elif [ $fileSize -lt $fileSizeNew ]; then
+	    echo "[$(date +'%r') - $(basename $1) has grown... $fileSize to $fileSizeNew]"
+	    secs_since_last_refresh=0
+	else
+	    echo "[$(date +'%r') - $(basename $1) has shrink... $fileSize to $fileSizeNew. Assuming prove-it finished by itself.]"
+	    secs_since_last_refresh=0
+	    break
+        fi
+
+	fileSize=$fileSizeNew
+    done
+}
+
+
+while true
+do
+
+    if [ ! -z "$currentProveitPID" ] ; then
+	# echo $moreRecentlyModifiedSummaryFile
+	# echo $currentLibrary
+	# echo $currentProveitPID
+        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $SUMMARIES_DIR/$moreRecentlyModifiedSummaryFile]"
+	waitUntilItStopsToGrow $SUMMARIES_DIR/$moreRecentlyModifiedSummaryFile $currentProveitPID
+    else
+	echo "No prove-it found"
+	# no PID means proveit finished without crashing
+    fi
+
+    sleep 15
+    
+    moreRecentlyModifiedSummaryFile=`ls -ltr $SUMMARIES_DIR/*.summary | tail -1 | awk '{print $9}'`
+    moreRecentlyModifiedSummaryFile=`basename $moreRecentlyModifiedSummaryFile`
+    currentLibrary="${moreRecentlyModifiedSummaryFile%.*}"
+    currentLibrary="${currentLibrary/-//}"
+    currentProveitPID=`ps aux | grep "[^]]/bin/sh .*proveit.*$currentLibrary" | awk '{print $2}'`
+
+    if [ -z "$currentProveitPID" ] ; then
+	echo "Couldn't find an active prove-it. Assuming prove-all is done."
+	exit
+    fi
+done
+
+
+
+
