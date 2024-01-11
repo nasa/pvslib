@@ -33,6 +33,8 @@ $OUTPUT_AUTOFLUSH=1;
 $VERSION="";
 $PROVEIT="$PVSPATH/proveit";
 
+$column_width=`sed -E "s/^([^ ]*) .*\$/\\1/g" all-libraries  | awk "length > max_length { max_length = length; longest_line = \$0 } END { print max_length }"`+3;
+
 $usageln = "Usage: provethem [--help | <option> ...] <file>";
 
 # If PROVEIT cannot be located, the execution is cancelled
@@ -451,7 +453,6 @@ sub iteratelibs(){
   print "With overopts: $overopts.\n" if $verbose && $execute=~/\%OVEROPTS\%/;
   print "\n";
   my $return_value=0;
-  my $max_separation=25;
   while (<INFILE>) {
     $line = $_;
     $line =~ s/\#.*$//;
@@ -491,9 +492,7 @@ sub iteratelibs(){
 	      print "DRY-RUN: $command\n";
 	    } else {
 	      print "Executing shell \"$command\".\n" if $verbose;
-	      my $current_sep=length($lib)+1;
-	      $current_sep=$max_separation>=$current_libname_size?$max_separation:$current_libname_size;
-	      $beginln = sprintf "%-".$current_sep."s",$lib;
+	      $beginln = sprintf "%-".$column_width."s",$lib;
 	      $beginln .= "$act... ";
 	      print $beginln;
 	      my $fail_msg;
@@ -644,7 +643,6 @@ sub iterate_proveit_on_libs(){
   #>
   
   my $return_value=0;
-  my $max_separation=25;
   while (<INFILE>) {
     $line = $_;
     $line =~ s/\#.*$//;
@@ -684,9 +682,7 @@ sub iterate_proveit_on_libs(){
 	      print "DRY-RUN: $command\n";
 	    } else {
 	      print "Executing shell \"$command\".\n" if $verbose;
-	      my $current_sep=length($lib)+1;
-	      $current_sep=$max_separation>=$current_libname_size?$max_separation:$current_libname_size;
-	      $beginln = sprintf "%-".$current_sep."s",$lib;
+	      $beginln = sprintf "%-".$column_width."s",$lib;
 	      $beginln .= "$act... ";
 	      print $beginln;
 	      my $fail_msg;
@@ -731,6 +727,8 @@ sub iterate_proveit_on_libs(){
 		  
 		  $totalformulas += $current_formulas;
 		  $totalproofs += $current_proofs;
+		} else {
+		  $current_formulas = -1;
 		}
 		#>
 	      }
@@ -746,23 +744,27 @@ sub iterate_proveit_on_libs(){
 		  print DARK RED $status; 
 		}
 		#<
-		my $status_message;
-		my $miss   = $current_formulas-$current_attempted;
-		my $unsucc = $current_formulas-$current_proofs;
-		my $comma  = "";
-		my $msguna = "";
-		if ($miss) {
-		  $comma = ", ";
-		  $msguna = "$miss unattempted";
+		my $status_message = "";
+		if ( $current_formulas >= 0 ) { 
+		  my $miss   = $current_formulas-$current_attempted;
+		  my $unsucc = $current_formulas-$current_proofs;
+		  my $comma  = "";
+		  my $msguna = "";
+		  if ($miss) {
+		    $comma = ", ";
+		    $msguna = "$miss unattempted";
+		  }
+		  my $msguns = "$comma$unsucc unsuccessful" if $unsucc;
+		  $status_message = ": $msguna$msguns / $current_formulas formulas";
 		}
-		my $msguns = "$comma$unsucc unsuccessful" if $unsucc;
-		$status_message = ": $msguna$msguns / $current_formulas formulas";
 		#>
 		$fail_msg .= " (return value: $fail)" if $verbose;
 		if ($fail_msg) {
 		  #<
 		  print "$status_message]\n*** $fail_msg\n";
-		  $summary .= "$beginln\[$statusstatus_message - $fail_msg]\n";
+		  my $one_line_fail_msg = $fail_msg;
+		  $one_line_fail_msg =~ s/\R/ /g;
+		  $summary .= "$beginln\[$status$status_message - $one_line_fail_msg]\n";
 		  #>
 		} else {
 		  #<
