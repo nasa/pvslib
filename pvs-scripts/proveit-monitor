@@ -30,7 +30,7 @@ fi
 	exit 1;
 
 if [[ "$1" =~ ^[0-9]+$ ]] ; then
-    ps_out=`ps -p $1`
+    ps_out=`ps o pid,ppid,command | grep $1`
     if [ $? -eq "0" ] ; then
 	# $1 is the PID of a running process
 	if [[ "$ps_out" == *"provethem"* ]]; then
@@ -131,13 +131,13 @@ waitUntilItStopsToGrow() # log-file pvs-pid
 	    secs_since_last_refresh=$((secs_since_last_refresh + REFRESH))
             echo "[$(date +'%r') - No changes noted in $1 (after $secs_since_last_refresh secs.).]"
 	    [ ! -z "$TIMEOUT" ] && if (( $TIMEOUT <= $secs_since_last_refresh )); then
-		echo "[$(date +'%r') - Timeout reached ($TIMEOUT secs.). Trying to kill $2 and its descendents]"
+		echo "[$(date +'%r') - Timeout reached ($TIMEOUT secs.). Trying to kill $2 and its descendents]" | tee -a proveit-monitor.out
 		current_pvs_pid=`ps o pid,ppid,command | grep -E "[0-9]+ *$currentProveitPID .*pvs" | awk '{print$1}'`
-		kill $2 && echo "[$(date +'%r') - Killed proveit ($2)]"
+		kill $2 && echo "[$(date +'%r') - Killed proveit ($2)]" | tee -a proveit-monitor.out
 	        [ ! -z $current_pvs_pid ] &&
 		    current_runtime_pid=`ps o pid,ppid,command | grep -i -E "[0-9]+ *$current_pvs_pid .*runtime.*pvs" | awk '{print$1}'` &&
-		    kill $current_pvs_pid && echo "[$(date +'%r') - Killed pvs ($current_pvs_pid)]" &&
-		    [ ! -z $current_runtime_pid ] && kill $current_runtime_pid && echo "[$(date +'%r') - Killed runtime ($current_runtime_pid)]";
+		    kill $current_pvs_pid && echo "[$(date +'%r') - Killed pvs ($current_pvs_pid)]" | tee -a proveit-monitor.out &&
+		    [ ! -z $current_runtime_pid ] && kill $current_runtime_pid && echo "[$(date +'%r') - Killed runtime ($current_runtime_pid)]" | tee -a proveit-monitor.out ;
 		break
 	    fi
 	elif [ $fileSize -lt $fileSizeNew ]; then
@@ -159,7 +159,7 @@ while true
 do
 
     if [ ! -z "$currentProveitPID" ] ; then
-        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $summaries_dir/$currentSummaryFile]"
+        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $summaries_dir/$currentSummaryFile]" | tee -a proveit-monitor.out
 	waitUntilItStopsToGrow $summaries_dir/$currentSummaryFile $currentProveitPID
     else
 	echo "No prove-it found"
@@ -181,7 +181,7 @@ do
     done
 
     if [ -z "$currentProveitPID" ] ; then
-	echo "Couldn't find an active prove-it. Assuming prove-all is done."
+	echo "Couldn't find an active prove-it. Assuming prove-all is done." | tee -a proveit-monitor.out
 	exit
     fi
 done
