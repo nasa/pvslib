@@ -3,7 +3,7 @@
 function print_usage {
     myself=$(basename $0)
     echo
-    echo "Usage: $myself <summaries directory> ['dont-kill' | <timeout in secs.> [ <refresh in secs.> ] ]"
+    echo "Usage: $myself <provethem PID> <summaries directory> ['dont-kill' | <timeout in secs.> [ <refresh in secs.> ] ]"
     echo
     echo "$myself tries to determine if proveit is non-responsive by checking the summary files in "
     echo "the directory provided. It checks the size of the youngest summary file every REFRESH seconds."
@@ -22,14 +22,49 @@ if [[ $1 == "-h" ]] || [[ $1 == "-help" ]] || [[ $1 == "--help" ]] || [[ $1 == "
     exit 0
 fi
 
-SUMMARIES_DIR=$1
+## First argument: provethem pid  (mandatory)
 
-[[ -z $SUMMARIES_DIR ]] || ! [[ -d $SUMMARIES_DIR ]] &&
-	echo "Error: summaries directory cannot be found" &&
+[[ -z $1 ]] &&
+	echo "Error: first argument is mandatory" &&
 	print_usage &&
 	exit 1;
 
-TIMEOUT=$2
+if [[ "$1" =~ ^[0-9]+$ ]] ; then
+    ps_out=`ps -p $1`
+    if [ $? -eq "0" ] ; then
+	# $1 is the PID of a running process
+	if [[ "$ps_out" == *"provethem"* ]]; then
+	    provethem_pid=$1
+	else
+	    echo "Error: $1 is the PID of a running process, but ir does not seem to correspond to a provethem incarnation"
+	    exit 1
+	fi
+    else
+	echo "Error: $1 is not the PID of a running process"
+	exit 1
+    fi
+else
+    echo "Error: first argument must be a PID"
+    exit 1
+fi
+
+## First argument: summaries directory (mandatory)
+
+[[ -z $2 ]] &&
+    echo "Error: second argument is mandatory" &&
+    print_usage &&
+    exit 1;
+
+summaries_dir=$2
+    
+! [[ -d $summaries_dir ]] &&
+    echo "Error: $2 is not a directory" &&
+    print_usage &&
+    exit 1;
+
+## Third argument: timeout
+
+TIMEOUT=$3
 
 [[ -z $TIMEOUT ]] && TIMEOUT="60";
 
@@ -48,8 +83,8 @@ fi
 REFRESH=$(($TIMEOUT/2))
 
 if ! [[ -z $TIMEOUT ]]; then
-    if ! [[ -z $3 ]]; then
-	REFRESH=$3;
+    if ! [[ -z $4 ]]; then
+	REFRESH=$4;
 
 	if ! [[ "$REFRESH" =~ ^[0-9]+$ ]] ; then
 	    echo "Refresh provided is not valid"
@@ -72,15 +107,19 @@ if ! [[ $? == 0 ]]; then
     fi
 fi
 
-moreRecentlyModifiedSummaryFile=`ls -ltr $SUMMARIES_DIR/*.summary | tail -1 | awk '{print $9}'`
-moreRecentlyModifiedSummaryFile=`basename $moreRecentlyModifiedSummaryFile`
-currentLibrary="${moreRecentlyModifiedSummaryFile%.*}"
-currentLibrary="${currentLibrary/-//}"
-currentProveitPID=`ps aux | grep "[^]]/bin/sh .*proveit.*$currentLibrary" | awk '{print $2}'`
+currentProveitPID=`ps o pid,ppid,command | grep -E "[0-9]+ *$provethem_pid .*proveit" | awk '{print$1}'`
 
+currentLibrary=`ps o pid,ppid,command | sed -n -E "s/$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"`
+currentSummaryFile="${currentLibrary/\//-/}.summary"
+
+if [ -z $currentProveitPID ] ; then
+    echo "Error: could not find an active proveit process"
+    exit 1
+fi
 
 waitUntilItStopsToGrow() # log-file pvs-pid
 {
+    secs_since_last_refresh=0
     fileSize=`eval $file_size_cmd" $1"`
     while true
     do
@@ -92,8 +131,13 @@ waitUntilItStopsToGrow() # log-file pvs-pid
 	    secs_since_last_refresh=$((secs_since_last_refresh + REFRESH))
             echo "[$(date +'%r') - No changes noted in $1 (after $secs_since_last_refresh secs.).]"
 	    [ ! -z "$TIMEOUT" ] && if (( $TIMEOUT <= $secs_since_last_refresh )); then
-		echo "[$(date +'%r') - Timeout reached ($TIMEOUT secs.). Trying to kill $2]"
-		kill $2
+		echo "[$(date +'%r') - Timeout reached ($TIMEOUT secs.). Trying to kill $2 and its descendents]"
+		current_pvs_pid=`ps o pid,ppid,command | grep -E "[0-9]+ *$currentProveitPID .*pvs" | awk '{print$1}'`
+		kill $2 && echo "[$(date +'%r') - Killed proveit ($2)]"
+	        [ ! -z $current_pvs_pid ] &&
+		    current_runtime_pid=`ps o pid,ppid,command | grep -i -E "[0-9]+ *$current_pvs_pid .*runtime.*pvs" | awk '{print$1}'` &&
+		    kill $current_pvs_pid && echo "[$(date +'%r') - Killed pvs ($current_pvs_pid)]" &&
+		    [ ! -z $current_runtime_pid ] && kill $current_runtime_pid && echo "[$(date +'%r') - Killed runtime ($current_runtime_pid)]";
 		break
 	    fi
 	elif [ $fileSize -lt $fileSizeNew ]; then
@@ -109,35 +153,36 @@ waitUntilItStopsToGrow() # log-file pvs-pid
     done
 }
 
+MAX_FIND_PROVEIT_ATTEMPTS=10
 
 while true
 do
 
     if [ ! -z "$currentProveitPID" ] ; then
-	# echo $moreRecentlyModifiedSummaryFile
-	# echo $currentLibrary
-	# echo $currentProveitPID
-        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $SUMMARIES_DIR/$moreRecentlyModifiedSummaryFile]"
-	waitUntilItStopsToGrow $SUMMARIES_DIR/$moreRecentlyModifiedSummaryFile $currentProveitPID
+        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $summaries_dir/$currentSummaryFile]"
+	waitUntilItStopsToGrow $summaries_dir/$currentSummaryFile $currentProveitPID
     else
 	echo "No prove-it found"
 	# no PID means proveit finished without crashing
     fi
 
-    sleep 15
-    
-    moreRecentlyModifiedSummaryFile=`ls -ltr $SUMMARIES_DIR/*.summary | tail -1 | awk '{print $9}'`
-    moreRecentlyModifiedSummaryFile=`basename $moreRecentlyModifiedSummaryFile`
-    currentLibrary="${moreRecentlyModifiedSummaryFile%.*}"
-    currentLibrary="${currentLibrary/-//}"
-    currentProveitPID=`ps aux | grep "[^]]/bin/sh .*proveit.*$currentLibrary" | awk '{print $2}'`
+    find_proveit_attempts=0
+
+    while (( find_proveit_attempts < MAX_FIND_PROVEIT_ATTEMPTS ))
+    do
+	currentProveitPID=`ps o pid,ppid,command | grep -E "[0-9]+ *$provethem_pid .*proveit" | awk '{print$1}'`
+
+	find_proveit_attempts=$((find_proveit_attempts + 1))
+
+	[ ! -z $currentProveitPID ] &&
+	    currentLibrary=`ps o pid,ppid,command | sed -n -E "s/$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"` &&
+	    currentSummaryFile="${currentLibrary/\//-}.summary" && 
+	    find_proveit_attempts=$MAX_FIND_PROVEIT_ATTEMPTS;
+    done
 
     if [ -z "$currentProveitPID" ] ; then
 	echo "Couldn't find an active prove-it. Assuming prove-all is done."
 	exit
     fi
 done
-
-
-
 
