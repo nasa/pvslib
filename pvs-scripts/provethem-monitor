@@ -12,9 +12,9 @@ function print_usage {
     echo "The default value for TIMEOUT is 60 seconds."
     echo
     echo "  For instance,"
-    echo "     $myself summaries        looks into the summaries folder, every 30 secs with a timeout of 60"
-    echo "     $myself summaries 40     looks into the summaries folder, every 20 secs with a timeout of 40"
-    echo "     $myself summaries 50 10  looks into the summaries folder, every 10 secs with a timeout of 50"
+    echo "     $myself 3333 summaries        looks into the summaries folder, every 30 secs with a timeout of 60"
+    echo "     $myself 3333 summaries 40     looks into the summaries folder, every 20 secs with a timeout of 40"
+    echo "     $myself 3333 summaries 50 10  looks into the summaries folder, every 10 secs with a timeout of 50"
 }
 
 if [[ $1 == "-h" ]] || [[ $1 == "-help" ]] || [[ $1 == "--help" ]] || [[ $1 == "help" ]] || [[ $1 == "-?" ]]; then
@@ -48,7 +48,7 @@ else
     exit 1
 fi
 
-## First argument: summaries directory (mandatory)
+## Second argument: summaries directory (mandatory)
 
 [[ -z $2 ]] &&
     echo "Error: second argument is mandatory" &&
@@ -69,7 +69,7 @@ TIMEOUT=$3
 [[ -z $TIMEOUT ]] && TIMEOUT="60";
 
 if [[ $TIMEOUT == 'dont-kill' ]]; then
-    TIMEOUT=''
+    unset TIMEOUT
     echo 'Just monitor, not going to try and kill proveit...'
 else
     if ! [[ "$TIMEOUT" =~ ^[0-9]+$ ]] ; then
@@ -80,21 +80,23 @@ else
     echo "Timeout: $TIMEOUT secs."
 fi
 
-REFRESH=$(($TIMEOUT/2))
+if ! [[ -z $4 ]]; then
+    REFRESH=$4;
 
-if ! [[ -z $TIMEOUT ]]; then
-    if ! [[ -z $4 ]]; then
-	REFRESH=$4;
-
-	if ! [[ "$REFRESH" =~ ^[0-9]+$ ]] ; then
-	    echo "Refresh provided is not valid"
-	    print_usage
-	    exit 1
-	fi
+    if ! [[ "$REFRESH" =~ ^[0-9]+$ ]] ; then
+	echo "Refresh provided is not valid"
+	print_usage
+	exit 1
+    fi
+else 
+    if ! [[ -z $TIMEOUT ]]; then
+	REFRESH=$(($TIMEOUT/2))
+    else
+	REFRESH=30
     fi
 fi
 
-echo "Refresh: $REFRESH secs."
+echo "Refresh: $REFRESH secs.";
 
 file_size_cmd="stat -c %s"
 eval $file_size_cmd" ." &> /dev/null
@@ -109,7 +111,7 @@ fi
 
 currentProveitPID=`ps o pid,ppid,command | grep -E "[0-9]+ *$provethem_pid .*proveit" | awk '{print$1}'`
 
-currentLibrary=`ps o pid,ppid,command | sed -n -E "s/$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"`
+currentLibrary=`ps o pid,ppid,command | sed -n -E "s/^[[:blank:]]*$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"`
 currentSummaryFile="${currentLibrary/\//-/}.summary"
 
 if [ -z $currentProveitPID ] ; then
@@ -159,7 +161,7 @@ while true
 do
 
     if [ ! -z "$currentProveitPID" ] ; then
-        echo "[$(date +'%r') - proveit seems to be working on $currentLibrary (pid: $currentProveitPID). Polling on $summaries_dir/$currentSummaryFile]" | tee -a proveit-monitor.out
+        echo "[$(date +'%r') - proveit seems to be working on '$currentLibrary' (pid: $currentProveitPID). Polling on $summaries_dir/$currentSummaryFile]" | tee -a proveit-monitor.out
 	waitUntilItStopsToGrow $summaries_dir/$currentSummaryFile $currentProveitPID
     else
 	echo "No prove-it found"
@@ -175,7 +177,7 @@ do
 	find_proveit_attempts=$((find_proveit_attempts + 1))
 
 	[ ! -z $currentProveitPID ] &&
-	    currentLibrary=`ps o pid,ppid,command | sed -n -E "s/$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"` &&
+	    currentLibrary=`ps o pid,ppid,command | sed -n -E "s/^[[:blank:]]*$currentProveitPID *[0-9]+ *.*proveit.* ([^ ]+)$/\1/p"` &&
 	    currentSummaryFile="${currentLibrary/\//-}.summary" && 
 	    find_proveit_attempts=$MAX_FIND_PROVEIT_ATTEMPTS;
     done
