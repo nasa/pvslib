@@ -373,7 +373,7 @@
 			       (format t "~%MetiTarski succesfully proved.~%") t)
 			      (t (format t "~%Unable to prove with MetiTarski.~%"))))
 		       (t (format t
-				  "~%Error running MetiTarski. The error message is:~% ~a~%"
+				  "~%Error running MetiTarski: ~a~%"
 				  (cdr result))))))))))
 
 (deforacle metit (&optional (fnums 1) (timeout 60) verbose? options (pre-bins? t) arch about?)

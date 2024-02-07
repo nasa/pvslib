@@ -1,0 +1,144 @@
+semi_algebraic_def  
+		: THEORY
+
+  BEGIN
+
+%semi algebraic definition and equivalence to SA in the MultPoly library
+
+% Author: LMW
+
+  IMPORTING dL@hp_def, 
+            mult_poly@eval_MultPoly, 
+            mult_poly@semi_algebraic,
+            mult_poly@standard_form_mult_poly,
+            dL@chain_rule_re,
+            structures@more_list_props
+
+%----------------------------------------------------------------
+%% Evaluating a multivariate polynomial on an environment type
+%----------------------------------------------------------------
+
+eval(p:MultPoly)(env:Environment): real = 
+    full_eval(p)(env_2_vec(max_length(p),env))
+
+% @QED eval_equiv_ddl proved by lmwhite3 on Thu, 19 May 2022 15:54:44 GMT
+eval_equiv_ddl: LEMMA   
+    FORALL(p:MultPoly, env:Environment, 
+        l:list[real]|length(l)>=max_length(p) 
+        AND FORALL(i:below(max_length(p))): nth(l,i) = env(i)):
+        eval(p)(env) = full_eval(p)(l)
+
+%----------------------------------------------------------------
+%% Boolean expression given by evaluating an atomic polynomial
+%----------------------------------------------------------------
+
+evalatom(atom:atomic_poly)(env:Environment): bool = 
+    atom`ineq(eval(atom`poly)(env),0)
+
+ands(L:list[atomic_poly])(env:Environment): bool =
+    LET f = (LAMBDA(atomp:atomic_poly): evalatom(atomp)(env)) IN
+        every(f)(L)
+
+ANDequiv: LEMMA 
+    FORALL(Q:list[atomic_poly],env:Environment,l:list[real]|length(l)>=atom_max(Q) 
+        AND FORALL(i:below(atom_max(Q))): nth(l,i) = env(i)): 
+    ands(Q)(env) = meet(Q)(l)
+
+%-------------------------------------------------------
+%% SA function maps an Environment to a bool where 
+%% the result depends on a specified quantifier system
+%-------------------------------------------------------
+
+SA(Q:joining)(env:Environment): bool =
+    LET f = (LAMBDA(atoml:list[atomic_poly]): ands(atoml)(env)) IN
+        some(f)(Q)
+
+%-------------------------------------------------------
+%% SA? function maps an Environment to a bool 
+%-------------------------------------------------------
+
+SA?(D:BoolExpr): bool = 
+    EXISTS(Q:joining): SA(Q) = D
+
+get_SA(D:{B:BoolExpr|SA?(B)}): joining =
+    choose({Q:joining | SA(Q) = D})
+
+SA?(n:nat)(D:BoolExpr): bool = 
+    EXISTS(Q:joining | meet_max(Q)=n): SA(Q) = D
+
+%-------------------------------------------------------
+%% SAset function maps a quantifier system to a set 
+%% of environments where the elements of the set that 
+%% have a TRUE boolean value
+%-------------------------------------------------------
+
+SAset(Q:joining): set[Environment] = 
+    {env:Environment | SA(Q)(env)}
+
+%-------------------------------------------------------
+%% SA from MultPoly and from DDL are equivalent
+%-------------------------------------------------------   
+
+% @QED SAequiv proved by lmwhite3 on Wed, 22 Jun 2022 16:28:12 GMT
+SAequiv: LEMMA 
+    FORALL(Q:joining,env:Environment,l:list[real]|length(l)>=meet_max(Q) 
+        AND FORALL(i:below(meet_max(Q))): nth(l,i) = env(i)):  
+        SA(Q)(env) = join(Q)(l)
+
+%----------------------------------------------
+%% SA properties using DLOR, DLAND, DLNOT.
+%% These give explicit formulas for the quantifier
+%% system, written in dysjunctive normal form.
+%----------------------------------------------
+
+% @QED andSA proved by lmwhite3 on Thu, 23 Jun 2022 15:00:54 GMT
+andSA: LEMMA
+    FORALL(Q1,Q2:joining):
+    DLAND(SA(Q1),SA(Q2)) = SA(cap_join(Q1,Q2))
+
+% @QED andSA? proved by lmwhite3 on Mon, 17 Oct 2022 13:29:59 GMT
+andSA?: LEMMA
+    FORALL(S1,S2:(SA?)):
+    SA?(DLAND(S1,S2))
+
+% @QED orSA proved by lmwhite3 on Mon, 02 May 2022 14:45:46 GMT
+orSA: LEMMA
+    FORALL(Q1,Q2:joining): 
+    DLOR(SA(Q1),SA(Q2)) = SA(append(Q1,Q2))
+
+% @QED orSA? proved by lmwhite3 on Mon, 17 Oct 2022 13:44:39 GMT
+orSA?: LEMMA
+    FORALL(S1,S2:(SA?)):
+    SA?(DLOR(S1,S2))
+
+% @QED notSA proved by lmwhite3 on Mon, 02 May 2022 14:49:05 GMT
+notSA: LEMMA
+    FORALL(Q:joining): 
+    DLNOT(SA(Q)) = SA(not_join(Q))
+
+% @QED notSA? proved by lmwhite3 on Mon, 17 Oct 2022 13:48:35 GMT
+notSA?: LEMMA
+    FORALL(S:(SA?)):
+    SA?(DLNOT(S))
+
+pf(n:posnat): MultPoly = 
+  (: (# C:= 1, alpha:= zero_vec(n) #), (# C:= 1, alpha:= 2*e(n,n-1) #) :)
+
+% @QED all_false_mp proved by lmwhite3 on Thu, 30 Jun 2022 17:56:31 GMT
+all_false_mp: LEMMA
+    FORALL(n:posnat): (mv_standard_form?(pf(n)) AND FORALL(env:Environment): evalatom((# poly:=pf(n), ineq:= < #))(env)=FALSE)
+
+% @QED SA_DLNOT_DLAND proved by lmwhite3 on Thu, 23 Jun 2022 15:34:01 GMT
+SA_DLNOT_DLAND: LEMMA
+  FORALL(P,Q:BoolExpr):
+  SA?(P) AND SA?(Q)
+  IMPLIES
+  SA?(DLNOT(DLAND(P,Q)))
+
+
+
+
+
+
+
+  END semi_algebraic_def

@@ -1,0 +1,311 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| This file details the exploratory example outlined in the tool paper 
+%| "Using Plaidypvs for Proving Eventuality in Hybrid Programs" which
+%| involves a fixed wing craft executing a turn governed by a Dubin's 
+%| path to return to some designated safe zone XT. The craft will start 
+%| at the point A and move according to the dubins dynamics "dubins". 
+%| In its path it will cross the point B2 to the right of the vertical line 
+%| of symmetry X=c, then move to the right of the line of symmetry to the 
+%| point B, and complete the turn by moving from B to C. Once the craft
+%| reaches C the safety dynamics ensure the craft returns to the safe zone XT.
+%|
+%| Note that the space between B2 and B that lies on the circular path 
+%| is referred to as \bar{B} in the paper. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:  LMW, JTS
+
+% ![The path to return to XT.](Images/fixed_wing_path.png)
+% ![The arc \bar{B} with endpoints B2 and B.](Images/B2B_arc.png)
+
+
+%%
+% @theory: dubins_ex
+% @author: jslagel
+% @date: Tue, 07 Feb 2023 18:39:46 GMT
+%%
+dubins_ex: THEORY
+  BEGIN 
+
+IMPORTING bool_expr_SA_props,
+          differential_variant,
+          dL@diff_re_props,
+          dL@dynamic_logic,
+          trig@sincos_def,
+          trig@arccos,
+          trig@deriv_sincos
+
+
+% x,y are coordinates of UAS
+  x: dLVar = dlvar(0)  
+  y: dLVar = dlvar(1)
+  X: RealExpr = val(x)
+  Y: RealExpr = val(y)
+
+
+% initial points x0,y0
+% initial velocity components v0x,v0y
+% turn rate w
+
+  x0,v0x: negreal %this is so that the craft is outside the safe zone and initially moving away, necessitating a turn 
+  y0: real
+  v0y,w:  posreal %v0y posreal to make the A to B run in figure 1 from the paper. If v0y negative, just do B to C style run 
+
+% radius of circular path and x,y values of the center 
+  r:posreal  = sqrt(v0x^2 + v0y^2)/w
+  cx:negreal = x0-v0y/w
+  cy:real    = y0+v0x/w
+
+
+  %%%%% ODE Dubins defined by:
+  %% x' = -w(y-y0) + v0x, y' =  w(x-x0) + v0y 
+  vx:[Environment -> RealExpr] =LAMBDA(e:Environment): -w*(Y-e(1)) + v0x 
+  vy:[Environment -> RealExpr] =LAMBDA(e:Environment):  w*(X-e(0)) + v0y
+  dubins:[Environment -> ODEs] =LAMBDA(e:Environment): (: x << vx(e), y << vy(e) :)
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  % The following lemmas build the unique solution to the 
+  % dubins dynamics, given by the function in f_sol_u_dubin.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  deriv_dubins: LEMMA
+  FORALL(c1,c2,c3,a:real, D:(dd?), x:(D)):
+  derivable?[(D)](LAMBDA(t:real): c1*sin(a*t)+c2*cos(a*t)+c3,x) AND
+  deriv[(D)](LAMBDA(t:real): c1*sin(a*t)+c2*cos(a*t)+c3,x) = a*c1*cos(a*x)-a*c2*sin(a*x)
+
+  f_sol_dubin: LEMMA 
+  FORALL(envi,envo:Environment):
+  solution_odes?(hp(0),dubins(envi),envo)(LAMBDA(i:below(length(dubins(envi)))): 
+                      IF i=0
+                      THEN LAMBDA(t:real):  vx(envi)(envo)/w*sin(w*t)+vy(envi)(envo)/w*cos(w*t)+envo(0)-vy(envi)(envo)/w
+                      ELSE LAMBDA(t:real):  vy(envi)(envo)/w*sin(w*t)-vx(envi)(envo)/w*cos(w*t)+envo(1)+vx(envi)(envo)/w
+                      ENDIF)
+
+  f_sol_u_dubin: LEMMA 
+  FORALL(envi,envo:Environment):
+  solution_odes_u?(hp(0),dubins(envi),envo)(LAMBDA(i:below(length(dubins(envi)))): 
+                      IF i=0
+                      THEN LAMBDA(t:real):  vx(envi)(envo)/w*sin(w*t)+vy(envi)(envo)/w*cos(w*t)+envo(0)-vy(envi)(envo)/w
+                      ELSE LAMBDA(t:real):  vy(envi)(envo)/w*sin(w*t)-vx(envi)(envo)/w*cos(w*t)+envo(1)+vx(envi)(envo)/w
+                      ENDIF)
+
+  dubins_IV: LEMMA
+  FORALL(D:(dd?),envi,envo:Environment, fs:[below(length(dubins(envi))) -> [real->real]]):
+  solution_odes?(D,dubins(envi),envo)(fs) AND
+  deriv[(D)](restrict[real, (D), real](fs(dlvar_index(x))))(0) = v0x AND
+  deriv[(D)](restrict[real, (D), real](fs(dlvar_index(y))))(0) = v0y
+  IMPLIES
+  FORALL(k:below(length(dubins(envi)))): fs(k)(0) = envi(k)
+
+
+
+
+  %%%%% Safety dynamics defined by:
+  %% x' = f(x,y) | f(x,y) > 0, y' = g(x,y), and the dynamics match at C.
+  
+% ODE for safety
+  e:{ee:posreal | ee<1}
+  posRe: TYPE = [Environment -> {x:real | x>e}]
+  posRe_is_Re: JUDGEMENT posRe SUBTYPE_OF RealExpr
+  sx:{ff:posRe    | FORALL(env:Environment| env(0)=cx AND env(1)=cy-r): ff(env)=1}
+  sy:{ff:RealExpr | FORALL(env:Environment| env(0)=cx AND env(1)=cy-r): ff(env)=0}
+  safety:ODEs = (: (x, sx), (y, sy) :)
+
+
+
+
+% Dubins path lies on this circular set
+  Circ:BoolExpr = (X-cx)^2 + (Y-cy)^2 = r^2
+% OPerational zone, safe zone XT, and initial zone A
+  OP:BoolExpr = DLTRUE
+  XT:BoolExpr = (X>0)
+  A:BoolExpr  = (X=x0 AND Y=y0)
+
+  % this is the space given between either B or B2 and the vertical line X=cx
+  delta:posreal = min(r/10,v0y/w/10)
+  % The point that the turn dynamics end, located at the bottom of circle
+  C:BoolExpr = (cx-delta = X AND Y <= cy) AND Circ
+  % The point to the left of the vertical center line, located at the top of the circle
+  B:BoolExpr = (cx-delta = X AND Y > cy) AND Circ
+
+  % This is the initial environment with x-x0, y=y0
+  envA:{e:Environment| e(0)=x0 AND e(1)=y0}
+
+%%% Showing certain sets are semi-algebraic %%%
+
+  Circ_SA: LEMMA
+  SA?(Circ) 
+
+  OP_SA: LEMMA
+  SA?(OP)
+
+  XT_SA: LEMMA
+  SA?(XT)
+
+  B_SA: LEMMA
+  SA?(B)
+
+  C_SA: LEMMA
+  SA?(C)
+
+  % The solution lies on the circular path for all time values
+  f_sol_u_Circ: LEMMA
+  FORALL(envo:Environment):
+  LET ff = (LAMBDA(i:below(length(dubins(envA)))): 
+                                IF i=0
+                                THEN LAMBDA(t:real):  vx(envA)(envo)/w*sin(w*t)+vy(envA)(envo)/w*cos(w*t)+envo(0)-vy(envA)(envo)/w
+                                ELSE LAMBDA(t:real):  vy(envA)(envo)/w*sin(w*t)-vx(envA)(envo)/w*cos(w*t)+envo(1)+vx(envA)(envo)/w
+                                ENDIF) IN
+  (envo(0)-cx)^2 + (envo(1)-cy)^2 = r^2 IMPLIES
+   FORALL(t:real): (ff(0)(t)-cx)^2 + (ff(1)(t)-cy)^2 = r^2
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% CASE 1: x <= cx (this is the half arc to the left) %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Here the work is done to show S1 is the staging set 
+%% for case 1 and Prog1 is a suitable progress function.
+
+  S1:BoolExpr = Circ AND (X <= cx-delta)
+
+  S1_SA: LEMMA
+  SA?(S1)
+
+  S1_is_a_staging_set: LEMMA
+  (DLAND(B,DLNOT(C)) |- S1) AND
+  (S1 |- ALLRUNS(DIFF(dubins(envA),DLNOT(DLAND(OP,C))),S1)) AND
+  (DLOR(B,S1) |- OP)
+
+% Progress function from B to C in picture from paper
+  Prog1:RealExpr = (X-cx)^2+(Y-(cy-r))^2
+
+  diff_Prog1: LEMMA
+  diff_re?(max_var(dubins(envA)),DLTRUE)(Prog1)
+
+  Lp1: LEMMA
+  SUB_DIFTRe(DLTRUE,dubins(envA))(Prog1) = 2*vx(envA)*(X-cx) + 2*vy(envA)*(Y-(cy-r))
+
+  Lp1_simplify: LEMMA 
+  2*vx(envA)*(X-cx) + 2*vy(envA)*(Y-(cy-r)) = 2*w*r*(X-cx)
+
+  Prog1_progress_BC: LEMMA
+  EXISTS(eps:posreal): 
+  DLIMPLIES(S1 ,Prog1>=0 AND SUB_DIFTRe(DLTRUE,dubins(envA))(Prog1) <= -eps)
+
+  % Eventuality that shows starting at B will eventually lead 
+  % to a solution, governed by the dubins dunamics, that satisfies C.
+  Eventual_BC: LEMMA 
+  (ODEs_P_analytic?(hp(0), DLBOOL(TRUE))(dubins(envA)))
+   IMPLIES
+  (B |- SOMERUNS(DIFF(dubins(envA),OP),C))
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% CASE 2: cx+delta < x <= x0 (arc to the right of center) %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% Here the work is done to show S2 is the staging set 
+%% for case 2 and Prog2 is a suitable progress function.
+
+  S2:BoolExpr = Circ AND cx+delta <= X AND Y >= cy
+  B2:BoolExpr = (cx+delta = X) AND (Y >= cy) AND Circ
+
+  S2_SA: LEMMA
+  SA?(S2)
+
+  B2_SA: LEMMA
+  SA?(B2)
+
+  S2_is_a_staging_set: LEMMA
+  ((DLAND(A,DLNOT(B2)) |- S2) AND
+  (S2 |- ALLRUNS(DIFF(dubins(envA),DLNOT(DLAND(OP,B2))),S2)) AND
+  (DLOR(A,S2) |- OP))
+
+% Progress function for A to B in the picture from paper
+  Prog2:RealExpr = (X-cx)^2+(Y-(cy+r))^2
+
+  diff_Prog2: LEMMA
+  diff_re?(max_var(dubins(envA)),DLTRUE)(Prog2)
+
+  Lp2: LEMMA
+  SUB_DIFTRe(DLTRUE,dubins(envA))(Prog2) = 2*vx(envA)*(X-cx)+2*vy(envA)*(Y-(cy+r))
+
+  Lp2_simplify: LEMMA
+  2*vx(envA)*(X-cx)+2*vy(envA)*(Y-(cy+r)) = -2*r*w*(X-cx)
+
+  Prog2_progress_x0_x_cx: LEMMA
+  EXISTS(eps:posreal): 
+  DLIMPLIES(S2 ,Prog2>=0 AND SUB_DIFTRe(DLTRUE,dubins(envA))(Prog2) <= -eps)
+
+  % Eventuality that shows starting at A will eventually lead 
+  % to a solution, governed by the dubins dunamics, that satisfies B2.
+  Eventual_AB: LEMMA 
+  (ODEs_P_analytic?(hp(0), DLBOOL(TRUE))(dubins(envA)))
+   IMPLIES
+  (A |- SOMERUNS(DIFF(dubins(envA),OP),B2))
+
+  % Eventuality that shows starting at B2 will eventually lead 
+  % to a solution, governed by the dubins dunamics, that satisfies B.
+  Eventual_B2B: LEMMA 
+  (B2 |- SOMERUNS(DIFF(dubins(envA),OP),B))
+
+
+%%%%%%%%% For 'return to safe' dynamics %%%%%%%%%%%
+
+  Stage_s:BoolExpr = OP AND NOT(XT)
+
+  Stage_s_SA: LEMMA
+  SA?(Stage_s) % the staging set is semi-algebraic
+
+  Stage_s_is_a_staging_set: LEMMA
+  (DLAND(C,DLNOT(XT)) |- Stage_s) AND
+  (Stage_s |- ALLRUNS(DIFF(safety,DLNOT(DLAND(OP,XT))),Stage_s)) AND
+  (DLOR(C,Stage_s) |- OP)
+
+ %% Conditions for the progress function %%
+  Prog_s:RealExpr = -X
+
+  diff_Prog_s: LEMMA
+  diff_re?(max_var(safety),DLTRUE)(Prog_s)
+
+  Lps: LEMMA
+  SUB_DIFTRe(DLTRUE,safety)(Prog_s) = -sx
+
+  Prog_s_is_Progress: LEMMA
+  EXISTS(eps:posreal): 
+  DLIMPLIES(Stage_s ,Prog_s>=0 AND SUB_DIFTRe(DLTRUE,safety)(Prog_s) <= -eps)
+
+  % Eventuality that shows starting at C will eventually lead to a solution that satisfies XT
+  Eventual_safe: LEMMA
+  (ODEs_P_analytic?(hp(0), DLBOOL(TRUE))(safety)) IMPLIES
+  (C |- SOMERUNS(DIFF(safety,OP),XT))
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%           The complete HP                %%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  alpha:[Environment -> HP] = LAMBDA(e:Environment): SEQ(SEQ(STAR(DIFF(dubins(e),OP)),TEST(C)),DIFF(safety,OP))
+
+  %% This lemma combines all of the eventuality conditions 
+  %% proven in this file to show a fixed wing craft can 
+  %% complete a turn passing through A to C and return to the safe zone XT.
+
+  turn_to_safe: LEMMA
+  (ODEs_P_analytic?(hp(0), DLBOOL(TRUE))(safety))
+   AND
+  (ODEs_P_analytic?(hp(0), DLBOOL(TRUE))(dubins(envA)))
+   IMPLIES
+  (A |- SOMERUNS(alpha(envA),XT))
+
+
+
+
+
+    
+  END dubins_ex

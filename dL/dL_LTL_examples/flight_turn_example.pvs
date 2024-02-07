@@ -1,0 +1,300 @@
+flight_turn_example : THEORY
+ % Welcome
+
+%-------------------------------------------------------------------------% 
+%-------------------------------------------------------------------------%
+%| flight_turn_example: This is the illistrative example of roatational  |%
+%| dyanamics of a aircraft turning and flying straight                   |%
+%| Examples in paper 'Embedding Differential Dynamic Logic in PVS'       |%
+%| are here								 |%
+%-------------------------------------------------------------------------%
+% Created							   Nov 2022
+% 							                JTS
+%-------------------------------------------------------------------------%
+
+
+%-----     %
+  BEGIN
+%     -----%
+
+%%--------------------------------------------
+%%Importing top
+%%--------------------------------------------
+
+
+ IMPORTING dL@top
+ 
+%%--------------------------------------------
+%%Defining variables
+%%--------------------------------------------
+ theta : dLVar = dlvar(0)
+ x     : dLVar = dlvar(1)
+ y     : dLVar = dlvar(2)
+
+
+%%--------------------------------------------
+%%Define turning, straight dynamics
+% as well as the circle, line, and path
+% that we will prove the dyanamics are always on
+%%--------------------------------------------
+
+turn(Q:BoolExpr) : HP = DIFF( (: x << -val(y), y << val(x) :), Q)
+turn_odes: ODEs = (: x << -val(y), y << val(x) :)
+straight(vx, vy:real) : HP = DIFF( (: x << cnst(vx), y << cnst(vy) :))
+circ?(c:real): BoolExpr  = (val(x)^2 + val(y)^2 = cnst(c)^2)
+line?(a,b,c:real): BoolExpr =  (cnst(a)*val(x) + cnst(b)*val(y) = cnst(c))
+path?(c:real): BoolExpr = (val(x) > 0 AND circ?(c)) OR
+                         (val(x) <= 0 AND line?(0,1,c))
+
+%%--------------------------------------------
+%%Two formalations of the same path
+%%--------------------------------------------
+path_equiv: LEMMA
+LET path_alt?(c:real): BoolExpr =
+ (val(x) > 0 IMPLIES circ?(c)) AND 
+ (val(x) <= 0 IMPLIES line?(0,1,c))
+IN
+FORALL(c:real):
+path?(c) = path_alt?(c)
+
+
+rotational_dynamics_line: LEMMA
+ FORALL(C:real):
+ LET 
+     b1 = SEQ(TEST(val(x) > 0), turn(val(x)>=0)),
+     b2 = SEQ(TEST(val(x) <= 0), straight(-C,0)),
+     dyn = UNION(b1,b2)
+IN
+ (cnst(C) >= cnst(0) AND val(x) = cnst(C) AND val(y) = 0)
+ IMPLIES
+ ALLRUNS(STAR(dyn),path?(C))
+
+
+%%--------------------------------------------
+%% Importing trig to have sin and cos
+%%--------------------------------------------
+IMPORTING trig@sincos
+sin_re(re:RealExpr)(env:Environment): real = sin(re(env))
+cos_re(re:RealExpr)(env:Environment): real = cos(re(env))
+
+
+%%--------------------------------------------
+%% Dynamics with theta (trig formulation)
+%%--------------------------------------------
+
+turn_tr_odes(c:real): ODEs =
+  (: (x,-cnst(c)*sin_re(val(theta))),
+          (y,cnst(c)*cos_re(val(theta))),
+	  (theta, cnst(1)) :)
+
+turn_tr(c:real,Q:BoolExpr): HP =
+  DIFF(turn_tr_odes(c),Q)
+
+%%--------------------------------------------
+%% Define solution to both dynamics
+%%--------------------------------------------
+ fs_tr(envi:Environment,c:real)(i:below(3))(t:real): real =
+     IF i = 0  THEN c*cos(t+envi(dlvar_index(theta))) + (envi(dlvar_index(x))-c*cos(envi(dlvar_index(theta)))) 
+     ELSIF i=1 THEN c*sin(t+envi(dlvar_index(theta))) + (envi(dlvar_index(y))-c*sin(envi(dlvar_index(theta))))
+     ELSE t+envi(dlvar_index(theta))
+     ENDIF
+
+ fs_r(envi:Environment)(i:below(2))(t:real): real =
+     IF i = 0  THEN envi(dlvar_index(x))*cos(t) - envi(dlvar_index(y))*sin(t)
+     ELSE envi(dlvar_index(x))*sin(t) + envi(dlvar_index(y))*cos(t)
+      ENDIF
+
+%%--------------------------------------------
+%% Solutions to dynamics are equal in a
+%  special case
+%%--------------------------------------------
+
+ fs_tr_r_equiv: LEMMA
+ FORALL(envi:Environment,c:real):
+ (envi(dlvar_index(x)) = c AND envi(dlvar_index(y)) = 0 AND c > 0)
+ IMPLIES
+ fs_tr(envi WITH [(dlvar_index(theta)) := 0 ],c)(0) = fs_r(envi)(0)
+ AND
+ fs_tr(envi WITH [(dlvar_index(theta)) := 0 ],c)(1) = fs_r(envi)(1)
+
+%%--------------------------------------------
+%% Solutions to dynamics are solutions
+%%--------------------------------------------
+
+turn_tr_sol: LEMMA
+FORALL(c:real,D:(dd?),envi:Environment):
+solution_odes?(D,turn_tr_odes(c),envi)(fs_tr(envi,c))
+
+%unique solution explicit (trig)
+turn_tr_sol_u: LEMMA
+FORALL(c:real,D:(dd?),envi:Environment):
+solution_odes_u?(D,turn_tr_odes(c),envi)(fs_tr(envi,c))
+
+turn_sol: LEMMA
+FORALL(D:(dd?),envi:Environment):
+solution_odes?(D,turn_odes,envi)(fs_r(envi))
+
+turn_Lip: LEMMA
+ FORALL(r:nnreal,envi:Environment):
+ Lip_ODEs?(turn_odes,envi,r)
+ 
+turn_cont: LEMMA
+ FORALL(r:nnreal,envi:Environment):
+ cont_ODEs?(turn_odes,envi,r)
+
+turn_Lip_dd: LEMMA
+ FORALL(D:(dd?),envi:Environment):
+ Lip_ODEs?(D,turn_odes,envi)
+
+turn_cont_dd: LEMMA
+ FORALL(D:(dd?),envi:Environment):
+ cont_ODEs?(D,turn_odes,envi)
+
+%unique solution implicit
+turn_sol_u: LEMMA
+FORALL(D:(dd?),envi:Environment):
+solution_odes_u?(D,turn_odes,envi)(fs_r(envi))
+
+
+%%--------------------------------------------
+%% Solutions to straight dynamics 
+%%--------------------------------------------
+
+fs_st(c:real,envi:Environment)(i:below(2))(t:real):
+ real =
+IF i = 0 THEN -c*t + envi(dlvar_index(x)) ELSE envi(dlvar_index(y))
+ENDIF
+
+%%--------------------------------------------
+%% Solutions to straight dynamics is
+%  unique solution
+%%--------------------------------------------
+
+fs_st_sol_u: LEMMA
+ FORALL(D:(dd?),envi:Environment,c:real):
+ solution_odes_u?(D,(: (x,cnst(-c)),(y,cnst(0)):),envi)(fs_st(c,envi))
+
+%%--------------------------------------------
+%% Define dynamics both implicit and explicit
+%  formulation
+%%--------------------------------------------
+
+b1: HP = SEQ(TEST(val(x)>0), turn(val(x)>=0))
+b1_tr(c:real) : HP = SEQ(TEST(val(x)>0), turn_tr(c,val(x)>=0))
+b2(c:real) : HP = SEQ(TEST(val(x)<=0), straight(-c,0))
+dyn(c:real) : HP = UNION(b1,b2(c))
+dyn_tr(c:real) :HP = UNION(b1_tr(c),b2(c))
+
+%%--------------------------------------------
+%% Dynamics are equivalent without the STAR
+%  (one iteration of loop is equivalent) 
+%%--------------------------------------------
+
+dyn_equiv: LEMMA
+FORALL(ei,eo:Environment,c:real):
+(c> 0 AND ei(dlvar_index(x))=c AND ei(dlvar_index(y))=0) IMPLIES (
+(EXISTS(r:real): semantic_rel(dyn_tr(c))((ei WITH [(dlvar_index(theta)) := 0]))(eo WITH [(dlvar_index(theta)) := r]))
+IFF
+semantic_rel(dyn(c))(ei)((eo WITH [(dlvar_index(theta)) := ei(dlvar_index(theta))])))
+
+%%--------------------------------------------
+%% Reduce dynamics of loop for non implicit
+%  dynamics
+%%--------------------------------------------
+
+b_star_dyn: LEMMA
+FORALL(k:nat,c:real,ei,eo:Environment):
+(c > 0  AND
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
+semantic_rel(BSTAR(dyn(c),k))(ei)(eo)
+IFF
+(ei=eo) OR (
+(k /= 0 AND eo(dlvar_index(x)) >= 0 AND semantic_rel(turn(val(x)>=0))(ei)(eo))
+OR
+(k > 1 AND eo(dlvar_index(x)) < 0 AND (EXISTS(en:Environment | en(dlvar_index(x)) = 0 ): semantic_rel(turn(val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
+
+%%--------------------------------------------
+%% Reduce dyanamics of loop for explicit
+%  dynamics
+%%--------------------------------------------
+
+b_star_dyn_tr: LEMMA
+FORALL(k:nat,c:real,ei,eo:Environment):
+(c > 0  AND
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
+semantic_rel(BSTAR(dyn_tr(c),k))(ei)(eo)
+IFF
+(ei=eo) OR (
+(k /= 0 AND eo(dlvar_index(x)) >= 0 AND semantic_rel(turn_tr(c,val(x)>=0))(ei)(eo))
+OR
+(k > 1 AND eo(dlvar_index(x)) < 0 AND (EXISTS(en:Environment | en(dlvar_index(x)) = 0 ): semantic_rel(turn_tr(c,val(x)>=0))(ei)(en) AND semantic_rel(straight(-c,0))(en)(eo)))))
+
+%%--------------------------------------------
+%% Dynamics equivalence statement
+%  BSTAR formulation
+%%--------------------------------------------
+
+b_star_dyns_equiv: LEMMA
+FORALL(k:nat,c:real,ei,eo:Environment):
+(c > 0  AND
+ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES ( 
+(EXISTS(th:real): semantic_rel(BSTAR(dyn_tr(c),k))(ei WITH [(dlvar_index(theta)) := 0])(eo WITH [(dlvar_index(theta)) := th]))
+IFF
+semantic_rel(BSTAR(dyn(c),k))(ei)(eo WITH [(dlvar_index(theta)) := ei(dlvar_index(theta))]))
+
+%%--------------------------------------------
+%% Dynamics equivalence statement
+%  STAR formulation
+%%--------------------------------------------
+
+star_dyn_equiv: LEMMA
+FORALL(c:real,ei,eo:Environment):
+LET alpha = STAR(dyn(c)),
+    beta  = STAR(dyn_tr(c))
+IN
+(c> 0 AND ei(dlvar_index(x)) = c AND ei(dlvar_index(y)) = 0) IMPLIES (
+  (EXISTS(th:real): semantic_rel(beta)(ei WITH [(dlvar_index(theta)) := 0])(eo WITH [ (dlvar_index(theta)) := th]))
+  IFF
+  semantic_rel(alpha)(ei)(eo WITH [(dlvar_index(theta)) := ei(dlvar_index(theta))]))
+
+%%--------------------------------------------
+%% Coralaries from equvalence of the dynamics
+%%--------------------------------------------
+
+%%--------------------------------------------
+%% Anythign true for ALLRUNS of one formulation
+%  of the dynamics is true for the other
+%  (with proper assumptions on x,y and c)
+%%--------------------------------------------
+dyns_allruns_equiv: LEMMA
+FORALL(c:real, Q:BoolExpr | fresh?(Q)(dlvar_index(theta))):
+LET alpha = STAR(dyn(c)),
+    beta  = STAR(dyn_tr(c))
+IN
+((val(x) = cnst(c) AND val(y)=cnst(0) AND cnst(c) > cnst(0))
+ IMPLIES ALLRUNS(alpha,Q))
+<=> 
+((val(x) = cnst(c) AND val(y)=cnst(0)  AND cnst(c) > cnst(0)
+ AND val(theta) = cnst(0))
+  IMPLIES ALLRUNS(beta,Q))
+
+%%--------------------------------------------
+%% Anythign true for SOMERUNS of one formulation
+%  of the dynamics is true for the other
+%  (with proper assumptions on x,y and c)
+%%--------------------------------------------
+
+dyns_someruns_equiv: LEMMA
+FORALL(c:real, Q:BoolExpr | fresh?(Q)(dlvar_index(theta))):
+LET alpha = STAR(dyn(c)),
+    beta  = STAR(dyn_tr(c))
+IN
+((val(x) = cnst(c) AND val(y)=cnst(0) AND cnst(c) > cnst(0))
+ IMPLIES SOMERUNS(alpha,Q))
+<=> 
+((val(x) = cnst(c) AND val(y)=cnst(0)  AND cnst(c) > cnst(0)
+ AND val(theta) = cnst(0))
+  IMPLIES SOMERUNS(beta,Q))
+
+%~~~      THE END  ~~~%
+END flight_turn_example

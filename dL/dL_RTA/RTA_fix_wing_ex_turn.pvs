@@ -1,0 +1,88 @@
+RTA_fix_wing_ex_turn   %Welcome
+		: THEORY
+
+%Created by                     JTS
+%	 	           Mar 2023
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| An example of RTA applied to a|%
+%| fix winged aircraft that      |%
+%| executes a simple turning     |%
+%  manuever when it exits its    |%
+%  perscribed 'safe' region      |%		     
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Last updated	          Sept 2023
+
+%-----     %
+  BEGIN
+%     -----%
+
+%-------------------------------------------------------------------------
+%% Importing general RTA framework and trig facts for example
+%-------------------------------------------------------------------------
+
+  IMPORTING RTA_gen,
+            trig@sincos_def,
+            trig@arccos,
+            trig@deriv_sincos
+
+%-----------------------------------
+%% Define the variables Example is 2D
+%-----------------------------------
+
+x: dLVar
+y: (different_var?(x))
+
+%%--------------------------------------------
+%% Define low confidence controller
+%  and safe region
+%%--------------------------------------------
+
+% generic low confidence controller
+lc_odes : ODEs
+
+% safe region with containment property
+Green?(G:posreal)(Gr:BoolExpr): bool =
+ FORALL(env:Environment): Gr(env)
+  IMPLIES val(x)(env)^2+val(y)(env)^2 < G^2
+
+% general low confidence vontroller, with monitor gaurd
+lc(G:posreal): HP =
+ DIFF(lc_odes, val(x)^2+val(y)^2 <= cnst(G)^2)
+
+%%--------------------------------------------
+%% Define high confidence controller  and
+%  region of containment
+%%--------------------------------------------
+
+%Dubins turn dynamics
+hc: HP = DIFF((: x << -val(y), y << val(x) :))
+
+% Orange region which is fine to be in
+Orange(G:posreal): BoolExpr = val(x)^2 + val(y)^2 <= cnst(G)^2
+
+% Red region which is unsafe
+Red(G:posreal): BoolExpr = NOT Orange(G)
+
+%%--------------------------------------------
+%% Define full RTA architecture
+%%--------------------------------------------
+
+RTA_turn(G:posreal,Gr:(Green?(G))): HP =
+ STAR(UNION(SEQ(TEST(Gr),lc(G)),
+   SEQ(TEST(val(x)^2+val(y)^2 >= G^2), hc)))
+
+%%--------------------------------------------
+%% The RTA architecture is safe
+%  meaning the aircraft never goes into the
+%  unsafe 'Red' region
+%%--------------------------------------------
+
+RTA_safe: LEMMA
+FORALL(G:posreal,Gr:(Green?(G))):
+Gr IMPLIES ALLRUNS(RTA_turn(G,Gr),NOT Red(G))
+
+% “Running is the greatest metaphor for life,
+%   because you get out of it what you put into it.”
+%                             — Oprah Winfrey  
+  %~~~~ The End       ~~~%
+  END RTA_fix_wing_ex_turn

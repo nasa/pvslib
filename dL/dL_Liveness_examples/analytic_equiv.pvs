@@ -1,0 +1,193 @@
+analytic_equiv : THEORY
+BEGIN
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Defining analytic on an interval for        |%
+%| solution types of ODEs and showing          |%
+%| equivalence to the analytic def in MultPoly |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author:  LMW
+
+IMPORTING dL@hp_expr,
+          semi_algebraic_def,
+          dL@ODEs_equiv,
+          mult_poly@analytic_def,
+          mult_poly@poly_comp_analytic,
+          differentiation,
+          reals@real_sets,
+          reals@bounded_reals
+
+%----------------------------
+%% fs to [real->VectorN]
+%----------------------------
+fs_2_Rn(n:posnat,fs:[below(n) -> [real -> real]]):
+    RECURSIVE [real->VectorN(n)] =
+    IF n=1
+       THEN LAMBDA(r:real): (: fs(0)(r) :)
+    ELSE
+       LAMBDA(r:real): cons[real](fs(0)(r),
+       fs_2_Rn(n-1,LAMBDA(i:below(n-1)):
+         fs(i+1))(r))
+    ENDIF
+    MEASURE n
+
+% @QED fs_2_Rn_nth proved by lmwhite3 on Mon, 07 Feb 2022 19:02:27 GMT
+fs_2_Rn_nth: LEMMA
+    FORALL(n:posnat,fs:[below(n) -> [real -> real]]):
+    FORALL(i:below(n)): 
+    (LAMBDA(x:real): nth(fs_2_Rn(n,fs)(x),i)) = fs(i)    
+
+%-------------------------------------------
+%% function from R->R is analytic at a given 
+%% value in the domain
+%-------------------------------------------
+analytic_nth?(d:(dd?))(alpha:(d),f:[real->real]): bool = 
+      EXISTS(M:posreal, a:sequence[real]):
+        analytic_parts?(alpha,f)(M,a)
+
+% @QED analyticnth_equiv proved by lmwhite3 on Mon, 07 Feb 2022 16:14:54 GMT
+analyticnth_equiv: LEMMA 
+    FORALL(d:(dd?),alpha:(d),f:[real->real]):
+    analytic?(alpha)(f) IFF analytic_nth?(d)(alpha,f)
+
+%---------------------------------------------
+%% function from nat->RxR is analytic at a given 
+%% value in the interior of the domain
+%---------------------------------------------
+
+DDLanalytic?(n:posnat,d:(dd?),alpha:(d),fs:[below(n)->[real->real]]): bool =
+    FORALL(i:below(n)): analytic_nth?(d)(alpha,fs(i))
+
+% @QED analytic_equiv proved by lmwhite3 on Mon, 07 Feb 2022 19:04:29 GMT
+analytic_equiv: LEMMA
+    FORALL(n:posnat,d: (dd?),a:(d),fs:[below(n)->[real->real]]):
+        DDLanalytic?(n,d,a,fs) IFF analytic?(n,a)(fs_2_Rn(n,fs))
+
+%---------------------------------------------
+%% function from nat->dd?xR is analytic for all
+%% values in the interior of the domain
+%---------------------------------------------
+
+DDLAnalytic?(n:posnat,d:(dd?),a:(d))(fs:[below(n)->[real->real]]): bool =
+    FORALL(x:{xx:real | xx>=a}): analytic?(n,x)(fs_2_Rn(n,fs))
+
+DDLAnalytic?(n:posnat,d:(dd?))(fs:[below(n)->[real->real]]): bool =
+    FORALL(a:(d)): DDLAnalytic?(n,d,a)(fs)
+
+ODEs_P_analytic?(D:(dd?),P:(ddl_dom?))(odes:ODEs | cons?(odes)): bool =
+    ODEs_P?(D,P)(odes) AND 
+    FORALL(envi:Environment): DDLAnalytic?(length(odes),D)(fs_sol(D,envi,odes))
+
+% @QED Analytic_equiv proved by lmwhite3 on Thu, 10 Feb 2022 17:31:35 GMT
+Analytic_equiv: LEMMA
+    FORALL(n:posnat,d: (dd?),a:(d),fs:[below(n)->[real->real]]):
+        Analytic?(n,a)(fs_2_Rn(n,fs)) IFF DDLAnalytic?(n,d,a)(fs)
+
+% @QED env_at_t_analytic proved by lmwhite3 on Mon, 07 Mar 2022 18:35:20 GMT
+env_at_t_analytic: LEMMA 
+    FORALL(envi:Environment,D:(dd?),alpha:(D),P:(ddl_dom?),odes:(ODEs_P_analytic?(D,P))):
+    LET f = LAMBDA(t:real): env_2_vec(max_var(odes),env_at_t(odes,fs_sol(D,envi,odes),envi)(t)) 
+    IN Analytic?(max_var(odes)+1,alpha)(f)
+
+% @QED env_SA_ode_analytic proved by lmwhite3 on Thu, 07 Jul 2022 15:43:35 GMT
+env_SA_ode_analytic: LEMMA 
+    FORALL(envi:Environment,j:joining|meet_max(j)>0,D:(dd?),alpha:(D),P:(ddl_dom?),odes:(ODEs_P_analytic?(D,P))):
+    LET f = LAMBDA(t:real): env_2_vec(meet_max(j)-1,env_at_t(odes,fs_sol(D,envi,odes),envi)(t)) 
+    IN Analytic?(meet_max(j),alpha)(f)
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% Lemmas on how analytic functions behave
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% @QED DDLanalytic_zero_ball proved by lmwhite3 on Fri, 11 Feb 2022 15:28:02 GMT
+DDLanalytic_zero_ball: LEMMA 
+ FORALL(n:posnat,d:(dd?),alpha:(d),fs:[below(n)->[real->real]]):
+    (DDLanalytic?(n,d,alpha,fs) AND FORALL(i:below(n)): fs(i)(alpha)=0)
+    IMPLIES
+    FORALL(i:below(n)): 
+        (EXISTS(delta:posreal):
+        FORALL(x:real):
+        (abs(x-alpha)<delta AND x /= alpha)
+        IMPLIES
+        fs(i)(x) /= 0)
+        OR
+        (EXISTS(delta:posreal): 
+        FORALL(x:real):
+        abs(x-alpha)<delta
+        IMPLIES
+        fs(i)(x) = 0)
+
+% @QED glb_inf proved by lmwhite3 on Wed, 27 Apr 2022 14:01:40 GMT
+glb_inf: LEMMA
+  FORALL(S: inf_set[real]):
+  inf(S) = glb(S)
+
+%---------------------------------------------------
+%% Clean exit and enter for a fs function;
+%% an analytic function will exit/enter either by
+%% touching the boundary or exit for an interval
+%% of time.
+%---------------------------------------------------
+
+% @QED DDLclean_exit proved by lmwhite3 on Mon, 14 Feb 2022 20:05:40 GMT
+DDLclean_exit: THEOREM
+  FORALL(env:Environment,j:{jj:joining|meet_max(jj)>0},d:(dd?),x0:(d),fs:(DDLAnalytic?(meet_max(j),d,x0))):
+  LET f = LAMBDA(x:real): vec_2_env(meet_max(j)-1,fs_2_Rn(meet_max(j),fs)(x),env) IN
+  SA(j)(f(x0))
+  IMPLIES (
+  %Condition 1
+  (FORALL(x:(d)): x >= x0 IMPLIES SA(j)(f(x))) OR
+  %Condition 2
+  (EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:real | x0<=xx AND NOT SA(j)(f(xx))}) < t
+  AND t< inf({xx:real | x0<=xx AND NOT SA(j)(f(xx))}) + eps IMPLIES
+  SA(j)(f(t))) OR
+  %Condition 3
+  ( EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:real | x0<=xx AND NOT SA(j)(f(xx))}) < t
+  AND t< inf({xx:real |x0<=xx AND NOT SA(j)(f(xx))}) + eps IMPLIES
+  NOT SA(j)(f(t))))
+
+% @QED DDLclean_enter proved by lmwhite3 on Wed, 16 Feb 2022 19:16:49 GMT
+DDLclean_enter: THEOREM
+  FORALL(env:Environment,j:{jj:joining|meet_max(jj)>0},d:(dd?),x0:(d),fs:(DDLAnalytic?(meet_max(j),d,x0))):
+  LET f = LAMBDA(x:real): vec_2_env(meet_max(j)-1,fs_2_Rn(meet_max(j),fs)(x),env) IN
+  NOT SA(j)(f(x0))
+  IMPLIES (
+  %Condition 1
+  (FORALL(x:(d)): x >= x0 IMPLIES NOT SA(j)(f(x))) OR
+  %Condition 2
+  (EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:real | x0<=xx AND SA(j)(f(xx))}) < t
+  AND t< inf({xx:real | x0<=xx AND SA(j)(f(xx))}) + eps IMPLIES
+  SA(j)(f(t))) OR
+  %Condition 3
+  ( EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:real | x0<=xx AND SA(j)(f(xx))}) < t
+  AND t< inf({xx:real |x0<=xx AND SA(j)(f(xx))}) + eps IMPLIES
+  NOT SA(j)(f(t))))
+
+%---------------------------------------------------
+%% clean exit for the analytic solution of an ode;
+%% an analytic solution will exit either by
+%% touching the boundary or exit for an interval
+%% of time.
+%---------------------------------------------------
+
+% @QED ODEclean_exit proved by lmwhite3 on Fri, 24 Jun 2022 16:48:31 GMT
+ODEclean_exit: THEOREM
+  FORALL(PP:(ddl_dom?),env:(PP),d:(dd?),x0:(d),ode:(ODEs_P_analytic?(d,PP)),j:joining):
+  LET f = LAMBDA(t:(d)): env_sol(d,env,ode)(t) IN
+  SA(j)(f(x0))
+  IMPLIES (
+  %Condition 1
+  (FORALL(x:(d)): x >= x0 IMPLIES SA(j)(f(x))) OR
+  %Condition 2
+  (EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:(d) | x0<=xx AND NOT SA(j)(f(xx))}) < t
+  AND t< inf({xx:(d) | x0<=xx AND NOT SA(j)(f(xx))}) + eps IMPLIES
+  SA(j)(f(t))) OR
+  %Condition 3
+  ( EXISTS(eps:posreal): FORALL(t:(d)): inf({xx:(d) | x0<=xx AND NOT SA(j)(f(xx))}) < t
+  AND t< inf({xx:(d) |x0<=xx AND NOT SA(j)(f(xx))}) + eps IMPLIES
+  NOT SA(j)(f(t))))
+
+
+
+
+END analytic_equiv

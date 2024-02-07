@@ -1,0 +1,278 @@
+bool_expr_SA_props 
+		: THEORY
+
+  BEGIN
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%| Equivalence between the semi-algebraic definition |% 
+%| in MultPoly and boolean expressions defined       |%
+%| by polynomial inequality real expressions.        |%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Author: LMW
+
+
+IMPORTING semi_algebraic_def,
+          mult_poly@standard_form_unique,
+          mult_poly@list_lemmas
+
+%-------------------------------------------
+%% Show that many Boolexpr are SA sets
+%-------------------------------------------
+
+% 5/16/22 For the proofs - this might have to change to '<=  or >= or > or < or = or /=', consider left_add_SA
+Birel_Expr   : TYPE = {f:[[RealExpr, RealExpr] -> BoolExpr] | (f= dl_le) OR (f=dl_lt) OR (f=dl_ge) OR (f=dl_gt) }
+
+%------------------------------------------
+%% The relations defined above are equal to
+%% the relations used in the MultPoly 
+%% library. 
+%------------------------------------------
+
+rel(b:Birel_Expr): INEQ = 
+  IF b = dl_le
+    THEN <=
+  ELSIF b = dl_lt
+    THEN < 
+  ELSIF b = dl_ge
+    THEN >=
+  ELSIF b = dl_gt
+    THEN >
+  ELSE >
+  ENDIF
+
+rel_ineq(ineq:INEQ): Birel_Expr =
+  IF ineq = <=
+    THEN dl_le 
+  ELSIF ineq = <
+    THEN dl_lt
+  ELSIF ineq = >=
+    THEN dl_ge
+  ELSIF ineq = >
+    THEN dl_gt
+  ELSE dl_gt
+  ENDIF
+
+% @QED rel_equiv proved by lmwhite3 on Fri, 10 Jun 2022 17:01:00 GMT
+rel_equiv: LEMMA
+FORALL(re1,re2:RealExpr,dl_be:Birel_Expr):
+ dl_be(re1, re2) =
+       LAMBDA (env: Environment): rel(dl_be)((re1 - re2)(env), 0)
+
+% @QED rel_inverse proved by lmwhite3 on Thu, 17 Nov 2022 16:15:28 GMT
+rel_inverse: LEMMA
+  FORALL(re1,re2:RealExpr,dl_be:Birel_Expr,ineq:INEQ):
+  rel_ineq(rel(dl_be)) = dl_be AND rel(rel_ineq(ineq)) = ineq
+
+%----------------------------------------------
+%% Most basic builing blocks of polynomials are 
+%% variables xi and constants. Here it is shown
+%% the RealExpr for each of these correspond to
+%% a MultPoly in standard form.
+%----------------------------------------------
+
+% @QED sum_e proved by lmwhite3 on Fri, 24 Jun 2022 17:05:25 GMT
+sum_e: LEMMA
+FORALL(i:nat): sum(e(1 + i, i)) = 1 
+
+single_var_sf(n:posnat): (mv_standard_form?) =  
+    (: (# C:=1, alpha:= e(n,n-1) #) :)
+
+cnst_sf(a:nzreal): (mv_standard_form?) =  
+    (: (# C:=a, alpha:= null #) :)
+
+% @QED val_exists proved by lmwhite3 on Fri, 13 May 2022 14:00:56 GMT
+val_exists: LEMMA
+  FORALL(i:nat):  val(dlvar(i)) = eval((:(# C:= 1, alpha:= e(i+1,i) #):))
+
+% @QED cnst_exists proved by lmwhite3 on Fri, 20 May 2022 18:04:54 GMT
+cnst_exists: LEMMA
+  FORALL(a:real):  cnst(a) = eval((:(# C:= a, alpha:= null #):))
+
+exist_mp?(re:RealExpr): bool = 
+EXISTS(p:MultPoly): re = eval(p)
+
+exist_sf?(re:RealExpr): bool = 
+EXISTS(p:(mv_standard_form?)): re = eval(p)
+
+% @QED sf_iff_mp proved by lmwhite3 on Thu, 09 Jun 2022 17:41:20 GMT
+sf_iff_mp: LEMMA
+FORALL(re:RealExpr): exist_sf?(re) IFF exist_mp?(re) 
+
+% @QED sf_val proved by lmwhite3 on Thu, 09 Jun 2022 17:46:06 GMT
+sf_val: LEMMA
+  FORALL(i:nat):  exist_sf?(val(dlvar(i)))
+
+% @QED sf_cnst proved by lmwhite3 on Thu, 09 Jun 2022 17:49:03 GMT
+sf_cnst: LEMMA
+  FORALL(a:real):  exist_sf?(cnst(a))
+
+% @QED mp_val proved by lmwhite3 on Fri, 21 Oct 2022 18:44:01 GMT
+mp_val: LEMMA
+  FORALL(i:nat):  exist_mp?(val(dlvar(i)))
+
+% @QED mp_cnst proved by lmwhite3 on Fri, 21 Oct 2022 18:44:50 GMT
+mp_cnst: LEMMA
+  FORALL(a:real):  exist_mp?(cnst(a))
+
+%---------------------------------------
+%% Algebraic expressions of RealExpr 
+%% have a MultPoly equivalence as long 
+%% as they are built out of cnst and val
+%---------------------------------------
+
+% @QED Re_sum proved by lmwhite3 on Thu, 19 May 2022 16:15:14 GMT
+Re_sum: LEMMA
+FORALL(re1,re2:RealExpr):
+  exist_mp?(re1) AND exist_mp?(re2)
+  IMPLIES
+  exist_mp?(re1+re2)
+
+% @QED Re_prod proved by lmwhite3 on Fri, 20 May 2022 18:01:02 GMT
+Re_prod: LEMMA
+FORALL(re1,re2:RealExpr):
+  exist_mp?(re1) AND exist_mp?(re2)
+  IMPLIES
+  exist_mp?(re1*re2)
+
+% @QED Re_diff proved by lmwhite3 on Wed, 08 Jun 2022 13:55:42 GMT
+Re_diff: LEMMA
+FORALL(re1,re2:RealExpr):
+  exist_mp?(re1) AND exist_mp?(re2)
+  IMPLIES
+  exist_mp?(re1-re2)
+
+% @QED Re_expt proved by lmwhite3 on Wed, 08 Jun 2022 14:13:29 GMT
+Re_expt: LEMMA
+FORALL(re1:RealExpr):
+  exist_mp?(re1)
+  IMPLIES
+  FORALL(n:nat): exist_mp?(re1^n)
+
+be_SF?(re1,re2:RealExpr): bool = 
+  exist_sf?(re1-re2)
+
+%%%%% This section may be unnecessary 
+
+% % @QED sf_add proved by lmwhite3 on Thu, 02 Jun 2022 15:46:22 GMT
+% sf_add: LEMMA
+% FORALL(re1,re2,re3,re4:RealExpr):
+%   be_SF?(re1,re2) AND be_SF?(re3,re4) IMPLIES be_SF?(re1+re3,re2+re4)
+
+SAable?(re1,re2:RealExpr,dl_be:Birel_Expr): bool = 
+ SA?(dl_be(re1,re2))
+
+% @QED val_cnst_SA proved by lmwhite3 on Wed, 01 Jun 2022 14:02:29 GMT
+val_cnst_SA: LEMMA
+  FORALL(i:nat,a:real,dl_be:Birel_Expr):
+  SAable?(val(dlvar(i)),cnst(a),dl_be)
+
+%---------------------------------------------
+%% SA sets are built out of conjunctions and 
+%% disjunctions of atomic polynomials, which 
+%% is a polynomial inequality with zero. 
+%---------------------------------------------
+
+atomic?(re1,re2:RealExpr,dl_be:Birel_Expr): bool =
+ EXISTS(p:(mv_standard_form?)): 
+  dl_be(re1,re2) = evalatom((# poly:=p, ineq:=rel(dl_be) #))
+
+% @QED atomic_be proved by lmwhite3 on Fri, 10 Jun 2022 17:26:32 GMT
+atomic_be: LEMMA 
+FORALL(re1,re2:RealExpr,dl_be:Birel_Expr): 
+  be_SF?(re1,re2) IMPLIES atomic?(re1,re2,dl_be)
+
+% @QED atom_val_cnst proved by lmwhite3 on Mon, 13 Jun 2022 17:53:32 GMT
+atom_val_cnst: LEMMA
+FORALL(i:nat,a:real,dl_be:Birel_Expr): atomic?(val(dlvar(i)),cnst(a),dl_be)
+
+% @QED SAable_atom proved by lmwhite3 on Wed, 08 Jun 2022 14:28:50 GMT
+SAable_atom: LEMMA
+  FORALL(re1,re2:RealExpr,dl_be:Birel_Expr):
+  atomic?(re1,re2,dl_be) IMPLIES SAable?(re1,re2,dl_be)
+
+% @QED and_atom proved by lmwhite3 on Thu, 09 Jun 2022 16:42:21 GMT
+and_atom: LEMMA
+FORALL(a1,a2:atomic_poly):
+DLAND(evalatom(a1), evalatom(a2)) = SA((:(:a1,a2:):))
+
+% @QED or_atom proved by lmwhite3 on Thu, 09 Jun 2022 16:43:41 GMT
+or_atom: LEMMA
+FORALL(a1,a2:atomic_poly):
+DLOR(evalatom(a1), evalatom(a2)) = SA((:(:a1:),(:a2:):))
+
+% @QED not_atom proved by lmwhite3 on Mon, 13 Jun 2022 14:52:19 GMT
+not_atom: LEMMA 
+FORALL(a1:atomic_poly):
+DLNOT(evalatom(a1)) = SA(not_join((:(:a1:):)))
+
+% @QED DLTRUE_SA proved by lmwhite3 on Thu, 02 Jun 2022 17:14:18 GMT
+DLTRUE_SA: LEMMA
+ SA?(DLTRUE)
+
+% @QED DLFALSE_SA proved by lmwhite3 on Thu, 02 Jun 2022 17:16:23 GMT
+DLFALSE_SA: LEMMA
+ SA?(DLFALSE)
+
+% @QED DLVC_SA proved by lmwhite3 on Mon, 17 Oct 2022 15:32:13 GMT
+DLVC_SA: LEMMA
+FORALL(i:nat,a:real,dl_be:Birel_Expr):
+  SA?(dl_be(val(dlvar(i)),cnst(a)))
+
+% @QED DLCV_SA proved by lmwhite3 on Mon, 19 Dec 2022 18:30:10 GMT
+DLCV_SA: LEMMA
+FORALL(i:nat,a:real,dl_be:Birel_Expr):
+  SA?(dl_be(cnst(a),val(dlvar(i))))
+
+% @QED DLEQ_SA proved by lmwhite3 on Wed, 28 Dec 2022 14:58:26 GMT
+DLEQ_SA: LEMMA 
+FORALL(i:nat,a:real):
+  SA?(val(dlvar(i)) = cnst(a))
+
+%-----------------------------------------
+%% Example: x1 <= 0 AND x2 > x1+7
+%% The following examples are two ways 
+%% to write the same set.
+%-----------------------------------------
+
+% @QED Ex_SA_be1 proved by lmwhite3 on Fri, 10 Jun 2022 17:03:08 GMT
+Ex_SA_be1: LEMMA
+SA?(DLAND(dl_le(val(dlvar(0)),cnst(0)), dl_gt(val(dlvar(1)),val(dlvar(0))+ cnst(7))))
+
+% @QED Ex_SA_be2 proved by lmwhite3 on Fri, 10 Jun 2022 17:25:35 GMT
+Ex_SA_be2: LEMMA
+SA?((val(dlvar(0)) <= cnst(0)) AND (val(dlvar(1)) > val(dlvar(0))+ cnst(7)))
+
+
+% % @QED add_be proved by lmwhite3 on Wed, 01 Jun 2022 16:15:03 GMT
+% add_be: LEMMA
+%   FORALL(re1,re2,re3,re4:RealExpr, dl_be:Birel_Expr): 
+%   FORALL(env:Environment):
+%   DLAND(dl_be(re1,re2),dl_be(re3,re4))(env) IMPLIES dl_be(re1+re3,re2+re4)(env)
+
+% left_add_SA: LEMMA
+% FORALL(re1,re2,re3:RealExpr, dl_be:Birel_Expr):
+%   SA?(dl_be(re1,re2)) AND SA?(dl_be(re3,cnst(0)))
+%   IMPLIES
+%   SA?(dl_be(re1+re3,re2))
+
+% right_add_SA: LEMMA
+% FORALL(re1,re2,re3:RealExpr, dl_be:Birel_Expr):
+%   SA?(dl_be(re1,re2)) AND SA?(dl_be(cnst(0),re3))
+%   IMPLIES
+%   SA?(dl_be(re1,re2+re3))
+
+% both_add_atomic?: LEMMA
+% FORALL(re1,re2,re3,re4:RealExpr, dl_be:Birel_Expr):
+%   atomic?(re1,re2,dl_be) AND atomic?(re3,re4,dl_be)
+%   IMPLIES
+%   atomic?(re1+re3,re2+re4,dl_be)
+
+% both_add_SA: LEMMA
+% FORALL(re1,re2,re3,re4:RealExpr, dl_be:Birel_Expr):
+%   SA?(dl_be(re1,re2)) AND SA?(dl_be(re3,re4))
+%   IMPLIES
+%   SA?(dl_be(re1+re3,re2+re4))
+
+
+
+  END bool_expr_SA_props
