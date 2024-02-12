@@ -1,4 +1,4 @@
-# generic_matrices
+# Generic Matrices
 
 A project to generalize and refactor the vectors and matrices developments within NASALib
 
@@ -63,13 +63,13 @@ Please note, the list represetation will only aid in evaluation if the underlyin
 Consider the standard vectors and matrices over integers.
 
 ```
-\<PVSio> eval((:1,2,3:)+(:4,5,6:));
+<PVSio> eval((:1,2,3:)+(:4,5,6:));
 ==>
 (: 5, 7, 9 :)
 ```
 
 ```
-\<PVSio> eval((:(:1,0,0:),(:0,1,0:),(:0,0,1:):)*(:(:1,2,3:),(:4,5,6:),(:7,8,9:):));
+<PVSio> eval((:(:1,0,0:),(:0,1,0:),(:0,0,1:):)*(:(:1,2,3:),(:4,5,6:),(:7,8,9:):));
 ==>
 (: (: 1, 2, 3 :), (: 4, 5, 6 :), (: 7, 8, 9 :) :)
 ```
@@ -77,11 +77,11 @@ Consider the standard vectors and matrices over integers.
 We are not strictly constrained by dimensions. Vectors and matrices can "stretch" to fit the situation by using the default values that exist outside of the stated bounds. This eliminates a major source of tcc's.
 
 ```
-\<PVSio> (:1,1:)*(:1,1,1,1:);
+<PVSio> (:1,1:)*(:1,1,1,1:);
 ==>
 2
 
-\<PVSio> eval((:(:1,2:),(:3,4:):)+(:(:1,1,1,1:),(:1,1,1,1:),(:1,1,1,1:),(:1,1,1,1:):));
+<PVSio> eval((:(:1,2:),(:3,4:):)+(:(:1,1,1,1:),(:1,1,1,1:),(:1,1,1,1:),(:1,1,1,1:):));
 ==>
 (: (: 2, 3, 1, 1 :), (: 4, 5, 1, 1 :), (: 1, 1, 1, 1 :), (: 1, 1, 1, 1 :) :)
 ```
@@ -100,8 +100,8 @@ For maximum generality, operations are defined with as few assumptions as possib
 
 Scalar operations are defined relative an action of a second type `S` over the type underlying the generic structures. To maintain closure the default value must be an absorbing element for the action.
 
-* `scalar(o)(s,v)` -- apply `\lambda(x).(s o x)` pointwise to `v`
-* `scalar(o)(s,M)` -- apply `\lambda(x).(s o x)` pointwise to `M`
+* `scalar(o)(s,v)` -- apply `lambda(x):(s o x)` pointwise to `v`
+* `scalar(o)(s,M)` -- apply `lambda(x):(s o x)` pointwise to `M`
 
 The pointwise application of a binary operation requires that the default value be idempotent relative the operation.
 
@@ -110,46 +110,46 @@ The pointwise application of a binary operation requires that the default value 
 
 Traditional vector and matrix products are defined as derived operations.
 
-* `gvec_product(+,\*)(u,v) = collapse(+)(pointwise(\*)(u,v))` -- default must be idempotent relative both `+` and `*`
-* `gmat_product(+,\*)(M,N)` -- the `i`-jth element of the result is `gvec_product(+,*)(row(M,i),column(N,j))`, default must be idempotent relative `+` and an absorbing element relative `*`
+* `gvec_product(+,*)(u,v) = collapse(+)(pointwise(*)(u,v))` -- default must be idempotent relative both `+` and `*`
+* `gmat_product(+,*)(M,N)` -- the `i`-jth element of the result is `gvec_product(+,*)(row(M,i),column(N,j))`, default must be idempotent relative `+` and an absorbing element relative `*`
 
 The basic operations can aid in the construction of similar derived operations. For instance, we can relax the absorbing element requirement in
 `gmat_product` by constructing a recursive analogue to matrix multiplication using the expand operator
 
 ```
-expand(*)(column(M,0),row(N,0)) + expand(\*)(column(M,1),row(N,0)) + ...
+expand(*)(column(M,0),row(N,0)) + expand(*)(column(M,1),row(N,0)) + ...
 ```
 
 For most applications the matrix algebra theory will streamline instantiations and handle the construction of the most common operations. The more basic operations above are intended to be more of a "power user" feature to aid in the construction of novel applications.
 
 ### Example
 
-In the theory [`example_strings.pvs`](file:generic_matrices_examples/example_strings.pvs) we create vectors and matrices of strings using concatenation as our pointwise operation. Where absorption is needed, we use a modified concatenation where the empty string acts as an absorbing element. Using the natural numbers as scalars, scalar multiplication duplicates strings (i.e., 2*"test" = "testtest").
+In the theory [`example_strings.pvs`](../generic_matrices_examples/example_strings.pvs) we create vectors and matrices of strings using concatenation as our pointwise operation. Where absorption is needed, we use a modified concatenation where the empty string acts as an absorbing element. Using the natural numbers as scalars, scalar multiplication duplicates strings (i.e., 2*"test" = "testtest").
 
 ```
-\<PVSio> eval((:"1","2","3":)+(:"4","5","6":));
+<PVSio> eval((:"1","2","3":)+(:"4","5","6":));
 ==>
 (: "14", "25", "36" :)
 
-\<PVSio> eval((:(:"1","0","0":),(:"0","1","0":),(:"0","0","1":):)*(:(:"1","2","3":),(:"4","5","6":),(:"7","8","9":):));
+<PVSio> eval((:(:"1","0","0":),(:"0","1","0":),(:"0","0","1":):)*(:(:"1","2","3":),(:"4","5","6":),(:"7","8","9":):));
 ==>
 (: (: "110407", "120508", "130609" :), (: "011407", "021508", "031609" :),
    (: "010417", "020518", "030619" :) :)
 
-\<PVSio> eval((:(:" ","","":),(:""," ","":),(:"",""," ":):)*(:(:"1","2","3":),(:"4","5","6":),(:"7","8","9":):));
+<PVSio> eval((:(:" ","","":),(:""," ","":),(:"",""," ":):)*(:(:"1","2","3":),(:"4","5","6":),(:"7","8","9":):));
 ==>
 (: (: " 1", " 2", " 3" :), (: " 4", " 5", " 6" :), (: " 7", " 8", " 9" :) :)
 
-\<PVSio> (:"1","1":)*(:"1","1","1","1":);
+<PVSio> (:"1","1":)*(:"1","1","1","1":);
 ==>
 "1111"
 
-\<PVSio> eval((:(:"1","2":),(:"3","4":):)+(:(:"1","1","1","1":),(:"1","1","1","1":),(:"1","1","1","1":),(:"1","1","1","1":):));
+<PVSio> eval((:(:"1","2":),(:"3","4":):)+(:(:"1","1","1","1":),(:"1","1","1","1":),(:"1","1","1","1":),(:"1","1","1","1":):));
 ==>
 (: (: "11", "21", "1", "1" :), (: "31", "41", "1", "1" :),
    (: "1", "1", "1", "1" :), (: "1", "1", "1", "1" :) :)
 
-\<PVSio> eval(3*(:(:"a","b":),(:"c","d":):));
+<PVSio> eval(3*(:(:"a","b":),(:"c","d":):));
 ==>
 (: (: "aaa", "bbb" :), (: "ccc", "ddd" :) :)
 ```
