@@ -164,4 +164,4 @@ In the theory [`example_strings.pvs`](../generic_matrices_examples/example_strin
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./generic_matrices.svg "Dependency Graph")
+![dependency graph](./matrices-generic_matrices.svg "Dependency Graph")
