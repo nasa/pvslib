@@ -154,7 +154,7 @@ In the theory [`example_strings.pvs`](../generic_matrices_examples/example_strin
 (: (: "aaa", "bbb" :), (: "ccc", "ddd" :) :)
 ```
 
-![dependency graph](./generic_matrices-zoomed.svg "Dependency Graph")
+![dependency graph](./matrices-generic_matrices-zoomed.svg "Dependency Graph")
 
 # Contributors
 * John Siratt, NASA, USA

@@ -14,7 +14,7 @@ The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http
 
 # Libraries
 
-Currently, NASALib consists of 63 top-level libraries, containing about 38K proven formulas in total.
+Currently, NASALib consists of 62 top-level libraries, containing about 38K proven formulas in total.
 
 | Library  | Description | 
 | --- | --- | 
@@ -177,7 +177,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Amer Tahat, Michigan Technological University, USA
 * Amy Isvik, Wartburg College, USA
 * Ana Cristina Rocha Oliveira, University of Brasilia, Brazil
-* André Galdino, Federal University of Goiás, Brazil
+* [André Luiz Galdino](https://galdino.catalao.ufg.br), Federal University of Catalão, Brazil
 * Andreia Avelar Borges, University of Brasilia, Brazil
 * Anthony Narkawicz, formerly at NASA, USA
 * Ariane Alves Almeida, University of Brasilia, Brazil
@@ -222,7 +222,7 @@ NASALib has grown over the years thanks to the contribution of several people, a
 * Ricky Butler, NASA (retired), USA
 * [Silvie Boldo](https://www.lri.fr/~sboldo), INRIA, France
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
-* Thaynara de Lima, Federal University of Goiás, Brazil
+* [Thaynara Arielly de Lima](https://thaynaradelima.github.io), Federal University of Goiás, Brazil
 * Thiago Mendonça Ferreira Ramos, University of Brasilia, Brazil
 * Thomas Norris
 * Víctor Carreño, NASA (retired), USA
