@@ -11,7 +11,7 @@ NASALib currently has various  implementations of vectors and matrices, none suf
 * the generalization of analysis, and
 * spectral graph theory.
 
-In order to facilitate such a broad range of potential applications we need a common container that can be parameterized with various datatypes, and so the specification can not depend on extensive algebraic assumptions. To support this we attempt a modular approach which separates the structural and algebraic properties of vectors and matrices.
+In order to facilitate such a broad range of potential applications we need a common container that can be parameterized with various data types, and so the specification can not depend on extensive algebraic assumptions. To support this we attempt a modular approach which separates the structural and algebraic properties of vectors and matrices.
 
 We also want the ability to freely index matrices to reduce the need for inductive proofs, while retaining the desirable evaluation properties of list-based implementations. To attain this goal we use a function to record the values of the matrix, but define mappings to and from list representations. Proofs of equivalence allow the two forms to be used interchangeably.
 
@@ -19,7 +19,7 @@ The final primary design goal is the reduction of TCCs. Matrix operations are ty
 
 ## Implementation
 
-After extensive testing, the structure chosen for vectors turned out to be similar to the version of finseq in NASALib. The only real difference is that where finseq uses subtyping on the function component, we apply subtyping to the integer recording the length of the vector. This avoids some unpleasantness. The structure for matrices is directly based on that of vectors.
+After extensive testing, the structure chosen for vectors turned out to be similar to the version of `finseq` in NASALib. The only real difference is that where `finseq` uses *subtyping* on the function component, we apply *subtyping* to the integer recording the length of the vector. This avoids some unpleasantness. The structure for matrices is directly based on that of vectors.
 
 ```
 generic_vector: TYPE = 
@@ -56,7 +56,7 @@ A matrix has a similar representation using a list of lists. Care should be take
 The mapping to and from these representations are defined by eval_vec, eval_mat, abstract_vec, and abstract_mat. These functions are declared as
 `CONVERSIONS` allowing us to use the forms interchangeably. We may also use the common shorthand functions eval and abstract.
 
-Please note, the list represetation will only aid in evaluation if the underlying type itself is evaluable.
+Please note, the list representation will only aid in evaluation if the underlying type itself is evaluable.
 
 ### Example
 
@@ -74,7 +74,7 @@ Consider the standard vectors and matrices over integers.
 (: (: 1, 2, 3 :), (: 4, 5, 6 :), (: 7, 8, 9 :) :)
 ```
 
-We are not strictly constrained by dimensions. Vectors and matrices can "stretch" to fit the situation by using the default values that exist outside of the stated bounds. This eliminates a major source of tcc's.
+We are not strictly constrained by dimensions. Vectors and matrices can "stretch" to fit the situation by using the default values that exist outside of the stated bounds. This eliminates a major source of TCCs.
 
 ```
 <PVSio> (:1,1:)*(:1,1,1,1:);
@@ -100,10 +100,10 @@ For maximum generality, operations are defined with as few assumptions as possib
 
 Scalar operations are defined relative an action of a second type `S` over the type underlying the generic structures. To maintain closure the default value must be an absorbing element for the action.
 
-* `scalar(o)(s,v)` -- apply `lambda(x):(s o x)` pointwise to `v`
-* `scalar(o)(s,M)` -- apply `lambda(x):(s o x)` pointwise to `M`
+* `scalar(o)(s,v)` -- apply `lambda(x):(s o x)` point-wise to `v`
+* `scalar(o)(s,M)` -- apply `lambda(x):(s o x)` point-wise to `M`
 
-The pointwise application of a binary operation requires that the default value be idempotent relative the operation.
+The point-wise application of a binary operation requires that the default value be idempotent relative the operation.
 
 * `pointwise(o)(u,v)` -- the `i`-th element of the result is `u(i) o v(i)`
 * `pointwise(o)(M,N)` -- the `i`-jth element of the result is `M(i,j) o N(i,j)`
