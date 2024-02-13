@@ -32,7 +32,7 @@ generic_vector: TYPE =
 ```
 
 ```
-gemeric_matrix: TYPE =
+generic_matrix: TYPE =
 
     [# ijth:[[nat,nat]->T],
 
