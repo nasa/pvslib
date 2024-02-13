@@ -115,3 +115,15 @@ in all the '.pvslib' files in the directories contained in LIBS."
 
 ;;; LOADING .pvslib FILES
 (extra-load-pvslibs)
+
+(defun extra-get-pvslib-id-from-dir (dir)
+  "Returns the collection id assigned to DIR if any. Otherwise, it returns nil." 
+  (loop for id being the hash-keys of *extra-pvslibs*
+        using (hash-value rec)
+	when
+	(loop for key being the hash-keys of rec
+	      using (hash-value val)
+	      when (and (string= key "dir")
+			(some (lambda(d) (string= dir d)) val))
+	      return t)
+	return id))
