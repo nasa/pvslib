@@ -22,9 +22,9 @@ BEGIN
 % types for evaluation purposes later.
   nth(v,i): T = nth(v)(i)
 
-  car(v:{u | length(u)>0}): T = nth(v,0)
+  car(v | length(v)>0): T = nth(v,0)
 
-  cdr(v:{u | length(u)>0}): gvec =
+  cdr(v | length(v)>0): gvec =
     (# nth:= LAMBDA (i): nth(v,i+1),
        length:= length(v)-1
     #)
@@ -65,6 +65,12 @@ BEGIN
 
   width(M): nat = dimension(M)`2
 
+  height_eq_width_zero : LEMMA
+    height(M) = 0 IFF width(M) = 0
+
+  height_width_pos : LEMMA
+    height(M) > 0 IFF width(M) > 0
+
 % The "zero" matrix with lowest possible bounds.
   minimal_default_matrix: gmat =
     (# ijth:= LAMBDA (i,j): default,
@@ -87,9 +93,9 @@ BEGIN
     #)
 
 % List like definitions for recursive definitions.
-  row_car(M:{N | height(N)>0 AND width(N)>0}): gvec = row(M,0)
+  row_car(M | height(M)>0): gvec = row(M,0)
 
-  row_cdr(M:{N | height(N)>0 AND width(N)>0}): gmat =
+  row_cdr(M | height(M)>0): gmat =
     IF height(M)=1 THEN M_default
     ELSE
           (# ijth:= LAMBDA (i,j): ijth(M,i+1,j),
@@ -107,9 +113,9 @@ BEGIN
           #)
     ENDIF
 
-  col_car(M:{N | height(N)>0 AND width(N)>0}): gvec = column(M,0)
+  col_car(M | height(M)>0): gvec = column(M,0)
 
-  col_cdr(M:{N | height(N)>0 AND width(N)>0}): gmat =
+  col_cdr(M | height(M)>0): gmat =
     IF width(M)=1 THEN M_default
     ELSE
           (# ijth:= LAMBDA (i,j): ijth(M,i,j+1),
@@ -135,16 +141,18 @@ BEGIN
 % used both to map these list representations back to generic structures and to facilitate using list
 % structures as input shorthand. Actual computational definitions should be in terms of generic
 % structures to preserve free indexing wherever possible.
-  eval_vec(v): RECURSIVE list[T] =
-    COND length(v)=0 -> (::),
-         ELSE        -> cons(car(v),eval_vec(cdr(v)))
-    ENDCOND
+  eval_vec(v): RECURSIVE {l:list[T] | length(v) = length(l)} =
+    IF length(v)=0 THEN (::)
+    ELSE cons(car(v),eval_vec(cdr(v)))
+    ENDIF
   MEASURE length(v)
 
-  eval_mat(M): RECURSIVE list[list[T]] =
-    COND height(M)=0 OR width(M)=0 -> (::),
-         ELSE                      -> cons(eval_vec(row_car(M)),eval_mat(row_cdr(M)))
-    ENDCOND
+  eval_mat(M): RECURSIVE {l: list[list[T]] |
+                          length(l) = height(M) AND
+                          FORALL (i:below(length(l))): length(nth(l,i)) = width(M)}  =
+    IF height(M)=0 THEN (::)
+    ELSE cons(eval_vec(row_car(M)),eval_mat(row_cdr(M)))
+    ENDIF
   MEASURE height(M)
 
   abstract_vec(l:list[T]): gvec =
@@ -154,8 +162,8 @@ BEGIN
        length:= length(l)
     #)
 
-  abstract_mat(l:{x:list[list[T]] |
-                    FORALL (i,j:below(length(x))): length(nth(x,i)) = length(nth(x,j))}): gmat =
+  abstract_mat(l:list[list[T]] |
+               FORALL (i,j:below(length(l))): length(nth(l,i)) = length(nth(l,j))): gmat =
     IF length(l)=0 THEN M_default
     ELSIF length(car(l))=0 THEN M_default
     ELSE
