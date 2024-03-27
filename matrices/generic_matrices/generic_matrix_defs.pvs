@@ -141,7 +141,9 @@ BEGIN
 % used both to map these list representations back to generic structures and to facilitate using list
 % structures as input shorthand. Actual computational definitions should be in terms of generic
 % structures to preserve free indexing wherever possible.
-  eval_vec(v): RECURSIVE {l:list[T] | length(v) = length(l)} =
+
+  eval_vec(v): RECURSIVE {l:list[T] | length(v) = length(l) AND
+                    	 	      FORALL (i:below(length(l))) : nth(v)(i) = nth(l,i)} =
     IF length(v)=0 THEN (::)
     ELSE cons(car(v),eval_vec(cdr(v)))
     ENDIF
@@ -149,7 +151,9 @@ BEGIN
 
   eval_mat(M): RECURSIVE {l: list[list[T]] |
                           length(l) = height(M) AND
-                          FORALL (i:below(length(l))): length(nth(l,i)) = width(M)}  =
+                          (FORALL (i:below(length(l))): length(nth(l,i)) = width(M)) AND
+			  (FORALL (i:below(length(l)),j:below(length(nth(l,i)))):
+			           nth(nth(l,i),j) = ijth(M)(i,j))}  =
     IF height(M)=0 THEN (::)
     ELSE cons(eval_vec(row_car(M)),eval_mat(row_cdr(M)))
     ENDIF
@@ -162,15 +166,30 @@ BEGIN
        length:= length(l)
     #)
 
-  abstract_mat(l:list[list[T]] |
-               FORALL (i,j:below(length(l))): length(nth(l,i)) = length(nth(l,j))): gmat =
-    IF length(l)=0 THEN M_default
-    ELSIF length(car(l))=0 THEN M_default
+  width(l:list[list[T]]) : RECURSIVE { w : nat |
+                                       IF null?(l) THEN w=0
+				       ELSE EXISTS(i:below(length(l))): w = length(nth(l,i))
+				       ENDIF AND
+  			   	       (FORALL(i:below(length(l))): w >= length(nth(l,i))) } =
+    IF null?(l) THEN 0
+    ELSE max(length(car(l)),width(cdr(l)))
+    ENDIF
+  MEASURE l BY <<
+
+  abstract_mat(l:list[list[T]]) : { g:gmat | height(g) = IF width(l) = 0 THEN 0 ELSE length(l) ENDIF AND
+                                             width(g)  = width(l) AND
+					     FORALL (i,j:nat) : 
+					       ijth(g)(i,j) = IF i < length(l) AND j < length(nth(l,i)) THEN
+					                           nth(nth(l,i),j)
+					                      ELSE default
+							      ENDIF } =
+    IF width(l)=0 THEN M_default
     ELSE
-         (#  ijth:= LAMBDA (i,j): COND i<length(l) AND j<length(car(l)) -> nth(nth(l,i),j),
-                                       ELSE -> default
-		                  ENDCOND,
-             dimension:= (length(l),length(car(l)))
+         (#  ijth:= LAMBDA (i,j): IF i < length(l) AND j < length(nth(l,i)) THEN
+	                               nth(nth(l,i),j)
+                                  ELSE default
+		                  ENDIF,
+             dimension:= (length(l),width(l))
          #)
     ENDIF
 
