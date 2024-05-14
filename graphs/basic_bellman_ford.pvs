@@ -1,0 +1,403 @@
+%%
+% @theory: basic_bellman_ford
+% @author: adutle
+% @date: Wed, 22 Feb 2023 15:34:58 GMT
+%%
+
+
+%% Basic Bellman-Ford algorithm: 
+%% Input: A directed graph with non-negative weights on the edges, a source vertex S. 
+%% Output: A data structure that holds, for each vertex V, the weight of the shortest (weight)  
+%% walk from S to V, and the previous vertex on this walk. Starting at a vertex and following
+%% previous vertices obtains this walk. 
+
+%% The algorithm works by initializing a structure with all weights set to +\infty, and AND
+%% all previous vertices (pv's) set to a default. For each vertex V, you examine the data of 
+%% the neighbors pointing to V, and if the walk weight + edge weight is less than the current held best,
+%% replace the weight with this sum, and the pv with the neighbor. Assessing a neighbor of a vertex V will
+%% be refered to as an "edge step." Assessing all neighbors (edges) connected to a vertex is will be called 
+%% a "vertex step." Assessing all vertices once will be called a "BF step". The algorithm completes when the THEN
+%% data held stabilizes, which is guaranteed to happen in at most |V| steps. 
+
+%% Notice that the algorithm as outlined is ambiguous on the order of the vertices, and at what point changes
+%% to the data are written to memory. The specification here attempts to keep this as general as possible, 
+%% and prove that in some sense, the ordering and the moment data is written \it{within ons BF step} does
+%% not matter. In some implementations, data is assumed to be written immediately, and vertex steps are serial.
+%% In others, an entire BF step is performed on the fixed data from the previous step. 
+
+%% The proof of correctness for the "shortest (weight) path" part of the algorithm proceeds essentially
+%% as follows. Assume that after N BF steps, the data for any vertex contains the weight of the 
+%% shortest (weight) path using at MOST N edges, and the PV held IS the PV of some such path. 
+%% Then after performing a vertex step, the data obtained has the weight of a shortest weight path using
+%% at most N+1 edges, and the new PV is on such a path. Noting that this is true of initial data (assuming ASSUMING
+%% the source is properly initialized), then after |V| steps, you can't get any better (due to non-negative weights).
+%% To allow for writing of Data during a step, the invariant is altered to say that the weight held is 
+%% the weight of some some walk, and that this weight is a lower bound for the weight of any walk using
+%% at most N edges. This allows for the actual weight and walk to be better than assumed, without losing the the
+%% bounding property
+
+basic_bellman_ford[N:posnat]: THEORY
+BEGIN 
+
+  importing ex_real_macros
+  importing structures@more_list_props
+    
+    % define the vertices of the graph.
+    V: TYPE = below(N)
+    s,t,u,v: VAR V
+    m: VAR nat
+    % Vertices and an extra "default" vertex. 
+    EV: TYPE = subrange(-1,N-1)
+    vert?(ev:EV): bool = ev /= -1
+    V_in_EV: JUDGEMENT V SUBTYPE_OF EV
+   
+    % Let's define a (non-negative) weight function the determines the
+    % weighted digraph. Non-edges will have infinite weight, so the weight
+    % function is on all pairs, curried so that specifying the first gives the
+    % weights of its neighbors.
+
+    WeightedDiGraph: TYPE = [V -> [V -> extended_nnreal]]
+
+    D: VAR WeightedDiGraph
+
+    % Define what it means to be a neighbor of n in D.  
+
+    Neighbor(D)(n:V)(k:V): bool  =  finite?(D(n)(k))
+    
+    % Define a walk recursively in D
+
+    walk?(D)(L:list[V]): RECURSIVE bool = 
+      IF length(L)< 2 THEN TRUE
+      ELSE Neighbor(D)(car(L))(car(cdr(L))) AND walk?(D)(cdr(L))
+      ENDIF
+      MEASURE L BY << 
+
+    % Define the weight of a walk. 
+
+    walk_weight(D)(L:list[V]): RECURSIVE extended_nnreal = 
+      IF length(L)<2 THEN 0
+      ELSE D(car(L))(car(cdr(L))) + walk_weight(D)(cdr(L))
+      ENDIF
+      MEASURE L by <<
+
+    % Note that a list has finite sum only if it's actually a walk. 
+
+    % @QED walk_finite proved by adutle on Wed, 22 Feb 2023 16:37:20 GMT
+    walk_finite: LEMMA 
+    FORALL (L: list[V]): 
+    walk?(D)(L) IFF finite?(walk_weight(D)(L))
+
+    % Specify the endpoints of a walk. 
+
+    walk_st?(D)(s,t)(L:list[V]): bool = 
+      cons?(L) and walk?(D)(L) and 
+      car(L) = s and rac(L) = t 
+    
+    % Specify the length of a walk. Note this is the number of vertices.
+    % (Perhaps controversial in Graph Theory, but makes sense here, as
+    %  the list of vertices is how we define it.) 
+
+    walk_st_length_m?(D)(s,t,m)(L:list[V]): bool = 
+    walk_st?(D)(s,t)(L) AND length(L)=m
+
+    % Extending a walk with a neighbor is a walk... 
+    % @QED walk_extend proved by adutle on Fri, 05 May 2023 15:19:35 GMT
+    walk_extend: LEMMA 
+    FORALL (L: (walk?(D))):
+    null?(L) OR 
+    (Neighbor(D)(rac(L))(v) IMPLIES 
+    (walk?(D)(snoc(L,v)) AND
+    walk_weight(D)(snoc(L,v)) = walk_weight(D)(L) + D(rac(L))(v)))
+
+    walk_rdc: LEMMA
+    FORALL (L:(walk?(D))):
+    length(L)>1 IMPLIES
+    walk?(D)(rdc(L)) AND walk_weight(D)(L) = walk_weight(D)(rdc(L)) + D(nth(L, length(L)-2))(rac(L)) 
+
+    % Information for the bellman-ford algorithm. 
+    % Each vertex tracks a distance D and a vertex PV, 
+    % where D is the smallest known weight from the source, 
+    % and PV is the previous vertex on a smallest weight path
+    % from the source. 
+    Pre_Datum: TYPE = [# w: extended_nnreal, pv: EV #]  
+    BF_Datum: TYPE = {d: Pre_Datum | finite?(d`w) IFF vert?(d`pv)}  % Added: w<infty IFF pv is a vertex.
+    BF_Data: TYPE = [V -> BF_Datum]
+    Datum: VAR BF_Datum
+    Data, Data1: VAR BF_Data
+
+    Init(s)(v): BF_Datum = 
+    IF v = s THEN (# w:=r2er(0),pv:=s #)
+    ELSE (# w:=inf, pv:= -1 #)
+    ENDIF 
+
+
+
+   % A function to update data with one new data point for a vertex.
+
+    update_datum(Data, Datum, v): BF_Data = 
+      Data WITH [v := Datum]
+
+    % Definition of "valid data" for the BF algorithm.
+    % the source shoud have weight 0, and itself as PV.  
+    % If the previous vertex is actually a vertex, 
+    % there should be a path L to v of the assigned weight, 
+    % using the previous vertex prior to ending at v.   
+
+    valid?(s,D)(Data): bool = 
+        Data(s) = (# w:=r2er(0),pv:=s #) %data always has the origin
+        AND 
+        FORALL (v:V): 
+        LET pv = Data(v)`pv, 
+            weight = Data(v)`w IN
+        v /= s AND                  %For any other vertex,  
+        vert?(pv) IMPLIES           %if previous vert is assigned,   
+        finite?(D(pv)(v)) AND       %it's connected to v
+        vert?(Data(pv)`pv) AND      %pv must have a pv, (this recurses...)   
+        (EXISTS (L:list[V]):        %and there's a walk 
+        walk_st?(D)(s,v)(L) AND     %between the source and v,
+        weight = walk_weight(D)(L) AND %having the right weight,
+        nth(L,length(L)-2) = pv )      %and using PV.
+
+   
+
+    %%%% Bellman-Ford Edge Step... %%%%% 
+    update_edge(D, Data, Datum, v, u): BF_Datum = 
+        % Data holds the current global data, 
+        % Datum holds the best new datum for v IN THIS UPDATE CYCLE 
+        % (i.e. of v's neighbors checked so far.)
+        % NOTE: if u->v isn't an edge, or a path to u isn't known,
+        % the LHS here is infinite, so no update happens. 
+        IF D(u)(v)+Data(u)`w < Datum`w  THEN   
+          (# w:=D(u)(v)+Data(u)`w, pv:= u #)
+        ELSE Datum
+        ENDIF
+
+    % A single edge update preserves validity.
+    % @QED update_edge_valid proved by adutle on Wed, 12 Apr 2023 16:52:31 GMT
+    update_edge_valid: LEMMA
+    (Datum`w <= Data(v)`w AND % If the possible update datum should be at least as good as the current,
+    valid?(s,D)(update_datum(Data, Datum, v))) % and if the data with update is valid, 
+    IMPLIES
+    valid?(s,D)(update_datum(Data, update_edge(D,Data,Datum,v,u),v)) % then an edge update is also valid. 
+
+
+    %%%% Bellman-Ford Vertex Step recursion... %%%%
+    % This is just repeating the edge step for multiple neighbors.
+    update_vertex_rec(D, Data, Datum, v, u): RECURSIVE BF_Datum = 
+        LET new_Datum = update_edge(D, Data, Datum, v,u) IN
+        IF u = 0 THEN new_Datum
+        ELSE update_vertex_rec(D, Data, new_Datum, v, u-1)
+        ENDIF
+        MEASURE u 
+
+    % A recursive vertex update preserves validity. 
+    % @QED update_vertex_rec_valid proved by adutle on Wed, 10 May 2023 20:24:32 GMT
+    update_vertex_rec_valid: LEMMA 
+    Datum`w <=Data(v)`w AND
+    valid?(s,D)(update_datum(Data, Datum, v))
+    IMPLIES
+    valid?(s,D)(update_datum(Data, update_vertex_rec(D,Data,Datum,v,u),v))
+
+    % update_vertex_rec_valid_parallel: LEMMA 
+    % (Datum`w <=Data(v)`w AND
+    % valid?(s,D)(update_datum(Data, Datum, v)) AND (Datum`w <=Data1(v)`w AND
+    % valid?(s,D)(update_datum(Data1, Datum, v)))) 
+    % IMPLIES
+    % valid?(s,D)(update_datum(Data1, update_vertex_rec(D,Data,Datum,v,u),v))
+
+    % @QED update_vertex_rec_le_Datum proved by reconrad on Wed, 20 Mar 2024 18:55:25 GMT
+    update_vertex_rec_le_Datum: LEMMA
+    update_vertex_rec(D, Data, Datum, v, u)`w <= Datum`w
+
+    %%%% Bellman-Ford Vertex Step %%%%
+    % This is the recursive update, running through all neighbors.
+    update_vertex(D, Data, v): BF_Datum = 
+       update_vertex_rec(D, Data, Data(v), v, N-1)
+
+    %% if a vertex is updated in a vertex step, then it's previous vertex has a previous vertex.
+    update_vertex_pv_pv: LEMMA
+    valid?(s,D)(Data) AND Datum = update_vertex(D,Data,v)
+    AND vert?(Datum`pv) IMPLIES
+    vert?(Data(Datum`pv)`pv)
+
+    %% if a vertex has a pv, then updating it keeps this property.
+    update_vertex_pv_persist: LEMMA
+    valid?(s,D)(Data) AND vert?(Data(v)`pv) IMPLIES
+    vert?(update_vertex(D,Data,v)`pv)
+
+    % A full vertex update preserves validity.    
+    % @QED update_vertex_valid proved by adutle on Wed, 10 May 2023 20:28:45 GMT
+    update_vertex_valid: LEMMA
+    valid?(s,D)(Data) 
+    IMPLIES 
+    valid?(s,D)(update_datum(Data,update_vertex(D,Data,v),v))
+
+    % update_vertex_valid_parallel: LEMMA
+    % (valid?(s,D)(Data) AND valid?(s,D)(Data1))
+    % IMPLIES 
+    % valid?(s,D)(update_datum(Data1,update_vertex(D,Data,v),v))
+    
+    %% a function to encapsulate updating Data at a particular vertex. 
+    update_vertex_data(D,Data,v): BF_Data = 
+    update_datum(Data, update_vertex(D,Data,v),v) 
+
+    % "step valid" is intended to capture that the Data holds the bound that is based on the number 
+    % times the BF vertex update process has happened. First we define a function for claiming that 
+    % a walk using a particular previous vertex has the claimed bound. 
+
+    step_valid_prev_neighbor?(s,D)(Data, m)(v,u): bool = 
+      FORALL (mm:nat,L:(walk_st_length_m?(D)(s,v,mm))):
+         mm<=m AND mm>1 AND nth(L,mm-2)=u IMPLIES Data(v)`w <= walk_weight(D)(L)
+
+    % Next is a function for claiming the bound holds for all walks of the chosen length. 
+
+    step_valid_vertex?(s,D)(Data,m)(v): bool = 
+       (FORALL (mm:nat,L:(walk_st_length_m?(D)(s,v,mm))):
+         mm<=m IMPLIES Data(v)`w <= walk_weight(D)(L))
+    
+    % Finally, the function claiming that the data holds such a bound for every vertex in the graph. 
+    % This is both the starting point (i.e., assume this is true for length M), and the eventual 
+    % endpoint (prove the BF step makes this true for M+1). Between, it is shown that the edge update makes
+    % the M+1 "step_valid_previous_neighbor" statement true for each neighbor, and hence the vertex step step
+    % makes the M+1 "step_valid_vertex?" statement true. 
+
+    step_valid?(s,D)(Data,m): bool = 
+        FORALL (v:V):
+        step_valid_vertex?(s,D)(Data,m)(v)
+
+    % Claim that a single edge update makes the new bound hold. 
+
+    % @QED update_edge_bound proved by adutle on Wed, 27 Mar 2024 19:24:15 GMT
+    update_edge_bound: LEMMA 
+    (valid?(s,D)(update_datum(Data, Datum, v)) AND
+    step_valid?(s,D)(update_datum(Data, Datum, v),m) AND Datum`w <= Data(v)`w) IMPLIES 
+    LET upData = update_datum(Data, update_edge(D,Data,Datum,v,u),v) IN
+    step_valid_prev_neighbor?(s,D)(upData, m+1)(v,u)
+
+    % Claim that a recursive update makes the new bound hold.
+
+    % @QED update_vertex_bound_rec proved by reconrad on Thu, 21 Mar 2024 21:21:38 GMT
+    update_vertex_bound_rec: LEMMA 
+    (valid?(s,D)(update_datum(Data, Datum, v)) AND
+    step_valid?(s,D)(update_datum(Data, Datum, v),m) AND Datum`w <= Data(v)`w) IMPLIES 
+    LET upData = update_datum(Data, update_vertex_rec(D,Data,Datum,v,u),v) IN
+    FORALL (vv:V): vv<=u IMPLIES
+    step_valid_prev_neighbor?(s,D)(upData, m+1)(v,vv) 
+
+    % @QED update_vertex_bound proved by adutle on Fri, 29 Mar 2024 16:44:46 GMT
+    update_vertex_bound: LEMMA
+    (valid?(s,D)(Data) AND
+    step_valid?(s,D)(Data,m)) IMPLIES 
+    LET upData = update_vertex_data(D,Data,v) IN
+    step_valid_vertex?(s,D)(upData,m+1)(v)
+
+
+    %Recursive function for updating vertices in a serial form. 
+    vertex_round_serial_rec(D, Data, v): RECURSIVE BF_Data = 
+    LET NewData = update_datum(Data, update_vertex(D,Data,v),v) IN
+    %This is the final update.
+    IF v=0 THEN NewData 
+     % Note that the update happens PRIOR to moving to the next vertex. 
+    ELSE vertex_round_serial_rec(D, NewData, v-1)  
+    ENDIF
+    MEASURE v
+    
+    %Wrap for the serial recursive function. Runs through all vertices. 
+    vertex_round_serial(D)(Data): BF_Data = 
+    vertex_round_serial_rec(D,Data,N-1)
+
+    %Recursive function for updating vertices in parallel.  
+    vertex_round_parallel_rec(D,Data,Data1,v): RECURSIVE BF_Data = 
+    LET NewData = update_datum(Data1, update_vertex(D,Data,v),v) IN 
+    % in this version, Data1 holds the new data, and Data holds the previous round. 
+    IF v=0 THEN NewData
+    % Here, the data drawn from is static throughout the round.
+    ELSE vertex_round_parallel_rec(D, Data, NewData, v-1)
+    ENDIF
+    MEASURE v
+
+    parallel_update(D,Data1,Data,u):bool = 
+    FORALL(v:V): Data1(v) = IF v>=u THEN update_vertex(D,Data,v) ELSE Data(v) ENDIF
+
+
+  % update_edge_valid_parallel: LEMMA
+  %   (Datum`w <= Data(v)`w AND % If the possible update datum should be at least as good as the current,
+  %   valid?(s,D)(update_datum(Data, Datum, v)) AND valid?(s,D)(Data)
+  %   AND parallel_update(D,Data1,Data,v))
+  %   IMPLIES
+  %   valid?(s,D)(update_datum(Data1, update_edge(D,Data,Datum,v,u),v)) % then an edge update is also valid.
+
+   valid_parallel_update: LEMMA
+   valid?(s,D)(Data) AND parallel_update(D, Data1, Data, 0) IMPLIES
+   valid?(s,D)(Data1)
+   
+
+    %Wrap for the parallel recursive function. Runs through all vertices.
+    vertex_round_parallel(D)(Data): BF_Data = 
+    vertex_round_parallel_rec(D,Data,Data,N-1)
+
+    parallel_is_update: LEMMA
+    parallel_update(D,vertex_round_parallel(D)(Data),Data, 0)
+    
+
+    % A generic type for functions that transform Bellman-Ford Data. 
+    Vertex_Round: TYPE = [BF_Data->BF_Data]
+    Round_fun: VAR Vertex_Round
+
+    % @QED vertex_round_serial_rec_valid proved by reconrad on Fri, 29 Mar 2024 18:53:22 GMT
+    vertex_round_serial_rec_valid: LEMMA
+    (valid?(s,D)(Data) AND step_valid?(s,D)(Data,m)) IMPLIES   
+    (valid?(s,D)(vertex_round_serial_rec(D,Data,v)) AND 
+    (FORALL(vv:V): vv <= v IMPLIES step_valid_vertex?(s,D)(vertex_round_serial_rec(D,Data,v),m+1)(vv)))
+
+    vertex_round_parallel_rec_valid: LEMMA
+    (valid?(s,D)(Data) AND step_valid?(s,D)(Data,m)
+    AND parallel_update(D,Data1,Data,0)) 
+    IMPLIES   
+    step_valid?(s,D)(Data1, m+1)
+
+    % A predicate that describes that validity and step validity are true for an 
+    % arbitrary Vertex Round function. 
+    Round_fun_valid(D, s, Round_fun): bool = 
+    FORALL (mm:nat, Data):
+    (valid?(s,D)(Data) AND step_valid?(s,D)(Data,mm)) IMPLIES   
+    (valid?(s,D)(Round_fun(Data)) AND step_valid?(s,D)(Round_fun(Data),mm+1))
+
+    %%Lemmas claiming the validity of the serial and parallel versions of the the
+    % Bellman Ford algorithm
+    % @QED Serial_BF_valid proved by reconrad on Fri, 29 Mar 2024 18:55:54 GMT
+    Serial_BF_valid: LEMMA
+    Round_fun_valid(D,s,vertex_round_serial(D))
+
+    % @QED Parallel_BF_valid proved by reconrad on Fri, 29 Mar 2024 19:10:34 GMT
+    Parallel_BF_valid: LEMMA
+    Round_fun_valid(D,s,vertex_round_parallel(D))
+
+    % A recursive function for performing successive vertex rounds of an 
+    % arbitrary Vertex Round function. 
+    Bellman_Ford_wrap_rec(D,s,Data,Round_fun, v): RECURSIVE BF_Data = 
+    LET NewData = Round_fun(Data) IN
+    IF v = 0 OR NewData = Data THEN NewData
+    ELSE Bellman_Ford_wrap_rec(D,s,NewData,Round_fun, v-1)
+    ENDIF
+    MEASURE v
+    
+    % A full Bellman-Ford execution for an arbitrary Vertex Round function
+    Bellman_Ford_wrap(Round_fun)(D,s): BF_Data = 
+    Bellman_Ford_wrap_rec(D,s,Init(s),Round_fun, N-1)
+
+    % A lemma claiming that a function that advances the step validity finds the
+    % final step valid data. 
+
+    final_BF_Data: LEMMA
+    LET FinalData = Bellman_Ford_wrap(Round_fun)(D,s) IN 
+    Round_fun_valid(D,s,Round_fun) IMPLIES
+    (valid?(s,D)(FinalData) AND step_valid?(s,D)(FinalData,N)) 
+
+    Bellman_Ford_serial(D,s): BF_Data = 
+    Bellman_Ford_wrap(vertex_round_serial(D))(D,s)
+
+    Bellman_Ford_parallel(D,s): BF_Data = 
+    Bellman_Ford_wrap(vertex_round_parallel(D))(D,s)
+
+END basic_bellman_ford
