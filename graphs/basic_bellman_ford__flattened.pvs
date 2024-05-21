@@ -1,0 +1,325 @@
+basic_bellman_ford__flattened[N:posnat]: THEORY
+BEGIN 
+
+  inf : [bool,nnreal] = (FALSE, 0)
+  
+  r2er(r:nnreal): [bool,nnreal] = (TRUE, r)
+  CONVERSION r2er;
+
+  x_add(x,y: [bool,nnreal]): [bool,nnreal]
+  = IF x`1 AND y`1 THEN (TRUE,x`2+y`2) ELSE (FALSE,0) ENDIF
+
+  x_add(x: [bool,nnreal], c: nnreal): [bool,nnreal]
+  = IF x`1 THEN (TRUE,x`2+c) ELSE (FALSE,0) ENDIF
+
+  x_eq(x,y: [bool,nnreal]):bool = (x`1 = y`1) AND (x`1 => x`2 = y`2)
+  x_le(x,y: [bool,nnreal]):bool = (x`1 AND y`1 AND x`2 <= y`2) OR (NOT y`1)
+  x_lt(x,y: [bool,nnreal]):bool = (x`1 AND y`1 AND x`2 <  y`2) OR (NOT y`1)
+
+  x_eq(x: [bool,nnreal], c: nnreal):bool = x`1 AND x`2 = c
+
+  x_times(x,y: [bool,nnreal]):[bool,nnreal]
+    = IF (x`1 AND y`1) OR x_eq(x,0) OR x_eq(y,0) THEN (TRUE,x`2*y`2)
+                                                 ELSE (FALSE,0) ENDIF
+
+  x_times(x: [bool,nnreal], c: nnreal):[bool,nnreal] = IF x`1 OR c = 0 THEN (TRUE,x`2*c)
+                                                 ELSE (FALSE,0) ENDIF
+  x_times(c: nnreal, x: [bool,nnreal]):[bool,nnreal] = x_times(x,c)
+
+  ;=(x,y: [bool,nnreal]):  MACRO bool = x_eq(x,y)
+  ;+(x,y: [bool,nnreal]):  MACRO [bool,nnreal] = x_add(x,y)
+  ;*(x,y: [bool,nnreal]):  MACRO [bool,nnreal] = x_times(x,y)
+  ;<=(x,y: [bool,nnreal]): MACRO bool = x_le(x,y)
+  
+  % changed the definition of < so that two infinite things don't satisfy it...
+  ;<(x,y: [bool,nnreal]):  MACRO bool = NOT x_le(y,x)
+  finite?(x: [bool,nnreal]): MACRO bool = x`1
+
+  %%%%%%%%%%%%
+  
+  % Vertices and an extra "default" vertex. 
+  
+  % vert?(ev:subrange(-1,N-1)): bool = ev /= -1
+  
+  % V_in_EV: JUDGEMENT below(N) SUBTYPE_OF subrange(-1,N-1)
+
+  % rac((l: list[below(N)] | NOT null?(l))):  below(N)
+  % = nth(l, length(l)-1)
+
+  % snoc(l:list[below(N)], t:below(N)): list[below(N)]
+  % = append(l, (: t :))
+
+  % rdc((l: list[below(N)] | NOT null?(l))):  list[below(N)]
+  % = reverse(cdr(reverse(l)))
+
+  %%%%%%%%%
+
+  % Let's define a (non-negative) weight function the determines the
+  % weighted digraph. Non-edges will have infinite weight, so the weight
+  % function is on all pairs, curried so that specifying the first gives the
+  % weights of its neighbors.
+
+  % WeightedDiGraph is represented as [below(N) -> [below(N) -> [bool,nnreal]]]
+
+  % Define what it means to be a neighbor of n in D.  
+
+  % Neighbor(D: [below(N) -> [below(N) -> [bool,nnreal]]])(n:below(N))(k:below(N)): bool  =  finite?(D(n)(k))
+  
+  % Define a walk recursively in D
+
+  % walk?(D: [below(N) -> [below(N) -> [bool,nnreal]]])(L:list[below(N)]): RECURSIVE bool = 
+  %   IF length(L)< 2 THEN TRUE
+  %   ELSE Neighbor(D)(car(L))(car(cdr(L))) AND walk?(D)(cdr(L))
+  %   ENDIF
+  %   MEASURE L BY << 
+
+  % Define the weight of a walk. 
+
+  % walk_weight(D: [below(N) -> [below(N) -> [bool,nnreal]]])(L:list[below(N)]): RECURSIVE [bool,nnreal] = 
+  %   IF length(L)<2 THEN 0
+  %   ELSE D(car(L))(car(cdr(L))) + walk_weight(D)(cdr(L))
+  %   ENDIF
+  %   MEASURE L by <<
+
+  % Note that a list has finite sum only if it's actually a walk. 
+
+  % Specify the endpoints of a walk. 
+
+  % walk_st?(D: [below(N) -> [below(N) -> [bool,nnreal]]])(s,t: below[N])(L:list[below(N)]): bool = 
+  %   cons?(L) and walk?(D)(L) and 
+  %   car(L) = s and rac(L) = t 
+  
+  % Specify the length of a walk. Note this is the number of vertices.
+  % (Perhaps controversial in Graph Theory, but makes sense here, as
+  %  the list of vertices is how we define it.) 
+
+  % walk_st_length_m?(D: [below(N) -> [below(N) -> [bool,nnreal]]])(s: below[N],t: below[N],m: nat)(L:list[below(N)]): bool = 
+  % walk_st?(D)(s,t)(L) AND length(L)=m
+
+  % Information for the bellman-ford algorithm. 
+  % Each vertex tracks a distance D and a vertex PV, 
+  % where D is the smallest known weight from the source, 
+  % and PV is the previous vertex on a smallest weight path
+  % from the source.
+
+  Init(s: below[N])(v: below[N]): [# w: [bool,nnreal], pv: subrange(-1,N-1) #]
+  = IF v = s THEN (# w:=r2er(0),pv:=s #)
+    ELSE (# w:=inf, pv:= -1 #)
+    ENDIF 
+
+   % A function to update data with one new data point for a vertex.
+
+  update_datum
+  ( Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    Datum: [# w: [bool,nnreal], pv: subrange(-1,N-1) #],
+    v: below[N] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = Data WITH [v := Datum]
+
+  % % Definition of "valid data" for the BF algorithm.
+  % % the source shoud have weight 0, and itself as PV.  
+  % % If the previous vertex is actually a vertex, 
+  % % there should be a path L to v of the assigned weight, 
+  % % using the previous vertex prior to ending at v.   
+
+  % valid?(s: below[N],D: [below(N) -> [below(N) -> [bool,nnreal]]])(Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]): bool = 
+  %     Data(s) = (# w:=r2er(0),pv:=s #) %data always has the origin
+  %     AND 
+  %     FORALL (v:below(N)): 
+  %     LET pv = Data(v)`pv, 
+  %         weight = Data(v)`w IN
+  %     v /= s AND                %For any other vertex,  
+  %     vert?(pv) IMPLIES         %if previous vert is assigned,   
+  %     finite?(D(pv)(v)) AND     %it's connected to v
+  %     vert?(Data(pv)`pv) AND    %pv must have a pv, (this recurses...)   
+  %     (EXISTS (L:list[below(N)]):      %and there's a walk 
+  %     walk_st?(D)(s,v)(L) AND   %between the source and v,
+  %     weight = walk_weight(D)(L) AND %having the right weight,
+  %     nth(L,length(L)-2) = pv )    %and using PV.
+   
+  %%%% Bellman-Ford Edge Step... %%%%% 
+  update_edge
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    Datum: [# w: [bool,nnreal], pv: subrange(-1,N-1) #],
+    v, u: below[N] )
+  : [# w: [bool,nnreal], pv: subrange(-1,N-1) #]
+  = % Data holds the current global data, 
+    % Datum holds the best new datum for v IN THIS UPDATE CYCLE 
+    % (i.e. of v's neighbors checked so far.)
+    % NOTE: if u->v isn't an edge, or a path to u isn't known,
+    % the LHS here is infinite, so no update happens. 
+    IF D(u)(v)+Data(u)`w < Datum`w  THEN   
+      (# w:=D(u)(v)+Data(u)`w, pv:= u #)
+    ELSE Datum
+    ENDIF
+
+  %%%% Bellman-Ford Vertex Step recursion... %%%%
+  % This is just repeating the edge step for multiple neighbors.
+  update_vertex_rec
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    Datum: [# w: [bool,nnreal], pv: subrange(-1,N-1) #],
+    v, u: below[N] )
+  : RECURSIVE [# w: [bool,nnreal], pv: subrange(-1,N-1) #]
+  = LET new_Datum = update_edge(D, Data, Datum, v,u) IN
+    IF u = 0 THEN new_Datum
+    ELSE update_vertex_rec(D, Data, new_Datum, v, u-1)
+    ENDIF
+  MEASURE u 
+
+  % Bellman-Ford Vertex Step %%%%
+  % This is the recursive update, running through all neighbors.
+  update_vertex
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    v: below[N] )
+  : [# w: [bool,nnreal], pv: subrange(-1,N-1) #]
+  = update_vertex_rec(D, Data, Data(v), v, N-1)
+
+  % %% a function to encapsulate updating Data at a particular vertex. 
+  % update_vertex_data(D: [below(N) -> [below(N) -> [bool,nnreal]]],Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],v: below[N]): [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]] = 
+  % update_datum(Data, update_vertex(D,Data,v),v) 
+
+  % % "step valid" is intended to capture that the Data holds the bound that is based on the number 
+  % % times the BF vertex update process has happened. First we define a function for claiming that 
+  % % a walk using a particular previous vertex has the claimed bound. 
+
+  % step_valid_prev_neighbor?(s: below[N],D: [below(N) -> [below(N) -> [bool,nnreal]]])(Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]], m: nat)(v,u: below[N]): bool = 
+  %   FORALL (mm:nat,L:(walk_st_length_m?(D)(s,v,mm))):
+  %      mm<=m AND mm>1 AND nth(L,mm-2)=u IMPLIES Data(v)`w <= walk_weight(D)(L)
+
+  % % Next is a function for claiming the bound holds for all walks of the chosen length. 
+
+  % step_valid_vertex?(s: below[N],D: [below(N) -> [below(N) -> [bool,nnreal]]])(Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],m: nat)(v: below[N]): bool = 
+  %    (FORALL (mm:nat,L:(walk_st_length_m?(D)(s,v,mm))):
+  %      mm<=m IMPLIES Data(v)`w <= walk_weight(D)(L))
+  
+  % % Finally, the function claiming that the data holds such a bound for every vertex in the graph. 
+  % % This is both the starting point (i.e., assume this is true for length M), and the eventual 
+  % % endpoint (prove the BF step makes this true for M+1). Between, it is shown that the edge update makes
+  % % the M+1 "step_valid_previous_neighbor" statement true for each neighbor, and hence the vertex step step
+  % % makes the M+1 "step_valid_vertex?" statement true. 
+
+  % step_valid?(s: below[N],D: [below(N) -> [below(N) -> [bool,nnreal]]])(Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],m: nat): bool = 
+  %     FORALL (v:below(N)):
+  %     step_valid_vertex?(s,D)(Data,m)(v)
+
+  %Recursive function for updating vertices in a serial form. 
+  vertex_round_serial_rec
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    v: below[N] )
+  : RECURSIVE [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = LET NewData = update_datum(Data, update_vertex(D,Data,v),v) IN
+    %This is the final update.
+    IF v=0 THEN NewData 
+    % Note that the update happens PRIOR to moving to the next vertex. 
+    ELSE vertex_round_serial_rec(D, NewData, v-1) ENDIF
+  MEASURE v
+  
+  %Wrap for the serial recursive function. Runs through all vertices. 
+  vertex_round_serial
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]] )
+  ( Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = vertex_round_serial_rec(D,Data,N-1)
+
+  %Recursive function for updating vertices in parallel.  
+  vertex_round_parallel_rec
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    Data,Data1: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    v: below[N] )
+  : RECURSIVE [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = LET NewData = update_datum(Data1, update_vertex(D,Data,v),v) IN 
+    % in this version, Data1 holds the new data, and Data holds the previous round. 
+    IF v=0 THEN NewData
+    % Here, the data drawn from is static throughout the round.
+    ELSE vertex_round_parallel_rec(D, Data, NewData, v-1) ENDIF
+  MEASURE v
+
+  % parallel_update
+  % ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+  %   Data1,Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+  %   u: below[N] )
+  % : bool
+  % = FORALL(v:below(N)): Data1(v) = IF v>=u THEN update_vertex(D,Data,v) ELSE Data(v) ENDIF
+
+  % Wrap for the parallel recursive function. Runs through all vertices.
+  vertex_round_parallel
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]] )
+  ( Data: [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = vertex_round_parallel_rec(D,Data,Data,N-1)
+
+  % A recursive function for performing successive vertex rounds of an 
+  % arbitrary Vertex Round function. 
+  Bellman_Ford_wrap_rec
+  ( D         : [below(N) -> [below(N) -> [bool,nnreal]]],
+    s         : below[N],
+    Data      : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]],
+    Round_fun : [[below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]->[below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]],
+    v         : below[N] )
+  : RECURSIVE [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = LET NewData = Round_fun(Data) IN
+    IF v = 0 OR NewData = Data THEN NewData
+    ELSE Bellman_Ford_wrap_rec(D,s,NewData,Round_fun, v-1) ENDIF
+  MEASURE v
+  
+  % A full Bellman-Ford execution for an arbitrary Vertex Round function
+  Bellman_Ford_wrap
+  ( Round_fun: [ [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+                 ->[below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]] )
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    s: below[N] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = Bellman_Ford_wrap_rec(D,s,Init(s),Round_fun, N-1)
+
+  % A lemma claiming that a function that advances the step validity finds the
+  % final step valid data. 
+
+  Bellman_Ford_serial
+  ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+    s: below[N] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = Bellman_Ford_wrap(vertex_round_serial(D))(D,s)
+
+  Bellman_Ford_parallel
+  ( D : [below(N) -> [below(N) -> [bool,nnreal]]],
+    s : below[N] )
+  : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  = Bellman_Ford_wrap(vertex_round_parallel(D))(D,s)
+
+  % %
+  % %
+  % %
+
+  % Bellman_Ford_serial
+  % ( D: [below(N) -> [below(N) -> [bool,nnreal]]],
+  %   s: below[N] )
+  % : [below(N) -> [# w: [bool,nnreal], pv: subrange(-1,N-1) #]]
+  % = Bellman_Ford_wrap(vertex_round_serial(D))(D,s)
+
+
+END basic_bellman_ford__flattened
+
+basic_bellman_ford__flattened__example: THEORY
+BEGIN
+
+  N: nat = 3
+
+  IMPORTING basic_bellman_ford__flattened[N]
+
+  s(x:below(N)): [bool,nnreal] = IF x=0 THEN 0 ELSE 2 ENDIF
+  u(x:below(N)): [bool,nnreal] = IF x=2 THEN 0 ELSE inf  ENDIF
+  v(x:below(N)): [bool,nnreal] = IF x=1 THEN 0 ELSE inf  ENDIF
+
+  G(x:below(N)): [below(N)-> [bool,nnreal]] = IF x=0 THEN s ELSIF x=1 THEN u ELSE v ENDIF
+
+  sanity_check: bool
+  = Bellman_Ford_parallel(G,1)(2) = (# pv := 1, w := (TRUE, 0) #)
+
+  % //cc -O3 -Wall -o basic_bellman_ford__flattened__example -I /Users/mmoscato/pvs/pvs-src-larc-gitlab/src/groundeval /Users/mmoscato/pvs/pvs-src-larc-gitlab/src/groundeval/pvslib.c  -I /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/include /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/src/integertypes_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/src/exp2_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/src/modulo_arithmetic_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/src/euclidean_division_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/clib/src/real_defs_c.c basic_bellman_ford__flattened__example_c.c basic_bellman_ford__flattened_c.c -lgmp 
+
+
+END basic_bellman_ford__flattened__example

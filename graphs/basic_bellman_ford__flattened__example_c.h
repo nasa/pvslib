@@ -1,0 +1,387 @@
+//Code generated using pvs2ir
+#ifndef _basic_bellman_ford__flattened__example_h 
+#define _basic_bellman_ford__flattened__example_h
+
+#include <stdio.h>
+
+#include <stdlib.h>
+
+#include <inttypes.h>
+
+#include <stdbool.h>
+
+#include <stdarg.h>
+
+#include <string.h>
+
+#include <fcntl.h>
+
+#include <math.h>
+
+#include <sys/mman.h>
+
+#include <sys/stat.h>
+
+#include <sys/types.h>
+
+#include <gmp.h>
+
+#include "pvslib.h"
+
+#include "integertypes_c.h"
+
+#include "exp2_c.h"
+
+#include "modulo_arithmetic_c.h"
+
+#include "euclidean_division_c.h"
+
+#include "real_defs_c.h"
+
+#include "basic_bellman_ford__flattened_c.h"
+
+//cc -O3 -Wall -o basic_bellman_ford__flattened__example -I /Users/mmoscato/pvs/pvs-src-larc-gitlab//include /Users/mmoscato/pvs/pvs-src-larc-gitlab//lib/pvslib.c  -I /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib/integertypes_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib/exp2_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib/modulo_arithmetic_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib/euclidean_division_c.c /Users/mmoscato/pvs/pvs-src-larc-gitlab/lib/real_defs_c.c basic_bellman_ford__flattened__example_c.c basic_bellman_ford__flattened_c.c -lgmp 
+//s
+
+struct basic_bellman_ford__flattened__example_record_0_s {
+        uint32_t count; 
+        bool_t project_1;
+        mpq_t project_2;};
+typedef struct basic_bellman_ford__flattened__example_record_0_s * basic_bellman_ford__flattened__example_record_0_t;
+
+extern basic_bellman_ford__flattened__example_record_0_t new_basic_bellman_ford__flattened__example_record_0(void);
+
+extern void release_basic_bellman_ford__flattened__example_record_0(basic_bellman_ford__flattened__example_record_0_t x);
+
+extern basic_bellman_ford__flattened__example_record_0_t copy_basic_bellman_ford__flattened__example_record_0(basic_bellman_ford__flattened__example_record_0_t x);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_0(basic_bellman_ford__flattened__example_record_0_t x, basic_bellman_ford__flattened__example_record_0_t y);
+extern char * json_basic_bellman_ford__flattened__example_record_0(basic_bellman_ford__flattened__example_record_0_t x);
+
+typedef struct actual_basic_bellman_ford__flattened__example_record_0_s {equal_ptr_t equal_ptr; release_ptr_t release_ptr; json_ptr_t json_ptr;} * actual_basic_bellman_ford__flattened__example_record_0_t;
+extern void release_basic_bellman_ford__flattened__example_record_0_ptr(pointer_t x, type_actual_t basic_bellman_ford__flattened__example_record_0);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_0_ptr(pointer_t x, pointer_t y, actual_basic_bellman_ford__flattened__example_record_0_t T);
+
+extern char * json_basic_bellman_ford__flattened__example_record_0_ptr(pointer_t x,  actual_basic_bellman_ford__flattened__example_record_0_t T);
+
+actual_basic_bellman_ford__flattened__example_record_0_t actual_basic_bellman_ford__flattened__example_record_0(void);
+
+ 
+
+extern basic_bellman_ford__flattened__example_record_0_t update_basic_bellman_ford__flattened__example_record_0_project_1(basic_bellman_ford__flattened__example_record_0_t x, bool_t v);
+
+extern basic_bellman_ford__flattened__example_record_0_t update_basic_bellman_ford__flattened__example_record_0_project_2(basic_bellman_ford__flattened__example_record_0_t x, mpq_ptr_t v);
+
+
+//G
+
+struct basic_bellman_ford__flattened__example_funtype_1_s;
+        typedef struct basic_bellman_ford__flattened__example_funtype_1_s * basic_bellman_ford__flattened__example_funtype_1_t;
+
+struct basic_bellman_ford__flattened__example_funtype_1_ftbl_s {basic_bellman_ford__flattened__example_record_0_t (* fptr)(struct basic_bellman_ford__flattened__example_funtype_1_s *, uint8_t);
+        basic_bellman_ford__flattened__example_record_0_t (* mptr)(struct basic_bellman_ford__flattened__example_funtype_1_s *, uint8_t);
+        void (* rptr)(struct basic_bellman_ford__flattened__example_funtype_1_s *);
+        struct basic_bellman_ford__flattened__example_funtype_1_s * (* cptr)(struct basic_bellman_ford__flattened__example_funtype_1_s *);};
+typedef struct basic_bellman_ford__flattened__example_funtype_1_ftbl_s * basic_bellman_ford__flattened__example_funtype_1_ftbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_1_hashentry_s {uint32_t keyhash; uint8_t key; basic_bellman_ford__flattened__example_record_0_t value;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_1_hashentry_s basic_bellman_ford__flattened__example_funtype_1_hashentry_t;
+
+struct basic_bellman_ford__flattened__example_funtype_1_htbl_s {uint32_t size; uint32_t num_entries; basic_bellman_ford__flattened__example_funtype_1_hashentry_t * data;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_1_htbl_s * basic_bellman_ford__flattened__example_funtype_1_htbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_1_s {uint32_t count;
+        basic_bellman_ford__flattened__example_funtype_1_ftbl_t ftbl;
+        basic_bellman_ford__flattened__example_funtype_1_htbl_t htbl;};
+typedef struct basic_bellman_ford__flattened__example_funtype_1_s * basic_bellman_ford__flattened__example_funtype_1_t;
+
+extern void release_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t x);
+
+extern basic_bellman_ford__flattened__example_funtype_1_t copy_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t x);
+
+extern uint32_t lookup_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_htbl_t htbl, uint8_t i, uint32_t ihash);
+
+extern basic_bellman_ford__flattened__example_funtype_1_t dupdate_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t a, uint8_t i, basic_bellman_ford__flattened__example_record_0_t v);
+
+extern basic_bellman_ford__flattened__example_funtype_1_t update_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t a, uint8_t i, basic_bellman_ford__flattened__example_record_0_t v);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t x, basic_bellman_ford__flattened__example_funtype_1_t y);
+
+extern char* json_basic_bellman_ford__flattened__example_funtype_1(basic_bellman_ford__flattened__example_funtype_1_t x);
+
+
+
+
+struct basic_bellman_ford__flattened__example_closure_2_s;
+        typedef struct basic_bellman_ford__flattened__example_closure_2_s * basic_bellman_ford__flattened__example_closure_2_t;
+
+struct basic_bellman_ford__flattened__example_closure_2_s {uint32_t count;
+         basic_bellman_ford__flattened__example_funtype_1_ftbl_t ftbl;
+         basic_bellman_ford__flattened__example_funtype_1_htbl_t htbl;};
+
+basic_bellman_ford__flattened__example_record_0_t f_basic_bellman_ford__flattened__example_closure_2(struct basic_bellman_ford__flattened__example_closure_2_s * closure, uint8_t bvar);
+
+basic_bellman_ford__flattened__example_record_0_t m_basic_bellman_ford__flattened__example_closure_2(struct basic_bellman_ford__flattened__example_closure_2_s * closure, uint8_t bvar);
+
+extern basic_bellman_ford__flattened__example_record_0_t h_basic_bellman_ford__flattened__example_closure_2(uint8_t ivar_8);
+
+basic_bellman_ford__flattened__example_closure_2_t new_basic_bellman_ford__flattened__example_closure_2(void);
+
+void release_basic_bellman_ford__flattened__example_closure_2(basic_bellman_ford__flattened__example_funtype_1_t closure);
+
+basic_bellman_ford__flattened__example_closure_2_t copy_basic_bellman_ford__flattened__example_closure_2(basic_bellman_ford__flattened__example_closure_2_t x);
+
+
+
+
+struct basic_bellman_ford__flattened__example_closure_3_s;
+        typedef struct basic_bellman_ford__flattened__example_closure_3_s * basic_bellman_ford__flattened__example_closure_3_t;
+
+struct basic_bellman_ford__flattened__example_closure_3_s {uint32_t count;
+         basic_bellman_ford__flattened__example_funtype_1_ftbl_t ftbl;
+         basic_bellman_ford__flattened__example_funtype_1_htbl_t htbl;};
+
+basic_bellman_ford__flattened__example_record_0_t f_basic_bellman_ford__flattened__example_closure_3(struct basic_bellman_ford__flattened__example_closure_3_s * closure, uint8_t bvar);
+
+basic_bellman_ford__flattened__example_record_0_t m_basic_bellman_ford__flattened__example_closure_3(struct basic_bellman_ford__flattened__example_closure_3_s * closure, uint8_t bvar);
+
+extern basic_bellman_ford__flattened__example_record_0_t h_basic_bellman_ford__flattened__example_closure_3(uint8_t ivar_14);
+
+basic_bellman_ford__flattened__example_closure_3_t new_basic_bellman_ford__flattened__example_closure_3(void);
+
+void release_basic_bellman_ford__flattened__example_closure_3(basic_bellman_ford__flattened__example_funtype_1_t closure);
+
+basic_bellman_ford__flattened__example_closure_3_t copy_basic_bellman_ford__flattened__example_closure_3(basic_bellman_ford__flattened__example_closure_3_t x);
+
+
+
+
+struct basic_bellman_ford__flattened__example_closure_4_s;
+        typedef struct basic_bellman_ford__flattened__example_closure_4_s * basic_bellman_ford__flattened__example_closure_4_t;
+
+struct basic_bellman_ford__flattened__example_closure_4_s {uint32_t count;
+         basic_bellman_ford__flattened__example_funtype_1_ftbl_t ftbl;
+         basic_bellman_ford__flattened__example_funtype_1_htbl_t htbl;};
+
+basic_bellman_ford__flattened__example_record_0_t f_basic_bellman_ford__flattened__example_closure_4(struct basic_bellman_ford__flattened__example_closure_4_s * closure, uint8_t bvar);
+
+basic_bellman_ford__flattened__example_record_0_t m_basic_bellman_ford__flattened__example_closure_4(struct basic_bellman_ford__flattened__example_closure_4_s * closure, uint8_t bvar);
+
+extern basic_bellman_ford__flattened__example_record_0_t h_basic_bellman_ford__flattened__example_closure_4(uint8_t ivar_16);
+
+basic_bellman_ford__flattened__example_closure_4_t new_basic_bellman_ford__flattened__example_closure_4(void);
+
+void release_basic_bellman_ford__flattened__example_closure_4(basic_bellman_ford__flattened__example_funtype_1_t closure);
+
+basic_bellman_ford__flattened__example_closure_4_t copy_basic_bellman_ford__flattened__example_closure_4(basic_bellman_ford__flattened__example_closure_4_t x);
+
+
+//sanity_check
+
+struct basic_bellman_ford__flattened__example_record_5_s {
+        uint32_t count; 
+        int8_t pv;
+        basic_bellman_ford__flattened__example_record_0_t w;};
+typedef struct basic_bellman_ford__flattened__example_record_5_s * basic_bellman_ford__flattened__example_record_5_t;
+
+extern basic_bellman_ford__flattened__example_record_5_t new_basic_bellman_ford__flattened__example_record_5(void);
+
+extern void release_basic_bellman_ford__flattened__example_record_5(basic_bellman_ford__flattened__example_record_5_t x);
+
+extern basic_bellman_ford__flattened__example_record_5_t copy_basic_bellman_ford__flattened__example_record_5(basic_bellman_ford__flattened__example_record_5_t x);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_5(basic_bellman_ford__flattened__example_record_5_t x, basic_bellman_ford__flattened__example_record_5_t y);
+extern char * json_basic_bellman_ford__flattened__example_record_5(basic_bellman_ford__flattened__example_record_5_t x);
+
+typedef struct actual_basic_bellman_ford__flattened__example_record_5_s {equal_ptr_t equal_ptr; release_ptr_t release_ptr; json_ptr_t json_ptr;} * actual_basic_bellman_ford__flattened__example_record_5_t;
+extern void release_basic_bellman_ford__flattened__example_record_5_ptr(pointer_t x, type_actual_t basic_bellman_ford__flattened__example_record_5);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_5_ptr(pointer_t x, pointer_t y, actual_basic_bellman_ford__flattened__example_record_5_t T);
+
+extern char * json_basic_bellman_ford__flattened__example_record_5_ptr(pointer_t x,  actual_basic_bellman_ford__flattened__example_record_5_t T);
+
+actual_basic_bellman_ford__flattened__example_record_5_t actual_basic_bellman_ford__flattened__example_record_5(void);
+
+ 
+
+extern basic_bellman_ford__flattened__example_record_5_t update_basic_bellman_ford__flattened__example_record_5_pv(basic_bellman_ford__flattened__example_record_5_t x, int8_t v);
+
+extern basic_bellman_ford__flattened__example_record_5_t update_basic_bellman_ford__flattened__example_record_5_w(basic_bellman_ford__flattened__example_record_5_t x, basic_bellman_ford__flattened__example_record_0_t v);
+
+
+//sanity_check
+
+struct basic_bellman_ford__flattened__example_funtype_6_s;
+        typedef struct basic_bellman_ford__flattened__example_funtype_6_s * basic_bellman_ford__flattened__example_funtype_6_t;
+
+struct basic_bellman_ford__flattened__example_funtype_6_ftbl_s {basic_bellman_ford__flattened__example_record_5_t (* fptr)(struct basic_bellman_ford__flattened__example_funtype_6_s *, uint8_t);
+        basic_bellman_ford__flattened__example_record_5_t (* mptr)(struct basic_bellman_ford__flattened__example_funtype_6_s *, uint8_t);
+        void (* rptr)(struct basic_bellman_ford__flattened__example_funtype_6_s *);
+        struct basic_bellman_ford__flattened__example_funtype_6_s * (* cptr)(struct basic_bellman_ford__flattened__example_funtype_6_s *);};
+typedef struct basic_bellman_ford__flattened__example_funtype_6_ftbl_s * basic_bellman_ford__flattened__example_funtype_6_ftbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_6_hashentry_s {uint32_t keyhash; uint8_t key; basic_bellman_ford__flattened__example_record_5_t value;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_6_hashentry_s basic_bellman_ford__flattened__example_funtype_6_hashentry_t;
+
+struct basic_bellman_ford__flattened__example_funtype_6_htbl_s {uint32_t size; uint32_t num_entries; basic_bellman_ford__flattened__example_funtype_6_hashentry_t * data;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_6_htbl_s * basic_bellman_ford__flattened__example_funtype_6_htbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_6_s {uint32_t count;
+        basic_bellman_ford__flattened__example_funtype_6_ftbl_t ftbl;
+        basic_bellman_ford__flattened__example_funtype_6_htbl_t htbl;};
+typedef struct basic_bellman_ford__flattened__example_funtype_6_s * basic_bellman_ford__flattened__example_funtype_6_t;
+
+extern void release_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t x);
+
+extern basic_bellman_ford__flattened__example_funtype_6_t copy_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t x);
+
+extern uint32_t lookup_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_htbl_t htbl, uint8_t i, uint32_t ihash);
+
+extern basic_bellman_ford__flattened__example_funtype_6_t dupdate_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t a, uint8_t i, basic_bellman_ford__flattened__example_record_5_t v);
+
+extern basic_bellman_ford__flattened__example_funtype_6_t update_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t a, uint8_t i, basic_bellman_ford__flattened__example_record_5_t v);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t x, basic_bellman_ford__flattened__example_funtype_6_t y);
+
+extern char* json_basic_bellman_ford__flattened__example_funtype_6(basic_bellman_ford__flattened__example_funtype_6_t x);
+
+
+//sanity_check
+
+struct basic_bellman_ford__flattened__example_funtype_7_s;
+        typedef struct basic_bellman_ford__flattened__example_funtype_7_s * basic_bellman_ford__flattened__example_funtype_7_t;
+
+struct basic_bellman_ford__flattened__example_funtype_7_ftbl_s {basic_bellman_ford__flattened__example_funtype_1_t (* fptr)(struct basic_bellman_ford__flattened__example_funtype_7_s *, uint8_t);
+        basic_bellman_ford__flattened__example_funtype_1_t (* mptr)(struct basic_bellman_ford__flattened__example_funtype_7_s *, uint8_t);
+        void (* rptr)(struct basic_bellman_ford__flattened__example_funtype_7_s *);
+        struct basic_bellman_ford__flattened__example_funtype_7_s * (* cptr)(struct basic_bellman_ford__flattened__example_funtype_7_s *);};
+typedef struct basic_bellman_ford__flattened__example_funtype_7_ftbl_s * basic_bellman_ford__flattened__example_funtype_7_ftbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_7_hashentry_s {uint32_t keyhash; uint8_t key; basic_bellman_ford__flattened__example_funtype_1_t value;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_7_hashentry_s basic_bellman_ford__flattened__example_funtype_7_hashentry_t;
+
+struct basic_bellman_ford__flattened__example_funtype_7_htbl_s {uint32_t size; uint32_t num_entries; basic_bellman_ford__flattened__example_funtype_7_hashentry_t * data;}; 
+typedef struct basic_bellman_ford__flattened__example_funtype_7_htbl_s * basic_bellman_ford__flattened__example_funtype_7_htbl_t;
+
+struct basic_bellman_ford__flattened__example_funtype_7_s {uint32_t count;
+        basic_bellman_ford__flattened__example_funtype_7_ftbl_t ftbl;
+        basic_bellman_ford__flattened__example_funtype_7_htbl_t htbl;};
+typedef struct basic_bellman_ford__flattened__example_funtype_7_s * basic_bellman_ford__flattened__example_funtype_7_t;
+
+extern void release_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t x);
+
+extern basic_bellman_ford__flattened__example_funtype_7_t copy_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t x);
+
+extern uint32_t lookup_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_htbl_t htbl, uint8_t i, uint32_t ihash);
+
+extern basic_bellman_ford__flattened__example_funtype_7_t dupdate_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t a, uint8_t i, basic_bellman_ford__flattened__example_funtype_1_t v);
+
+extern basic_bellman_ford__flattened__example_funtype_7_t update_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t a, uint8_t i, basic_bellman_ford__flattened__example_funtype_1_t v);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t x, basic_bellman_ford__flattened__example_funtype_7_t y);
+
+extern char* json_basic_bellman_ford__flattened__example_funtype_7(basic_bellman_ford__flattened__example_funtype_7_t x);
+
+
+
+
+struct basic_bellman_ford__flattened__example_closure_8_s;
+        typedef struct basic_bellman_ford__flattened__example_closure_8_s * basic_bellman_ford__flattened__example_closure_8_t;
+
+struct basic_bellman_ford__flattened__example_closure_8_s {uint32_t count;
+         basic_bellman_ford__flattened__example_funtype_7_ftbl_t ftbl;
+         basic_bellman_ford__flattened__example_funtype_7_htbl_t htbl;};
+
+basic_bellman_ford__flattened__example_funtype_1_t f_basic_bellman_ford__flattened__example_closure_8(struct basic_bellman_ford__flattened__example_closure_8_s * closure, uint8_t bvar);
+
+basic_bellman_ford__flattened__example_funtype_1_t m_basic_bellman_ford__flattened__example_closure_8(struct basic_bellman_ford__flattened__example_closure_8_s * closure, uint8_t bvar);
+
+extern basic_bellman_ford__flattened__example_funtype_1_t h_basic_bellman_ford__flattened__example_closure_8(uint8_t ivar_12);
+
+basic_bellman_ford__flattened__example_closure_8_t new_basic_bellman_ford__flattened__example_closure_8(void);
+
+void release_basic_bellman_ford__flattened__example_closure_8(basic_bellman_ford__flattened__example_funtype_7_t closure);
+
+basic_bellman_ford__flattened__example_closure_8_t copy_basic_bellman_ford__flattened__example_closure_8(basic_bellman_ford__flattened__example_closure_8_t x);
+
+
+//sanity_check
+
+struct basic_bellman_ford__flattened__example_record_9_s {
+        uint32_t count; 
+        bool_t project_1;
+        uint8_t project_2;};
+typedef struct basic_bellman_ford__flattened__example_record_9_s * basic_bellman_ford__flattened__example_record_9_t;
+
+extern basic_bellman_ford__flattened__example_record_9_t new_basic_bellman_ford__flattened__example_record_9(void);
+
+extern void release_basic_bellman_ford__flattened__example_record_9(basic_bellman_ford__flattened__example_record_9_t x);
+
+extern basic_bellman_ford__flattened__example_record_9_t copy_basic_bellman_ford__flattened__example_record_9(basic_bellman_ford__flattened__example_record_9_t x);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_9(basic_bellman_ford__flattened__example_record_9_t x, basic_bellman_ford__flattened__example_record_9_t y);
+extern char * json_basic_bellman_ford__flattened__example_record_9(basic_bellman_ford__flattened__example_record_9_t x);
+
+typedef struct actual_basic_bellman_ford__flattened__example_record_9_s {equal_ptr_t equal_ptr; release_ptr_t release_ptr; json_ptr_t json_ptr;} * actual_basic_bellman_ford__flattened__example_record_9_t;
+extern void release_basic_bellman_ford__flattened__example_record_9_ptr(pointer_t x, type_actual_t basic_bellman_ford__flattened__example_record_9);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_9_ptr(pointer_t x, pointer_t y, actual_basic_bellman_ford__flattened__example_record_9_t T);
+
+extern char * json_basic_bellman_ford__flattened__example_record_9_ptr(pointer_t x,  actual_basic_bellman_ford__flattened__example_record_9_t T);
+
+actual_basic_bellman_ford__flattened__example_record_9_t actual_basic_bellman_ford__flattened__example_record_9(void);
+
+ 
+
+extern basic_bellman_ford__flattened__example_record_9_t update_basic_bellman_ford__flattened__example_record_9_project_1(basic_bellman_ford__flattened__example_record_9_t x, bool_t v);
+
+extern basic_bellman_ford__flattened__example_record_9_t update_basic_bellman_ford__flattened__example_record_9_project_2(basic_bellman_ford__flattened__example_record_9_t x, uint8_t v);
+
+
+//sanity_check
+
+struct basic_bellman_ford__flattened__example_record_10_s {
+        uint32_t count; 
+        uint8_t pv;
+        basic_bellman_ford__flattened__example_record_9_t w;};
+typedef struct basic_bellman_ford__flattened__example_record_10_s * basic_bellman_ford__flattened__example_record_10_t;
+
+extern basic_bellman_ford__flattened__example_record_10_t new_basic_bellman_ford__flattened__example_record_10(void);
+
+extern void release_basic_bellman_ford__flattened__example_record_10(basic_bellman_ford__flattened__example_record_10_t x);
+
+extern basic_bellman_ford__flattened__example_record_10_t copy_basic_bellman_ford__flattened__example_record_10(basic_bellman_ford__flattened__example_record_10_t x);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_10(basic_bellman_ford__flattened__example_record_10_t x, basic_bellman_ford__flattened__example_record_10_t y);
+extern char * json_basic_bellman_ford__flattened__example_record_10(basic_bellman_ford__flattened__example_record_10_t x);
+
+typedef struct actual_basic_bellman_ford__flattened__example_record_10_s {equal_ptr_t equal_ptr; release_ptr_t release_ptr; json_ptr_t json_ptr;} * actual_basic_bellman_ford__flattened__example_record_10_t;
+extern void release_basic_bellman_ford__flattened__example_record_10_ptr(pointer_t x, type_actual_t basic_bellman_ford__flattened__example_record_10);
+
+extern bool_t equal_basic_bellman_ford__flattened__example_record_10_ptr(pointer_t x, pointer_t y, actual_basic_bellman_ford__flattened__example_record_10_t T);
+
+extern char * json_basic_bellman_ford__flattened__example_record_10_ptr(pointer_t x,  actual_basic_bellman_ford__flattened__example_record_10_t T);
+
+actual_basic_bellman_ford__flattened__example_record_10_t actual_basic_bellman_ford__flattened__example_record_10(void);
+
+ 
+
+extern basic_bellman_ford__flattened__example_record_10_t update_basic_bellman_ford__flattened__example_record_10_pv(basic_bellman_ford__flattened__example_record_10_t x, uint8_t v);
+
+extern basic_bellman_ford__flattened__example_record_10_t update_basic_bellman_ford__flattened__example_record_10_w(basic_bellman_ford__flattened__example_record_10_t x, basic_bellman_ford__flattened__example_record_9_t v);
+
+
+
+extern mpz_ptr_t basic_bellman_ford__flattened__example__N(void);
+
+extern basic_bellman_ford__flattened__example_record_0_t basic_bellman_ford__flattened__example__s(uint8_t ivar_1);
+
+extern basic_bellman_ford__flattened__example_record_0_t basic_bellman_ford__flattened__example__u(uint8_t ivar_1);
+
+extern basic_bellman_ford__flattened__example_record_0_t basic_bellman_ford__flattened__example__v(uint8_t ivar_1);
+
+extern basic_bellman_ford__flattened__example_funtype_1_t basic_bellman_ford__flattened__example__G(uint8_t ivar_1);
+
+extern bool_t basic_bellman_ford__flattened__example__sanity_check(void);
+#endif
