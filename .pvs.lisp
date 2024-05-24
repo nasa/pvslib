@@ -1,3 +1,5 @@
+;; ADD SUPPORT FOR .pvslib FILES [CAM]
+
 (defparameter *extra-pvslibs* (make-hash-table :test #'equal))
 (defparameter *extra-pvslib-deps* (make-hash-table :test #'equal))
 (defparameter *extra-preludelibs* '())
