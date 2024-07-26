@@ -10,14 +10,14 @@ BEGIN
 	    trig@trig_extra
 
 
-  n : VAR nat
-  pn,nn: VAR posnat
-  a,b : VAR [nat->complex]
+  n,m   : VAR nat
+  pn,nn : VAR posnat
+  a,b   : VAR [nat->complex]
   c,x,y : VAR complex
-  nz  : VAR nzcomplex
-  r,s : VAR real
-  ff,gg:VAR [complex->complex]
-  K : VAR posreal
+  nz    : VAR nzcomplex
+  r,s   : VAR real
+  ff,gg : VAR [complex->complex]
+  K     : VAR posreal
 
   %Powers
 
@@ -113,6 +113,9 @@ BEGIN
     FORALL (nn,mm:posnat): nn<=pn AND mm<=pn AND nn/=mm IMPLIES 
       root_complex_enum(nz)(pn,nn)/=root_complex_enum(nz)(pn,mm)
 
+  root_complex_enum_def: LEMMA
+    cpow(root_complex_enum(c)(pn,nn))(pn) = c
+
   %%% Sums %%%
 
   csigma(a,n): RECURSIVE complex =
@@ -149,9 +152,6 @@ BEGIN
     (FORALL (i:nat): i<=n IMPLIES a(i) = b(i)) IMPLIES
     cpolynomial(a,n) = cpolynomial(b,n)
 
-%  cpolynomial_conjugate : LEMMA
-%    cpolynomial(a,n)(conjugate(c)) = conjugate(cpolynomial(a,n)(c))
-
   complex_continuous_cpolynomial: LEMMA
     complex_continuous?(cpolynomial(a,n))
 
@@ -163,7 +163,10 @@ BEGIN
     EXISTS (b): b(0) = cpolynomial(a,n)(c) AND
     FORALL (x): cpolynomial(a,n)(x) = cpolynomial(b,n)(x-c)
 
-  cpolynomial_limit_infinity: LEMMA n > 0 AND a(n)/=real_(0)
+  % A polynomial representation is proper if it its not a constant polynomial and the leading coefficient is non-zero
+  proper_polynomial?(n)(a) : MACRO bool = n > 0 AND a(n) /= real_(0)
+
+  cpolynomial_limit_infinity: LEMMA proper_polynomial?(n)(a)
     IMPLIES
     EXISTS (M:posnat): FORALL (x): abs(x)>=M IMPLIES
     abs(cpolynomial(a,n)(x)) > K
@@ -177,7 +180,7 @@ BEGIN
     EXISTS (c): FORALL (x):
       abs(cpolynomial(a,n)(c))<=abs(cpolynomial(a,n)(x))
 
-  fundamental_algebra: LEMMA n>0 AND a(n)/=real_(0)
+  fundamental_algebra: LEMMA proper_polynomial?(n)(a)
     IMPLIES
     EXISTS (c): cpolynomial(a,n)(c) = real_(0)
 
@@ -189,14 +192,26 @@ BEGIN
     EXISTS (b):
     (FORALL (x:complex): cpolynomial(a,n)(x) = (x-y)*cpolynomial(b,n-1)(x))
 
+  % A non-zero polynomial is a polynomial that doesn't evaluate to zero in all inputs
+  nz_polynomial?(n)(a) : MACRO bool =
+    EXISTS (z:complex): cpolynomial(a,n)(z) /= real_(0)
+
+  proper_nz_polynomial : LEMMA
+    proper_polynomial?(n)(a) IMPLIES
+    nz_polynomial?(n)(a)
+
   fundamental_algebra_roots: LEMMA FORALL (r:[posnat->complex]):
     (FORALL (i,j:posnat): i<=n AND j<=n AND i/=j IMPLIES r(i)/=r(j)) AND
     (FORALL (i:posnat): i<=n IMPLIES cpolynomial(a,n)(r(i))=real_(0)) AND
-    cpolynomial(a,n)(c)=real_(0) AND n>0 AND (EXISTS (z:complex): cpolynomial(a,n)(z)/=real_(0))
+    cpolynomial(a,n)(c)=real_(0) AND n>0 AND nz_polynomial?(n)(a)
      IMPLIES EXISTS (i:posnat): i<=n AND c=r(i)
 
-  root_complex_enum_def: LEMMA
-    cpow(root_complex_enum(c)(pn,nn))(pn) = c
+  %% Proper is easier to prove than nz_polynomial. It just requires a check on the leading coefficient
+  fundamental_algebra_roots_proper: LEMMA FORALL (r:[posnat->complex]):
+    (FORALL (i,j:posnat): i<=n AND j<=n AND i/=j IMPLIES r(i)/=r(j)) AND
+    (FORALL (i:posnat): i<=n IMPLIES cpolynomial(a,n)(r(i))=real_(0)) AND
+    cpolynomial(a,n)(c)=real_(0) AND n>0 AND proper_polynomial?(n)(a)
+     IMPLIES EXISTS (i:posnat): i<=n AND c=r(i)
 
   root_complex_enum_complete: LEMMA 
     cpow(x)(pn) = c IFF ((c=real_(0) AND x=real_(0)) OR
