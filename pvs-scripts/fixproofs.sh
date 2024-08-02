@@ -27,6 +27,11 @@ if [ -z "$target" ]; then
     usage
 fi
 
+if [ ! "$(pvs --version 2>&1)" = "PVS Version 7.1" ]; then
+    echo "Error: PVS 7.1 not found, please make sure PVS 7.1.0 is reachable by your PATH environment variable as 'pvs' and try again";
+    exit 1;
+fi
+
 targetlist="";
 targetlisp="";
 
