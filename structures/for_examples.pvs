@@ -2,11 +2,13 @@ for_examples : THEORY
 BEGIN
   
   IMPORTING for_iterate,
+  	    for_while,
             ints@factorial
 
+  %% Power
   %% //@ assert n >= 0; 
   %% int a = 1;
-  %% for (int i=0; i < n; i++) {
+  %% for (int i=0; i < n; ++i) {
   %%   /*@ loop invariant
   %%       a == x^i;
   %%     @ loop variant n-i;
@@ -26,14 +28,11 @@ BEGIN
   expit_inv(x:real,n:nat)(i:upto(n),a:real) : MACRO bool =
     a = x^i
 
-  %% Postcondition is invariant at n
-  expit_post(x:real,n:nat)(a:real) : MACRO bool =
-    a = x^n
-
   %% Proved using for_invariant
   expit_sound : LEMMA
-    FORALL(x:real,n:nat): expit_post(x,n)(expit(x,n))
+    FORALL(x:real,n:nat): expit(x,n) = x^n
 
+  %% Factorial
   %% //@ assert n >= 0; 
   %% int a = 1;
   %% for (int i=n; i >= 2; i--) {
@@ -56,15 +55,89 @@ BEGIN
   factit_inv(n:nat)(i:subrange(1,n),a:posnat): MACRO bool =
     a = factorial(n)/factorial(i)
 
-  %% Postcondition is invariant at 1
-  factit_post(n:nat)(a:posnat): MACRO bool =
-    a = factorial(n)
-
   %% Proved using for_down_invariant 
   factit_sound : LEMMA
-    FORALL(n:nat): factit_post(n)(factit(n))
+    FORALL(n:nat): factit(n) = factorial(n)
 
-   IMPORTING Maybe[real]
+  %% Find index of min element of an array A of N natural numbers (stop if 0 is found in the array)
+  %% //@ assert N > 0;
+  %% int k = 0;
+  %% for(int i = 1; i < N && A[k] != 0; ++i) {
+  %%   /*@ loop invariant
+  %%     a[k] == min(A[0],..,A[i-1]);
+  %%    @ loop variant N-i;
+  %%   */
+  %%   if (A[i] < A[k]) {
+  %%     k = i;
+  %%   }
+  %% }
+  %% //@ assert a[k] == min(A[0],..,A[N-1]);
+
+  min_idx(N:posnat,A:[below(N)->nat]) : below(N) =
+    for(1,N-1,0,
+        LAMBDA(i:subrange(1,N-1),k:below(N)) : A(k) /= 0, % While
+        LAMBDA(i:subrange(1,N-1),k:below(N)) :            % Body
+	  IF A(i) < A(k) THEN i
+	  ELSE k
+	  ENDIF,
+	LAMBDA(i:subrange(1,N),k:below(N)):               % Invariant on index
+	  FORALL (j:below(i)): A(k) <= A(j))
+
+  min_idx_sound : LEMMA
+    FORALL (N:posnat,A:[below(N)->nat]) :
+      LET k = min_idx(N,A) IN
+      FORALL (j:below(N)): A(k) <= A(j)
+
+  %% Find index of max element of an array A of N natural numbers 
+  %% //@ assert N > 0;
+  %% int k = 0;
+  %% for(int i = 1; i < N; ++i) {
+  %%   /*@ loop invariant
+  %%     a[k] == max(A[0],..,A[i-1]);
+  %%    @ loop variant N-i;
+  %%   */
+  %%   if (A[i] > A[k]) {
+  %%     k = i;
+  %%   }
+  %% }
+  %% //@ assert a[k] == max(A[0],..,A[N-1]);
+
+  max_idx(N:posnat,A:[below(N)->nat]) : below(N) =
+    for(1,N-1,0,
+        LAMBDA(i:subrange(1,N-1),k:below(N)) :         % Body
+	  IF A(i) > A(k) THEN i
+	  ELSE k
+	  ENDIF,
+	LAMBDA(i:subrange(1,N),k:below(N)):            % Invariant on index
+	  FORALL (j:below(i)): A(k) >= A(j))
+
+  max_idx_sound : LEMMA
+    FORALL (N:posnat,A:[below(N)->nat]) :
+      LET k = max_idx(N,A) IN
+      FORALL (j:below(N)): A(k) >= A(j)
+  
+  %% Find index element equal to x in an array A of N elements
+  %% //@ assert N > 0;
+  %% int k = 0;
+  %% for(int i = 0; i < N && A[i] != x; ++i) {
+  %%   k = i+1;
+  %%   /*@ loop variant N-i */
+  %% }
+  %% //@ assert k < N =>  A[k] == x;
+
+  find_first[T:TYPE](N:posnat,A:[below(N)->T],x:T) : nat =
+    for(0,N-1,0,
+        LAMBDA(i:below(N),k:nat) : A(i) /= x, % While
+        LAMBDA(i:below(N),k:nat) : i+1)       % Body
+
+  find_first_sound[T:TYPE] : LEMMA
+    FORALL (N:posnat,A:[below(N)->T],x:T) : 
+      LET k = find_first(N,A,x) IN
+        k <= N AND
+	(FORALL (i:below(k)): A(i) /= x) AND
+        (k < N IMPLIES A(k) = x)
+
+  IMPORTING Maybe
 
   sum_array_logic(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n)) : RECURSIVE real =
     IF i=0 THEN 0
@@ -75,14 +148,14 @@ BEGIN
 
   %% //@ assert n >= 0; 
   %% real a = 0;
-  %% for (int i=0; i < n; i++) {
+  %% for (int i=0; i < n; ++i) {
   %%   /*@ loop invariant
   %%       a == sum_array_logic(n,A)(i);
   %%     @ loop variant n-i;
   %%   */
   %%   a = some?(A(i)) ? a+val(A(i)) : 0;
   %% }
-  %% //@ assert a == sum_array_logic(n,A)(n) 
+  %% //@ assert a == sum_array_logic(n,A)(n);
 
   %% Sum elements of array that are Some
 
@@ -95,24 +168,20 @@ BEGIN
   sum_array_inv(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n),a:real) : MACRO bool =
     a = sum_array_logic(n,A)(i)
 
-  %% Postcondition is invariant at n
-  sum_array_post(n:nat,A:ARRAY[below(n)->Maybe[real]])(a:real) : MACRO bool =
-    a = sum_array_logic(n,A)(n)
-
   %% Proved using for_invariant
   sum_array_sound : LEMMA
-    FORALL(n:nat,A:ARRAY[below(n)->Maybe[real]]): sum_array_post(n,A)(sum_array(n,A))
+    FORALL(n:nat,A:ARRAY[below(n)->Maybe[real]]): sum_array(n,A) = sum_array_logic(n,A)(n)
 
   %% //@ assert length(l) > 0; 
   %% int a = l[0];
-  %% for (int i=1; i < length(l); i++) {
+  %% for (int i=1; i < length(l); ++i) {
   %%   /*@ loop invariant
   %%       FORALL(k:below(i)) : a >= l[k] ;
   %%     @ loop variant length(l)-i;
   %%   */
   %%   a = max(a,l[i]);
   %% }
-  %% //@ assert FORALL(k:below(length(l))): a >= l[k] 
+  %% //@ assert FORALL(k:below(length(l))): a >= l[k];
 
   maxit(l:(cons?[real])) : real =
     iterate_left(0,length(l)-1,LAMBDA(i:below(length(l))):nth(l,i),max)
@@ -123,24 +192,20 @@ BEGIN
   maxit_inv(l:(cons?[real]))(i:below(length(l)),a:real): MACRO bool =
     FORALL(k:upto(i)) : a >= nth(l,k)
 
-  %% Postcondition is invariant at length(l)-1
-  maxit_post(l:(cons?[real]))(a:real): MACRO bool =
-    FORALL(k:below(length(l))) : a >= nth(l,k)
-
   %% Proved using iterate_left_invariant 
   maxit_sound : LEMMA
-    FORALL (l:(cons?[real])) : maxit_post(l)(maxit(l))
+    FORALL (l:(cons?[real]))(k:below(length(l))) : maxit(l) >= nth(l,k)
 
   %% //@ assert length(l) > 0; 
   %% int a = l[0];
-  %% for (int i=1; i < length(l); i++) {
+  %% for (int i=1; i < length(l); ++i) {
   %%   /*@ loop invariant
   %%       FORALL(k:below(i)) : a <= l[k] ;
   %%     @ loop variant length(l)-i;
   %%   */
   %%   a = min(a,l[i]);
   %% }
-  %% //@ assert FORALL(k:below(length(l))): a <= l[k] 
+  %% //@ assert FORALL(k:below(length(l))): a <= l[k];
 
   minit(l:(cons?[real])) : real =
     iterate_right(0,length(l)-1,LAMBDA(i:below(length(l))):nth(l,i),min)
@@ -151,13 +216,9 @@ BEGIN
   minit_inv(l:(cons?[real]))(i:below(length(l)),a:real): MACRO bool =
     FORALL(k:subrange(i,length(l)-1)) : a <= nth(l,k)
 
-  %% Postcondition is invariant at 0
-  minit_post(l:(cons?[real]))(a:real): MACRO bool =
-    FORALL(k:below(length(l))) : a <= nth(l,k)
-
   %% Proved using iterate_right_invariant
   minit_sound : LEMMA
-    FORALL (l:(cons?[real])) : minit_post(l)(minit(l))
+    FORALL (l:(cons?[real]))(k:below(length(l))) : minit(l) <= nth(l,k)
 
   %% The following lemmas transform FORALL and EXISTS of subranges to
   %% computable boolean functions. These lemmas are proved using

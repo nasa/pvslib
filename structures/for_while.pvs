@@ -1,0 +1,141 @@
+for_while[T:TYPE] : THEORY
+BEGIN
+
+  IMPORTING for_iterate[T]
+
+  iter(m:int,n:int)(k:nat)(init:T,f:ForBody(m,n)) : RECURSIVE T =
+    IF k = 0 OR m > n THEN init
+    ELSIF k-1 <= n-m THEN f(m+k-1,iter(m,n)(k-1)(init,f))
+    ELSE f(n,iter(m,n)(n-m)(init,f))
+    ENDIF
+    MEASURE k
+
+  iter_ge : LEMMA
+    FORALL (m:int,n:upfrom(m),k:posnat)(init:T,f:ForBody(m,n)) :
+      iter(m,n)(n-m+k)(init,f) = f(n,iter(m,n)(n-m)(init,f))
+
+  iterate_eq_iter : LEMMA
+    FORALL (k:nat,m:upfrom(k-1),f:[T->T], init:T):
+      iterate(f,k)(init) = iter(0,m)(k)(init,LAMBDA(i:upto(m),a:T):f(a))
+
+  %% Recursive definitionn of a for with a while guard and with an invariant
+  for_while_it(upfrom:int,upto:int,i:upfrom(upfrom),
+	       init:T,
+	       f:ForBody(upfrom,upto),
+               (while:PRED[[subrange(upfrom,upto),T]] |
+	         FORALL (k:subrange(upfrom,min(i-1,upto))): while(k,iter(upfrom,upto)(k-upfrom)(init,f))),
+	       (a : T | a = iter(upfrom,upto)(i-upfrom)(init,f)),
+	       (inv:PRED[[subrange(upfrom,upto+1),T]] |
+	         FORALL (k:subrange(upfrom,upto),ak:T): inv(k,ak) AND while(k,ak) IMPLIES inv(k+1,f(k,ak)))):
+    RECURSIVE { t : T |
+                (upfrom <= upto IMPLIES
+                   (EXISTS (j:subrange(upfrom,upto+1)):
+		     (t = iter(upfrom,upto)(j-upfrom)(init,f)) AND
+		     (FORALL (k:subrange(upfrom,j-1)) : while(k,iter(upfrom,upto)(k-upfrom)(init,f))) AND
+		     (j <= upto IMPLIES NOT while(j,t)) AND 
+		     (inv(upfrom,init) IMPLIES
+		       FORALL (k:subrange(upfrom,j)) :
+		         inv(k,iter(upfrom,upto)(k-upfrom)(init,f))))) } =
+    IF i > upto OR NOT while(i,a) THEN a
+    ELSE
+      for_while_it(upfrom,upto,i+1,init,f,while,f(i,a),inv)
+    ENDIF
+  MEASURE max(upto-i+1,0)
+
+  %% For with a while guard and with an invariant on index
+  %% local a : T := init;
+  %% local i : int;
+  %% for (i := m; i <= n && while(i,a); i++) {
+  %%   { invariant(i,a) }
+  %%   a := f(i,a);
+  %% }
+  %% { invariant(i+1,a) && (i<=n ==> !while(i,a)) }
+  %% return a; 
+  for(m,n:int,
+      init:T,
+      while:PRED[[subrange(m,n),T]],
+      f:ForBody(m,n),
+      (inv:PRED[[subrange(m,n+1),T]] |
+	      FORALL (k:subrange(m,n),ak:T):
+	        inv(k,ak) AND while(k,ak) IMPLIES inv(k+1,f(k,ak)))) : { t : T |
+         IF m <= n THEN
+           EXISTS (i:subrange(m,n+1)):
+  	     (t = iter(m,n)(i-m)(init,f)) AND
+             (FORALL (k:subrange(m,i-1)) : while(k,iter(m,n)(k-m)(init,f))) AND
+             (i <= n IMPLIES NOT while(i,t)) AND
+	     (inv(m,init) IMPLIES inv(i,t))
+	 ELSE t = init
+	 ENDIF } =
+    for_while_it(m,n,m,init,f,while,init,inv)
+
+  %% For with a while guard (without invariant)
+  %% local a : T := init;
+  %% local i : int;
+  %% for (i := m; i <= n && while(i,a); i++) {
+  %%   a := f(i,a);
+  %% }
+  %% { i<=n ==> !while(i,a) }
+  %% return a; 
+  for(m,n:int,
+      init:T,
+      while:PRED[[subrange(m,n),T]],
+      f:ForBody(m,n)) : { t : T |
+         IF m <= n THEN
+           EXISTS (i:subrange(m,n+1)):
+  	     (t = iter(m,n)(i-m)(init,f)) AND
+             (FORALL (k:subrange(m,i-1)) : while(k,iter(m,n)(k-m)(init,f))) AND
+             (i <= n IMPLIES NOT while(i,t))
+	 ELSE t = init
+	 ENDIF } =
+    for(m,n,init,while,f,LAMBDA(i:subrange(m,n+1),t:T):TRUE)
+
+  %% For with an invariant on index (without a while guard)
+  %% local a : T := init;
+  %% local i : int;
+  %% for (i := m; i <= n; i++) {
+  %%   { invariant(i,a) }
+  %%   a := f(i,a);
+  %% }
+  %% { invariant(i+1,a) }
+  %% return a; 
+  for(m,n:int,
+      init:T,
+      f:ForBody(m,n),
+      (inv:PRED[[subrange(m,n+1),T]] |
+	      FORALL (k:subrange(m,n),ak:T):
+	        inv(k,ak) IMPLIES inv(k+1,f(k,ak)))) : { t : T |
+         IF m <= n THEN
+           EXISTS (i:subrange(m,n+1)):
+  	     (t = iter(m,n)(i-m)(init,f)) AND
+	     (i = n+1) AND
+	     (inv(m,init) IMPLIES inv(i,t))
+	 ELSE t = init
+	 ENDIF } =
+    for_while_it(m,n,m,init,f,LAMBDA(i:subrange(m,n),a:T):TRUE,init,inv)
+
+  %% Bounded while loop with an invariant on iteration (counter is a ghost variable)
+  %% local a : T := init;
+  %% for (i := 0; i < N && while(a); i++) {
+  %%   { invariant(i,a) }
+  %%   a := f(a);
+  %% }
+  %% { invariant(i+1,a) && (i<=n ==> !while(a)) }
+  %% return a; 
+  for(N:nat,
+      init:T,
+      while:PRED[T],
+      f:[T->T],
+      (inv:PRED[[upto(N),T]] |
+             FORALL (k:below(N),ak:T):
+	        inv(k,ak) IMPLIES inv(k+1,f(ak)))) : { t : T |
+          IF N > 0 THEN
+	    EXISTS (i:upto(N)):
+  	      (t = iterate(f,i)(init)) AND
+              (FORALL (k:below(i)) : while(iterate(f,k)(init))) AND
+              (i < N IMPLIES NOT while(t)) AND
+	      (inv(0,init) IMPLIES inv(i,t))
+	  ELSE t = init
+	  ENDIF } =
+    for(0,N-1,init,LAMBDA(i:below(N),a:T):while(a),LAMBDA(i:below(N),a:T):f(a),inv)
+
+END for_while
