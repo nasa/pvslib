@@ -3,21 +3,6 @@ BEGIN
 
   IMPORTING for_iterate[T]
 
-  iter(m:int,n:int)(k:nat)(init:T,f:ForBody(m,n)) : RECURSIVE T =
-    IF k = 0 OR m > n THEN init
-    ELSIF k-1 <= n-m THEN f(m+k-1,iter(m,n)(k-1)(init,f))
-    ELSE f(n,iter(m,n)(n-m)(init,f))
-    ENDIF
-    MEASURE k
-
-  iter_ge : LEMMA
-    FORALL (m:int,n:upfrom(m),k:posnat)(init:T,f:ForBody(m,n)) :
-      iter(m,n)(n-m+k)(init,f) = f(n,iter(m,n)(n-m)(init,f))
-
-  iterate_eq_iter : LEMMA
-    FORALL (k:nat,m:upfrom(k-1),f:[T->T], init:T):
-      iterate(f,k)(init) = iter(0,m)(k)(init,LAMBDA(i:upto(m),a:T):f(a))
-
   %% Recursive definitionn of a for with a while guard and with an invariant
   for_while_it(upfrom:int,upto:int,i:upfrom(upfrom),
 	       init:T,
@@ -114,6 +99,24 @@ BEGIN
 	 ENDIF } =
     LET while_true = LAMBDA(i:subrange(m,n),a:T):TRUE IN
     for(m,n,init,while_true,f,inv)
+
+  %% Invariant is a ghost predicate, i.e., it doesn't affect computation
+  for_inv_ghost : LEMMA   
+    FORALL (m,n:int,
+            init:T,
+            while:PRED[[subrange(m,n),T]],
+            f:ForBody(m,n),
+            (inv:PRED[[subrange(m,n+1),T]] |
+	      FORALL (k:subrange(m,n),ak:T):
+	        inv(k,ak) AND while(k,ak) IMPLIES inv(k+1,f(k,ak)))):
+      for(m,n,init,while,f,inv) = for(m,n,init,while,f)
+
+  %% For-iterate is equal to for-while
+  for_iterate_eq_for_while : LEMMA
+    FORALL (m,n:int,
+           init:T,
+           f:ForBody(m,n)) :
+      for(m,n,init,f) = for(m,n,init,LAMBDA(i:subrange(m,n),a:T):TRUE,f)
 
   %% Bounded while loop with an invariant on iteration (counter is a ghost variable)
   %% local a : T := init;
