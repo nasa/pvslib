@@ -59,35 +59,6 @@ BEGIN
   factit_sound : LEMMA
     FORALL(n:nat): factit(n) = factorial(n)
 
-  %% Find index of min element of an array A of N natural numbers (stop if 0 is found in the array)
-  %% //@ assert N > 0;
-  %% int k = 0;
-  %% for(int i = 1; i < N && A[k] != 0; ++i) {
-  %%   /*@ loop invariant
-  %%     a[k] == min(A[0],..,A[i-1]);
-  %%    @ loop variant N-i;
-  %%   */
-  %%   if (A[i] < A[k]) {
-  %%     k = i;
-  %%   }
-  %% }
-  %% //@ assert a[k] == min(A[0],..,A[N-1]);
-
-  min_idx(N:posnat,A:[below(N)->nat]) : below(N) =
-    for(1,N-1,0,
-        LAMBDA(i:subrange(1,N-1),k:below(N)) : A(k) /= 0, % While
-        LAMBDA(i:subrange(1,N-1),k:below(N)) :            % Body
-	  IF A(i) < A(k) THEN i
-	  ELSE k
-	  ENDIF,
-	LAMBDA(i:subrange(1,N),k:below(N)):               % Invariant on index
-	  FORALL (j:below(i)): A(k) <= A(j))
-
-  min_idx_sound : LEMMA
-    FORALL (N:posnat,A:[below(N)->nat]) :
-      LET k = min_idx(N,A) IN
-      FORALL (j:below(N)): A(k) <= A(j)
-
   %% Find index of max element of an array A of N natural numbers 
   %% //@ assert N > 0;
   %% int k = 0;
@@ -207,59 +178,6 @@ BEGIN
       LET (m,n) = min_mat_idx(M,N,mat) IN
       FORALL (i:below(M),j:below(N)): mat(m)(n) <= mat(i)(j)
 
-  %% Find index of max element of matrix mat of MxN natural numbers (stop if zero is found) 
-  %% //@ assert M,N > 0;
-  %% int m = 0;  // Row index of max element
-  %% int n = 0;  // Column index of max element
-  %% int i = N==1 ? 1 : 0; // Row counter
-  %% int j = N==1 ? 0 : 1; // Col counter 
-  %% for(int i = 1; i < M*N && mat[m][n] /= 0; ++i) {
-  %%   /*@ loop invariant
-  %%     a[m][n] == max(A,(i,j)-1);
-  %%    @ loop variant M*N-i;
-  %%   */
-  %%   if ( A[i][j] < A[m][n] ) {
-  %%     m = i;
-  %%     n = j;
-  %%   }
-  %%   if (j+1 < N) {
-  %%     i=i+1;
-  %%     j=0;
-  %%   } else {
-  %%     j = j+1;
-  %%   }
-  %% //@ assert a[k] == max(A,(M,N)-1)
-
-  max_mat_idx(M,N:posnat,mat:[below(M)->[below(N)->nat]]) : [below(M),below(N)] =
-    LET state = while(M*N-1,(#                        % Init
-		    mxn := (0,0),
-                    ixj := IF N=1 THEN (1,0) ELSE (0,1) ENDIF
-		  #),
-		  LAMBDA (s:State(M,N)):              % Body
-		    LET (m,n) = s`mxn,
-		        (i,j) = s`ixj IN
-		    IF i = M THEN s    
-		    ELSE
-		      s WITH [
-			mxn := IF mat(i)(j) > mat(m)(n) THEN (i,j)
-			       ELSE s`mxn
-			       ENDIF,
-		        ixj := IF j+1 < N THEN (i,j+1) ELSE (i+1,0) ENDIF
-	              ]
-		    ENDIF,
-		  LAMBDA (ij:upto(M*N-1),s:State(M,N)) : % Invariant
-		    LET (m,n) = s`mxn,
-		        (i,j) = s`ixj IN
-		    ij+1 = i*N+j AND
-		    (FORALL (ki:below(i),kj:below(N))  : mat(m)(n) >= mat(ki)(kj)) AND
-		    (i < M IMPLIES FORALL(kj:below(j)) : mat(m)(n) >= mat(i)(kj)))
-    IN state`mxn
-
-  max_mat_idx_sound : LEMMA
-    FORALL (M,N:posnat,mat:[below(M)->[below(N)->nat]]) :
-      LET (m,n) = max_mat_idx(M,N,mat) IN
-      FORALL (i:below(M),j:below(N)): mat(m)(n) >= mat(i)(j)
-
   %% Sum elements of array that are Some
   %% //@ assert n >= 0; 
   %% real a = 0;
@@ -341,44 +259,5 @@ BEGIN
   %% Proved using iterate_right_invariant
   minit_sound : LEMMA
     FORALL (l:(cons?[real]))(k:below(length(l))) : minit(l) <= nth(l,k)
-
-  %% The following lemmas transform FORALL and EXISTS of subranges to
-  %% computable boolean functions. These lemmas are proved using
-  %% iterate_left_induction, which requires invariants on the i-th iteration
-  %% of the lopp.
-
-  %% Invariant is LAMBDA(j:upto(n),a:bool):(FORALL(k:upto(j)):P(k)) = a
-  forall_and_upto : LEMMA
-    FORALL(n:nat,P:[upto(n)->bool]):
-      ((FORALL (j:upto(n)) : P(j)) =
-        iterate_left[bool](0,n,P,AND))
-
-  forall_and_below : LEMMA
-    FORALL(n:posnat,P:[below(n)->bool]):
-      ((FORALL (j:below(n)) : P(j)) =
-        iterate_left[bool](0,n-1,P,AND))
-	
-  %% Invariant is LAMBDA(j:upto(n-m),a:bool):(FORALL(k:subrange(m,m+j)):P(k)) = a
-  forall_and_subrange : LEMMA
-    FORALL(m:int,n:upfrom(m),P:[subrange(m,n)->bool]):
-      ((FORALL (j:subrange(m,n)) : P(j)) =
-        iterate_left[bool](m,n,P,AND))
-
-  %% Invariant is LAMBDA(j:upto(n),a:bool):(EXISTS(k:upto(j)):P(k)) = a
-  exists_or_upto : LEMMA
-    FORALL(n:nat,P:[upto(n)->bool]):
-      ((EXISTS (j:upto(n)) : P(j)) =
-        iterate_left[bool](0,n,P,OR))
-
-  exists_or_below : LEMMA
-    FORALL(n:posnat,P:[below(n)->bool]):
-      ((EXISTS (j:below(n)) : P(j)) =
-        iterate_left[bool](0,n-1,P,OR))
-	
-  %% Invariant is LAMBDA(j:upto(n-m),a:bool):(EXISTS(k:subrange(m,m+j)):P(k)) = a
-  exists_or_subrange : LEMMA
-    FORALL(m:int,n:upfrom(m),P:[subrange(m,n)->bool]):
-      ((EXISTS (j:subrange(m,n)) : P(j)) =
-    iterate_left[bool](m,n,P,OR))
 
 END for_examples
