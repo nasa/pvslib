@@ -1,4 +1,4 @@
-# Complex Numbers
+# Complex Numbers (Axiomatic)
 
 The complex numbers are defined (axiomatically) in this way so that we can conveniently use the numeric constants 0, 1, 2 etc.
 The alternative -- using pairs of reals to represent the real and imaginary components -- would lead to the somewhat unappealing formulation of Euler's result as "exp((0,1)*(pi,0)) = (-1,0)".
@@ -12,17 +12,17 @@ As a matter of taste, this formalization allows the somewhat more elegant formul
 | --- | --- | --- | --- |
 
 
-![dependency graph](./complex-zoomed.svg "Dependency Graph")
+![dependency graph](./complex-zoomed_ax.svg "Dependency Graph")
 
 # Contributors
-* [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
-* Anthony Narkawicz, NASA, USA
+* David Lester, formerly at Manchester University, UK
+* Anthony Narkawicz, formerly at NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
-* [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
+* Mariano Moscato, AMA-NASA, USA (formerly at NIA) 
 
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./complex.svg "Dependency Graph")
+![dependency graph](./complex_ax.svg "Dependency Graph")
