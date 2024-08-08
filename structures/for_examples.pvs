@@ -115,7 +115,7 @@ BEGIN
     FORALL (N:posnat,A:[below(N)->nat]) :
       LET k = max_idx(N,A) IN
       FORALL (j:below(N)): A(k) >= A(j)
-  
+
   %% Find index element equal to x in an array A of N elements
   %% //@ assert N > 0;
   %% int k = 0;
@@ -137,15 +137,130 @@ BEGIN
 	(FORALL (i:below(k)): A(i) /= x) AND
         (k < N IMPLIES A(k) = x)
 
-  IMPORTING Maybe
+  %% Find index of min element of matrix mat of MxN natural numbers (stop if zero is found) 
+  %% //@ assert M,N > 0;
+  %% int m = 0;  // Row index of min element
+  %% int n = 0;  // Column index of min element
+  %% int i = N==1 ? 1 : 0; // Row counter
+  %% int j = N==1 ? 0 : 1; // Col counter 
+  %% for(int i = 1; i < M*N && mat[m][n] /= 0; ++i) {
+  %%   /*@ loop invariant
+  %%     a[m][n] == min(A,(i,j)-1);
+  %%    @ loop variant M*N-i;
+  %%   */
+  %%   if ( A[i][j] < A[m][n] ) {
+  %%     m = i;
+  %%     n = j;
+  %%   }
+  %%   if (j+1 < N) {
+  %%     i=i+1;
+  %%     j=0;
+  %%   } else {
+  %%     j = j+1;
+  %%   }
+  %% //@ assert a[k] == min(A,(M,N)-1)
 
-  sum_array_logic(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n)) : RECURSIVE real =
-    IF i=0 THEN 0
-    ELSE (IF some?(A(i-1)) THEN val(A(i-1)) ELSE 0 ENDIF) +
-          sum_array_logic(n,A)(i-1)
-    ENDIF
-  MEASURE i
+  State(M,N:posnat) : TYPE = [#
+    mxn : [below(M),below(N)],  % Row,colum index of returned element
+    ixj : [upto(M),below(N)]    % Counter rows,colums
+  #]
 
+  M_x_N_eq_1 : LEMMA
+    FORALL (M,N:posnat):
+      M*N=1 IMPLIES M=1 AND N=1
+
+  M_x_N_eq_i_j : LEMMA
+    FORALL (M,N:posnat,i:upto(M),j:below(N)):
+      M*N = i*N+j IMPLIES
+      i = M AND j = 0
+
+  min_mat_idx(M,N:posnat,mat:[below(M)->[below(N)->nat]]) : [below(M),below(N)] =
+    LET state = while(M*N-1,(#                        % Init
+		    mxn := (0,0),
+                    ixj := IF N=1 THEN (1,0) ELSE (0,1) ENDIF
+		  #),
+	          LAMBDA (s:State(M,N)):              % While
+		    LET (m,n) = s`mxn IN
+		      mat(m)(n) /= 0, 
+		  LAMBDA (s:State(M,N)):              % Body
+		    LET (m,n) = s`mxn,
+		        (i,j) = s`ixj IN
+		    IF i = M THEN s    
+		    ELSE
+		      s WITH [
+			mxn := IF mat(i)(j) < mat(m)(n) THEN (i,j)
+			       ELSE s`mxn
+			       ENDIF,
+		        ixj := IF j+1 < N THEN (i,j+1) ELSE (i+1,0) ENDIF
+	              ]
+		    ENDIF,
+		  LAMBDA (ij:upto(M*N-1),s:State(M,N)) : % Invariant
+		    LET (m,n) = s`mxn,
+		        (i,j) = s`ixj IN
+		    ij+1 = i*N+j AND
+		    (FORALL (ki:below(i),kj:below(N))  : mat(m)(n) <= mat(ki)(kj)) AND
+		    (i < M IMPLIES FORALL(kj:below(j)) : mat(m)(n) <= mat(i)(kj)))
+    IN state`mxn
+
+  min_mat_idx_sound : LEMMA
+    FORALL (M,N:posnat,mat:[below(M)->[below(N)->nat]]) :
+      LET (m,n) = min_mat_idx(M,N,mat) IN
+      FORALL (i:below(M),j:below(N)): mat(m)(n) <= mat(i)(j)
+
+  %% Find index of max element of matrix mat of MxN natural numbers (stop if zero is found) 
+  %% //@ assert M,N > 0;
+  %% int m = 0;  // Row index of max element
+  %% int n = 0;  // Column index of max element
+  %% int i = N==1 ? 1 : 0; // Row counter
+  %% int j = N==1 ? 0 : 1; // Col counter 
+  %% for(int i = 1; i < M*N && mat[m][n] /= 0; ++i) {
+  %%   /*@ loop invariant
+  %%     a[m][n] == max(A,(i,j)-1);
+  %%    @ loop variant M*N-i;
+  %%   */
+  %%   if ( A[i][j] < A[m][n] ) {
+  %%     m = i;
+  %%     n = j;
+  %%   }
+  %%   if (j+1 < N) {
+  %%     i=i+1;
+  %%     j=0;
+  %%   } else {
+  %%     j = j+1;
+  %%   }
+  %% //@ assert a[k] == max(A,(M,N)-1)
+
+  max_mat_idx(M,N:posnat,mat:[below(M)->[below(N)->nat]]) : [below(M),below(N)] =
+    LET state = while(M*N-1,(#                        % Init
+		    mxn := (0,0),
+                    ixj := IF N=1 THEN (1,0) ELSE (0,1) ENDIF
+		  #),
+		  LAMBDA (s:State(M,N)):              % Body
+		    LET (m,n) = s`mxn,
+		        (i,j) = s`ixj IN
+		    IF i = M THEN s    
+		    ELSE
+		      s WITH [
+			mxn := IF mat(i)(j) > mat(m)(n) THEN (i,j)
+			       ELSE s`mxn
+			       ENDIF,
+		        ixj := IF j+1 < N THEN (i,j+1) ELSE (i+1,0) ENDIF
+	              ]
+		    ENDIF,
+		  LAMBDA (ij:upto(M*N-1),s:State(M,N)) : % Invariant
+		    LET (m,n) = s`mxn,
+		        (i,j) = s`ixj IN
+		    ij+1 = i*N+j AND
+		    (FORALL (ki:below(i),kj:below(N))  : mat(m)(n) >= mat(ki)(kj)) AND
+		    (i < M IMPLIES FORALL(kj:below(j)) : mat(m)(n) >= mat(i)(kj)))
+    IN state`mxn
+
+  max_mat_idx_sound : LEMMA
+    FORALL (M,N:posnat,mat:[below(M)->[below(N)->nat]]) :
+      LET (m,n) = max_mat_idx(M,N,mat) IN
+      FORALL (i:below(M),j:below(N)): mat(m)(n) >= mat(i)(j)
+
+  %% Sum elements of array that are Some
   %% //@ assert n >= 0; 
   %% real a = 0;
   %% for (int i=0; i < n; ++i) {
@@ -157,7 +272,14 @@ BEGIN
   %% }
   %% //@ assert a == sum_array_logic(n,A)(n);
 
-  %% Sum elements of array that are Some
+  IMPORTING Maybe
+
+  sum_array_logic(n:nat,A:ARRAY[below(n)->Maybe[real]])(i:upto(n)) : RECURSIVE real =
+    IF i=0 THEN 0
+    ELSE (IF some?(A(i-1)) THEN val(A(i-1)) ELSE 0 ENDIF) +
+          sum_array_logic(n,A)(i-1)
+    ENDIF
+  MEASURE i
 
   sum_array(n:nat,A:ARRAY[below(n)->Maybe[real]]) : real =
     for[real](0,n-1,0,LAMBDA(i:below(n),a:real):
