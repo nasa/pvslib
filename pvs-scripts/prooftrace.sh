@@ -67,6 +67,7 @@ if [ "$logfile" ]; then
     fi
     file=$logfile
 else
+    deletelog=y
     file="$theory.pvs"
 fi
 
@@ -92,8 +93,7 @@ done
 if [ -z "$logfile" ]; then
     comm="proveit --traces @$theory.$formulas"
     logfile=$theory.$formulas.log
-    echo "Running:"
-    echo "$comm"
+    echo "Running: $comm"
     what=`$comm`
     echo "Producing $logfile [$what]"
 fi
@@ -103,8 +103,11 @@ if [ -z "$version" ]; then
 fi
 
 for formula in $arrayformulas ; do
-    trf="$formula-v$version.trf"
+    trf="${theory}_${formula}-v${version}.trf"
     cat $logfile | sed -n "/Rerunning proof of $theory.$formula/,/$theory.$formula/ p" > $trf
     echo "Writing $trf"
 done
 
+if [ "$deletelog" ]; then
+    rm -f $theory.$formulas.log
+fi
