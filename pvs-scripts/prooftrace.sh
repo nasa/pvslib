@@ -14,12 +14,15 @@ Valid <options> are:
 -v|--version <ver>
 	Use <ver> as postfix in the name of the output file. By default, <ver> is 
         the PVS version.
+-L
+	Do not remove log file after proveit command
 "
     exit 1
 }
 theory=
 formulas=
 version=
+deletelog=y
 while [ $# -gt 0 ]
 do
     case $1 in
@@ -35,7 +38,9 @@ do
 		echo "** Error: Log file $logfile not found"
 		exit 1
 	    fi
-	    ;;
+	    deletelog=;;
+	-L)
+	    deletelog=;;
         -f|--formula)
             shift
             formulas=$1;;
@@ -67,7 +72,6 @@ if [ "$logfile" ]; then
     fi
     file=$logfile
 else
-    deletelog=y
     file="$theory.pvs"
 fi
 
@@ -104,7 +108,7 @@ fi
 
 for formula in $arrayformulas ; do
     trf="${theory}_${formula}-v${version}.trf"
-    cat $logfile | sed -n "/Rerunning proof of $theory.$formula/,/$theory.$formula/ p" > $trf
+    cat $logfile | sed -n "/Rerunning proof of $theory.$formula/,/^$theory.$formula/ p" > $trf
     echo "Writing $trf"
 done
 
