@@ -27,7 +27,7 @@ Currently, NASALib consists of 62 top-level libraries, containing about 38K prov
 | [Bernstein](./Bernstein/README.md) | Formalization of multivariate Bernstein polynomials |
 | [CCG](./CCG/README.md) | Formalization of diverse termination criteria |
 | [complex](./complex/README.md) | Complex numbers |
-| [complex_alt](./complex_alt/README.md) | Alternative formalization of complex numbers |
+| [complex_ax](./complex_ax/README.md) | Axiomatic formalization of complex numbers |
 | [complex_integration](./complex_integration/README.md) | Complex integration |
 | [co_structures](./co_structures/README.md) | Sequences of countable length defined as co-algebraic datatypes |
 | [digraphs](./digraphs/README.md) | Directed graphs: circuits, maximal subtrees, paths, DAGs |
