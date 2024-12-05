@@ -1,0 +1,608 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%  Verification of Syntactic antiunification  %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Mariano Miguel Moscato    AMA/NASA LaRC Formal Methods
+% Maria Julia Dias Lima     Universidade de Brasilia
+% Mauricio Ayala-Rincon     Universidade de Brasilia
+% Temur Kutsia              RISC/Johannes Kepler Universitaet Linz
+% Thaynara Arielly de Lima  Universidade Federal de Goias
+%
+%    Last modified 3rd December, 2024
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+antiunif
+: theory
+begin
+
+
+  importing first_order_substitution,
+            ints@max_finite_set_nat
+
+  Term: TYPE+ = first_order_term
+
+% Anti-unification triples (AUTs) consist of a left- and right-hand
+% side terms and a varialble label.  Here specified as AUEquations.
+  AUEquation: TYPE = [# lhs, rhs : Term , label : variable #]
+
+  makeEq(lhs, rhs : Term , label : variable): AUEquation
+  = (# lhs:=lhs, rhs:=rhs, label:=label #)
+
+  vars(eq: AUEquation): finite_set[variable]
+  = vars(eq`lhs) ∪ vars(eq`rhs)
+
+  validEquation?(eq: AUEquation): bool
+  = ¬ member(eq`label, vars(eq))
+
+ size(eq: AUEquation): nat
+  = size(eq`lhs) + size(eq`rhs)
+
+ matchingFuns?(eq: AUEquation): bool
+    = LET lhs = eq`lhs, rhs = eq`rhs
+      IN  (app?(lhs) ∧ app?(rhs)) ∧ sym(lhs) = sym(rhs)
+
+ matchingPairs?(eq: AUEquation): bool
+  = LET lhs = eq`lhs, rhs = eq`rhs
+    in pair?(lhs) ∧ pair?(rhs)
+
+ syntacticallyEq?(eq: AUEquation): bool
+  = LET lhs = eq`lhs, rhs = eq`rhs
+    IN ¬app?(lhs) ∧ ¬pair?(lhs) ∧ lhs = rhs
+
+  SolvedEq?(eq: AUEquation) : bool
+  = NOT (matchingFuns?(eq) ∨ matchingPairs?(eq) ∨ syntacticallyEq?(eq))
+
+ % Classification of Anti-Unification triples 
+  AUEquation_classification : LEMMA
+    FORALL(eq: AUEquation) :
+       (matchingFuns?(eq) ∨ matchingPairs?(eq) ∨ syntacticallyEq?(eq) ∨ SolvedEq?(eq))
+    ∧  ( (matchingFuns?(eq) ∧ ¬ (matchingPairs?(eq) ∨ syntacticallyEq?(eq) ∨ SolvedEq?(eq)) ) ∨
+         (matchingPairs?(eq) ∧ ¬ (matchingFuns?(eq) ∨ syntacticallyEq?(eq) ∨ SolvedEq?(eq))) ∨
+	  (syntacticallyEq?(eq) ∧ ¬ (matchingFuns?(eq) ∨ matchingPairs?(eq) ∨ SolvedEq?(eq))) ∨
+	   (SolvedEq?(eq) ∧ ¬ (matchingFuns?(eq) ∨ matchingPairs?(eq) ∨ syntacticallyEq?(eq))) )
+	   
+  List_eq : TYPE = list[AUEquation]
+
+  vars(s: List_eq): RECURSIVE finite_set[variable]
+  = if null?(s) then ∅
+    else vars(car(s)) ∪ vars(cdr(s)) endif
+    measure s by <<
+
+  vars_in_append_List_eq :   LEMMA
+      FORALL (s1, s2: List_eq)  : vars(append(s1,s2)) = union(vars(s1), vars(s2))
+
+  subset_vars_eq_listEqs : LEMMA 
+    FORALL (s : List_eq, eq : AUEquation) :
+       member(eq, s) IMPLIES subset?(vars(eq), vars(s))
+
+  labels(s: List_eq): RECURSIVE finite_set[variable]
+  = if null?(s) then ∅
+    else add(car(s)`label, labels(cdr(s))) endif
+    measure s by <<
+
+  eq_member_eq_label_in_labels : LEMMA  
+  FORALL(le:List_eq, eq:AUEquation) : member(eq, le) IMPLIES member(eq`label, labels(le))
+
+  eqs_label_eq_this_label : LEMMA
+  FORALL(le:List_eq, lbl:variable) :  member(lbl, labels(le)) IMPLIES
+        EXISTS (eq:AUEquation) : member(eq, le) AND eq`label = lbl 
+  
+  card_lbls_in_List_eq : LEMMA FORALL(le:List_eq) :  card(labels(le)) <= length(le)
+
+  append_labels_is_union_labels : LEMMA
+  FORALL (eqs1, eqs2 : List_eq) : labels(append(eqs1, eqs2)) = union(labels(eqs1), labels(eqs2))
+
+  validEqs?(s: List_eq): bool
+    = empty?(vars(s) ∩ labels(s)) ∧ card(labels(s)) = length(s)
+
+disjoint_valid_append_validEqs : LEMMA
+FORALL (eqs1, eqs2 : List_eq) : validEqs?(append(eqs1,eqs2)) IMPLIES disjoint?(labels(eqs1), labels(eqs2))
+
+non_member_label_validEqs :  LEMMA
+FORALL (eqs: (validEqs?) | cons?(eqs))  : NOT member(car(eqs)`label, labels(cdr(eqs)))
+
+validity_cdr_ValidEqs  : LEMMA  
+FORALL (eqs: (validEqs?) | cons?(eqs)) : validEqs?(cdr(eqs))
+
+validity_Eq_in_ValidEqs  : LEMMA   
+FORALL (eqs: (validEqs?), i : below[length(eqs)]) : validEquation?(nth(eqs,i))
+
+non_member_var_nth_label: LEMMA
+FORALL (eqs: (validEqs?), i: below[length(eqs)], v: variable): NOT member(v, labels(eqs)) IMPLIES v /= label(nth(eqs,i)) 
+
+validity_append_valid_Eqs: LEMMA
+ FORALL (l1,l2: List_eq): validEqs?(append(l1,l2)) IMPLIES validEqs?(l1) AND validEqs?(l2)
+
+  size(eqs: List_eq): nat
+  = sum(map(size)(eqs))
+
+% Definition of configuration
+
+  Configuration: TYPE = [# unsolved, solved: List_eq, substitution: (nice?) #]
+
+  size(c: Configuration): nat
+  = size(c`unsolved) + size(c`solved)
+  
+  matchingFuns?(s: List_eq): bool
+    = cons?(s) ∧  matchingFuns?(car(s))
+
+  matchingPairs?(s: List_eq): bool
+  = cons?(s) ∧ matchingPairs?(car(s))
+
+  syntacticallyEq?(s: List_eq): bool
+  = cons?(s) ∧ syntacticallyEq?(car(s))
+  
+  SolvedEq?(s: List_eq) : bool
+  = cons?(s) ∧ SolvedEq?(car(s))
+
+% Definition of repeated equations 
+  repeated_eq?(eq1,eq2 :  AUEquation) : bool =
+    eq1`lhs = eq2`lhs ∧ eq1`rhs = eq2`rhs
+    
+  eq_repeated_in?(eq: AUEquation, s: List_eq) :  RECURSIVE bool
+   =  cons?(s) ∧
+    ( repeated_eq?(eq,car(s)) ∨ eq_repeated_in?(eq, cdr(s)) )
+  MEASURE s by <<
+
+  first_eq_repeated?(s:List_eq) :  bool
+    = cons?(s) ∧ eq_repeated_in?(car(s),cdr(s))
+
+  cdr_first_eq_red: LEMMA
+  FORALL (s: (first_eq_repeated?)): cons?(cdr(s))
+
+% Selection of the second occurrence of a head repeated equation in a list
+  red_eq_in(s: (first_eq_repeated?)) : RECURSIVE AUEquation =
+    IF repeated_eq?(car(s), car(cdr(s))) 
+    THEN car(cdr(s))
+    ELSE red_eq_in(cons(car(s), cdr(cdr(s))))
+    ENDIF
+    MEASURE length(s)
+
+  red_eq_in_lhs_rhs_equality : LEMMA
+    FORALL (s: (first_eq_repeated?)) :
+      red_eq_in(s)`lhs = car(s)`lhs AND red_eq_in(s)`rhs = car(s)`rhs
+
+  red_eq_in_cdr : LEMMA
+     FORALL (s: (first_eq_repeated?)) : member(red_eq_in(s),cdr(s))
+
+   nonrepeated?(s: List_eq) : RECURSIVE bool  =
+    length(s) <= 1 ∨ 
+    ( NOT first_eq_repeated?(s) ∧ nonrepeated?(cdr(s)))
+    MEASURE s by << 
+
+  allSolvedEqs?(s: List_eq)  : RECURSIVE bool =
+    null?(s) ∨ (SolvedEq?(car(s)) ∧ allSolvedEqs?(cdr(s)))
+    MEASURE s by <<
+
+% List of valid solved equations:  all equations are solved and not repeated.
+  validSolvedEqs?(s: List_eq) : bool =
+   allSolvedEqs?(s) ∧ nonrepeated?(s)
+
+% Definition of valid configuration
+  validConfiguration?(c: Configuration): bool
+  = LET allEquations = append(c`unsolved, c`solved)
+    in validEqs?(allEquations) ∧ empty?(supset_dom(c`substitution) ∩ labels(allEquations)) ∧ 
+        validSolvedEqs?(c`solved) ∧ empty?(supset_dom(c`substitution) ∩ vars(allEquations))
+
+  disjoint_labels_unsolved_solved : COROLLARY
+    FORALL (c: (validConfiguration?)) : disjoint?(labels(c`unsolved), labels(c`solved))
+
+  validity_car_conf_unsolved  : COROLLARY
+   FORALL (c: (validConfiguration?)| cons?(c`unsolved)) : validEquation?(car(c`unsolved))
+
+  validity_cdr_conf_unsolved  : COROLLARY 
+    FORALL (c: (validConfiguration?)| cons?(c`unsolved), eq: AUEquation ) : member(eq, cdr(c`unsolved)) IMPLIES
+   	      			     			                   validEquation?(eq)
+
+% Set of variables (labels and variables) in a configuration  
+  vars(c :(validConfiguration?)) : finite_set[variable] =
+    LET allEquations = append(c`unsolved, c`solved)  IN
+      union(union(vars(allEquations), labels(allEquations)), 
+          union(supset_dom(c`substitution), vars(img(c`substitution))))
+
+% No label belongs to the domain of the substitution in a valid configuration.
+  invariance_labels_in_validConf  : LEMMA
+     FORALL (c : (validConfiguration?))  :
+        LET allEquations = append(c`unsolved, c`solved) IN
+             FORALL (l : (labels(allEquations)) ):
+	       subs(c`substitution)(variable(l)) = variable(l)
+
+  cdr_is_validConf  :  LEMMA
+     FORALL (c : (validConfiguration?) | cons?(c`unsolved) ) :
+        validConfiguration?(c with [unsolved := cdr(c`unsolved)])
+
+ labels_allEquations_as_union: LEMMA
+    FORALL (c: (validConfiguration?)):
+     labels(append(c`unsolved, c`solved)) = union(labels(c`unsolved),labels(c`solved))
+
+  freshLabel(V : setof[variable]) : variable =
+    epsilon((lambda(v:variable): NOT member(v,V))) 
+
+% Construction of fresh variables using the PVS epsilon function
+  freshLabel(c:(validConfiguration?)): variable =
+    freshLabel(vars(c))
+
+  freshLabel(c:(validConfiguration?),V : finite_set[variable]): variable =
+    freshLabel(union(vars(c),V)) 
+  
+  freshness_membship : LEMMA
+      FORALL (V : finite_set[variable]) : NOT member(freshLabel(V),V)
+
+  freshness_epsilon_ext : COROLLARY
+      FORALL (c:(validConfiguration?),V : finite_set[variable]) : NOT member(freshLabel(c,V), union(vars(c),V))
+
+  freshness_epsilon : COROLLARY FORALL (c:(validConfiguration?)) : NOT member(freshLabel(c),vars(c))
+
+  freshness_vars :  COROLLARY FORALL (c:(validConfiguration?)) :
+               NOT member(freshLabel(c), vars(append(c`unsolved,c`solved)))
+
+  freshness_labels :  COROLLARY FORALL (c:(validConfiguration?)) :
+               NOT member(freshLabel(c), labels(append(c`unsolved,c`solved)))
+
+ freshness_nth_label : LEMMA FORALL (c:(validConfiguration?), i : below[length(c`unsolved) + length(c`solved)]) :
+       NOT freshLabel(c) = (nth(append(c`unsolved, c`solved),i))`label
+
+  freshness_car_label : COROLLARY FORALL (c:(validConfiguration?)| cons?(c`unsolved)) :
+       NOT freshLabel(c) = label(car(c`unsolved))
+
+  freshness_labels_ext :  COROLLARY FORALL (c:(validConfiguration?),V : finite_set[variable]) :
+               NOT member(freshLabel(c,V), labels(append(c`unsolved,c`solved)))
+ 
+  freshness_subs : COROLLARY FORALL (c:(validConfiguration?)) :
+               NOT member(freshLabel(c), union(supset_dom(c`substitution), vars(img(c`substitution))))
+
+  freshness_subs_ext : COROLLARY FORALL (c:(validConfiguration?), V : finite_set[variable]) :
+               NOT member(freshLabel(c,V), union(supset_dom(c`substitution), vars(img(c`substitution))))
+
+  freshness_subs_dom_ext: COROLLARY FORALL (c:(validConfiguration?), V : finite_set[variable]) :
+               NOT member(freshLabel(c,V), dom(c`substitution))
+
+  car_lbl_fresh_in_cdr :  LEMMA FORALL (c:(validConfiguration?) | cons?(c`unsolved) ) :
+               NOT member(label(car(c`unsolved)), labels(append(cdr(c`unsolved),c`solved)))
+
+  car_lbl_fresh_dom: LEMMA FORALL (c:(validConfiguration?) | cons?(c`unsolved) ) :
+               NOT member(label(car(c`unsolved)), dom(c`substitution))
+
+  emptyness_conf_vars_with_lbls_and_fresh_variables: LEMMA FORALL (c:(validConfiguration?) | cons?(c`unsolved), set_lbl : finite_set[variable]):
+  	     (FORALL (lbl:variable) : member(lbl,set_lbl) IMPLIES NOT member(lbl,vars(c))) IMPLIES
+	      empty?(intersection(vars(append(c`unsolved, c`solved)),
+	             union(set_lbl, labels(append(cdr(c`unsolved), c`solved)))))
+
+  emptyness_conf_supdom_with_lbls_and_fresh_variables: LEMMA
+    FORALL (c:(validConfiguration?) | cons?(c`unsolved), set_lbl : finite_set[variable]):
+    (FORALL (lbl:variable) : member(lbl,set_lbl) IMPLIES NOT member(lbl,vars(c))) IMPLIES
+     empty?(intersection(supset_dom(c`substitution), union(set_lbl,labels(append(cdr(c`unsolved),c`solved)))))
+
+  emptyness_conf_supdom_with_car_lbls_and_fresh_variables: LEMMA
+    FORALL (c:(validConfiguration?) | cons?(c`unsolved), set_lbl : finite_set[variable]):
+    LET eq = car(c`unsolved) IN
+    (FORALL (lbl:variable) : member(lbl,set_lbl) IMPLIES NOT member(lbl,vars(c))) IMPLIES
+     empty?(intersection(union(singleton(eq`label), supset_dom(c`substitution)), union(set_lbl,labels(append(cdr(c`unsolved),c`solved)))))
+
+  emptyness_conf_var_with_lbls_decomposeFuns: COROLLARY FORALL (c:(validConfiguration?) | cons?(c`unsolved), lbl:variable):
+  	     NOT member(lbl,vars(c)) IMPLIES
+	     empty?(intersection(vars(append(c`unsolved, c`solved)), add(lbl, labels(append(cdr(c`unsolved), c`solved)))))
+
+  emptyness_conf_var_with_lbls_decomposePairs: COROLLARY FORALL (c:(validConfiguration?) | cons?(c`unsolved)):
+  	     LET lbl1 = freshLabel(c) IN
+	     LET lbl2 = freshLabel(union(vars(c), singleton(lbl1))) IN
+	      empty?(intersection(vars(append(c`unsolved, c`solved)), add(lbl1, add(lbl2,
+                       labels(append(cdr(c`unsolved), c`solved))))))
+
+ emptyness_conf_var: COROLLARY FORALL (c:(validConfiguration?) | cons?(c`unsolved)):
+	     empty?(intersection(vars(append(c`unsolved, c`solved)), (labels(append(cdr(c`unsolved), c`solved)))))
+
+  niceness_preserv_conditions: LEMMA
+  FORALL (c:(validConfiguration?) | cons?(c`unsolved), set_lbl : finite_set[variable]):
+    LET eq = car(c`unsolved) IN
+    (FORALL (lbl:variable) : member(lbl,set_lbl) IMPLIES NOT member(lbl,vars(c))) IMPLIES
+     (NOT member(eq`label, union(set_lbl, supset_dom(c`substitution))) AND
+      empty?(intersection(set_lbl,
+                          union(supset_dom(c`substitution), vars(img(c`substitution))))))
+
+    
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%% Decompose-Function inference rule %%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  matchingFuns_conf?(c: (validConfiguration?)): bool = matchingFuns?(c`unsolved)
+
+  niceness_preserv_conditions_decomposeFuns: COROLLARY FORALL (c: (matchingFuns_conf?)):
+    LET eq = car(c`unsolved) IN
+    LET lbl = freshLabel(c) IN
+     NOT member(eq`label, union(singleton(lbl), supset_dom(c`substitution))) AND
+     empty?(intersection(singleton(lbl),
+                         union(supset_dom(c`substitution), vars(img(c`substitution)))))
+
+  nice_sub_decomposeFuns: COROLLARY
+     FORALL (c: (matchingFuns_conf?)):
+     LET eq = car(c`unsolved),
+         lbl = freshLabel(c),
+	 sigma = c`substitution IN
+     nice?(cons((eq`label, app(sym(eq`lhs),variable(lbl))),sigma));
+
+  uns_solv_vars_matchingFuns_conf: LEMMA FORALL (c: (matchingFuns_conf?)):
+         LET eq = car(c`unsolved),
+             lhs = eq`lhs,
+             rhs = eq`rhs IN
+         vars(append(c`unsolved, c`solved)) = union(vars(arg(lhs)), union(vars(arg(rhs)),
+	 			 	       vars(append(cdr(c`unsolved), c`solved))))
+
+  decomposeFuns(c: (matchingFuns_conf?)): {cp : (validConfiguration?) |  cons?(cp`unsolved) AND
+                                            cdr(c`unsolved) = cdr(cp`unsolved) AND
+                                            subs(cp`substitution)(variable(car(c`unsolved)`label)) =
+	                         	        app(sym((car(c`unsolved))`lhs),
+						variable(car(cp`unsolved)`label)) AND
+						size(cp`unsolved) < size(c`unsolved)}                                                        
+   = LET eq = car(c`unsolved),
+         lhs = eq`lhs,
+         rhs = eq`rhs,
+         lbl = freshLabel(c)
+    IN c with [ unsolved := cons(  makeEq(arg(lhs),arg(rhs),lbl), cdr(c`unsolved)),
+                substitution := cons(  (eq`label,  app(sym(eq`lhs),variable(lbl))), c`substitution) ]
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%% Decompose-Pairs inference rule %%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  matchingPairs_conf?(c: (validConfiguration?)): bool = matchingPairs?(c`unsolved)
+
+  niceness_preserv_conditions_decomposePairs: LEMMA FORALL (c: (matchingPairs_conf?)):
+     LET eq = car(c`unsolved), 
+     	 lbl1 = freshLabel(c),
+	 lbl2 = freshLabel(union(vars(c),singleton(lbl1))),
+	 set_lbl = {x : variable | x = lbl1 OR x = lbl2} IN
+     NOT member(eq`label, union(set_lbl, supset_dom(c`substitution))) AND
+      empty?(intersection(set_lbl,
+                          union(supset_dom(c`substitution), vars(img(c`substitution)))))
+
+   nice_sub_decomposePairs: LEMMA
+       FORALL (c: (matchingPairs_conf?)):
+       LET eq = car(c`unsolved),
+           lbl1 = freshLabel(c),
+   	  lbl2 = freshLabel(union(vars(c),singleton(lbl1))),
+   	  sigma = c`substitution IN
+	nice?(cons((eq`label,pair(variable(lbl1),variable(lbl2))),
+                    sigma))
+		     
+  uns_solv_vars_matchingPairs_conf: LEMMA FORALL (c: (matchingPairs_conf?)):
+          LET eq = car(c`unsolved),
+              lhs = eq`lhs,
+              rhs = eq`rhs IN
+          vars(append(c`unsolved, c`solved)) = union(vars(term1(lhs)), union(vars(term1(rhs)),
+	  			  	       union(vars(term2(lhs)), union(vars(term2(rhs)),
+  	 			 	       vars(append(cdr(c`unsolved), c`solved))))))
+					       
+
+  decomposePairs(c: (matchingPairs_conf?)): {cp : (validConfiguration?) | cons?(cp`unsolved) AND
+                                            cons?(cdr(cp`unsolved)) AND cdr(cdr(cp`unsolved)) = cdr(c`unsolved) AND
+                                            subs(cp`substitution)(variable(car(c`unsolved)`label)) =
+					       pair(variable(car(cp`unsolved)`label),
+					       variable(car(cdr(cp`unsolved))`label))  AND
+				            size(cp`unsolved) < size(c`unsolved)}
+  = LET eq = car(c`unsolved), lhs = eq`lhs, rhs = eq`rhs,
+	lbl1 = freshLabel(c),
+	lbl2 = freshLabel(union(vars(c),singleton(lbl1))) 
+    IN c with [ unsolved := cons( makeEq(term1(lhs),term1(rhs),lbl1),
+                                  cons(makeEq(term2(lhs),term2(rhs),lbl2), cdr(c`unsolved))),
+                substitution := cons( (eq`label, pair(variable(lbl1),variable(lbl2))), c`substitution) ]
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%% Syntactic inference rule  %%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  syntacticallyEq_conf?(c: (validConfiguration?)): bool
+  = syntacticallyEq?(c`unsolved)
+
+  nice_sub_trivialSyn_Eqs: LEMMA FORALL (c: (syntacticallyEq_conf?)):   
+    LET eq = car(c`unsolved) IN
+    nice?(cons((eq`label, eq`lhs), c`substitution))
+
+  trivialSyn_Eqs(c: (syntacticallyEq_conf?)): {cp : (validConfiguration?) |
+  		    			       subs(cp`substitution)(variable(car(c`unsolved)`label)) =
+					        car(c`unsolved)`lhs AND 
+					       size(cp`unsolved) < size(c`unsolved)}
+  =   LET eq = car(c`unsolved), lhs = eq`lhs
+      IN  c with [unsolved := cdr(c`unsolved),
+                 substitution := cons( (eq`label, lhs),  c`substitution ) ]
+
+ syntEq_inter_vars_unsolv_labels_solv: LEMMA
+    FORALL (c: (syntacticallyEq_conf?)):
+      empty?(intersection(vars(car(c`unsolved)), labels(trivialSyn_Eqs(c)`solved)))
+
+ labels_trivialSyn_Eqs: LEMMA
+   FORALL (c: (syntacticallyEq_conf?)):
+       labels(trivialSyn_Eqs(c)`solved) = labels(c`solved)
+
+ syntEq_car_lhs_member_img: LEMMA
+   FORALL (c: (syntacticallyEq_conf?)):
+      member(car(c`unsolved)`lhs, img(trivialSyn_Eqs(c)`substitution))
+
+ domain_trivialSyn_Eqs: LEMMA
+   FORALL (c: (syntacticallyEq_conf?)):
+   LET lbl = car(c`unsolved)`label IN
+   dom(trivialSyn_Eqs(c)`substitution) = union(singleton(lbl), dom(c`substitution))
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%% Solve inference rule  %%%%%%%%%%%%%%%%%%%%%%
+%%%% It integrates both Solve-Repeated and Solve-Non-Repeated %%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  SolvedEq_conf?(c: (validConfiguration?)): bool
+  = SolvedEq?(c`unsolved)
+
+ nice_sub_Solved_Eq: LEMMA FORALL (c: (SolvedEq_conf?)):   
+     eq_repeated_in?(car(c`unsolved), c`solved) IMPLIES
+       LET sol_eq = car(c`unsolved),  red_eq = red_eq_in(cons(sol_eq,c`solved))  IN
+       nice?(cons((sol_eq`label, variable(red_eq`label)), c`substitution))
+	 
+  solve(c: (SolvedEq_conf?)): {cp : (validConfiguration?) | size(cp`unsolved) < size(c`unsolved)}
+  = IF eq_repeated_in?(car(c`unsolved), c`solved) THEN
+       LET sol_eq =car(c`unsolved), red_eq = red_eq_in(cons(sol_eq,c`solved)) IN
+         c with [unsolved := cdr(c`unsolved),
+	         substitution:= cons( (sol_eq`label, variable(red_eq`label)), c`substitution)] 
+    ELSE c with [unsolved := cdr(c`unsolved),
+                 solved := cons(car(c`unsolved),c`solved)]
+    ENDIF	    
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%% Antiunification algorithm %%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+ antiunify(c: (validConfiguration?)): recursive (validConfiguration?)
+  =  IF cons?(c`unsolved)
+     THEN
+       IF matchingFuns_conf?(c)
+       THEN      % Apply "Decompose" rule on function application
+            antiunify(decomposeFuns(c))
+       ELSIF matchingPairs_conf?(c)
+       THEN      % Apply "Decompose" rule on pairs
+            antiunify(decomposePairs(c))
+       ELSIF syntacticallyEq_conf?(c)
+       THEN      % Apply "Trivial" rule on eqs
+            antiunify(trivialSyn_Eqs(c))
+       ELSE      % SolvedEq_conf?(c)
+            antiunify(solve(c)) 
+       ENDIF
+      ELSE c
+      ENDIF
+  MEASURE size(c`unsolved)
+
+% Definition of substitution generalizer of an AUT 
+ generalizer?(eq: (validEquation?), sigma, rho, delta: (nice?)) : bool =
+   subs(append(rho,sigma))(eq`label) = eq`lhs AND
+   subs(append(delta,sigma))(eq`label) = eq`rhs
+   
+% Definition of substitution generalizer of a list of AUTs 
+ generalizer?(eqs : (validEqs?), sigma, rho, delta: (nice?)) : bool =
+  FORALL (eq : (validEquation?)) : member(eq, eqs) IMPLIES
+        generalizer?(eq, sigma, rho, delta)
+	
+% Construction of the left-hand side substitution from a list of AUTs
+build_subs_left(eqs : (validEqs?)) : RECURSIVE sub =
+  IF null?(eqs) THEN null
+  ELSE LET feq = car(eqs) IN
+       cons((feq`label, feq`lhs), build_subs_left(cdr(eqs)))
+  ENDIF
+MEASURE length(eqs)
+
+super_domain_subs_left: LEMMA
+           FORALL (eqs : (validEqs?)) :  supset_dom(build_subs_left(eqs)) = labels(eqs)
+
+domain_subs_left: COROLLARY
+           FORALL (eqs : (validEqs?)): subset?(dom(build_subs_left(eqs)), labels(eqs))
+
+nice_subs_left: LEMMA
+FORALL (eqs : (validEqs?)) : nice?(build_subs_left(eqs))
+
+% Construction of the right-hand side substitution from a list of AUTs
+build_subs_right(eqs :  (validEqs?)) : RECURSIVE sub =
+  IF null?(eqs) THEN null
+  ELSE LET feq = car(eqs) IN
+       cons((feq`label, feq`rhs), build_subs_right(cdr(eqs)))
+  ENDIF
+MEASURE length(eqs)
+
+super_domain_subs_right: LEMMA
+           FORALL (eqs : (validEqs?)) :  supset_dom(build_subs_right(eqs)) = labels(eqs)
+
+domain_subs_right: COROLLARY FORALL (eqs : (validEqs?)):    
+   subset?(dom(build_subs_right(eqs)), labels(eqs))
+
+nice_subs_right: LEMMA
+FORALL (eqs : (validEqs?)) : nice?(build_subs_right(eqs))
+
+images_of_build_subs_left_right : LEMMA FORALL(eqs : (validEqs?), eq: AUEquation) :
+    member(eq,eqs) IMPLIES
+              LET rho_l = build_subs_left(eqs),
+	          rho_r = build_subs_right(eqs) IN
+		           subs(rho_l)(eq`label) = eq`lhs AND 
+                           subs(rho_r)(eq`label) = eq`rhs 
+
+% Configuration characterization: normal, decomposable, solvable, and syntactic decomposable
+ normal_configuration?(c : (validConfiguration?)) : bool = null?(c`unsolved)
+
+ antiunify_normality :  LEMMA
+   FORALL(c:(normal_configuration?)) : antiunify(c) = c
+
+ antiunify_derivability :  LEMMA 
+    FORALL(c:(validConfiguration?)) : NOT normal_configuration?(c) =>
+      matchingFuns_conf?(c) OR  matchingPairs_conf?(c)  OR
+      syntacticallyEq_conf?(c) OR SolvedEq_conf?(c)
+
+ matchingPairs_classification: LEMMA
+   FORALL(c:(validConfiguration?)) : NOT normal_configuration?(c) IMPLIES
+    (matchingPairs_conf?(c) IMPLIES NOT matchingFuns_conf?(c))
+
+ syntacticallyEq_classification: LEMMA
+   FORALL(c:(validConfiguration?)) : NOT normal_configuration?(c) IMPLIES
+   (syntacticallyEq_conf?(c) IMPLIES NOT (matchingFuns_conf?(c) OR matchingPairs_conf?(c)))
+
+ SolvedEq_classification: LEMMA
+   FORALL(c:(validConfiguration?)) : NOT normal_configuration?(c) IMPLIES
+   (SolvedEq_conf?(c) IMPLIES NOT (matchingFuns_conf?(c) OR matchingPairs_conf?(c) OR syntacticallyEq_conf?(c)))
+
+%%%%%
+%%% Configuration invariants and preservation constraints
+%%%%
+
+% Preservation of solvable AUTs into a configuration
+ antiunify_monotony_solved_equations : LEMMA 
+   FORALL (c : (validConfiguration?), eq : AUEquation | member(eq, c`solved)) :
+       member(eq, antiunify(c)`solved) 
+
+% Preservation of the solved labels outside the domain of the final
+% substitution generalization
+ antiunify_domain_disjoint_sol_labels : LEMMA 
+    FORALL (c : (validConfiguration?)) : disjoint?(dom(antiunify(c)`substitution), labels(c`solved))
+
+% Construction incremental of the final substitution generalization
+ antiunify_sub_decomposition: LEMMA
+  FORALL(c:(validConfiguration?)) : EXISTS (theta:(nice?)) : antiunify(c)`substitution = append(theta, c`substitution)
+
+% Preservation of terms without variables proceeding from labels (i.e., terms of the problem)
+ antiunify_sub_preserves_terms: LEMMA
+  FORALL(c:(validConfiguration?), t: Term): (member(t, img(c`substitution)) AND
+  				     	    empty?(intersection(vars(t), labels(c`unsolved)))) IMPLIES
+					    subs(antiunify(c)`substitution)(t) = subs(c`substitution)(t)
+
+% Variables in terms of the unsolved part do not move to the domain of the computed generalizer
+ antiunify_dom_sub_preserves_vars_unsolved: LEMMA   
+  FORALL(c:(validConfiguration?)) : intersection(dom(antiunify(c)`substitution), vars(c`unsolved)) = emptyset
+
+% Another version of preservation of terms without variables proceeding from labels; this one
+% regarding labels in the solved part of the final configuration. 
+ antiunify_lbls_preserves_vars_unsolved: LEMMA
+  FORALL(c:(validConfiguration?), t: Term): member(t, img(c`substitution)) AND
+  				     	    disjoint?(vars(t), labels(append(c`unsolved, c`solved))) IMPLIES
+					    disjoint?(vars(t), labels(antiunify(c)`solved))
+
+% Variables in terms of the unsolved part and labels in the final solved part are disjoint
+ antiunify_solved_labels_preserve_vars_unsolved: LEMMA   
+  FORALL(c:(validConfiguration?)) : intersection(labels(antiunify(c)`solved), vars(c`unsolved)) = emptyset
+
+% Auxiliary lemma on the construction of left- and right-hand side final substitutions. 
+ antiunify_solved_substitution:  LEMMA
+  FORALL(c:(validConfiguration?), eq:AUEquation) :
+    member(eq,c`solved) IMPLIES
+              LET rho_l = build_subs_left(antiunify(c)`solved),
+	          rho_r = build_subs_right(antiunify(c)`solved) IN
+		           subs(rho_l)(eq`label) = eq`lhs AND 
+                           subs(rho_r)(eq`label) = eq`rhs 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%% Antiunification - Soundness %%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+antiunif_is_sound  : THEOREM
+  FORALL (ci:(validConfiguration?)) :
+     LET cf = antiunify(ci),
+              sigma = cf`substitution,
+	      rho_l = build_subs_left(cf`solved),
+	      rho_r = build_subs_right(cf`solved) IN
+      generalizer?(ci`unsolved, sigma, rho_l, rho_r)
+
+end antiunif
+
