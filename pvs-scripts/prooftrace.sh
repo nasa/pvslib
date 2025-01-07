@@ -7,7 +7,7 @@ Valid <options> are:
 -h|--help
 	Print this message
 -l|--log <logfile>
-	Name of logfile. If this option is provided proveit isn't called
+	Name of logfile. If this option is provided, proveit is not called
 -f|--formula <f1:..:fn> 
 	<fi> are formula names in <theory>. Unless <logfile> is provided, 
 	this option is mandatory.
@@ -16,6 +16,8 @@ Valid <options> are:
         the PVS version.
 -L
 	Do not remove log file after proveit command
+-S	
+	Do not remove summary file after proveit command
 "
     exit 1
 }
@@ -23,6 +25,7 @@ theory=
 formulas=
 version=
 deletelog=y
+deletesum=y
 while [ $# -gt 0 ]
 do
     case $1 in
@@ -38,9 +41,12 @@ do
 		echo "** Error: Log file $logfile not found"
 		exit 1
 	    fi
-	    deletelog=;;
+	    deletelog=
+	    deletesum=;;
 	-L)
 	    deletelog=;;
+	-S)
+	    deletesum=;;
         -f|--formula)
             shift
             formulas=$1;;
@@ -114,4 +120,8 @@ done
 
 if [ "$deletelog" ]; then
     rm -f $theory.$formulas.log
+fi
+
+if [ "$deletesum" ]; then
+    rm -f $theory.$formulas.summary
 fi
