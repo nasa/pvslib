@@ -188,7 +188,7 @@ sequent is pretty-printed unless PP? is set to nil."
 		    (lemma "max_var_max")
 		    (branch
 		     (inst -1 "%b" idx)
-		     ((then (simplify_nth)(assert))
+		     ((then (simplify-nth)(assert))
 		      (then (for@ nil (expand "length")(assert))))))
 		 (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))(skip))))))
   (let ((dl-operators (list 'val 'cnst '+ '- '* '^^ '^ 'sqrt_safe_re 'div_safe_re))

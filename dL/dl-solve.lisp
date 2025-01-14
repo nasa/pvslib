@@ -10,7 +10,7 @@
    (flatten)
    ;; var-name is in the list, so it's safe to repeat expand
    (for@ nil (expand "get_index"))
-   (simplify_nth)
+   (simplify-nth)
    (beta)
    (inst?))
   "Proves formulas of form quad_cnst?(%l{list})(dlvar_index(%x{name_})) assuming x is defined in the MapExprInj l. Assumes also that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
@@ -38,7 +38,7 @@
 	  (unroll)
 	  ((then
 	    (flatten)
-	    (simplify_nth)
+	    (simplify-nth)
 	    (beta)
 	    (match "cnst(%1) = cnst(%2)" step (inst?))
 	    (match$ "val(%a) = cnst(%c) + val(%b)" 
@@ -80,42 +80,44 @@
   "Checking if list is cnst_lins")
 
 ;; #TODO move to structures? @M3
-(defstep simplify_nth (&optional (fnum *))
-  (match$ fnum "nth(%a,%b{number})" step
-	  (let ((nth-expr $aj)
-		(pvs-list (args1 nth-expr))
-		(index (args2 nth-expr))
-		(list (pvslist2list pvs-list)))
-	    (if (car list)
-		(let ((pvs-elem (nth (number index) (cdr list)))
-		      (case-str
-		       (format nil "NOT (~a = ~a)" nth-expr pvs-elem))
-		      (length-str
-		       (format nil "NOT (~a < length(~a))" index
-			       pvs-list)))
-		  (branch (case length-str)
-			  ((then (hide-all-but 1) (for@ nil (expand "length"))
-				 (assert))
-			   (branch (case case-str)
-				   ((then (hide-all-but 1) (for@ nil (expand "nth")))
-				    (then (hide -2) (replace -1 fnum :hide? t)))))))
-	      (skip-msg "Couldn't represent pvs list in lisp"))))
-  "Computes expressions of form nth(%{list},%{number}) in FNUM. FNUM must be a formula number or fnum collection symbol."
-  "Applying simplify_nth")
+(defstep simplify-nth (&optional (fnum *) n)
+  (for@ n
+	(match$ fnum "nth(%a,%b{number})" step
+		(let ((nth-expr $aj)
+		      (pvs-list (args1 nth-expr))
+		      (index (args2 nth-expr))
+		      (list (pvslist2list pvs-list)))
+		  (if (car list)
+		      (let ((pvs-elem (nth (number index) (cdr list)))
+			    (case-str
+			     (format nil "NOT (~a = ~a)" nth-expr pvs-elem))
+			    (length-str
+			     (format nil "NOT (~a < length(~a))" index
+				     pvs-list)))
+			(branch (case length-str)
+				((then (hide-all-but 1) (for@ nil (expand "length"))
+				       (assert))
+				 (branch (case case-str)
+					 ((then (hide-all-but 1) (for@ nil (expand "nth")))
+					  (then (hide -2) (replace -1 fnum :hide? t)))))))
+		    (skip-msg "Couldn't represent pvs list in lisp")))))
+  "Computes expressions of form nth(%{list},%{number}) in FNUM. FNUM must be a formula number or fnum collection symbol.
+N is the number of occurrences of NTH that needs to be simplified (all by default)."
+  "Applying simplify-nth")
 
 (defhelper dl-calculate-is_cnst? (flabel)
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
+  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
     (then
      (expand "is_cnst?" flabel)
-     (simplify_nth)
+     (simplify-nth)
      (beta flabel)
      (for@ nil
 	   (then
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	    (let ((fnum (extra-get-fnum flabel)))
 	      (match fnum "(%op(%a,%b))(%c) = (%op(%a,%b))(%d)" step (expand "%op" fnum)))
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	    (let ((fnum (extra-get-fnum flabel)))
 	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
-	    (let ((fnum (lisp (extra-get-fnum flabel))))
+	    (let ((fnum (extra-get-fnum flabel)))
 	      (match fnum "val(%%)(%%)" step
 		   (then
 		    (expand "val" fnum)
@@ -138,11 +140,11 @@
 (defhelper dl-calculate-get_val_cnst_id_ex (flabel)
   (with-fresh-names (ode)
    (expand "get_val_cnst_id_ex" flabel)
-   (simplify_nth)
+   (simplify-nth)
    (beta flabel)
    (use "env_c_val")
    (replace -1 flabel :hide? t)
-   (let ((fnum (lisp (extra-get-fnum flabel))))
+   (let ((fnum (extra-get-fnum flabel)))
      (match$ fnum "get_index(%a)(%%)" step (then (name ode "%a") (replace -1 flabel :hide? t))))
    (expand "val" flabel)
    (expand "env_nat_shift" flabel)
@@ -151,8 +153,30 @@
   "Decides formulas of form get_val_cnst_id_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
   "Applying dl-calculate-get_val_cnst_id_ex")
 
+(defhelper dl-calculate-Y_sol_aux__ (flabel)
+  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
+    (then
+     (simplify-nth fnum)
+     (for@ nil (expand "in_map_ex" flabel))
+     (beta flabel)
+     (for@ nil
+	   (then
+	    (let ((fnum (extra-get-fnum flabel)))
+	      (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
+	    (let ((fnum (extra-get-fnum flabel)))
+	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
+	    (let ((fnum (extra-get-fnum flabel)))
+	      (match fnum "val(%%)(%%)" step
+		     (then
+		      (expand "val" fnum)
+		      (expand "env_c" fnum)
+		      (expand "env_nat_shift" fnum))))))
+     (dl-assert-pairwise_distinct_vars?)))
+  ""
+  "Internal strategy")
+
 (defstep dl-calculate-Y_sol_ex (flabel)
-  (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
+  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
     (then 
      (expand "Y_sol_ex" flabel)
      (match$ fnum "%infix(is_cnst?(%a)(%b), is_val_not_in_map?(%a)(%b))" step
@@ -168,25 +192,7 @@
 	      (let ((is_val_not_in_map?-fnum (extra-get-fnum *is_val_not_in_map?*)))
 		(match$ is_val_not_in_map?-fnum
 			"in_map_ex(%a)(%b)"
-			step (let ((flabel *is_val_not_in_map?*))
-			       (let ((fnum (lisp (extra-get-fnum flabel)))) ;; workaround to use label in match statement 20231219 @M3
-				 (then
-				  (simplify_nth fnum)
-				  (for@ nil (expand "in_map_ex" flabel))
-				  (beta flabel)
-				  (for@ nil
-					(then
-					 (let ((fnum (lisp (extra-get-fnum flabel))))
-					   (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
-					 (let ((fnum (lisp (extra-get-fnum flabel))))
-					   (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
-					 (let ((fnum (lisp (extra-get-fnum flabel))))
-					   (match fnum "val(%%)(%%)" step
-						  (then
-						   (expand "val" fnum)
-						   (expand "env_c" fnum)
-						   (expand "env_nat_shift" fnum))))))
-				  (dl-assert-pairwise_distinct_vars?))))))
+			step (dl-calculate-Y_sol_aux__$ *is_val_not_in_map?*)))
 	      ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	      ;; the expression is replaced by the calculated definition,
 	      ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
@@ -200,7 +206,7 @@
 	     (dl-calculate-get_val_cnst_id_ex$ *get_val_cnst_id_ex*)
 	     (replace *get_val_cnst_id_ex* :dir rl :hide? t)))
      (beta flabel)
-     (simplify_nth)
+     (simplify-nth)
      (match fnum "val(%a{name})(enc_v(%b))" step
 	    (then 
 	     (use "env_c_val")
@@ -251,7 +257,8 @@
 		(hide-all-but (solution_lemma |Z_def| '-))
 		(expand "zs" |Z_def|)
 		(simplify_init_zip_sol |Z_def|)
-		(for@ nil (simplify_nth))
+		(simplify-nth)
+		(beta)
 		;; simplify Y_sol_ex(%%) expressions
 		(let ((z_def-fnum (extra-get-fnum '|Z_def|))) ;; workaround to use label in match statement 20231219 @M3
 		  (for@ nil (match$ z_def-fnum "Y_sol_ex(%a)(%b)"
@@ -272,12 +279,12 @@
 		  (if trivial-subst
 		      (then
 		       (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
-		       (replace Z_def :hide? t)
+		       (replace |Z_def| :hide? t)
 		       (beta 1)
 		       (dl-subs))
 		    (then ;; on a more complex bexpr, the substitution is done programmatically
 		     (copy solution_lemma)
-		     (replace Z_def solution_lemma :hide? t)
+		     (replace |Z_def| solution_lemma :hide? t)
 		     (beta solution_lemma)
 		     (spread
 		      (let ((dlforall (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
@@ -289,8 +296,8 @@
 		      ((then
 			(hide solution_lemma)
 			(replace -1 :hide? t)
-			(reveal Z_def)
-			(replace Z_def :hide? t)
+			(reveal |Z_def|)
+			(replace |Z_def| :hide? t)
 			(beta 1)
 			(dl-subs))
 		       (then
@@ -304,7 +311,7 @@
 			   (assert)
 			   (hide-all-but 1)
 			   (skeep)
-			   (reveal Z_def)
+			   (reveal |Z_def|)
 			   (replace -1 :hide? t)
 			   (beta 1)
 			   (dl-subs))
