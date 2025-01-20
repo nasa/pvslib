@@ -106,22 +106,18 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
   "Applying simplify-nth")
 
 (defhelper dl-calculate-is_cnst? (flabel)
-  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
-    (then
-     (expand "is_cnst?" flabel)
-     (simplify-nth)
-     (beta flabel)
-     (for@ nil
-	   (then
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "(%op(%a,%b))(%c) = (%op(%a,%b))(%d)" step (expand "%op" fnum)))
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "val(%%)(%%)" step
-		   (then
-		    (expand "val" fnum)
-		    (expand "env_nat_shift" fnum))))))))
+  (then
+   (expand "is_cnst?" flabel)
+   (simplify-nth)
+   (beta flabel)
+   (for@ nil
+	 (then
+	  (match flabel "(%op(%a,%b))(%c) = (%op(%a,%b))(%d)" step (expand "%op" flabel))
+	  (match flabel "cnst(%%)(%%)" step (expand "cnst" flabel))
+	  (match flabel "val(%%)(%%)" step
+		 (then
+		  (expand "val" flabel)
+		  (expand "env_nat_shift" flabel))))))
   "Decides formulas of form is_cnst?(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form. Since this is an equality between booleans, after the application of this helper, FLABEL points to an antecedent or a consequent of form %{name}."
   "Applying dl-decide-is_cnst?")
 
@@ -144,8 +140,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
    (beta flabel)
    (use "env_c_val")
    (replace -1 flabel :hide? t)
-   (let ((fnum (extra-get-fnum flabel)))
-     (match$ fnum "get_index(%a)(%%)" step (then (name ode "%a") (replace -1 flabel :hide? t))))
+   (match$ flabel "get_index(%a)(%%)" step (then (name ode "%a") (replace -1 flabel :hide? t)))
    (expand "val" flabel)
    (expand "env_nat_shift" flabel)
    (expand ode flabel)
@@ -154,65 +149,87 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
   "Applying dl-calculate-get_val_cnst_id_ex")
 
 (defhelper dl-calculate-Y_sol_aux__ (flabel)
-  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
-    (then
-     (simplify-nth fnum)
-     (for@ nil (expand "in_map_ex" flabel))
-     (beta flabel)
-     (for@ nil
-	   (then
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "(%op(%a,%b))(%c)" step (expand "%op" fnum))) ;; #TODO add support to unary operators @M3
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "cnst(%%)(%%)" step (expand "cnst" fnum)))
-	    (let ((fnum (extra-get-fnum flabel)))
-	      (match fnum "val(%%)(%%)" step
-		     (then
-		      (expand "val" fnum)
-		      (expand "env_c" fnum)
-		      (expand "env_nat_shift" fnum))))))
-     (dl-assert-pairwise_distinct_vars?)))
+  (then
+   (simplify-nth flabel)
+   (for@ nil (expand "in_map_ex" flabel))
+   (beta flabel)
+   (for@ nil
+	 (then
+	  (match flabel "(%op(%a,%b))(%c)" step (expand "%op" flabel)) ;; #TODO add support to unary operators @M3
+	  (match flabel "cnst(%%)(%%)" step (expand "cnst" flabel))
+	  (match flabel "val(%%)(%%)" step
+		 (then
+		  (expand "val" flabel)
+		  (expand "env_c" flabel)
+		  (expand "env_nat_shift" flabel)))))
+   (dl-assert-pairwise_distinct_vars?))
   ""
   "Internal strategy")
 
 (defstep dl-calculate-Y_sol_ex (flabel)
-  (let ((fnum (extra-get-fnum flabel))) ;; workaround to use label in match statement 20231219 @M3
-    (then 
-     (expand "Y_sol_ex" flabel)
-     (match$ fnum "%infix(is_cnst?(%a)(%b), is_val_not_in_map?(%a)(%b))" step
-	     (with-fresh-names
-	      (is_val_not_in_map? "is_val_not_in_map?(%a)(%b)" :tccs)
-	      (reveal *is_val_not_in_map?*)
-	      (expand "is_val_not_in_map?" *is_val_not_in_map?*)
-	      (with-fresh-names
-	       (is_const? "is_cnst?(%a)(%b)" :tccs)
-	       (reveal *is_const?*)
-	       (dl-calculate-is_cnst?$ *is_const?*)
-	       (replace *is_const?* (flabel *is_val_not_in_map?*) :hide? t))
-	      (let ((is_val_not_in_map?-fnum (extra-get-fnum *is_val_not_in_map?*)))
-		(match$ is_val_not_in_map?-fnum
-			"in_map_ex(%a)(%b)"
-			step (dl-calculate-Y_sol_aux__$ *is_val_not_in_map?*)))
-	      ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
-	      ;; the expression is replaced by the calculated definition,
-	      ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
-	      (replace *is_val_not_in_map?* flabel :hide? t)
-	      (hide *is_val_not_in_map?*)))
-     (match$ fnum "get_val_cnst_id_ex(%a)(%b)" step
+  (then 
+   (expand "Y_sol_ex" flabel)
+   (match$ flabel "%infix(is_cnst?(%a)(%b), is_val_not_in_map?(%a)(%b))" step
+	   (with-fresh-names
+	    (is_val_not_in_map? "is_val_not_in_map?(%a)(%b)" :tccs)
+	    (reveal *is_val_not_in_map?*)
+	    (expand "is_val_not_in_map?" *is_val_not_in_map?*)
 	    (with-fresh-names
-	     (get_val_cnst_id_ex
-	      "get_val_cnst_id_ex(%a)(%b)" :tccs)
-	     (reveal *get_val_cnst_id_ex*)
-	     (dl-calculate-get_val_cnst_id_ex$ *get_val_cnst_id_ex*)
-	     (replace *get_val_cnst_id_ex* :dir rl :hide? t)))
-     (beta flabel)
-     (simplify-nth)
-     (match fnum "val(%a{name})(enc_v(%b))" step
-	    (then 
-	     (use "env_c_val")
-	     (replace -1 flabel :hide? t)))))
+	     (is_const? "is_cnst?(%a)(%b)" :tccs)
+	     (reveal *is_const?*)
+	     (dl-calculate-is_cnst?$ *is_const?*)
+	     (replace *is_const?* (flabel *is_val_not_in_map?*) :hide? t))
+	    (match$ *is_val_not_in_map?*
+		      "in_map_ex(%a)(%b)"
+		      step
+		      (then
+		       (simplify-nth *is_val_not_in_map?*)
+		       (for@ nil (expand "in_map_ex" *is_val_not_in_map?*))
+		       (beta *is_val_not_in_map?*)
+		       (for@ nil
+			     (then
+			      (match *is_val_not_in_map?* "(%op(%a,%b))(%c)" step (expand "%op" *is_val_not_in_map?*))
+			      ;; #TODO ^^^ add support to unary operators @M3
+			      (match *is_val_not_in_map?* "cnst(%%)(%%)" step (expand "cnst" *is_val_not_in_map?*))
+			      (match *is_val_not_in_map?* "val(%%)(%%)" step
+				     (then
+				      (expand "val" *is_val_not_in_map?*)
+				      (expand "env_c" *is_val_not_in_map?*)
+				      (expand "env_nat_shift" *is_val_not_in_map?*)))))
+		       (dl-assert-pairwise_distinct_vars?)))
+	    ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
+	    ;; the expression is replaced by the calculated definition,
+	    ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
+	    (replace *is_val_not_in_map?* flabel :hide? t)
+	    (hide *is_val_not_in_map?*)))
+   (match$ flabel "get_val_cnst_id_ex(%a)(%b)" step
+	   (with-fresh-names
+	    (get_val_cnst_id_ex
+	     "get_val_cnst_id_ex(%a)(%b)" :tccs)
+	    (reveal *get_val_cnst_id_ex*)
+	    (dl-calculate-get_val_cnst_id_ex$ *get_val_cnst_id_ex*)
+	    (replace *get_val_cnst_id_ex* :dir rl :hide? t)))
+   (beta flabel)
+   (simplify-nth)
+   (match flabel "val(%a{name})(enc_v(%b))" step
+	  (then 
+	   (use "env_c_val")
+	   (replace -1 flabel :hide? t))))
   "Decides formulas of form Y_sol_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
   "Applying dl-decide-Y_sol_ex")
+
+;; simplify Y_sol_ex(%%) expressions
+(defhelper simplify_Y_sol_ex__ (z_def)
+  (for@ nil (match$ z_def "Y_sol_ex(%a)(%b)"
+		    step
+		    (with-fresh-names
+		     (Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
+		     (reveal *Y_sol_ex*) 
+		     (dl-calculate-Y_sol_ex$ *Y_sol_ex*)
+		     (replace *Y_sol_ex* :dir rl :hide? t)
+		     (beta z_def))))
+  ""
+  "[Internal strategy]")
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
   (let ((dlseq (or (is-dl-seq fnum) (error-format-if "No dL sequent found~@[ in fnum ~a~]." fnum)))
@@ -225,7 +242,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	(passed-checks (and dlseq skolem-constant)))
     (when passed-checks
       (with-fresh-labels
-       (solution_lemma Z_def allruns_assign)
+       ((solution_lemma) (z_def))
        (with-fresh-names
 	((allruns_assign_expr))
 	(let ((turn-rw-msg-on? (and quiet? (not *rewrite-msg-off*)))
@@ -248,26 +265,18 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	   (spread
 	    (inst?)
 	    ((then
-	      (with-labels (skoletin) ((solution_lemma |Z_def| nil)))
+	      (with-labels (skoletin) ((solution_lemma z_def nil)))
 	      (beta solution_lemma)
 	      (branch
 	      (split solution_lemma)
 	      ((then (skip-msg "This branch is supposed to close automatically")(fail))
 	       (then
-		(hide-all-but (solution_lemma |Z_def| '-))
-		(expand "zs" |Z_def|)
-		(simplify_init_zip_sol |Z_def|)
+		(hide-all-but (solution_lemma z_def '-))
+		(expand "zs" z_def)
+		(simplify_init_zip_sol z_def)
 		(simplify-nth)
 		(beta)
-		;; simplify Y_sol_ex(%%) expressions
-		(let ((z_def-fnum (extra-get-fnum '|Z_def|))) ;; workaround to use label in match statement 20231219 @M3
-		  (for@ nil (match$ z_def-fnum "Y_sol_ex(%a)(%b)"
-				  step (with-fresh-names
-					(Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
-					(reveal *Y_sol_ex*) 
-					(dl-calculate-Y_sol_ex$ *Y_sol_ex*)
-					(replace *Y_sol_ex* :dir rl :hide? t)
-					(beta |Z_def|)))))
+		(simplify_Y_sol_ex__$ z_def)
 		(expand "UPTO" solution_lemma)
 		(dl-skolem skolem-constant solution_lemma)
 		(dl-flatten solution_lemma)
@@ -279,12 +288,12 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 		  (if trivial-subst
 		      (then
 		       (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
-		       (replace |Z_def| :hide? t)
+		       (replace z_def :hide? t)
 		       (beta 1)
 		       (dl-subs))
 		    (then ;; on a more complex bexpr, the substitution is done programmatically
 		     (copy solution_lemma)
-		     (replace |Z_def| solution_lemma :hide? t)
+		     (replace z_def solution_lemma :hide? t)
 		     (beta solution_lemma)
 		     (spread
 		      (let ((dlforall (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
@@ -296,8 +305,8 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 		      ((then
 			(hide solution_lemma)
 			(replace -1 :hide? t)
-			(reveal |Z_def|)
-			(replace |Z_def| :hide? t)
+			(reveal z_def)
+			(replace z_def :hide? t)
 			(beta 1)
 			(dl-subs))
 		       (then
@@ -311,7 +320,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 			   (assert)
 			   (hide-all-but 1)
 			   (skeep)
-			   (reveal |Z_def|)
+			   (reveal z_def)
 			   (replace -1 :hide? t)
 			   (beta 1)
 			   (dl-subs))
@@ -391,23 +400,22 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 ;;;
 
 (defhelper dl-simplify-zip-sol (fnum)
-  (let ((fnum (extra-get-fnum fnum)))
-    (then
-     (for@ nil
-      (match fnum "%1=zs(%2,Y_sol_ex(%%))"
-	     step (let((name (args1 $1j))
-		       (excluding (cons name (get-de-bruijn-names(args2 $1j)))))
-		    (then
-		     (expand "zs")
-		     (expand "Y_sol_ex")
-		     (grind :exclude excluding)))))
-     (for@ nil
-      (match fnum "IF %1 THEN %2 ELSE %3 ENDIF" step (then (eval-expr "%1" :quiet? t) (replace -1 * :hide? t) (assert))))
-     (for@ nil
-      (match fnum "get_index(%1)(%2)" step (then (eval-expr $1s :quiet? t)(replace -1 * :hide? t))))
-     (match fnum "nth(%1,%2)"
-	    step  (for@ nil (expand "nth" fnum)))
-     (dl-pp-zip-sol fnum)))
+  (then
+   (for@ nil
+	 (match fnum "%1=zs(%2,Y_sol_ex(%%))"
+		step (let((name (args1 $1j))
+			  (excluding (cons name (get-de-bruijn-names(args2 $1j)))))
+		       (then
+			(expand "zs")
+			(expand "Y_sol_ex")
+			(grind :exclude excluding)))))
+   (for@ nil
+	 (match fnum "IF %1 THEN %2 ELSE %3 ENDIF" step (then (eval-expr "%1" :quiet? t) (replace -1 * :hide? t) (assert))))
+   (for@ nil
+	 (match fnum "get_index(%1)(%2)" step (then (eval-expr $1s :quiet? t)(replace -1 * :hide? t))))
+   (match fnum "nth(%1,%2)"
+	  step  (for@ nil (expand "nth" fnum)))
+   (dl-pp-zip-sol fnum))
   "Simplifies the equality in FNUM if it has the form NAME = zs(ODE, Y_sol_ex(ODE))"
   "Simplifying zipped solution")
 
