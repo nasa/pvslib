@@ -4,7 +4,7 @@
 
 (defstep dl-diffghost
   (expr1 expr2 &optional name cut (dlfnum +) fnum (pp? t) dont-fail? (quiet? t))
-  (with-verbosity
+  (quietly
    (let ((name (if name
 		  (if (not (typep (pc-parse name 'expr) 'name-expr))
 		      (error-format-if "Provided argument ~a should be a name" name)
@@ -46,7 +46,7 @@
 		      ;;(when pp? (dl-pp 1))))
 		      )
 		     (unless dont-fail? (fail)))))))))))))
-   quiet?)
+   :quiet? quiet?)
   "Introduces a differential ghost meta-variable NAME in the right
 hand side of a DDL sequent in formula FNUM.  NAME represents
 differential variable x' = EXPR1*x + EXPR2. If no NAME is provided a
@@ -85,7 +85,7 @@ to nil."
   "Visitor"
   (cond
    ;; the arguments of val(_) applications are indices   
-   ((eq (id (operator self)) 'val)
+   ((eq (id (operator self)) '|val|)
     (list (args1 self)))
    (t (loop for arg in (arguments self)
 	    append (dl-variables* arg)))))

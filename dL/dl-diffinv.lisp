@@ -191,7 +191,7 @@ sequent is pretty-printed unless PP? is set to nil."
 		     ((then (simplify-nth)(assert))
 		      (then (for@ nil (expand "length")(assert))))))
 		 (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))(skip))))))
-  (let ((dl-operators (list 'val 'cnst '+ '- '* '^^ '^ 'sqrt_safe_re 'div_safe_re))
+  (let ((dl-operators (list '|val| '|cnst| '+ '- '* '^^ '^ '|sqrt_safe_re| '|div_safe_re|))
 	(dl-lemmas    (list "dl_dift_val" "dl_dift_const" "dl_dift_plus" (list "dl_dift_negative" "dl_dift_minus") "dl_dift_mult" "dl_dift_exp" "dl_dift_pow"
 			"dl_dift_sqrt" "dl_dift_divsafe")))
   (match$
@@ -260,7 +260,7 @@ sequent is pretty-printed unless PP? is set to nil."
 		 (warning "Unexpected binary argument for DIFT_Re application: ~a"  arg)))))
        (let ((is-lambda? (lambda-expr? arg)))
 	 (if is-lambda?
-	     (let((lemma-name (cdr (assoc 'cnst lemma-name-per-operator))))
+	     (let((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
 	       (then
 		(lemma lemma-name)
 		(expand "cnst")

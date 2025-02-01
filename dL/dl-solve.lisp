@@ -2,8 +2,6 @@
 ;; dl-solve strategy
 ;;
 
-
-
 (defhelper dl-prove-quad_cnst? ()
   (then   
    (expand "quad_cnst?")
@@ -109,7 +107,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
   (then
    (expand "is_cnst?" flabel)
    (simplify-nth)
-   (beta flabel)
+   (beta)
    (for@ nil
 	 (then
 	  (match flabel "(%op(%a,%b))(%c) = (%op(%a,%b))(%d)" step (expand "%op" flabel))
@@ -137,7 +135,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
   (with-fresh-names (ode)
    (expand "get_val_cnst_id_ex" flabel)
    (simplify-nth)
-   (beta flabel)
+   (beta)
    (use "env_c_val")
    (replace -1 flabel :hide? t)
    (match$ flabel "get_index(%a)(%%)" step (then (name ode "%a") (replace -1 flabel :hide? t)))
@@ -147,24 +145,6 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
    (for@ nil (expand "get_index" flabel)))
   "Decides formulas of form get_val_cnst_id_ex(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form."
   "Applying dl-calculate-get_val_cnst_id_ex")
-
-(defhelper dl-calculate-Y_sol_aux__ (flabel)
-  (then
-   (simplify-nth flabel)
-   (for@ nil (expand "in_map_ex" flabel))
-   (beta flabel)
-   (for@ nil
-	 (then
-	  (match flabel "(%op(%a,%b))(%c)" step (expand "%op" flabel)) ;; #TODO add support to unary operators @M3
-	  (match flabel "cnst(%%)(%%)" step (expand "cnst" flabel))
-	  (match flabel "val(%%)(%%)" step
-		 (then
-		  (expand "val" flabel)
-		  (expand "env_c" flabel)
-		  (expand "env_nat_shift" flabel)))))
-   (dl-assert-pairwise_distinct_vars?))
-  ""
-  "Internal strategy")
 
 (defstep dl-calculate-Y_sol_ex (flabel)
   (then 
@@ -209,8 +189,8 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	    (reveal *get_val_cnst_id_ex*)
 	    (dl-calculate-get_val_cnst_id_ex$ *get_val_cnst_id_ex*)
 	    (replace *get_val_cnst_id_ex* :dir rl :hide? t)))
-   (beta flabel)
    (simplify-nth)
+   (beta)
    (match flabel "val(%a{name})(enc_v(%b))" step
 	  (then 
 	   (use "env_c_val")
@@ -241,6 +221,8 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	   skolem-constant))
 	(passed-checks (and dlseq skolem-constant)))
     (when passed-checks
+      (deftactic simplify_init_zip_sol (&optional (tac-fnum -1))
+	(for@ nil (then (expand "init_zip_sol" tac-fnum) (for@ nil (expand "length" tac-fnum)))))
       (with-fresh-labels
        ((solution_lemma) (z_def))
        (with-fresh-names
@@ -252,15 +234,6 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	      (fnum (car dlseq)))
 	  (then
 	   (when quiet? (rewrite-msg-off))
-	   (deftactic simplify_init_zip_sol (&optional (tac-fnum -1))
-	     (for@ nil (then (expand "init_zip_sol" tac-fnum) (for@ nil (expand "length" tac-fnum)))))
-	   (deftactic expand_in_map_ex (&optional (tac-fnum -1)) (for@ nil (expand "in_map_ex" tac-fnum)))
-	   (deftactic lift_them_all () (for@ nil (lift-if)))
-	   (deftactic simplify_evaluable_ites ()
-	     (let ((ite (extra-get-expr '(~ -1 "%{if_}"))))
-	       (when ite
-		 (let ((guard (args1 ite)))
-		   (then (eval-expr guard :quiet? t) (replace -1 :hide? t))))))
 	   (lemma lemma-to-use)
 	   (spread
 	    (inst?)
@@ -268,70 +241,68 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	      (with-labels (skoletin) ((solution_lemma z_def nil)))
 	      (beta solution_lemma)
 	      (branch
-	      (split solution_lemma)
-	      ((then (skip-msg "This branch is supposed to close automatically")(fail))
-	       (then
-		(hide-all-but (solution_lemma z_def '-))
-		(expand "zs" z_def)
-		(simplify_init_zip_sol z_def)
-		(simplify-nth)
-		(beta)
-		(simplify_Y_sol_ex__$ z_def)
-		(expand "UPTO" solution_lemma)
-		(dl-skolem skolem-constant solution_lemma)
-		(dl-flatten solution_lemma)
-		(rewrite "dl_assignb" :target-fnums solution_lemma)
-		(rewrite "dl_assignb_restricted" :target-fnums solution_lemma)
-		(let ((trivial-subst ;; a trivial substitution occurs on a bexpr DLBOOL(TRUE)
-		       (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
-					     "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(DLBOOL(TRUE))))"))))
-		  (if trivial-subst
-		      (then
-		       (rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
-		       (replace z_def :hide? t)
-		       (beta 1)
-		       (dl-subs))
-		    (then ;; on a more complex bexpr, the substitution is done programmatically
-		     (copy solution_lemma)
-		     (replace z_def solution_lemma :hide? t)
-		     (beta solution_lemma)
-		     (spread
-		      (let ((dlforall (extra-get-expr (list '~ (extra-get-fnum solution_lemma)
-							    "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
-			    (subst-dlforall (apply-substitution-on-dlforall dlforall))
-			    (dlforall-z (extra-get-expr '(~ 1 "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
-			    (case-str (format nil "(~a) = (~a)" dlforall-z subst-dlforall)))
-			(case case-str))
-		      ((then
-			(hide solution_lemma)
-			(replace -1 :hide? t)
-			(reveal z_def)
+	       (split solution_lemma)
+	       ((then (skip-msg "This branch is supposed to close automatically")(fail))
+		(then
+		 (hide-all-but (solution_lemma z_def '-))
+		 (expand "zs" z_def)
+		 (simplify_init_zip_sol z_def)
+		 (simplify-nth)
+		 (beta)
+		 (simplify_Y_sol_ex__$ z_def)
+		 (expand "UPTO" solution_lemma)
+		 (dl-skolem skolem-constant solution_lemma)
+		 (dl-flatten solution_lemma)
+		 (rewrite "dl_assignb" :target-fnums solution_lemma)
+		 (rewrite "dl_assignb_restricted" :target-fnums solution_lemma)
+		 (let ((trivial-subst ;; a trivial substitution occurs on a bexpr DLBOOL(TRUE)
+			(extra-get-expr `(~ ,solution_lemma "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(DLBOOL(TRUE))))"))))
+		   (if trivial-subst
+		       (then
+			(rewrite "dl_sub_bool_restricted" :target-fnums solution_lemma)
 			(replace z_def :hide? t)
 			(beta 1)
 			(dl-subs))
-		       (then
-			(hide-all-but 1)
-			(with-tccs (decompose-equality))
-			(expand "DLFORALL")
-			(spread ;; this "in-line lemma" helps to call dl-subs just once on this branch of the proof
-			 (case "FORALL(P,Q: PRED[real]): ((FORALL(x:real): P(x) = Q(x)) IMPLIES ( (FORALL(x:real): P(x)) = (FORALL(x:real): Q(x)) ))")
-			 ((then
-			   (with-tccs(inst?))
-			   (assert)
-			   (hide-all-but 1)
-			   (skeep)
-			   (reveal z_def)
-			   (replace -1 :hide? t)
-			   (beta 1)
-			   (dl-subs))
-			  (then
-			   (hide-all-but 1)
-			   (skeep)
-			   (iff)
-			   (spread (split)
-				   ((then (flatten) (skeep) (inst?) (inst?) (assert))
-				    (then (flatten) (skeep) (inst?) (inst?) (assert)))))))
-			))))))))))
+		     (then ;; on a more complex bexpr, the substitution is done programmatically
+		      (copy solution_lemma)
+		      (replace z_def solution_lemma :hide? t)
+		      (beta solution_lemma)
+		      (spread
+		       (let ((dlforall (extra-get-expr `(~ ,solution_lemma "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
+			     (subst-dlforall (apply-substitution-on-dlforall dlforall))
+			     (dlforall-z (extra-get-expr '(~ 1 "DLFORALL(LAMBDA(%%): DLIMPLIES(%%,%%))")))
+			     (case-str (format nil "(~a) = (~a)" dlforall-z subst-dlforall)))
+			 (case case-str))
+		       ((then
+			 (hide solution_lemma)
+			 (replace -1 :hide? t)
+			 (reveal z_def)
+			 (replace z_def :hide? t)
+			 (beta 1)
+			 (dl-subs))
+			(then
+			 (hide-all-but 1)
+			 (with-tccs (decompose-equality))
+			 (expand "DLFORALL")
+			 (spread ;; this "in-line lemma" helps to call dl-subs just once on this branch of the proof
+			  (case "FORALL(P,Q: PRED[real]): ((FORALL(x:real): P(x) = Q(x)) IMPLIES ( (FORALL(x:real): P(x)) = (FORALL(x:real): Q(x)) ))")
+			  ((then
+			    (with-tccs(inst?))
+			    (assert)
+			    (hide-all-but 1)
+			    (skeep)
+			    (reveal z_def)
+			    (replace -1 :hide? t)
+			    (beta 1)
+			    (dl-subs))
+			   (then
+			    (hide-all-but 1)
+			    (skeep)
+			    (iff)
+			    (spread (split)
+				    ((then (flatten) (skeep) (inst?) (inst?) (assert))
+				     (then (flatten) (skeep) (inst?) (inst?) (assert)))))))
+			 ))))))))))
 	     (then (dl-assert-pairwise_distinct_vars?) (hide-all-but 1) (dl-cnstlins))))
 	   (when turn-rw-msg-on? (rewrite-msg-on))))))))
   ""
@@ -340,36 +311,36 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 ;;; Substitutions on lambda expressions
 (defun apply-substitution-on-dlforall (dlforall)
   ;; dlforall assumed to have the form: DLFORALL(LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(%%)))
-  (let*((lambda-expr (args1 dlforall)) ;; LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(%%))
-	(dlimplies (expression lambda-expr)) ;; DLIMPLIES(%%,SUB(%%)(%%))
-	(subs-app  (args2 dlimplies))  ;; SUB(%%)(%%)
-	(new-subs-app  (apply-substitution-on-subs-app subs-app))
-	(new-dlimplies (make-application (operator dlimplies) (args1 dlimplies) new-subs-app))
-	(new-lambda (make-lambda-expr (bindings lambda-expr) new-dlimplies)))
+  (let* ((lambda-expr (args1 dlforall)) ;; LAMBDA(%%): DLIMPLIES(%%,SUB(%%)(%%))
+	 (dlimplies (expression lambda-expr)) ;; DLIMPLIES(%%,SUB(%%)(%%))
+	 (subs-app  (args2 dlimplies))  ;; SUB(%%)(%%)
+	 (new-subs-app  (apply-substitution-on-subs-app subs-app))
+	 (new-dlimplies (make-application (operator dlimplies) (args1 dlimplies) new-subs-app))
+	 (new-lambda (make-lambda-expr (bindings lambda-expr) new-dlimplies)))
     (make-application (operator dlforall) new-lambda)))
 
 (defun apply-substitution-on-subs-app (subs-app) ;; SUB(%sigma)(re1 >= re2)
-  (let*((subs-op   (operator subs-app)) ;; SUB(%sigma)
-	(sigma     (args1 subs-op))     ;; %sigma
-	(bool-expr (args1 subs-app)))   ;; re1 >= re2
+  (let* ((subs-op   (operator subs-app)) ;; SUB(%sigma)
+	 (sigma     (args1 subs-op))     ;; %sigma
+	 (bool-expr (args1 subs-app)))   ;; re1 >= re2
     ;; once I know it's a SUB(Z(x))(re1 >= re2),
     ;; I have to create a SUB_Re(Z(x))(re1) >= SUB_Re(Z(x))(re2)
     (let ((arg1 (args1 bool-expr))
 	  (arg2 (args2 bool-expr)))
-      (let*((new-subs-op ;; SUB_Re(Z(x))
-	     (make-application (extra-get-expr "SUB_Re") (copy sigma)))
-	    (new-arg1    
-	     (resolve-sub-re arg1 new-subs-op))
-	    (new-arg2    
-	     (resolve-sub-re arg2 new-subs-op)))
+      (let* ((new-subs-op ;; SUB_Re(Z(x))
+	      (make-application (extra-get-expr "SUB_Re") (copy sigma)))
+	     (new-arg1    
+	      (resolve-sub-re arg1 new-subs-op))
+	     (new-arg2    
+	      (resolve-sub-re arg2 new-subs-op)))
 	(make-application (operator bool-expr) new-arg1 new-arg2)))))
 
 (defun resolve-sub-re (re-expr sub-sigma)
-  ;; (format t "~%[resolve-sub-re] re-expr ~a sub-sigma ~a~%"re-expr sub-sigma) ;; debug
+  ;;(format t "~%*** [resolve-sub-re] re-expr: ~a~%sub-sigma: ~a"re-expr sub-sigma) ;; debug
   ;; the params are assumed to be part of a SUB_Re application
   ;; of this form: SUB_Re(<sigma>)(<re>), where SUB_Re(<sigma>) is sub-sigma
   ;; and <re> is re-expr.
-  (let*((re-op (id (operator re-expr))))
+  (let* ((re-op (id (operator re-expr))))
     (cond
      ((= 2 (length (arguments re-expr)))
       (make-application
@@ -381,9 +352,9 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
      ((= 1 (length (arguments re-expr)))
       (cond
        ;; <re> = const(<real>)
-       ((eq 'cnst re-op) (copy re-expr))
+       ((eq '|cnst| re-op) (copy re-expr))
        ;; <re> = val(<int>)
-       ((eq 'val re-op)
+       ((eq '|val| re-op)
 	(let ((var   (args1 re-expr))
 	      (sigma (args1 sub-sigma)))
 	  (let ((res (evaluate_sub_mapvar (cdr (pvslist2list sigma)) var)))
