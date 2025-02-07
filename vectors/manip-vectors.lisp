@@ -26,6 +26,8 @@
 ;;; documentation summarizes the strategy support available for vectors.
 ;;;
 
+(in-package :pvs)
+
 (defhelper manip-vectors ()
   (skip)
   "[Manip] The following strategies provide support for vectors:
@@ -68,8 +70,9 @@ scalar product:
 (defclass pvs-type-vect2 (pvs-type-vector) () )
 (defclass pvs-type-vect3 (pvs-type-vector) () )
 
-(defconstant-if-unbound pvs-type-funtype (find-class 'funtype))
-(defconstant-if-unbound vector-param-types (list *posint*))
+(alexandria:define-constant pvs-type-funtype (find-class 'funtype))
+(alexandria:define-constant vector-param-types (list *posint*)
+  :test #'equal)
 
 (defun vectn-subtype? (vtype)
   (and (typep vtype pvs-type-funtype)
