@@ -3,13 +3,13 @@
 	(expr  (cdr dlseq))
 	(eqstr "equalities[list_adt[BoolExpr].list].=")
 	(pp1   (when expr (pvslist2list (args1 expr))))
-	(lhs   (when (car pp1)
+	(lhs   (when (and pp1 (null (cdr pp1)))
 		 (format nil "~a(~a, (:~{ ~a~^,~} :))"
-			 eqstr (args1 expr) (cdr pp1))))
+			 eqstr (args1 expr) (car pp1))))
 	(pp2   (when expr (pvslist2list (args2 expr))))
-	(rhs   (when (car pp2)
+	(rhs   (when (and pp2 (null (cdr pp2)))
 		 (format nil "~a(~a, (:~{ ~a~^,~} :))"
-			 eqstr (args2 expr) (cdr pp2)))))
+			 eqstr (args2 expr) (car pp2)))))
     (when expr
       (branch
        (with-tccs
@@ -35,8 +35,8 @@ DDL sequent in the consequent is used."
 	      (let ((dummy (error-format-if "Cannot transform ~a to a list-expr (contain free variables)" original-cons)))
 		(fail))
 	    (let ((pplist (pvslist2list original-cons)))
-	      (if (and pplist (car pplist))
-		  (let ((list-of-exprs (cdr pplist))
+	      (if (null (cdr pplist))
+		  (let ((list-of-exprs (car pplist))
 			(pvs-list-expr (make!-list-expr list-of-exprs (type(car list-of-exprs))))
 			(case-str      (format nil "(%1) = ~a" pvs-list-expr)))
 		       (case-replace case-str :hide? t))

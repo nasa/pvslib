@@ -38,17 +38,17 @@
 	    (flatten)
 	    (simplify-nth)
 	    (beta)
-	    (match "cnst(%1) = cnst(%2)" step (inst?))
+	    (match$ "cnst(%1) = cnst(%2)" step (inst?))
 	    (match$ "val(%a) = cnst(%c) + val(%b)" 
 		    step
 		    (let((var-name "%a"))
-		      (match$  "in_map(%d)(dlvar_index(%e))"
-			      step (let ((in_map-expr $dj)
+		      (match$ "in_map(%d)(dlvar_index(%e))"
+			      step (let ((in_map-expr $1j)
 					 (pvs-list (args1 (operator in_map-expr)))
-					 (lisp-list (pvslist2list pvs-list))
-					 (in-map-case (defined-in-MapExprInj? var-name (cdr lisp-list))))
+					 (lisp-list (pp-list pvs-list))
+					 (in-map-case (defined-in-MapExprInj? var-name lisp-list)))
 				     (then
-				      (hide-all-but $dn)
+				      (hide-all-but $1n)
 				      (inst 1 "0" var-name)
 				      (rewrite "cnst_val_0")
 				      (flatten)
@@ -59,12 +59,12 @@
 		    step
 		    (let((var-name "%a")(actual-constant "%d"))
 		      (match$  "in_map(%e)(dlvar_index(%))"
-			       step (let ((in_map-expr $ej)
+			       step (let ((in_map-expr $1j)
 					  (pvs-list (args1 (operator in_map-expr)))
-					  (lisp-list (pvslist2list pvs-list))
-					  (in-map-case (defined-in-MapExprInj? var-name (cdr lisp-list))))
+					  (lisp-list (pp-list pvs-list))
+					  (in-map-case (defined-in-MapExprInj? var-name lisp-list)))
 				      (then
-				       (hide-all-but $en)
+				       (hide-all-but $1n)
 				       (inst 1 actual-constant var-name)
 				       (branch
 					(split 1)
@@ -81,12 +81,12 @@
 (defstep simplify-nth (&optional (fnum *) n)
   (for@ n
 	(match$ fnum "nth(%a,%b{number})" step
-		(let ((nth-expr $aj)
+		(let ((nth-expr $1j)
 		      (pvs-list (args1 nth-expr))
 		      (index (args2 nth-expr))
-		      (list (pvslist2list pvs-list)))
-		  (if (car list)
-		      (let ((pvs-elem (nth (number index) (cdr list)))
+		      (pplist (pvslist2list pvs-list)))
+		  (if (null (cdr pplist))
+		      (let ((pvs-elem (nth (number index) (car pplist)))
 			    (case-str
 			     (format nil "NOT (~a = ~a)" nth-expr pvs-elem))
 			    (length-str
@@ -121,18 +121,20 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 
 (defhelper dl-assert-pairwise_distinct_vars? ()
   (match$ "pairwise_distinct_vars?"
-	     step
-	     (with-fresh-labels (pairwise-distinct-form $1n)
-	       (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
-	       (repeat (expand "distinct_var?" pairwise-distinct-form))
-	       (flatten pairwise-distinct-form)
-	       (assert)
-	       (hide pairwise-distinct-form)))
+	  step
+	  (with-fresh-labels
+	   (pairwise-distinct-form $1n)
+	   (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
+	   (repeat (expand "distinct_var?" pairwise-distinct-form))
+	   (flatten pairwise-distinct-form)
+	   (assert)
+	   (hide pairwise-distinct-form)))
   ""
   "Applying pairwise_distinct_vars?")
 
 (defhelper dl-calculate-get_val_cnst_id_ex (flabel)
-  (with-fresh-names (ode)
+  (with-fresh-names
+   (ode)
    (expand "get_val_cnst_id_ex" flabel)
    (simplify-nth)
    (beta)
@@ -160,23 +162,23 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	     (dl-calculate-is_cnst?$ *is_const?*)
 	     (replace *is_const?* (flabel *is_val_not_in_map?*) :hide? t))
 	    (match$ *is_val_not_in_map?*
-		      "in_map_ex(%a)(%b)"
-		      step
-		      (then
-		       (simplify-nth *is_val_not_in_map?*)
-		       (for@ nil (expand "in_map_ex" *is_val_not_in_map?*))
-		       (beta *is_val_not_in_map?*)
-		       (for@ nil
-			     (then
-			      (match *is_val_not_in_map?* "(%op(%a,%b))(%c)" step (expand "%op" *is_val_not_in_map?*))
-			      ;; #TODO ^^^ add support to unary operators @M3
-			      (match *is_val_not_in_map?* "cnst(%%)(%%)" step (expand "cnst" *is_val_not_in_map?*))
-			      (match *is_val_not_in_map?* "val(%%)(%%)" step
-				     (then
-				      (expand "val" *is_val_not_in_map?*)
-				      (expand "env_c" *is_val_not_in_map?*)
-				      (expand "env_nat_shift" *is_val_not_in_map?*)))))
-		       (dl-assert-pairwise_distinct_vars?)))
+		    "in_map_ex(%a)(%b)"
+		    step
+		    (then
+		     (simplify-nth *is_val_not_in_map?*)
+		     (for@ nil (expand "in_map_ex" *is_val_not_in_map?*))
+		     (beta *is_val_not_in_map?*)
+		     (for@ nil
+			   (then
+			    (match *is_val_not_in_map?* "(%op(%a,%b))(%c)" step (expand "%op" *is_val_not_in_map?*))
+			    ;; #TODO ^^^ add support to unary operators @M3
+			    (match *is_val_not_in_map?* "cnst(%%)(%%)" step (expand "cnst" *is_val_not_in_map?*))
+			    (match *is_val_not_in_map?* "val(%%)(%%)" step
+				   (then
+				    (expand "val" *is_val_not_in_map?*)
+				    (expand "env_c" *is_val_not_in_map?*)
+				    (expand "env_nat_shift" *is_val_not_in_map?*)))))
+		     (dl-assert-pairwise_distinct_vars?)))
 	    ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	    ;; the expression is replaced by the calculated definition,
 	    ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
@@ -208,8 +210,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 		     (dl-calculate-Y_sol_ex$ *Y_sol_ex*)
 		     (replace *Y_sol_ex* :dir rl :hide? t)
 		     (beta z_def))))
-  ""
-  "[Internal strategy]")
+  "Internal strategy" "")
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
   (let ((dlseq (or (is-dl-seq fnum) (error-format-if "No dL sequent found~@[ in fnum ~a~]." fnum)))
@@ -221,8 +222,6 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 	   skolem-constant))
 	(passed-checks (and dlseq skolem-constant)))
     (when passed-checks
-      (deftactic simplify_init_zip_sol (&optional (tac-fnum -1))
-	(for@ nil (then (expand "init_zip_sol" tac-fnum) (for@ nil (expand "length" tac-fnum)))))
       (with-fresh-labels
        ((solution_lemma) (z_def))
        (with-fresh-names
@@ -246,7 +245,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 		(then
 		 (hide-all-but (solution_lemma z_def '-))
 		 (expand "zs" z_def)
-		 (simplify_init_zip_sol z_def)
+		 (for@ nil (then (expand "init_zip_sol" z_def) (for@ nil (expand "length" z_def))))
 		 (simplify-nth)
 		 (beta)
 		 (simplify_Y_sol_ex__$ z_def)
@@ -357,7 +356,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
        ((eq '|val| re-op)
 	(let ((var   (args1 re-expr))
 	      (sigma (args1 sub-sigma)))
-	  (let ((res (evaluate_sub_mapvar (cdr (pvslist2list sigma)) var)))
+	  (let ((res (evaluate_sub_mapvar (pp-list sigma) var)))
 	    (or res re-expr))))
        ;; otherwise
        (t (make-application (copy sub-sigma) re-expr))))
@@ -397,8 +396,8 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 		     (original-lambda   (args2 original-formula))
 		     (original-pvs-list (expression original-lambda))
 		     (pplist (pvslist2list original-pvs-list)))
-		 (if (and pplist (car pplist))
-		     (let ((list-of-exprs (cdr pplist))
+		 (if (null (cdr pplist))
+		     (let ((list-of-exprs     (car pplist))
 			   (pvs-list-expr     (make!-list-expr list-of-exprs (type(car list-of-exprs))))
 			   (new-lambda-expr   (make!-lambda-expr 
 					       (bindings original-lambda) 

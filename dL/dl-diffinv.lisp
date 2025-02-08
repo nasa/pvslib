@@ -146,7 +146,7 @@ sequent is pretty-printed unless PP? is set to nil."
 			 (try (typepred "%d") (replace 1 :hide? t) (skip)))))
 	    
 	    )))))
-  "Internal stragty. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
+  "Internal strategy. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
   "Applying dl-compute-ddt__ helper")
 
 (defhelper dl-nqboolder__ ()
@@ -163,12 +163,12 @@ sequent is pretty-printed unless PP? is set to nil."
 ;; was having problems building the final step @M3 20231215
 (defhelper solve_dlvar_index_le_max_var ()
   (match$ 1 "dlvar_index(%a) <= max_var(%b)" step
-	  (let ((leq-expr $bj)
+	  (let ((leq-expr $1j)
 		(pvs-list (args1 (args2 leq-expr)))
-		(list (pvslist2list pvs-list))
+		(pplist (pvslist2list pvs-list))
 		(idx
-		 (when (car list)
-		   (loop for tuple-expr in (cdr list) for i
+		 (when (null (cdr pplist))
+		   (loop for tuple-expr in (car pplist) for i
 			 from 0 when
 			 (string=
 			  (format
@@ -186,8 +186,7 @@ sequent is pretty-printed unless PP? is set to nil."
 		  ((then (simplify-nth)(assert))
 		   (then (for@ nil (expand "length")(assert))))))
 	      (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))(skip)))))
-  "Internal strategy"
-  "")
+  "Internal strategy" "")
 
 (defhelper simplify-DIFT_Re-expression ()
   (let ((dl-operators (list '|val| '|cnst| '+ '- '* '^^ '^ '|sqrt_safe_re| '|div_safe_re|))

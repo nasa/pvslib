@@ -87,22 +87,12 @@
   "Unrolls FORALL(n:below(length(...))):..."
   "Unrolling FORALL(n:below(length(...))):...")
 
-(defun is-null-pvslist (expr)
-  (or (null-expr? expr)
-      (and (constructor-name-expr? expr)
-	   (equal (id expr) '|null|))))
-
-;; Returns a pair, the first element states whether or not expr (a PVS list)
-;; is pretty-printable. The second element is the list of its elements.
-(defun pvslist2list (expr)
-  (if (is-function-expr expr "cons")
-      (let ((rest (pvslist2list (args2 expr))))
-	(cons (car rest) (cons (args1 expr) (cdr rest))))
-    (cons (is-null-pvslist expr) nil)))
-    
 ;; Returns a list from expr (a PVS list)
+;; NOTE: This function retuns nil if PVS obj is null or it's not printable
 (defun pp-list (expr)
-  (cdr (pvslist2list expr)))
+  (let ((pvsl (pvslist2list expr)))
+    (unless (cdr pvsl)
+      (car pvsl))))
 
 ;; Returns length of expr (a PVS list) 
 (defun pp-length (expr)
@@ -308,13 +298,13 @@ PP? is set to nil."
 		  (replace nfn! fn! :hide? t)
 		  (then@
 		   (relabel nfn! fn!)
-		   (expand* (gamma_ delta_))
+		   (repeat (expand* (gamma_ delta_)))
 		   finishing-step)
 		  (unless dont-fail? (fail)))
 	       (try
 		(replaces fn! :in nfn!)
 		(then@
-		  (expand* (gamma_ delta_))
+		  (repeat (expand* (gamma_ delta_)))
 		  finishing-step
 		  (split nfn!))
 		(unless dont-fail? (fail)))))
@@ -322,28 +312,32 @@ PP? is set to nil."
 	     (then  ;; Other branches - let's guess what to do ...
 	      (relabel lbs nfn!)
 	      (hide fn!)
-	      (else*
+	      (cond-match
 	       ;; TCC on cont_re? conditions
-	       (match "cont_re?(%%)(%%)" step (dl-lemma__close_dl_cont_tcc$))
+	       ("cont_re?(%%)(%%)" (dl-lemma__close_dl_cont_tcc$))
 	       ;; TCC for ddl_dom?(DLBOOL(TRUE))
-	       (match "ddl_dom?(DLBOOL(TRUE))" step (rewrite "dl_true_DDL"))
+	       ("ddl_dom?(DLBOOL(TRUE))" (rewrite "dl_true_DDL"))
 	       ;; TCC for ddl_dom_upto?(i)(DLBOOL(TRUE))
-	       (match "ddl_dom_upto?(%a{name_})(DLBOOL(TRUE))" step (rewrite "dl_true_up_DDL"))
+	       ("ddl_dom_upto?(%a{name_})(DLBOOL(TRUE))" (rewrite "dl_true_up_DDL"))
 	       ;; TCC for fresh?
-	       (match "FORALL(%%: below(length(%%))): fresh?(%%)(%%)"
-		      step (then
-			    (hide-all-but (- $1n))
-			    ;; (unroll) is failing in Linux for some evaluable expressions
-			    (skeep :preds? t)
-			    (repeat (then (expand "BV")(repeat (expand "bv_me"))))
-			    (repeat (expand "length" -1))
-			    (match -1 "%c < %d" step (then (generalize "%c" "%c" "below(%d)")
-							   (unroll)
-							   (simplify-nth 1)
-							   (prove-fresh_re-goal)
-							   (assert)))))
-	       (match "fresh_li?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
-	       (match "fresh?(%%)(%%)" step (then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))))))
+	       ("FORALL(%%: below(length(%%))): fresh?(%%)(%%)"
+		(then
+		 (hide-all-but (- $1n))
+		 ;; (unroll) is failing in Linux for some evaluable expressions
+		 (skeep :preds? t)
+		 (repeat (then (expand "BV")(repeat (expand "bv_me"))))
+		 (repeat (expand "length" -1))
+		 (match -1 "%c < %d" step
+			(then (generalize "%c" "%c" "below(%d)")
+			      (unroll)
+			      (simplify-nth 1)
+			      (prove-fresh_re-goal)
+			      (assert)))))
+	       ("fresh_li?(%%)(%%)"
+		(then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
+	       ("fresh?(%%)(%%)"
+		(then (expand* (gamma_ delta_)) (prove-fresh_re-goal$)))
+	       :fnums +))))
 	   (when pp? (dl-pp nfn!))
 	   (unless dont-fail? (label "**FAIL**" fn!))))))
        (when-label "**FAIL**" (fail)))
@@ -370,7 +364,7 @@ PP? is set to nil."
   (let ((dlseq (is-dl-seq fnum))
 	(fn    (car dlseq)))
     (when fn
-      (let ((l   (dl-get-dlfnums dlseq dlfnums but)))
+      (let ((l (dl-get-dlfnums dlseq dlfnums but)))
 	(mapstep #'(lambda (dlfnum)`(dl-lemma__$
 				     ("dl_hideL" "dl_hideR") ,dlfnum ,fn
 				     :side * :pp? ,pp?)) l))))
@@ -1230,50 +1224,49 @@ unless PP? is set to nil."
 (defhelper prove-predicate-on-re (predicate dl-operators dl-lemmas)
   (let ((match-str (format nil "~a(%1,%2)(%3)" predicate)))
     (match$
-   + match-str
-   step 
-   (let ((lemma-name-per-operator (pairlis dl-operators dl-lemmas))
-	(arg (extra-get-expr "%3")))
-	  (if (application? arg)
-	      (let((arg-arity (length(arguments arg)))
-	 	   (diff-bound "%1")
-	 	   (domain     "%2")
-		   (op (id (operator arg)))
-		   (arg1 (format nil "~a" (args1 arg)))
-		   (lemma-name (cdr (assoc op lemma-name-per-operator))))
-		(if (= arg-arity 1)
-		    (if lemma-name
-			(then
-			 (lemma lemma-name)
-			 (inst? -1))
-		      (warning "Unexpected unary argument for ~a application: ~a" predicate arg))
-		  (let ((infix? (infix-application? arg))
-			(arg2 (format nil "~a" (args2 arg)))
-			(operator (format nil (if infix? "~a[Environment]" "~a") op)))
-		    (if (and lemma-name operator)
-			(then
-			 (lemma lemma-name)
-			 (branch
-			  (inst -1 diff-bound domain arg1 arg2)
-			  ((if (is-tcc-goal?)
-			       (then
-				(hide-all-but 1)
-				(prove-predicate-on-re$ predicate dl-operators dl-lemmas))
-			     (try (rewrite* ("real_fun_ops.scal_function"
-					     "real_fun_ops.scaldiv_function"))
-				  (then (expand "const_fun")
-					(expand "cnst")
-					(expand operator))
-				  (expand operator))))))
-		      (warning "Unexpected binary argument for ~a application: ~a" predicate arg)))))
-	    (let ((is-lambda? (lambda-expr? arg)))
-	      (if is-lambda?
-		  (let ((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
-		    (then
-		     (lemma lemma-name)
-		     (expand "cnst")
-		     (inst?)))
-	      (warning "Unexpected argument for ~a application: ~a" predicate arg)))))))
+     + match-str step 
+     (let ((lemma-name-per-operator (pairlis dl-operators dl-lemmas))
+	   (arg (extra-get-expr "%3")))
+       (if (application? arg)
+	   (let((arg-arity (length(arguments arg)))
+		(diff-bound "%1")
+		(domain     "%2")
+		(op (id (operator arg)))
+		(arg1 (format nil "~a" (args1 arg)))
+		(lemma-name (cdr (assoc op lemma-name-per-operator))))
+	     (if (= arg-arity 1)
+		 (if lemma-name
+		     (then
+		      (lemma lemma-name)
+		      (inst? -1))
+		   (warning "Unexpected unary argument for ~a application: ~a" predicate arg))
+	       (let ((infix? (infix-application? arg))
+		     (arg2 (format nil "~a" (args2 arg)))
+		     (operator (format nil (if infix? "~a[Environment]" "~a") op)))
+		 (if (and lemma-name operator)
+		     (then
+		      (lemma lemma-name)
+		      (branch
+		       (inst -1 diff-bound domain arg1 arg2)
+		       ((if (is-tcc-goal?)
+			    (then
+			     (hide-all-but 1)
+			     (prove-predicate-on-re$ predicate dl-operators dl-lemmas))
+			  (try (rewrite* ("real_fun_ops.scal_function"
+					  "real_fun_ops.scaldiv_function"))
+			       (then (expand "const_fun")
+				     (expand "cnst")
+				     (expand operator))
+			       (expand operator))))))
+		   (warning "Unexpected binary argument for ~a application: ~a" predicate arg)))))
+	 (let ((is-lambda? (lambda-expr? arg)))
+	   (if is-lambda?
+	       (let ((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
+		 (then
+		  (lemma lemma-name)
+		  (expand "cnst")
+		  (inst?)))
+	     (warning "Unexpected argument for ~a application: ~a" predicate arg)))))))
   "Try to close the branch if the current goal has a consequent of form PREDICATE(%1,%2)(%3)"
   "Trying to close the branch if the current goal has a consequent of form PREDICATE(..)(..)")
 
@@ -1342,7 +1335,7 @@ sequent is pretty-printed unless PP? is set to nil."
   "")
 
 (defstep dl-flattenR__ (dlfnum fnum)
-  (else*$
+  (else*
    (dl-trueR dlfnum :fnum fnum :pp? nil)
    (dl-falseR dlfnum :fnum fnum :pp? nil)
    (dl-orR dlfnum :fnum fnum :pp? nil)
@@ -1353,7 +1346,7 @@ sequent is pretty-printed unless PP? is set to nil."
   "")
 
 (defstep dl-flattenL__ (dlfnum fnum)
-  (else*$
+  (else*
    (dl-falseL :fnum fnum :pp? nil)
    (dl-trueL dlfnum :fnum fnum :pp? nil)
    (dl-andL dlfnum :fnum fnum :pp? nil)
@@ -1387,7 +1380,7 @@ sequent is pretty-printed unless PP? is set to nil."
       (with-fresh-labels
        ((fn! fn))
        (for nil
-	(else*$
+	(else*
 	 (dl-flatten :fnum fn! :pp? nil)
 	 (dl-andR :fnum fn! :pp? nil)
 	 (dl-orL :fnum fn! :pp? nil)
@@ -1451,7 +1444,7 @@ sequent is pretty-printed unless PP? is set to nil."
 (defstep dl-grind (&optional fnum (finishing-step (dl-smt)) (pp? t))
   (let ((dlseq (is-dl-seq fnum))
 	(fn    (car dlseq)))
-    (then
+    (quietly
      (install-rewrites ("exponentitation.expt" "exponentitation.^"))
      (when fn
        (with-fresh-labels
@@ -1480,7 +1473,7 @@ sequent is pretty-printed unless PP? is set to nil."
   (let ((dlseq (is-dl-seq fnum))
 	(fn    (car dlseq)))
     (when fn
-      (then
+      (quietly
        (with-fresh-labels@
 	((fn! fn))
 	(for@ nil
