@@ -6,46 +6,46 @@
   (expr1 expr2 &optional name cut (dlfnum +) fnum (pp? t) dont-fail? (quiet? t))
   (quietly
    (let ((name (if name
-		  (if (not (typep (pc-parse name 'expr) 'name-expr))
-		      (error-format-if "Provided argument ~a should be a name" name)
-		    (if (check-name name)
-			(error-format-if "Provided name ~a is not fresh" name)
-		      name))
-		(freshname "v"))))
-    (when name
-      (let ((e1 (or (extra-get-expr expr1 "RealExpr")
-		   (error-format-if "Expression ~a does not typecheck" expr1))))
-	(when e1
-	  (let ((e2 (or (extra-get-expr expr2 "RealExpr")
-		       (error-format-if "Expression ~a does not typecheck" expr2))))
-	    (when e2
-	      (let ((dlvars  (get-known-dlvars e1 e2))
-		    (dlvarsl (format nil "(: ~{~a~^, ~} :)" dlvars))
-		    (step (if cut '(skip) '(inst? -1))))
-		(then
-		 (lemma "fresh_var")
-		 (inst -1 dlvarsl)
-		 (skolem -1 name)
-		 (with-fresh-labels
-		  ((fvars! -1))
-		  (let ((inst-terms (if cut
-					(list e1 e2 (extra-get-expr cut "BoolExpr") name)
-				      (list e1 e2 "_" name))))
-		    (try-branch
-		     (dl-lemma__$
-		      "dl_differential_ghost" dlfnum fnum
-		      :inst-terms inst-terms
-		      :side +
-		      :ftest dl-diff-lmbd
-		      :pp? pp?
-		      :dont-fail? dont-fail?
-		      :finishing-step step)
-		     ((skip)
-		      ;;(dl-existsrL name :pp? pp?)
-		      ;;(then (skolem 1 name)
-		      ;;(when pp? (dl-pp 1))))
-		      )
-		     (unless dont-fail? (fail)))))))))))))
+		   (if (not (typep (pc-parse name 'expr) 'name-expr))
+		       (error-format-if "Provided argument ~a should be a name" name)
+		     (if (check-name name)
+			 (error-format-if "Provided name ~a is not fresh" name)
+		       name))
+		 (freshname "v"))))
+     (when name
+       (let ((e1 (or (extra-get-expr expr1 "RealExpr")
+		     (error-format-if "Expression ~a does not typecheck" expr1))))
+	 (when e1
+	   (let ((e2 (or (extra-get-expr expr2 "RealExpr")
+			 (error-format-if "Expression ~a does not typecheck" expr2))))
+	     (when e2
+	       (let ((dlvars  (get-known-dlvars e1 e2))
+		     (dlvarsl (format nil "(: ~{~a~^, ~} :)" dlvars))
+		     (step    (if cut '(skip) '(inst? -1))))
+		 (then
+		  (lemma "fresh_var")
+		  (inst -1 dlvarsl)
+		  (skolem -1 name)
+		  (with-fresh-labels
+		   ((fvars! -1))
+		   (let ((inst-terms (if cut
+					 (list e1 e2 (extra-get-expr cut "BoolExpr") name)
+				       (list e1 e2 "_" name))))
+		     (try-branch
+		      (dl-lemma__$
+		       "dl_differential_ghost" dlfnum fnum
+		       :inst-terms inst-terms
+		       :side +
+		       :ftest dl-diff-lmbd
+		       :pp? pp?
+		       :dont-fail? dont-fail?
+		       :finishing-step step)
+		      ((skip)
+		       ;;(dl-existsrL name :pp? pp?)
+		       ;;(then (skolem 1 name)
+		       ;;(when pp? (dl-pp 1))))
+		       )
+		      (unless dont-fail? (fail)))))))))))))
    :quiet? quiet?)
   "Introduces a differential ghost meta-variable NAME in the right
 hand side of a DDL sequent in formula FNUM.  NAME represents

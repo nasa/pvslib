@@ -43,7 +43,7 @@
 
 ;;
 ;; Turn-off Manip messages
-(setq *suppress-manip-messages* t)
+;;(setq *suppress-manip-messages* t)
 
 ;;
 ;; Load strategies defined in other files
@@ -57,6 +57,18 @@
 (load-other-strat-files "dl-diffinv.lisp"  )
 (load-other-strat-files "dl-solve.lisp"    )
 (load-other-strat-files "dl-pp.lisp"       )
+
+(defstep dl-distinct-vars ()
+  (if-match
+   ("pairwise_distinct_vars?" "distinct_var?")
+   (with-fresh-labels
+    (pairwise-distinct-form ($*n) :hide)
+    (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
+    (repeat (expand "distinct_var?" pairwise-distinct-form))
+    (flatten pairwise-distinct-form)
+    (assert)))
+  "Asserts that variables in the sequent are distinct."
+  "Asserting that variables are distinct.")
 
 (defstep dl-mapexpr_inj (&optional (fnum 1) lemma)
   (let ((ok (list-expr? (extra-get-expr `(! ,fnum (-> "mapexpr_inj") 1)))))
@@ -341,7 +353,7 @@ PP? is set to nil."
 	   (when pp? (dl-pp nfn!))
 	   (unless dont-fail? (label "**FAIL**" fn!))))))
        (when-label "**FAIL**" (fail)))
-      (warning "No suitable formula for given dL lemma.")))
+      (warning-msg "No suitable formula for given dL lemma.")))
   "Internal strategy."
   "Applying (dl-lemma__ ~s ~s ~s ~s (~{\"~a\"~}) ~s ~s ~s ~s ~s)")
 
@@ -400,16 +412,14 @@ sequent is pretty-printed unless PP? is set to nil."
 (defstep dl-subs ()
   (let ((rws *dl-sub-rws*))
     (then
-     (for@ nil
-	   (expand* "pairwise_distinct_vars?" "distinct_var?"))
-     (flatten)
+     (dl-distinct-vars)
      (for@ nil
 	   (try-branch
 	    (rewrite* rws)
-	    ((then (repeat (expand "SUB_MapVar"))
-		   ;; TODO can we remove this assert? @M3
-		   (assert)
-		   )
+	    ((then
+	      (repeat (expand "SUB_MapVar")))
+	      ;; TODO can we remove this assert? @M3 -- [CAM] removed it
+	      ;;(assert))
 	     (then (skosimp* 1)
 		   (eval-formula 1 :quiet? t)))
 	    (skip)))))
@@ -991,10 +1001,11 @@ unless PP? is set to nil."
     (when dlfn2
       (with-fresh-labels
        ((fn! fn))
-       (dl-move dlfn1 fn!)
-       (dl-move dlfn2 fn!)
-       (lemma "dl_axiom")
-       (inst? -1 :where fn!))))
+       (quietly 
+	(dl-move dlfn1 fn!)
+	(dl-move dlfn2 fn!)
+	(lemma "dl_axiom")
+	(inst? -1 :where fn!)))))
   "Use DDL lemma dl_axiom on a formula of a DDL sequent in formula
 FNUM. The specific formula in the DDL sequent can be specified with
 the option DLFNUM. If FNUM is not provided, the first DDL sequent in
@@ -1239,7 +1250,7 @@ unless PP? is set to nil."
 		     (then
 		      (lemma lemma-name)
 		      (inst? -1))
-		   (warning "Unexpected unary argument for ~a application: ~a" predicate arg))
+		   (warning-msg "Unexpected unary argument for ~a application: ~a" predicate arg))
 	       (let ((infix? (infix-application? arg))
 		     (arg2 (format nil "~a" (args2 arg)))
 		     (operator (format nil (if infix? "~a[Environment]" "~a") op)))
@@ -1258,7 +1269,7 @@ unless PP? is set to nil."
 				     (expand "cnst")
 				     (expand operator))
 			       (expand operator))))))
-		   (warning "Unexpected binary argument for ~a application: ~a" predicate arg)))))
+		   (warning-msg "Unexpected binary argument for ~a application: ~a" predicate arg)))))
 	 (let ((is-lambda? (lambda-expr? arg)))
 	   (if is-lambda?
 	       (let ((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
@@ -1266,7 +1277,7 @@ unless PP? is set to nil."
 		  (lemma lemma-name)
 		  (expand "cnst")
 		  (inst?)))
-	     (warning "Unexpected argument for ~a application: ~a" predicate arg)))))))
+	     (warning-msg "Unexpected argument for ~a application: ~a" predicate arg)))))))
   "Try to close the branch if the current goal has a consequent of form PREDICATE(%1,%2)(%3)"
   "Trying to close the branch if the current goal has a consequent of form PREDICATE(..)(..)")
 
@@ -1656,22 +1667,6 @@ the consequent is used.")
 ;; General-use strategies
 ;;
 
-;; #TODO move to general library?
-(defun is-tcc-goal? (&optional (ps *ps*))
-  "Determines if PS is a goal generated from a TCC. PS default value is the current proofstate."
-  (typep *ps* 'tcc-proofstate))
-
-;; #TODO move to general library?
-(defstrat error (msg &rest msg-args)
-  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
-    (fail))
-  "Reports error message and fails.")
-
-;; #TODO move to general library?
-(defstrat warning (msg &rest msg-args)
-  (let ((dummy (eval `(error-format-if ,msg ,@msg-args))))
-    (skip))
-  "Reports error message and skips.")
 
 (defparameter *bool-SA-rws* '("not_atom" "or_atom" "and_atom" "atomic_be" "Re_sum" "Re_diff" "Re_prod" "Re_expt" "sf_iff_mp"
 			      "sf_val" "sf_cnst"))

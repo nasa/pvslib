@@ -227,7 +227,7 @@ sequent is pretty-printed unless PP? is set to nil."
 				 (simplify-DIFT_Re-expression$)))))
 			;; TCC-branches produced by the instantiation
 			(solve_dlvar_index_le_max_var))))
-		   (warning "Unexpected unary argument for DIFT_Re application: ~a" arg))
+		   (warning-msg "Unexpected unary argument for DIFT_Re application: ~a" arg))
 	       (let ((infix? (infix-application? arg))
 		     (arg2 (format nil "~a" (args2 arg)))
 		     (operator (format nil (if infix? "~a[Environment]" "~a") op)))
@@ -256,15 +256,15 @@ sequent is pretty-printed unless PP? is set to nil."
 					(rewrite* drws)
 					(rewrite* drup) 
 					))))))))
-		   (warning "Unexpected binary argument for DIFT_Re application: ~a"  arg)))))
+		   (warning-msg "Unexpected binary argument for DIFT_Re application: ~a"  arg)))))
 	 (let ((is-lambda? (lambda-expr? arg)))
 	   (if is-lambda?
-	       (let((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
+	       (let ((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
 		 (then
 		  (lemma lemma-name)
 		  (expand "cnst")
 		  (inst?)))
-	     (warning "Unexpected argument for DIFT_Re application: ~a" arg)))))))
+	     (warning-msg "Unexpected argument for DIFT_Re application: ~a" arg)))))))
   "Simplifies  DIFT_Re(%1,%2)(%3)"
   "Applying prove-predicate-on-re helper")
 

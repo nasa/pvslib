@@ -119,19 +119,6 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
   "Decides formulas of form is_cnst?(%{list})(%{number}) = %{name}. Assumes FLABEL points to a formula of that form. Since this is an equality between booleans, after the application of this helper, FLABEL points to an antecedent or a consequent of form %{name}."
   "Applying dl-decide-is_cnst?")
 
-(defhelper dl-assert-pairwise_distinct_vars? ()
-  (match$ "pairwise_distinct_vars?"
-	  step
-	  (with-fresh-labels
-	   (pairwise-distinct-form $1n)
-	   (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
-	   (repeat (expand "distinct_var?" pairwise-distinct-form))
-	   (flatten pairwise-distinct-form)
-	   (assert)
-	   (hide pairwise-distinct-form)))
-  ""
-  "Applying pairwise_distinct_vars?")
-
 (defhelper dl-calculate-get_val_cnst_id_ex (flabel)
   (with-fresh-names
    (ode)
@@ -178,7 +165,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 				    (expand "val" *is_val_not_in_map?*)
 				    (expand "env_c" *is_val_not_in_map?*)
 				    (expand "env_nat_shift" *is_val_not_in_map?*)))))
-		     (dl-assert-pairwise_distinct_vars?)))
+		     (dl-distinct-vars)))
 	    ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	    ;; the expression is replaced by the calculated definition,
 	    ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
@@ -302,7 +289,7 @@ N is the number of occurrences of NTH that needs to be simplified (all by defaul
 				    ((then (flatten) (skeep) (inst?) (inst?) (assert))
 				     (then (flatten) (skeep) (inst?) (inst?) (assert)))))))
 			 ))))))))))
-	     (then (dl-assert-pairwise_distinct_vars?) (hide-all-but 1) (dl-cnstlins))))
+	     (then (dl-distinct-vars) (hide-all-but 1) (dl-cnstlins))))
 	   (when turn-rw-msg-on? (rewrite-msg-on))))))))
   ""
   "Applying dl-solve")
