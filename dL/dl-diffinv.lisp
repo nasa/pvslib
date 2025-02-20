@@ -123,10 +123,7 @@ sequent is pretty-printed unless PP? is set to nil."
 ;; @notes Use instead of dl-subddt__
 (defhelper dl-compute-ddt__ ()
   (then
-   (match$ "pairwise_distinct_vars?(%%)"
-	   step
-	   (then (repeat (expand "pairwise_distinct_vars?"))
-		 (repeat (expand "distinct_var?"))))
+   (dl-distinct-vars)
    (for@
     nil
     (match$
