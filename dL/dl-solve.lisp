@@ -77,32 +77,6 @@
   "Determines if MapExprInj is made of constant and linear terms. Assumes that the hypothesis of pairwise disjoint variables are already installed as rewriting rules."
   "Checking if list is cnst_lins")
 
-;; #TODO move to structures? @M3
-(defstep simplify-nth (&optional (fnum *) n)
-  (for@ n
-	(match$ fnum "nth(%a,%b{number})" step
-		(let ((nth-expr $1j)
-		      (pvs-list (args1 nth-expr))
-		      (index (args2 nth-expr))
-		      (pplist (pvslist2list pvs-list)))
-		  (if (null (cdr pplist))
-		      (let ((pvs-elem (nth (number index) (car pplist)))
-			    (case-str
-			     (format nil "NOT (~a = ~a)" nth-expr pvs-elem))
-			    (length-str
-			     (format nil "NOT (~a < length(~a))" index
-				     pvs-list)))
-			(branch (case length-str)
-				((then (hide-all-but 1) (for@ nil (expand "length"))
-				       (assert))
-				 (branch (case case-str)
-					 ((then (hide-all-but 1) (for@ nil (expand "nth")))
-					  (then (hide -2) (replace -1 fnum :hide? t)))))))
-		    (skip-msg "Couldn't represent pvs list in lisp")))))
-  "Computes expressions of form nth(%{list},%{number}) in FNUM. FNUM must be a formula number or fnum collection symbol.
-N is the number of occurrences of NTH that needs to be simplified (all by default)."
-  "Applying simplify-nth")
-
 (defhelper dl-calculate-is_cnst? (flabel)
   (then
    (expand "is_cnst?" flabel)

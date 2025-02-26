@@ -182,7 +182,8 @@ sequent is pretty-printed unless PP? is set to nil."
 		  (inst -1 "%b" idx)
 		  ((then (simplify-nth)(assert))
 		   (then (for@ nil (expand "length")(assert))))))
-	      (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))(skip)))))
+	      (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))
+		(skip)))))
   "Internal strategy" "")
 
 (defhelper simplify-DIFT_Re-expression ()
@@ -193,8 +194,7 @@ sequent is pretty-printed unless PP? is set to nil."
     (match$
      + "DIFT_Re(%1,%2,%3)(%4)"
      step 
-     (let (;; #+pvsdebug (dummy (break ">>> simplify-DIFT_Re-expression <<<"))
-	   (lemma-name-per-operator (pairlis dl-operators dl-lemmas))
+     (let ((lemma-name-per-operator (pairlis dl-operators dl-lemmas))
 	   (arg (extra-get-expr "%3")))
        (if (application? arg)
 	   (let ((arg-arity (length(arguments arg)))
@@ -215,13 +215,9 @@ sequent is pretty-printed unless PP? is set to nil."
 			 (split -1)
 			 ((then
 			   (match$ "derivable_up?(%%)(%%)"
-				   step (let
-					    (#+pvsdebug
-					     (dummy
-					      (format t "~&[simplify-DIFT_Re-expression] Attemting prove-derivable_up-goal~%")))
-					  (prove-derivable_up-goal$)))
-			   (then (replace -1 :hide? t)
-				 (simplify-DIFT_Re-expression$)))))
+				   step (prove-derivable_up-goal$))
+			   (replace -1 :hide? t)
+			   (simplify-DIFT_Re-expression$))))
 			;; TCC-branches produced by the instantiation
 			(solve_dlvar_index_le_max_var))))
 		   (warning-msg "Unexpected unary argument for DIFT_Re application: ~a" arg))
@@ -238,7 +234,6 @@ sequent is pretty-printed unless PP? is set to nil."
 			(branch
 			 (split -1)
 			 ((then
-			   ;; #+pvsdebug (let ((dummy (break ">2> simplify-DIFT_Re-expression <2<")))(skip))
 			   (match$ "derivable_up?(%%)(%%)"
 				   step (prove-derivable_up-goal$))
 			   (replace -1 :hide? t)))))

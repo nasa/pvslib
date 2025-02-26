@@ -450,9 +450,9 @@ Invoke (help manip-vectors) to see full documentation.")
     (let* ((adj-fnum (if (< fnum 0) (- fnum 1) fnum))
 	   (replace-one `(replace -1 ,adj-fnum :hide? t))
 	   (expand-id (if id? '((expand "id")) nil))
-	   (rewrites-1 `(else*$ ,@(targeted-rewrites
+	   (rewrites-1 `(else* ,@(targeted-rewrites
 				   1 (get-vector-lemmas val-cl l-lemmas))))
-	   (rewrites-2 `(else*$ ,@(targeted-rewrites
+	   (rewrites-2 `(else* ,@(targeted-rewrites
 				   1 (get-vector-lemmas val-cl r-lemmas))))
 	   (simp-steps `(,@expand-id (assert)
 			 (repeat ,rewrites-1) (repeat ,rewrites-2)
