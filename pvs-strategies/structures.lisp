@@ -1,4 +1,4 @@
-;-*-Lisp-*-
+;;-*-Lisp-*-
 
 (defhelper simplify-nth1__ (nth-expr fnums)
   (let ((pvs-list   (args1 nth-expr))

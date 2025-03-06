@@ -9,16 +9,6 @@ This library provides definitions and properties on diverse data structures.
 | --- | --- | --- | --- |
 | Shroeder Bernstein | `structures@Shroeder_Bernstein` | `Shroeder_Bernstein` | J Tanner Slagel |
 
-
-### Strategies
-
-This library provides the strategy `simplify-nth` that simplifies
-expressions of the form 
-`nth((:a0,...,an:),k)` to `ak` when `k <=n`. For more information,
-type `(help simplify-nth)` in the theorem prover. 
-
-To enable this strategy, please import `structures@strategies`.
-
 ![dependency graph](./structures-zoomed.svg "Dependency Graph")
 
 ## Contributors
