@@ -1,0 +1,273 @@
+%------------------------------------------------------------------------------
+%  Proof of the infinity of prime numbers using reciprocal of primes series
+%
+%  Formalization based on the reference "Proofs from the Book", 
+%  Martin Aigner Günter and M. Ziegler
+%
+% Authors:	
+%		Bruno Berto de Oliveira Ribeiro
+%		Universidade de Brasília - Brazil
+%
+%		Mauricio Ayala-Rincón
+%		Universidade de Brasília - Brazil
+%
+% 		Thaynara Arielly de Lima
+% 		Universidade Federal de Goiás - Brazil
+%
+%               Mariano M. Moscato
+%               NASA  Langley  Research  Center - US
+%
+%------------------------------------------------------------------------------
+
+inf_prime_harmonic_prime: THEORY
+
+  BEGIN
+
+  IMPORTING ints@number_util, reals@sqrt, series@series_lems,
+  	    ints@max_finite_set_nat, algebra@cartesian_product_finite,
+	    sets_aux@card_finite, sets_aux@union_finseq, prime_enum
+
+%——————— Inverse primes sequence 
+
+  inverse_primes: sequence[real] = (LAMBDA(n:nat): IF prime_enumeration(n) /= 0 THEN 1/prime_enumeration(n)
+                                                   ELSE 0 ENDIF)
+
+  inv_prime_series_divergence: COROLLARY
+      NOT conv_series?(inverse_primes) =>
+          NOT EXISTS(k: posnat): empty?[(prime?)]({p: (prime?)| p > prime_enumeration(k-1)})
+            
+  prime_series_div_eq_infinity: LEMMA
+      NOT conv_series?(inverse_primes) => is_infinite(fullset[(prime?)])
+
+  exists_border_constant: LEMMA
+    conv_series?(inverse_primes)
+    => EXISTS(k: nat): limit(series(inverse_primes, k)) < 1/2
+
+
+%——————— Prime sets related 
+  N(n: posnat): set[posnat] = {m: posnat| m <= n}
+
+  N_div(d, n: posnat): set[posnat] = {m: posnat| m <= n AND divides(d, m)}
+  
+  small_primes(k:nat): set[(prime?)] = {p: (prime?)| p < prime_enumeration(k) OR prime_enumeration(k) = 0}
+
+  big_primes(k:nat): set[(prime?)] = {p: (prime?)| p >= prime_enumeration(k) AND prime_enumeration(k) > 0}
+
+  small_big_primes_finite_case: LEMMA
+    FORALL(k:nat): prime_enumeration(k) = 0 =>
+    		   fullset[(prime?)] = small_primes(k) AND emptyset[(prime?)] = big_primes(k)
+
+  N_s(n: posnat, k:nat): set[posnat] = {m: posnat| m <= n AND
+                                 FORALL(p: (prime?)): divides(p, m)
+				        => small_primes(k)(p)}
+
+  N_b(n: posnat, k:nat): set[posnat] = {m: posnat| m <= n AND
+                                 EXISTS(p: (prime?)): divides(p, m)
+				        AND big_primes(k)(p)}
+
+  prime_enum_small_primes_bij: LEMMA
+     FORALL(k: nat, p:(small_primes(k))):
+        EXISTS(n:nat| n < k): prime_enumeration(n) = p
+
+  prime_enum_big_primes_bij: LEMMA
+     FORALL(k: nat, p:(big_primes(k))):
+        EXISTS(n:nat| n >= k): prime_enumeration(n) = p
+
+  N_bij_below_n: LEMMA
+     FORALL (n: posnat):
+       EXISTS (f: [(N(n)) -> below[n]]): bijective?(f)
+
+  Card_N: COROLLARY
+     FORALL(n: posnat): Card[posnat](N(n)) = n
+
+  union_N_s_N_b: LEMMA
+     FORALL(n: posnat, k:nat): N(n) = union(N_s(n, k), N_b(n, k))
+
+  N_div_bij: LEMMA
+      FORALL (d, n: posnat):
+        EXISTS (f: [(N_div(d, n)) -> below[floor(n/d)]]): bijective?(f)
+
+  Card_N_div: LEMMA
+     FORALL(d, n: posnat): Card[posnat](N_div(d, n)) = floor(n/d)
+
+  square_free_N_s(n: posnat, k:nat): set[posnat] = {m: (N_s(n, k))|
+                                               NOT EXISTS(k: nat| k > 1):
+					       divides(k*k, m)} 
+
+  square_div_N_s(n: posnat, k:nat): set[posnat] = {m: (N_s(n, k))|
+                                               EXISTS(k: posnat): m = k*k}
+
+  square_free_N_s_prime: LEMMA
+     FORALL (n: posnat, k, m: nat, p: (prime?), v: (square_free_N_s(n, k))):
+     	    v = p*m => square_free_N_s(n, k)(m)
+
+  square_div_N_s_prime: LEMMA
+     FORALL (n: posnat, k, m:nat, p: (prime?), v: (square_div_N_s(n, k))):
+     	    v = p*p*m => square_div_N_s(n, k)(m)
+
+%——————— N_s related
+
+  N_s_charac: LEMMA
+     FORALL (n: posnat, k:nat, m: (N_s(n, k))):
+       EXISTS(a: (square_free_N_s(n, k)), b: (square_div_N_s(n, k))):
+         m = a*b
+
+  N_s_prime_factor_transfer: LEMMA
+     FORALL(n: posnat, k:nat):
+     FORALL(p: (prime?), a, c: (square_free_N_s(n, k)),
+     	    b, d: (square_div_N_s(n, k))):
+      a*b = c*d AND divides(p, a*b) =>
+      	  (divides(p, a) AND divides(p, c)) OR
+      	  (divides(p*p, a * b) and divides(p*p, b) AND divides(p*p, d))
+	  
+
+  N_s_squares_unique: LEMMA
+     FORALL (n: posnat, k:nat):
+       FORALL(a, c: (square_free_N_s(n, k)), b, d: (square_div_N_s(n, k))):
+          a*b = c*d => a = c AND b = d
+
+  N_s_sf_part(n: posnat, k:nat, m: (N_s(n, k))): (square_free_N_s(n, k)) =
+  		 {a:(square_free_N_s(n, k)) | EXISTS(b: (square_div_N_s(n, k))): m = a * b}
+
+  N_s_sd_part(n: posnat, k:nat, m: (N_s(n, k))): (square_div_N_s(n, k)) =
+  		 {b:(square_div_N_s(n, k)) | EXISTS(a: (square_free_N_s(n, k))): m = a * b}
+
+  N_s_part_id: LEMMA
+     FORALL (n: posnat, k:nat, m: (N_s(n, k))):
+     	    m = N_s_sf_part(n, k, m) * N_s_sd_part(n, k, m)
+
+  square_div_N_s_Card_ineq: LEMMA
+     FORALL(n: posnat, k:nat): Card[posnat](square_div_N_s(n, k)) <= sqrt(n)
+
+  square_div_finseq_set(n: posnat, k:nat): set[finseq[posnat]] =
+  			   {fs: finseq[posnat]| EXISTS(v: (square_div_N_s(n, k))):
+  			  	  	  	fs = (# length := 1,
+						  seq := (LAMBDA(x:below[1]): v) #)}
+
+
+  N_s_finseq_fun(n: posnat, k:nat, m: (N_s(n, k))): finseq[posnat] =
+               {fs: finseq[posnat]|  EXISTS(a: (square_free_N_s(n, k)), b: (square_div_N_s(n, k))):
+         m = a*b AND fs`length = 2 AND fs`seq(0) = a AND fs`seq(1) = b}
+
+
+  square_div_finseq_bij: LEMMA
+     FORALL (n: posnat, k:nat):
+      EXISTS (f: [(square_div_N_s(n, k)) -> (square_div_finseq_set(n,k))]): bijective?(f)
+
+
+  N_s_inj: LEMMA
+     FORALL (n: posnat, k:nat):
+       EXISTS (f: [(N_s(n, k)) -> (cartesian_product_set(
+                                   square_free_N_s(n, k),
+ 				   square_div_finseq_set(n, k)))]): injective?(f)
+
+  N_s_Card_ineq: LEMMA
+     FORALL (n: posnat, k:nat):
+       Card[posnat](N_s(n, k)) <= Card[posnat](square_free_N_s(n, k)) *
+                                  Card[posnat](square_div_N_s(n, k))
+
+%——————— Square free part of N_s related 
+  
+  primes_cart_comp(n:nat| n /= 1): non_empty_finite_set[nat] =
+  			  {k: nat| k = 1 OR k = n}
+
+  card_primes_cart_comp: LEMMA
+    FORALL(n: nat| n /= 1): Card[nat](primes_cart_comp(n)) = 2
+
+
+  primes_cart_produc(n: nat): set[finseq[nat]] =
+      cartesian_product_n[nat]((# length := n,
+      				 seq := LAMBDA(i:nat): primes_cart_comp(prime_enumeration(i)) #))
+
+  card_primes_cart: LEMMA
+   FORALL(n: posnat):
+      Card(primes_cart_produc(n)) = 2^n
+
+
+  square_free_inj_fun(n: posnat, k:posnat, m: posnat): (primes_cart_produc(k)) =
+               (# length := k, seq :=
+  		LAMBDA(i:nat):
+		  IF divides(prime_enumeration(i), m)
+		  THEN prime_enumeration(i) ELSE 1 ENDIF #)
+
+  sf_inj_fun_divides: LEMMA
+     FORALL(n: posnat, k:nat, m: posnat, i: nat| i < k):
+     	  divides(square_free_inj_fun(n, k, m)`seq(i), m)
+
+  sf_inj_gcd_one: LEMMA
+    FORALL(n: posnat, k:nat, m: posnat, i: nat| i < k, j: nat | j < k):
+       i /= j =>
+       gcd(square_free_inj_fun(n, k, m)`seq(i),
+       	   square_free_inj_fun(n, k, m)`seq(j)) = 1
+
+  product_primes_cart(k:posnat, fs: (primes_cart_produc(k)), n: nat| n < k):
+  	nat = product(0, n, LAMBDA(i:nat | i < k): fs`seq(i))
+
+  ppcart_posnat: LEMMA
+    FORALL(n: posnat, k:posnat, m: posnat):
+     FORALL(i:nat| i < k):
+      product_primes_cart(k, square_free_inj_fun(n, k, m), i) > 0
+       
+  ppcart_gcd: LEMMA
+     FORALL(n: posnat, k:nat, m: posnat, i:posnat| i < k):
+      FORALL(j: nat | j < i):
+        gcd(square_free_inj_fun(n, k, m)`seq(i),
+	    product_primes_cart(k, square_free_inj_fun(n, k, m), j)) = 1
+
+  product_prime_cart_id: LEMMA
+       FORALL(n: posnat, k:posnat, m: posnat, l:posnat):
+         product_primes_cart(k, square_free_inj_fun(n, k, m), k-1) = l
+	  => divides(l, m)
+
+  product_sf_inj_id: LEMMA
+       FORALL(n: posnat, k:posnat, m:(square_free_N_s(n, k)), l:posnat):
+         product_primes_cart(k, square_free_inj_fun(n, k, m), k-1) = l
+	  => m = l
+
+  square_free_N_s_Card_ineq: LEMMA
+     FORALL(n: posnat, k:nat): Card[posnat](square_free_N_s(n, k)) <= 2^k
+
+%——————— N_b related
+
+  N_b_union_fs_finite: LEMMA
+    FORALL (n: posnat, k: nat, x1: below[n]):
+      is_finite[posnat]
+          (IF prime_enumeration(x1 + k) /= 0
+             THEN N_div(prime_enumeration(x1 + k), n)
+           ELSE emptyset[posnat]
+           ENDIF);
+
+  N_b_union_finseq(n:posnat, k:nat): set[posnat] =
+  	union_finseq((#length := n,
+                      seq := LAMBDA(i:nat):
+                             IF prime_enumeration(i+k) /= 0 THEN
+  			      N_div(prime_enumeration(i+k), n) ELSE
+  			      emptyset[posnat] ENDIF #))
+
+  N_b_union_Card: LEMMA
+     FORALL(n: posnat, k:nat):
+       Card[posnat](N_b_union_finseq(n, k)) <=
+       		sigma(k, n+k-1, LAMBDA(i:nat): IF prime_enumeration(i) /= 0 THEN
+		                    floor(n/prime_enumeration(i)) ELSE
+				    0 ENDIF)
+		   
+  N_b_union_inj: LEMMA
+     FORALL (n: posnat, k:nat):
+       EXISTS (f: [(N_b(n, k)) -> (N_b_union_finseq(n, k))]): injective?(f)
+  
+  N_b_Card_ineq: LEMMA
+     FORALL(n:posnat, k:nat):
+       convergent?(series(inverse_primes)) =>
+         Card[posnat](N_b(n, k)) <= n*limit(series(inverse_primes, k))
+
+%——————— Main theorems
+
+  N_Card_ineq: THEOREM
+    convergent?(series(inverse_primes)) =>
+      FORALL(n:posnat, k:nat):    
+    	Card[posnat](N(n)) <= 2^k * sqrt(n) +  n * limit(series(inverse_primes, k))
+
+  prime_is_infinite: THEOREM
+     is_infinite(fullset[(prime?)])
+  
+  END inf_prime_harmonic_prime

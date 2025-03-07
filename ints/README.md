@@ -20,7 +20,7 @@ Integer division, gcd, mod, prime factorization, min, max.
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
 * [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
-
+* Bruno Berto de Oliveira Ribeiro, University of Brasília, Brazil
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
