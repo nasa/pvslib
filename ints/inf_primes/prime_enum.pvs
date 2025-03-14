@@ -1,0 +1,198 @@
+%------------------------------------------------------------------------------
+% Prime enumeration and Fundamental Theorem of Arithmetic
+%
+% Authors:
+%
+%		Bruno Berto de Oliveira Ribeiro
+%		Universidade de Brasília - Brazil
+%
+% 		Thaynara Arielly de Lima
+% 		Universidade Federal de Goiás - Brazil
+%
+%		Mauricio Ayala-Rincón
+%		Universidade de Brasília - Brazil
+%
+%               Mariano M. Moscato
+%               AMA @ NASA LaRC - USA
+%
+%------------------------------------------------------------------------------
+
+prime_enum: THEORY
+
+  BEGIN
+
+  IMPORTING ints@primes, algebra@cartesian_product_finite,
+            ints@max_finite_set_nat, reals@product, sets_aux@card_finite,
+	    ints@number_util
+
+
+  %—————- Prime enumeration
+  
+  prime_enumeration(n: nat): RECURSIVE nat =
+         IF n = 0 THEN 2
+	 ELSIF empty?[(prime?)]({p: (prime?)| p > prime_enumeration(n-1)}) OR
+	       prime_enumeration(n-1) = 0
+	       THEN 0
+	 ELSE min({p: (prime?)| p > prime_enumeration(n-1)}) ENDIF
+	 MEASURE n
+
+  prime_enum_tail_gen: COROLLARY
+     FORALL(n:nat): prime_enumeration(n) = 0 =>
+     		    (FORALL(k:nat | k >= n): prime_enumeration(k) = 0)
+
+  prime_enum_zero_tail: COROLLARY
+     (EXISTS(a: posnat): FORALL(n:nat| n >= a): prime_enumeration(n) = 0) <=>
+     (EXISTS(b: posnat): empty?[(prime?)]({p: (prime?)| p > prime_enumeration(b-1)}))
+
+  prime_enum_id: COROLLARY
+     FORALL(n:nat): prime_enumeration(n) = 0 OR prime?(prime_enumeration(n))
+
+  prime_enum_ineq: COROLLARY
+     FORALL(n: nat):
+        prime_enumeration(n + 1) > prime_enumeration(n) OR
+         prime_enumeration(n + 1) = 0
+
+  prime_enum_ineq2: COROLLARY
+     FORALL(n: nat):
+           prime?(prime_enumeration(n)) => n < prime_enumeration(n)
+
+  prime_enum_ineq3: LEMMA
+     FORALL(i,j:nat): prime?(prime_enumeration(i)) AND
+     		      prime_enumeration(i) <= prime_enumeration(j)
+                      => i <= j
+
+  prime_enum_surj_lem: LEMMA
+     FORALL(n:nat| n >= 2):
+	EXISTS(i:nat):
+	  prime_enumeration(i) = max_finite_set_nat.max(
+	  		       	  {p:nat| prime?(p) AND p <= n})
+     		    
+  prime_enum_inj: THEOREM
+     FORALL(i, j:nat): prime?(prime_enumeration(i)) AND prime?(prime_enumeration(j)) =>
+        prime_enumeration(i) = prime_enumeration(j) => i = j
+
+  prime_enum_surj: THEOREM
+     FORALL(p:(prime?)): EXISTS(i:nat): prime_enumeration(i) = p
+
+  %——————-
+
+  primes_le_n(n:nat): set[(prime?)] = {p:(prime?)| p <= n}
+
+  prime_counting(n:nat): nat = card[(prime?)](primes_le_n(n))
+
+  prime_le_n_is_prime: LEMMA
+   FORALL(n:nat, x:(primes_le_n(n))): prime?(x)
+
+  prime_count_eq_zero: LEMMA
+    FORALL(n:nat| n <= 1): prime_counting(n) = 0
+
+  prime_count_ge_one: LEMMA
+    FORALL(n:nat| n >= 2): prime_counting(n) >= 1
+
+  prime_enum_count: LEMMA
+     FORALL(n:nat| n >= 2):
+         prime_enumeration(prime_counting(n)-1) =
+	   max_finite_set_nat.max(primes_le_n(n))
+	 
+  prime_le_n_surj: LEMMA
+     FORALL(n: nat, p:(primes_le_n(n))):
+       EXISTS(k:nat| k < prime_counting(n)):
+             prime_enumeration(k) = p
+
+  prime_index_lt_prime_count: LEMMA
+     FORALL(x, n: nat): x < prime_counting(n) =>
+     	       prime?(prime_enumeration(x))
+
+  one_prime_decomposition_ind: LEMMA
+    FORALL (n:nat) : n /= 1 IMPLIES EXISTS(p:(prime?)): divides(p,n)
+
+  prime_pots_set(n:nat): set[nat] = {m:nat | EXISTS(i:nat):
+  			 	    	 m = prime_enumeration(n) ^ i}
+
+  prime_decomposition(n:nat): set[finseq[nat]] =
+     cartesian_product_n[nat]((# length := n,
+      			       seq := LAMBDA(i:below[n]): prime_pots_set(i) #))
+				 
+ max_prime_div_aux: LEMMA
+  FORALL (p: (prime?), n: posnat):
+    nonempty?[posnat]
+        ({m: posnat | EXISTS (i: nat): m = p ^ i AND divides(m, n)}) AND
+    EXISTS (UB: posnat):
+       FORALL (y:
+                 ({m: posnat | EXISTS (i: nat): m = p ^ i AND divides(m, n)})):
+         y <= UB
+
+ max_prime_div(p:(prime?), n:posnat): posnat =
+  	max({m:posnat | EXISTS(i:nat): m = p ^ i AND divides(m, n)})
+
+ max_prime_div_idx_aux: LEMMA
+    FORALL(p:(prime?), n:posnat):
+     singleton?({i:nat | p ^ i = max_prime_div(p, n)})
+
+  max_prime_div_idx(p:(prime?), n:posnat): nat = {i:nat | p ^ i = max_prime_div(p, n)}
+
+  max_prime_id: LEMMA
+    FORALL(p:(prime?), n:posnat):
+       p^ max_prime_div_idx(p, n) = max_prime_div(p, n)
+
+  posnat_prime_decomp(k, m:posnat): (prime_decomposition(k))
+     = (# length := k, seq := LAMBDA(i:below[k]):
+      	    IF divides(prime_enumeration(i), m) THEN
+	    max_prime_div(prime_enumeration(i), m) ELSE 1 ENDIF #)
+
+  posnat_prime_decomp_aux: LEMMA
+     FORALL(p:(prime?), n: posnat):
+        NOT divides(p, n) => max_prime_div(p, n) = 1
+
+  product_prime_decomp(k:nat, fs:(prime_decomposition(k)), n: below[k]):
+     nat = product[below[k]](0, n, LAMBDA(i:below[k]): fs`seq(i))
+
+  prime_comp_divides: LEMMA
+    FORALL(n, m: posnat, i:below[n]):
+       divides(posnat_prime_decomp(n, m)`seq(i), m)
+
+  prime_comp_gcd_one: LEMMA
+    FORALL(n, m: posnat, i, j:below[n]):
+       i /= j =>
+       gcd(posnat_prime_decomp(n, m)`seq(i),
+       	   posnat_prime_decomp(n, m)`seq(j)) = 1
+
+  product_prime_gcd: LEMMA
+     FORALL(n, m: posnat, i:below[n]):
+      FORALL(j: below[i]):
+        gcd(posnat_prime_decomp(n, m)`seq(i),
+	   product_prime_decomp(n, posnat_prime_decomp(n, m), j)) = 1
+
+  product_prime_id: LEMMA
+     FORALL(n, m, l: posnat):
+         product_prime_decomp(n, posnat_prime_decomp(n, m),
+	 		      n-1) = l
+	 	=> divides(l, m)
+
+  product_prime_inj: LEMMA
+     FORALL(n:nat| n >= 2, m: posnat | m <= n, l: posnat):
+         product_prime_decomp(prime_counting(n),
+	       posnat_prime_decomp(prime_counting(n), m),
+	       prime_counting(n)-1) = l
+	 	=> m = l
+
+  prime_decomp_id: LEMMA
+    FORALL(n:nat| n >= 2, m: posnat | m <= n):
+       product_prime_decomp(prime_counting(n),
+	                    posnat_prime_decomp(prime_counting(n), m),
+	                    prime_counting(n)-1) = m
+
+  inverse_prime_ineq: LEMMA
+    FORALL(i, n:nat): i < prime_counting(n) =>
+    	     0 < 1/prime_enumeration(i) AND 1/prime_enumeration(i) < 1
+
+  inv_prime_decomp: LEMMA
+     FORALL(n:nat| n >= 2, m: posnat | m <= n):
+       FORALL(k: below[prime_counting(n)]):
+      1/product_prime_decomp(prime_counting(n),
+                           posnat_prime_decomp(prime_counting(n), m),
+                           k) =
+	product(0, k, LAMBDA(i:below[prime_counting(n)]):
+		       1/max_prime_div(prime_enumeration(i), m))
+ 
+  END prime_enum
