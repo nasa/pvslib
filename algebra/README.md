@@ -38,7 +38,8 @@ Main contributions:
   - Correctness of the Euclidean gcd algorithm for the rings of integers and Gaussian integers;
   - Quaternions Algebra and properties;
   - Hamilton's Quaternions; 
-  - Completeness of 3D rotations using Hamilton's Quaternions.
+  - Completeness of 3D rotations using Hamilton's Quaternions;
+  - Proof of Lagrange's four squares theorem using Quaternions. 
   
 
 ### Major theorems
@@ -72,6 +73,7 @@ Main contributions:
 | Correctness of the Euclidean gcd algorithm for Gaussian integers| `algebra@ring_euclidean_gcd_algorithm_Zi` | `euclidean_gcd_alg_in_Zi` | André Galdino, Thaynara de Lima, Andréia Avelar, and Mauricio Ayala-Rincón|
 | Characterization of Quaternions as Division Rings| `algebra@quaternions` | `quat_div_ring_char` |  Thaynara de Lima, André Galdino, Andréia Avelar, and Mauricio Ayala-Rincón|
 | Completeness of Hamilton's Quaternions 3D rotation| `algebra@quaternions_Hamilton` | `Quaternions_Rotation` | André Galdino, Thaynara de Lima, Andréia Avelar, Bruno Ribeiro, and Mauricio Ayala-Rincón|
+Lagrange's four squares theorem using Quaternions| `quat_examples@four_square_th_by_quaternions` | `four_squares_nat` | Bruno Ribeiro, Thaynara de Lima, and Mauricio Ayala-Rincón|
 
 
 ![dependency graph](./algebra-zoomed.svg "Dependency Graph")
@@ -96,7 +98,8 @@ Main contributions:
 ![dependency graph](./algebra.svg "Dependency Graph")
 
 # References
+* T. A. de Lima, A. L. Galdino, B. B. de Oliveira Ribeiro, and	M. Ayala-Rincón. *A Formalization of the General Theory of Quaternions.* In Proceedings of 15th International Conference on Interactive Theorem Proving (ITP 2024) [doi](https://doi.org/10.4230/LIPIcs.ITP.2024.11), 2024.
+
 * M. Ayala-Rincón, T. A. de Lima, A. Borges Avelar, A. L. Galdino. *Formalization of Algebraic Theorems in PVS.* In Proceedings of 24th International Conference on Logic for Programming, Artificial Intelligence and Reasoning LPAR, EPiC Series in Computing, vol. 94:1-10  [doi](https://doi.org/10.29007/7jbv),  2023.
 
 * T. A. de Lima, A. L. Galdino, A. Borges Avelar, and	M. Ayala-Rincón. *Formalization of Ring Theory in PVS - Isomorphism Theorems,	Principal, Prime and Maximal Ideals,Chinese	Remainder Theorem. Journal of Automated Reasoning,  [doi](https://doi.org/10.1007/s10817-021-09593-0),  2021.  
-
