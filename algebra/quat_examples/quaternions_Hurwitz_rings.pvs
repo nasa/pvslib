@@ -1,0 +1,151 @@
+%------------------------------------------------------------------------------
+% Authors:	
+%		Bruno Berto de Oliveira Ribeiro
+%		Universidade de Brasília - Brazil
+%
+%		Mauricio Ayala-Rincón
+%		Universidade de Brasília - Brazil
+%
+% 		Thaynara Arielly de Lima
+% 		Universidade Federal de Goiás - Brazil
+%
+%               Mariano M. Moscato
+%               AMA @ NASA LaRC - USA
+%
+%------------------------------------------------------------------------------
+
+quaternions_Hurwitz_rings: THEORY
+
+  BEGIN
+
+
+  IMPORTING algebra@quaternions[rational,+,*,0,1,-1,-1]
+            
+  u, v: VAR quat
+  r: VAR real
+  nz: VAR nzreal
+
+  Hurwitz_ring: set[quat] = {q: quat | EXISTS (x, y, z, t: int):
+  			    (q`x = x/2 AND q`y = x/2 + y AND q`z = x/2 + z AND q`t = x/2 + t)}
+
+  Hurwitz_ring: NONEMPTY_TYPE = (Hurwitz_ring) CONTAINING zero_q
+
+  Hurwitz_prod_charac: LEMMA
+    FORALL(u, v: Hurwitz_ring):
+      u * v = (u`x * v`x - u`y * v`y - u`z * v`z - u`t * v`t, 
+               u`x * v`y + u`y * v`x + u`z * v`t - u`t * v`z,
+               u`x * v`z + u`z * v`x - u`y * v`t + u`t * v`y,
+               u`x * v`t + u`y * v`z - u`z * v`y + u`t * v`x )
+
+  mk_Hurwitz(x, y, z, t: int): MACRO (Hurwitz_ring) = (x/2, x/2+y, x/2+z, x/2+t)
+
+  Hurwitz_prod_charac2: LEMMA
+    FORALL (x1, y1, z1, t1: int, x2, y2, z2, t2: int):
+      mk_Hurwitz(x1, y1, z1, t1) * mk_Hurwitz(x2, y2, z2, t2)
+      = mk_Hurwitz(-(x1 * x2) - 2 * (t1 * t2) - 2 * (y1 * y2) - 2 * (z1 * z2) - x1 * t2
+                   - x1 * y2 - x1 * z2 - x2 * t1 - x2 * y1 - x2 * z1,
+		    x1 * x2 - t1 * z2 + t1 * t2 + t2 * z1 + x1 * t2 + x1 * y2 +
+		    x2 * y1 + x2 * z1 + y1 * y2 + z1 * z2,
+		    x1 * x2 - t2 * y1 + t1 * t2 + t1 * y2 + x1 * y2 + x1 * z2 +
+		    x2 * t1 + x2 * z1 + y1 * y2 + z1 * z2,
+		    x1 * x2 - y2 * z1 + t1 * t2 + x1 * t2 + x1 * z2 + x2 * t1 +
+                    x2 * y1 + y1 * y2 + y1 * z2 + z1 * z2)
+
+  % —- Hurwitz ring is a ring with one
+
+  Hurwitz_sum_closed: LEMMA
+    star_closed?[quat, +](Hurwitz_ring)
+
+  Hurwitz_prod_closed: LEMMA
+    star_closed?[quat, *](Hurwitz_ring)
+
+  Hurwitz_ring_is_ring: LEMMA
+    ring?[quat,+,*,zero_q](Hurwitz_ring)
+
+  Hurwitz_ring_is_ring_w_one: THEOREM
+    ring_with_one?[quat,+,*,zero_q, one_q](Hurwitz_ring)
+
+  % ——– Hurwitz norm characterization
+  
+  Hurwitz_red_norm_charac: LEMMA
+    FORALL (q: Hurwitz_ring):
+      red_norm(q) = (q`x * q`x + q`y * q`y + q`z * q`z + q`t * q`t, 0, 0, 0)
+
+  Hurwitz_red_norm_is_posint: LEMMA
+    FORALL (q: Hurwitz_ring):
+       integer?((red_norm(q))`x) AND (red_norm(q))`x >= 0
+
+  %%%%% JUGDEMENTS
+  h, h1, h2: VAR Hurwitz_ring
+  hurwitz_sum: JUDGEMENT +(h1,h2) HAS_TYPE Hurwitz_ring
+  hurwitz_prod: JUDGEMENT *(h1,h2) HAS_TYPE Hurwitz_ring
+  hurwitz_conjugate: JUDGEMENT conjugate(h) HAS_TYPE Hurwitz_ring
+  hurwitz_inv: JUDGEMENT inv(h) HAS_TYPE Hurwitz_ring
+  %%%%%%%%%
+
+  % ———- Euclidean Left-Division 
+  
+  Hurwitz_remainder_ineq1: LEMMA
+    FORALL (t: int, n: posint):
+      EXISTS (x: int): abs(t-n*x) <= n/2
+
+  Hurwitz_remainder_ineq2: LEMMA
+    FORALL (t0, t1, x0: int, n: posint):
+      EXISTS (x: int): abs(t0+2*t1-n*(x0+2*x)) <= n
+
+  Hurwitz_left_division_scalar: LEMMA
+    FORALL (a: Hurwitz_ring, b: Hurwitz_ring
+                             | scalar_F(b) AND
+			       integer?(b`x) AND b`x > 0):
+      EXISTS (c, d: Hurwitz_ring): a = c*b+d AND red_norm(d)`x < red_norm(b)`x
+
+  Hurwitz_left_division: THEOREM
+    FORALL (a: Hurwitz_ring, b: Hurwitz_ring | red_norm(b)`x > 0):
+      EXISTS (c, d: Hurwitz_ring): a = c*b+d AND red_norm(d)`x < red_norm(b)`x
+
+  % ———- Hurwitz ring ideal
+  
+  IMPORTING four_int_squares_aux,
+            algebra@ring_ideal[quat, +, *, zero_q],
+	    ints@primes,
+	    ints@number_util,
+	    sets_aux@infinite_nat_def[quat]
+	   
+  Hurwitz_ideal: NONEMPTY_TYPE = ideal(Hurwitz_ring)
+                 CONTAINING singleton(zero_q)
+
+  Hurwitz_left_ideal: NONEMPTY_TYPE = left_ideal(Hurwitz_ring)
+                      CONTAINING singleton(zero_q)
+  
+   
+  prime_mult_Hurwitz(p: (prime?)): Hurwitz_ideal
+    = {q: Hurwitz_ring|
+      EXISTS(x, y, z, t: int): q = mk_Hurwitz(p*x, p*y, p*z, p*t)}
+
+  minimal_nz_norm(L: Hurwitz_left_ideal): int =
+    IF is_finite[quat](L) AND card(L) < 2 THEN 0
+    ELSE min({t: posnat| EXISTS(l: (L)): t = red_norm(l)`x}) ENDIF
+
+  Hurwitz_prod_inv_exists: LEMMA
+    FORALL (h: (Hurwitz_ring)):
+      red_norm(h)`x = 1 <=>
+        EXISTS(r: (Hurwitz_ring)): h*r = one_q AND r*h = one_q 
+
+  left_product_generator: LEMMA
+    FORALL (L: Hurwitz_left_ideal):
+	EXISTS (u: (L)):
+	       FORALL (x: (L)): EXISTS (r: Hurwitz_ring): x = r*u
+
+  %% V ⊂ L ⊂ H 
+  two_ideals_eq_four_sq: LEMMA
+  FORALL (V: Hurwitz_ideal, L: Hurwitz_left_ideal| L /= Hurwitz_ring,
+              p: (prime?)):
+  	 strict_subset?(V, L) AND V(mk_Hurwitz(2*p, -p, -p, -p))
+  	 =>  EXISTS(x, y, z, t: int):
+                x*x+y*y+z*z+t*t = p
+
+  END quaternions_Hurwitz_rings
+
+  
+
+  
