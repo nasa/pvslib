@@ -1,0 +1,237 @@
+#!/bin/bash
+
+OWN_NAME=$0
+WORKBENCH_DIR=""
+CONFIG_FILE=".zshrc"
+
+usage() {
+    echo "NAME
+  stage-pvs -- prepare a staging enviroment for PVS and runs a command on it
+
+SYNOPSIS
+
+  stage-pvs -d <staging-dir> [-c <command>] [-a <additional-dirs>] 
+"
+}
+
+confirm(){
+    while true; do
+	read -p "$1" -n 1 -r yn
+	echo 
+	case $yn in
+            [Yy]* ) return 1;;
+            [Nn]* ) return 0;;
+            * ) echo "Please answer [y]es or [n]o.";;
+	esac
+    done
+}
+
+set_working_dir(){
+    # Copy every library and additional path
+    if [ -n $ADD_DIRS ]; then
+	REQUESTED_DIRS=$PVS_LIBRARY_PATH:$ADD_DIRS
+    else
+	REQUESTED_DIRS=$PVS_LIBRARY_PATH
+    fi
+    for lib in ${REQUESTED_DIRS//:/ }; do
+	if [[ "$lib" =~ "$PVS_BASE" ]]; then
+	    echo "Omitting $lib already copied with PVS."
+	elif [[ -d "$FULL_WORKBENCH_DIR$lib" ]]; then
+	    echo "Omitting $lib already copied."
+	else
+	    printf "Replicating $lib... "
+	    mkdir -p "$FULL_WORKBENCH_DIR$lib"
+	    rsync -a --copy-links $EXCLUDE_OPT $lib/ "$FULL_WORKBENCH_DIR$lib/" 2> stage-pvs.err
+	    echo "done"
+ 	fi
+	# update new pvs library path
+	if [ -z $NEWPVSLIBRARYPATH ]; then
+	    NEWPVSLIBRARYPATH="$FULL_WORKBENCH_DIR$lib"
+	else
+	    NEWPVSLIBRARYPATH="$FULL_WORKBENCH_DIR$lib:$NEWPVSLIBRARYPATH"
+	fi
+    done
+}
+
+PHASE=1
+COMMAND="pwd -P"
+
+PARAMS=""
+
+while (( "$#" )); do
+  case "$1" in
+    -p|--phase)
+      PHASE=$2
+      shift 2
+      ;;
+    -c|--command)
+      COMMAND=$2
+      shift 2
+      ;;
+    -d|--dir)
+      WORKBENCH_DIR="$2"
+      shift 2
+      ;;
+    -a|--additional-dirs)
+      ADD_DIRS="$2"
+      shift 2
+      ;;
+    -e|--exclude)
+      EXCLUDE_OPT=$EXCLUDE_OPT" --exclude=$2 "
+      shift 2
+      ;;
+    --) # end argument parsing
+      shift
+      break
+      ;;
+    -*|--*=) # unsupported flags
+      echo "Sorry. I'm not sure what you mean by $1" >&2
+      exit 1
+      ;;
+    *) # preserve positional arguments
+      PARAMS="$PARAMS $1"
+      shift
+      ;;
+  esac
+done
+
+eval set -- "$PARAMS"
+
+if [ $PHASE = 1 ]; then
+
+    if [ -z "$WORKBENCH_DIR" ]; then
+	echo "Please provide me with a directory name to work with (-d option)."
+	exit 1
+    fi
+	
+    echo "Greetings, $(eval whoami)."
+    echo "I'm about to copy your active pvs installation (including libraries)"
+    echo
+    setpvs
+    echo
+    echo "into $WORKBENCH_DIR and run the following command(s)"
+    echo
+    echo $COMMAND
+    echo
+
+    confirm "Do you want me to continue?(y/n)" 
+    if [[ $? = 1 ]]; then
+	echo "Starting..."
+
+	NEWPVSLIBRARYPATH=""
+
+	if ! [[ $WORKBENCH_DIR =~ ^[a-zA-Z0-9/-_\.-]+$ ]]; then
+	    echo "I'm not confortable with the directory name provided ($WORKBENCH_DIR) please, provide a new one."
+	    exit 1
+	else
+	    FULL_WORKBENCH_DIR="$(eval pwd)/$WORKBENCH_DIR"
+	    NEW_PVS_DIR="$FULL_WORKBENCH_DIR$PVS_DIR"
+
+	    if [ -d $FULL_WORKBENCH_DIR ]; then
+		echo "I've noted that the directory $FULL_WORKBENCH_DIR already exists"
+		confirm "Do you want me to replace it?(y/n)" 
+		if [[ $? = 1 ]]; then
+		    mv $FULL_WORKBENCH_DIR ~/.Trash/
+		    if [ $? -eq 0 ]; then
+			echo "Old staging folder moved to the trash."
+		    else
+			echo "*** Error: Cannot move old staging folder to the trash. Please remove it manually "
+			exit 1
+		    fi
+		    
+		    # Copy the active PVS distribution
+		    printf "Replicating pvs into $NEW_PVS_DIR... "
+		    mkdir -p "$NEW_PVS_DIR"
+		    rsync -a --copy-links $EXCLUDE_OPT  $PVS_DIR/ "$NEW_PVS_DIR/" $EXCLUDE_OPT 2> stage-pvs.err 
+		    echo "done"
+    
+		else
+		    echo "Sure. I will keep the current workbench."
+		fi
+
+		set_working_dir
+
+	    else
+		echo "The directory $FULL_WORKBENCH_DIR does not exists. I will create it."
+
+		# Copy the active PVS distribution
+		printf "Replicating pvs into $NEW_PVS_DIR... "
+		mkdir -p "$NEW_PVS_DIR"
+		# cp -r $PVS_DIR/* "$NEW_PVS_DIR/" 2> stage-pvs.err
+		rsync -a --copy-links $EXCLUDE_OPT "$PVS_DIR/" "$NEW_PVS_DIR/" $EXCLUDE_OPT 2> stage-pvs.err
+		echo "done"
+		
+		set_working_dir
+	    fi
+
+	    # $CONFIG_FILE is changed in order to affect the commands run inside the screen
+	    sed -i.bak "s+ALT_PVS_DIR=.*+ALT_PVS_DIR='$NEW_PVS_DIR'+g" "~/$CONFIG_FILE"
+	    sed -i.bak "s+STAGING_HOME=[^\$].*+STAGING_HOME='$FULL_WORKBENCH_DIR$HOME'+g" "~/$CONFIG_FILE"
+	    
+	    if [ -f ~/.screenrc ]; then
+		mv ~/.screenrc ~/.screenrc.old
+	    fi
+	    
+	    echo "setenv PVS_DIR '$NEW_PVS_DIR'" > ~/.screenrc
+	    echo "setenv PVS_LIBRARY_PATH '$NEWPVSLIBRARYPATH'" >> ~/.screenrc
+	    echo "setenv PATH '$NEW_PVS_DIR':'$PATH'" >> ~/.screenrc
+	    echo "setenv STAGING_HOME '$NEW_PVS_DI$FULL_WORKBENCH_DIR$HOME'" >> ~/.screenrc
+
+	    SESSION_NAME="stage-$WORKBENCH_DIR"
+
+	    screen -S "$SESSION_NAME" -dm "$OWN_NAME" --phase 2 --command "$COMMAND" --dir "$WORKBENCH_DIR"
+
+	    echo
+	    echo "My phase-2 incarnation has started the requested command in a detached session named '$SESSION_NAME'."
+	    echo "You should be able to join it through"
+	    echo "$ screen -xS $SESSION_NAME"
+	    echo "Remember that you should be able to list the detached sessions using screen -list."
+	    echo "May this process fulfill your expectations."
+
+	    sleep 2
+	    
+            if [ -f ~/.screenrc.old ]; then
+		mv ~/.screenrc.old ~/.screenrc
+	    fi
+	
+	fi
+    else
+	echo
+	echo "Cancelled."
+	echo "I'll be here if you need me later."
+    fi
+else
+    export FULL_WORKBENCH_DIR="$(eval pwd)/$WORKBENCH_DIR"
+    
+    echo "I should be inside a screen session now."
+    echo "I will give you a couple of seconds to be sure and stop me if not (Ctrl+C)."
+    sleep 5
+    echo
+
+
+#    export PVS_DIR=$FULL_WORKBENCH_DIR
+    
+    echo "Environment variables were changed as indicated below"
+    echo "PVS_DIR=$PVS_DIR"
+    echo "PVS_LIBRARY_PATH=$PVS_LIBRARY_PATH"
+    echo "PATH=$PATH"
+    echo "STAGING_HOME=$STAGING_HOME"
+    echo
+
+    # confirm "Should I continue?"
+
+    # cd $PVS_DIR
+    # ./install-sh
+    cd $FULL_WORKBENCH_DIR
+    
+    # # rm src/*.n64fasl
+    # cd $PVS_DIR/nasalib
+    # ./cleanbin-all
+    # ./prove-all
+
+    echo "About to run '$COMMAND'"
+    
+    eval $COMMAND
+    
+    confirm "Do you need anything else?"
+fi

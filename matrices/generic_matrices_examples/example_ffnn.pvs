@@ -1,0 +1,120 @@
+example_ffnn: THEORY
+BEGIN
+
+  IMPORTING generic_matrices@ops_derived[real,0],
+            generic_matrices@ops_scalar[real,0,real]
+
+  u,v:VAR gvec
+  lu,lv:VAR list[real]
+  M,N:VAR gmat
+  lM,lN:VAR (rectangular?)
+  r,s:VAR real
+
+  bint: TYPE = {r:real | r=0 OR r=1}
+
+% Define needed operators and their shadows for lists of reals and lists of lists of reals.
+; +(u,v): gvec = pointwise(+)(u,v)
+; +(lu,lv): gvec = abstract(lu) + abstract(lv)
+
+; +(M,N): gmat = pointwise(+)(M,N)
+; +(lM,lN): gmat = abstract(lM) + abstract(lN)
+
+; *(u,v): real = gvec_product(+,*)(u,v)
+; *(lu,lv): real= abstract(lu) * abstract(lv)
+
+; *(M,N): gmat = gmat_product(+,*)(M,N)
+; *(lM,lN): gmat = abstract(lM) * abstract(lN)
+
+; *(r,v): gvec = scalar(*)(r,v)
+; *(r,lv): gvec = r * abstract(lv)
+
+; *(r,M): gmat = scalar(*)(r,M)
+; *(r,lM): gmat = r * abstract(lM)
+
+; o(f:[real->real],M): gmat = map(f,M)
+
+
+%% test parity ffnn for words of length 3
+
+% Define activation function.
+  step(r): real = IF r>0 THEN 1 ELSE 0 ENDIF
+
+% We define the weight matrix and bias for the first layer as generic matrices.
+  W1: gmat = (# ijth:= (LAMBDA (i,j:nat): IF (i<3 AND j<3) THEN 1
+                                          ELSE 0 ENDIF),
+		dimension:= (3,3)
+	     #)
+
+  b1:gmat = (# ijth:= (LAMBDA (i,j:nat): IF (i<3 AND j=0) THEN -i-0.5
+                                         ELSE 0 ENDIF),
+	       dimension:= (3,1)
+	    #)
+
+% We obtain the first layer by multiplying our input by our weights, adding the bias, then applying
+% the activation function.
+  Layer1(M): gmat = step o ((W1*M) + b1)
+
+% We define the weight matrix and bias for the second layer using list notation. The declared
+% conversion function 'abstract_mat' translates these to generic matrices.
+  W2: gmat = (:(:1,-1,1:):)
+
+  b2: gmat = (:(:-0.5:):)
+
+  Layer2(M): gmat = step o ((W2*M) + b2)
+
+% This neural net is intended to take a binary triple. This casting function turns that triple into
+% the matrix form needed to feed it into the network.
+  cast(a,b,c:bint): gmat = (:(:a:),(:b:),(:c:):)
+
+% We now define our simple feed forward neural net.
+  parity_net(a,b,c:bint): gmat = Layer2(Layer1(cast(a,b,c)))
+
+% Verify that our definition performs as intended.
+  parity_net_works: LEMMA
+    FORALL (a,b,c:bint):
+      (even?(a+b+c) IMPLIES parity_net(a,b,c) = (:(:0:):)) AND
+      (odd?(a+b+c) IMPLIES parity_net(a,b,c) = (:(:1:):))
+
+% Verification of individual steps.
+  W1_behavior: LEMMA
+    FORALL (a,b,c:bint): W1*cast(a,b,c) = (:(:n:),(:n:),(:n:):)
+      WHERE n = a+b+c
+
+  stepW1b1_values: LEMMA
+    FORALL (a,b,c:bint): FORALL (i,j:nat):
+      ijth(step o ((W1*cast(a,b,c)) + b1),i,j) = 0 OR
+      ijth(step o ((W1*cast(a,b,c)) + b1),i,j) = 1
+
+  stepW1b1_value_limit: LEMMA
+    FORALL (a,b,c:bint): FORALL (i:nat):
+      ijth(step o ((W1*cast(a,b,c)) + b1),i,0) = 1 IFF
+      i < a+b+c
+
+  Layer1_result: LEMMA
+    FORALL (a,b,c:bint):
+      (Layer1(cast(a,b,c)) = abstract((:(:0:),(:0:),(:0:):)) AND a+b+c = 0) OR
+      (Layer1(cast(a,b,c)) = abstract((:(:1:),(:0:),(:0:):)) AND a+b+c = 1) OR
+      (Layer1(cast(a,b,c)) = abstract((:(:1:),(:1:),(:0:):)) AND a+b+c = 2) OR
+      (Layer1(cast(a,b,c)) = abstract((:(:1:),(:1:),(:1:):)) AND a+b+c = 3)
+
+  Layer1_explicit(a,b,c:bint): gmat =
+  COND
+    a=0 AND b=0 AND c=0 -> abstract((:(:0:),(:0:),(:0:):)),
+    a=0 AND b=0 AND c=1 -> abstract((:(:1:),(:0:),(:0:):)),
+    a=0 AND b=1 AND c=0 -> abstract((:(:1:),(:0:),(:0:):)),
+    a=0 AND b=1 AND c=1 -> abstract((:(:1:),(:1:),(:0:):)),
+    a=1 AND b=0 AND c=0 -> abstract((:(:1:),(:0:),(:0:):)),
+    a=1 AND b=0 AND c=1 -> abstract((:(:1:),(:1:),(:0:):)),
+    a=1 AND b=1 AND c=0 -> abstract((:(:1:),(:1:),(:0:):)),
+    a=1 AND b=1 AND c=1 -> abstract((:(:1:),(:1:),(:1:):))
+  ENDCOND
+
+  Layer1_explicit_correct: LEMMA
+    FORALL (a,b,c:bint): Layer1(cast(a,b,c)) = Layer1_explicit(a,b,c)
+
+  W2_behavior: LEMMA
+    FORALL (a,b,c:bint):
+      (W2*Layer1(cast(a,b,c)) = (:(:0:):) IFF even?(a+b+c)) AND
+      (W2*Layer1(cast(a,b,c)) = (:(:1:):) IFF odd?(a+b+c))
+
+END example_ffnn

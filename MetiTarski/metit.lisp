@@ -30,14 +30,14 @@
 
 (in-package :pvs)
 
-(defparameter *z3-bin* nil)      ;; z3's executable
-(defparameter *metit-bin* nil)   ;; MetiTarski's executable
-(defparameter *metit-lib* nil)   ;; MetiTarski's library
-(defparameter *metit-tptp* nil)  ;; MetiTarksi's tptp directory
-(defparameter *pvs-metit* nil)   ;; PVS' MetiTarski directory
-(defparameter *metit-archs* nil) ;; List of supported architectures
-(defparameter *metit-arch* nil)  ;; Host architecture
-(defparameter *metit-gsubs* nil) ;; Global variable substitutions. Assoc list of (pvs_id.metit_id)
+(defparameter *z3-bin* nil)         ;; z3's executable
+(defparameter *metit-bin* nil)      ;; MetiTarski's executable
+(defparameter *metit-lib* nil)      ;; MetiTarski's library
+(defparameter *metit-tptp-dir* nil) ;; MetiTarksi's tptp directory
+(defparameter *pvs-metit-dir* nil)  ;; PVS' MetiTarski directory
+(defparameter *metit-archs* nil)    ;; List of supported architectures
+(defparameter *metit-arch* nil)     ;; Host architecture
+(defparameter *metit-gsubs* nil)    ;; Global variable substitutions. Assoc list of (pvs_id.metit_id)
 
 (defvar *metit-id-counter*)  
 
@@ -83,45 +83,47 @@
 
 (defun init-metit (prebins arch)
   (let* ((metit-lib)
-	 (which-metit (extra-system-call "which metit"))
-	 (which-z3    (extra-system-call "which z3"))
-	 (metit-arch  (or arch *metit-arch*))
-	 (z3-bin      (or (and prebins *pvs-metit* metit-arch 
-			       (format nil "~a/dist/bin/~a/z3" *pvs-metit* metit-arch))
-			  (and (zerop (car which-z3)) (cdr which-z3))
-			  (environment-variable "Z3_NONLIN")))
-	 (metit-bin   (or (and prebins *pvs-metit* metit-arch 
-			       (setq metit-lib (format 
-						nil "~:[~;DY~]LD_LIBRARY_PATH=~a/dist/lib/~a" 
-						(string= metit-arch "Darwin" :end1 
-							 (min (length metit-arch) 6)) 
-						*pvs-metit* metit-arch))
-			       (format nil "~a/dist/bin/~a/metit" *pvs-metit* metit-arch))
-			  (and (zerop (car which-metit)) (cdr which-metit))))
-	 (metit-tptp (or (and (not arch) (environment-variable "TPTP"))
-			 (format nil "~a/dist/tptp" *pvs-metit*))))
-    (cond ((or (null metit-bin) (not (probe-file metit-bin)))
-	   (format t "metit's executable file not found.~%"))
+	 (which-metit    (extra-system-call "which metit"))
+	 (which-z3       (extra-system-call "which z3"))
+	 (metit-arch     (or arch *metit-arch*))
+	 (z3-bin         (or (and prebins *pvs-metit-dir* metit-arch 
+				  (format nil "~a/dist/bin/~a/z3" *pvs-metit-dir* metit-arch))
+			     (and (zerop (car which-z3)) (cdr which-z3))
+			     (environment-variable "Z3_NONLIN")))
+	 (metit-bin      (or (and prebins *pvs-metit-dir* metit-arch 
+				  (setq metit-lib (format 
+						   nil "~:[~;DY~]LD_LIBRARY_PATH=~a/dist/lib/~a" 
+						   (string= metit-arch "Darwin" :end1 
+							    (min (length metit-arch) 6)) 
+						   *pvs-metit-dir* metit-arch))
+				  (format nil "~a/dist/bin/~a/metit" *pvs-metit-dir* metit-arch))
+			     (and (zerop (car which-metit)) (cdr which-metit))))
+	 (metit-tptp-dir (or (and (not arch) (environment-variable "TPTP"))
+			     (format nil "~a/dist/tptp" *pvs-metit-dir*))))
+    (cond ((and prebins (null metit-arch))
+	   (error "No architecture was found in <NASALib>/MetiTarski/dist/bin"))
+	  ((or (null metit-bin) (not (probe-file metit-bin)))
+	   (error "metit's executable file ~@[(~a) ~]not found" metit-bin))
 	  ((or (null z3-bin) (not (probe-file z3-bin)))
-	   (format t "z3's executable file not found. Set environment variable Z3_NONLIN~%"))	  
-	  ((not (uiop:directory-exists-p metit-tptp))
-	   (format t "metit's tptp directory not found. Set environment variable TPTP~%"))
+	   (error "z3's executable file ~@[(~a) ~]not found. Set environment variable Z3_NONLIN" z3-bin))
+	  ((not (uiop:directory-exists-p metit-tptp-dir))
+	   (error "metit's tptp directory ~@[(~a) ~]not found. Set environment variable TPTP" metit-tptp-dir))
 	  (t 
 	   (setq *z3-bin* z3-bin)
 	   (setq *metit-lib* metit-lib)
 	   (setq *metit-bin* metit-bin)
-	   (setq *metit-tptp* metit-tptp)
+	   (setq *metit-tptp-dir* metit-tptp-dir)
 	   (setq *metit-gsubs* nil)
 	   (newcounter *metit-id-counter*)))))
 
 (defun metit-archs ()
-  (let ((pvs-metit (format nil "~aMetiTarski" (nasalib-path))))
-    (when (uiop:directory-exists-p pvs-metit)
-      (setq *pvs-metit* pvs-metit)
+  (let ((pvs-metit-dir (format nil "~aMetiTarski" (nasalib-path))))
+    (when (uiop:directory-exists-p pvs-metit-dir)
+      (setq *pvs-metit-dir* pvs-metit-dir)
       (setq *metit-archs* (mapcar #'(lambda (path) (car (last (pathname-directory path))))
 			    ;; Owre - was 'directory', but this works differently in
 			    ;; Allegro and SBCL
-			    (uiop:directory* (format nil "~a/dist/bin/*-*" pvs-metit))))
+			    (uiop:directory* (format nil "~a/dist/bin/*-*" pvs-metit-dir))))
       (let ((uname (extra-system-call "uname -s"))
 	    (arch  (extra-system-call "arch")))
 	(when (and (zerop (car uname)) (zerop (car arch)))
@@ -144,6 +146,31 @@
 (defun merge-assoc (al)
   (when al
     (cons (caar al) (cons (cdar al) (merge-assoc (cdr al))))))
+
+;;
+;; The PVS variables are converted into a MetiTarski representation (uppercase) and are
+;; made distinct by appending *metit-id-counter*. This is required because a user
+;; might use both cases in a specification and we need to differentiate between x and X.
+;; In this case they would be converted to X1 and X2.
+;;
+
+(defun metit-id-name (id)
+  (intern (format nil "~a~a" (string-upcase id) (funcall *metit-id-counter*))))
+
+;;
+;; metit-interpretation : Translate pvs symbol to the MetiTarski representation. Ensures
+;; that the resolution (the real meaning of the symbol) is what we want. This is due
+;; to the massive overloading in PVS (anything can be overloaded). 
+;; Answers the question: is + actually the + for the reals?
+;;
+
+(defun metit-interpretation (name-expr)
+  (assert (name-expr? name-expr))
+  (let* ((id-assoc (cdr (assoc (id name-expr) *metit-interpreted-names*)))
+	 (mod-assoc (cdr (assoc (id (module-instance
+				     (resolution name-expr)))
+				id-assoc))))
+    mod-assoc))
 
 (defun translate-to-metitarski-global-variable (expr)
   (or
@@ -175,16 +202,6 @@
 
 (defmethod translate-to-metitarski* ((expr string-expr) bindings)
   (error "string ~a cannot be handled" expr))
-
-;;
-;; The PVS variables are converted into a MetiTarski representation (uppercase) and are
-;; made distinct by appending *metit-id-counter*. This is required because a user
-;; might use both cases in a specification and we need to differentiate between x and X.
-;; In this case they would be converted to X1 and X2.
-;;
-
-(defun metit-id-name (id)
-  (intern (format nil "~a~a" (string-upcase id) (funcall *metit-id-counter*))))
 
 ;;
 ;; (argument expr) return a tuple of the arguments of expr
@@ -249,26 +266,11 @@
 						     yname)
 					       bindings)
 					 (cons yname accum)))
-	   (error "type of ~a must be real." (id (car bind-decls)))))
+	   (error "type of ~a must be real" (id (car bind-decls)))))
 	(t (values bindings (nreverse accum)))))
 
-;;
-;; metit-interpretation : Translate pvs symbol to the MetiTarski representation. Ensures
-;; that the resolution (the real meaning of the symbol) is what we want. This is due
-;; to the massive overloading in PVS (anything can be overloaded). 
-;; Answers the question: is + actually the + for the reals?
-;;
-
-(defun metit-interpretation (name-expr)
-  (assert (name-expr? name-expr))
-  (let* ((id-assoc (cdr (assoc (id name-expr) *metit-interpreted-names*)))
-	 (mod-assoc (cdr (assoc (id (module-instance
-				     (resolution name-expr)))
-				id-assoc))))
-    mod-assoc))
- 
 (defmethod translate-to-metitarski* ((expr binding-expr) bindings)
-  (error "expression ~a cannot be handled." expr))
+  (error "expression ~a cannot be handled" expr))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -312,76 +314,80 @@
     (format t "MetiTarski -- ~a~%" *nasalib-version*)
     (when (car metit-version)
       (format t "About MetiTarski~%")
-      (format t "  Version: ~a~%" (cdr metit-version))
+      (format t "  Version: ~a~%" (when *metit-bin* (cdr metit-version)))
       (format t "  Executable: ~a~%" *metit-bin*)
       (when *metit-lib*
 	(format t "  Dynamic Library: ~a~%" *metit-lib*))
-      (format t "  Tptp directory: ~a~%" *metit-tptp*)
-      (when *pvs-metit*
-	(format t "  License file: ~a/dist/METITARSKI-LICENSE.txt~%" *pvs-metit*)))
+      (format t "  Tptp directory: ~a~%" *metit-tptp-dir*)
+      (when *pvs-metit-dir*
+	(format t "  License file: ~a/dist/METITARSKI-LICENSE.txt~%" *pvs-metit-dir*)))
     (when (car z3-version)
       (format t "About z3~%")
-      (format t "  Version: ~a~%" (cdr z3-version))
+      (format t "  Version: ~a~%" (when *z3-bin* (cdr z3-version)))
       (format t "  Executable: ~a~%" *z3-bin*)
-      (when *pvs-metit*
-	(format t "  License file: ~a/dist/Z3-LICENSE.txt~%" *pvs-metit*)))
+      (when *pvs-metit-dir*
+	(format t "  License file: ~a/dist/Z3-LICENSE.txt~%" *pvs-metit-dir*)))
     (when *metit-archs*
       (format t "~%Pre-installed architectures: ~{~a~^, ~}~%" *metit-archs*))
     (when *metit-arch*
       (format t "Host architecture: ~a~%" *metit-arch*))))
 
 (defun metit (s-forms timeout verbose options prebins arch about)
-  (cond ((not (init-metit prebins arch)) nil)
-	(about (metit-about) nil)
-	(t (let* ((expr  (typecheck (mk-disjunction (mapcar #'formula s-forms))))
-		  (metit-forms
-		   (handler-case
-		       (let ((fmla  (translate-to-metitarski expr))
-			     (names (mapcar #'cdr *metit-gsubs*)))
-			 (list (format nil "fof(pvs2metit,conjecture,~@[![~{~a~^, ~}]: ~]~a)."
-				       names fmla)))
-		     (error (condition) 
-			    (format t "Error: ~a~%" condition))))
-		  (file (when metit-forms
-			  (pathname (format nil "~a/pvsbin/~a.tptp"
-					    (working-directory)
-					    (label *ps*))))))
-	     (when metit-forms
-	       (when verbose
-		 (format t "PVS Expression:~%~a~%" expr)
-		 (when *metit-gsubs* (format t "Global Substitutions:~%~{~a -> ~a~^, ~}~%" 
-					     (merge-assoc *metit-gsubs*)))
-		 (format t "MetiTarski Input:~%~{~a~%~}"
-			 metit-forms))
-	       (with-open-file (stream (ensure-directories-exist file) 
-				       :direction :output
-				       :if-exists :supersede)
-			       (format stream "~{~a ~%~}" metit-forms))
-	       ;; --time is the timeout in seconds
-	       ;; --autoInclude will try to pick the correct axiom files
-	       (let* ((metit-call 
-		       (format nil "bash -c \"Z3_NONLIN=~a ~@[~a~] ~a --autoInclude --tptp ~a --time ~a~@[ ~a~] ~a\"" 
-			       *z3-bin* *metit-lib* *metit-bin* *metit-tptp* timeout options 
-			       (namestring file)))
-		      (result (extra-system-call metit-call)))
+  (init-metit prebins arch)
+  (if about
+      (metit-about)
+    (let* ((expr (typecheck (mk-disjunction (mapcar #'formula s-forms))))
+	   (metit-forms
+	    (let ((fmla  (translate-to-metitarski expr))
+		  (names (mapcar #'cdr *metit-gsubs*)))
+	      (list (format nil "fof(pvs2metit,conjecture,~@[![~{~a~^, ~}]: ~]~a)."
+			    names fmla))))
+	   (file (when metit-forms
+		   (pathname (format nil "~a/pvsbin/~a.tptp"
+				     (working-directory)
+				     (label *ps*))))))
+      (when metit-forms
+	(when verbose
+	  (format t "PVS Expression:~%~a~%" expr)
+	  (when *metit-gsubs* (format t "Global Substitutions:~%~{~a -> ~a~^, ~}~%" 
+				      (merge-assoc *metit-gsubs*)))
+	  (format t "MetiTarski Input:~%~{~a~%~}"
+		  metit-forms))
+	(with-open-file (stream (ensure-directories-exist file) 
+				:direction :output
+				:if-exists :supersede)
+			(format stream "~{~a ~%~}" metit-forms))
+	;; --time is the timeout in seconds
+	;; --autoInclude will try to pick the correct axiom files
+	(let* ((metit-call 
+		(format nil "bash -c \"Z3_NONLIN=~a ~@[~a~] ~a --autoInclude --tptp ~a --time ~a~@[ ~a~] ~a\"" 
+			*z3-bin* *metit-lib* *metit-bin* *metit-tptp-dir* timeout options 
+			(namestring file)))
+	       (result (extra-system-call metit-call)))
+	  (when verbose
+	    (format t "MetiTarski Call:~%~a~%" metit-call)
+	    (format t "Result:~%~s~%" result))
+	  (cond ((and (zerop (car result))
+		      (search "Theorem"  (cdr result) :from-end t))
 		 (when verbose
-		   (format t "MetiTarski Call:~%~a~%" metit-call)) 
-		 (cond ((zerop (car result))
-			(when verbose
-			  (format t "~a~%" (cdr result)))
-			(cond ((search "Theorem"  (cdr result) :from-end t)
-			       (format t "~%MetiTarski succesfully proved.~%") t)
-			      (t (format t "~%Unable to prove with MetiTarski.~%"))))
-		       (t (format t
-				  "~%Error running MetiTarski: ~a~%"
-				  (cdr result))))))))))
-
+		   (format t "~%MetiTarski succesfully proved.~%"))
+		 t)
+		((search "Error" (cdr result) :from-end t)
+		 (error "~a" (cdr result)))))))))
+	
 (deforacle metit (&optional (fnums 1) (timeout 60) verbose? options (pre-bins? t) arch about?)
   (let ((s-forms (extra-get-seqfs fnums)))
     (if s-forms
-	(let ((result (metit s-forms timeout verbose? options pre-bins? arch about?)))
-	  (when result (trust! metit)))
-      (printf "Formula(s) ~a not found" fnums)))
+	(let ((result
+	       (handler-case
+		   (metit s-forms timeout verbose? options pre-bins? arch about?)
+		 (error (condition) 
+			(format nil "[metit] ~a" condition)))))
+	  (if (stringp result) 
+	      (error-msg "~a" result)
+	    (when result
+	      (trust! metit))))
+      (error-msg "Formula(s) ~a not found" fnums)))
   "
 Calls MetiTarski on first order formulas FNUMS. TIMEOUT is a processor
 time limit (in seconds). Output information generated by MetiTarski is
@@ -403,5 +409,5 @@ using a different EADM.
 * The files METIT-LICENSE.txt and Z3-LICENSE.txt in
   nasalib/MetiTarski/dist contains MetiTarski's and z3's license of
   use, respectively."
-  "~%Proving formula(s) ~a with MetiTarski")
+  "Proving formula(s) ~a with MetiTarski")
       

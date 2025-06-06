@@ -2,11 +2,10 @@
 
 ## Highlights
 
-### Major theorems
-
-| Theorem | Location | PVS Name | Contributors |
-| --- | --- | --- | --- |
-
+Matrices are represented as list of list of real numbers. Operations
+on matrices such as inverse, determinant, etc. are functionally
+defined  along with their properties. For a definition of matrices,
+where the base type is generic, see [Generic Matrices](generic_matrices/README.md)
 
 ![dependency graph](./matrices-zoomed.svg "Dependency Graph")
 

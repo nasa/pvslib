@@ -1,0 +1,170 @@
+generic_matrix_props[T:TYPE,default:T]: THEORY
+BEGIN
+
+  IMPORTING generic_matrix_defs[T,default],
+            structures@more_list_props
+
+  u,v: VAR gvec
+  M,N: VAR gmat
+
+  length_v_default: LEMMA
+    length(u) = 0 IFF u = v_default
+
+  dimension_M_default: LEMMA
+    dimension(M) = (0,0) IFF M = M_default
+
+  dimension_M_default_too: LEMMA
+    (height(M) = 0 IFF M = M_default) AND
+    (width(M) = 0 IFF M = M_default)
+
+  matrix_height_width: LEMMA
+    height(M)=0 IFF width(M)=0
+
+  row_length: LEMMA
+    FORALL (n:below(height(M))): length(row(M,n)) = width(M)
+
+  column_length: LEMMA
+    FORALL (n:below(width(M))): length(column(M,n)) = height(M)
+
+  same_length: LEMMA
+    FORALL (n:nat): same?(u,v)
+    WHERE v = (# nth:= nth(u), length:= length(u)+n #)
+
+  same_dimension_0: LEMMA
+    FORALL (n,m:posnat): same?(M_default,N)
+    WHERE N = (# ijth:= ijth(M_default), dimension:= (n,m) #)
+
+  same_dimension: LEMMA
+    FORALL (n,m:nat): NOT dimension(M) = (0,0) IMPLIES
+      same?(M,N)
+      WHERE N = (# ijth:= ijth(M), dimension:= (height(M)+n,width(M)+m) #)
+
+  cdr_length: LEMMA
+    length(v) > 0 IMPLIES length(v) = 1 + length(cdr(v))
+
+  eval_length: LEMMA
+    length(v) = length(eval_vec(v))
+
+  row_cdr_height: LEMMA
+    height(M) > 0 IMPLIES height(M) = 1 + height(row_cdr(M))
+
+  eval_height: LEMMA
+    height(M) = length(eval_mat(M))
+
+  eval_width_rows: LEMMA
+    FORALL (n:below(height(M))): width(M) = length(row(M,n))
+
+%  eval_row is subsummed by nth_eval_row (below)
+%  eval_row: LEMMA
+%    FORALL (n:below(height(M))): height(M) > 0 IMPLIES
+%      eval_vec(row(M,n)) = nth(eval_mat(M),n)
+
+  eval_width: LEMMA
+    FORALL (n:below(height(M))): width(M) = length(nth(eval_mat(M),n))
+
+%  abstract_eval_vector_helper is no longer needed since information is in the type of eval_vec
+%  abstract_eval_vector_helper: LEMMA
+%    FORALL (n:nat): FORALL (v:gvec): (length(v) > 0 AND length(v) <= n) IMPLIES
+%      FORALL (x:below(length(v))): nth(eval_vec(v),x) = v`nth(x)
+
+  abstract_eval_vector: LEMMA
+    abstract_vec(eval_vec(v)) = v
+
+  eval_abstract_vector: LEMMA
+    FORALL (l:list[T]): eval_vec(abstract_vec(l)) = l
+
+  eval_vec_equality: LEMMA
+    eval_vec(v) = eval_vec(u) IFF v = u
+
+  nth_eval: LEMMA
+    FORALL (i:below(length(v))):
+      nth(eval_vec(v),i) = nth(v,i)
+
+  nth_eval_row: LEMMA
+    FORALL (i:below(height(M))):
+      nth(eval_mat(M),i) = eval_vec(row(M,i))
+
+  nth_nth_eval: LEMMA
+    FORALL (i:below(height(M))): FORALL (j:below(width(M))):
+      nth(nth(eval_mat(M),i),j) = ijth(M,i,j)
+
+  abstract_eval_matrix: LEMMA
+    abstract_mat(eval_mat(M)) = M
+
+% This predicate is true if each list in a list of lists has the same length.
+  rectangular?(l:list[list[T]]): bool =
+    (FORALL (n,m:below(length(l))): length(nth(l,n)) = length(nth(l,m))) AND
+    (FORALL (n:below(length(l))): NOT length(nth(l,n)) = 0)
+
+% This is a computable and evaluable version of the rectangular predicate.
+  eval_rectangular?(l:list[list[T]]): RECURSIVE bool =
+  COND length(l)=0 -> TRUE,
+       length(l)=1 -> IF length(nth(l,0)) = 0 THEN FALSE
+                      ELSE TRUE ENDIF,
+       ELSE -> IF length(nth(l,0)) = length(nth(l,1)) THEN eval_rectangular?(cdr(l))
+               ELSE FALSE ENDIF
+  ENDCOND
+  MEASURE length(l)
+
+% Equivalence of the two predicates and evaulation is enough to discharge most tccs.
+  iff_rectangular: LEMMA
+    FORALL (l:list[list[T]]): rectangular?(l) IFF eval_rectangular?(l)
+
+ rectangular_width_null : LEMMA
+   FORALL (l:(rectangular?)):
+     null?(l) IFF width(l) = 0
+
+ rectangular_abstract_mat : LEMMA
+   FORALL (l:(rectangular?)) :
+     LET g = abstract_mat(l) IN
+       height(g) = length(l) AND
+       width(g) = IF null?(l) THEN 0 ELSE length(nth(l,0)) ENDIF
+
+% enabling this rewrite makes it difficult to use the rectangular? predicate
+% AUTO_REWRITE+ iff_rectangular
+
+  abstract_rectangular_injective: LEMMA
+    FORALL (l1,l2:(rectangular?)):
+      abstract_mat(l1) = abstract_mat(l2) IFF l1 = l2
+
+  rectangular_eval_mat : LEMMA
+    rectangular?(eval_mat(M))
+
+  rectangular_eval_mat_j : JUDGEMENT
+    eval_mat(M) HAS_TYPE (rectangular?)
+
+%  rectangular_eval_abstract_rectangular is subsumed by rectangular_eval_mat (above)
+%  rectangular_eval_abstract_rectangular: LEMMA
+%    FORALL (l:(rectangular?)):
+%      rectangular?(eval_mat(abstract_mat(l)))
+
+  eval_abstract_matrix: LEMMA
+    FORALL (l:(rectangular?)): eval_mat(abstract_mat(l)) = l
+
+  eval_mat_equality: LEMMA
+    eval_mat(M) = eval_mat(N) IFF M = N
+
+% Given a generic structure term X with no variables, we can (eval-expr X) to obtain a concrete result
+% for X. The following lemmas map that concrete result back to a generic structure.
+  eval_vec_lemma: LEMMA
+    FORALL (l:list[T]): eval_vec(v) = l IMPLIES v = abstract_vec(l)
+
+  eval_mat_lemma: LEMMA
+    FORALL (l:(rectangular?)): eval_mat(M) = l IMPLIES M = abstract_mat(l)
+
+% Shorthand for evaluation purposes in sequents and pvsio.
+  eval(v): MACRO list[T] = eval_vec(v)
+  eval(M): MACRO list[list[T]] = eval_mat(M)
+
+% Shorthand for defining list operations in terms of generic structures to help PVS with type inference.
+  abstract(l:list[T]): gvec = abstract_vec(l)
+  abstract(l:(rectangular?)): gmat = abstract_mat(l)
+
+% Full evaluation lemmas, with shorthand.
+  vector_evaluation: LEMMA
+    FORALL (l:list[T]): eval(v) = l IFF v = abstract(l)
+
+  matrix_evaluation: LEMMA
+    FORALL (l:(rectangular?)): eval(M) = l IFF M = abstract(l)
+
+END generic_matrix_props

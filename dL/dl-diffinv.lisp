@@ -123,10 +123,7 @@ sequent is pretty-printed unless PP? is set to nil."
 ;; @notes Use instead of dl-subddt__
 (defhelper dl-compute-ddt__ ()
   (then
-   (match$ "pairwise_distinct_vars?(%%)"
-	   step
-	   (then (repeat (expand "pairwise_distinct_vars?"))
-		 (repeat (expand "distinct_var?"))))
+   (dl-distinct-vars)
    (for@
     nil
     (match$
@@ -146,7 +143,7 @@ sequent is pretty-printed unless PP? is set to nil."
 			 (try (typepred "%d") (replace 1 :hide? t) (skip)))))
 	    
 	    )))))
-  "Internal stragty. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
+  "Internal strategy. Computes expressions of form ddt((: %% :))(dlvar_index(%))."
   "Applying dl-compute-ddt__ helper")
 
 (defhelper dl-nqboolder__ ()
@@ -158,114 +155,108 @@ sequent is pretty-printed unless PP? is set to nil."
 	  (prove-diff_re-goal)))
   "Internal strategy. Applies DDL differentiaion rules to nqbools."
   "Applying dl-nqboolder__ helper")
-;;
-;;
-;;
+
+;; I had to define this tatic to use it with match below, because match
+;; was having problems building the final step @M3 20231215
+(defhelper solve_dlvar_index_le_max_var ()
+  (match$ 1 "dlvar_index(%a) <= max_var(%b)" step
+	  (let ((leq-expr $1j)
+		(pvs-list (args1 (args2 leq-expr)))
+		(pplist (pvslist2list pvs-list))
+		(idx
+		 (when (null (cdr pplist))
+		   (loop for tuple-expr in (car pplist) for i
+			 from 0 when
+			 (string=
+			  (format
+			   nil
+			   "~a"
+			   (car (exprs tuple-expr)))
+			  "%a")
+			 return i))))
+	    (if idx
+		(then
+		 (hide-all-but 1)
+		 (lemma "max_var_max")
+		 (branch
+		  (inst -1 "%b" idx)
+		  ((then (simplify-nth)(assert))
+		   (then (for@ nil (expand "length")(assert))))))
+	      (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))
+		(skip)))))
+  "Internal strategy" "")
 
 (defhelper simplify-DIFT_Re-expression ()
-  (then
-   ;; I had to define this tatic to use it with match below, because match
-   ;; was having problems building the final step @M3 20231215
-   (deftactic solve_dlvar_index_le_max_var ()
-     (match$ 1 "dlvar_index(%a) <= max_var(%b)" step
-	     (let ((leq-expr $bj)
-		   (pvs-list (args1 (args2 leq-expr)))
-		   (list (pvslist2list pvs-list))
-		   (idx
-		    (when (car list)
-		      (loop for tuple-expr in (cdr list) for i
-			    from 0 when
-			    (string=
-			     (format
-			      nil
-			      "~a"
-			      (car (exprs tuple-expr)))
-			     "%a")
-			    return i))))
-	       (if idx
-		   (then
-		    (hide-all-but 1)
-		    (lemma "max_var_max")
-		    (branch
-		     (inst -1 "%b" idx)
-		     ((then (simplify_nth)(assert))
-		      (then (for@ nil (expand "length")(assert))))))
-		 (let ((dummy (break "[simplify-DIFT_Re-expression] couldn't find index of %a in %b.")))(skip))))))
-  (let ((dl-operators (list 'val 'cnst '+ '- '* '^^ '^ 'sqrt_safe_re 'div_safe_re))
-	(dl-lemmas    (list "dl_dift_val" "dl_dift_const" "dl_dift_plus" (list "dl_dift_negative" "dl_dift_minus") "dl_dift_mult" "dl_dift_exp" "dl_dift_pow"
-			"dl_dift_sqrt" "dl_dift_divsafe")))
-  (match$
-   + "DIFT_Re(%1,%2,%3)(%4)"
-   step 
-   (let ( ;; #+pvsdebug (dummy (break ">>> simplify-DIFT_Re-expression <<<"))
-	 (lemma-name-per-operator (pairlis dl-operators dl-lemmas))
-	 (arg (extra-get-expr "%3")))
-     (if (application? arg)
-	 (let((arg-arity (length(arguments arg)))
-	      (diff-bound "%1")
-	      (domain     "%2")
-	      (op (id (operator arg)))
-	      (arg1 (format nil "~a" (args1 arg)))
-	      (lemma-name (cdr (assoc op lemma-name-per-operator))))
-	   (if (= arg-arity 1)
-	       (if lemma-name
-		   (then@
-		    (let ((lemma-name (if (listp lemma-name) (car lemma-name) lemma-name)))
-		      (lemma lemma-name))
-		    ;; (inst -1 diff-bound arg1 domain)
-		    (branch
-		     (inst? -1)
-		     ((branch
-		       (split -1)
-		       ((then
-			 (match$ "derivable_up?(%%)(%%)"
-				 step (let
-					  (#+pvsdebug
-					   (dummy
-					    (format t "~&[simplify-DIFT_Re-expression] Attemting prove-derivable_up-goal~%")))
-				       (prove-derivable_up-goal$)))
-			 (then (replace -1 :hide? t)
-			       (simplify-DIFT_Re-expression$)))))
-		      ;; TCC-branches produced by the instantiation
-		      (solve_dlvar_index_le_max_var))))
-		 (warning "Unexpected unary argument for DIFT_Re application: ~a" arg))
-	     (let ((infix? (infix-application? arg))
-		   (arg2 (format nil "~a" (args2 arg)))
-		   (operator (format nil (if infix? "~a[Environment]" "~a") op)))
-	       (if (and lemma-name operator)
-		   (then@
-		    (let ((lemma-name (if (listp lemma-name) (second lemma-name) lemma-name)))
-		      (lemma lemma-name))
-		    (branch
+  (let ((dl-operators (list '|val| '|cnst| '+ '- '* '^^ '^ '|sqrt_safe_re| '|div_safe_re|))
+	(dl-lemmas    (list "dl_dift_val" "dl_dift_const" "dl_dift_plus" (list "dl_dift_negative" "dl_dift_minus")
+			    "dl_dift_mult" "dl_dift_exp" "dl_dift_pow"
+			    "dl_dift_sqrt" "dl_dift_divsafe")))
+    (match$
+     + "DIFT_Re(%1,%2,%3)(%4)"
+     step 
+     (let ((lemma-name-per-operator (pairlis dl-operators dl-lemmas))
+	   (arg (extra-get-expr "%3")))
+       (if (application? arg)
+	   (let ((arg-arity (length(arguments arg)))
+		 (diff-bound "%1")
+		 (domain     "%2")
+		 (op (id (operator arg)))
+		 (arg1 (format nil "~a" (args1 arg)))
+		 (lemma-name (cdr (assoc op lemma-name-per-operator))))
+	     (if (= arg-arity 1)
+		 (if lemma-name
 		     (then@
-		      (inst -1 "%4" arg1 arg2 diff-bound domain)
+		      (let ((lemma-name (if (listp lemma-name) (car lemma-name) lemma-name)))
+			(lemma lemma-name))
+		      ;; (inst -1 diff-bound arg1 domain)
 		      (branch
-		       (split -1)
-		       ((then
-			 ;; #+pvsdebug (let ((dummy (break ">2> simplify-DIFT_Re-expression <2<")))(skip))
-			 (match$ "derivable_up?(%%)(%%)"
-				step (prove-derivable_up-goal$))
-			 (replace -1 :hide? t)))))
-		     ((simplify-DIFT_Re-expression$)
-		      (let((drws *dl-domain-rws*)
-			   (drup *dl-derup-rws*))
-			(then
-			 (hide-all-but 1)
-			 (else* (prove-derivable_up-goal)
-				(for nil
-				 (then
-				  (rewrite* drws)
-				  (rewrite* drup) 
-				  ))))))))
-		 (warning "Unexpected binary argument for DIFT_Re application: ~a"  arg)))))
-       (let ((is-lambda? (lambda-expr? arg)))
-	 (if is-lambda?
-	     (let((lemma-name (cdr (assoc 'cnst lemma-name-per-operator))))
-	       (then
-		(lemma lemma-name)
-		(expand "cnst")
-		(inst?)))
-	   (warning "Unexpected argument for DIFT_Re application: ~a" arg))))))))
+		       (inst? -1)
+		       ((branch
+			 (split -1)
+			 ((then
+			   (match$ "derivable_up?(%%)(%%)"
+				   step (prove-derivable_up-goal$))
+			   (replace -1 :hide? t)
+			   (simplify-DIFT_Re-expression$))))
+			;; TCC-branches produced by the instantiation
+			(solve_dlvar_index_le_max_var))))
+		   (warning-msg "Unexpected unary argument for DIFT_Re application: ~a" arg))
+	       (let ((infix? (infix-application? arg))
+		     (arg2 (format nil "~a" (args2 arg)))
+		     (operator (format nil (if infix? "~a[Environment]" "~a") op)))
+		 (if (and lemma-name operator)
+		     (then@
+		      (let ((lemma-name (if (listp lemma-name) (second lemma-name) lemma-name)))
+			(lemma lemma-name))
+		      (branch
+		       (then@
+			(with-tccs (inst -1 "%4" arg1 arg2 diff-bound domain))
+			(branch
+			 (split -1)
+			 ((then
+			   (match$ "derivable_up?(%%)(%%)"
+				   step (prove-derivable_up-goal$))
+			   (replace -1 :hide? t)))))
+		       ((simplify-DIFT_Re-expression$)
+			(let((drws *dl-domain-rws*)
+			     (drup *dl-derup-rws*))
+			  (then
+			   (hide-all-but 1)
+			   (else* (prove-derivable_up-goal)
+				  (for nil
+				       (then
+					(rewrite* drws)
+					(rewrite* drup) 
+					))))))))
+		   (warning-msg "Unexpected binary argument for DIFT_Re application: ~a"  arg)))))
+	 (let ((is-lambda? (lambda-expr? arg)))
+	   (if is-lambda?
+	       (let ((lemma-name (cdr (assoc '|cnst| lemma-name-per-operator))))
+		 (then
+		  (lemma lemma-name)
+		  (expand "cnst")
+		  (inst?)))
+	     (warning-msg "Unexpected argument for DIFT_Re application: ~a" arg)))))))
   "Simplifies  DIFT_Re(%1,%2)(%3)"
   "Applying prove-predicate-on-re helper")
 

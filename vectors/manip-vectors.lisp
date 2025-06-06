@@ -26,6 +26,8 @@
 ;;; documentation summarizes the strategy support available for vectors.
 ;;;
 
+(in-package :pvs)
+
 (defhelper manip-vectors ()
   (skip)
   "[Manip] The following strategies provide support for vectors:
@@ -68,8 +70,9 @@ scalar product:
 (defclass pvs-type-vect2 (pvs-type-vector) () )
 (defclass pvs-type-vect3 (pvs-type-vector) () )
 
-(defconstant-if-unbound pvs-type-funtype (find-class 'funtype))
-(defconstant-if-unbound vector-param-types (list *posint*))
+(alexandria:define-constant pvs-type-funtype (find-class 'funtype))
+(alexandria:define-constant vector-param-types (list *posint*)
+  :test #'equal)
 
 (defun vectn-subtype? (vtype)
   (and (typep vtype pvs-type-funtype)
@@ -447,9 +450,9 @@ Invoke (help manip-vectors) to see full documentation.")
     (let* ((adj-fnum (if (< fnum 0) (- fnum 1) fnum))
 	   (replace-one `(replace -1 ,adj-fnum :hide? t))
 	   (expand-id (if id? '((expand "id")) nil))
-	   (rewrites-1 `(else*$ ,@(targeted-rewrites
+	   (rewrites-1 `(else* ,@(targeted-rewrites
 				   1 (get-vector-lemmas val-cl l-lemmas))))
-	   (rewrites-2 `(else*$ ,@(targeted-rewrites
+	   (rewrites-2 `(else* ,@(targeted-rewrites
 				   1 (get-vector-lemmas val-cl r-lemmas))))
 	   (simp-steps `(,@expand-id (assert)
 			 (repeat ,rewrites-1) (repeat ,rewrites-2)

@@ -5,7 +5,9 @@ pvsio:
 	-pvsio-regression pvsio_examples
 	-pvsio-regression stdstr_examples
 	-pvsio-regression stdmutable_examples
-	-pvsio-regression stdpvs_examples
+	-pvsio-regression stdio_examples
+	-pvsio-regression float_approx
+	-pvsio-regression fast_approx
 	-pvsio-regression csv_utils_examples
 	-pvsio-regression csv_examples
 	-pvsio-regression kv_examples
@@ -14,7 +16,9 @@ gold:
 	-pvsio-regression pvsio_examples --force
 	-pvsio-regression stdstr_examples --force
 	-pvsio-regression stdmutable_examples --force
-	-pvsio-regression stdpvs_examples --force
+	-pvsio-regression stdio_examples --force
+	-pvsio-regression float_approx --force
+	-pvsio-regression fast_approx --force
 	-pvsio-regression csv_utils_examples --force
 	-pvsio-regression csv_examples --force
 	-pvsio-regression kv_examples --force

@@ -1,0 +1,199 @@
+generic_matrix_defs[T:TYPE,default:T]: THEORY
+BEGIN
+
+  i,j,k: VAR nat
+
+% Define generic vectors as a record with two components,
+%   1) an infinite sequence, and
+%   2) an upper bound on indices containing non-default values.
+% The unrestricted function type for nth allows equality testing "same-ness" at a high level, while
+% the upper bound provided by length allows us to perform computations on the type.
+  generic_vector: TYPE =
+    [#
+       nth:[nat->T],
+       length:{i | FORALL (k): k>=i IMPLIES nth(k)=default}
+    #]
+
+  gvec: TYPE = generic_vector
+
+  u,v: VAR gvec
+
+% We repurpose the notation used for lists since we will utilize the natural mapping between these
+% types for evaluation purposes later.
+  nth(v,i): T = nth(v)(i)
+
+  car(v | length(v)>0): T = nth(v,0)
+
+  cdr(v | length(v)>0): gvec =
+    (# nth:= LAMBDA (i): nth(v,i+1),
+       length:= length(v)-1
+    #)
+
+  cons(head:T,tail:gvec): gvec =
+    (# nth:= LAMBDA (i): COND i=0  -> head,
+                              ELSE -> nth(tail,i-1)
+			 ENDCOND,
+       length:= length(tail)+1
+    #)
+
+% The "zero" vector with lowest possible bound.
+  minimal_default_vector: gvec =
+    (# nth:= LAMBDA (i): default,
+       length:= 0
+    #)
+
+  v_default: gvec = minimal_default_vector
+
+  same?(u,v): bool =
+    nth(u) = nth(v)
+
+% We define generic matrices similarly as records instead of using vectors of vectors. To avoid some
+% inconvenient corner cases, we restrict the height and width so that if one dimension is zero
+% then both dimensions must be zero.
+  generic_matrix: TYPE =
+    [# ijth:[[nat,nat]->T],
+       dimension:{(i,j) | (i=0 IFF j=0) AND
+                          (FORALL (k): k>= i IMPLIES FORALL (j1:nat): ijth(k,j1)=default) AND
+			  (FORALL (k): k>= j IMPLIES FORALL (i1:nat): ijth(i1,k)=default)}
+    #]
+
+  gmat: TYPE = generic_matrix
+
+  M,N: VAR gmat
+
+  height(M): nat = dimension(M)`1
+
+  width(M): nat = dimension(M)`2
+
+  height_eq_width_zero : LEMMA
+    height(M) = 0 IFF width(M) = 0
+
+  height_width_pos : LEMMA
+    height(M) > 0 IFF width(M) > 0
+
+% The "zero" matrix with lowest possible bounds.
+  minimal_default_matrix: gmat =
+    (# ijth:= LAMBDA (i,j): default,
+       dimension:= (0,0)
+    #)
+
+  M_default: gmat = minimal_default_matrix
+
+% Indexing and row/column extraction.
+  ijth(M,i,j): T = ijth(M)(i,j)
+
+  row(M,i): gvec =
+    (# nth:= LAMBDA (j): ijth(M,i,j),
+       length:= width(M)
+    #)
+
+  column(M,j): gvec =
+    (# nth:= LAMBDA (i): ijth(M,i,j),
+       length:= height(M)
+    #)
+
+% List like definitions for recursive definitions.
+  row_car(M | height(M)>0): gvec = row(M,0)
+
+  row_cdr(M | height(M)>0): gmat =
+    IF height(M)=1 THEN M_default
+    ELSE
+          (# ijth:= LAMBDA (i,j): ijth(M,i+1,j),
+             dimension:= (height(M)-1,width(M))
+          #)
+    ENDIF
+
+  row_cons(head:gvec,tail:{N | width(N)=length(head)}): gmat =
+    IF length(head)=0 THEN M_default
+    ELSE
+          (# ijth:= LAMBDA (i,j): COND i=0  -> nth(head,j),
+                                       ELSE -> ijth(tail,i-1,j)
+		      	          ENDCOND,
+             dimension:= (height(tail)+1,width(tail))
+          #)
+    ENDIF
+
+  col_car(M | height(M)>0): gvec = column(M,0)
+
+  col_cdr(M | height(M)>0): gmat =
+    IF width(M)=1 THEN M_default
+    ELSE
+          (# ijth:= LAMBDA (i,j): ijth(M,i,j+1),
+             dimension:= (height(M),width(M)-1)
+          #)
+    ENDIF
+
+  col_cons(head:gvec,tail:{N | height(N)=length(head)}): gmat =
+    IF length(head)=0 THEN M_default
+    ELSE
+          (# ijth:= LAMBDA (i,j): COND j=0  -> nth(head,i),
+                                       ELSE -> ijth(tail,i,j-1)
+		         	  ENDCOND,
+             dimension:= (height(tail),width(tail)+1)
+          #)
+    ENDIF
+
+  same?(M,N): bool =
+    ijth(M) = ijth(N)
+
+% Mappings eval and abstract between generic structures and list-based structures. Wrapping an
+% operation in eval establishes ground term list representations for evaluation. Abstract can be
+% used both to map these list representations back to generic structures and to facilitate using list
+% structures as input shorthand. Actual computational definitions should be in terms of generic
+% structures to preserve free indexing wherever possible.
+
+  eval_vec(v): RECURSIVE {l:list[T] | length(v) = length(l) AND
+                    	 	      FORALL (i:below(length(l))) : nth(v)(i) = nth(l,i)} =
+    IF length(v)=0 THEN (::)
+    ELSE cons(car(v),eval_vec(cdr(v)))
+    ENDIF
+  MEASURE length(v)
+
+  eval_mat(M): RECURSIVE {l: list[list[T]] |
+                          length(l) = height(M) AND
+                          (FORALL (i:below(length(l))): length(nth(l,i)) = width(M)) AND
+			  (FORALL (i:below(length(l)),j:below(length(nth(l,i)))):
+			           nth(nth(l,i),j) = ijth(M)(i,j))}  =
+    IF height(M)=0 THEN (::)
+    ELSE cons(eval_vec(row_car(M)),eval_mat(row_cdr(M)))
+    ENDIF
+  MEASURE height(M)
+
+  abstract_vec(l:list[T]): gvec =
+    (# nth:= LAMBDA (i): COND i<length(l) -> nth(l,i),
+                              ELSE        -> default
+			 ENDCOND,
+       length:= length(l)
+    #)
+
+  width(l:list[list[T]]) : RECURSIVE { w : nat |
+                                       IF null?(l) THEN w=0
+				       ELSE EXISTS(i:below(length(l))): w = length(nth(l,i))
+				       ENDIF AND
+  			   	       (FORALL(i:below(length(l))): w >= length(nth(l,i))) } =
+    IF null?(l) THEN 0
+    ELSE max(length(car(l)),width(cdr(l)))
+    ENDIF
+  MEASURE l BY <<
+
+  abstract_mat(l:list[list[T]]) : { g:gmat | height(g) = IF width(l) = 0 THEN 0 ELSE length(l) ENDIF AND
+                                             width(g)  = width(l) AND
+					     FORALL (i,j:nat) : 
+					       ijth(g)(i,j) = IF i < length(l) AND j < length(nth(l,i)) THEN
+					                           nth(nth(l,i),j)
+					                      ELSE default
+							      ENDIF } =
+    IF width(l)=0 THEN M_default
+    ELSE
+         (#  ijth:= LAMBDA (i,j): IF i < length(l) AND j < length(nth(l,i)) THEN
+	                               nth(nth(l,i),j)
+                                  ELSE default
+		                  ENDIF,
+             dimension:= (length(l),width(l))
+         #)
+    ENDIF
+
+% We intend for generic structures and their concrete representations to be interchangeable.
+  CONVERSION abstract_vec, abstract_mat
+
+END generic_matrix_defs

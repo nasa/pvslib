@@ -33,7 +33,7 @@ If `equiv?` is `nil`, the strategy does not try to prove the equivalence between
 
 The directory Grizzly contains a prototype client-server tool for solving global optimization problems.
 Grizzly is a prototype client-server interface to PVS that solves global optimization problems such as finding min/max values of polynomials, formally verifying polynomial inequalities, solving satisfiability of polynomial inequalities, and computing under/over-approximations of regions defined by conjunction/disjunction/implication of polynomial inequalities.
-For details see https://shemesh.larc.nasa.gov/people/cam/Bernstein/Grizzly.html.
+For details see https://shemesh.larc.nasa.gov/fm/pvs/Bernstein/Grizzly.html.
 
 ### Examples
 
@@ -53,11 +53,11 @@ More challenging problems are also included in `Bernstein@examples`.
 ![dependency graph](./Bernstein-zoomed.svg "Dependency Graph")
 
 # Contributors
-* Anthony Narkawicz, NASA, USA
+* Anthony Narkawicz, formerly at NASA, USA
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
-* [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
-* [Marco A. Feliú](https://www.nianet.org/directory/research-staff/marco-feliu/), NIA & NASA, USA
-* [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
+* Mariano Moscato, AMA @ NASA LaRC, USA
+* Marco A. Feliú, AMA @ NASA LaRC, USA
+* Sam Owre, formerly at SRI, USA
 
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
@@ -67,6 +67,6 @@ More challenging problems are also included in `Bernstein@examples`.
 
 # References
 
-- César Muñoz and Anthony Narkawicz, [Formalization of a Representation of Bernstein Polynomials and Applications to Global Optimization](https://shemesh.larc.nasa.gov/people/cam/publications/jar-mn-2012-draft.pdf), Journal of Automated Reasoning, Volume 51, Issue 2, pp. 151-196, August 2013. [BibTeX Reference](https://shemesh.larc.nasa.gov/people/cam/publications/JAR-MN-2013.bib).
-- Anthony Narkawicz and César Muñoz, [Formal Verification of Conflict Detection Algorithms for Arbitrary Trajectories](http://interval.louisiana.edu/reliable-computing-journal/volume-17/reliable-computing-17-pp-209-237.pdf), Reliable Computing, Volume 17*, pp. 209-237, December, 2012. [BibTeX Reference](https://shemesh.larc.nasa.gov/people/cam/publications/RC-NM-2012.bib).
-- Luis Crespo, César Muñoz, Anthony Narkawicz, Sean Kenny, and Daniel Giesy, [Uncertainty Analysis via Failure Domain Characterization: Polynomial Requirement Functions](https://shemesh.larc.nasa.gov/people/cam/publications/ESREL2011.pdf), European Safety and Reliability Conference, September, 2011. [BibTeX Reference](https://shemesh.larc.nasa.gov/people/cam/publications/ESREL2011.bib).
+- César Muñoz and Anthony Narkawicz, [Formalization of a Representation of Bernstein Polynomials and Applications to Global Optimization](https://shemesh.larc.nasa.gov/fm/papers/jar-mn-2012-draft.pdf), Journal of Automated Reasoning, Volume 51, Issue 2, pp. 151-196, August 2013. [BibTeX Reference](https://shemesh.larc.nasa.gov/fm/papers/JAR-MN-2013.bib).
+- Anthony Narkawicz and César Muñoz, [Formal Verification of Conflict Detection Algorithms for Arbitrary Trajectories](http://interval.louisiana.edu/reliable-computing-journal/volume-17/reliable-computing-17-pp-209-237.pdf), Reliable Computing, Volume 17*, pp. 209-237, December, 2012. [BibTeX Reference](https://shemesh.larc.nasa.gov/fm/papers/RC-NM-2012.bib).
+- Luis Crespo, César Muñoz, Anthony Narkawicz, Sean Kenny, and Daniel Giesy, [Uncertainty Analysis via Failure Domain Characterization: Polynomial Requirement Functions](https://shemesh.larc.nasa.gov/fm/papers/ESREL2011.pdf), European Safety and Reliability Conference, September, 2011. [BibTeX Reference](https://shemesh.larc.nasa.gov/fm/papers/ESREL2011.bib).

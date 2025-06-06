@@ -37,7 +37,7 @@ This embedding of dL is operational, meaning that it leverages the internal logi
 | [`dynamic_logic`](dynamic_logic.pvs) | Rules and rewrites of differential dynamic logic |
 | [`dl_solution`](dl_solution.pvs) | Dl solve rule with examples |
 | [`sem_rel_diff_star`](sem_rel_diff_star.pvs) | Added rule to dL that was required for this development. The rules removes a  STAR operator from Differential program | 
-| [`dL_examples/`](dL_examples/) | Directory of examples of using dL in PVS |
+| [`examples/`](examples/) | Directory of examples of using dL in PVS |
 
 ![dependency graph](./dL-zoomed.svg "Zoomed Dependency Graph")
 

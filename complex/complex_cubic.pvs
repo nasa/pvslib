@@ -1,0 +1,145 @@
+% Analytical solution to cubic polynomials (including complex roots)
+
+complex_cubic : THEORY
+BEGIN
+
+  IMPORTING vieta
+
+  a         : VAR nzreal
+  b,c,d,p,q : VAR real
+  rz        : VAR (real_?)
+  eps       : VAR Sign
+  eps3      : VAR Sign3
+
+%wikipedia
+
+  zeta(eps3): nzcomplex =
+    IF eps3 = 0 THEN real_(1)
+    ELSE
+      (-1/2)+eps3*(1/2)*sqrt(3)*complex_i
+    ENDIF
+
+  zeta_one: LEMMA
+    zeta(1)=exp(2*pi/3*complex_i)
+
+  zeta_neg: LEMMA
+    zeta(-1)=exp(4*pi/3*complex_i)
+
+  zeta_unit: LEMMA
+    FORALL (eps:Sign):
+    zeta(eps)*zeta(-eps) = real_(1)
+
+  zeta_eq_1: LEMMA
+   zeta(eps3) = real_(1) IFF eps3 = 0
+
+  zeta_sq_eq_1: LEMMA
+   sq(zeta(eps3)) = real_(1) IFF eps3 = 0
+   
+  zeta_cube: LEMMA
+    FORALL (eps:Sign):
+      zeta(eps)^(3) = real_(1)
+    
+  zeta_closed: LEMMA
+    FORALL(x,y:Sign3) : EXISTS (z:Sign3) :
+    zeta(x)*zeta(y) = zeta(z)
+
+  zeta_root_of_unity: LEMMA
+    FORALL(m:nat | m<=3) : EXISTS(eps3:Sign3) :
+    root_of_unity(3)(m) = zeta(eps3)
+    
+  zeta_inv: LEMMA
+    1/zeta(eps3) = zeta(-eps3)
+
+%complex cube root properties
+
+  cubicrt(z:complex) : MACRO complex =
+    c_root(z,3)
+
+  cubicrt_real : LEMMA
+    FORALL (r:real):
+    cubicrt(real_(r)) = real_(root(r,3))
+
+  cubicrt_mult_real : LEMMA
+    FORALL (r1,r2:real):
+      cubicrt(real_(r1))*cubicrt(real_(r2)) = cubicrt(real_(r1*r2))
+
+  cubicrt_realj : JUDGEMENT
+    cubicrt(rz) HAS_TYPE (real_?)
+
+  cubicrt_def : LEMMA
+    FORALL (z:complex) : cubicrt(z)^3 = z
+  
+  cubicrt_eq_zero : LEMMA
+    FORALL (z:complex): cubicrt(z) = real_(0) IFF z = real_(0)
+  
+  cubicrt_complete : LEMMA
+    FORALL (z1,z2:complex) :
+    z2^3 = z1 IFF EXISTS (eps3): z2=zeta(eps3)*cubicrt(z1)
+
+  cubicrt_real_aux: LEMMA
+    FORALL (r1:real,r2:nzreal):
+    cubicrt(real_(-(r1/(r2^3)))) = (-1/r2)*cubicrt(real_(r1))
+
+  d0,d1,dd : VAR real
+
+  % dd = sq(d1)-4*d0^3
+  c_term_cubic3(d0,d1,dd,eps) : complex = % C^3 in wikipedia
+    IF d0 = 0 THEN real_(d1) 
+    ELSIF dd = 0 THEN real_(d1/2)
+    ELSIF dd > 0 THEN real_((d1+eps*sqrt(dd))/2)
+    ELSE complex_(d1,eps*sqrt(-dd))/2
+    ENDIF
+
+  c_term_conj : LEMMA
+    dd <= 0 IMPLIES
+    c_term_cubic3(d0,d1,dd,eps) = conjugate(c_term_cubic3(d0,d1,dd,-eps))
+
+  dd(D0,D1:real) : MACRO real = sq(D1)-4*D0^3
+
+  c_term_cubic3_eq_zero : LEMMA
+    FORALL (D0,D1:real) : 
+      LET DD = dd(D0,D1) IN
+      c_term_cubic3(D0,D1,DD,eps) = real_(0) IFF (DD = 0 AND D0 = 0)
+
+  C_eq_zero_cubic_discr_eq_0 : LEMMA 
+    LET D0 = delta0(a,b,c),
+        D1 = delta1(a,b,c,d),
+        DD = dd(D0,D1) IN
+      c_term_cubic3(D0,D1,DD,eps) = real_(0) IMPLIES
+      cubic_discr(a,b,c,d) = 0
+       
+  cubic_root(a,b,c,d,eps3) : complex = %from Wikipedia
+    LET D0 = delta0(a,b,c),
+        D1 = delta1(a,b,c,d),
+        DD = dd(D0,D1),
+        C3 = c_term_cubic3(D0,D1,DD,1) IN
+    IF C3=real_(0) THEN
+      real_(-b/(3*a)) 
+    ELSE
+      LET C = zeta(eps3)*cubicrt(C3) IN 
+      (-1/(3*a))*(b+C+D0/C)
+    ENDIF
+
+  cubic_root_DD_D0_eq_0 : LEMMA
+    LET D0 = delta0(a,b,c),
+        D1 = delta1(a,b,c,d),
+        DD = dd(D0,D1) IN
+    DD=0 AND D0=0 IMPLIES
+    cubic_root(a,b,c,d,eps3) = real_(-b/(3*a))
+
+  cubic_root_correct_P_eq_0 : LEMMA
+     P(a,b,c) = 0 IMPLIES
+     FORALL (z:complex):
+      c_cubic(a,b,c,d)(z) = real_(0) IFF
+      EXISTS (eps3) : z = cubic_root(a,b,c,d,eps3)
+
+  cubic_root_correct_discr_eq_0_if : LEMMA 
+    P(a,b,c) /= 0 AND
+    cubic_discr(a,b,c,d) = 0 IMPLIES
+    FORALL (z:complex):
+      c_cubic(a,b,c,d)(z) = real_(0) IMPLIES
+      EXISTS (eps3) : z = cubic_root(a,b,c,d,eps3)
+
+  % Full correctness is missing
+
+END complex_cubic

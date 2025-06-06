@@ -151,12 +151,12 @@ to the IEEE754 standard.
 ![theory-level dependency graph](./float_unbounded/float-float_unbounded-zoomed.svg "Theory-level Dependency Graph")
 
 # Contributors
-* [Mariano Moscato](https://marianomoscato.github.io/), NASA Langley Formal Methods Team, USA
-* [Paul Miner](http://shemesh.larc.nasa.gov/people/psm), NASA Langley Formal Methods Team, USA
+* [Mariano Moscato](https://marianomoscato.github.io/), AMA @ NASA LaRC, USA
+* [Paul Miner](http://shemesh.larc.nasa.gov/people/psm), NASA, USA
 * [Sylvie Boldo](https://www.lri.fr/~sboldo), INRIA, France
-* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA Langley Formal Methods Team, USA
-* [Laura Titolo](https://lauratitolo.github.io/), NASA Langley Formal Methods Team, USA
-* [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
+* [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
+* Laura Titolo, formerly at AMA, USA
+* Sam Owre, formerly at SRI, USA
 
 ## Maintainer
 * [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
@@ -166,7 +166,7 @@ to the IEEE754 standard.
 
 [1] S. Boldo, [Preuves formelles en arithmétiques a virgule flottante](http://www.ens-lyon.fr/LIP/Pub/Rapports/PhD/PhD2004/PhD2004-05.pdf), PhD. Thesis, Ecole Normale Supérieure de Lyon, 2004.
 
-[2] Sylvie Boldo and César Muñoz. (2006). [A High-Level Formalization of Floating-Point Numbers in PVS](https://shemesh.larc.nasa.gov/people/cam/publications/NASA-CR-2006-214298.pdf). Contractor Report NASA/CR-2006-214298. NASA Langley Research Center, Hampton VA 23681-2199, USA.
+[2] Sylvie Boldo and César Muñoz. (2006). [A High-Level Formalization of Floating-Point Numbers in PVS](https://shemesh.larc.nasa.gov/fm/papers/NASA-CR-2006-214298.pdf). Contractor Report NASA/CR-2006-214298. NASA Langley Research Center, Hampton VA 23681-2199, USA.
 
 [3] Moscato, M., Titolo, L., Dutle, A., & Munoz, C. A. (2017). [Automatic estimation of verified floating-point round-off errors via static analysis](https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/20170009111.pdf). In International Conference on Computer Safety, Reliability, and Security (pp. 213-229). Springer, Cham.
 

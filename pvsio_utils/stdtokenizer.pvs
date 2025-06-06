@@ -1,0 +1,302 @@
+%% stdtokenizer.pvs
+%% Tokenizers
+
+stdtokenizer : THEORY
+BEGIN
+ 
+  %% Error Codes
+  %% Negative numbers are user defined
+  NoError           : nat = 0
+  FileNotFound      : nat = 1
+  EndOfTokenizer    : nat = 2
+  InvalidToken      : nat = 3
+  ExpectingWord     : nat = 4
+  ExpectingTestWord : nat = 5
+  ExpectingInt      : nat = 6
+  ExpectingTestInt  : nat = 7
+  ExpectingReal     : nat = 8
+  ExpectingTestReal : nat = 9
+
+  Tokenizer : TYPE = [#
+    stream   : ARRAY[nat->string],
+    lines    : ARRAY[nat->nat],
+    casesen  : boolean,
+    separ    : string,
+    error    : int,
+    val_int  : int,
+    val_real : real,
+    length   : nat,
+    pos      : upto(length)
+  #]
+
+  init_tokenizer(casesen:bool,separ:string) : Tokenizer = (#
+    stream   := LAMBDA(x:nat):emptystr,
+    lines    := LAMBDA(x:nat):0,
+    casesen  := casesen,
+    separ    := separ,
+    error    := NoError,
+    val_int  := 0,
+    val_real := 0, 
+    length   := 0,
+    pos      := 0
+  #)
+
+  empty_tokenizer : Tokenizer = (#
+    stream   := LAMBDA(x:nat):emptystr,
+    lines    := LAMBDA(x:nat):0,
+    casesen  := true,
+    separ    := emptystr,
+    error    := NoError,
+    val_int  := 0,
+    val_real := 0, 
+    length   := 0,
+    pos      := 0
+  #)
+
+  TokenizerOfLength(l:int): TYPE = {t:Tokenizer | t`length = l}
+
+  set_casesen(t:Tokenizer,c:bool):Tokenizer =
+    t with [`casesen := c]
+
+  %% Error?
+  error?(t:Tokenizer): MACRO bool = 
+    t`error /= NoError
+ 
+  %% Set Error
+  set_error(t:Tokenizer,code:int): TokenizerOfLength(t`length) =
+    t WITH [`error:= code]
+
+  %% Last processed token
+  last_token(t:Tokenizer): string =
+    IF t`pos = 0 THEN emptystr
+    ELSE t`stream(t`pos-1)
+    ENDIF
+
+  %% Peek token at current position + offset n
+  peek(t:Tokenizer,n:posnat): MACRO string = t`stream(t`pos+n-1)
+
+  %% Next unprocessed token
+  next_token(t:Tokenizer) : MACRO string = peek(t,1)
+
+  tostr(t:Tokenizer,i:upto(t`length)) : RECURSIVE string =
+    IF i = t`length THEN emptystr
+    ELSIF i=t`pos THEN
+      "["+t`stream(i)+"] " + tostr(t,i+1)
+    ELSE 
+      t`stream(i)+space + tostr(t,i+1)
+    ENDIF
+    MEASURE t`length - i
+
+  add_token(s:string,t:Tokenizer,l:nat): MACRO Tokenizer =
+    LET n = t`length IN
+    t WITH [`stream(n) := s,
+            `lines(n)  := l,
+            `length    := n + 1]
+
+  read_token(t:Tokenizer)(f:IStream):string = fread_token(f,t`separ)
+
+  line_tokenizer(s:string,tl:[Tokenizer,nat]):[Tokenizer,nat] =
+    LET (t,l) = tl IN
+    LET g = fopenin(str,s) IN
+    LET f = (LAMBDA(mys:string,myt:Tokenizer):add_token(mys,myt,l)) IN
+    LET nt = fmap(g,read_token(t),t,f,length(s)) IN
+    prog(fclose(g),(nt,l+1))
+
+  %% Create a tokenizer from a files
+  file2tokenizer(s:string,t:Tokenizer):Tokenizer=
+    IF fexists(s) THEN 
+      LET (nt,l) = fmap_line(fopenin(s),
+                             (t,1),
+                             line_tokenizer) IN 
+        nt
+    ELSE	
+      LET filename = s IN
+      t WITH [
+        `stream(0) := filename,
+        `error     := FileNotFound
+      ]
+    ENDIF
+
+  file2tokenizer(s:string):Tokenizer=
+    file2tokenizer(s,empty_tokenizer)
+
+  %% Create a tokenizer from a string
+  str2tokenizer(s:string,t:Tokenizer):Tokenizer= 
+    LET f = fopenin(str,s) IN
+    LET (nt,l) = fmap_line(f,(t,1),line_tokenizer) IN 
+        nt
+
+  str2tokenizer(s:string):Tokenizer=
+    str2tokenizer(s,empty_tokenizer)
+
+  % EOT = End of tokenizer
+  eot?(t:Tokenizer) : bool = t`pos = t`length
+
+  % Current line
+  get_line(t:Tokenizer) : MACRO nat = t`lines(t`pos) 
+
+  consume(t:Tokenizer,n:posnat) : TokenizerOfLength(t`length) = 
+    IF error?(t) THEN t
+    ELSIF eot?(t) OR t`pos + n > t`length THEN 
+      t WITH [`error := EndOfTokenizer]
+    ELSE 
+      t WITH [`pos := t`pos + n]
+    ENDIF
+
+  go_next(t:Tokenizer) : MACRO TokenizerOfLength(t`length) = 
+    consume(t,1)
+ 
+  go_back(t:Tokenizer) : TokenizerOfLength(t`length) = 
+    IF t`pos = 0 THEN t
+    ELSE 
+      t WITH [`pos := t`pos - 1]
+    ENDIF
+
+  pos_go_next : LEMMA
+    FORALL (t1:Tokenizer):
+      LET t2= go_next(t1) IN
+      NOT error?(t2) IMPLIES t2`pos = t1`pos+1
+
+  %% Accepts a word that satisfies test
+  accept_word(t:Tokenizer,test:[string->bool])
+    : TokenizerOfLength(t`length) =
+    IF error?(t) THEN t
+    ELSIF eot?(t) THEN 
+      t WITH [`error := EndOfTokenizer]
+    ELSIF number?(t`stream(t`pos)) THEN
+      t WITH [`error := ExpectingWord]
+    ELSIF test(t`stream(t`pos)) THEN 
+      t WITH [`pos := t`pos + 1]
+    ELSE 
+      t WITH [`error := ExpectingTestWord]
+    ENDIF
+
+  pos_accept_word : LEMMA
+    FORALL (t1:Tokenizer,test:[string->bool]):
+      LET t2= accept_word(t1,test) IN
+      NOT error?(t2) IMPLIES t2`pos = t1`pos+1
+
+  the_word(s:string)(token:string):bool =
+     str2bool(s,token)
+
+  %% Accepts the word s
+  accept_word(t:Tokenizer,s:string) : MACRO TokenizerOfLength(t`length) =
+    accept_word(t,the_word(s))
+
+  any_word(token:string):bool = TRUE
+
+  %% Accepts any word
+  accept_word(t:Tokenizer) : MACRO TokenizerOfLength(t`length) =
+    accept_word(t,any_word)
+
+  %% Accepts an integer that satisfies test
+  accept_int(t:Tokenizer,test:[int->bool])
+    : TokenizerOfLength(t`length) =
+    IF error?(t) THEN t
+    ELSIF eot?(t) THEN 
+      t WITH [`error := EndOfTokenizer]
+    ELSIF NOT int?(t`stream(t`pos)) THEN
+      t WITH [`error := ExpectingInt]
+    ELSE
+      LET i = str2int(t`stream(t`pos)) IN
+      IF test(i) THEN 
+        t WITH [`pos := t`pos + 1, `val_int := i, `val_real := i]
+
+      ELSE 
+        t WITH [`error := ExpectingTestInt]
+      ENDIF
+    ENDIF
+
+  pos_accept_int : LEMMA
+    FORALL (t1:Tokenizer,test:[int->bool]):
+      LET t2= accept_int(t1,test) IN
+      NOT error?(t2) IMPLIES t2`pos = t1`pos+1
+
+  any_int(i:int):bool = TRUE
+
+  %% Accepts any integer 
+  accept_int(t:Tokenizer) : MACRO TokenizerOfLength(t`length) =
+    accept_int(t,any_int)
+
+  %% Accepts a real that satisfies test
+  accept_real(t:Tokenizer,test:[real->bool])
+    : TokenizerOfLength(t`length) =
+    IF error?(t) THEN t
+    ELSIF eot?(t) THEN 
+      t WITH [`error := EndOfTokenizer]
+    ELSIF NOT number?(t`stream(t`pos)) THEN
+      t WITH [`error := ExpectingReal]
+    ELSE
+      LET r = str2real(t`stream(t`pos)) IN
+      IF test(r) THEN 
+        t WITH [`pos := t`pos + 1, `val_real := r]
+
+      ELSE 
+        t WITH [`error := ExpectingTestReal]
+      ENDIF
+    ENDIF
+
+  pos_accept_real : LEMMA
+    FORALL (t1:Tokenizer,test:[real->bool]):
+      LET t2= accept_real(t1,test) IN
+      NOT error?(t2) IMPLIES t2`pos = t1`pos+1
+
+  any_real(r:real):bool = TRUE
+
+  %% Accepts any real
+  accept_real(t:Tokenizer) : MACRO TokenizerOfLength(t`length) =
+    accept_real(t,any_real)
+
+  %% Messengers
+
+  Messenger : TYPE = [int->string]
+
+  std_mssg(t:Tokenizer)(code:int):string =
+    IF    code <= 0 THEN emptystr
+    ELSIF code = FileNotFound THEN
+      "File not found: "+doublequote+next_token(t)+doublequote+"."
+    ELSIF code = EndOfTokenizer THEN
+      "Found EOT."
+    ELSIF code = InvalidToken THEN 
+      "Invalid Token: "+doublequote+next_token(t)+doublequote+"."
+    ELSIF code = ExpectingWord THEN 
+      "Expecting a word. Found: "+doublequote+next_token(t)+doublequote+"."
+    ELSIF code = ExpectingTestWord THEN 
+      "Expecting word that satisfies test. Found: "+doublequote+next_token(t)+
+      doublequote+"."
+    ELSIF code = ExpectingInt THEN 
+      "Expecting an integer. Found: "+doublequote+next_token(t)+doublequote+"."
+    ELSIF code = ExpectingTestInt THEN 
+      "Expecting integer that satisfies test. Found: "+
+      doublequote+next_token(t)+doublequote+"."
+    ELSIF code = ExpectingReal THEN 
+      "Expecting a real. Found: "+doublequote+next_token(t)+doublequote+"."
+    ELSIF code = ExpectingTestReal THEN 
+      "Expecting real that satisfies test. Found: "+doublequote+next_token(t)+
+      doublequote+"."
+    ELSE
+      emptystr
+    ENDIF
+
+  print_error(t:Tokenizer,m:Messenger): MACRO void = 
+    IF error?(t) THEN  
+      println("Syntax Error. "+"Line "+get_line(t)+": "+m(error(t))) &
+      fail
+    ELSE
+      skip
+    ENDIF
+
+  print_error(t:Tokenizer): MACRO void = 
+    print_error(t,std_mssg(t))
+
+  ;*(m:Messenger,cs:[int,string]) : Messenger =
+    LET (code,s) = cs IN m WITH [`code := s]
+  
+  tokenizer2str(t:Tokenizer):string = 
+    tostr(t,0)+newline+std_mssg(t)(t`error)
+
+  CONVERSION tokenizer2str
+
+  tostr(t:Tokenizer): MACRO string = tokenizer2str(t)
+
+END stdtokenizer

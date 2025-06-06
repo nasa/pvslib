@@ -4,7 +4,7 @@ This library provides functionalities to run differential testing with PVSio
 
 ## Highlights
 
-![dependency graph](./PVSioChecker-zoomed.svg "Dependency Graph")
+![dependency graph](./pvsio_utils-PVSioChecker-zoomed.svg "Dependency Graph")
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
@@ -14,4 +14,4 @@ This library provides functionalities to run differential testing with PVSio
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./PVSioChecker.svg "Dependency Graph")
+![dependency graph](./pvsio_utils-PVSioChecker.svg "Dependency Graph")

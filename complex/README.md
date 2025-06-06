@@ -1,8 +1,7 @@
-# Complex Numbers
+# Complex Numbers (Alternative Formalization)
 
-The complex numbers are defined (axiomatically) in this way so that we can conveniently use the numeric constants 0, 1, 2 etc.
-The alternative -- using pairs of reals to represent the real and imaginary components -- would lead to the somewhat unappealing formulation of Euler's result as "exp((0,1)*(pi,0)) = (-1,0)".
-As a matter of taste, this formalization allows the somewhat more elegant formulation: "exp(i*pi) = -1".
+This alternative formulation of the complex numbers integrates with the standard PVS decision procedures. The technique is to auto-rewrite complex equalities, such as z1 = z2 as the pair of rules:
+* Re(z1) = Re(z2) & Im(Z1) = Im(z2)
 
 ## Highlights
 
@@ -12,7 +11,7 @@ As a matter of taste, this formalization allows the somewhat more elegant formul
 | --- | --- | --- | --- |
 
 
-![dependency graph](./complex-zoomed.svg "Dependency Graph")
+![dependency graph](./complex_alt-zoomed.svg "Dependency Graph")
 
 # Contributors
 * [David Lester](http://apt.cs.man.ac.uk/people/dlester), Manchester University, UK
@@ -25,4 +24,4 @@ As a matter of taste, this formalization allows the somewhat more elegant formul
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
 
 # Dependencies
-![dependency graph](./complex.svg "Dependency Graph")
+![dependency graph](./complex_alt.svg "Dependency Graph")

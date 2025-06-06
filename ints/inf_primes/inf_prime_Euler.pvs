@@ -1,0 +1,112 @@
+%------------------------------------------------------------------------------
+%  Proof of the infinity of prime numbers using Euler product
+%
+%  Formalization based on the reference "Proofs from the Book", 
+%  Martin Aigner Günter and M. Ziegler
+%
+% Authors:	
+%		Bruno Berto de Oliveira Ribeiro
+%		Universidade de Brasília - Brazil
+%
+%		Mauricio Ayala-Rincón
+%		Universidade de Brasília - Brazil
+%
+% 		Thaynara Arielly de Lima
+% 		Universidade Federal de Goiás - Brazil
+%
+%               Mariano M. Moscato
+%               AMA @ NASA LaRC - USA
+%
+%------------------------------------------------------------------------------
+
+inf_prime_Euler: THEORY
+
+  BEGIN
+
+  IMPORTING ints@primes, lnexp@ln_exp, reals@product, series@series_lems,
+            prime_enum, sets_aux@card_finite, series@series_extra
+
+  harmonic_sequence: sequence[real] = LAMBDA(n: nat): 1/(n+1)
+
+  harmonic_number(n:posnat): real = sigma(0, n-1, harmonic_sequence)
+
+  ln_H_n_ineq: LEMMA
+    FORALL(n: posnat): ln(n) <= harmonic_number(n)
+
+% ——————————– Properties needed
+
+  pairwise_prod_seq(a,b:sequence[nnreal])(c:sequence[nnreal]): bool =
+       (FORALL(i, j: nat): EXISTS(k:nat): c(k) = a(i)*b(j)) AND
+       (FORALL(k:nat): EXISTS(i,j:nat): c(k) = a(i)*b(j))
+
+  series_prod_2: LEMMA
+    FORALL (a, b: sequence[nnreal]):
+       (convergent?(series(a)) AND convergent?(series(b)))
+        => (EXISTS(c: sequence[nnreal]| convergent?(series(c))):
+	   limit(series(a)) * limit(series(b)) = limit(series(c))
+	   AND pairwise_prod_seq(a,b)(c))
+
+  finseq_n_conv?(n: nat, fs: finseq[sequence[nnreal]]): bool =
+  		   fs`length = n AND FORALL(i:below[n]): conv_series?(fs`seq(i))
+
+  product_seq(n: posnat, fs: finseq[sequence[nnreal]] | finseq_n_conv?(n, fs)): set[real] =
+     {x: real| EXISTS(index: finseq[nat] | index`length = n):
+                x = product(0, n-1, LAMBDA(i:below[n]): fs`seq(i)(index`seq(i)))}
+
+  series_prods: LEMMA
+     FORALL(n:posnat): FORALL(fs: finseq[sequence[nnreal]]| finseq_n_conv?(n, fs)):
+      EXISTS(b: sequence[nnreal] | conv_series?(b)):
+          inf_sum(b) = product(0, n-1,
+        	      		   LAMBDA(i: below[n]): inf_sum(fs`seq(i))) AND
+          (FORALL(i: nat): product_seq(n, fs)(b(i))) AND
+          (FORALL(c : (product_seq(n, fs))): EXISTS(i:nat): b(i) = c)
+
+ 
+% ——————————
+
+  inverse_fs_prod_posreal: LEMMA
+   FORALL(a: sequence[posreal], n:nat):
+     FORALL(k:below[n]):
+      1/product[below[n]](0, k, LAMBDA(i:below[n]):a(i)) = product(0, k, LAMBDA(i:below[n]):1/a(i))
+
+% —————————
+  geo_seq_seq(n: nat| n >= 2): finseq[sequence[posreal]] =
+         (# length := prime_counting(n),
+    	 seq := LAMBDA(i:below[prime_counting(n)]):
+	        geometric(1/prime_enumeration(i))#)
+
+  prod_geo_seq(n: nat | n >= 2): posreal = product(0, prime_counting(n)-1,
+        	       LAMBDA(i: below[prime_counting(n)]):
+		          inf_sum(geo_seq_seq(n)`seq(i)))
+
+  geo_seq_seq_product: LEMMA
+     FORALL(n:nat | n >= 2):
+       FORALL(k: below[prime_counting(n)]):
+          product(0, k, LAMBDA(i: below[prime_counting(n)]):
+	         inf_sum(geo_seq_seq(n)`seq(i))) =
+           product(0, k, LAMBDA(i: below[prime_counting(n)]):
+	         prime_enumeration(i)/(prime_enumeration(i)-1))
+
+  geo_seq_seq_ineq1: LEMMA
+      FORALL(n: nat | n >= 2):
+         harmonic_number(n) <= prod_geo_seq(n)
+ 
+  product_inverse_successors: LEMMA
+     FORALL(n: posnat):
+      product(0, n-1, LAMBDA(i:below[n]): (i+2)/(i+1)) = n+1
+
+  geo_seq_seq_ineq2_lem: LEMMA
+     FORALL(i: nat): prime?(prime_enumeration(i)) =>
+       prime_enumeration(i)/(prime_enumeration(i)-1) <= (i+2)/(i+1)
+
+  geo_seq_seq_ineq2: LEMMA
+      FORALL(n: nat | n >= 2):
+          prod_geo_seq(n) <= prime_counting(n)+1
+
+  prime_counting_ineq: LEMMA
+    FORALL(n:posnat): ln(n) <= prime_counting(n)+1
+
+  prime_is_infinite: LEMMA
+    is_infinite(fullset[(prime?)])
+
+  END inf_prime_Euler
