@@ -10,7 +10,11 @@ It consists of a collection of formal development (i.e.,
 [Formal Methods Team at LaRC](http://shemesh.larc.nasa.gov/fm).
 
 # Release
-The current version of NASALib is 7.1.2 (2023/09/01) and requires [PVS 7.1](http://pvs.csl.sri.com/).
+
+The branch [master](https://github.com/nasa/pvslib) points to the
+current development pre-release of NASALib for [PVS8.0](https://github.com/SRI-CSL/PVS). The release
+[NASALib v7.1.1](https://github.com/nasa/pvslib/releases/tag/v7.1.1-PVS7.1) is
+the final stable release for [PVS 7.1](http://pvs.csl.sri.com/).
 
 # Libraries
 
@@ -128,7 +132,7 @@ NASALib also provides a collection of scripts that automates several tasks.
 
 Click [here](docs/Scripts.md) for more details on these scripts.
 
-(*) Already included in the PVS 7.1 distribution.
+(*) Included in PVS since PVS 7.1.
 
 # Getting NASALib
 
