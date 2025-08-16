@@ -1,0 +1,397 @@
+stdjson : THEORY
+BEGIN
+
+    IMPORTING structures@Maybe
+    IMPORTING structures@for_iterate
+    IMPORTING structures@list_lemmas
+    IMPORTING stdregex
+
+    Token : DATATYPE
+    BEGIN
+        Lbrace : lbrace? % Left brace
+        Rbrace : rbrace? % Right brace
+        Lbrack : lbrack? % Left bracket
+        Rbrack : rbrack? % Right bracket
+        Colon : colon? % Colon
+        Comma : comma? % Comma
+        Str(str : string) : str? % String
+        Num(num : real) : num? % Number
+        T : t? % True
+        F : f? % False
+        N : n? % Null
+        Whitespace : whitespace?
+    END Token
+
+    IMPORTING stdlex[Token]
+
+    JsonParseError : ExceptionTag[string] = "JsonParseError"
+
+    token_to_string (t : Token) : string =
+        CASES t OF
+            Lbrace: "{",
+            Rbrace: "}",
+            Lbrack: "[",
+            Rbrack : "]",
+            Colon : ":",
+            Comma : ",",
+            Str(s) : strconcat(char(34), strconcat(s, char(34))),
+            Num(x) : format("~0f",x),
+            T : "true",
+            F : "false",
+            N : "null",
+            Whitespace : " "
+        ENDCASES
+
+    % Performs lexical analysis to seperate a json string into a series of tokens.
+    lex_json (s : string) : list[Token] =
+        LET
+            % The regular language corresponding to real numbers.
+            decimal = Literal('.'),
+            minus = Literal('-'),
+            int_regex = Star(numeral_regex),
+            decimal_regex = Times(Plus(minus, Emptystring), Plus(int_regex, Times(int_regex, Times(decimal, int_regex)))),
+            real_regex = Plus(decimal_regex, Times(decimal_regex, Times(Literal('e'), decimal_regex))),
+
+            % The regular language corresponding to strings.
+            string_regex = Times(Literal(char(34)), Times(Star(ascii_minus_quote), Literal(char(34)))),
+
+            % Create the list of tokens and their corresponding regular languages.
+            token_map = (:
+                (Literal(char(123)), LAMBDA(s : string): Lbrace),
+                (Literal(char(125)), LAMBDA(s : string): Rbrace),
+                (Literal(char(91)), LAMBDA(s : string): Lbrack),
+                (Literal(char(93)), LAMBDA(s : string): Rbrack),
+                (Literal(char(58)), LAMBDA(s : string): Colon),
+                (Literal(char(44)), LAMBDA(s : string): Comma),
+                (string_regex, LAMBDA(s : string): Str(substring(s, 1, length(s) - 2))),
+                (real_regex, LAMBDA(s : string): Num(str2real(s))),
+                (make_regex_word("true"), LAMBDA(s : string): T),
+                (make_regex_word("false"), LAMBDA(s : string): F),
+                (make_regex_word("null"), LAMBDA(s : string): N),
+                (Star(Plus(Literal(char(9)), Plus(Literal(char(10)), Literal(char(32))))), LAMBDA(s : string): Whitespace)
+            :)
+        IN
+        lex (token_map) (s)
+
+    % JSON values can be represented as follows.
+    JValue : DATATYPE
+    BEGIN
+        JObject(fields : list[[string, JValue]]) : jobject?
+        JArray(elements : list[JValue]) : jarray?
+        JNum(x : real) : jnum?
+        JStr(s : string) : jstr?
+        JBool(b : bool) : jbool?
+        JNull : jnull?
+    END JValue
+
+
+    ListTokenLt(l:list[Token]) : TYPE = {nl:list[Token] | length(nl) < length(l)}
+
+    % Parse a Json object of the form ",..., keyn:valn }". Already parsed a prefix of the form "{ key1 : valn ..."
+    parse_json_record(parse_json_f:[l:list[Token]->[JValue,ListTokenLt(l)]])(ll:list[Token],acc:list[[string,JValue]]) :
+      RECURSIVE [JValue,ListTokenLt(ll)] =
+        IF cons?(ll) THEN
+	  LET tokenstr = token_to_string(car(ll)) IN
+	  IF rbrace?(car(ll)) THEN  % Closing "}"
+	    (JObject(acc),cdr(ll))
+	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
+            LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF IN
+	    IF length(restl) > 1 AND
+               str?(nth(restl,0)) AND % Next token is <key>
+	       colon?(nth(restl,1)) THEN % Next token is ":"
+	      LET (jv,rest) = parse_json_f(cdr(cdr(restl))) IN
+              parse_json_record(parse_json_f)(rest,append(acc,(: (str(nth(restl,0)),jv) :)))
+	    ELSE
+              throw(JsonParseError, format("Expecting <key> : <val> at '~a'",tokenstr))
+	    ENDIF
+	  ELSE
+	    throw(JsonParseError, format("Expecting '}' or ~a instead of '~a'",
+	                                 {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}))
+	  ENDIF
+        ELSE
+	  throw(JsonParseError, "Unexpected end of tokens")
+	ENDIF
+      MEASURE length(ll)
+
+    % Parse a Json object of the form ",..., valn ]". Already parsed a prefix of the form "[ valn ..."
+    parse_json_array(parse_json_f:[l:list[Token]->[JValue,ListTokenLt(l)]])(ll:list[Token],acc:list[JValue]) :
+      RECURSIVE [JValue,ListTokenLt(ll)] =
+        IF cons?(ll) THEN
+	  LET tokenstr = token_to_string(car(ll)) IN
+	  IF rbrack?(car(ll)) THEN  % Closing "]"
+	    (JArray(acc),cdr(ll))
+	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
+            LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF,
+	        (jv,rest) = parse_json_f(restl) IN
+              parse_json_array(parse_json_f)(rest,append(acc,(: jv :)))
+	  ELSE
+	    throw(JsonParseError, format("Expecting ']' or ~a instead of '~a'",
+	                                 {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}))
+	  ENDIF
+        ELSE
+	  throw(JsonParseError, "Unexpected end of tokens")
+	ENDIF
+      MEASURE length(ll)
+
+    parse_json(ll : list[Token]) : RECURSIVE [JValue, ListTokenLt(ll)] =
+      CASES ll OF
+        cons(top, tail): 
+	  CASES top OF
+	    Lbrace: parse_json_record(parse_json)(cdr(ll),null),
+            Str(s): (JStr(s), tail),
+            Num(x): (JNum(x), tail),
+            T: (JBool(true), tail),
+            F: (JBool(false), tail),
+            N: (JNull, tail)
+            ELSE (JNull,tail)
+	  ENDCASES,
+        null: throw(JsonParseError, "Unexpected end of tokens")
+      ENDCASES
+      MEASURE length(ll)
+
+    parse_json_old (s : list[Token]) : RECURSIVE [JValue, list[Token]] =
+        CASES s OF
+            cons(top, tail): (
+                CASES top OF
+                    Lbrace: (
+                        % Parse an object
+                        LET 
+                            pairs : Mutable[list[[string, JValue]]] = ref(null),
+                            remaining = ref(tail),
+                            done = ref(false)
+                        IN
+                        prog(
+                            IF rbrace?(car(val(remaining))) THEN
+                                set(remaining, cdr(remaining))
+                            ELSE
+                                while(
+                                    NOT val(done),
+                                    LET key = car(val(remaining)) IN
+                                    IF str?(key) AND colon?(car(cdr(val(remaining)))) THEN
+                                        CASES key OF
+                                            Str(k): (
+                                                LET (obj, next) = parse_json_old (val(cdr(cdr(remaining)))) IN
+                                                prog(
+                                                    set(pairs, cons((k, obj), val(pairs))),
+                                                    IF comma?(car(val(next))) THEN
+                                                        set(remaining, cdr(next))
+                                                    ELSE IF rbrace?(car(val(next))) THEN
+                                                        prog(
+                                                            set(remaining, cdr(next)),
+                                                            set(done, true)
+                                                        )
+                                                    ELSE
+                                                        throw(JsonParseError, "Unrecognized symbol when parsing an object")
+                                                    ENDIF ENDIF
+                                                )
+                                            )
+                                        ENDCASES
+                                    ELSE 
+                                        throw(JsonParseError, "Expected string as key when parsing an object")
+                                    ENDIF
+                                )
+                            ENDIF,
+                            (JObject(val(pairs)), val(remaining))
+                        )
+                    ),
+                    Rbrace: throw(JsonParseError, "Parsing error"),
+                    Lbrack: (
+                        % Parse an array
+                        LET 
+                            elements : Mutable[list[JValue]] = ref(null),
+                            remaining = ref(tail),
+                            done = ref(false)
+                        IN
+                        prog(
+                            while(
+                                NOT val(done),
+                                IF rbrack?(car(val(remaining))) THEN
+                                    prog(
+                                        set(remaining, cdr(remaining)),
+                                        set(done, true)
+                                    )
+                                ELSE
+                                    LET (obj, next) = parse_json_old (val(remaining)) IN
+                                    prog(
+                                        set(elements, cons(obj, val(elements))),
+                                        IF comma?(car(val(next))) THEN
+                                            set(remaining, cdr(next))
+                                        ELSE IF rbrack?(car(val(next))) THEN
+                                            prog(
+                                                set(remaining, cdr(next)),
+                                                set(done, true)
+                                            )
+                                        ELSE
+                                            throw(JsonParseError, "Unrecognized symbol when parsing an array")
+                                        ENDIF ENDIF 
+                                    )
+                                ENDIF
+                            ),
+                            (JArray(reverse(val(elements))), val(remaining))
+                        )
+                    ),
+                    Rbrack: throw(JsonParseError, "Parsing error"),
+                    Colon: throw(JsonParseError, "Parsing error"),
+                    Comma: throw(JsonParseError, "Parsing error"),
+                    Str(s): (JStr(s), tail),
+                    Num(x): (JNum(x), tail),
+                    T: (JBool(true), tail),
+                    F: (JBool(false), tail),
+                    N: (JNull, tail),
+                    Whitespace: throw(JsonParseError, "Should not have whitespace when parsing tokens")
+                ENDCASES
+            ),
+            null: throw(JsonParseError, "Parsing error")
+        ENDCASES
+        MEASURE length(s)
+
+    remove_whitespace (tokens : list[Token]) : RECURSIVE list[Token] =
+        CASES tokens OF
+            cons(x, xs): (
+                IF whitespace?(x) THEN
+                    remove_whitespace(xs)
+                ELSE
+                    cons(x, remove_whitespace(xs))
+                ENDIF
+            ),
+            null: null
+        ENDCASES
+        MEASURE tokens BY <<
+
+    json_from_string(s : string) : JValue =
+        LET 
+            tokens = remove_whitespace(lex_json(s)),
+            (v, rem) = parse_json_record(parse_json)(tokens,null) 
+        IN
+  	  v
+
+    json_from_string_old (s : string) : JValue =
+        LET 
+            tokens = remove_whitespace(lex_json(s)),
+            (v, rem) = parse_json_old (tokens) 
+        IN
+        IF length(rem) = 0 THEN
+            v
+        ELSE
+            throw(JsonParseError, "Unexpected content at end of file")
+        ENDIF
+
+    json_from_file(filename:string) : JValue =
+      LET s = ref[string]("") IN
+      prog(with_openin_file(filename, LAMBDA(f:IStream):
+             while(NOT eof?(f),
+                set(s, format("~a~a",{| val(s), fread_line(f) |})))),
+           json_from_string(val(s)))
+
+    json_get_member (j : JValue) (s : string) : JValue =
+        CASES j OF
+            JObject(pairs): (
+                LET 
+                    x = ref(pairs),
+                    result : Mutable[Maybe[JValue]] = ref(None),
+                    done = ref(false)
+                IN
+                prog(
+                    while(
+                        NOT val(done),
+                        CASES val(x) OF
+                            cons(head, tail): (
+                                prog(
+                                    set(x, tail),
+                                    IF strcompare(head`1, s) = 0 THEN set(result, Some(head`2)) ELSE set(result, val(result)) ENDIF
+                                )
+                            ),
+                            null: set(done, true)
+                        ENDCASES
+                    ),
+                    CASES val(result) OF
+                        Some(v): v,
+                        None: throw(JsonParseError, "Requested member value from object didn't exist")
+                    ENDCASES
+                )
+            ),
+            JArray(a): throw(JsonParseError, "Expected object when getting member value, got array"),
+            JNum(x): throw(JsonParseError, "Expected object when getting member value, got num"),
+            JStr(s): throw(JsonParseError, "Expected object when getting member value, got string"),
+            JBool(b): throw(JsonParseError, "Expected object when getting member value, got bool"),
+            JNull: throw(JsonParseError, "Expected object when getting member value, got null")
+        ENDCASES
+
+    json_get_list (j : JValue) : list[JValue] =
+        CASES j OF
+            JObject(p): throw(JsonParseError, "Get list error"),
+            JArray(a): a,
+            JNum(x): throw(JsonParseError, "Get list error"),
+            JStr(s) : throw(JsonParseError, "Get list error"),
+            JBool(x): throw(JsonParseError, "Get list error"),
+            JNull: throw(JsonParseError, "Get list error")
+        ENDCASES
+
+    json_get_string (j : JValue) : string =
+        CASES j OF
+            JObject(p): throw(JsonParseError, "Get string error"),
+            JArray(a): throw(JsonParseError, "Get string error"),
+            JNum(x): throw(JsonParseError, "Get string error"),
+            JStr(s) : s,
+            JBool(x): throw(JsonParseError, "Get string error"),
+            JNull: throw(JsonParseError, "Get string error")
+        ENDCASES
+
+    json_get_num (j : JValue) : real =
+        CASES j OF
+            JObject(p): throw(JsonParseError, "Get num error"),
+            JArray(a): throw(JsonParseError, "Get num error"),
+            JNum(x): x,
+            JStr(s) : throw(JsonParseError, "Get num error"),
+            JBool(x): throw(JsonParseError, "Get num error"),
+            JNull: throw(JsonParseError, "Get num error")
+        ENDCASES
+
+    json_get_bool (j : JValue) : bool =
+        CASES j OF
+            JObject(p): throw(JsonParseError, "Get bool error"),
+            JArray(a): throw(JsonParseError, "Get bool error"),
+            JNum(x): throw(JsonParseError, "Get bool error"),
+            JStr(s) : throw(JsonParseError, "Get bool error"),
+            JBool(x): x,
+            JNull: throw(JsonParseError, "Get bool error")
+        ENDCASES
+
+    json_to_string (j : JValue) : RECURSIVE string =
+        LET strlist_concat = 
+                LAMBDA(strs : list[string]): (
+                    IF length(strs) = 0 THEN "" ELSE
+                        LET preffix = 
+                            for (0, length(strs) - 2, "", LAMBDA(i:below(length(strs)), acc : string):
+                                strconcat(strconcat(acc, nth(strs, i)), ",")
+                            )
+                        IN
+                        strconcat(preffix, nth(strs, length(strs) - 1))
+                    ENDIF
+                )
+        IN
+        CASES j OF
+            JObject(obj): strconcat("{", strconcat(strlist_concat(map(
+                LAMBDA(kv : [string, JValue]): strconcat(char(34),strconcat(kv`1, strconcat(char(34), strconcat(":", json_to_string(kv`2)))))
+            )(obj)), "}")),
+            JArray(arr): strconcat("[", strconcat(strlist_concat(map(json_to_string)(arr)), "]")),
+            JNum(x): (
+                LET str = format("~0f",x) IN
+                % May need to do fixes to make the string valid json
+                IF get(str, 0) = '.' THEN
+                    strconcat("0", str)
+                ELSE IF get(str, length(str) - 1) = '.' THEN
+                    strconcat(str, "0")
+                ELSE IF length(str) >= 2 AND get(str, 0) = '-' AND get(str, 1) = '.' THEN
+                    strconcat("-0.", substring(str, 2, length(str) - 1))
+                ELSE
+                    str
+                ENDIF ENDIF ENDIF
+            ),
+            JStr(s): strconcat(char(34), strconcat(s, char(34))),
+            JBool(b): IF b THEN "true" ELSE "false" ENDIF,
+            JNull: "null"
+        ENDCASES
+        MEASURE 0
+
+END stdjson

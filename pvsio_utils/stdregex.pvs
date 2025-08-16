@@ -1,0 +1,106 @@
+% This file implements regular languages.
+% Author: Joshua Nichols (2025)
+
+stdregex : THEORY
+BEGIN
+
+    IMPORTING structures@Maybe
+    IMPORTING structures@for_iterate
+
+    % Defines a regular language.
+    Regex : DATATYPE
+    BEGIN
+        Emptyset : emptyset?
+        Emptystring : emptystring?
+        Literal(c : char) : literal?
+        Times(r : Regex, s : Regex) : times? % Concatenation
+        Plus(r : Regex, s : Regex) : plus? % Set union
+        Star(r : Regex) : star?
+    END Regex
+
+   IMPORTING orders@lex2_generic[Regex,string],
+             orders@well_foundedness_more
+
+    % Matches a regular language with a string, and returns the prefix and suffix, where the prefix matches r.
+    match (r : Regex)(a : string) : RECURSIVE [Maybe[string], string] =
+        CASES r OF
+            Emptyset: (None, a),
+            Emptystring: (Some(""), a),
+            Literal(c): 
+                IF length(a) = 0 OR (NOT strcompare(substring(a, 0, 0), make_string(1, LAMBDA(i : below(1)): c)) = 0) THEN
+                    (None, a)
+                ELSE
+                    (Some(make_string(1, LAMBDA(i : below(1)): c)), substring(a, 1, length(a) - 1))
+                ENDIF,
+            Times(w, s): 
+                LET (prefix, suffix) = match(w)(a) IN
+                IF some?(prefix) THEN 
+                  LET (s_prefix, s_suffix) = match(s)(suffix) IN
+                  IF some?(s_prefix) THEN
+                      (Some (strconcat(val(prefix), val(s_prefix))), s_suffix)
+                  ELSE
+                      (None, a)
+                  ENDIF
+                ELSE
+                  (None, a)
+                ENDIF,
+            Plus(w, s): 
+                LET (w_prefix, w_suffix) = match(w)(a),
+                    (s_prefix, s_suffix) = match(s)(a) IN
+                IF length(w_suffix) < length(s_suffix) THEN
+                    (w_prefix, w_suffix)
+                ELSE
+                    (s_prefix, s_suffix)
+                ENDIF,
+            Star(w): 
+                LET (prefix, suffix) = match(w)(a) IN
+                IF some?(prefix) THEN
+		  IF length(suffix) < length(a) THEN 
+                    LET (next_prefix, next_suffix) = match(r)(suffix) IN
+		    IF some?(next_prefix) THEN
+		      (Some (strconcat(val(prefix), val(next_prefix))), next_suffix)
+		    ELSE
+		      (Some(val(prefix)),suffix)
+		    ENDIF
+                  ELSE
+                    (Some(""), a)
+                  ENDIF
+		ELSE
+		  (None,a)
+		ENDIF
+        ENDCASES
+        MEASURE (r,a) BY lt_lex2(<<,lt(LAMBDA(s:string):length(s),LAMBDA(a,b:nat):a<b))
+
+    % Makes a regular expression to only match the provided string.
+    make_regex_word (s : string) : RECURSIVE Regex =
+        IF length(s) = 0 THEN
+            Emptystring
+        ELSE
+	  LET sstr = substring(s, 1, length(s) - 1) IN
+	    IF length(sstr) < length(s) THEN 
+              Times(Literal(get(s, 0)), make_regex_word(sstr))
+	    ELSE
+	      Emptystring
+	    ENDIF
+        ENDIF
+        MEASURE length(s)
+
+    % Helper function to generate all numerals.
+    numeral_regex : Regex =
+        for (0, 9, Emptyset, LAMBDA(i : below(10), r : Regex):
+            Plus(Literal(char(48 + i)), r)
+        )
+
+    % Helper function to generate the regular language of all letters in the alphabet.
+    alphabet_regex : Regex =
+        for (0, 25, Emptyset, LAMBDA(i : below(26), r : Regex):
+            Plus(Literal(char(97 + i)), r)
+        )
+
+    % Helper function to generate the regular language of all valid ascii characters minus the double quotation.
+    ascii_minus_quote : Regex =
+        for (0, 127, Emptyset, LAMBDA(i : upto(127), r : Regex):
+            IF NOT i = 34 THEN Plus(Literal(char(i)), r) ELSE r ENDIF
+        )
+
+END stdregex

@@ -1,0 +1,51 @@
+% This file implements lexical analysis for context-free grammars.
+% Author: Joshua Nichols (2025)
+
+stdlex[T : TYPE] : THEORY
+BEGIN
+
+    IMPORTING stdregex
+
+    LexicalAnalysisError : ExceptionTag[string] = "LexicalAnalysisError"
+
+    % Performs lexical analysis on a string using the provided tokenization rules.
+    lex (mapping : list[[Regex, [string -> T]]]) (a : string) : list[T] =
+        LET
+            rem = ref[string](a),
+            tokens = ref[list[T]]((: :))
+        IN
+        prog(
+            while(NOT length(val(rem)) = 0,
+                LET
+                    % Find the longest matching regular expression.
+                    (token, match) = for (0, length(mapping) - 1, (None, val(rem)), LAMBDA(i:below(length(mapping)), current_match : [Maybe[T], string]):
+                        LET
+                            regex = nth(mapping, i)`1,
+                            token = nth(mapping, i)`2,
+                            (prefix, suffix) = match (regex) (val(rem))
+                        IN
+			IF some?(prefix) THEN
+                          IF length(suffix) < length(current_match`2) THEN
+                              (Some (token(val(prefix))), suffix)
+                          ELSE
+                              current_match
+                          ENDIF
+		       ELSE
+		         current_match
+		       ENDIF
+                    )
+                IN
+                CASES token OF
+                    Some (tok): (
+                        prog(
+                            set(rem, match),
+                            set(tokens, cons(tok, val(tokens)))
+                        )
+                    ),
+                    None: throw(LexicalAnalysisError, strconcat("Unrecognized token in: ", val(rem)))
+                ENDCASES
+            ),
+            reverse(val(tokens))
+        )
+
+END stdlex
