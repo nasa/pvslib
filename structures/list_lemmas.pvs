@@ -1,11 +1,4 @@
 list_lemmas [T: TYPE]: THEORY % Welcome
- %Inputs: T - Type that makes up  entries
- %            of list
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%| Facts about lists that are    |%
-%| needed for subsequent theories|%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Written By:           AD, LW, JTS
 
 %-----     %
@@ -42,10 +35,39 @@ every_reverse: LEMMA
     FORALL(P: PRED[T], l: list[T]):
     every(P)(l) IMPLIES every(P)(reverse(l))
 
+%–-  Relations between length, cons, and cdr
+
+lenght_cons : LEMMA
+  cons?(l) IFF length(l) > 0
 
 length_cdr: LEMMA 
-  FORALL ( l1 : (cons?[T])):
-    length(cdr(l1)) = length(l1)-1
+  FORALL ( l : (cons?[T])):
+    length(cdr(l)) = length(l)-1
+
+%–- A generic find. Returns a suffix of l where the first element
+%–- satisfies test or the empty list if none of the elements satisfies t
+ find(test:PRED[T],l) : RECURSIVE {ll:list[T] |
+ 			  EXISTS (i:upto(length(l))) :
+			    length(ll) = length(l)-i AND
+			    (FORALL(k:below(i)): NOT test(nth(l,k))) AND
+			    (cons?(ll) IMPLIES test(car(ll))) AND
+			    (FORALL(k:subrange(i,length(l)-1)):
+			     nth(l,k) = nth(ll,k-i))} =
+  IF null?(l) THEN l
+  ELSIF test(car(l)) THEN l
+  ElSE find(test,cdr(l))
+  ENDIF
+  MEASURE l BY <<
+
+%–- A generic position. Returns position of first element that satisfies
+%—– test (returns length of list if none) 
+ position(test:PRED[T],l) : RECURSIVE {n : upto(length(l)) |
+			    (FORALL(k:below(n)): NOT test(nth(l,k))) AND
+			    (n < length(l) IMPLIES test(nth(l,n)))} =
+  IF null?(l) OR test(car(l)) THEN 0
+  ElSE position(test,cdr(l))+1
+  ENDIF
+  MEASURE l BY <<
 
 %-------------------------------------------
 %% Define max length, measuring length of
@@ -127,12 +149,12 @@ add_lists(l1,l2:list[nat]): RECURSIVE list[nat] =
   MEASURE length(l1) + length(l2)
 
 add_lists_length: LEMMA
-FORALL(l1,l2:list[nat]):
-length(add_lists(l1,l2)) = max(length(l1),length(l2))
+  FORALL(l1,l2:list[nat]):
+  length(add_lists(l1,l2)) = max(length(l1),length(l2))
 
 % @QED add_list_nth proved by lmwhite3 on Mon, 18 Apr 2022 14:35:42 GMT
 add_list_nth: LEMMA
-FORALL(l1,l2:list[nat], n:nat | n < min(length(l1),length(l2))):
+  FORALL(l1,l2:list[nat], n:nat | n < min(length(l1),length(l2))):
   nth(l1,n) + nth(l2,n) = nth(add_lists(l1,l2),n)
 
 
@@ -174,18 +196,6 @@ list_n_nth: LEMMA
 FORALL(n:nat, i:below(n)): nth(list_length_n(n),i)=i
 
 %---------------------------------------------
-% Define the sum of a list of real numbers
-%---------------------------------------------
-
-% sum(l:list[real]): RECURSIVE real = 
-% IF null?(l)
-%    THEN 0
-% ELSE
-%    car(l) + sum(cdr(l))
-% ENDIF
-% MEASURE l by <<
-
-%---------------------------------------------
 % Properties of filtering
 %---------------------------------------------
 
@@ -210,34 +220,17 @@ cons_filter_exists: LEMMA
   (EXISTS (i:below(length(l))):
   P(nth(l,i)))
 
-%---------------------------------------------
-% Properties of rdc
-%---------------------------------------------
-
-length_rdc: LEMMA 
-    FORALL ( l1 : (cons?[T])):
-    length(rdc(l1)) = length(l1)-1
-
-nth_rdc: LEMMA
-    FORALL ((l1 : list[T] | NOT null?(l1)), i:nat):
-    i< length(l1)-1 IMPLIES
-    nth(rdc(l1),i) = nth(l1, i)
-
-rdc_cdr: lEMMA
- FORALL(l:list[T]):
- (cons?(l) AND cons?(cdr(l))) IMPLIES
- rdc(cdr(l)) = cdr(rdc(l))
-
-
-
-min_list(l:list[real] | cons?[real](l)): RECURSIVE {t:real | FORALL(i:below(length(l))): t <= nth(l,i) AND EXISTS(i:below(length(l))): t = nth(l,i)} =
-IF length[real](l)=1 THEN car(l)
-ELSE  IF car(l) <= min_list(cdr(l)) THEN car(l) ELSE min_list(cdr(l)) ENDIF
-ENDIF
-MEASURE length(l)
+min_list(l:list[real] | cons?[real](l)): RECURSIVE {t:real |
+  FORALL(i:below(length(l))): t <= nth(l,i) AND EXISTS(i:below(length(l))): t = nth(l,i)} =
+  IF length[real](l)=1 THEN car(l)
+  ELSIF car(l) <= min_list(cdr(l)) THEN car(l)
+  ELSE min_list(cdr(l)) 
+  ENDIF
+ MEASURE length(l)
 
 min_lemma: LEMMA
-FORALL(l1:list[real],l2:list[real] | cons?(l1) AND cons?(l2)): min_list(append[real](l1,l2)) = min(min_list(l1),min_list(l2))
+  FORALL(l1:list[real],l2:list[real] | cons?(l1) AND cons?(l2)):
+    min_list(append[real](l1,l2)) = min(min_list(l1),min_list(l2))
 
 %~ The End  ~~%
 end list_lemmas
