@@ -68,7 +68,7 @@ BEGIN
 
   %% Iterate a function on a file 
   copy_with_line_numbers : void =
-    LET fout = fopenout(create,"pvsio_examples_with_line_numbers.tmp"),
+    LET fout = fopenout("pvsio_examples_with_line_numbers.tmp"),
         fin  = fopenin("pvsio_examples.pvs"),
         lns  = unwind_protect(
                  fmap_line(fin,
@@ -98,29 +98,35 @@ BEGIN
 
   %% Exception handling
 
-  NegDiscriminant : ExceptionTag[real] = "NegDiscriminat"
+  NegDiscriminant : Exception[real] = "NegDiscriminant"
 
-  % Throw an exception if discriminant is neg
-  safe_quadratic(a:nzreal,b,c:real) : [real,real] =
+  % Throw exception with discriminant if discriminant is neg (r1,r2,discr)
+  safe_quadratic(a:nzreal,b,c:real) : [real,real,real] =
     LET d = sq(b)-4*a*c IN
     IF d < 0 THEN 
-      throw(NegDiscriminant,d)
+      throw(NegDiscriminant,d,
+           format("Discriminant of ~ax^2 + ~ax + ~a = 0 is ~a, which is a negative number",
+	          {| a,b,c,d |}))  % Throw exception with specific message
     ELSE
        LET sqrt_d = sqrt(d) IN
-       ((-b+sqrt_d)/(2*a),(-b-sqrt_d)/(2*a))
+       ((-b+sqrt_d)/(2*a),(-b-sqrt_d)/(2*a),d)
     ENDIF
 
- % Catch exception if discriminat is neg
-  quadratic_io(a:nzreal,b,c:real) : void =
+  % Catch exception if discriminat is neg and, in this case, return (0,0,d), where d is neg.
+  maybe_quadratic(a:nzreal,b,c:real) : [real,real,real] =
     catch(NegDiscriminant,
-      LET (r1,r2) = safe_quadratic(a,b,c) IN
-      printf("Roots of ~ax^2 + ~ax + ~a = 0 are (~a,~a)",{|(a,b,c,r1,r2)|}),
-      LAMBDA (exc:Exception[real]) : 
-        printf("Discriminant of ~ax^2 + ~ax + ~a = 0 is ~a, which is a negative number",
-	      {| (a,b,c,val(exc)) |}))
+          safe_quadratic(a,b,c),
+	  LAMBDA(d:real): (0,0,d))
     	
-  LessThan0 : ExceptionTag[int] = "LessThan0"
-  GreaterThan100  : ExceptionTag[int] = "GreaterThan100"
+  ExceptionInt : Exception[int] = "ExceptionInt"
+
+  LessThan0 : Exception[int] = ExceptionInt <<           %% LessThan0 is an ExceptionInt
+    ("LessThan0",
+     LAMBDA(i:int):format("Number ~a is less than 0",i)) %% Default message for this exception
+
+  GreaterThan100  : Exception[int] = ExceptionInt <<     %% GreaterThan100 is an ExceptionInt
+    ("GreaterThan100",
+     LAMBDA(i:int):format("Number ~a is greater than 100",i))  %% Default message for this exception
 
   int_0_100 : int =
     LET i = query_int("Enter a number between 0 and 100") IN
@@ -133,9 +139,13 @@ BEGIN
   read_0_100 : int =  
     catch((: LessThan0, GreaterThan100 :),
 	  int_0_100,
-	  LAMBDA (exc:Exception[int]):
-	    LET mssg = printf("Number ~a is not between 0 and 100. Returning 0~%",val(exc))
-	    IN 0)
+	  0)  % Returned value when exception is caught
+
+  %% Catch several exceptions through exception hierarchy
+  read_0_100_alt : int =  
+    catch(ExceptionInt,
+	  int_0_100, 
+	  0) % Returned value when exception is caught
 	     
   %% PVS parsing and printing
 

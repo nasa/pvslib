@@ -35,34 +35,27 @@ BEGIN
    head    : [[IStream,OStream]->void],
    maxr    : nat,
    nameout : string) : void =
-    IF file = "" OR fexists(file) THEN
-      LET fin     = IF file = "" THEN stdin ELSE fopenin(file) ENDIF,
-          fout    = IF file = "" THEN stdout ELSE fopenout(create,nameout) ENDIF IN
-        IF file /= "" THEN 
-          printf("Reading: ~a. Writing: ~a~%",{|file,nameout|}) 
-        ELSE skip ENDIF &
-        set[nat](Records,0) &
-        set[nat](Fails,0) &
-        set[nat](CurrentLine,0) &
-        tic & 
-        head(fin,fout) &
-        while(NOT eof?(fin) AND maxr <= 0 OR val[nat](Records) < maxr,
-              catch[void]
-	        ((:"EmptyInput":),
-	        IF check(fin,fout) THEN skip ELSE set[nat](Fails,val[nat](Fails)+1) ENDIF &
-		set[nat](Records,val[nat](Records)+1) &
-		IF file /= "" THEN print_etc(fin,maxr) ELSE skip ENDIF,
-	      	skip)) &
-        LET atoc : Toc = toc,
-	    msg : string = format("~a~%Lines: ~a. Records: ~a. Fails: ~a~%",
-                           {|strtoc(atoc),val[nat](CurrentLine),val[nat](Records),val[nat](Fails)|}) IN
+    LET fin     = IF file = "" THEN stdin ELSE fopenin(file) ENDIF,
+        fout    = IF file = "" THEN stdout ELSE fopenout(rename,nameout) ENDIF IN
+      IF file /= "" THEN
+        printf("Reading: ~a. Writing: ~a~%",{|file,nameout|})
+      ELSE skip ENDIF &
+      set[nat](Records,0) &
+      set[nat](Fails,0) &
+      set[nat](CurrentLine,0) &
+      tic &
+      head(fin,fout) &
+      while(NOT eof?(fin) AND maxr <= 0 OR val[nat](Records) < maxr,
+        IF check(fin,fout) THEN skip ELSE set[nat](Fails,val[nat](Fails)+1) ENDIF &
+        set[nat](Records,val[nat](Records)+1) &
+	IF file /= "" THEN print_etc(fin,maxr) ELSE skip ENDIF) &
+      LET atoc : Toc = toc,
+	  msg : string = format("~a~%Lines: ~a. Records: ~a. Fails: ~a~%",
+                         {|strtoc(atoc),val[nat](CurrentLine),val[nat](Records),val[nat](Fails)|}) IN
         printf(msg) & 
         IF file /= "" THEN fprintf(fout,msg) ELSE skip ENDIF &
         fclose(fin) &
         fclose(fout) 
-    ELSE
-      printf("File ~a doesn't exist",file)
-    ENDIF
 
   checker_with_header(file:string,check:[[IStream,OStream]->bool],head:[[IStream,OStream]->void],
                       maxr:nat) : void =
@@ -83,9 +76,9 @@ BEGIN
     LET trln = trim(line) IN
       trln = "" OR strfind("%",trln) = 0
 
-  PVSioCheckerError : ExceptionTag[string] = "PVSioCheckerError"
+  PVSioCheckerException : Exception[string] = "PVSioCheckerException"
 
-  % May throw PVSioCheckerError 
+  % May throw PVSioCheckerException
   readln_checker(fin:IStream):string =
     LET lvar = ref[string]("") IN
       prog(while (NOT eof?(fin) AND empty_line(val(lvar)),
@@ -93,7 +86,8 @@ BEGIN
              set[string](lvar,fread_line(fin))),
            LET result = val(lvar) IN
 	   IF empty_line(result) THEN
-	     throw(PVSioCheckerError, format("No available input in line ~a of ~a",{| val(CurrentLine), filename(fname(fin)) |}))
+	     throw(PVSioCheckerException,
+	           format("No available input in line ~a of ~a",{| val(CurrentLine), filename(fname(fin)) |}))
 	   ELSE result
 	   ENDIF)
 

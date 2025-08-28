@@ -127,9 +127,7 @@ BEGIN
     : nth(spec,i) = StringOrNull
       IMPLIES LET d = getField(spec)(data,i) IN str?(d) OR null?(d)
 
-  PVSioCSVError : ExceptionTag[string] = "PVSioCSVError"
-
-  % May throw PVSioCSVError or NotAQuotedString Token is trimmed
+  % May throw PVSioCSVException or NotAQuotedString Token is trimmed
   processCSVField(fin:IStream,fieldspec:CSVFieldSpec,token:string,
                   qchar:StringChar,field:posnat) : (wf_CSVData?(fieldspec)) =
     IF length(token) = 0 AND
@@ -137,8 +135,8 @@ BEGIN
         fieldspec = BooleanOrNull OR fieldspec = StringOrNull) THEN
       null_field
     ELSE   
-      catch[(wf_CSVData?(fieldspec))](
-      (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :) ,
+      catch[(wf_CSVData?(fieldspec)),string](
+      (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :),
       IF fieldspec = Integer OR fieldspec = IntegerOrNull
         THEN int_field(str2int(token))
       ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
@@ -158,12 +156,12 @@ BEGIN
       LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF,
           flstr = pvs2str(fieldspec),
 	  msg   = format("Value ~s doesn't satisfy spec ~a in field ~a of line~a in ~a",
-		         {| token,flstr,field,lnstr,filename(fname(fin)) |}) 
-      IN throw(PVSioCSVError,msg)
+                        {| token,flstr,field,lnstr,filename(fname(fin)) |})
+      IN throw(PVSioCSVException,msg)
       )
     ENDIF 
 
-  % May throw PVSioCSVError
+  % May throw PVSioCSVException
   processCSVLine(fin:IStream,spec: list[CSVFieldSpec],
                  tokens: list[string] | length(spec) <= length(tokens),
                  qchar: StringChar, field: posnat)
@@ -181,7 +179,7 @@ BEGIN
     LET trln = trim(line) IN
       trln = "" OR (commentstr /= "" AND strfind(commentstr,trln) = 0)
 
-  % May throw PVSioCSVError
+  % May throw PVSioCSVException
   readln_csv(fin:IStream,dlct:CSVDialect):string =
     LET lvar = ref[string]("") IN
       prog(while (NOT eof?(fin) AND empty_line(val(lvar),dlct`cmmt),
@@ -190,12 +188,12 @@ BEGIN
            LET result = val(lvar) IN
 	   IF empty_line(result,dlct`cmmt) THEN
 	      LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF IN
-              throw(PVSioCSVError,format("No available input in line~a of ~a",
+              throw(PVSioCSVException,format("No available input in line~a of ~a",
 	                                               {| lnstr, filename(fname(fin)) |}))
 	   ELSE result
 	   ENDIF)
 
-  % May throw PVSioCSVError
+  % May throw PVSioCSVException
   readCSVRecordln(fin: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
   : CSVDataFromSpec(data_spec)
   = LET line   = readln_csv(fin,dlct),
@@ -206,7 +204,7 @@ BEGIN
          LET lnstr = IF undef(CSVLine) THEN "" ELSE format(" ~a",val(CSVLine)) ENDIF,
 	     mssg  = format("Line~a of ~a has ~a fewer fields (~{~a~^,~}) than data specifications (~{~a~^,~})",
 	                    {| lnstr, filename(fname(fin)), delta, {| tokens |}, {| data_spec |} |}) IN
-         throw(PVSioCSVError,mssg)
+         throw(PVSioCSVException,mssg)
        ELSE processCSVLine(fin,data_spec,tokens,dlct`qchr,1) ENDIF
 
   readCSVRecord(fin: IStream, dlct: CSVDialect, data_spec: list[CSVFieldSpec])
