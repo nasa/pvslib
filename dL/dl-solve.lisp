@@ -139,7 +139,7 @@
 				    (expand "val" *is_val_not_in_map?*)
 				    (expand "env_c" *is_val_not_in_map?*)
 				    (expand "env_nat_shift" *is_val_not_in_map?*)))))
-		     (dl-distinct-vars)))
+		     (dl-distinct-vars *is_val_not_in_map?*)))
 	    ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	    ;; the expression is replaced by the calculated definition,
 	    ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
@@ -163,14 +163,17 @@
 
 ;; simplify Y_sol_ex(%%) expressions
 (defhelper simplify_Y_sol_ex__ (z_def)
-  (for@ nil (match$ z_def "Y_sol_ex(%a)(%b)"
-		    step
-		    (with-fresh-names
-		     (Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
-		     (reveal *Y_sol_ex*) 
-		     (dl-calculate-Y_sol_ex$ *Y_sol_ex*)
-		     (replace *Y_sol_ex* :dir rl :hide? t)
-		     (beta z_def))))
+  (for@$ nil
+	(if-match
+	 "Y_sol_ex(%a)(%b)"
+	 (with-fresh-names
+	  (Y_sol_ex "Y_sol_ex(%a)(%b)" :tccs)
+	  (reveal *Y_sol_ex*)
+	  (dl-calculate-Y_sol_ex$ *Y_sol_ex*)
+	  (replace *Y_sol_ex* :dir rl :hide? t)
+	  (beta z_def))
+	 :fnums z_def
+
   "Internal strategy" "")
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
@@ -207,7 +210,7 @@
 		 (hide-all-but (solution_lemma z_def '-))
 		 (expand "zs" z_def)
 		 (for@ nil (then (expand "init_zip_sol" z_def) (for@ nil (expand "length" z_def))))
-		 (simplify-nth)
+		 (simplify-nth :onums *)
 		 (beta)
 		 (simplify_Y_sol_ex__$ z_def)
 		 (expand "UPTO" solution_lemma)

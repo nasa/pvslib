@@ -23,7 +23,7 @@
 
 (defstep simplify-nth (&optional (fnums *) (onums 1))
   (if-match
-   "nth(%a,%b{number})"
+   "nth(%,%{number})"
    (mapstep (lambda (x)`(simplify-nth1__$ ,x ,fnums)) ($*j)) 
    :fnums fnums
    :onums onums)

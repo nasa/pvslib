@@ -60,16 +60,26 @@
 (load-other-strat-files "dl-solve.lisp"    )
 (load-other-strat-files "dl-pp.lisp"       )
 
-(defstep dl-distinct-vars ()
-  (if-match
-   ("pairwise_distinct_vars?(%)" "distinct_var?(%)(%)")
-   (with-fresh-labels
-    (pairwise-distinct-form ($*n) :hide)
-    (repeat (expand "pairwise_distinct_vars?" pairwise-distinct-form))
-    (repeat (expand "distinct_var?" pairwise-distinct-form))
-    (flatten pairwise-distinct-form)
-    (assert pairwise-distinct-form))
-   :onums *)
+(defstep dl-distinct-vars (&optional (fnums *))
+  (cond-match
+   (("pairwise_distinct_vars?(%)" "distinct_var?(%)(%)")
+    (with-fresh-labels
+     (pairwise-dv! ($*n))
+     (for nil (expand "pairwise_distinct_vars?" pairwise-dv!))
+     (nor nil (expand "distinct_var?" pairwise-dv!))
+     (flatten pairwise-dv!)
+     (assert)))
+   ("dlvar_index(%{name_})"
+    (with-fresh-labels
+     (dlvar-idx! ($*n))
+     (let ((qfnum (list 'quote dlvar-idx!))
+	   (names (loop for expr in '($*j)
+			when (is-const-decl-expr (argument expr))
+			collect (id (argument expr)))))
+       (mapstep (lambda (name) `(expand ,name ,qfnum)) names))
+     (assert)))
+   :onums *
+   :fnums fnums)
   "Asserts that variables in the sequent are distinct."
   "Asserting that variables are distinct.")
 
