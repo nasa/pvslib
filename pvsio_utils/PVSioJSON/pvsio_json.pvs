@@ -85,7 +85,7 @@ BEGIN
         JNull : jnull?
     END JValue
 
-    ListTokenLt(l:list[Token]) : TYPE = {nl:list[Token] | length(nl) < length(l)}
+    ListTokenLt(l:list[Token]) : TYPE = {nl:list[Token] | cons?(nl) IMPLIES length(nl) < length(l)}
 
     % Parse a Json object of the form ",..., keyn:valn }". Already parsed a prefix of the form "{ key1 : valn ..."
     parse_json_dict(parse_json_f:[l:list[Token]->[JValue,ListTokenLt(l)]])
@@ -97,11 +97,16 @@ BEGIN
 	    (JObject(acc),cdr(ll))
 	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
             LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF IN
-	    IF length(restl) > 1 AND
+	    IF length(restl) > 2 AND
                str?(nth(restl,0)) AND % Next token is <key>
 	       colon?(nth(restl,1)) THEN % Next token is ":"
 	      LET (jv,rest) = parse_json_f(cdr(cdr(restl))) IN
-              parse_json_dict(parse_json_f)(rest,append(acc,(: (str(nth(restl,0)),jv) :)))
+	      IF cons?(rest) THEN 
+                 parse_json_dict(parse_json_f)(rest,append(acc,(: (str(nth(restl,0)),jv) :)))
+	      ELSE
+	         throw(JsonParseException,format("Parsing dictionary. Expecting '}' or ~a instead of '~a'",
+	                                         {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}))
+	      ENDIF
 	    ELSE
               throw(JsonParseException,format("Parsing dictionary. Expecting <key> : <val> at '~a'",tokenstr))
 	    ENDIF
@@ -124,7 +129,12 @@ BEGIN
 	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
             LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF,
 	        (jv,rest) = parse_json_f(restl) IN
-              parse_json_array(parse_json_f)(rest,append(acc,(: jv :)))
+              IF cons?(rest) THEN
+                parse_json_array(parse_json_f)(rest,append(acc,(: jv :)))
+              ELSE
+ 	        throw(JsonParseException,format("Parsing array. Expecting ']' or ~a instead of '~a'",
+	                                 {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}))
+	      ENDIF
 	  ELSE
 	    throw(JsonParseException,format("Parsing array. Expecting ']' or ~a instead of '~a'",
 	                                    {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}))
@@ -219,27 +229,29 @@ BEGIN
 
     JIndent : Global[nat,2]
 
-    JValueLt(jval:JValue) : TYPE = {jv:JValue | jv << jval}
+    JValueLt(jval:JValue) : TYPE = {jv:JValue | (jobject?(jval) OR jarray?(jval)) IMPLIES jv << jval}
 
     jfield_to_string(jval:JValue,json_to_string_f:[int->[JValueLt(jval)->string]],indent:int)
                     (field:[string,JValueLt(jval)]) : string =
       IF indent < 0 THEN
         format("~s:~a",{| field`1, json_to_string_f(indent)(field`2) |})
-      ELSE 
-        format("~%~a~s:~a",{| spaces(indent), field`1, json_to_string_f(indent+JIndent)(field`2) |})
+      ELSE
+        LET spind : string = spaces(indent) IN 
+        format("~%~a~s:~a",{| spind, field`1, json_to_string_f(indent+JIndent)(field`2) |})
       ENDIF
 
     json_to_string_aux(indent:int)(jval: JValue) : RECURSIVE string =
+      LET spind : string = IF indent <= 0 THEN "" ELSE  spaces(indent) ENDIF IN 
       CASES jval OF
         JObject(jobj):
           IF indent < 0 THEN
 	    LET ll = map(jfield_to_string(jval,json_to_string_aux,indent),jobj) IN
 	    format("{~{~a~^,~}}",{| ll |})
 	  ELSIF null?(jobj) THEN
-	    format("~%~a{}",spaces(indent))
+	    format("~%~a{}",spind)
 	  ELSE 
 	    LET ll  = map(jfield_to_string(jval,json_to_string_aux,indent+JIndent),jobj) IN
-	    format("~%~a{~{~a~^,~}~%~a}",{| spaces(indent), {| ll |}, spaces(indent) |})
+	    format("~%~a{~{~a~^,~}~%~a}",{| spind, {| ll |}, spind |})
 	  ENDIF,
         JArray(jarr):
 	  LET ll = map(json_to_string_aux(indent),jarr) IN
@@ -247,28 +259,28 @@ BEGIN
 	    LET ll = map(json_to_string_aux(indent),jarr) IN
 	    format("[~{~a~^,~}]",{| ll |})
 	  ELSIF null?(jarr) THEN
-	    format("~%~a[]",spaces(indent))
+	    format("~%~a[]",spind)
 	  ELSE 
 	    LET ll = map(json_to_string_aux(indent+JIndent),jarr) IN
-	    format("~%~a[~{~a~^,~}~%~a]",{| spaces(indent), {| ll |}, spaces(indent) |})
+	    format("~%~a[~{~a~^,~}~%~a]",{| spind, {| ll |}, spind |})
 	  ENDIF,
         JNum(jn) :
 	  LET ns = real2str(jn) IN 
 	  IF indent < 0 THEN format("~a",ns)
-	  ELSE format("~%~a~a",{| spaces(indent), ns |})
+	  ELSE format("~%~a~a",{| spind, ns |})
           ENDIF,
         JStr(js) :
 	  IF indent < 0 THEN format("~s",js)
-	  ELSE format("~%~a~s",{| spaces(indent), js |})
+	  ELSE format("~%~a~s",{| spind, js |})
           ENDIF,
         JBool(j) : 
 	  LET strj = IF j THEN "true" ELSE "false" ENDIF IN
 	  IF indent < 0 THEN strj
-	  ELSE format("~%~a~a",{| spaces(indent), strj |})
+	  ELSE format("~%~a~a",{| spind, strj |})
           ENDIF,
         JNull :
 	  IF indent < 0 THEN "null"
-	  ELSE format("~%~anull",spaces(indent))
+	  ELSE format("~%~anull",spind)
           ENDIF
       ENDCASES
       MEASURE jval BY <<
