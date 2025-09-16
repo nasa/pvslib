@@ -172,8 +172,7 @@
 	  (dl-calculate-Y_sol_ex$ *Y_sol_ex*)
 	  (replace *Y_sol_ex* :dir rl :hide? t)
 	  (beta z_def))
-	 :fnums z_def
-
+	 :fnums z_def))
   "Internal strategy" "")
 
 (defstep dl-solve (&optional fnum (skolem-constant "t") (quiet? t))
