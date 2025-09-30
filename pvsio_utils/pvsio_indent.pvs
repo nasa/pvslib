@@ -1,0 +1,187 @@
+% String indentations
+% Cesar A. Munoz (NASA)
+% For examples of using this theory see example below (test) and pvsio_examples/indent_examples.pvs
+%
+pvsio_indent : THEORY
+BEGIN
+  
+
+  % If level is 0, the string is non-indented. A positve number indicates a
+  % forward indentation and a negative number indicates a backwards indentation.
+  IndentedString : TYPE = [#
+    level   : int,     % Indentation level 
+    istr    : string   % String to be indented
+  #]
+
+  % An indented block is a list of indented strings
+  IndentedBlock : TYPE = list[IndentedString]
+
+  EmptyBlock : IndentedBlock = null
+
+  noindent(str:string) : IndentedBlock =
+    (: (# level := 0, istr := str #) :)
+
+  istring(str:string) : IndentedBlock =
+    (: (# level := 1, istr := str #) :)
+
+  % In addtion to formatting string, breaks new lines
+  iformat[T:TYPE](fmtstr:string,args:T): MACRO  IndentedBlock =
+    LET str = format(fmtstr,args),
+        lst = strsplit(str,newline) IN
+      map(LAMBDA(str:string):(# level := 1, istr := str #),lst)
+
+  iformat(str:string):IndentedBlock =
+    iformat(str,dummy)
+
+  IMPORTING reals@sign
+
+  indent(i:int)(istr:IndentedString) : IndentedString =
+    IF i = 0 OR istr`level = 0 THEN istr   % Don't change level if string is non-indented
+    ELSE
+      LET level = istr`level+i IN
+        IF level = 0 OR sign(level) /= sign(istr`level) THEN  % Crossed zero
+	  istr WITH [`level := level + sign(i) ] % Adjust for zero 
+	ELSE
+	  istr WITH [`level := level ]
+	ENDIF
+    ENDIF
+    
+  indent(i:int,iblk:IndentedBlock) : IndentedBlock =
+    IF i = 0 THEN iblk
+    ELSE
+      map(indent(i),iblk)
+    ENDIF
+
+  % Set indentation to initial value
+  ireset(istr:IndentedString) : IndentedString =
+    istr WITH [ `level := 1 ]
+
+  ireset(iblk:IndentedBlock) : IndentedBlock =
+    map(ireset,iblk)
+
+  iblock(iblk:IndentedBlock) : IndentedBlock =
+    indent(1,iblk)
+
+  ublock(iblk:IndentedBlock) : IndentedBlock =
+    indent(-1,iblk)
+
+  noindent(istr:IndentedString) : IndentedString =
+    istr WITH [ `level := 0 ]    
+
+  noindent(iblk:IndentedBlock) : IndentedBlock =
+    map(noindent,iblk)
+
+  % Modifies first string of a block, without alterating the indentation
+  imodfirst(str:string,iblk:IndentedBlock) : IndentedBlock =
+    CASES iblk OF
+      null : iblk,
+      cons(istr,rest) :
+        cons(istr WITH [ `istr := str ], rest)
+    ENDCASES
+
+  % Modifies last string of a block, without alterating the indentation
+  imodlast(str:string,iblk:IndentedBlock) : RECURSIVE IndentedBlock =
+    CASES iblk OF
+      null : iblk,
+      cons(istr,rest) :
+        IF null?(rest) THEN
+	  cons(istr WITH [ `istr := str ],rest)
+        ELSE
+	  cons(istr,imodlast(str,rest))
+	ENDIF
+    ENDCASES
+    MEASURE iblk BY <<
+
+  min_level(iblk:IndentedBlock,a:int) : RECURSIVE int =
+    CASES iblk OF
+      null : a,
+      cons(istr,rest) :
+        IF istr`level >= 0 THEN min_level(rest,a)
+	ELSE
+           min_level(rest,min(a,istr`level))
+        ENDIF
+    ENDCASES
+    MEASURE iblk BY <<
+
+  pre_indent(m:int)(istr:IndentedString) : IndentedString =
+    IF istr`level = 0 THEN istr
+    ELSE
+      LET level = istr`level + m IN
+      IF istr`level > 0 THEN
+        istr WITH [ `level := level-1 ]
+      ELSE
+        istr WITH [ `level := level ]
+      ENDIF
+    ENDIF
+
+  % Make sure that all levels are non-negative
+  pre_indent(iblk:IndentedBlock) : IndentedBlock =
+    LET m = min_level(iblk,0) IN  % m is non-positive
+    map(pre_indent(-m),iblk)
+
+  % This needs to go to stdstr
+  iterate_string(str:string,n:nat) : RECURSIVE string =
+    IF n = 0 THEN ""
+    ELSE
+      LET nstr = iterate_string(str,n-1) IN
+      format("~a~a",{| str, nstr |})
+    ENDIF
+    MEASURE n
+
+  ;^(str:string,n:nat) : string =
+    iterate_string(str,n)
+
+  to_string(str:string)(istr:IndentedString) : string =
+    LET indentation : string = str^(max(0,istr`level)) IN
+      format("~a~a", {| indentation, istr`istr |})
+
+  % Convert an IndentedBlock to a list of strings, given an indentation string
+  to_strings(str:string)(iblk:IndentedBlock) : list[string] =
+    map(to_string(str),pre_indent(iblk))
+
+  % Convert an IndentedBlock to a string, given an indentation string
+  to_string(str:string)(iblk:IndentedBlock) : string =
+    LET lst = to_strings(str)(iblk) IN
+    format("~{~a~^~%~}",{| lst |})
+
+  ;+(iblk1,iblk2:IndentedBlock) : MACRO IndentedBlock =
+    append(iblk1,iblk2)
+
+  ;+(str:string,iblk:IndentedBlock) : MACRO IndentedBlock =
+    imodfirst(str,iblk)
+
+  ;+(iblk:IndentedBlock,str:string) : MACRO IndentedBlock =
+    imodlast(str,iblk)
+
+  ;[||](iblk:IndentedBlock) : MACRO IndentedBlock =
+    iblock(iblk)
+
+  ;>>(n:nat,iblk:IndentedBlock) : MACRO string =
+    to_string(spaces(n))(iblk)
+
+  ;>>(str:string,iblk:IndentedBlock) : MACRO string =
+    to_string(str)(iblk)
+
+  % Simple example
+
+  python : IndentedBlock =
+    iformat("x = int(input(~s))","x? ") +
+    istring("if x > 0:") +
+    [| noindent("# Non-indented comment") +
+       iformat("y = int(input(~s))","y? ") +
+       istring("if y > 0:") +
+       [|
+	  % iformat breaks the line into multiple indented strings
+  	  iformat("# Multi-line~%# comment") +
+          LET points = (: (0,0), (0,3), (2,1) :) IN
+          iformat("points = [~{~a~^,~}]",{| points |}) +
+	  % istring doesn't break the line
+  	  istring(format("print(f'''The value of points is:~%{~a}''')","points"))
+       |]
+    |]
+
+  test : void =
+    printf("~a~2%",4 >> python) &
+    print("__" >> python)
+
+END pvsio_indent
