@@ -1,12 +1,16 @@
 # pvsio_utils
 
-This library extends PVSio, a PVS standard library for animation of
+This library includes several extensions to PVSio, the PVS standard library for animation of
 PVS specifications. It provides the following utilities.
 
-| Library  | Description | 
+| Library  | Description |
 |---|---|
-|  [PVSioChecker](./PVSioChecker/README.md) | A PVSio library for differential testing |
+| [PVSioParser](./PVSioParser/README.md) | A set of utilities for writing simple parsers in PVSio |
+| [PVSioIndent](./PVSioIndent/README.md) | A set of utilities for generating indented text |
+| [PVSioChecker](./PVSioChecker/README.md) | A PVSio library for differential testing |
 | [PVSioCSV](./PVSioCSV/README.md) | A PVSio library for reading and writing Comma Separated Value files |
+| [PVSioHTML](./PVSioHTML/README.md) | A PVSio library for writing HTML files |
+| [PVSioIndent](./PVSioIndent/README.md) | A PVSio library for producing indented text |
 | [PVSioKeyVal](./PVSioKeyVal/README.md) | A PVSio simple key/value store |
 
 ## Highlights
@@ -15,11 +19,7 @@ PVS specifications. It provides the following utilities.
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
-* [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
-* [Sam Owre](http://www.csl.sri.com/users/owre), SRI, USA
+* Mariano Moscato, AMA@NASA LaRC, USA
 
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
-
-# Dependencies
-![dependency graph](./pvsio_utils.svg "Dependency Graph")

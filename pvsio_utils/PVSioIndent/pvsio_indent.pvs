@@ -16,7 +16,7 @@ BEGIN
   % An indented block is a list of indented strings
   IndentedBlock : TYPE = list[IndentedString]
 
-  EmptyBlock : IndentedBlock = null
+  empty_block : IndentedBlock = null
 
   noindent(str:string) : IndentedBlock =
     (: (# level := 0, istr := str #) :)
@@ -52,6 +52,9 @@ BEGIN
       map(indent(i),iblk)
     ENDIF
 
+  indent(iblk:IndentedBlock) : IndentedBlock =
+    indent(1,iblk)
+
   % Set indentation to initial value
   ireset(istr:IndentedString) : IndentedString =
     istr WITH [ `level := 1 ]
@@ -59,10 +62,7 @@ BEGIN
   ireset(iblk:IndentedBlock) : IndentedBlock =
     map(ireset,iblk)
 
-  iblock(iblk:IndentedBlock) : IndentedBlock =
-    indent(1,iblk)
-
-  ublock(iblk:IndentedBlock) : IndentedBlock =
+  unindent(iblk:IndentedBlock) : IndentedBlock =
     indent(-1,iblk)
 
   noindent(istr:IndentedString) : IndentedString =
@@ -71,23 +71,27 @@ BEGIN
   noindent(iblk:IndentedBlock) : IndentedBlock =
     map(noindent,iblk)
 
-  % Modifies first string of a block, without alterating the indentation
-  imodfirst(str:string,iblk:IndentedBlock) : IndentedBlock =
+  % Prefixes first string of a block without alterating the indentation.
+  % If does nothing if block is empty.
+  iprefix(prefix:string,iblk:IndentedBlock) : IndentedBlock =
     CASES iblk OF
       null : iblk,
-      cons(istr,rest) :
-        cons(istr WITH [ `istr := str ], rest)
+      cons(is,rest) :
+        LET str = istr(is) IN 
+        cons(is WITH [ `istr := prefix+str ], rest)
     ENDCASES
 
-  % Modifies last string of a block, without alterating the indentation
-  imodlast(str:string,iblk:IndentedBlock) : RECURSIVE IndentedBlock =
+  % Postfixes last string of a block, without alterating the indentation
+  % If does nothing if block is empty.
+  ipostfix(postfix:string,iblk:IndentedBlock) : RECURSIVE IndentedBlock =
     CASES iblk OF
       null : iblk,
-      cons(istr,rest) :
+      cons(is,rest) :
         IF null?(rest) THEN
-	  cons(istr WITH [ `istr := str ],rest)
+	  LET str = istr(is) IN 
+	  cons(is WITH [ `istr := str+postfix ],rest)
         ELSE
-	  cons(istr,imodlast(str,rest))
+	  cons(is,ipostfix(postfix,rest))
 	ENDIF
     ENDCASES
     MEASURE iblk BY <<
@@ -119,48 +123,34 @@ BEGIN
     LET m = min_level(iblk,0) IN  % m is non-positive
     map(pre_indent(-m),iblk)
 
-  % This needs to go to stdstr
-  iterate_string(str:string,n:nat) : RECURSIVE string =
-    IF n = 0 THEN ""
-    ELSE
-      LET nstr = iterate_string(str,n-1) IN
-      format("~a~a",{| str, nstr |})
-    ENDIF
-    MEASURE n
-
-  ;^(str:string,n:nat) : string =
-    iterate_string(str,n)
-
   to_string(str:string)(istr:IndentedString) : string =
-    LET indentation : string = str^(max(0,istr`level)) IN
+    LET indentation : string = pad(max(0,istr`level),str) IN
       format("~a~a", {| indentation, istr`istr |})
 
   % Convert an IndentedBlock to a list of strings, given an indentation string
   to_strings(str:string)(iblk:IndentedBlock) : list[string] =
     map(to_string(str),pre_indent(iblk))
 
-  % Convert an IndentedBlock to a string, given an indentation string
-  to_string(str:string)(iblk:IndentedBlock) : string =
-    LET lst = to_strings(str)(iblk) IN
-    format("~{~a~^~%~}",{| lst |})
-
   ;+(iblk1,iblk2:IndentedBlock) : MACRO IndentedBlock =
     append(iblk1,iblk2)
 
-  ;+(str:string,iblk:IndentedBlock) : MACRO IndentedBlock =
-    imodfirst(str,iblk)
-
-  ;+(iblk:IndentedBlock,str:string) : MACRO IndentedBlock =
-    imodlast(str,iblk)
-
   ;[||](iblk:IndentedBlock) : MACRO IndentedBlock =
-    iblock(iblk)
+    indent(iblk)
 
-  ;>>(n:nat,iblk:IndentedBlock) : MACRO string =
-    to_string(spaces(n))(iblk)
+  ;>>(str:string,iblk:IndentedBlock) : MACRO IndentedBlock =
+    iprefix(str,iblk)
 
-  ;>>(str:string,iblk:IndentedBlock) : MACRO string =
-    to_string(str)(iblk)
+  ;>>(iblk:IndentedBlock,str:string) : MACRO IndentedBlock =
+    ipostfix(str,iblk)
+
+  % Convert an IndentedBlock to a string, given an indentation string
+  to_string(iblk:IndentedBlock,str:string) : string =
+    LET lst = to_strings(str)(iblk) IN
+    format("~{~a~^~%~}",{| lst |})
+
+  % Convert an IndentedBlock to a string, given an indentation level
+  to_string(iblk:IndentedBlock,n:nat) : MACRO string =
+    to_string(iblk,spaces(n))
 
   % Simple example
 
@@ -181,7 +171,6 @@ BEGIN
     |]
 
   test : void =
-    printf("~a~2%",4 >> python) &
-    print("__" >> python)
+    print(to_string(python,4))
 
 END pvsio_indent

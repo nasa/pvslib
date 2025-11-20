@@ -4,7 +4,6 @@ BEGIN
     IMPORTING structures@Maybe
     IMPORTING structures@for_iterate
     IMPORTING structures@list_lemmas
-    IMPORTING pvsio_utils@stdregex
 
     Token : DATATYPE
     BEGIN
@@ -22,9 +21,9 @@ BEGIN
         Whitespace : whitespace?
     END Token
 
-    IMPORTING pvsio_utils@stdlex[Token]
+    IMPORTING PVSioParser@pvsio_lex[Token]
 
-    JsonParseException : SimpleException = "JsonParseException"
+    JsonParseException : SimpleException
 
     token_to_string (t : Token) : string =
         CASES t OF
@@ -44,32 +43,19 @@ BEGIN
 
     % Performs lexical analysis to seperate a json string into a series of tokens.
     lex_json (s : string) : list[Token] =
-        LET
-            % The regular language corresponding to real numbers.
-            decimal = Literal('.'),
-            minus = Literal('-'),
-            int_regex = Star(numeral_regex),
-            decimal_regex = Times(Plus(minus, Emptystring),
-	                          Plus(int_regex, Times(int_regex, Times(decimal, int_regex)))),
-            real_regex = Plus(decimal_regex, Times(decimal_regex, Times(Literal('e'), decimal_regex))),
-
-            % The regular language corresponding to strings.
-            string_regex = Times(Literal(char(34)), Times(Star(ascii_minus_quote), Literal(char(34)))),
-
-            % Create the list of tokens and their corresponding regular languages.
-            token_map = (:
+        LET token_map = (:
                 (Literal(char(123)), LAMBDA(s : string): Lbrace),
                 (Literal(char(125)), LAMBDA(s : string): Rbrace),
                 (Literal(char(91)), LAMBDA(s : string): Lbrack),
                 (Literal(char(93)), LAMBDA(s : string): Rbrack),
                 (Literal(char(58)), LAMBDA(s : string): Colon),
                 (Literal(char(44)), LAMBDA(s : string): Comma),
-                (string_regex, LAMBDA(s : string): Str(substring(s, 1, length(s) - 2))),
-                (real_regex, LAMBDA(s : string): Num(str2real(s))),
-                (make_regex_word("true"), LAMBDA(s : string): T),
-                (make_regex_word("false"), LAMBDA(s : string): F),
-                (make_regex_word("null"), LAMBDA(s : string): N),
-                (Star(Plus(Literal(char(9)), Plus(Literal(char(10)), Literal(char(32))))), LAMBDA(s : string): Whitespace)
+                (STRING, LAMBDA(s : string): Str(substring(s, 1, length(s) - 2))),
+                (NUMBER, LAMBDA(s : string): Num(str2real(s))),
+                (Word("true"), LAMBDA(s : string): T),
+                (Word("false"), LAMBDA(s : string): F),
+                (Word("null"), LAMBDA(s : string): N),
+                (WHITESPS, LAMBDA(s : string): Whitespace)
             :)
         IN
         lex (token_map) (s)
@@ -214,19 +200,6 @@ BEGIN
     jdoc_from_file(filename:string) : list[JValue] =
       jdoc_from_string(textfile_to_string(filename))
 
-    jobject_field_value (jobj : (jobject?))(s : string) : Maybe[JValue] =
-      LET l = find(LAMBDA(t:[string,JValue]): t`1 = s,jobject(jobj)) IN
-        IF null?(l) THEN None
-	ELSE car(l)`2
-	ENDIF
-
-    jarray_nth_value(jarr: (jarray?))(i:nat) : Maybe[JValue] =
-      IF i < length(jarray(jarr)) THEN
-        nth(jarray(jarr),i)
-      ELSE
-        None
-      ENDIF
-
     JIndent : Global[nat,2]
 
     JValueLt(jval:JValue) : TYPE = {jv:JValue | (jobject?(jval) OR jarray?(jval)) IMPLIES jv << jval}
@@ -303,5 +276,60 @@ BEGIN
 
     json_to_file(jval:JValue,filename:string) : void =
       json_to_file(jval,filename,true)
+
+    % Getters
+
+    jobject_field_value (jobj : (jobject?))(s : string) : Maybe[JValue] =
+      LET l = find(LAMBDA(t:[string,JValue]): t`1 = s,jobject(jobj)) IN
+        IF null?(l) THEN None
+	ELSE car(l)`2
+	ENDIF
+
+    jarray_nth_value(jarr: (jarray?))(i:nat) : Maybe[JValue] =
+      IF i < length(jarray(jarr)) THEN
+        nth(jarray(jarr),i)
+      ELSE
+        None
+      ENDIF
+
+    JgetException : SimpleException = "JgetException"
+
+    jget(jv:JValue,field:string) : JValue =
+      IF jobject?(jv) THEN
+        LET mv = jobject_field_value(jv)(field) IN
+	  IF none?(mv) THEN throw(format("Field ~s not found in JObject",field))
+	  ELSE val(mv)
+	  ENDIF
+      ELSE throw("JValue is not a JObject")
+      ENDIF
+
+    ;/(jv:JValue,field:string) : MACRO JValue = jget(jv,field)
+
+    jget(jv:JValue,nth:nat) : JValue =
+      IF jarray?(jv) THEN
+        LET mv = jarray_nth_value(jv)(nth) IN
+	  IF none?(mv) THEN throw(format("Index ~a not found in JArray",nth))
+	  ELSE val(mv)
+	  ENDIF
+      ELSE throw("JValue is not a JArray")
+      ENDIF
+
+    ;/(jv:JValue,nth:nat) : MACRO JValue = jget(jv,nth)
+
+    JTest : TYPE = {test:PRED[JValue]| EXISTS(jv:JValue): test(jv)}
+
+    jobject_test : JUDGEMENT jobject? HAS_TYPE JTest
+    jarray_jtest : JUDGEMENT jarray? HAS_TYPE JTest
+    jnum_jtest   : JUDGEMENT jnum? HAS_TYPE JTest
+    jstr_jtest   : JUDGEMENT jstr? HAS_TYPE JTest
+    jnull_jtest  : JUDGEMENT jnull? HAS_TYPE JTest
+
+    jtest(jv:JValue,test:JTest) : (test) =
+      IF test(jv) THEN jv
+      ELSE throw("JValue doesn't satisfy test")
+      ENDIF
+
+    ;/(jv:JValue,test:JTest) : MACRO (test) = jtest(jv,test)
+
 
 END pvsio_json

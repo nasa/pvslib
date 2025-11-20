@@ -1,0 +1,143 @@
+% This file implements non-backtracing regular expression matching.
+% Author: Joshua Nichols (2025)
+
+pvsio_regex : THEORY
+BEGIN
+
+  IMPORTING structures@Maybe
+  IMPORTING structures@for_iterate
+
+  %% Defines a regular language.
+  Regex : DATATYPE
+  BEGIN
+    Emptyset : emptyset?                      % The Emptyset (matches nothing)
+    Emptystring : emptystring?                % The empty string (matches anything)
+    Any(chars : list[char]) : any?            % Any literal in the list
+    Concat(re1 : Regex, re2 : Regex) : times? % Concatenation
+    Union(re1 : Regex, re2 : Regex) : plus?   % Set union
+    Star(re : Regex) : star?                  % Zero or more
+  END Regex
+
+  Literal(c:char) : Regex = Any((:c:))
+
+  Optional(re:Regex) : Regex = Union(Emptystring,re)
+
+  Plus(re:Regex) : Regex = Concat(re,Star(re)) % One of more
+
+  IMPORTING orders@lex2_generic[Regex,string],
+            orders@well_foundedness_more
+
+  %% Matches a regular language with a string, and returns the prefix and suffix,
+  %% where the prefix matches r.
+  match (r : Regex)(a : string) : RECURSIVE [Maybe[string], string] =
+    CASES r OF
+      Emptyset: (None, a),
+      Emptystring: (Some(""), a),
+      Any(l):
+        IF length(a) = 0 OR NOT member(get(a,0),l) THEN
+          (None, a)
+        ELSE
+          (Some(gen_strings.unit(get(a,0))), substring(a, 1, length(a)-1))
+        ENDIF,
+      Concat(w, s):
+        LET (prefix, suffix) = match(w)(a) IN
+        IF some?(prefix) THEN
+          LET (s_prefix, s_suffix) = match(s)(suffix) IN
+          IF some?(s_prefix) THEN
+            (Some (strconcat(val(prefix), val(s_prefix))), s_suffix)
+          ELSE
+            (None, a)
+          ENDIF
+        ELSE
+          (None, a)
+        ENDIF,
+      Union(w, s): % The longest one (greedy logic)
+        LET (w_prefix, w_suffix) = match(w)(a),
+            (s_prefix, s_suffix) = match(s)(a) IN
+	IF some?(w_prefix) AND some?(s_prefix) THEN
+	  IF length(w_suffix) <= length(s_suffix) THEN
+            (w_prefix, w_suffix)
+          ELSE
+            (s_prefix, s_suffix)
+	  ENDIF
+	ELSIF some?(w_prefix) THEN
+	  (w_prefix,w_suffix)
+	ELSE
+	  (s_prefix,s_suffix)
+        ENDIF,
+      Star(w): % Zero or more
+        LET (prefix, suffix) = match(w)(a) IN
+	IF some?(prefix) AND length(suffix) < length(a) THEN
+          LET (next_prefix, next_suffix) = match(r)(suffix) IN
+          IF some?(next_prefix) THEN
+            (Some (strconcat(val(prefix), val(next_prefix))), next_suffix)
+	  ELSE
+	    (Some(val(prefix)),suffix)
+          ENDIF
+        ELSE
+	  (Some(""), a)
+	ENDIF
+    ENDCASES
+    MEASURE (r,a) BY lt_lex2(<<,lt(LAMBDA(s:string):length(s),LAMBDA(a,b:nat):a<b))
+
+  % Makes a regular expression to only match the provided string.
+  make_regex_word (s : string) : RECURSIVE Regex =
+    IF length(s) = 0 THEN
+      Emptystring
+    ELSE
+	  LET sstr = substring(s, 1, length(s) - 1) IN
+	  IF length(sstr) < length(s) THEN
+        Concat(Literal(get(s, 0)), make_regex_word(sstr))
+	  ELSE
+	    Emptystring
+	  ENDIF
+    ENDIF
+    MEASURE length(s)
+
+  Word(str:string) : Regex = make_regex_word(str)
+
+  % Range of chara
+  char_range(c1,c2:char,butno:list[char]) : list[char] =
+    LET lo = code(c1),
+	up = code(c2) IN
+    for(lo,up,null,LAMBDA(i:subrange(lo,up),l:list[char]):
+      IF member(char(i),butno) THEN l
+      ELSE cons(char(i),l)
+      ENDIF)
+
+  ;-(c1,c2:char) : list[char] =
+    char_range(c1,c2,null)
+
+  % Helper function to generate the regular language of all letters in the alphabet.
+  alphabet_regex : Regex = Any(append('a'-'z','A'-'Z'))
+
+  % Helper function to generate the regular language of all valid ascii characters minus the double quotation.
+  ascii_minus_quote : Regex = Any(char_range(char(0),char(127),(: char(34) :)))
+
+  SPACE   : Regex = Literal(' ')
+
+  TAB     : Regex = Literal(char(9))
+
+  NL      : Regex = Literal(char(10))
+
+  DIGIT   : Regex = Any('0'-'9')
+
+  NZDIGIT : Regex = Any('1'-'9')
+
+  WHITESP : Regex = Union(SPACE,Union(TAB,NL))
+
+  WHITESPS: Regex = Plus(WHITESP)
+
+  NATURAL : Regex = Union(Literal('0'),Concat(NZDIGIT,Star(DIGIT)))
+
+  INTEGER : Regex = Concat(Optional(Literal('-')),NATURAL)
+
+  DECIMAL : Regex = Concat(INTEGER,Concat(Literal('.'),Plus(DIGIT)))
+
+  NUMBER  : Regex = Concat(INTEGER,Union(Emptystring,Concat(Literal('.'),Plus(DIGIT))))
+
+  ALPHA   : Regex = Any(append('a'-'z','A'-'Z'))
+
+  STRING  : Regex = Concat(Literal(char(34)),Concat(Star(ascii_minus_quote),Literal(char(34))))
+
+END pvsio_regex

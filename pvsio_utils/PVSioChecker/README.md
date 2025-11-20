@@ -1,6 +1,7 @@
 # PVSioChecker
 
-This library provides functionalities to run differential testing with PVSio
+This library provides functionalities to run differential testing with
+PVSio. For an example, see [PVSChecker Example](../pvsio_examples/prime_factorization_checker.pvs).
 
 ## Highlights
 
@@ -8,7 +9,7 @@ This library provides functionalities to run differential testing with PVSio
 
 # Contributors
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA
-* [Mariano Moscato](https://www.nianet.org/directory/research-staff/mariano-moscato/), NIA & NASA, USA
+* Mariano Moscato, AMA@NASA LaRC, USA
 
 ## Maintainer
 * [César Muñoz](http://shemesh.larc.nasa.gov/people/cam), NASA, USA

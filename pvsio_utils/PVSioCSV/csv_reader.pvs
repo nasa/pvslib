@@ -20,27 +20,27 @@ BEGIN
     null_field: null? 
   END CSVData
 
-   real2rat_field(r:real) : (rat?) =
-     LET rat = rational(r) IN
-       rat_field(rat)
+  real2rat_field(r:real) : (rat?) =
+    LET rat = rational(r) IN
+      rat_field(rat)
 
-   rat2dec_field(rat:rat) : (dec?) =
-     LET precision = val(PRECISION),
-         (finp,infp) = decimal_precision(rat,precision) IN
-     IF infp = 0 THEN
-       dec_field(rat,finp)
-     ELSE
-       dec_field(rat,val(PRECISION))
-     ENDIF   
+  rat2dec_field(rat:rat) : (dec?) =
+    LET precision = val(PRECISION),
+        (finp,infp) = decimal_precision(rat,precision) IN
+    IF infp = 0 THEN
+      dec_field(rat,finp)
+    ELSE
+      dec_field(rat,val(PRECISION))
+    ENDIF   
 
-   real2dec_field(r:real) : (dec?) =
-     rat2dec_field(rational(r))
+  real2dec_field(r:real) : (dec?) =
+    rat2dec_field(rational(r))
 
-   rat_field2dec_field(rf:(rat?)) : (dec?) =
-     rat2dec_field(rat_val(rf))
+  rat_field2dec_field(rf:(rat?)) : (dec?) =
+    rat2dec_field(rat_val(rf))
 
-   dec_field2rat_field(df:(dec?)) : (rat?) =
-     rat_field(rat_val(df))
+  dec_field2rat_field(df:(dec?)) : (rat?) =
+    rat_field(rat_val(df))
 
   %% Well Formet CSVData with respect to specification
   wf_CSVData?(spec:CSVFieldSpec)(d:CSVData) : bool =
@@ -55,7 +55,11 @@ BEGIN
       RationalOrNull: rat?(d) OR null?(d),
       DecimalOrNull: dec?(d) OR null?(d),
       BooleanOrNull: bool?(d) OR null?(d)
-    ENDCASES     
+    ENDCASES
+
+ wf_csvdata_exists : LEMMA
+   FORALL (fieldspec:CSVFieldSpec):
+     EXISTS(x:((wf_CSVData?(fieldspec)))) : TRUE
 
   CSVDataFromSpec(spec: list[CSVFieldSpec]): TYPE+
   = {l: listn[CSVData](length(spec)) | 
@@ -127,7 +131,7 @@ BEGIN
     : nth(spec,i) = StringOrNull
       IMPLIES LET d = getField(spec)(data,i) IN str?(d) OR null?(d)
 
-  % May throw PVSioCSVException or NotAQuotedString Token is trimmed
+  % May throw PVSioCSVException
   processCSVField(fin:IStream,fieldspec:CSVFieldSpec,token:string,
                   qchar:StringChar,field:posnat) : (wf_CSVData?(fieldspec)) =
     IF length(token) = 0 AND
@@ -135,8 +139,7 @@ BEGIN
         fieldspec = BooleanOrNull OR fieldspec = StringOrNull) THEN
       null_field
     ELSE   
-      catch[(wf_CSVData?(fieldspec)),string](
-      (: NotARealNumber , NotAnInteger, NotABoolean, NotAQuotedString :),
+      catch[(wf_CSVData?(fieldspec)),string](String2PVS,
       IF fieldspec = Integer OR fieldspec = IntegerOrNull
         THEN int_field(str2int(token))
       ELSIF fieldspec = Rational OR fieldspec = RationalOrNull
