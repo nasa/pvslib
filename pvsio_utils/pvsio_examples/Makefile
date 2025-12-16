@@ -8,7 +8,7 @@ pvsio: clean
 	-pvsio-regression stdio_examples
 	-pvsio-regression float_examples
 	-pvsio-regression fast_examples
-#	-pvsio-regression era_examples
+	-pvsio-regression era_examples
 	-pvsio-regression indent_examples
 	-pvsio-regression json_examples
 	-pvsio-regression csv_utils_examples
@@ -22,7 +22,7 @@ gold: clean
 	-pvsio-regression stdio_examples --force
 	-pvsio-regression float_examples --force
 	-pvsio-regression fast_examples --force
-#	-pvsio-regression era_examples --force
+	-pvsio-regression era_examples --force
 	-pvsio-regression indent_examples --force
 	-pvsio-regression json_examples --force
 	-pvsio-regression csv_utils_examples --force
