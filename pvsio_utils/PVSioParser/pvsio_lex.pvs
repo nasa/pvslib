@@ -4,50 +4,71 @@
 pvsio_lex[T : TYPE] : THEORY
 BEGIN
 
-    IMPORTING pvsio_regex
+  IMPORTING pvsio_regex
 
-    LexicalAnalysisException : Exception[string] = make_exception(
-       LAMBDA(str:string):format("Unrecognized token (~a)",str))
+  LexerAction : DATATYPE
+  BEGIN
+    Skip : skip?
+    Do(do:[string->T]) : do?
+  END LexerAction
 
-    % Performs lexical analysis on a string using the provided tokenization rules.
-    lex (mapping : list[[Regex, [string -> T]]]) (a : string) : list[T] =
-        LET
-            rem = ref[string](a),
-            tokens = ref[list[T]]((: :))
-        IN
-        prog(
-            while(NOT length(val(rem)) = 0,
-                LET
-                    % Find the longest matching regular expression.
-                    (token, match) = for (0, length(mapping) - 1, (None, val(rem)),
-		    LAMBDA(i:below(length(mapping)), current_match : [Maybe[T], string]):
-                        LET
-                            regex = nth(mapping, i)`1,
-                            token = nth(mapping, i)`2,
-                            (prefix, suffix) = match (regex) (val(rem))
-                        IN
-			IF some?(prefix) THEN
-                          IF length(suffix) < length(current_match`2) THEN
-                              (Some (token(val(prefix))), suffix)
-                          ELSE
-                              current_match
-                          ENDIF
-		       ELSE
-		         current_match
-		       ENDIF
-                    )
-                IN
-                CASES token OF
-                    Some (tok): (
-                        prog(
-                            set(rem, match),
-                            set(tokens, cons(tok, val(tokens)))
-                        )
-                    ),
-                    None: throw(LexicalAnalysisException, val(rem))
-                ENDCASES
-            ),
-            reverse(val(tokens))
-        )
+  LexerRule : TYPE = [#
+    regex : CompiledRegex,
+    rule  : LexerAction
+  #]
+
+  Lexer : TYPE = list[LexerRule]
+
+  EmptyLexer : Lexer = null
+
+  add_ignore(rgx:CompiledRegex)(lex:Lexer) : Lexer =
+    cons((# regex := rgx, rule := Skip #), lex)
+
+  add_token(rgx:CompiledRegex,t:T)(lex:Lexer) : Lexer =
+    cons((# regex := rgx, rule := Do(LAMBDA(str:string):t) #), lex)
+
+  add_rule(rgx:CompiledRegex,rl:[string->T])(lex:Lexer) : Lexer =
+    cons((# regex := rgx, rule := Do(rl) #), lex)
+
+  %% Combinator
+  ;++(lex:Lexer,f:[Lexer->Lexer]) : Lexer =
+    f(lex)
+
+  LexerToken : TYPE = T
+
+  LexicalAnalysisException : SimpleException =
+    make_exception("Unrecognized token")
+
+  first_match(lex:Lexer,str:string) : RECURSIVE [upto(length(str)),LexerAction] =
+    IF null?(lex) THEN (0,Skip)
+    ELSE
+      LET rl  = car(lex),
+          pos = match_pos(rl`regex,str) IN
+      IF pos > 0 THEN 
+        (pos,rl`rule)
+      ELSE
+         first_match(cdr(lex),str)
+      ENDIF
+    ENDIF
+    MEASURE lex BY <<
+
+  % Return a list of token according to lexer rules
+  tokenizer(lex:Lexer,str:string) : RECURSIVE list[LexerToken] =
+    IF length(str) = 0 THEN null
+    ELSE 
+      LET (pos,action) = first_match(lex,str) IN
+      IF pos = 0 THEN
+        throw(LexicalAnalysisException)
+      ELSE
+        LET pre  = gen_strings.substr(str,0,pos),
+	    post = gen_strings.substr(str,pos,length(str)) IN
+	IF do?(action) THEN
+          cons(do(action)(pre),tokenizer(lex,post))
+	ELSE
+	  tokenizer(lex,post)
+	ENDIF
+      ENDIF
+    ENDIF
+    MEASURE length(str)
 
 END pvsio_lex

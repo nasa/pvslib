@@ -18,7 +18,6 @@ BEGIN
         T : t? % True
         F : f? % False
         N : n? % Null
-        Whitespace : whitespace?
     END Token
 
     IMPORTING PVSioParser@pvsio_lex[Token]
@@ -37,28 +36,26 @@ BEGIN
             Num(x) : real2str(x),
             T : "true",
             F : "false",
-            N : "null",
-            Whitespace : " "
+            N : "null"
         ENDCASES
 
     % Performs lexical analysis to seperate a json string into a series of tokens.
     lex_json (s : string) : list[Token] =
-        LET token_map = (:
-                (Literal(char(123)), LAMBDA(s : string): Lbrace),
-                (Literal(char(125)), LAMBDA(s : string): Rbrace),
-                (Literal(char(91)), LAMBDA(s : string): Lbrack),
-                (Literal(char(93)), LAMBDA(s : string): Rbrack),
-                (Literal(char(58)), LAMBDA(s : string): Colon),
-                (Literal(char(44)), LAMBDA(s : string): Comma),
-                (STRING, LAMBDA(s : string): Str(substring(s, 1, length(s) - 2))),
-                (NUMBER, LAMBDA(s : string): Num(str2real(s))),
-                (Word("true"), LAMBDA(s : string): T),
-                (Word("false"), LAMBDA(s : string): F),
-                (Word("null"), LAMBDA(s : string): N),
-                (WHITESPS, LAMBDA(s : string): Whitespace)
-            :)
+        LET lexer = EmptyLexer ++
+	    	    add_token(Char('{'),Lbrace) ++
+		    add_token(Char('}'),Rbrace) ++
+		    add_token(Char('['),Lbrack) ++
+		    add_token(Char(']'),Rbrack) ++
+		    add_token(Char(':'),Colon) ++
+		    add_token(Char(','),Comma) ++
+		    add_token(Word("true"),T) ++
+		    add_token(Word("false"),F) ++
+		    add_token(Word("null"),N) ++
+		    add_rule(DQString,LAMBDA(str:string):Str(substring(str,1,length(str) - 2))) ++
+		    add_rule(Decimal,LAMBDA(str:string):Num(str2real(str))) ++
+		    add_ignore(WhiteSpaces)
         IN
-        lex (token_map) (s)
+        tokenizer(lexer,s)
 
     % JSON values can be represented as follows.
     JValue : DATATYPE
@@ -157,23 +154,10 @@ BEGIN
       ENDIF
       MEASURE length(ll)
 
-    remove_whitespace (tokens : list[Token]) : RECURSIVE list[Token] =
-      CASES tokens OF
-          cons(x, xs): (
-              IF whitespace?(x) THEN
-                  remove_whitespace(xs)
-              ELSE
-                  cons(x, remove_whitespace(xs))
-              ENDIF
-          ),
-          null: null
-      ENDCASES
-      MEASURE tokens BY <<
-
     % Return first JSON object found in string
     json_from_string(s : string) : JValue =
       LET 
-        tokens = remove_whitespace(lex_json(s)),
+        tokens = lex_json(s),
         (v, rem) = parse_json(tokens) 
       IN
         v
@@ -181,7 +165,7 @@ BEGIN
     % Return a list of all JSON objects found in string
     jdoc_from_string(s : string) : list[JValue] =
       LET 
-         tokens = remove_whitespace(lex_json(s))
+         tokens = lex_json(s)
       IN
          parse_jdoc(tokens,null)
 

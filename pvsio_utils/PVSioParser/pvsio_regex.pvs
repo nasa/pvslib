@@ -1,143 +1,183 @@
-% This file implements non-backtracing regular expression matching.
-% Author: Joshua Nichols (2025)
-
 pvsio_regex : THEORY
 BEGIN
 
-  IMPORTING structures@Maybe
-  IMPORTING structures@for_iterate
+  IMPORTING regex_def
 
-  %% Defines a regular language.
-  Regex : DATATYPE
-  BEGIN
-    Emptyset : emptyset?                      % The Emptyset (matches nothing)
-    Emptystring : emptystring?                % The empty string (matches anything)
-    Any(chars : list[char]) : any?            % Any literal in the list
-    Concat(re1 : Regex, re2 : Regex) : times? % Concatenation
-    Union(re1 : Regex, re2 : Regex) : plus?   % Set union
-    Star(re : Regex) : star?                  % Zero or more
-  END Regex
+  FinalState : nat = 0
 
-  Literal(c:char) : Regex = Any((:c:))
-
-  Optional(re:Regex) : Regex = Union(Emptystring,re)
-
-  Plus(re:Regex) : Regex = Concat(re,Star(re)) % One of more
-
-  IMPORTING orders@lex2_generic[Regex,string],
-            orders@well_foundedness_more
-
-  %% Matches a regular language with a string, and returns the prefix and suffix,
-  %% where the prefix matches r.
-  match (r : Regex)(a : string) : RECURSIVE [Maybe[string], string] =
-    CASES r OF
-      Emptyset: (None, a),
-      Emptystring: (Some(""), a),
-      Any(l):
-        IF length(a) = 0 OR NOT member(get(a,0),l) THEN
-          (None, a)
-        ELSE
-          (Some(gen_strings.unit(get(a,0))), substring(a, 1, length(a)-1))
-        ENDIF,
-      Concat(w, s):
-        LET (prefix, suffix) = match(w)(a) IN
-        IF some?(prefix) THEN
-          LET (s_prefix, s_suffix) = match(s)(suffix) IN
-          IF some?(s_prefix) THEN
-            (Some (strconcat(val(prefix), val(s_prefix))), s_suffix)
-          ELSE
-            (None, a)
-          ENDIF
-        ELSE
-          (None, a)
-        ENDIF,
-      Union(w, s): % The longest one (greedy logic)
-        LET (w_prefix, w_suffix) = match(w)(a),
-            (s_prefix, s_suffix) = match(s)(a) IN
-	IF some?(w_prefix) AND some?(s_prefix) THEN
-	  IF length(w_suffix) <= length(s_suffix) THEN
-            (w_prefix, w_suffix)
-          ELSE
-            (s_prefix, s_suffix)
-	  ENDIF
-	ELSIF some?(w_prefix) THEN
-	  (w_prefix,w_suffix)
-	ELSE
-	  (s_prefix,s_suffix)
-        ENDIF,
-      Star(w): % Zero or more
-        LET (prefix, suffix) = match(w)(a) IN
-	IF some?(prefix) AND length(suffix) < length(a) THEN
-          LET (next_prefix, next_suffix) = match(r)(suffix) IN
-          IF some?(next_prefix) THEN
-            (Some (strconcat(val(prefix), val(next_prefix))), next_suffix)
-	  ELSE
-	    (Some(val(prefix)),suffix)
-          ENDIF
-        ELSE
-	  (Some(""), a)
-	ENDIF
-    ENDCASES
-    MEASURE (r,a) BY lt_lex2(<<,lt(LAMBDA(s:string):length(s),LAMBDA(a,b:nat):a<b))
-
-  % Makes a regular expression to only match the provided string.
-  make_regex_word (s : string) : RECURSIVE Regex =
-    IF length(s) = 0 THEN
-      Emptystring
+  connect_parent_initial(ndfa:NDFA,parent:Arrow,initial:nat)
+    : [NDFA,list[Arrow]] =
+    IF initial = FinalState THEN
+      (ndfa,(: parent :))
     ELSE
-	  LET sstr = substring(s, 1, length(s) - 1) IN
-	  IF length(sstr) < length(s) THEN
-        Concat(Literal(get(s, 0)), make_regex_word(sstr))
-	  ELSE
-	    Emptystring
-	  ENDIF
+        LET arrow    = mk_arrow(initial) ++ set_label(parent`label),
+	    new_ndfa = ndfa ++ add_arrow(parent`state,arrow) IN
+  	(new_ndfa,null)
     ENDIF
-    MEASURE length(s)
 
-  Word(str:string) : Regex = make_regex_word(str)
+  connect_parent_initials(ndfa:NDFA,parent:Arrow,initials:list[nat])
+    : RECURSIVE [NDFA,list[Arrow]] =
+    IF null?(initials) THEN
+      (ndfa,null)
+    ELSE
+      LET initial = car(initials),
+          (new_ndfa1,new_parents1) = connect_parent_initial(ndfa,parent,initial),
+  	  (new_ndfa2,new_parents2) = connect_parent_initials(new_ndfa1,parent,cdr(initials)) IN
+        (new_ndfa2,union_sl(new_parents1,new_parents2))
+    ENDIF
+    MEASURE initials BY <<
+	 
+  %% Add parents -> initials to ndfa
+  connect_parents_initials(ndfa:NDFA,parents:list[Arrow],initials:list[nat])
+    : RECURSIVE [NDFA,list[Arrow]] =
+    IF null?(parents) THEN
+      (ndfa,parents)
+    ELSE
+      LET parent = car(parents),
+          (new_ndfa1,new_parents1) = connect_parent_initials(ndfa,parent,initials),
+          (new_ndfa2,new_parents2) = connect_parents_initials(new_ndfa1,cdr(parents),initials) IN
+  	(new_ndfa2,union_sl(new_parents1,new_parents2))
+    ENDIF
+  MEASURE parents BY <<
 
-  % Range of chara
-  char_range(c1,c2:char,butno:list[char]) : list[char] =
-    LET lo = code(c1),
-	up = code(c2) IN
-    for(lo,up,null,LAMBDA(i:subrange(lo,up),l:list[char]):
-      IF member(char(i),butno) THEN l
-      ELSE cons(char(i),l)
-      ENDIF)
+  build_initials(initials1,initials2:list[nat]) : list[nat] =
+    IF member(FinalState,initials1) THEN
+      union_sl(remove_sl(FinalState,initials1),initials2)
+    ELSE initials1
+    ENDIF
 
-  ;-(c1,c2:char) : list[char] =
-    char_range(c1,c2,null)
+  CompiledRegext_ : TYPE = [#
+    ndfa : NDFA,
+    dangling_parents  : list[Arrow], % Node index, Guard index
+    dangling_initials : list[nat]    % Node index
+  #]
 
-  % Helper function to generate the regular language of all letters in the alphabet.
-  alphabet_regex : Regex = Any(append('a'-'z','A'-'Z'))
+  % Build a CompiledRegext_ with multiple initials, one final, and no empty labels
+  compilext_(re:Regex,ndfa:NDFA) : RECURSIVE CompiledRegext_ =
+    CASES re OF
+      Empty :
+  	(#
+  	  ndfa := ndfa,
+  	  dangling_parents := null,
+  	  dangling_initials := (: FinalState :)
+        #),
+      Accept(guard) :
+        LET new_state = size(ndfa),
+  	    new_label = length(ndfa`guards),
+	    new_arrow = mk_arrow(new_state) ++ set_label(new_label),
+	    new_ndfa  = ndfa ++ add_new_state ++ add_new_guard(guard) IN
+	  (#
+  	     ndfa := new_ndfa,
+  	     dangling_parents := (: new_arrow :),
+  	     dangling_initials := (: new_state :)
+  	  #),
+      Union(re1,re2) :
+        LET rgxt1 = compilext_(re1,ndfa),
+  	    rgxt2 = compilext_(re2,rgxt1`ndfa) IN
+  	  rgxt2 WITH [ `dangling_parents := union_sl(rgxt1`dangling_parents,
+  	                                             rgxt2`dangling_parents),
+  	  	       `dangling_initials := union_sl(rgxt1`dangling_initials,
+  			                              rgxt2`dangling_initials)
+  	             ],
+      Seq(re1,re2) :
+        LET rgxt1  = compilext_(re1,ndfa),
+            rgxt2  = compilext_(re2,rgxt1`ndfa),
+            (new_ndfa,new_parents) = connect_parents_initials(rgxt2`ndfa,
+      	                                rgxt1`dangling_parents,
+       	    				rgxt2`dangling_initials),
+  	    new_initials = build_initials(rgxt1`dangling_initials,rgxt2`dangling_initials) IN
+          rgxt1 WITH [ `ndfa := new_ndfa,
+       		       `dangling_parents := union_sl(rgxt2`dangling_parents,new_parents),
+       	  	       `dangling_initials := new_initials
+  		     ],
+      Plus(re) :
+         LET rgxt = compilext_(re,ndfa),
+            (new_ndfa,new_parents) = connect_parents_initials(rgxt`ndfa,
+      	                                rgxt`dangling_parents,
+       					add_sl(FinalState,rgxt`dangling_initials)) IN
+          rgxt WITH [ `ndfa := new_ndfa,
+       		      `dangling_parents := new_parents,
+       	  	      `dangling_initials := rgxt`dangling_initials
+  		    ]
+    ENDCASES
+  MEASURE re BY <<
 
-  % Helper function to generate the regular language of all valid ascii characters minus the double quotation.
-  ascii_minus_quote : Regex = Any(char_range(char(0),char(127),(: char(34) :)))
+  init_regex_ : NDFA =
+    empty_ndfa ++ add_new_state ++ set_final(FinalState)
 
-  SPACE   : Regex = Literal(' ')
+  compilext(re:Regex) : CompiledRegext_ =
+    compilext_(re,init_regex_)
 
-  TAB     : Regex = Literal(char(9))
+  add_dangling_parents(ndfa:NDFA,parents:list[Arrow]) : RECURSIVE NDFA =
+    IF null?(parents) THEN ndfa
+    ELSE
+      LET parent = car(parents),
+          new_arrow = mk_arrow(FinalState) ++ set_label(parent`label),
+          new_ndfa = ndfa ++ add_arrow(parent`state,new_arrow) IN
+        add_dangling_parents(new_ndfa,cdr(parents))
+    ENDIF
+  MEASURE parents BY <<
 
-  NL      : Regex = Literal(char(10))
+  add_dangling_initials(ndfa:NDFA,initials:list[nat]) : RECURSIVE NDFA =
+    IF null?(initials) THEN ndfa
+    ELSE
+      LET new_ndfa = ndfa ++ set_initial(car(initials)) IN
+         add_dangling_initials(new_ndfa,cdr(initials))
+    ENDIF
+  MEASURE initials BY <<
 
-  DIGIT   : Regex = Any('0'-'9')
+  CompiledRegex : TYPE = PVSioValue[[#
+    ndfa : NDFA,
+    greedy :bool
+  #]]
 
-  NZDIGIT : Regex = Any('1'-'9')
+  % By default, compile to greedy
+  compile(re:Regex) : CompiledRegex =
+    LET rgxt = compilext(re),
+        ndfa = add_dangling_parents(rgxt`ndfa,rgxt`dangling_parents),
+  	new_ndfa = add_dangling_initials(ndfa,rgxt`dangling_initials) IN
+      (# ndfa := new_ndfa, greedy := TRUE #)
 
-  WHITESP : Regex = Union(SPACE,Union(TAB,NL))
+  set_greediness(greedy:bool)(rgx:CompiledRegex) : CompiledRegex =
+    rgx WITH [ `greedy := greedy ]
 
-  WHITESPS: Regex = Plus(WHITESP)
+  match_(rgx:CompiledRegex,str:string,pos:upto(length(str)),
+         inits:list[nat],lastpos:upto(length(str)))
+    : RECURSIVE upto(length(str)) =
+    IF pos=length(str) THEN
+      lastpos
+    ELSE 
+      LET next = next(rgx`ndfa,inits)(get(str,pos)) IN
+        IF null?(next) THEN lastpos
+	ELSE
+	  LET success = member(FinalState,next) IN
+	  IF NOT greedy(rgx) AND success THEN
+	    pos+1
+	  ELSE
+	    match_(rgx,str,pos+1,next,IF success THEN pos+1 ELSE lastpos ENDIF)
+	  ENDIF
+	ENDIF
+    ENDIF
+    MEASURE length(str)-pos
 
-  NATURAL : Regex = Union(Literal('0'),Concat(NZDIGIT,Star(DIGIT)))
+  % Return length of prefix string that matches given string
+  % Note that 0 means no matches and legth(str) means the whole string
+  match_pos(rgx:CompiledRegex,str:string) : upto(length(str)) =
+    match_(rgx,str,0,rgx`ndfa`initials,0)
 
-  INTEGER : Regex = Concat(Optional(Literal('-')),NATURAL)
+  % Return prefix and postfix prefixes of string, such that prefix matches given string
+  match(rgx:CompiledRegex,str:string) : [string,string] =
+    LET pos = match_pos(rgx,str) IN
+      (gen_strings.substr(str,0,pos),gen_strings.substr(str,pos,length(str)))
 
-  DECIMAL : Regex = Concat(INTEGER,Concat(Literal('.'),Plus(DIGIT)))
+  CONVERSION compile
 
-  NUMBER  : Regex = Concat(INTEGER,Union(Emptystring,Concat(Literal('.'),Plus(DIGIT))))
-
-  ALPHA   : Regex = Any(append('a'-'z','A'-'Z'))
-
-  STRING  : Regex = Concat(Literal(char(34)),Concat(Star(ascii_minus_quote),Literal(char(34))))
+  print(rgxt:CompiledRegext_) : void =
+    LET ndfa = rgxt`ndfa IN
+    print(ndfa) &
+    printf("dangling_parents:~%~{  ~a~^  ~%~}~%",
+      {| map(arrow2str(ndfa,FALSE),rgxt`dangling_parents) |}) &
+    printf("dangling_initials: ~{~a~^, ~}~%",
+      {| map(state2str(ndfa,FALSE),rgxt`dangling_initials) |})
 
 END pvsio_regex

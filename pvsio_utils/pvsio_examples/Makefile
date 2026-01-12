@@ -10,10 +10,12 @@ pvsio: clean
 	-pvsio-regression fast_examples
 	-pvsio-regression era_examples
 	-pvsio-regression indent_examples
+	-pvsio-regression regex_examples
 	-pvsio-regression json_examples
 	-pvsio-regression csv_utils_examples
 	-pvsio-regression csv_examples
 	-pvsio-regression kv_examples
+	./prime-factorization-checker.sh
 
 gold: clean
 	-pvsio-regression pvsio_examples --force
@@ -24,6 +26,7 @@ gold: clean
 	-pvsio-regression fast_examples --force
 	-pvsio-regression era_examples --force
 	-pvsio-regression indent_examples --force
+	-pvsio-regression regex_examples --force
 	-pvsio-regression json_examples --force
 	-pvsio-regression csv_utils_examples --force
 	-pvsio-regression csv_examples --force

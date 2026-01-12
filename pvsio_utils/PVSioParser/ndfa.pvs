@@ -1,0 +1,274 @@
+% Generic Non-deterministic Finite Automata
+% Nodes, Labels, and Actions are just indices
+
+ndfa[Input:TYPE]: THEORY
+BEGIN
+
+  IMPORTING structures@set_as_list_props
+
+  Guard : TYPE = [#
+    lblstr : string,
+    accept : PRED[Input]
+  #]
+
+  mk_guard(lbl:string,pred:PRED[Input]) : Guard = (#
+    lblstr := lbl,
+    accept := pred
+  #)
+
+  NoLabel : int = -1
+
+  LabelIdx : TYPE = upfrom(NoLabel)
+
+  Arrow : TYPE = [#
+    label : LabelIdx,  % Index to label 
+    state : nat        % Index to state
+  #]
+
+  Arrows : TYPE = list[Arrow]
+
+  Graph : TYPE = finseq[Arrows]
+
+  % Non-deterministic finite automata
+  NDFA_ : TYPE = [#
+    graph    : Graph,
+    initials : list[nat],
+    finals   : ARRAY[below(graph`length)->bool],
+    guards   : finseq[Guard]
+  #]
+
+  size(ndfa:NDFA_) : MACRO nat =
+    length(ndfa`graph)
+
+  valid_state?(ndfa:NDFA_)(n:nat) : MACRO bool =
+    n < size(ndfa)
+
+  valid_states?(ndfa:NDFA_)(states:list[nat]) : bool =
+    FORALL (state:(in_sl?(states))): valid_state?(ndfa)(state)
+
+  valid_arrow?(ndfa:NDFA_)(arrow:Arrow) : MACRO bool =
+    valid_state?(ndfa)(arrow`state) AND
+    arrow`label < ndfa`guards`length
+
+  valid_arrows?(ndfa:NDFA_)(arrows:Arrows) : bool =
+    FORALL (arrow:(in_sl?(arrows))): valid_arrow?(ndfa)(arrow)
+
+  valid_graph?(ndfa:NDFA_)(graph:Graph) : bool =
+    FORALL (i:below(length(graph))) :
+      valid_arrows?(ndfa)(graph(i))
+
+  valid_ndfa?(ndfa:NDFA_) : bool =
+    valid_graph?(ndfa)(ndfa`graph) AND
+    valid_states?(ndfa)(ndfa`initials)
+
+  NDFA : TYPE = (valid_ndfa?)
+
+  empty_ndfa?(ndfa:NDFA) : MACRO bool =
+    size(ndfa) = 0
+  
+  card_states_le : LEMMA
+    FORALL (ndfa: NDFA, states: (valid_states?(ndfa))):
+      card_sl(states) <= size(ndfa)
+
+  empty_finals(n:below(0)) :bool = FALSE
+
+  empty_ndfa : NDFA = (#
+    graph := empty_seq,
+    initials := null,
+    guards := empty_seq,
+    finals := empty_finals
+  #)
+
+  empty_arrows : Arrows = null
+
+  add_new_state(ndfa : NDFA) : NDFA =
+    LET new_graph = add(empty_arrows,ndfa`graph),
+        new_finals = ndfa`finals WITH [ (size(ndfa)) |-> FALSE ] IN
+    ndfa WITH [ `graph  := new_graph,
+                `finals := new_finals
+	      ]
+
+  set_initial(state:nat)(ndfa:NDFA) : NDFA =
+    IF valid_state?(ndfa)(state) THEN
+      ndfa WITH [ `initials := add_sl(state,ndfa`initials) ]
+    ELSE
+      ndfa
+    ENDIF
+
+  is_initial?(ndfa:NDFA)(state:nat) : bool =
+    member(state,ndfa`initials)
+    
+  set_final(state:nat)(ndfa:NDFA) : NDFA =
+    IF valid_state?(ndfa)(state) THEN
+      ndfa WITH [ `finals(state) := TRUE ]
+    ELSE
+      ndfa
+    ENDIF
+
+  is_final?(ndfa:NDFA)(state:nat) : bool =
+    valid_state?(ndfa)(state) AND
+    ndfa`finals(state)
+
+  ndfa : VAR NDFA
+
+  is_final_j : JUDGEMENT
+    (is_final?(ndfa)) SUBTYPE_OF (valid_state?(ndfa))
+
+  % Combinator for setting NDFA features
+  ;++(ndfa:NDFA,f:[NDFA->NDFA]) : NDFA =
+    f(ndfa)
+
+  % Make an arrow with an empty label and empty action
+  mk_arrow(state:nat) : Arrow = (#
+    label  := NoLabel,
+    state  := state
+  #)
+
+  set_label(n:upfrom(NoLabel))(arrow:Arrow) : Arrow =
+    arrow WITH [ `label := n ]
+
+  % Combinator for setting Arrow features
+  ;++(arrow:Arrow,f:[Arrow->Arrow]) : Arrow =
+    f(arrow)
+
+  add_arrow(state:nat,arrow:Arrow)(ndfa:NDFA) : NDFA =
+    IF valid_state?(ndfa)(state) AND valid_arrow?(ndfa)(arrow) THEN
+      LET newstate  = add_sl(arrow,ndfa`graph`seq(state)),
+          newseq    = ndfa`graph`seq  WITH [ (state) := newstate ] IN
+      ndfa WITH [ `graph`seq := newseq ]
+    ELSE
+      ndfa
+    ENDIF
+
+  add_new_guard(guard:Guard)(ndfa:NDFA) : NDFA =
+    ndfa WITH [ `guards := add(guard,ndfa`guards) ]
+
+  IMPORTING structures@Maybe
+
+  Cache(ndfa:NDFA) : TYPE  = ARRAY[below(ndfa`guards`length)->Maybe[bool]]
+  empty_cache(ndfa) : Cache(ndfa) = LAMBDA(n:below(ndfa`guards`length)):None
+
+  accept?(ndfa:NDFA)(label:nat,input:Input) : bool =
+    IF 0 <= label < length(ndfa`guards) THEN
+      ndfa`guards(label)`accept(input)
+    ELSE
+      FALSE
+    ENDIF
+
+  next_state_arrow(ndfa:NDFA,input:Input,
+                   inits,reached:list[nat],
+		   cache:Cache(ndfa),arrow:Arrow)
+      : [list[nat],list[nat],Cache(ndfa)] =
+    IF valid_arrow?(ndfa)(arrow) THEN
+      LET label = arrow`label IN
+      IF label = NoLabel THEN
+        (add_sl(arrow`state,inits),reached,cache)
+      ELSE
+        IF none?(cache(label)) THEN
+	  LET accept = accept?(ndfa)(label,input),
+	      new_cache = cache WITH [(label) := Some(accept)] IN
+	  IF accept THEN
+	    (inits,add_sl(arrow`state,reached),new_cache)
+	  ELSE
+	    (inits,reached,new_cache)
+	  ENDIF
+	ELSE
+	  IF val(cache(label)) THEN
+	    (inits,add_sl(arrow`state,reached),cache)
+	  ELSE
+	    (inits,reached,cache)
+	  ENDIF
+	ENDIF
+      ENDIF
+    ELSE
+      (inits,reached,cache)
+    ENDIF
+
+  next_state_arrows(ndfa:NDFA,input:Input,
+                    inits,reached:list[nat],
+                    cache:Cache(ndfa),
+	            arrows:Arrows)
+    : RECURSIVE [list[nat],list[nat],Cache(ndfa)] =
+  IF null?(arrows) THEN
+    (inits,reached,cache)
+  ELSE
+    LET (new_inits,next,new_cache) = next_state_arrow(ndfa,input,
+            				      	      inits,reached,cache,car(arrows)) IN
+      next_state_arrows(ndfa,input,new_inits,next,new_cache,cdr(arrows))
+  ENDIF
+  MEASURE arrows BY <<  
+
+  next_(ndfa:NDFA,input:Input,
+        inits,reached:list[nat],cache:Cache(ndfa),
+        marked:(valid_states?(ndfa))) : RECURSIVE list[nat] =
+    IF null?(inits) OR card_sl(marked) >= size(ndfa) THEN
+      reached
+    ELSE
+      LET init = car(inits) IN
+      IF member(init,marked) OR NOT valid_state?(ndfa)(init) THEN
+        next_(ndfa,input,cdr(inits),reached,cache,marked)
+      ELSE
+        LET new_marked = add_sl(init,marked),
+	    (new_inits,next,new_cache) = next_state_arrows(ndfa,input,
+	 			                           cdr(inits),reached,
+						           cache,ndfa`graph(init)) IN
+        next_(ndfa,input,new_inits,next,new_cache,new_marked)
+      ENDIF
+    ENDIF
+    MEASURE lex2(size(ndfa)-card_sl(marked),length(inits))
+
+  next(ndfa:NDFA,inits:list[nat])(input:Input)
+    : list[nat] =
+    next_(ndfa,input,inits,null[nat],empty_cache(ndfa),null[nat])
+
+
+  IMPORTING structures@for_iterate
+
+  reachable(ndfa:NDFA,inits:list[nat],inputs:finseq[Input])
+    : list[nat] =
+    for(0,length(inputs)-1,inits,LAMBDA(pos:below(length(inputs)),reached:list[nat]):
+      next(ndfa,reached)(inputs`seq(pos)))
+
+  recognize(ndfa:NDFA)(inputs:finseq[Input]) : bool =
+    LET reached = reachable(ndfa,ndfa`initials,inputs) IN
+      some(is_final?(ndfa))(reached)
+
+  %% Pretty printing
+
+  guard2str(guard:Guard) : string =
+    format("--~a-->",guard`lblstr)
+
+  state2str(ndfa:NDFA,state_is_next:bool)(n:nat) : string =
+    LET str = format("s~d",n) IN
+      IF state_is_next AND is_final?(ndfa)(n) THEN
+        format("(~a)",str)
+      ELSE
+        str
+      ENDIF
+
+  label2str(ndfa:NDFA)(n:upfrom(NoLabel)) : string =
+    IF 0 <= n < ndfa`guards`length THEN
+      guard2str(ndfa`guards(n))
+    ELSE
+      ""
+    ENDIF
+
+  arrow2str(ndfa:NDFA,state_is_next:bool)(arrow:Arrow) : string =
+    LET labstr = label2str(ndfa)(arrow`label) IN
+    IF state_is_next THEN
+      format("~a ~a",{| labstr,state2str(ndfa,TRUE)(arrow`state) |})
+    ELSE
+      format("~a ~a",{| state2str(ndfa,FALSE)(arrow`state),labstr |})
+    ENDIF
+
+  print(ndfa:NDFA) : void =
+    printf("~{—-> ~a~%~}",{| map(state2str(ndfa,TRUE),ndfa`initials) |}) &
+    FORALL(i:below(size(ndfa))) :
+      IF cons?(ndfa`graph(i)) THEN
+        LET nodestr   = state2str(ndfa,FALSE)(i),
+	    arrowstrs = map(arrow2str(ndfa,TRUE),ndfa`graph(i)) IN
+        printf("~5a~{+~a~^~%     |~%     ~}~%", {| nodestr, {| arrowstrs |} |})
+      ELSE skip
+      ENDIF
+
+END ndfa

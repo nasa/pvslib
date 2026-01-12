@@ -95,11 +95,12 @@ in all the '.pvslib' files in the directories contained in LIBS."
       ;; [M3] The sub-libraries are added to the end of *pvs-library-path*
       ;; to allow shadowing of libraries.
       (setf *pvs-library-path* (append *pvs-library-path* sub-libs))))
-  (dolist (id *extra-preludelibs*)
-    (let ((libdir (extra-pvslib-keyval id "dir")))
-      (format t "Loading prelude library ~a (~a)~%" id libdir)
-      ;;(load-prelude-library libdir) [CM] Not working
-      ))
+  ;;[CM] Load prelude libraries is not working
+  ;;(dolist (id *extra-preludelibs*)
+  ;;  (let ((libdir (extra-pvslib-keyval id "dir")))
+  ;;    (format t "~%Loading prelude library ~a (~a)~%" id libdir)
+  ;;    (load-prelude-library-workspace (pathname libdir))
+  ;;    ))
   (loop for id being the hash-keys of *extra-pvslib-deps*
 	using (hash-value deps)
 	when (not (gethash id *extra-pvslibs*))
