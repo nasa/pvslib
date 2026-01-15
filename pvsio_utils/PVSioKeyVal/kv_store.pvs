@@ -1,37 +1,75 @@
 %% Storage of global key/value store
 
-kv_store[T:TYPE+]: THEORY
+kv_store : THEORY
 BEGIN
 
-  IMPORTING kv_index
+  KvObject : TYPE = [string,Lisp_]
+  KvStore  : TYPE = finseq[KvObject]
 
-  kv_undefined : T
+  kv_empty : KvStore = empty_seq
 
-  UndefinedStorage(s:string):T = kv_undefined
+  GlobalStore : Global[KvStore] =
+    ref(kv_empty)
 
-  GlobalStorage : Global[[string->T]] = ref(UndefinedStorage)
+  kv_store : KvStore = val(GlobalStore)
 
-  kv_set_(key:string,t:T) : void =
-    set(GlobalStorage,val(GlobalStorage) WITH [`key := t])
+  kv_length  : nat = length(kv_store)
 
-  % Put an object t in KeyVal store under a given key
-  kv_put(key:string,t:T) : MACRO void =
-    LET the_type = typeof(t) IN
-    kv_set_(key,t) &
-    kv_add_index(key,the_type)
+  kv_reset : void =
+    set(GlobalStore,kv_empty)
+
+  kv_find_rec(key:string,i:upto(kv_length)) : RECURSIVE upto(kv_length) =
+    IF i = kv_length THEN i
+    ELSE
+      LET name = kv_store(i)`1 IN
+      IF name = key THEN i
+      ELSE kv_find_rec(key,i+1)
+      ENDIF
+    ENDIF
+    MEASURE kv_length-i
+
+  % Find key in index. Return kv_length if key is not in index
+  kv_find(key:string) : upto(kv_length) =
+    kv_find_rec(key,0)
+
+  % kv_set_[T:TYPE](key:string,t:T) : void =
+  %   set(GlobalStore,val(GlobalStore) WITH [`key := to_lisp_(t)])
+
+  % Put an object t in KeyVal store under a given key (override the object if key already exists)
+  kv_put_lisp(key:string,t:Lisp_) : MACRO void =
+    LET k    = kv_find(key),
+        kobj = (key,t) IN
+    IF k = kv_length THEN
+       set(GlobalStore,add(kobj,kv_store))
+    ELSE
+      LET kv_newstore = kv_store WITH [
+	      `seq(k) |-> kobj
+	  ] IN
+      set(GlobalStore,kv_newstore)
+    ENDIF
+
+  kv_put[T:TYPE](key:string,t:T) : MACRO void =
+    kv_put_lisp(key,to_lisp_(t))
+
+  PVSioKeyValException : Exception[string] = make_exception(LAMBDA(key:string):
+    format("Key ~s not found in KeyVal store",key))
 
   % Retrieve object from KeyVal store at a given key.
   % Throws PVSioKeyValException exception if key is not found in the KeyVal index or if its type is not a
   % subtype of T
-  kv_get(key:string) : MACRO T =
-    LET key_type = kv_typeof(key),
-        the_type = typeof(kv_undefined) IN
-      IF subtypeof?(key_type,the_type) THEN
-        val(GlobalStorage)(key)
-      ELSE
-        throw(PVSioKeyValException,
-	      format("Type of ~s is ~a, which is not a subtype of ~a",
-	            {| key, key_type, the_type |}))
-      ENDIF
+  kv_get[T:TYPE+](key:string) : MACRO T =
+    LET k =  kv_find(key) IN
+    IF k < kv_length THEN
+      from_lisp_[T](kv_store(k)`2)
+    ELSE
+      throw(PVSioKeyValException,key)
+    ENDIF
+
+  IMPORTING structures@for_iterate
+
+  % List index of objects in KeyVal store
+  kv_list : void =
+    FORALL (i:below(kv_length)):
+      printf("~3d -> ~s: ~a~%",{| i, kv_store(i)`1, typeof_lisp_(kv_store(i)`2) |})
 
 END kv_store
