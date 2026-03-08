@@ -1,0 +1,147 @@
+pvsio_peg[AST:TYPE] : THEORY
+BEGIN
+
+  IMPORTING  pvsio_regex,
+             peg_ast[AST]
+
+  terminal_label(str:string) : string =
+    "⟨" + str + "⟩"
+
+  literal_label(str:string) : string =
+    "⟪" + str + "⟫"
+
+  reporting_label(reporting:bool)(str:string) : string =
+    IF reporting THEN str ELSE str + "₀" ENDIF
+
+  build_label(build:bool)(str:string) : string =
+    IF build THEN str + "ₐ" ELSE str ENDIF
+
+  to_str(label:Label) : string =
+    LET str =  IF terminal_label?(label) OR predicate_label?(label) THEN
+                 terminal_label(get_str(label))
+               ELSE
+                 literal_label(get_str(label))
+               ENDIF IN
+    reporting_label(reporting_label?(label))(str)
+    
+  build_label(str:string) : string =
+    "⟦" + str + "⟧"
+
+  to_str(pegex:PEGex) : RECURSIVE string =
+    CASES pegex OF
+      PegEmpty : "ε",
+      PegTerminal(rgx,label,build) :
+        build_label(build)(to_str(label)),
+      PegNonTerminal(rule) :
+        rule,
+      PegSeq(e1,e2) :
+        LET str1 = to_str(e1),
+	    str2 = to_str(e2) IN
+	IF peg_sequence?(e1) OR NOT peg_choice?(e1) THEN str1 ELSE "("+str1+")" ENDIF +
+	" + " +
+	IF peg_sequence?(e2) OR NOT peg_choice?(e2)THEN str2 ELSE "("+str2+")" ENDIF,
+      PegChoice(e1,e2) :
+        LET str1 = to_str(e1),
+	    str2 = to_str(e2) IN
+	IF peg_choice?(e1) OR NOT peg_sequence?(e1) THEN str1 ELSE "("+str1+")" ENDIF +
+	" / " +
+	IF peg_choice?(e2) OR NOT peg_sequence?(e2) THEN str2 ELSE "("+str2+")" ENDIF,
+      PegStar(e) :
+        "**(" + to_str(e) +")",
+      PegNot(e,label) :
+        LET (str1,e1) = IF peg_not?(e) THEN ("When",get_pegex(e)) ELSE ("Unless",e) ENDIF IN
+	  reporting_label(reporting_label?(label))(str1)+"("+to_str(e1)+")",
+      PegAST(e,astf) :
+        build_label(to_str(e))
+    ENDCASES
+    MEASURE pegex BY <<
+
+  max_label(peg:PEGrammar,max:nat) : RECURSIVE nat =
+    IF null?(peg) THEN max
+    ELSE
+      LET (rule,e) =  car(peg),
+          l = length(rule) IN
+      max_label(cdr(peg), IF l > max THEN l ELSE max ENDIF)
+    ENDIF
+  MEASURE peg BY <<
+
+  peg_to_str(peg:PEGrammar,indent:posnat) : RECURSIVE string =
+    IF null?(peg) THEN ""
+    ELSE
+      LET (rule,pegex) = car(peg) IN
+      format("~va~a ~a~%~a",{| indent, rule, "⟵" , to_str(pegex), peg_to_str(cdr(peg),indent) |})
+    ENDIF
+    MEASURE peg BY <<
+
+  to_str(G:PEG) : string =
+    LET indent = max_label(peg(G),0)+1 IN
+    format("~a",peg_to_str(peg(G),indent))
+
+  print(G:PEG) : void =
+    print(to_str(G))
+
+  % Print string message during AST construction
+  bld_print(msg:string)(opt_ast:Maybe[AST],ast_deck:ASTDeck) : MACRO [ASTOutput,ASTDeck] =
+  LET dummy = printf("~a~%",msg) IN
+    (OptAST(opt_ast),ast_deck)
+
+  % Print a string message
+  ast_print(str:string) : ASTBuilder =
+    ast_build(bld_print(str))
+
+  IMPORTING pvsio_utils@iterator_io[Item]
+
+  item2strf(strf:[AST->string])(item:Item) : string =
+    IF token_item?(item) THEN format("~s",get_token(item)) ELSE strf(get_ast(item)) ENDIF
+
+  deck2strf(strf:[AST->string])(opt_ast:Maybe[AST],deck:ASTDeck) : MACRO string =
+    LET astr : string = IF none?(opt_ast) THEN "ϵ" ELSE strf(val(opt_ast)) ENDIF IN
+    format("~a ↣ ~a", {| astr, iterator2strf(item2strf(strf))(deck) |})
+
+  bld_deckf(strf:[AST->string])(opt_ast:Maybe[AST],ast_deck:ASTDeck) : MACRO [ASTOutput,ASTDeck] =
+    LET dummy = printf("~a~%",deck2strf(strf)(opt_ast,ast_deck)) IN
+    (OptAST(opt_ast),ast_deck)
+
+  % Print AST deck given a formatter for AST
+  ast_deck(strf:[AST->string]) : ASTBuilder =
+     ast_build(bld_deckf(strf))
+
+  deck2str(opt_ast:Maybe[AST],deck:ASTDeck) : MACRO string =
+    format("~a >–> ~a", {| opt_ast, to_str(deck) |})
+
+  bld_deck(opt_ast:Maybe[AST],ast_deck:ASTDeck) : MACRO [ASTOutput,ASTDeck] =
+    LET dummy = printf("~a~%",deck2str(opt_ast,ast_deck)) IN
+    (OptAST(opt_ast),ast_deck)
+
+  % Print AST deck given using a default formatter for AST
+  ast_deck : ASTBuilder =
+     ast_build(bld_deck)
+
+  tier2strf(strf:[AST->string])(tier:ASTTier) : string =
+    finseq2strf(item2strf(strf))(tier)
+
+  scaffold2strf(strf:[AST->string])(scaffold:list[ASTTier]) : MACRO string =
+    format("(: ~{~a~^, ~} :)", {| map(tier2strf(strf))(scaffold) |})
+
+  scaffold2str(scaffold:list[ASTTier]) : MACRO string =
+    format("(: ~{~a~^, ~} :)", {| map(to_str)(scaffold) |})
+
+  % Print a state-generated message during parsing
+  PegPrint(strf:[PegState->string]) : MACRO PEGex =
+    PegAST(PegEmpty,LAMBDA(state:PegState):
+      LET dummy = printf("~a~%",strf(state)) IN
+      NoAST)
+
+  % Print a message during parsing
+  PegPrint(msg:string) : PEGex =
+    PegPrint(LAMBDA(state:PegState):msg)
+
+  % Print AST scaffold Tgiven a formatter for AST
+  PegScaffold(strf:[AST->string]) : PEGex =
+    PegPrint(LAMBDA(state:PegState): scaffold2strf(strf)(state`scaffold))
+
+  % Print AST scaffold using a default formatter for AST
+  PegScaffold : PEGex =
+    PegPrint(LAMBDA(state:PegState):scaffold2str(state`scaffold))
+
+END pvsio_peg

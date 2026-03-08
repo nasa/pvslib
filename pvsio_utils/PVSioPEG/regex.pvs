@@ -1,4 +1,5 @@
-pvsio_regex : THEORY
+
+regex : THEORY
 BEGIN
 
   IMPORTING regex_def
@@ -10,8 +11,8 @@ BEGIN
     IF initial = FinalState THEN
       (ndfa,(: parent :))
     ELSE
-        LET arrow    = mk_arrow(initial) ++ set_label(parent`label),
-	    new_ndfa = ndfa ++ add_arrow(parent`state,arrow) IN
+        LET arrow    = mk_arrow(initial) <| set_label(parent`label),
+	    new_ndfa = ndfa <| add_arrow(parent`state,arrow) IN
   	(new_ndfa,null)
     ENDIF
 
@@ -64,8 +65,8 @@ BEGIN
       Accept(guard) :
         LET new_state = size(ndfa),
   	    new_label = length(ndfa`guards),
-	    new_arrow = mk_arrow(new_state) ++ set_label(new_label),
-	    new_ndfa  = ndfa ++ add_new_state ++ add_new_guard(guard) IN
+	    new_arrow = mk_arrow(new_state) <| set_label(new_label),
+	    new_ndfa  = ndfa <| add_new_state <| add_new_guard(guard) IN
 	  (#
   	     ndfa := new_ndfa,
   	     dangling_parents := (: new_arrow :),
@@ -103,7 +104,7 @@ BEGIN
   MEASURE re BY <<
 
   init_regex_ : NDFA =
-    empty_ndfa ++ add_new_state ++ set_final(FinalState)
+    empty_ndfa <| add_new_state <| set_final(FinalState)
 
   compilext(re:Regex) : CompiledRegext_ =
     compilext_(re,init_regex_)
@@ -112,8 +113,8 @@ BEGIN
     IF null?(parents) THEN ndfa
     ELSE
       LET parent = car(parents),
-          new_arrow = mk_arrow(FinalState) ++ set_label(parent`label),
-          new_ndfa = ndfa ++ add_arrow(parent`state,new_arrow) IN
+          new_arrow = mk_arrow(FinalState) <| set_label(parent`label),
+          new_ndfa = ndfa <| add_arrow(parent`state,new_arrow) IN
         add_dangling_parents(new_ndfa,cdr(parents))
     ENDIF
   MEASURE parents BY <<
@@ -121,7 +122,7 @@ BEGIN
   add_dangling_initials(ndfa:NDFA,initials:list[nat]) : RECURSIVE NDFA =
     IF null?(initials) THEN ndfa
     ELSE
-      LET new_ndfa = ndfa ++ set_initial(car(initials)) IN
+      LET new_ndfa = ndfa <| set_initial(car(initials)) IN
          add_dangling_initials(new_ndfa,cdr(initials))
     ENDIF
   MEASURE initials BY <<
@@ -141,43 +142,92 @@ BEGIN
   set_greediness(greedy:bool)(rgx:CompiledRegex) : CompiledRegex =
     rgx WITH [ `greedy := greedy ]
 
-  match_(rgx:CompiledRegex,str:string,pos:upto(length(str)),
-         inits:list[nat],lastpos:upto(length(str)))
-    : RECURSIVE upto(length(str)) =
-    IF pos=length(str) THEN
-      lastpos
+  ;<|(rgx:CompiledRegex,f:[CompiledRegex->CompiledRegex]) : CompiledRegex =
+    f(rgx)
+
+  Position : TYPE = [#
+    npos   : nat,  % Next position
+    nlin   : nat,  % Number of lines
+    ncol   : nat   % Number of columns in this line
+  #]
+
+  init_pos: Position = (#
+    npos := 0,
+    nlin := 0,
+    ncol := 0
+  #)
+
+  valid_pos?(str:string)(p:Position) : MACRO bool =
+    p`npos <= length(str)
+
+  next_pos(p:Position,c:char) : Position =
+    LET nl = (c=char_newline) IN
+    p WITH [
+      npos := p`npos+1,
+      nlin := IF nl THEN p`nlin+1 ELSE p`nlin ENDIF,
+      ncol := IF nl THEN 0 ELSE p`ncol+1 ENDIF
+    ]
+
+  MatchResult_ : DATATYPE
+  BEGIN
+    % Matching succeded with sub-string [pos0..npos).
+    % The next non-matched character is found at (nlin+1,ncol+1)
+    Success(get_pos:Position) : success?
+    % Matching failed. Position is the maximum progress achieved
+    Fail(get_pos:Position) : fail?
+  END MatchResult_
+
+  valid_result?(str:string)(result:MatchResult_) : MACRO bool =
+    valid_pos?(str)(get_pos(result))
+
+  MatchResult(str:string) : TYPE = (valid_result?(str))
+
+  match_pos_(rgx:CompiledRegex,    % Regular expression
+             str:string,           % String to check
+             p:(valid_pos?(str)),  % Next position to check
+             states:list[nat],     % Current initial states
+	     matched_pos: Maybe[(valid_pos?(str))]) % Current successful matching position
+    : RECURSIVE MatchResult(str) =
+    IF p`npos=length(str) THEN
+      IF some?(matched_pos) THEN Success(val(matched_pos)) ELSE Fail(p) ENDIF
     ELSE 
-      LET next = next(rgx`ndfa,inits)(get(str,pos)) IN
-        IF null?(next) THEN lastpos
+      LET  next_char   = get(str,p`npos),
+           next_states = next(rgx`ndfa,states)(next_char) IN
+        IF null?(next_states) THEN
+	  IF some?(matched_pos) THEN Success(val(matched_pos)) ELSE Fail(p) ENDIF
 	ELSE
-	  LET success = member(FinalState,next) IN
+	  LET success  = member(FinalState,next_states),
+	      next_pos = next_pos(p,next_char) IN
 	  IF NOT greedy(rgx) AND success THEN
-	    pos+1
+	    Success(next_pos)
 	  ELSE
-	    match_(rgx,str,pos+1,next,IF success THEN pos+1 ELSE lastpos ENDIF)
+	    match_pos_(rgx,str,next_pos,next_states,
+	               IF success THEN Some(next_pos) ELSE matched_pos ENDIF)
 	  ENDIF
 	ENDIF
     ENDIF
-    MEASURE length(str)-pos
+    MEASURE length(str)-p`npos
 
-  % Return length of prefix string that matches given string
-  % Note that 0 means no matches and legth(str) means the whole string
-  match_pos(rgx:CompiledRegex,str:string) : upto(length(str)) =
-    match_(rgx,str,0,rgx`ndfa`initials,0)
+  % Return position pos such that sub-string[init_pos,pos-1] matches given regex
+  % (or None if string doesn't match regex)
+  match_pos(rgx:CompiledRegex,str:string,pos0:(valid_pos?(str))) : MatchResult(str) =
+    LET init_states  = rgx`ndfa`initials ,
+        init_matched = IF member(FinalState,init_states) THEN
+	                 Some(pos0)
+		       ELSE
+		         None
+		       ENDIF IN
+    match_pos_(rgx,str,pos0,init_states,init_matched)
 
-  % Return prefix and postfix prefixes of string, such that prefix matches given string
-  match(rgx:CompiledRegex,str:string) : [string,string] =
-    LET pos = match_pos(rgx,str) IN
-      (gen_strings.substr(str,0,pos),gen_strings.substr(str,pos,length(str)))
+  % Return prefix and postfix xof string, such that prefix matches given regex (or None if
+  % string doesn't match regex)
+  match(rgx:CompiledRegex,str:string) : Maybe[[string,string]] =
+    CASES match_pos(rgx,str,init_pos) OF
+      Success(p) : (gen_strings.substr(str,0,p`npos),gen_strings.substr(str,p`npos,length(str)))
+      ELSE None
+    ENDCASES
 
   CONVERSION compile
 
-  print(rgxt:CompiledRegext_) : void =
-    LET ndfa = rgxt`ndfa IN
-    print(ndfa) &
-    printf("dangling_parents:~%~{  ~a~^  ~%~}~%",
-      {| map(arrow2str(ndfa,FALSE),rgxt`dangling_parents) |}) &
-    printf("dangling_initials: ~{~a~^, ~}~%",
-      {| map(state2str(ndfa,FALSE),rgxt`dangling_initials) |})
+END regex
 
-END pvsio_regex

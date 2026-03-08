@@ -1,0 +1,287 @@
+% AST builder for PEGs
+peg_ast[AST:TYPE] : THEORY
+BEGIN
+
+  IMPORTING peg,
+            peg_def[AST]
+
+  NoAST : ASTOutput = OptAST(None)
+
+  MkAST(ast:AST) : ASTOutput = OptAST(Some(ast))
+
+  % Get Some(token_item) at n-th position of ast_tier. Return None position is not
+  % a TokenItem or if it n out of range
+  get_token_at(ast_tier:ASTTier,n:nat) : Maybe[string] =
+    IF n < length(ast_tier) THEN
+      LET item = ast_tier(n) IN
+      IF token_item?(item) THEN
+	Some(get_token(item))
+      ELSE
+	None
+      ENDIF
+    ELSE
+      None
+    ENDIF
+
+  % Get Some(ast_item) at n-th position of ast_tier. Return None if position is not
+  % an ASTitem or if n is out of range
+  get_ast_at(ast_tier:ASTTier,n:nat) : Maybe[AST] =
+    IF n < length(ast_tier) THEN
+      LET item = ast_tier(n) IN
+      IF ast_item?(item) THEN
+	Some(get_ast(item))
+      ELSE
+	None
+      ENDIF
+    ELSE
+      None
+    ENDIF
+
+  ast_working_tier(f:[ASTTier->ASTOutput])(state:PegState) : ASTOutput =
+    f(working_tier(state))
+
+  % Build AST from current pre_ast
+  ;o(e:PEGex,f:[ASTTier->ASTOutput]) : PEGex =
+    PegAST(e,ast_working_tier(f))
+
+  IMPORTING structures@iterator
+
+  ASTDeck : TYPE = Iterator[Item]
+
+  ASTBuilder : DATATYPE
+  BEGIN
+    ast_build(bld_fun:[[Maybe[AST],ASTDeck]->[ASTOutput,ASTDeck]]): ast_build?
+    ast_seq(bld1,bld2:ASTBuilder) : ast_seq?
+    ast_try(bld_try,bld_then,bld_else:ASTBuilder) : ast_try?
+    ast_repeat(bld:ASTBuilder) : ast_repeat?
+    ast_peek(ridx:int,bldf:[Item->ASTBuilder]) : ast_peek?
+  END ASTBuilder
+
+  IMPORTING orders@orders_nat,
+            orders@lex2_generic[ASTBuilder,nat]
+
+  build(bld:ASTBuilder)(opt_ast:Maybe[AST],ast_deck:ASTDeck) :
+    RECURSIVE { out : [ASTOutput,ASTDeck] | length(out`2) = length(ast_deck) } =
+    CASES bld OF
+      ast_build(bld_fun) :
+        LET bld_out = bld_fun(opt_ast,ast_deck),
+	    (ast_out,new_deck) = bld_out IN
+	  IF length(bld_out`2) = length(ast_deck) THEN
+	    bld_out
+	  ELSE
+	    (OptAST(opt_ast),ast_deck)
+	  ENDIF,
+      ast_seq(bld1,bld2) :
+        LET seq_out = build(bld1)(opt_ast,ast_deck),
+            (ast_out,new_deck) = seq_out IN
+        IF exit?(ast_out) THEN
+          seq_out
+        ELSE
+          build(bld2)(get_opt_ast(ast_out),new_deck)
+        ENDIF,
+      ast_try(try_bld,then_bld,else_bld) :
+        LET try_out = build(try_bld)(opt_ast,ast_deck),
+            (ast_out,new_deck) = try_out IN
+        IF exit?(ast_out) THEN
+          try_out
+        ELSIF next(new_deck) > next(ast_deck) THEN
+          build(then_bld)(get_opt_ast(ast_out),new_deck)
+        ELSE
+          build(else_bld)(opt_ast,ast_deck)
+        ENDIF,
+      ast_repeat(bld) :
+        LET repeat_out = build(bld)(opt_ast,ast_deck),
+            (ast_out,new_deck) = repeat_out IN
+        IF exit?(ast_out) THEN
+          repeat_out
+        ELSIF next(new_deck) > next(ast_deck) THEN
+          build(ast_repeat(bld))(get_opt_ast(ast_out),new_deck)
+        ELSE
+          (OptAST(opt_ast),ast_deck)
+	ENDIF,
+      ast_peek(idx,bldf) :
+        IF peekable?(ast_deck)(idx) THEN
+	  build(bldf(peek(ast_deck)(idx)))(opt_ast,ast_deck)
+        ELSE
+          (OptAST(opt_ast),ast_deck)
+	ENDIF
+
+     ENDCASES
+     MEASURE (bld,(length(ast_deck)-next(ast_deck))::nat) BY lt_lex2(<<,lt_nat)
+
+  % Build AST from ASTBuilder
+  ;o(e:PEGex,bld:ASTBuilder) : PEGex =
+    PegAST(e,ast_working_tier(LAMBDA(ast_tier:ASTTier):
+      LET (ast_out,new_deck) = build(bld)(None,mk_iterator(ast_tier)) IN
+      IF exit?(ast_out) AND none?(get_opt_loc(ast_out)) AND has_next?(new_deck) THEN
+        Exit(get_msg(ast_out),get_loc(get_next(new_deck)))
+      ELSE
+        ast_out
+      ENDIF))
+
+  bld_skip(opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    (OptAST(opt_ast),ast_deck)
+
+  % Do nothing
+  ast_skip : ASTBuilder =
+    ast_build(bld_skip)
+
+  bld_consume(guard:PRED[Item])(opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    IF has_next?(ast_deck) AND guard(get_next(ast_deck)) THEN
+      (OptAST(opt_ast),go_next(ast_deck))
+    ELSE
+      (OptAST(opt_ast),ast_deck)
+    ENDIF
+
+  ast_consume(guard:PRED[Item]) : ASTBuilder =
+    ast_build(bld_consume(guard))
+
+  ast_consume : ASTBuilder =
+    ast_consume(LAMBDA(item:Item):TRUE)
+    
+  ;+(bld1,bld2:ASTBuilder) : ASTBuilder =
+    ast_seq(bld1,bld2)
+
+  % Try try_bld if it makes progress tries then_bld, otherwise do nothing
+  ast_try(try_bld,then_bld:ASTBuilder) : ASTBuilder =
+    ast_try(try_bld,then_bld,ast_skip)
+
+  % Peek item at relative index idx and if an ASTItem use it to make a new builder
+  ast_peek(idx:int,bldf:[ASTItem->ASTBuilder]) : ASTBuilder =
+    ast_peek(idx,LAMBDA(item:Item): IF ast_item?(item) THEN bldf(item) ELSE ast_skip ENDIF)
+
+  % Peek item at relative index idx and if an ASTItem use its AST to make a new builder
+  ast_peek(idx:int,bldf:[AST->ASTBuilder]) : ASTBuilder =
+    ast_peek(idx,LAMBDA(ast_item:ASTItem): bldf(get_ast(ast_item)))
+
+  % Peek item at relative index idx and if a TokenItem use it to make a new builder
+  ast_peek(idx:int,bldf:[TokenItem->ASTBuilder]) : ASTBuilder =
+    ast_peek(idx,LAMBDA(item:Item): IF token_item?(item) THEN bldf(item) ELSE ast_skip ENDIF)
+
+  % Peek item at relative index idx and if a TokenItem use its token string to make a new builder
+  ast_peek(idx:int,bldf:[string->ASTBuilder]) : ASTBuilder =
+    ast_peek(idx,LAMBDA(token_item:TokenItem): bldf(get_token(token_item)))
+
+  bld_exit(mssg:string)(opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    (Exit(mssg),ast_deck)
+
+  ast_exit(mssg:string) : ASTBuilder =
+    ast_build(bld_exit(mssg))
+
+  % Return TRUE if item is a TokenItem and its string token satisfies P.
+  % Return FALSE otherwise
+  ast_token?(P:PRED[string])(item:Item) : bool =
+    token_item?(item) AND P(get_token(item))
+
+  % Return TRUE if item is a TokenItem and its token string is equal to literal
+  % Return FALSE otherwise
+  ast_literal?(literal:string) : PRED[Item] =
+    ast_token?(LAMBDA(str:string): str = literal)
+
+  % Return TRUE if item is a TokenItem and its token string is equal to literal
+  % (modulo case insensitiveness)
+  % Return FALSE otherwise
+  ast_LITERAL?(literal:string) : PRED[Item] =
+    ast_token?(LAMBDA(str:string): strcompare(str,literal,FALSE) = 0)
+
+  % Return TRUE if item is an ASTItem and its AST satisfies P.
+  % Return FALSE otherwise
+  ast?(P:PRED[AST])(item:Item) : bool =
+    ast_item?(item) AND P(get_ast(item))
+
+  CONVERSION ast?
+
+  % Consume next item if it is a TokenItem and satisfies predicate P
+  % Do nothing otherwise
+  ast_token(P:PRED[string]) : ASTBuilder =
+    ast_consume(ast_token?(P))
+
+  % Consume next item if it is a TokenItem and its token string is equal to literal
+  % Do nothing otherwise
+  ast_literal(literal:string) : ASTBuilder =
+    ast_token(LAMBDA(str:string): str = literal)
+
+  % Consume next item if it is a TokenItem and its token string is equal to literal
+  % (modulo case insensitiveness)
+  % Do nothing otherwise
+  ast_LITERAL(literal:string) : ASTBuilder =
+    ast_token(LAMBDA(str:string): strcompare(str,literal,FALSE) = 0)
+
+  bld_new(mk:[Item->ASTOutput])
+         (opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    IF has_next?(ast_deck) THEN
+      LET ast_out = mk(get_next(ast_deck)) IN
+      (ast_out,IF exit?(ast_out) THEN ast_deck ELSE go_next(ast_deck) ENDIF)
+    ELSE
+      (OptAST(opt_ast),ast_deck)
+    ENDIF
+
+  % Ignore accumulated AST and make ASTOutput with next AST item
+  % Do nothing if at the end of AST deck
+  ast_new(mk:[Item->ASTOutput]) : ASTBuilder =
+    ast_build(bld_new(mk))
+
+  % Ignore accumulated AST and make ASTOutput with next AST item
+  % Do nothing if next item is not an ASTItem
+  ast_new(mk:[ASTItem->ASTOutput]) : ASTBuilder =
+    ast_new(LAMBDA(item:Item) : IF ast_item?(item) THEN mk(item) ELSE NoAST ENDIF)
+
+  % Ignore accumulated AST and make ASTOutput with next TokenItem
+  % Do nothing if next item is not ASTItem
+  ast_new(mk:[TokenItem->ASTOutput]) : ASTBuilder =
+    ast_new(LAMBDA(item:Item) : IF token_item?(item) THEN mk(item) ELSE NoAST ENDIF)
+
+  % Ignore accumulated AST and make ASTOutput with token string from next TokenItem
+  % Do nothing if next item is not an ASTItem
+  ast_new(mk:[string->ASTOutput]) : ASTBuilder =
+    ast_new(LAMBDA(token_item:TokenItem):mk(get_token(token_item)))
+
+  % Ignore accumulated AST and make ASTOutput with AST from next AST item
+  % Do nothing if next item is not an ASTItem
+  ast_self : ASTBuilder =
+    ast_new(LAMBDA(item:ASTItem):MkAST(get_ast(item)))
+
+  bld_this(ast:AST)
+          (opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+     (MkAST(ast),ast_deck)
+
+  % Ignore accumulated AST and make ASTOutput with the provided AST
+  ast_this(ast:AST) : ASTBuilder =
+    ast_build(bld_this(ast))
+
+  bld_make(mk:[[AST,Item]->ASTOutput])
+          (opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    IF has_next?(ast_deck) AND some?(opt_ast) THEN
+      LET ast_out = mk(val(opt_ast),get_next(ast_deck)) IN
+      (ast_out,IF exit?(ast_out) THEN ast_deck ELSE go_next(ast_deck) ENDIF)
+    ELSE
+      (OptAST(opt_ast),ast_deck)
+    ENDIF
+
+  % Make ASTOutput from accumulated AST and next Item
+  ast_make(mk:[[AST,Item]->ASTOutput]) : ASTBuilder =
+    ast_build(bld_make(mk))
+
+  % Make ASTOutput from accumulated AST and next ASTItem
+  % Do nothing if next item is not an ASTItem
+  ast_make(mk:[[AST,ASTItem]->ASTOutput]) : ASTBuilder =
+    ast_make(LAMBDA(ast:AST,item:Item): IF ast_item?(item) THEN mk(ast,item) ELSE NoAST ENDIF)
+
+  % Make ASTOutput from accumulated AST and AST from next ASTItem
+  % Do nothing if next item is not an ASTItem
+  ast_make(mk:[[AST,AST]->ASTOutput]) : ASTBuilder =
+    ast_make(LAMBDA(ast:AST,ast_item:ASTItem) : mk(ast,get_ast(ast_item)))
+
+  % Make ASTOutput from accumulated AST and next TokenItem
+  % Do nothing if next item is not a TokenItem
+  ast_make(mk:[[AST,TokenItem]->ASTOutput]) : ASTBuilder =
+    ast_make(LAMBDA(ast:AST,item:Item): IF token_item?(item) THEN mk(ast,item) ELSE NoAST ENDIF)
+
+  % Make ASTOutput from accumulated AST and token string from next TokenItem
+  % Do nothing if next item is not a TokenItem
+  ast_make(mk:[[AST,string]->ASTOutput]) : ASTBuilder =
+    ast_make(LAMBDA(ast:AST,token_item:TokenItem): mk(ast,get_token(token_item)))
+
+  CONVERSION MkAST
+
+END peg_ast

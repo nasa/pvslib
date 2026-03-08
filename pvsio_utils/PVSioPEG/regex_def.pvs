@@ -6,8 +6,8 @@ BEGIN
 
   Regex : DATATYPE
   BEGIN
-    Empty               : empty?     % Accept empty input
-    Accept(guard:Guard) : accept?    % Accept only when condition is satisfied
+    Empty                : empty?    % Accept empty input
+    Accept(guard:Guard)  : accept?   % Accept only when condition is satisfied
     Seq(re1,re2:Regex)   : sequence? % Accept re1 and then accept r2
     Union(re1,re2:Regex) : union?    % Accept re1 or re2
     Plus(re:Regex)       : plus?     % Accept re one or more times
@@ -25,42 +25,58 @@ BEGIN
     ENDIF
   MEASURE n
 
-  list2seq(l:list[Regex]) : RECURSIVE Regex =
-    IF null?(l) THEN Empty
-    ELSE Seq(car(l),list2seq(cdr(l)))
-    ENDIF
-    MEASURE l BY <<
+  % Union regex, e.g., <regex> # <regex>
+  ;/(re1,re2:Regex) : Regex =
+    Union(re1,re2)
 
-  CONVERSION list2seq
+  % Optional regex, e.g., [| <regex> |]
+  ;[||](re:Regex) : Regex =
+    Optional(re)
+
+  % Repeat more than one regex, e.g., ++(<regex>)
+  ;++(re:Regex) : Regex =
+    Plus(re)
+
+  % Repeat zero or more regex, e.g., **(<regex>)
+  ;**(re:Regex) : Regex =
+    Star(re)
+
+  % Repeat exactly n times, e.g., <regex>^^(n)
+  ;^^(re:Regex,n:nat) : Regex =
+    Pow(n)(re)
+
+  % Sequence of regex, e.g., <regex1> + <regex2>
+  ;+(re1,re2:Regex) : Regex =
+    Seq(re1,re2)
 
   and_accept(a1,a2:(accept?)) : (accept?) =
-    LET label = format("~a & ~a",{| guard(a1)`lblstr, guard(a2)`lblstr |}) IN
+    LET label = "(" + guard(a1)`label + "&" + guard(a2)`label + ")" IN
     Accept(mk_guard(label,LAMBDA(c:char):guard(a1)`accept(c) AND guard(a2)`accept(c)))
 
   ;AND(a1,a2:(accept?)) : MACRO (accept?) =
     and_accept(a1,a2)
 
   or_accept(a1,a2:(accept?)):(accept?) =
-    LET label = format("~a | ~a",{| guard(a1)`lblstr, guard(a2)`lblstr |}) IN
+    LET label = "(" + guard(a1)`label + "|" + guard(a2)`label + ")" IN
     Accept(mk_guard(label,LAMBDA(c:char):guard(a1)`accept(c) OR guard(a2)`accept(c)))
 
   ;OR(a1,a2:(accept?)) : MACRO (accept?) =
     or_accept(a1,a2)
 
   not_accept(a:(accept?)):(accept?) =
-    LET label = format("!~a",{| guard(a)`lblstr |}) IN
+    LET label = "!(" + guard(a)`label + ")" IN
     Accept(mk_guard(label,LAMBDA(c:char):NOT guard(a)`accept(c)))
 
   NOT(a:(accept?)) : MACRO (accept?) =
     not_accept(a)
 
-  char_label(sensitive:bool)(c:char) : string =
-    LET str  = IF sensitive THEN singlequote ELSE "" ENDIF IN
-      format("~@[~a~]~:c~@[~a~]",{| {| str |},{|c|},{| str |} |})
+  InsensitiveTag : StringChar = "ⁱ"
 
-  str_label(sensitive:bool)(str:string) : string =
-    for(0,length(str)-1,"",LAMBDA(i:below(length(str)),label:string):
-      format("~a~a", {| label,char_label(sensitive)(get(str,i)) |}))
+  sensitive_label(sensitive:bool)(label:string) : string =
+    IF sensitive THEN label ELSE label + InsensitiveTag ENDIF
+
+  char_label(sensitive:bool)(c:char) : string =
+    sensitive_label(sensitive)(singlequote + c + singlequote)
 
   char_equal(sensitive:bool,c1:char)(c2:char) : bool =
     char_compare(c1,c2,sensitive) = 0
@@ -77,20 +93,28 @@ BEGIN
   Char(c:char) : (accept?) =
     Char_(c,TRUE)
 
+  Char(code:below[0x110000]) : (accept?) =
+    LET c = char(code) IN
+    Char(c)
+
   % Character (case insensitive)
   CHAR(c:char) : (accept?) =
     Char_(c,FALSE)
 
-  CONVERSION Char
+  char2accept(c:char) : MACRO (accept?) =
+    Char(c)
 
-  Space   : (accept?) = Char(char_space)
+  CONVERSION char2accept
 
-  Tab     : (accept?) = Char(char_tab)
+  Space : (accept?) = Char(char_space)
+  Tab   : (accept?) = Char(char_tab)
+  LF    : (accept?) = Char(char_newline)
+  CR    : (accept?) = Char(char_cr) 
 
-  NewLine : (accept?) = Char(char_newline)
+  NewLine : MACRO (accept?) = LF 
 
   % Any character
-  Any : (accept?) =
+  Anything : (accept?) =
     Accept(mk_guard(".",LAMBDA(xc:char):TRUE))
 
   % No character
@@ -105,28 +129,35 @@ BEGIN
   Printable : (accept?) =
     Accept(mk_guard("<P>",printable?))
 
+  onefromto_label(c1,c2:char) : string =
+    "[" + c1 + "-" + c2 + "]"
+    
   % Any character in a range
-  AnyFromTo(c1,c2:char) : (accept?) =
-    LET label1 = char_label(TRUE)(c1),
-        label2 = char_label(TRUE)(c2),
-	label = format("[~a-~a]",{| label1, label2 |}) IN
+  OneFromTo(c1,c2:char) : (accept?) =
+    LET	label = onefromto_label(c1,c2) IN
     Accept(mk_guard(label,LAMBDA(xc:char):code(c1) <= code(xc) <= code(c2)))
 
   ;-(c1,c2:char) : (accept?) =
-    AnyFromTo(c1,c2)
+    OneFromTo(c1,c2)
+
+  oneof_label(lc:list[char]): string =
+    for(0,length(lc)-1,"",LAMBDA(i:below(length(lc)),label:string):
+        label + nth(lc,i))
 
   % Any character in a list, with case sensitivity
-  AnyIn_(lc:list[char],sensitive:bool) : (accept?) =
-    LET label = format("[~{~a~}]",{| map(char_label(sensitive),lc) |}) IN
+  OneOf_(lc:list[char],sensitive:bool) : (accept?) =
+    LET label = sensitive_label(sensitive)("[" + oneof_label(lc) + "]") IN
       Accept(mk_guard(label,LAMBDA(xc:char):some(char_equal(sensitive,xc))(lc)))
 
   % Any character in a list (case sensitive)
-  AnyIn(lc:list[char]) : (accept?) =
-    AnyIn_(lc,TRUE)
+  OneOf(lc:list[char]) : (accept?) =
+    OneOf_(lc,TRUE)
+
+  CONVERSION OneOf
 
   % Any character in a list (case insensitive)
-  ANYIN(lc:list[char]) : (accept?) =
-    AnyIn_(lc,FALSE)
+  ONEOF(lc:list[char]) : (accept?) =
+    OneOf_(lc,FALSE)
 
   some_char_eq(str:string,pos:upto(length(str)),sensitive:bool)(c2:char)
     : RECURSIVE bool =
@@ -138,62 +169,59 @@ BEGIN
     ENDIF
     MEASURE length(str) - pos
 
+  onein_label(str:string): string =
+    for(0,length(str)-1,"",LAMBDA(i:below(length(str)),label:string):
+        label + get(str,i))
+
   % Any character in a string, with case sensitivity
-  AnyIn_(str:string,sensitive:bool) : (accept?) =
-    LET label = format("[~a]",str_label(sensitive)(str)) IN
+  OneIn_(str:string,sensitive:bool) : (accept?) =
+    LET label = sensitive_label(sensitive)("[" + onein_label(str) + "]") IN
       Accept(mk_guard(label,some_char_eq(str,0,sensitive)))
     
   % Any character in a string (case sensitive)
-  AnyIn(str:string) : (accept?) =
-    AnyIn_(str,TRUE)
+  OneIn(str:string) : (accept?) =
+    OneIn_(str,TRUE)
 
   % Any character in a string (case insensitive)
-  ANYIN(str:string) : (accept?) =
-    AnyIn_(str,FALSE)
+  ONEIN(str:string) : (accept?) =
+    OneIn_(str,FALSE)
 
   % Any character but those in a list, with case sensitivity
-  AnyBut_(lc:list[char],sensitive:bool) : (accept?) =
-    IF null?(lc) THEN Any
-    ELSE 
-      LET label = format("[^~{~a~}]",{| map(char_label(sensitive),lc) |}) IN
-        Accept(mk_guard(label,LAMBDA(xc:char):every(char_nequal(sensitive,xc))(lc)))
-    ENDIF
+  NoneOf_(lc:list[char],sensitive:bool) : (accept?) =
+    LET label = sensitive_label(sensitive)("[^" + oneof_label(lc) + "]") IN
+    Accept(mk_guard(label,LAMBDA(xc:char):every(char_nequal(sensitive,xc))(lc)))
 
   % Any character but those in a list (case sensitive)
-  AnyBut(lc:list[char]) : (accept?) =
-    AnyBut_(lc,TRUE)
-
-  % Any character but those in a list (case insensitive)
-  ANYBUT(lc:list[char]) : (accept?) =
-    AnyBut_(lc,FALSE)
+  NoneOf(lc:list[char]) : (accept?) =
+    NoneOf_(lc,TRUE)
 
   ;^(lc:list[char]) : (accept?) =
-    AnyBut(lc)
+    NoneOf(lc)
+
+  % Any character but those in a list (case insensitive)
+  NONEOF(lc:list[char]) : (accept?) =
+    NoneOf_(lc,FALSE)
+
+  ;^^(lc:list[char]) : (accept?) =
+    NONEOF(lc)
 
   % Any character but those in a string, with case sensitivity
-  AnyBut_(str:string,sensitive:bool) : (accept?) =
-    IF length(str) = 0 THEN
-      Any
-    ELSE 
-      LET label = format("[^~a]",str_label(sensitive)(str)) IN
-        Accept(mk_guard(label,LAMBDA(xc:char):every(char_nequal(sensitive,xc))(str)))
-    ENDIF
+  NoneIn_(str:string,sensitive:bool) : (accept?) =
+    LET label = sensitive_label(sensitive)("[^" + onein_label(str) + "]") IN
+    Accept(mk_guard(label,LAMBDA(xc:char):every(char_nequal(sensitive,xc))(str)))
     
   % Any character but those in a string (case sensitive)
-  AnyBut(str:string) : (accept?) =
-    AnyBut_(str,TRUE)
+  NoneIn(str:string) : (accept?) =
+    NoneIn_(str,TRUE)
 
   % Any character but those in a string (case insensitive)
-  ANYBUT(str:string) : (accept?) =
-    AnyBut_(str,FALSE)
-
-  ;^(str:string) : (accept?) =
-    AnyBut(str)
+  NONEIN(str:string) : (accept?) =
+    NoneIn_(str,FALSE)
 
   % Accept a quoted singled-line string, i.e., a string of characters delimited by
   % given first and last characters (matching is non-greedy and excludes new lines)
   QString(first,last:(accept?)) : Regex =
-    (: first, Star(NOT(last) AND NOT(NewLine)), last :)
+    first + **(NOT(last) AND NOT(NewLine)) + last
 
   SingleQuote : (accept?) =
     Char(get(singlequote,0))
@@ -211,7 +239,7 @@ BEGIN
 
   % Multi-line quoted string delimited by first and last
   MLQString(first,last:(accept?)) : Regex =
-    (: first, Star(NOT(last)), last :)
+    first + **(NOT(last)) + last
 
   % Accept given word
   Word_(str:string,sensitive:bool) : Regex =
@@ -221,6 +249,8 @@ BEGIN
   % Accept given Word (case sensitive)
   Word(str:string) : Regex =
     Word_(str,TRUE)
+
+  CONVERSION Word
 
   % Accept given Word (case insensitive)
   WORD(str:string) : Regex =
@@ -234,39 +264,44 @@ BEGIN
 
   % Non-zero Natural Number
   NzNatural : Regex =
-    Seq(NzDigit,Star(Digit))
+    NzDigit + **(Digit)
 
   % Natural Number, without leading zeros
   Natural : Regex =
-    Union('0',NzNatural)
+    '0' / NzNatural
 
   % Natural Number, with leading zeros
   ZNatural : Regex =
-    Plus(Digit)
+    ++(Digit)
 
   % Integer, with signed zero but no leading zeros
   Integer : Regex =
-    Seq(Optional('-'),Natural)
+    [|'-'|] + Natural
 
-  % Singed Integer, with positive and negative signs but no leading zeros
+  % Signed Integer, with positive and negative signs but no leading zeros
   SignedInteger : Regex =
-    Seq(Optional(AnyIn("-+")),Natural)
+    [| OneIn("-+") |] + Natural
+
+  % Signed Integer, with positive and negative signs and possible leading zeros
+  SignedZInteger : Regex =
+    [| OneIn("-+") |] + ZNatural
 
   % Decimal, including integers and trainling zeros after the period
   Decimal : Regex =
-    Seq(Integer,Optional(Seq('.',ZNatural)))
+    Integer + [| '.' + ZNatural |]
 
   % Decimal, with positive and negative signs
   SignedDecimal : Regex =
-    Seq(SignedInteger,Optional(Seq('.',ZNatural)))
+    SignedInteger + [| '.' + ZNatural |]
 
   % Floating point numbers, including positive sign and exponents
   Float : Regex =
-    Seq(SignedDecimal,Optional((: CHAR('e'), SignedInteger :)))
+    SignedDecimal + [| CHAR('e') + SignedInteger |]
 
-  WhiteSpace : (accept?) = AnyIn((: char_space,char_tab,char_newline :))
+  WhiteSpace : (accept?) = Space OR Tab OR LF or CR
 
-  WhiteSpaces: Regex = Plus(WhiteSpace)
+  % One or more WhiteSpace
+  WhiteSpaces: Regex = ++(WhiteSpace)
 
   Alpha : (accept?) = ('a'-'z') OR ('A'-'Z')
 

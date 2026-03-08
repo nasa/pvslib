@@ -22,7 +22,7 @@ BEGIN
 
     IMPORTING PVSioParser@pvsio_lex[Token]
 
-    JsonParseException : SimpleException
+    JsonParserException : Exception[ParserMssg] = make_exception(ParserException)
 
     token_to_string (t : Token) : string =
         CASES t OF
@@ -40,7 +40,7 @@ BEGIN
         ENDCASES
 
     % Performs lexical analysis to seperate a json string into a series of tokens.
-    lex_json (s : string) : list[Token] =
+    lex_json (s : string) : list[LexerToken] =
         LET lexer = EmptyLexer ++
 	    	    add_token(Char('{'),Lbrace) ++
 		    add_token(Char('}'),Rbrace) ++
@@ -68,70 +68,81 @@ BEGIN
         JNull : jnull?
     END JValue
 
-    ListTokenLt(l:list[Token]) : TYPE = {nl:list[Token] | cons?(nl) IMPLIES length(nl) < length(l)}
+    ListLexerTokenLt(l:list[LexerToken]) : TYPE = {nl:list[LexerToken] | cons?(nl) IMPLIES length(nl) < length(l)}
 
     % Parse a Json object of the form ",..., keyn:valn }". Already parsed a prefix of the form "{ key1 : valn ..."
-    parse_json_dict(parse_json_f:[l:list[Token]->[JValue,ListTokenLt(l)]])
-                   (ll:list[Token],acc:list[[string,JValue]]) :
-      RECURSIVE [JValue,ListTokenLt(ll)] =
+    parse_json_dict(parse_json_f:[l:list[LexerToken]->[JValue,ListLexerTokenLt(l)]])
+                   (ll:list[LexerToken],acc:list[[string,JValue]]) :
+      RECURSIVE [JValue,ListLexerTokenLt(ll)] =
         IF cons?(ll) THEN
-	  LET tokenstr = token_to_string(car(ll)) IN
-	  IF rbrace?(car(ll)) THEN  % Closing "}"
+	  LET token    = car(ll)`token,
+	      lc       = car(ll)`lincol,
+	      tokenstr = token_to_string(token) IN
+	  IF rbrace?(token) THEN  % Closing "}"
 	    (JObject(acc),cdr(ll))
-	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
-            LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF IN
+	  ELSIF comma?(token) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
+            LET restl = IF comma?(token) THEN cdr(ll) ELSE ll ENDIF IN
 	    IF length(restl) > 2 AND
-               str?(nth(restl,0)) AND % Next token is <key>
-	       colon?(nth(restl,1)) THEN % Next token is ":"
+               str?(nth(restl,0)`token) AND % Next token is <key>
+	       colon?(nth(restl,1)`token) THEN % Next token is ":"
 	      LET (jv,rest) = parse_json_f(cdr(cdr(restl))) IN
 	      IF cons?(rest) THEN 
-                 parse_json_dict(parse_json_f)(rest,append(acc,(: (str(nth(restl,0)),jv) :)))
+                 parse_json_dict(parse_json_f)(rest,append(acc,(: (str(nth(restl,0)`token),jv) :)))
 	      ELSE
-	         throw(JsonParseException,format("Parsing dictionary. Expecting '}' or ~a instead of '~a'",
-	                                         {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}))
+	         LET mssg : string = format("Parsing dictionary. Expecting '}' or ~a instead of '~a'",
+	                                    {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}) IN
+	         throw(JsonParserException,(mssg,lc))
 	      ENDIF
 	    ELSE
-              throw(JsonParseException,format("Parsing dictionary. Expecting <key> : <val> at '~a'",tokenstr))
+	      LET mssg : string = format("Parsing dictionary. Expecting <key> : <val> at '~a'",tokenstr) IN
+              throw(JsonParserException,(mssg,lc))
 	    ENDIF
 	  ELSE
-	    throw(JsonParseException,format("Parsing dictionary. Expecting '}' or ~a instead of '~a'",
-	                                    {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}))
+	     LET mssg : string = format("Parsing dictionary. Expecting '}' or ~a instead of '~a'",
+	                                 {| IF null?(acc) THEN "<key> : <val>" ELSE "','" ENDIF, tokenstr |}) IN
+	     throw(JsonParserException,(mssg,lc))
 	  ENDIF
         ELSE
-	  throw(JsonParseException,"Parsing dictionary. Unexpected end of tokens")
+	  throw(JsonParserException,("Parsing dictionary. Unexpected end of tokens",(1,1)))
 	ENDIF
       MEASURE length(ll)
 
     % Parse a Json object of the form ",..., valn ]". Already parsed a prefix of the form "[ valn ..."
-    parse_json_array(parse_json_f:[l:list[Token]->[JValue,ListTokenLt(l)]])(ll:list[Token],acc:list[JValue]) :
-      RECURSIVE [JValue,ListTokenLt(ll)] =
+    parse_json_array(parse_json_f:[l:list[LexerToken]->[JValue,ListLexerTokenLt(l)]])(ll:list[LexerToken],acc:list[JValue]) :
+      RECURSIVE [JValue,ListLexerTokenLt(ll)] =
         IF cons?(ll) THEN
-	  LET tokenstr = token_to_string(car(ll)) IN
-	  IF rbrack?(car(ll)) THEN  % Closing "]"
+	  LET token    = car(ll)`token,
+	      lc       = car(ll)`lincol,
+	      tokenstr = token_to_string(token) IN
+	  IF rbrack?(token) THEN  % Closing "]"
 	    (JArray(acc),cdr(ll))
-	  ELSIF comma?(nth(ll,0)) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
-            LET restl = IF comma?(nth(ll,0)) THEN cdr(ll) ELSE ll ENDIF,
+	  ELSIF comma?(token) = cons?(acc) THEN % first token is a comma IFF acc is non-emtpy
+            LET restl = IF comma?(token) THEN cdr(ll) ELSE ll ENDIF,
 	        (jv,rest) = parse_json_f(restl) IN
               IF cons?(rest) THEN
                 parse_json_array(parse_json_f)(rest,append(acc,(: jv :)))
               ELSE
- 	        throw(JsonParseException,format("Parsing array. Expecting ']' or ~a instead of '~a'",
-	                                 {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}))
+	        LET mssg : string = format("Parsing array. Expecting ']' or ~a instead of '~a'",
+	                                   {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}) IN
+	        throw(JsonParserException,(mssg,lc))
 	      ENDIF
 	  ELSE
-	    throw(JsonParseException,format("Parsing array. Expecting ']' or ~a instead of '~a'",
-	                                    {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}))
+	    LET mssg : string = format("Parsing array. Expecting ']' or ~a instead of '~a'",
+	                               {| IF null?(acc) THEN "<val>" ELSE "','" ENDIF, tokenstr |}) IN
+	    throw(JsonParserException,(mssg,lc))
 	  ENDIF
         ELSE
-	  throw(JsonParseException,"Parsing array. Unexpected end of tokens")
+	  throw(JsonParserException,("Parsing array. Unexpected end of tokens",(1,1)))
 	ENDIF
       MEASURE length(ll)
 
-    parse_json(ll : list[Token]) : RECURSIVE [JValue, ListTokenLt(ll)] =
+    parse_json(ll : list[LexerToken]) : RECURSIVE [JValue, ListLexerTokenLt(ll)] =
       CASES ll OF
         cons(top, tail):
-	  LET tokenstr = token_to_string(top) IN
-	  CASES top OF
+	  LET token = top`token,
+	      lc    = top`lincol,
+	      tokenstr = token_to_string(token) IN
+	  CASES token OF
 	    Lbrace: parse_json_dict(parse_json)(cdr(ll),null),
 	    Lbrack: parse_json_array(parse_json)(cdr(ll),null),
             Str(s): (JStr(s), tail),
@@ -140,13 +151,14 @@ BEGIN
             F: (JBool(false), tail),
             N: (JNull, tail)
             ELSE
-	      throw(JsonParseException,format("Unexpected token '~a'",tokenstr))
+	      LET mssg : string = format("Unexpected token '~a'",tokenstr) IN
+	      throw(JsonParserException,(mssg,lc))
 	  ENDCASES,
-        null: throw(JsonParseException,"Unexpected end of tokens")
+        null: throw(JsonParserException,("Unexpected end of tokens",(1,1)))
       ENDCASES
       MEASURE length(ll)
 
-    parse_jdoc(ll : list[Token],acc:list[JValue]) : RECURSIVE list[JValue] =
+    parse_jdoc(ll : list[LexerToken],acc:list[JValue]) : RECURSIVE list[JValue] =
       IF null?(ll) THEN acc
       ELSE
        LET (v,rem) = parse_json(ll) IN
@@ -314,6 +326,5 @@ BEGIN
       ENDIF
 
     ;/(jv:JValue,test:JTest) : MACRO (test) = jtest(jv,test)
-
 
 END pvsio_json

@@ -1,0 +1,81 @@
+peg_examples : THEORY
+BEGIN
+
+  IMPORTING PVSioPEG@pvsio_peg[real]
+
+  SingleLineComment : CompiledRegex =
+    Word("//") + **(NOT(NewLine))
+
+  MultiLineComment : CompiledRegex =
+    set_greediness(FALSE)(Word("/*") + **(Anything) + Word("*/"))
+
+  % Make a real number from next token string
+  mk_number : ASTBuilder =
+    ast_new(str2real)
+
+  mk_add(r1,r2:real) : ASTOutput =
+    r1+r2
+
+  mk_sub(r1,r2:real) : ASTOutput =
+    r1-r2
+
+  mk_mult(r1,r2:real) : ASTOutput =
+    r1*r2
+
+  mk_div(r1,r2:real) : ASTOutput =
+    IF r2 = 0 THEN
+      Exit("Division by zero")
+    ELSE
+      r1/r2
+    ENDIF
+
+  % Make a real number from Expr
+  mk_expr : ASTBuilder =
+    ast_this(0) +
+    ast_try(ast_literal("-"),
+            ast_make(mk_sub), % Subtraction of two real numbers
+            ast_make(mk_add)) % Addition of two real numbers
+
+  % Make a real number from Sum
+  mk_sum : ASTBuilder =
+    ast_self +
+    ast_repeat(
+      ast_try(ast_literal("+"),
+              ast_make(mk_add),                     % Addition of two real numbers
+              ast_literal("-") + ast_make(mk_sub))) % Subtraction of two real numbers
+              
+  % Make a real number from Product
+  mk_product : ASTBuilder =
+    ast_self +
+    ast_repeat(
+      ast_try(ast_literal("*"),
+              ast_make(mk_mult),              % Multiplication of two real numbers
+              ast_literal("/") +
+              ast_make(mk_div)))              % Division of two real numbers
+                 
+  ArithPeg : PEG =
+    new_stdpeg("Expr")
+     <| ( "Expr"      <<= ([| "Neg" |] + "Sum") o mk_expr )
+     <| ( "Neg"       <<= PegToken("-") + PegNot(PegTerminal(NzDigit,SilentLabel("NzDigit"))) )
+     <| ( "Sum"       <<= ("Product" + **((PegToken("+") / PegToken("-")) + "Product")) o mk_sum )
+     <| ( "Product"   <<= ("Value" + **((PegToken("/") / PegToken("*")) + "Value")) o mk_product )
+     <| ( "Value"     <<= (PegToken(Float,"Number") o mk_number) /
+                          (PegLiteral("(") + "Expr" + PegLiteral(")")) )
+     <| peg_skip("Comment")
+     <| ( "Comment"   <<= PegTerminal(SingleLineComment,SilentLabel("SingleLineComment")) /
+                          PegTerminal(MultiLineComment,SilentLabel("MultiLineComment")) )
+
+  test1 : void =
+    print(ArithPeg)
+
+  test2 : PegStatus =
+    parse(ArithPeg,"-10 - (4300 * //
+2/4)")
+
+  test3 : PegStatus =
+    parse(ArithPeg,"1/(3-3)")
+
+  test4 : PegStatus =
+    parse(ArithPeg,"234*4-(abc")
+
+END peg_examples
