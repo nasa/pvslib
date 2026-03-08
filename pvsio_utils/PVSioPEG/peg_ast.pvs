@@ -126,19 +126,46 @@ BEGIN
   ast_skip : ASTBuilder =
     ast_build(bld_skip)
 
-  bld_consume(guard:PRED[Item])(opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
-    IF has_next?(ast_deck) AND guard(get_next(ast_deck)) THEN
+  bld_consume(P:PRED[Item])(opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
+    IF has_next?(ast_deck) AND P(get_next(ast_deck)) THEN
       (OptAST(opt_ast),go_next(ast_deck))
     ELSE
       (OptAST(opt_ast),ast_deck)
     ENDIF
 
-  ast_consume(guard:PRED[Item]) : ASTBuilder =
-    ast_build(bld_consume(guard))
+  ast_consume(P:PRED[Item]) : ASTBuilder =
+    ast_build(bld_consume(P))
 
   ast_consume : ASTBuilder =
     ast_consume(LAMBDA(item:Item):TRUE)
     
+  ast_consume(P:PRED[ASTItem]) : ASTBuilder =
+    ast_consume(LAMBDA(item:Item):
+      ast_item?(item) AND P(item))
+
+   ast_consume(P:PRED[AST]) : ASTBuilder =
+    ast_consume(LAMBDA(ast_item:ASTItem):P(get_ast(ast_item)))
+
+  ast_consume(P:PRED[TokenItem]) : ASTBuilder =
+    ast_consume(LAMBDA(item:Item):
+      token_item?(item) AND P(item))
+
+  % Consume next item if it is a TokenItem and satisfies predicate P
+  % Do nothing otherwise
+  ast_token(P:PRED[string]) : ASTBuilder =
+    ast_consume(LAMBDA(token_item:TokenItem):P(get_token(token_item)))
+
+  % Consume next item if it is a TokenItem and its token string is equal to literal
+  % Do nothing otherwise
+  ast_literal(literal:string) : ASTBuilder =
+    ast_token(LAMBDA(str:string): str = literal)
+
+  % Consume next item if it is a TokenItem and its token string is equal to literal
+  % (modulo case insensitiveness)
+  % Do nothing otherwise
+  ast_LITERAL(literal:string) : ASTBuilder =
+    ast_token(LAMBDA(str:string): strcompare(str,literal,FALSE) = 0)
+
   ;+(bld1,bld2:ASTBuilder) : ASTBuilder =
     ast_seq(bld1,bld2)
 
@@ -168,45 +195,6 @@ BEGIN
   ast_exit(mssg:string) : ASTBuilder =
     ast_build(bld_exit(mssg))
 
-  % Return TRUE if item is a TokenItem and its string token satisfies P.
-  % Return FALSE otherwise
-  ast_token?(P:PRED[string])(item:Item) : bool =
-    token_item?(item) AND P(get_token(item))
-
-  % Return TRUE if item is a TokenItem and its token string is equal to literal
-  % Return FALSE otherwise
-  ast_literal?(literal:string) : PRED[Item] =
-    ast_token?(LAMBDA(str:string): str = literal)
-
-  % Return TRUE if item is a TokenItem and its token string is equal to literal
-  % (modulo case insensitiveness)
-  % Return FALSE otherwise
-  ast_LITERAL?(literal:string) : PRED[Item] =
-    ast_token?(LAMBDA(str:string): strcompare(str,literal,FALSE) = 0)
-
-  % Return TRUE if item is an ASTItem and its AST satisfies P.
-  % Return FALSE otherwise
-  ast?(P:PRED[AST])(item:Item) : bool =
-    ast_item?(item) AND P(get_ast(item))
-
-  CONVERSION ast?
-
-  % Consume next item if it is a TokenItem and satisfies predicate P
-  % Do nothing otherwise
-  ast_token(P:PRED[string]) : ASTBuilder =
-    ast_consume(ast_token?(P))
-
-  % Consume next item if it is a TokenItem and its token string is equal to literal
-  % Do nothing otherwise
-  ast_literal(literal:string) : ASTBuilder =
-    ast_token(LAMBDA(str:string): str = literal)
-
-  % Consume next item if it is a TokenItem and its token string is equal to literal
-  % (modulo case insensitiveness)
-  % Do nothing otherwise
-  ast_LITERAL(literal:string) : ASTBuilder =
-    ast_token(LAMBDA(str:string): strcompare(str,literal,FALSE) = 0)
-
   bld_new(mk:[Item->ASTOutput])
          (opt_ast:Maybe[AST],ast_deck:ASTDeck) : [ASTOutput,ASTDeck] =
     IF has_next?(ast_deck) THEN
@@ -225,6 +213,11 @@ BEGIN
   % Do nothing if next item is not an ASTItem
   ast_new(mk:[ASTItem->ASTOutput]) : ASTBuilder =
     ast_new(LAMBDA(item:Item) : IF ast_item?(item) THEN mk(item) ELSE NoAST ENDIF)
+
+  % Ignore accumulated AST and make ASTOutput with next AST from next AST item
+  % Do nothing if next item is not an ASTItem
+  ast_new(mk:[AST->ASTOutput]) : ASTBuilder =
+    ast_new(LAMBDA(ast_item:ASTItem) : mk(get_ast(ast_item)))
 
   % Ignore accumulated AST and make ASTOutput with next TokenItem
   % Do nothing if next item is not ASTItem
