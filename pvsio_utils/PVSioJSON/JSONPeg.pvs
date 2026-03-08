@@ -1,0 +1,75 @@
+JSONPeg : THEORY
+BEGIN
+
+  % JSON values can be represented as follows.
+  JValue : DATATYPE
+  BEGIN
+    JObject(jobject : list[[string, JValue]]) : jobject?
+    JArray(jarray : list[JValue]) : jarray?
+    JNum(jnum : real) : jnum?
+    JStr(jstr : string) : jstr?
+    JBool(jbool : bool) : jbool?
+    JNull : jnull?
+  END JValue
+
+  IMPORTING PVSioPEG@pvsio_peg[JValue]
+
+  mk_jbool : ASTBuilder =
+    ast_try(ast_literal("true"),
+            ast_this(JBool(TRUE)),
+	    ast_this(JBool(FALSE)))
+
+  str2jnum(str:string) : JValue =
+    JNum(str2real(str))
+
+  mk_str : ASTBuilder =
+    ast_new(LAMBDA(str:string):
+      IF length(str) >= 2 THEN
+        JStr(gen_strings.substr(str,1,length(str)-1))
+      ELSE
+        NoAST
+      ENDIF)
+
+  add_jvalue(jarr,jval:JValue) : ASTOutput =
+   IF jarray?(jarr) THEN
+     JArray(snoc(jarray(jarr),jval))
+   ELSE
+      NoAST
+   ENDIF
+
+  mk_jarray : ASTBuilder =
+    ast_this(JArray(null)) +
+    ast_repeat(ast_make(add_jvalue))
+
+  add_jobj(key:string)(jobj,jval:JValue) : ASTOutput =
+   IF length(key) >= 2 AND jobject?(jobj) THEN
+     JObject(snoc(jobject(jobj),(gen_strings.substr(key,1,length(key)-1),jval)))
+   ELSE
+      NoAST
+   ENDIF
+
+  mk_jobject : ASTBuilder =
+    ast_this(JObject(null)) +
+    ast_repeat(
+      ast_consume + % Don't process the field name yet
+      ast_peek(-1,  % Peek the field name now and use it to build the next (key,value) pair
+               LAMBDA (key:string):
+               ast_make(add_jobj(key))))
+
+  JSONPeg : PEG =
+    new_stdpeg("JDoc")
+      <| ( "JDoc"    <<= ++("JValue") )
+      <| ( "JValue"  <<= "JNum" / "JBool" / "JStr" / "JNull" / "JArray" / "JObject" )
+      <| ( "JNum"    <<= PegToken(Float,"Number") o ast_new(str2jnum) )
+      <| ( "JBool"   <<= (PegToken("true") / PegToken("false")) o mk_jbool )
+      <| ( "JStr"    <<= PegToken(DQString,"String") o mk_str )
+      <| ( "JNull"   <<= PegLiteral("null") o ast_this(JNull) )
+      <| ( "JArray"  <<= PegLiteral("[") +
+                         ([| "JValue" + **(PegLiteral(",") + "JValue") |]) o mk_jarray +
+			 PegLiteral("]") )
+      <| ( "JObject" <<= PegLiteral("{") +
+                         ([| "JField" + **(PegLiteral(",") + "JField") |]) o mk_jobject +
+			 PegLiteral("}") )
+      <| ( "JField"  <<= PegToken(DQString,"Key") + PegLiteral(":") + "JValue" )
+
+END JSONPeg
