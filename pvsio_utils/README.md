@@ -5,7 +5,8 @@ PVS specifications. It provides the following utilities.
 
 | Library  | Description |
 |---|---|
-| [PVSioParser](./PVSioParser/README.md) | A set of utilities for writing simple parsers in PVSio |
+| [PVSioRegex](./PVSioRegex/README.md) | An efficient implemenation of regular expressions |
+| [PVSioPEG](./PVSioPEG/README.md) | A practical implemenation of Parsing Expression Grammars (PEG) |
 | [PVSioIndent](./PVSioIndent/README.md) | A set of utilities for generating indented text |
 | [PVSioChecker](./PVSioChecker/README.md) | A PVSio library for differential testing |
 | [PVSioCSV](./PVSioCSV/README.md) | A PVSio library for reading and writing Comma Separated Value files |

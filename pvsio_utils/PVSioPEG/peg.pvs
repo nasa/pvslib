@@ -34,8 +34,7 @@ BEGIN
     state WITH [ `scaffold := cdr(state`scaffold) ]
 
   % Build a new item and add it to the end of AST tier
-  build_item(astf:MkASTFun,start_pos:Position)
-          (state:PegState | length(state`scaffold) > 0) :
+  build_item(astf:MkASTFun)(state:PegState | length(state`scaffold) > 0) :
     {next_state : PegState | NOT aborted?(next_state`status) IMPLIES
                              length(next_state`scaffold) = length(state`scaffold)-1} =
     LET ast_out = astf(state) IN
@@ -48,8 +47,14 @@ BEGIN
     ELSIF none?(get_opt_ast(ast_out)) THEN
       close_ast_tier(state)
     ELSE
-      LET item = ast_item(val(get_opt_ast(ast_out)),
-                          mk_loc(current_scope(state),start_pos,state`current_pos)) IN
+      LET working_tier = working_tier(state),
+          (start_pos,end_pos) = IF length(working_tier) = 0 THEN
+	                          (state`current_pos,state`current_pos)
+				ELSE
+				  (get_loc(working_tier(0))`start_pos,
+				   get_loc(working_tier(length(working_tier)-1))`end_pos)
+				ENDIF,
+           item = ASTItem(val(get_opt_ast(ast_out)),mk_loc(current_scope(state),start_pos,end_pos)) IN
       add_item(item)(close_ast_tier(state))
     ENDIF
 
@@ -91,7 +96,7 @@ BEGIN
 	]
       ELSE
         state WITH [
-          `failed_items := cons(failed_item,state`failed_items)
+          `failed_items := snoc(state`failed_items,failed_item)
         ]
       ENDIF
     ELSE
@@ -153,15 +158,14 @@ BEGIN
         IF lookup THEN
 	  peg_parse(peg,e,str,lookup)(state)
 	ELSE
-          LET start_pos = state`current_pos,
-	      state1    = new_ast_tier(state),
+          LET state1    = new_ast_tier(state),
 	      state2    = peg_parse(peg,e,str,lookup)(state1) IN
 	  IF aborted?(state2`status) THEN
 	    state2
 	  ELSIF fail?(state2`status) THEN
 	    close_ast_tier(state2)
 	  ELSE
-	    build_item(astf,start_pos)(state2)
+	    build_item(astf)(state2)
 	  ENDIF
 	ENDIF,
       PegTerminal(rgx,label,build) :
@@ -177,7 +181,7 @@ BEGIN
 	  ELSE
 	    LET token      = gen_strings.substr(str,state`current_pos`npos,end_pos`npos),
 	        scope      = current_scope(state),
-	        item       = token_item(label,token,mk_loc(scope,state`current_pos,end_pos)),
+	        item       = TokenItem(label,token,mk_loc(scope,state`current_pos,end_pos)),
 	        next_state = state WITH [
 			       `last_token  := item,
 			       `current_pos := end_pos

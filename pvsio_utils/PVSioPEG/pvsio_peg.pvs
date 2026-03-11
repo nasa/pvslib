@@ -1,7 +1,8 @@
-pvsio_peg[AST:TYPE] : THEORY
+pvsio_peg[AST:TYPE+] : THEORY
 BEGIN
 
   IMPORTING  PVSioRegex@pvsio_regex,
+             pvsio_utils@pvsio_char,
              peg_ast[AST]
 
   terminal_label(str:string) : string =
@@ -143,5 +144,111 @@ BEGIN
   % Print AST scaffold using a default formatter for AST
   PegScaffold : PEGex =
     PegPrint(LAMBDA(state:PegState):scaffold2str(state`scaffold))
+
+  % Read a file into a string
+  textfile_to_string(filename:string) : string =
+    LET s = ref[string]("") IN
+      prog(with_openin_file(filename, LAMBDA(f:IStream):
+           while(NOT eof?(f),
+             set(s, format("~a~a~%",{| val(s), fread_line(f) |})))),
+	   val(s))
+
+  MAXFOUNDSTR : Global[posnat] = ref[posnat](15)
+
+  found_literal(str:string) : string =
+    LET split_at = floor(2*val(MAXFOUNDSTR)/5),
+        first_ln = charfind_first(char_newline,str),
+        found    =
+	  IF first_ln < length(str) THEN
+            LET pref    = IF first_ln >= val(MAXFOUNDSTR) THEN
+                            gen_strings.substr(str,0,split_at)
+		          ELSE
+		            gen_strings.substr(str,0,first_ln)
+		          ENDIF,
+		last_ln = charfind_last(char_newline,str),
+                posf    = IF length(str) - last_ln >= val(MAXFOUNDSTR) THEN
+	                    gen_strings.substr(str,length(str)-split_at,length(str))
+		          ELSE
+		            gen_strings.substr(str,last_ln,length(str))
+		          ENDIF IN
+            pref+" … "+posf
+          ELSIF length(str) >= MAXFOUNDSTR THEN
+            LET pref = gen_strings.substr(str,0,split_at),
+                posf = gen_strings.substr(str,length(str)-split_at,length(str)) IN
+              pref+" … "+posf
+          ELSE
+            str
+          ENDIF IN
+    literal_label(found)
+
+  found_string(str:string)(msg:string,loc:Location) : string =
+    LET found =
+      IF loc`start_pos`npos < loc`end_pos`npos <= length(str) THEN
+        found_literal(gen_strings.substr(str,loc`start_pos`npos,loc`end_pos`npos))
+      ELSE ""
+      ENDIF IN
+    format("~a~@[, found ~a~]",{| msg, {| found |} |})
+
+  PegError : TYPE = [string,Position]
+
+  PEGException : Exception[PegError] =
+    make_exception(LAMBDA(msg:string,pos:Position):
+      format("~a, at line ~a, column ~a.", {| msg,pos`nlin+1,pos`ncol |}))
+
+  failed_item2found_string(str:string)(failed_item:FailedItem) : string =
+    found_string(str)(to_str(expected(failed_item)),location(failed_item))
+
+  The_AST : AST
+
+  % Parse from a string and return a list of ASTs.
+  % Throw exeption if parse error.
+  % If strict is set to TRUE, throws an exception if parse succeeds
+  % but list of ASTs is empty
+  parse_string(G:PEG,str:string,strict:bool) :
+    {l : list[AST] | strict IMPLIES cons?(l) } =
+    LET state  : PegState  = peg_parse(peg(G),start_rule(G),str),
+        status : PegStatus = state`status IN
+    IF success?(status) THEN
+      IF strict AND null?(get_asts(status)) THEN
+        throw(PEGException,("AST wasn't built",state`current_pos))
+      ELSE
+        get_asts(status)
+      ENDIF
+    ELSIF fail?(status) THEN
+      LET failed_items = get_failed_items(status) IN
+        IF null?(failed_items) THEN
+	   throw(PEGException,("Parse error",state`current_pos))
+	ELSE
+	  LET loc = location(car(failed_items)),
+              l   = map(failed_item2found_string(str))(failed_items),
+	      lor = IF length(l) > 1 THEN snoc(rdc(l),format("or ~a",last(l))) ELSE l ENDIF,
+	      msg = format("Expecting ~{~a~^, ~}",{| lor |}) IN
+          throw(PEGException,(msg,loc`start_pos))
+	ENDIF
+    ELSE
+      LET loc = get_loc(status) IN
+      throw(PEGException,(found_string(str)(get_msg(status),loc),loc`start_pos))
+    ENDIF
+
+  % Parse from a string and return a list of ASTs.
+  % Throw parse error.
+  % May return an empty list of AST, even when parse succeeds.
+  parse_string(G:PEG,str:string) : list[AST] =
+    parse_string(G,str,FALSE)
+
+  % Parse from a string and return a list of ASTs.
+  % Throw exeption if file doesn't exit or parse error.
+  % If strict is set to TRUE, throws an exception if parse succeeds
+  % but list of ASTs is empty
+  parse_file(G:PEG,filename:string,strict:bool) :
+    {l : list[AST] | strict IMPLIES cons?(l) } =
+    LET str : string = textfile_to_string(filename) IN
+      parse_string(G,str,strict)
+
+  % Parse from a file and return a list of ASTs.
+  % Throw exeption if file doesn't exit or parse error.
+  % May return an empty list of AST, even when parse succeeds.
+  parse_file(G:PEG,filename:string) : list[AST] =
+    parse_file(G,filename,FALSE)
 
 END pvsio_peg
