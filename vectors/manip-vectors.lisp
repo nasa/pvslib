@@ -78,7 +78,7 @@ scalar product:
   (and (typep vtype pvs-type-funtype)
        (subtype-of? (range vtype) *real*)
        (every #'(lambda (p ptype) (subtype-of? (type p) ptype))
-	      (free-parameters (domain vtype))
+	      (free-params (domain vtype))
 	      vector-param-types)))
 
 (defclass pvs-type-vectn (pvs-type-vector)
@@ -109,7 +109,7 @@ Invoke (help manip-vectors) to see full documentation.")
 
 (defun vector-module-qualifier (expr-type)
   (let ((param-types (mapcar #'(lambda (p) (id p))
-			     (free-parameters expr-type)))
+			     (free-params expr-type)))
 	(print-type (or (print-type expr-type)
 			(and (typep expr-type 'funtype)
 			     (print-type (domain expr-type))))))
