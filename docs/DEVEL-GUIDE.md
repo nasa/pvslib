@@ -52,9 +52,9 @@ Typical abbreviations include:
 | suffix   | meaning  |
 | --- | --- |
 |`_gt_0` | function gt 0: ` ... IMPLIES f(x) > 0` |
-|`_ge_0` | function gt 0: ` ... IMPLIES f(x) >= 0` |
+|`_ge_0` | function ge 0: ` ... IMPLIES f(x) >= 0` |
 |`_lt_0` | function lt 0: ` ... IMPLIES f(x) < 0` |
-|`_le_0` | function lt 0: ` ... IMPLIES f(x) <= 0` |
+|`_le_0` | function le 0: ` ... IMPLIES f(x) <= 0` |
 
 ### Types and Constants
 
@@ -148,7 +148,7 @@ BEGIN
 END top
 ```
 
-Finally, make sure that all formulas in you library are proven. Use,
+Finally, make sure that all formulas in your library are proven. Use,
 for example, `proveit MyLibrary` from the parent directory of
 `MyLibrary` and double check that all formulas are reported as proven.
 

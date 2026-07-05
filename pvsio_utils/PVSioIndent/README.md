@@ -4,8 +4,8 @@ This library provides functionalities to generate indented text.
 
 ## `pvsio_ident`
 
-An indented text is represented by a the type `IndentedBlock`, which is defined as a list of `IndentedString`s. Each
-indented string is composed by an indention level and a string. An indented block can be built using the following operations:
+An indented text is represented by the type `IndentedBlock`, which is defined as a list of `IndentedString`s. Each
+indented string is composed by an indentation level and a string. An indented block can be built using the following operations:
 
 * `empty_block` represents an empty block.
 * `istring(str)` builds a block with one string `str`.

@@ -1,7 +1,7 @@
 # Multivariate Polynomials
 
 This library contains a formalization of multivariate polynomials
-and semi-algebriac sets. For full descriptioon see: "Formal Verification of the  Interaction Between Semi-Algebraic Sets and Real Analytic Functions." 
+and semi-algebraic sets. For full description see: "Formal Verification of the  Interaction Between Semi-Algebraic Sets and Real Analytic Functions." 
 
 ## External Dependencies
 

@@ -5,7 +5,7 @@ The linear system that results from this relationship is in fact invertible and 
 This computation is used to define a computable function that calculates whether any system of univariate polynomials is satisfiable. 
 This library includes a formalization of Tarski's Theorem, as well as a decision procedure that determines the satisfiability of a system of univariate polynomial relations over the real line. 
 It is formally verified in PVS that the decision procedure is sound and complete. 
-This result is a the basis of the proof-producing strategy `tarski` for reasoning about systems of univariate polynomial relations on the real line. 
+This result is the basis of the proof-producing strategy `tarski` for reasoning about systems of univariate polynomial relations on the real line. 
 The soundness of the strategy depends solely on the internal logic of PVS rather than on an external oracle.
 
 ## Highlights

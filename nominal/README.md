@@ -50,7 +50,7 @@ obtained a verified nominal AC-equality checker as a byproduct.
 * [Daniele Nantes-Sobrinho](https://www.mat.unb.br/dnantes/), University of Brasília, Brazil
 * Washington Luis Ribeiro de Carvalho Segundo, University of Brasília, Brazil
 
-### Mantainer
+### Maintainer
 * [Gabriel Ferreira Silva](https://gabriel951.github.io/)
 
 ## Dependencies

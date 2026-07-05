@@ -1,7 +1,7 @@
 # Contributing to NASALib
 
 NASALib is a collective effort by the PVS community and we are happy to receive new contributions.
-An acceptable contribution does not have any restriction in size, it can add a few theorems to an existing library or add a collection of new libraries.
+An acceptable contribution does not have any restrictions in size, it can add a few theorems to an existing library or add a collection of new libraries.
 What defines a separated library is not always clear, but a necessary condition is that all the theories included in the library should be related to the same conceptual topic.
 More importantly, the contributions should be considered fundamental mathematics as it appears in text books and publicly available sources. 
 Please note that NASALib is a public repository. Do not contribute copyrighted developments or developments that are restricted for public distribution.
@@ -14,7 +14,7 @@ If you have any question or doubt, please contact [the maintainers](README.md#ma
 Please contact [us](README.md#maintainers) before submitting any contribution. 
 Unexpected contributions will be considered SPAM and desk rejected. 
 
-When preparing you contributions, please make sure it adheres to the following guidelines.
+When preparing your contributions, please make sure it adheres to the following guidelines.
 
 ## Naming Convention
 
@@ -36,10 +36,10 @@ contribution. The name of that directory is used as the name of the library.
 For library names, we prefer lower case except for acronyms, e.g., CCG, and proper names, e.g., Bernstein. Note that valid symbols in PVS name literals are different  from those of your operating system, e.g., the dash symbol '-' is not a valid symbol in PVS's name literals so it cannot be used in library or theory names. 
 We reserve the right to change the name of the library or, even, the name of theories, for consistency with other theories.
 
-Append the the name of the contributed libraries at the bottom of the file `nasalib.all`.
+Append the name of the contributed libraries at the bottom of the file `nasalib.all`.
 Use one line per library.
 
-Every library directory must have a file `top.pvs` which importing (directly or indirectly) all the library theories. 
+Every library directory must have a file `top.pvs` which imports (directly or indirectly) all the library theories. 
 Include at least the following tags in PVS comments: `@library`, `@description`, `@author`, `@poc`, `@date`, and `@copyleft`.
 The copyleft statement should allow us to include your contribution to NASALib. 
 Please only contribute libraries that can be considered fundamental research in the public domain.  
@@ -71,8 +71,8 @@ Also, if your contribution happens to include general-use lemmas, please move th
 
 ## Validity Check
 
-Make sure that all formulas in you library are proven.
-To do this, please run `prove-all` on the libraries that you modified or created NASALib. Include the summaries folder under those libraries in the pull-request. For example, if you modifed/created `<lib1>`, `<lib2>`, and `<lib3>`, type 
+Make sure that all formulas in your library are proven.
+To do this, please run `prove-all` on the libraries that you modified or created NASALib. Include the summaries folder under those libraries in the pull-request. For example, if you modified/created `<lib1>`, `<lib2>`, and `<lib3>`, type 
 
 ```shell
 ./prove-all -do=<lib1>,<lib2>,<lib3>
