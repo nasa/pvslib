@@ -11,7 +11,7 @@ NASALib currently has various  implementations of vectors and matrices, none suf
 * the generalization of analysis, and
 * spectral graph theory.
 
-In order to facilitate such a broad range of potential applications we need a common container that can be parameterized with various data types, and so the specification can not depend on extensive algebraic assumptions. To support this we attempt a modular approach which separates the structural and algebraic properties of vectors and matrices.
+In order to facilitate such a broad range of potential applications we need a common container that can be parameterized with various data types, and so the specification cannot depend on extensive algebraic assumptions. To support this we attempt a modular approach which separates the structural and algebraic properties of vectors and matrices.
 
 We also want the ability to freely index matrices to reduce the need for inductive proofs, while retaining the desirable evaluation properties of list-based implementations. To attain this goal we use a function to record the values of the matrix, but define mappings to and from list representations. Proofs of equivalence allow the two forms to be used interchangeably.
 

@@ -22,21 +22,21 @@ This embedding of dL is operational, meaning that it leverages the internal logi
 | [`hp_expr`](hp_expr.pvs) | More basics of hybrid programs including input/output semantics |
 | [`bounded_star_semantics`](bounded_star_semantics.pvs) | Defines bounded star hybrid program and shows equivalence to star hybrid program |
 | [`bound_variables_def`](bound_variables_def.pvs) | Defined bound variables for an HP |
-| [`bool_expr`](bool_expr.pvs) | Defines boolean expressions and normalizeed nonquantifeid boolean expressions |
+| [`bool_expr`](bool_expr.pvs) | Defines boolean expressions and normalized nonquantified boolean expressions |
 | [`hp_props`](hp_props.pvs) | Example of reasoning about HP at the semantic definition level |
-| [`substitution`](substitution.pvs) | Defines subsitution with properties for common real and boolean expressions |
+| [`substitution`](substitution.pvs) | Defines substitution with properties for common real and boolean expressions |
 | [`ODEs_equiv`](ODEs_equiv.pvs) | Connects ODE library to ODEs |
-| [`differentiation`](differentiation.pvs) | Establishes rules of differentation |
+| [`differentiation`](differentiation.pvs) | Establishes rules of differentiation |
 | [`chain_rule_re`](chain_rule_re.pvs) | Proves chain rule for real expressions from chain rule in mv_analysis library |
 | [`diff_re_props`](diff_re_props.pvs) | Standard properties of differentiable real expressions |
 | [`continuity_re_def`](continuity_re_def.pvs) | Define continuity of real expressions |
 | [`continuity_props`](continuity_props.pvs) | Continuity properties for real expressions and environments |
 | [`continuity_re_props`](continuity_re_props.pvs) | Standard arithmetic properties of continuous real expressions |
-| [`fresh_props`](fresh_props.pvs) | Established properties of fresh variables |
+| [`fresh_props`](fresh_props.pvs) | Establishes properties of fresh variables |
 | [`bound_variables_def`](bound_variables_def.pvs) | Define bound variables |
 | [`dynamic_logic`](dynamic_logic.pvs) | Rules and rewrites of differential dynamic logic |
-| [`dl_solution`](dl_solution.pvs) | Dl solve rule with examples |
-| [`sem_rel_diff_star`](sem_rel_diff_star.pvs) | Added rule to dL that was required for this development. The rules removes a  STAR operator from Differential program | 
+| [`dl_solution`](dl_solution.pvs) | dL solve rule with examples |
+| [`sem_rel_diff_star`](sem_rel_diff_star.pvs) | Added rule to dL that was required for this development. The rule removes a  STAR operator from Differential program | 
 | [`examples/`](examples/) | Directory of examples of using dL in PVS |
 
 ![dependency graph](./dL-zoomed.svg "Zoomed Dependency Graph")
