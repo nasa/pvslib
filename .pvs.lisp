@@ -28,9 +28,10 @@
 		    for lispname = (merge-pathnames pvslib-dir (make-pathname :name lispload))
 		    do
 		    (if (file-exists-p lispname)
-			(load lispname)
-		      (format t "~%Warning:  Lisp load file ~a of library ~a not found~%"
-			      lispname libid)))
+			(let ((*suppress-printing* t))
+			  (load lispname))
+			(format t "~%Warning:  Lisp load file ~a of library ~a not found~%"
+				lispname libid)))
 	      (loop for dep in (gethash "libdeps" pvslib-record)
 		    do
 		    (let ((depids (gethash dep *extra-pvslib-deps*)))

@@ -1,8 +1,19 @@
 #!/bin/bash
 
+split_at_sign() {
+      local input="$1"
+      if [[ "$input" == *@* ]]; then
+          ctx="${input%%@*}"
+          theory="${input#*@}"
+      else
+          ctx=""
+          theory="$input"
+      fi
+}
+
 usage() {
-    echo "Usage: $0 [<options>] -f <formula> <theory>
-Extract the proof trace of formulas in <theory> using proveit --traces @theory.formula.
+    echo "Usage: $0 [<options>] -f <formula> <[ctx@]theory>
+Extract the proof trace of formulas in theory> (in directory ctx) using proveit --traces ctx@theory.formula.
 Valid <options> are:
 -h|--help
 	Print this message
@@ -11,21 +22,47 @@ Valid <options> are:
 -f|--formula <f1:..:fn> 
 	<fi> are formula names in <theory>. Unless <logfile> is provided, 
 	this option is mandatory.
--v|--version <ver>
-	Use <ver> as postfix in the name of the output file. By default, <ver> is 
-        the PVS version.
 -L
 	Do not remove log file after proveit command
 -S	
 	Do not remove summary file after proveit command
+-b|--onlybad
+	Do not save GOOD trf, only BAD ones (typically enabled when
+	this script is used through the git bisect utility)
+-g|--git
+	Use PVS commit checksum to name the output file (typically enabled when
+	this script is used through the git bisect utility)
 "
     exit 1
 }
+
+get_version() {
+    pvsexe=`which pvs`
+    pvsdir=`dirname $pvsexe`
+    pvsname=`basename $pvsdir`
+    if [ -z "$pvsdir" ]; then
+	echo "PVS not found"
+	exit 1
+    fi
+    if [ "$git" ] &&  git -C $pvsdir rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    	checksum=`git -C $pvsdir rev-parse --short HEAD`
+	version="$pvsname-$checksum"
+    else
+	version=`pvs -raw -E '(format t "~a-~a" *pvs-version* (if (fboundp (quote pvs-build-date)) (pvs-build-date) 0)) (pvs::exit-pvs)' 2>/dev/null`
+    fi
+}
+
+get_version
+#echo "VERSION: $version"
+#exit 1
+
+ctx=
 theory=
 formulas=
-version=
 deletelog=y
 deletesum=y
+onlybad=
+git=
 while [ $# -gt 0 ]
 do
     case $1 in
@@ -43,6 +80,10 @@ do
 	    fi
 	    deletelog=
 	    deletesum=;;
+	-b|--onlybad)
+	    onlybad=y;;
+	-g|--git)
+	    git=y;;
 	-L)
 	    deletelog=;;
 	-S)
@@ -50,17 +91,20 @@ do
         -f|--formula)
             shift
             formulas=$1;;
-	-v|--version)
-	    shift
-	    version=$1;;
         -*)
             echo "Error: unknown option $1"
             usage
             exit 1;;
         *)
-	    theory=`basename $1 .pvs`
-	    if [ ! -f "$theory.pvs" ]; then
-		echo "** Error: Theory file $theory.pvs not found"
+	    ctxtheory=`basename $1 .pvs`
+	    split_at_sign $ctxtheory
+	    if [ -z "$ctx" ]; then
+		file="$ctxtheory.pvs"
+	    else
+		file="$ctx/$theory.pvs"
+	    fi
+	    if [ ! -f "$file" ]; then
+		echo "** Error: Theory file $file not found"
 		exit 1
 	    fi;;
     esac
@@ -76,9 +120,6 @@ if [ "$logfile" ]; then
     if [ -z "$formulas" ]; then
 	formulas=${thfmlas[1]}
     fi
-    file=$logfile
-else
-    file="$theory.pvs"
 fi
 
 if [ -z "$theory" ]; then
@@ -92,36 +133,44 @@ if [ -z "$formulas" ]; then
 fi
 
 arrayformulas=${formulas//:/ }
-for formula in $arrayformulas ; do
-    found=`grep $formula $theory.pvs`
-    if [ -z "$found" ]; then
-	echo "** Error: Formula $formula not found in $file"
-	exit 1
-    fi
-done     
 
 if [ -z "$logfile" ]; then
-    comm="proveit --traces @$theory.$formulas"
-    logfile=$theory.$formulas.log
-    echo "Running: $comm"
-    what=`$comm`
-    echo "Producing $logfile [$what]"
+    comm="proveit --traces $ctx@$theory.$formulas"
+    if [ -z "$ctx" ]; then
+	logfile="$theory.$formulas.log"
+    else
+	logfile="$ctx/$theory.$formulas.log"
+    fi
+    echo "$comm --> $logfile"
+    out=`$comm`
 fi
 
-if [ -z "$version" ]; then
-    version=`pvs --version 2>/dev/null | sed 's/.*PVS Version //'`
-fi
-
+err=
 for formula in $arrayformulas ; do
-    trf="${theory}_${formula}-v${version}.trf"
-    cat $logfile | sed -n "/Rerunning proof of $theory.$formula/,/^$theory.$formula/ p" > $trf
-    echo "Writing $trf"
+    bad=
+    if echo "$out" | grep -q "$formula.*unfinished"; then
+	bad="-BAD"
+	err="y"
+    fi
+    if [ -z "$onlybad" -o "$bad" ]; then
+	if [ -z "$ctx" ]; then
+	    trf="${theory}-${formula}-${version}$bad.trf"
+	else
+	    trf="${ctx}-${theory}-${formula}-${version}$bad.trf"
+	fi
+	cat $logfile | sed -n "/Rerunning proof of $theory.$formula/,/^$theory.$formula/ p" > $trf
+	echo "Writing $trf"
+    fi
 done
 
 if [ "$deletelog" ]; then
-    rm -f $theory.$formulas.log
+    rm -f $logfile
 fi
 
 if [ "$deletesum" ]; then
-    rm -f $theory.$formulas.summary
+    rm -f $ctx/$theory.$formulas.summary
+fi
+
+if [ "$err" ]; then
+    exit 1
 fi
