@@ -1,5 +1,7 @@
 ;; ADD SUPPORT FOR .pvslib FILES [CAM]
 
+(declaim #+sbcl(sb-ext:muffle-conditions style-warning))
+
 (defparameter *extra-pvslibs* (make-hash-table :test #'equal))
 (defparameter *extra-pvslib-deps* (make-hash-table :test #'equal))
 (defparameter *extra-preludelibs* '())
@@ -29,7 +31,7 @@
 		    do
 		    (if (file-exists-p lispname)
 			(let ((*suppress-printing* t))
-			  (load lispname))
+			  (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))(load lispname)))
 			(format t "~%Warning:  Lisp load file ~a of library ~a not found~%"
 				lispname libid)))
 	      (loop for dep in (gethash "libdeps" pvslib-record)
@@ -131,3 +133,5 @@ in all the '.pvslib' files in the directories contained in LIBS."
 			(some (lambda(d) (string= dir d)) val))
 	      return t)
 	return id))
+
+(declaim #+sbcl(sb-ext:unmuffle-conditions style-warning))
