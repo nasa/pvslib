@@ -8,24 +8,26 @@ The `pvs-cli.sh` tool is a Python-based command-line interface to interact with 
 
 ## Setup and Prerequisites
 
+Assume that `pvs-cli.sh` is in the PATH. If not, ask the user for the location of this script.
+
 ### Virtual Environment
 The tool requires a Python virtual environment with the `websockets` module. On first use:
 
 ```bash
-./pvs-cli.sh --init-venv
+pvs-cli.sh --init-venv
 ```
 
 This creates `.venv/` in the pvs-cli directory and installs dependencies. If you need to specify a custom venv location:
 
 ```bash
-./pvs-cli.sh --venv-dir /path/to/venv --init-venv
+pvs-cli.sh --venv-dir /path/to/venv --init-venv
 ```
 
 ### PVS Server
 PVS must be running in server mode on the specified port (default 23456):
 
 ```bash
-pvs -port 23456
+pvs -raw -port 23456
 ```
 
 The tool connects via websockets to this server, so ensure the port is not blocked and the server is actively listening before running commands.
@@ -34,7 +36,7 @@ The tool connects via websockets to this server, so ensure the port is not block
 
 ### Typechecking
 ```bash
-./pvs-cli.sh --typecheck file.pvs
+pvs-cli.sh --typecheck "/path/to/file/file.pvs"
 ```
 
 Returns:
@@ -50,12 +52,12 @@ Useful flags:
 
 ### Parsing Without Typechecking
 ```bash
-./pvs-cli.sh --parse file.pvs
+pvs-cli.sh --parse "/path/to/file/file.pvs"
 ```
 
 ### Getting Help
 ```bash
-./pvs-cli.sh --help
+pvs-cli.sh --help
 ```
 
 Shows all available options and basic usage examples.
@@ -76,7 +78,7 @@ When typechecking a collection of PVS files:
 
 **Workaround:** The server may be slow to respond. Add a delay before retrying:
 ```bash
-sleep 3 && ./pvs-cli.sh --port 23456 --typecheck file.pvs
+sleep 3 && pvs-cli.sh --port 23456 --typecheck "/path/to/file/file.pvs"
 ```
 
 ### JSON Parsing Errors
@@ -85,7 +87,7 @@ sleep 3 && ./pvs-cli.sh --port 23456 --typecheck file.pvs
 This is an internal server error, usually transient. Retry after a delay.
 
 ### Connection Refused
-Ensure PVS server is running: `pvs -server 23456`
+Ensure PVS server is running: `pvs -raw -port 23456`
 
 ## Error Message Format
 
@@ -110,7 +112,7 @@ To typecheck multiple files in sequence:
 ```bash
 for f in theory1.pvs theory2.pvs theory3.pvs; do
   echo "Checking $f..."
-  ./pvs-cli.sh --port 23456 --typecheck "$f" || break
+  pvs-cli.sh --port 23456 --typecheck "$f" || break
 done
 ```
 
@@ -120,7 +122,7 @@ Stop on first failure with `|| break` to make debugging easier.
 
 - Typechecking large, complex theories can be slow (30+ seconds)
 - PVS server processes one request at a time; don't run multiple commands in parallel against the same server
-- Consider restarting the PVS server (`pkill pvs; pvs -server 23456`) if it becomes unresponsive
+- Consider restarting the PVS server (`pkill pvs; pvs -raw -port 23456`) if it becomes unresponsive
 
 ## Troubleshooting
 
@@ -134,19 +136,19 @@ Stop on first failure with `|| break` to make debugging easier.
 
 **Problem:** Changes not reflected after editing a file
 - **Cause**: PVS server may have cached the old version
-- **Solution**: Use `--reset` or restart PVS server
+- **Solution**: Restart PVS server, by killing and starting it again.
 
 ## Additional Resources
 
 ```bash
 # List all available server methods
-./pvs-cli.sh --describe-server-methods
+pvs-cli.sh --describe-server-methods
 
 # Get help for a specific method
-./pvs-cli.sh --help-method typecheck
+pvs-cli.sh --help-method typecheck
 
 # List active proof sessions
-./pvs-cli.sh --list-active-proofs
+pvs-cli.sh --list-active-proofs
 ```
 
 ## Tips for Efficient PVS Development
@@ -155,4 +157,4 @@ Stop on first failure with `|| break` to make debugging easier.
 2. **Use descriptive error messages**: Read error messages carefully; they often suggest the fix
 3. **Test incrementally**: Don't make large changes at once; verify after each change
 4. **Keep server running**: Start PVS server once, reuse it for multiple typechecks
-5. **Document issues encountered**: When running into problems, note them for future reference
+5. **Document issues encountered**: When running into problems, write down the interaction in an md file and recommend the user to send it to the developers.
