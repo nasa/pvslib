@@ -1,0 +1,136 @@
+ieee754_fma
+[ (IMPORTING ieee754_format_parameters)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p) ]
+: THEORY BEGIN
+%%% TS -> Someone check this please
+
+  IMPORTING ieee754_semantics[b,p,emax] AS sem_th
+
+  % fused multiply-add: (a*b) + c with a single rounding
+  fma_ieee754: [datum, datum, datum -> datum]
+
+  % finite fused case (single rounding):
+  % require non-zero finite multiplicands; c may be zero (finite)
+  fma_correct__finite
+  : AXIOM
+    FORALL(a: (finite?), b: (finite?), c: (finite?) | nzfinite?(a) AND nzfinite?(b))
+    : fma_ieee754(a, b, c) = round(proj(a) * proj(b) + proj(c))
+
+  % NaN propagation
+  fma_correct__nan
+  : AXIOM
+    FORALL(a, b, c: datum)
+    : (NaN?(a) OR NaN?(b) OR NaN?(c)) IMPLIES NaN?(fma_ieee754(a, b, c))
+
+  % Invalid multiplicand combinations (zero * infinity) => NaN (independent of c)
+  fma_correct__pZero_pInf  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(pZero, pInf, c))
+  fma_correct__nZero_pInf  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(nZero, pInf, c))
+  fma_correct__pZero_nInf  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(pZero, nInf, c))
+  fma_correct__nZero_nInf  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(nZero, nInf, c))
+  fma_correct__pInf_pZero  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(pInf,  pZero, c))
+  fma_correct__pInf_nZero  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(pInf,  nZero, c))
+  fma_correct__nInf_pZero  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(nInf,  pZero, c))
+  fma_correct__nInf_nZero  : AXIOM FORALL(c: datum): NaN?(fma_ieee754(nInf,  nZero, c))
+  
+  fma_correct__finite_prod_c_infinite
+   : AXIOM
+    FORALL(a,b: datum, c: datum | finite?(a) AND finite?(b) AND (c = pInf OR c = nInf)):
+     fma_ieee754(a,b,c) = c
+
+  % Product is +infinity: (+∞) + c
+  % These a,b combinations yield +∞ exactly (no rounding), so fused result depends only on c.
+  fma_correct__prod_pInf_c_finite
+  : AXIOM
+    FORALL(a, b: datum, c: datum | finite?(c)):
+      ((a = nInf AND nfinite?(b)) OR (nfinite?(a) AND b = nInf) OR
+       (a = pInf AND pfinite?(b)) OR (pfinite?(a) AND b = pInf) OR
+       (a = nInf AND b = nInf) OR (a = pInf AND b = pInf))
+    IMPLIES fma_ieee754(a, b, c) = pInf
+
+  fma_correct__prod_pInf_c_pInf
+  : AXIOM
+    FORALL(a, b: datum):
+      ((a = nInf AND nfinite?(b)) OR (nfinite?(a) AND b = nInf) OR
+       (a = pInf AND pfinite?(b)) OR (pfinite?(a) AND b = pInf) OR
+       (a = nInf AND b = nInf) OR (a = pInf AND b = pInf))
+    IMPLIES fma_ieee754(a, b, pInf) = pInf
+
+  fma_correct__prod_pInf_c_nInf
+  : AXIOM
+    FORALL(a, b: datum):
+      ((a = nInf AND nfinite?(b)) OR (nfinite?(a) AND b = nInf) OR
+       (a = pInf AND pfinite?(b)) OR (pfinite?(a) AND b = pInf) OR
+       (a = nInf AND b = nInf) OR (a = pInf AND b = pInf))
+    IMPLIES NaN?(fma_ieee754(a, b, nInf))
+
+  % Product is -infinity: (-∞) + c
+  fma_correct__prod_nInf_c_finite
+  : AXIOM
+    FORALL(a, b: datum, c: datum | finite?(c)):
+      ((a = nInf AND pfinite?(b)) OR (pfinite?(a) AND b = nInf) OR
+       (a = pInf AND nfinite?(b)) OR (nfinite?(a) AND b = pInf) OR
+       (a = pInf AND b = nInf) OR (a = nInf AND b = pInf))
+    IMPLIES fma_ieee754(a, b, c) = nInf
+
+  fma_correct__prod_nInf_c_nInf
+  : AXIOM
+    FORALL(a, b: datum):
+      ((a = nInf AND pfinite?(b)) OR (pfinite?(a) AND b = nInf) OR
+       (a = pInf AND nfinite?(b)) OR (nfinite?(a) AND b = pInf) OR
+       (a = pInf AND b = nInf) OR (a = nInf AND b = pInf))
+    IMPLIES fma_ieee754(a, b, nInf) = nInf
+
+  fma_correct__prod_nInf_c_pInf
+  : AXIOM
+    FORALL(a, b: datum):
+      ((a = nInf AND pfinite?(b)) OR (pfinite?(a) AND b = nInf) OR
+       (a = pInf AND nfinite?(b)) OR (nfinite?(a) AND b = pInf) OR
+       (a = pInf AND b = nInf) OR (a = nInf AND b = pInf))
+    IMPLIES NaN?(fma_ieee754(a, b, pInf))
+
+  % Product is signed zero (multiplicands finite and at least one is zero): result behaves like adding ±0 to c
+  % When c is finite and non-zero, the fused result is c (no rounding change).
+  fma_correct__prod_zero_c_finite_nonzero
+  : AXIOM
+    FORALL(a, b: datum, c: datum | finite?(c) AND c /= nZero):
+      ( (finite?(a) AND finite?(b)) AND (a = pZero OR a = nZero OR b = pZero OR b = nZero) )
+    IMPLIES fma_ieee754(a, b, c) = c
+
+  % When c is ±∞, adding ±0 leaves c unchanged (excluding invalid 0*∞ cases already covered above)
+  fma_correct__prod_zero_c_pInf
+  : AXIOM
+    FORALL(a, b: datum):
+      (finite?(a) AND finite?(b) AND (a = pZero OR a = nZero OR b = pZero OR b = nZero))
+    IMPLIES fma_ieee754(a, b, pInf) = pInf
+
+  fma_correct__prod_zero_c_nInf
+  : AXIOM
+    FORALL(a, b: datum):
+      (finite?(a) AND finite?(b) AND (a = pZero OR a = nZero OR b = pZero OR b = nZero))
+    IMPLIES fma_ieee754(a, b, nInf) = nInf
+
+  % (Optional) If you need exact sign rules for 0 ⊕ 0, mirror the four add_zero axioms,
+  % conditioning on the product-sign of a*b (derived from the signs of a and b).
+  % For brevity, those are omitted here; see the note below.
+
+  % Fused finite lemma (safe_proj form)
+  fma_finite_def: LEMMA
+     FORALL(a: (finite?), b: (finite?), c: (finite?) | nzfinite?(a) AND nzfinite?(b))
+    : safe_proj(fma_ieee754(a, b, c)) =
+      safe_proj(round(safe_proj(a) * safe_proj(b) + safe_proj(c)))
+
+  % If the fused result is finite, then all inputs were finite (no NaN/Inf participated)
+  fma_finites_is_finite: LEMMA
+    FORALL(a, b, c: datum)
+    : finite?(fma_ieee754(a, b, c)) => finite?(a) AND finite?(b) AND finite?(c)
+
+  % Lifting: if the real fused expression rounds to a finite, the fused op returns a finite
+  finite?_projs_finite?_fma
+  : THEOREM
+     FORALL(a: (finite?), b: (finite?), c: (finite?) | nzfinite?(a) AND nzfinite?(b))
+    : finite?(round(proj(a) * proj(b) + proj(c)))
+    => finite?(fma_ieee754(a, b, c))
+
+  END ieee754_fma

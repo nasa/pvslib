@@ -1,0 +1,46 @@
+aerr_ulp_arrays_broadcast
+[ (IMPORTING ieee754_format_parameters, ieee754_semantics, ieee754_arrays_broadcast)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p),
+  biOp : [datum[b,p,emax], datum[b,p,emax] -> datum[b,p,emax]],
+  opR  : [real, real -> real],
+  aerr_ulp_Op : [real, nnreal, real, nnreal -> nnreal],
+  array_opR : [n:nat -> [rarray(n),rarray(n) -> rarray(n)]]
+  ]
+: THEORY
+BEGIN
+
+  ASSUMING
+    % array_op match up
+    array_real_biop: ASSUMPTION
+     FORALL(n:nat,r1,r2:rarray(n)):
+     array_opR(n)(r1,r2) = makeaa(n, LAMBDA(i: below(n)): opR(at(r1, i), at(r2, i)))
+     
+    % Scalar correctness assumption for biOp
+    aerr_ulp_biOp_correct: ASSUMPTION
+      FORALL(f1,f2: (finite?[b,p,emax]), r1, r2: real, e1, e2: nnreal):
+        abs(proj(f1) - r1) <= e1 AND
+        abs(proj(f2) - r2) <= e2 AND
+        finite?(biOp(f1, f2))
+        IMPLIES abs(proj(biOp(f1, f2)) - opR(r1, r2)) <= aerr_ulp_Op(r1, e1, r2, e2)
+  ENDASSUMING
+
+ IMPORTING ieee754_arrays[b,p,emax]
+ IMPORTING ieee754_arrays_broadcast[b,p,emax, biOp]
+
+% Array-level ULP error bound for broadcasted binary op
+  aerr_ulp_arrays_broadcast(n: nat)(r1: rarray(n), e1: nnreal, r2: rarray(n), e2: nnreal): nnreal =
+    max(makeaa(n, LAMBDA(i: below(n)): aerr_ulp_Op(at(r1, i), e1, at(r2, i), e2)))
+
+  % Array-level correctness theorem
+  aerr_ulp_arrays_broadcast_correct: THEOREM
+    FORALL(n: nat, f1, f2: fparray(n), r1, r2: rarray(n), e1, e2: nnreal):
+      finite_array?(f1) AND finite_array?(f2) AND
+      l_inf_norm(proj_array(f1) - r1) <= e1 AND
+      l_inf_norm(proj_array(f2) - r2) <= e2 AND
+      finite_array?(arrays_op_ieee754(n)(f1, f2))
+      IMPLIES l_inf_norm(proj_array(arrays_op_ieee754(n)(f1, f2)) - array_opR(n)(r1, r2)) <=
+              aerr_ulp_arrays_broadcast(n)(r1, e1, r2, e2)
+
+END aerr_ulp_arrays_broadcast

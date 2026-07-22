@@ -1,0 +1,42 @@
+aerr_ulp_arrays_div
+[ (importing ieee754_format_parameters)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p) ]
+: theory begin
+
+  importing ieee754_arrays_div[b,p,emax]
+  importing aerr_ulp_div[b,p,emax]
+
+  % Non-zero real array: all elements are non-zero
+  nzrarray(n: nat): type = {a: rarray(n) | FORALL (i: below(n)): at(a,i) /= 0}
+
+  % Element-wise division of real arrays
+  rdiv(n: nat)(r1: rarray(n), r2: nzrarray(n)): rarray(n)
+  = makeaa(n, λ(i: below(n)): at(r1,i) / at(r2,i))
+
+  % Infix operator for array division
+  ;/(a: real_array, b: {c: rarray(len(a)) | FORALL (i: below(len(a))): at(c,i) /= 0}): rarray(len(a))
+  = makeaa(len(a), λ(i: below(len(a))): at(a,i) / at(b,i))
+
+  aerr_ulp_arrays_div(n: nat)
+    (r1: rarray(n),
+     e1: nnreal,
+     r2: rarray(n),
+     e2: nnreal | FORALL (i: below(n)): (0 < at(r2,i) - e2 OR at(r2,i) + e2 < 0))
+  : nnreal
+  = max(makeaa(n, λ(i: below(n)): aerr_ulp_div(at(r1,i), e1, at(r2,i), e2)))
+
+  aerr_ulp_arrays_div_correct: LEMMA
+    forall(n: nat, f1, f2: fparray(n), r1, r2: rarray(n), e1, e2: nnreal):
+      (FORALL (i: below(n)): (0 < at(r2,i) - e2 OR at(r2,i) + e2 < 0)) AND
+      finite_array?(f1) AND finite_array?(f2) AND
+      (FORALL (i: below(n)): abs(proj(at(f1,i)) - at(r1,i)) <= e1) AND
+      (FORALL (i: below(n)): abs(proj(at(f2,i)) - at(r2,i)) <= e2) AND
+      finite_array?(arrays_div_ieee754(n)(f1, f2))
+      IMPLIES
+        (FORALL (i: below(n)):
+          abs(proj(at(arrays_div_ieee754(n)(f1,f2),i)) - at(r1 / r2, i))
+          <= aerr_ulp_arrays_div(n)(r1, e1, r2, e2))
+
+end aerr_ulp_arrays_div

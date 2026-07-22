@@ -1,0 +1,40 @@
+aerr_ulp_arrays_mul
+[ (IMPORTING ieee754_format_parameters)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p) ]
+: theory begin
+
+  % Specification of IEEE 754 floating-point array multiplication with ULP error bounds
+  % This theory provides the error bound function and correctness theorem for pointwise
+  % multiplication of arrays of IEEE 754 floating-point numbers.
+
+  importing ieee754_arrays_mul[b,p,emax] AS mul_th
+  importing aerr_ulp_mul[b,p,emax]
+
+  % Upper error bound for element-wise array multiplication
+  % Returns the maximum ULP error across all array elements
+  aerr_ulp_arrays_mul(n: nat)(r1:rarray(n),e1:nnreal,r2:rarray(n),e2:nnreal) : nnreal
+  = max(makeaa(n, λ(i:below(n)): aerr_ulp_mul(at(r1,i),e1,at(r2,i),e2)))
+
+  % Pointwise multiplication operation for real arrays
+  array_mul(n: nat)(r1, r2: rarray(n)): rarray(n)
+  = makeaa(n, λ(i: below(n)): at(r1,i) * at(r2,i))
+
+  % Extend scalar multiplication error bounds to arrays using broadcast framework
+  importing aerr_ulp_arrays_broadcast[b,p,emax, mul_ieee754, *, aerr_ulp_mul, LAMBDA(n:nat): LAMBDA(r1,r2: rarray(n)): array_mul(n)(r1,r2)] AS broadcast_mul_th
+
+  % Correctness theorem: array multiplication error is bounded by component-wise ULP errors
+  % If input arrays approximate real values with given tolerances, the output array
+  % multiplication approximates the real vector product within the derived error bound
+  aerr_ulp_arrays_mul_correct
+  : theorem forall(n: nat, f1,f2: fparray(n), r1,r2: rarray(n), e1,e2: nnreal)
+    : finite_array?(f1) ∧ finite_array?(f2) ∧
+      l_inf_norm(proj_array(f1) - r1) <= e1 ∧
+      l_inf_norm(proj_array(f2) - r2) <= e2 ∧
+      finite_array?(arrays_mul_ieee754(n)(f1,f2))
+      IMPLIES l_inf_norm(proj_array(arrays_mul_ieee754(n)(f1,f2)) - array_mul(n)(r1,r2)) <= aerr_ulp_arrays_mul(n)(r1,e1,r2,e2)
+
+  %~~~ "Multiply with confidence: every product is bounded" --JTS ~~~
+
+end aerr_ulp_arrays_mul

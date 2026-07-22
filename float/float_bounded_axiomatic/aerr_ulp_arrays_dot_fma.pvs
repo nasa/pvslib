@@ -1,0 +1,89 @@
+aerr_ulp_arrays_dot_fma
+[ (IMPORTING ieee754_format_parameters)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p) ]
+: theory begin
+
+  % -----------------------------------------------------------------------------
+  % Imports (match your conventions)
+  % -----------------------------------------------------------------------------
+  importing ieee754_fma[b,p,emax]            
+  importing ieee754_arrays_dot_fma[b,p,emax]   
+  importing aerr_ulp_fma[b,p,emax]
+  importing aerr_ulp_arrays_dot[b,p,emax]
+  % -----------------------------------------------------------------------------
+  % ULP-based error bound (nnreal) composed via single-round FMA steps
+  % Uniform input approximation via l_inf_norm(...) <= e1,e2
+  % -----------------------------------------------------------------------------
+  aerr_ulp_arrays_dot_fma_from(
+    n: nat,
+    r1: rarray(n), e1: nnreal,
+    r2: rarray(n), e2: nnreal,
+    i: below(n)
+  ) : recursive nnreal =
+    if i + 1 < n then
+      aerr_ulp_fma(
+        at(r1, i), e1,
+        at(r2, i), e2,
+        rdot_from(n, r1, r2, i + 1),
+        aerr_ulp_arrays_dot_fma_from(n, r1, e1, r2, e2, i + 1)
+      )
+    else
+      % Base FMA step: r3 = 0, e3 = 0 (paired with proj(pZero) = 0 in the theorem premises)
+      aerr_ulp_fma(at(r1, i), e1, at(r2, i), e2, 0, 0)
+    endif
+  measure n - i
+
+  aerr_ulp_arrays_dot_fma(n: nat)(r1: rarray(n), e1: nnreal, r2: rarray(n), e2: nnreal) : nnreal =
+    if n = 0 then 0 else aerr_ulp_arrays_dot_fma_from(n, r1, e1, r2, e2, 0) endif
+
+  % -----------------------------------------------------------------------------
+  % Correctness theorem for the partial FMA dot
+  %
+  % Premises:
+  %  - finite_array?(f1), finite_array?(f2)
+  %  - l_inf_norm(proj_array(f*) - r*) <= e* (uniform per-component)
+  %  - finite?(dot_from_fma(...)) to apply aerr_ulp_fma_correct at the outer step
+  %  - proj(pZero) = 0 to align the base FMA step r3=0, e3=0 with the datum pZero
+  % -----------------------------------------------------------------------------
+  aerr_ulp_dot_fma_from_correct
+  : theorem
+    forall (n: nat,
+            f1, f2: fparray(n),
+            r1, r2: rarray(n),
+            e1, e2: nnreal,
+            i: below(n))
+      : finite_array?(f1) ∧ finite_array?(f2) ∧
+        l_inf_norm(proj_array(f1) - r1) <= e1 ∧
+        l_inf_norm(proj_array(f2) - r2) <= e2 ∧
+        finite?(dot_from_fma(n, f1, f2, i)) ∧
+        proj(pZero) = 0
+        IMPLIES
+          abs(proj(dot_from_fma(n, f1, f2, i)) - rdot_from(n, r1, r2, i))
+          <= aerr_ulp_arrays_dot_fma_from(n, r1, e1, r2, e2, i)
+
+  % -----------------------------------------------------------------------------
+  % Correctness theorem for the full FMA dot
+  %
+  % Premises:
+  %  - finite_array?(f1), finite_array?(f2)
+  %  - l_inf_norm(proj_array(f1) - r1) <= e1, l_inf_norm(proj_array(f2) - r2) <= e2
+  %  - finite?(arrays_dot_ieee754_fma(n)(f1,f2))
+  %  - n = 0 => proj(pZero) = 0
+  % -----------------------------------------------------------------------------
+  aerr_ulp_arrays_dot_fma_correct
+  : theorem
+    forall (n: nat,
+            f1, f2: fparray(n),
+            r1, r2: rarray(n),
+            e1, e2: nnreal)
+      : finite_array?(f1) ∧ finite_array?(f2) ∧
+        l_inf_norm(proj_array(f1) - r1) <= e1 ∧
+        l_inf_norm(proj_array(f2) - r2) <= e2 ∧
+        finite?(arrays_dot_ieee754_fma(n)(f1, f2))
+        IMPLIES
+          abs(proj(arrays_dot_ieee754_fma(n)(f1, f2)) - rdot(n)(r1, r2))
+          <= aerr_ulp_arrays_dot_fma(n)(r1, e1, r2, e2)
+
+end aerr_ulp_arrays_dot_fma

@@ -1,0 +1,44 @@
+aerr_ulp_arrays_unary_broadcast
+[ (IMPORTING ieee754_format_parameters, ieee754_semantics, ieee754_arrays_unary_broadcast)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p),
+  unOp : [datum[b,p,emax] -> datum[b,p,emax]],
+  opR  : [real -> real],
+  aerr_ulp_Op : [real, nnreal -> nnreal],
+  array_opR : [n:nat -> [rarray(n) -> rarray(n)]]
+  ]
+: THEORY
+BEGIN
+
+  ASSUMING
+    % array_op matches pointwise real operation
+    array_real_unop: ASSUMPTION
+     FORALL(n:nat,r:rarray(n)):
+     array_opR(n)(r) = makeaa(n, LAMBDA(i: below(n)): opR(at(r, i)))
+
+    % Scalar correctness assumption for unOp
+    aerr_ulp_unOp_correct: ASSUMPTION
+      FORALL(f: (finite?[b,p,emax]), r: real, e: nnreal):
+        abs(proj(f) - r) <= e AND
+        finite?(unOp(f))
+        IMPLIES abs(proj(unOp(f)) - opR(r)) <= aerr_ulp_Op(r, e)
+  ENDASSUMING
+
+  IMPORTING ieee754_arrays[b,p,emax]
+  IMPORTING ieee754_arrays_unary_broadcast[b,p,emax, unOp]
+
+  % Array-level ULP error bound for broadcasted unary op
+  aerr_ulp_arrays_unary_broadcast(n: nat)(r: rarray(n), e: nnreal): nnreal =
+    max(makeaa(n, LAMBDA(i: below(n)): aerr_ulp_Op(at(r, i), e)))
+
+  % Array-level correctness theorem
+  aerr_ulp_arrays_unary_broadcast_correct: THEOREM
+    FORALL(n: nat, f: fparray(n), r: rarray(n), e: nnreal):
+      finite_array?(f) AND
+      l_inf_norm(proj_array(f) - r) <= e AND
+      finite_array?(arrays_unary_op_ieee754(n)(f))
+      IMPLIES l_inf_norm(proj_array(arrays_unary_op_ieee754(n)(f)) - array_opR(n)(r)) <=
+              aerr_ulp_arrays_unary_broadcast(n)(r, e)
+
+END aerr_ulp_arrays_unary_broadcast

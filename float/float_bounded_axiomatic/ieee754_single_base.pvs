@@ -24,7 +24,7 @@ BEGIN
 
   er_lb_value: LEMMA er_lb = -340282346638528859811704183484516925440
 
-  binary32 : TYPE = datum
+  binary32 : TYPE = datum[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp]
   single   : TYPE = binary32
 
   NaN?_single   : MACRO [ binary32 -> bool ] = NaN?
@@ -42,7 +42,8 @@ BEGIN
   safe_proj_single : MACRO [ binary32 -> real ] = safe_proj
   safe_proj_def: AXIOM FORALL(x: binary32): safe_proj_single(x) = safe_proj(x)
 
-  round_single : MACRO [ real -> binary32 ] = round
+  round_single : [ real -> binary32 ]
+  conversion round_single
   round_def: AXIOM FORALL(r: real): round_single(r) = round(r)
 
   RtoS(r: real) : MACRO binary32 = round_single(r) % @M3 Kept for backward compatibility
@@ -62,12 +63,13 @@ BEGIN
   IMPORTING ieee754_max[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS max_single
   IMPORTING ieee754_min[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS min_single
   IMPORTING ieee754_div[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS div_single
+  IMPORTING ieee754_fma[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS fma_single
   %
   IMPORTING ieee754_abs[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS abs_single
   IMPORTING ieee754_sqt[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS sqt_single
   IMPORTING ieee754_neg[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS neg_single
 
-  x,y: VAR binary32
+  x,y,z: VAR binary32
 
   % special values
 
@@ -83,15 +85,16 @@ BEGIN
 
   % operations
 
-  add_single (x,y: binary32): binary32
-  sub_single (x,y: binary32): binary32
-  mul_single (x,y: binary32): binary32
-  div_single (x,y: binary32): binary32
-  min_single (x,y: binary32): binary32
-  max_single (x,y: binary32): binary32
-  abs_single   (x: binary32): binary32
-  sqrt_single  (x: binary32): binary32
-  neg_single   (x: binary32): binary32
+  fma_single  (x,y,z: binary32): binary32
+  add_single  (x,y  : binary32): binary32
+  sub_single  (x,y  : binary32): binary32
+  mul_single  (x,y  : binary32): binary32
+  div_single  (x,y  : binary32): binary32
+  min_single  (x,y  : binary32): binary32
+  max_single  (x,y  : binary32): binary32
+  abs_single  (x    : binary32): binary32
+  sqrt_single (x    : binary32): binary32
+  neg_single  (x    : binary32): binary32
 
   ;+(x,y: binary32) : MACRO binary32 = add_single(x,y)
   ;-(x,y: binary32) : MACRO binary32 = sub_single(x,y)
@@ -136,6 +139,7 @@ BEGIN
   pZero_def: AXIOM pZero_single = pZero
   nZero_def: AXIOM nZero_single = nZero
 
+  fma_def  : AXIOM fma_single  (x,y,z) = fma_ieee754(x,y,z)
   add_def  : AXIOM add_single(x,y) = add_ieee754(x,y)
   sub_def  : AXIOM sub_single(x,y) = sub_ieee754(x,y)
   mul_def  : AXIOM mul_single(x,y) = mul_ieee754(x,y)
@@ -165,6 +169,11 @@ BEGIN
   %
   % Synonims for operator proporties
   %
+
+  fma_single_finite_def
+  : LEMMA FORALL(f1,f2: {x : (finite?_single) | NOT zero?_single(x)}, f3: (finite?_single))
+    : safe_proj_single(fma_single(f1, f2, f3)) =
+      safe_proj_single(round_single(safe_proj_single(f1) * safe_proj_single(f2) + safe_proj_single(f3)))
 
   add_single_finite_def
   : THEOREM FORALL(f1,f2: (finite?_single))
@@ -228,6 +237,10 @@ BEGIN
   %
   %
 
+  finite?_single_fma
+  : CONJECTURE FORALL(f1, f2, f3: single)
+    : finite?_single(fma_single(f1,f2,f3)) => finite?_single(f1) AND finite?_single(f2) AND finite?_single(f3)
+
   finite?_single_add
   : CONJECTURE  FORALL(f1, f2: single)
     : finite?_single(add_single(f1,f2)) => finite?_single(f1) AND finite?_single(f2)
@@ -268,5 +281,24 @@ BEGIN
   : CONJECTURE
     ∀(f1:(finite?_single) ,f2: single |(finite?_single(f2) AND NOT zero?_single(f2)))
     : finite?_single(round_single(safe_proj_single(f1) / safe_proj_single(f2))) => finite?_single(div_single(f1,f2))
+
+  %
+  % # Trigonometric Operations
+  %
+
+  IMPORTING ieee754_sin[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS sin_single
+  sin_single (x: binary32): binary32
+  Ssin(x: binary32) : MACRO binary32 = sin_single(x)
+  sin_def  : AXIOM sin_single(x) = sin_ieee754(x)
+
+  IMPORTING ieee754_cos[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS cos_single
+  cos_single (x: binary32): binary32
+  Scos(x: binary32) : MACRO binary32 = cos_single(x)
+  cos_def  : AXIOM cos_single(x) = cos_ieee754(x)
+
+  IMPORTING ieee754_atan[ieee754_single_radix,ieee754_single_precision,ieee754_single_maxExp] AS atan_single
+  atan_single (x: binary32): binary32
+  Satan(x: binary32) : MACRO binary32 = atan_single(x)
+  atan_def  : AXIOM atan_single(x) = atan_ieee754(x)
 
 END ieee754_single_base

@@ -1,0 +1,83 @@
+aerr_ulp_arrays_dot
+[ (IMPORTING ieee754_format_parameters)
+  b    : ieee754_radix,
+  p    : ieee754_precision(b),
+  emax : ieee754_maxExp(b,p) ]
+: theory begin
+
+  % -----------------------------------------------------------------------------
+  % Imports (match your style and naming)
+  % -----------------------------------------------------------------------------
+  importing ieee754_arrays_dot[b,p,emax]
+  importing aerr_ulp_add[b,p,emax]
+  importing aerr_ulp_mul[b,p,emax]
+  importing structures@real_array
+  
+
+  % -----------------------------------------------------------------------------
+  % ULP-based error bound for the recursive dot (scalar)
+  % The input approximation is uniform via l_inf_norm(... ) <= e1,e2.
+  % -----------------------------------------------------------------------------
+  aerr_ulp_arrays_dot_from(
+    n: nat,
+    r1: rarray(n), e1: nnreal,
+    r2: rarray(n), e2: nnreal,
+    i: below(n)
+  ) : recursive nnreal =
+    if i + 1 < n then
+      aerr_ulp_add(
+        at(r1, i) * at(r2, i),
+        aerr_ulp_mul(at(r1, i), e1, at(r2, i), e2),
+        rdot_from(n, r1, r2, i + 1),
+        aerr_ulp_arrays_dot_from(n, r1, e1, r2, e2, i + 1)
+      )
+    else
+      aerr_ulp_mul(at(r1, i), e1, at(r2, i), e2)
+    endif
+  measure n - i
+
+  aerr_ulp_arrays_dot(n: nat)(r1: rarray(n), e1: nnreal, r2: rarray(n), e2: nnreal) : nnreal =
+    if n = 0 then 0 else aerr_ulp_arrays_dot_from(n, r1, e1, r2, e2, 0) endif
+
+  % -----------------------------------------------------------------------------
+  % Correctness theorem for dot from and dot
+  %
+  % Premises:
+  %  - finite_array?(f1), finite_array?(f2) so each at(f*,i) is representable
+  %  - l_inf_norm(proj_array(f*) - r*) <= e* (uniform per-component approximation)
+  %  - each elementwise product is finite to apply aerr_ulp_mul_correct
+  %  - the scalar dot result is finite to apply the recursive add bound
+  %  - n=0 case ties pZero to real 0 (adjust symbol if your environment differs)
+  % -----------------------------------------------------------------------------
+
+ aerr_ulp_dot_from_correct
+: lemma
+  forall (n: nat,
+          f1, f2: fparray(n),
+          r1, r2: rarray(n),
+          e1, e2: nnreal,
+          i: below(n))
+    : finite_array?(f1) ∧ finite_array?(f2) ∧
+      l_inf_norm(proj_array(f1) - r1) <= e1 ∧
+      l_inf_norm(proj_array(f2) - r2) <= e2 ∧
+      finite?(dot_from(n, f1, f2, i))
+      IMPLIES
+        abs(proj(dot_from(n, f1, f2, i)) - rdot_from(n, r1, r2, i))
+        <= aerr_ulp_arrays_dot_from(n, r1, e1, r2, e2, i)
+
+  aerr_ulp_arrays_dot_correct
+  : theorem
+    forall (n: nat,
+            f1, f2: fparray(n),
+            r1, r2: rarray(n),
+            e1, e2: nnreal)
+      : finite_array?(f1) ∧ finite_array?(f2) ∧
+        l_inf_norm(proj_array(f1) - r1) <= e1 ∧
+        l_inf_norm(proj_array(f2) - r2) <= e2 ∧
+        finite?(arrays_dot_ieee754(n)(f1, f2))
+        IMPLIES
+          abs(proj(arrays_dot_ieee754(n)(f1, f2)) - rdot(n)(r1, r2))
+          <= aerr_ulp_arrays_dot(n)(r1, e1, r2, e2)
+
+end aerr_ulp_arrays_dot
+
