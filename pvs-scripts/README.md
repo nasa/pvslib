@@ -10,6 +10,7 @@ The NASALib also provides a collection of scripts that automates several tasks.
 * [`find-all`](#find-all) - Searches strings matching a given regular expressions in PVS libraries.
 * [`dependencygraph`](#dependencygraph) - Generates a library dependency graph for libraries in the current directory.
 * [`dependency-all`](#dependency-all) - Generates the dependency graphs for the PVS libraries in the current folder.
+* [`test-pvs-mcp`](#test-pvs-mcp) - Tests and configures the PVS MCP server for Claude Code.
 
 # `proveit`
 
@@ -391,3 +392,63 @@ dependency-all [<option> ...]
 Uses `provethem` to iterate dependency-graph over all the libraries in the current directory. 
 
 As in `provethem`, the scope of application of dependency-all can be controlled using the options --after, --before, --but, --do, --from, and --to detailed below. The order implicitly referred to by all these options is the one induced by the applicable `all-theories` file.
+
+# `test-pvs-mcp`
+
+Tests and configures the PVS MCP server for Claude Code.
+
+## Synopsis
+
+```shell
+test-pvs-mcp.sh [OPTIONS]
+```
+
+## Description
+
+This script verifies that your PVS installation has the MCP (Model Context Protocol) server functionality available and configures Claude Code to use it.
+
+It performs the following checks and configurations:
+1. Verifies PVS is installed and in PATH
+2. Checks that the PVS-MCP package is available
+3. Checks for the START-MCP-STDIO-SERVER function in PVS-MCP
+4. Sets up `.mcp.json` with the PVS server definition (in home or current directory)
+5. Enables the PVS server in `.claude/settings.json` (in home or current directory)
+
+If configuration files are missing, the script will prompt you to choose whether to install them in your home directory or the current directory. Existing configuration is preserved and only the PVS entry is added.
+
+## Options
+
+| Option | Description |
+| --- | --- |
+|`-h, --help` | Display help message and exit |
+
+## Exit Status
+
+| Status | Description |
+| --- | --- |
+|`0` | All checks passed and configuration is complete |
+|`1` | A check failed or user provided invalid input |
+
+## Requirements
+
+- PVS installed and available in PATH
+- PVS with MCP (Model Context Protocol) extension support
+- `jq` (JSON Query) for safe JSON configuration manipulation
+
+## Typical Usage
+
+```shell
+$ ./test-pvs-mcp.sh
+```
+
+## Examples
+
+Display help message:
+```shell
+$ ./test-pvs-mcp.sh --help
+```
+
+Run the full setup check and configuration:
+```shell
+$ ./test-pvs-mcp.sh
+```
