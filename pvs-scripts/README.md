@@ -11,6 +11,7 @@ The NASALib also provides a collection of scripts that automates several tasks.
 * [`dependencygraph`](#dependencygraph) - Generates a library dependency graph for libraries in the current directory.
 * [`dependency-all`](#dependency-all) - Generates the dependency graphs for the PVS libraries in the current folder.
 * [`test-pvs-mcp`](#test-pvs-mcp) - Tests and configures the PVS MCP server for Claude Code.
+* [`pvs-cli`](#pvs-cli) - Command-line interface for interactive PVS theorem proving.
 * [`replay-trace.py`](#replay-tracepy) - Replays proof traces to detect where proofs diverge between PVS versions.
 
 # `proveit`
@@ -454,11 +455,148 @@ Run the full setup check and configuration:
 $ ./test-pvs-mcp.sh
 ```
 
+# `pvs-cli`
+
+Interactive command-line interface for PVS theorem proving via JSON-RPC.
+
+This tool provides a shell-friendly way to interact with a running PVS server for typechecking files, starting and managing proof sessions, sending proof commands, and querying server methods. It is designed for scripting, automation, and integration with other tools (such as `replay-trace.py`).
+
+## Prerequisites
+
+- PVS server running: `pvs -port 23456`
+- Python 3.7+ with `websockets` library
+
+## Synopsis
+
+```shell
+pvs-cli.sh [OPTIONS]
+```
+
+## Reference Types
+
+Many commands require formula or theory references:
+
+**theory-ref (THREF)**:
+```
+Format: [file-ref] [#theory-id]
+file-ref: [workspace-ref] name [.pvs]
+workspace-ref: dir/ (relative/absolute) or lib@ (library)
+Example: theories/mylib#my_theory  or  /path/to/file.pvs#theory
+```
+
+**formula-ref (FORMREF)**:
+```
+Format: dir/file.pvs#theory#formula  or  lib@file.pvs#theory#formula
+Example: /path/to/file.pvs#theory#my_lemma  or  lib@file.pvs#theory#lemma
+```
+
+## Typical Workflow
+
+### 1. Start a PVS server
+
+In a separate terminal:
+```shell
+$ pvs -port 23456
+```
+
+### 2. Typecheck a file
+
+```shell
+$ pvs-cli.sh --typecheck path/to/file.pvs
+```
+
+### 3. Start a proof session
+
+```shell
+$ pvs-cli.sh --prove "path/to/file.pvs#theory#lemma"
+```
+
+This returns a proof ID and displays the initial sequent.
+
+### 4. Send proof commands
+
+```shell
+$ pvs-cli.sh --proof-command "(skolem!)"
+$ pvs-cli.sh --proof-command "(expand \"definition_name\")"
+$ pvs-cli.sh --proof-command "(grind)"
+```
+
+### 5. Complete or abandon the proof
+
+When the proof is complete, it is automatically saved. To abandon without saving:
+```shell
+$ pvs-cli.sh --fail-proof <proof-id>
+```
+
+## Managing Multiple Proof Sessions
+
+List all active proofs:
+```shell
+$ pvs-cli.sh --list-active-proofs
+```
+
+Switch between active proofs:
+```shell
+$ pvs-cli.sh --set-active-proof <proof-id>
+```
+
+Check current status:
+```shell
+$ pvs-cli.sh --status
+```
+
+Quit all sessions:
+```shell
+$ pvs-cli.sh --quit-all-proofs
+```
+
+## Querying Server Methods
+
+List all available PVS server methods with signatures and descriptions:
+```shell
+$ pvs-cli.sh --describe-server-methods
+```
+
+Get detailed help for a specific method:
+```shell
+$ pvs-cli.sh --help-method prove-formula
+```
+
+Call any method directly:
+```shell
+$ pvs-cli.sh --call <method-name> [param1] [param2] ...
+```
+
+## Common Options
+
+| Option | Description |
+| --- | --- |
+| `--typecheck FILE` | Typecheck a PVS file |
+| `--prove FORMULA` | Start a proof session (file#theory#formula) |
+| `--proof-command CMD` | Send a proof command to the current session |
+| `--status` | Show current proof session status |
+| `--list-active-proofs` | List all active proof sessions |
+| `--set-active-proof ID` | Set the active proof session |
+| `--quit-all-proofs` | Quit all proof sessions |
+| `--fail-proof ID` | Quit a proof without saving |
+| `--describe-server-methods` | List all PVS server methods |
+| `--help-method METHOD` | Get help for a specific method |
+| `--call METHOD [PARAMS]` | Call any PVS JSON-RPC method |
+| `--ping` | Check if PVS server is running |
+| `--verbose` | Enable verbose output |
+| `--timeout SECS` | Connection timeout (default: 10) |
+
+Run `pvs-cli.sh --help` for the complete list of options.
+
+## Implementation Note
+
+The entry point is `pvs-cli.sh`, a thin wrapper that locates and invokes the Python implementation in `pvs-cli/pvs-cli.py`. 
+The Python script handles all communication with the PVS server via WebSocket JSON-RPC.
+`pvs-cli.sh` automatically generates a virtual python environment so the required modules are not installed globally. 
+
 # `replay-trace.py`
 
-Replays PVS proof traces step-by-step to detect where proofs diverge.
-
-## Purpose
+Replays PVS proof traces step-by-step to detect where proofs diverge between PVS versions.
 
 When upgrading PVS versions, some proofs may break due to changes in prover behavior. This script helps identify exactly which proof step causes the divergence by replaying a recorded proof trace (`.trf` file) and comparing the actual PVS output against the expected sequents from the trace.
 
