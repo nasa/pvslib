@@ -491,12 +491,12 @@ async def send_proof_command(command, ws, proof_id=None, save_proof=True):
             if quit_found:
                 # Proof session was quit by the server
                 print_cli("Proof attempt cancelled")
-                # Handle quit...
-                formula_spec = state.get("active_proofs", {}).get(proof_id, {}).get("formula_spec", "")
-                if formula_spec and formula_spec.count("#") >= 2:
-                    parts = formula_spec.split("#")
-                    theory_ref = f"{parts[0]}#{parts[1]}"
-                    if save_proof:
+                # Handle quit - only try to save if save_proof is True
+                if save_proof:
+                    formula_spec = state.get("active_proofs", {}).get(proof_id, {}).get("formula_spec", "")
+                    if formula_spec and formula_spec.count("#") >= 2:
+                        parts = formula_spec.split("#")
+                        theory_ref = f"{parts[0]}#{parts[1]}"
                         print_verbose(f"Marking proof {proof_id} as default for {formula_spec}")
                         result = await request("mark-proof-as-default", [formula_spec, proof_id], ws)
                         if result is not None:
@@ -510,11 +510,8 @@ async def send_proof_command(command, ws, proof_id=None, save_proof=True):
                         else:
                             print_cli_error(f"Error: Could not save proofs")
                     else:
-                        print_cli_error("Warning: Proof is not being saved")
-                        print_cli(f"Tip: To mark this proof as default, use --mark-proof-as-default \"{formula_spec}\" \"{proof_id}\"")
-                        print_cli(f"Tip: To save the proof, use --save-all-proofs \"{theory_ref}\"")
-                else:
-                    print_cli_error("Error: Invalid formula reference for saving proof")
+                        print_cli_error("Error: Invalid formula reference for saving proof")
+                # Clean up state
                 if proof_id in state.get("active_proofs", {}):
                     del state["active_proofs"][proof_id]
                 if state.get("current_proof_id") == proof_id:
@@ -692,90 +689,75 @@ async def show_proof_status(ws):
 
     print_cli("Use --list-active-proofs to see all active proofs")
 
-def list_all_pvs_methods():
-    """List all PVS JSON-RPC methods with signatures"""
-    methods = {
-        "Basic Operations": [
-            "list-methods() - List all available PVS methods",
-            "list-client-methods() - List client-callable methods",
-            "help(methodname) - Get help for a specific method",
-            "lisp(string) - Execute Lisp expression",
-            "reset() - Reset system [STUB - NOT IMPLEMENTED BY SERVER]",
-            "interrupt() - Interrupt current operation [STUB - NOT IMPLEMENTED BY SERVER]",
-        ],
-        "File Operations": [
-            "parse(filename) - Parse a PVS file",
-            "typecheck(filename [content] [force]) - Typecheck file",
-            "names-info(filename) - Get names information from file",
-            "term-at(file, place [typecheck]) - Get term at location",
-            "show-tccs(fname) - Show type-checking conditions",
-            "latex-pvs-file(filename [content]) - Generate LaTeX for PVS file",
-        ],
-        "Proof Operations": [
-            "prove-formula(formula-ref [rerun]) - Start proof session",
-            "proof-command(proof-id, form) - Send proof command",
-            "proof-help(cmd) - Get help for proof command",
-            "interrupt-proof(id) - Interrupt specific proof session",
-            "prover-status([proof-id]) - Get prover status",
-            "proof-status(formula-ref) - Get proof status for formula",
-            "proof-script(formula-ref) - Get proof script",
-            "all-proofs-of-formula(formula-ref) - List all proofs for formula",
-            "delete-proof-of-formula(formula-ref, proof-id) - Delete proof",
-            "mark-proof-as-default(formula-ref, proof-id) - Mark proof as default",
-            "quit-all-proof-sessions() - Quit all proofs",
-        ],
-        "Context Operations": [
-            "change-context(dir) - Change context directory",
-            "change-workspace(dir) - Change workspace directory",
-            "clear-workspace([workspace] [empty-pvs-context] [delete-binfiles] [dont-load-prelude-libraries]) - Clear workspace",
-            "find-declaration(id) - Find declaration by ID",
-            "collect-theory-usings(theory-ref [exclude] [in-context]) - Collect theory dependencies",
-        ],
-        "Proof Management": [
-            "add-prover-hook(hook-fun) - Add prover hook",
-            "prove-tccs(fname) - Prove type-checking conditions",
-            "get-proof-scripts(pvsfilename) - Get proof scripts",
-            "save-all-proofs(theory-ref) - Save all proofs",
-        ],
-        "Library Operations": [
-            "add-pvs-library(string) - Add PVS library",
-        ],
-        "LaTeX/Documentation": [
-            "latex-theory(theory-ref) - Generate LaTeX for theory",
-            "latex-importchain(theory-ref) - Generate LaTeX for import chain",
-        ],
-        "PVS I/O": [
-            "pvsio-start(theory-ref) - Start PVS I/O session",
-            "pvsio-eval(session-id, expr, kind) - Evaluate expression in PVS I/O",
-        ],
-    }
+def format_argspec(argspec):
+    """Format argspec into a readable signature string.
+
+    The argspec from PVS is a list containing one inner list with argument names.
+    '&optional' marks where optional arguments begin.
+    Example: [["filename", "&optional", "content", "force?"]]
+             -> filename [content] [force?]
+    """
+    if not argspec or not isinstance(argspec, list):
+        return ""
+
+    # argspec is typically [[arg1, arg2, ...]] - get the inner list
+    inner = argspec[0] if argspec and isinstance(argspec[0], list) else argspec
+
+    args = []
+    optional = False
+    for item in inner:
+        if item == "&optional" or item == "&rest":
+            optional = True
+        else:
+            args.append(f"[{item}]" if optional else str(item))
+
+    return " ".join(args) if args else ""
+
+async def list_all_pvs_methods(ws):
+    """Query and list all PVS JSON-RPC methods from the server with full details"""
+    result = await request("list-methods", [], ws)
+
+    if result is None:
+        print_cli_error("Error: Could not retrieve method list from server")
+        return
 
     print_cli("\n" + "="*70)
-    print_cli("PVS JSON-RPC Methods Reference")
+    print_cli("PVS JSON-RPC Methods (from server)")
     print_cli("="*70)
 
-    print_cli("\nREFERENCE TYPES:")
-    print_cli("  theory-ref (THREF):")
-    print_cli("    Format: [file-ref] [#theory-id]")
-    print_cli("    file-ref: [workspace-ref] name [.pvs]")
-    print_cli("    workspace-ref: dir/ (relative/absolute) or lib@ (library)")
-    print_cli("    Example: theories/mylib#my_theory  or  /path/to/file.pvs#theory")
-    print_cli("")
-    print_cli("  formula-ref (FORMREF):")
-    print_cli("    Format: dir/file.pvs#theory#formula  or  lib@file.pvs#theory#formula")
-    print_cli("    where dir is a relative/absolute path, lib is usually in PVS_LIBRARY_PATH")
-    print_cli("    Example: /path/to/file.pvs#theory#my_lemma  or  lib@file.pvs#theory#lemma")
+    if isinstance(result, list):
+        result.sort()
+        for method in result:
+            # Get help for each method to show signature and docstring
+            help_result = await request("help", [method], ws)
+            if help_result and isinstance(help_result, dict):
+                argspec = help_result.get("argspec", [])
+                docstring = help_result.get("docstring", "")
+                signature = format_argspec(argspec)
+                header = f"{method} {signature}" if signature else method
+                print_cli(f"\n{header}")
+                if docstring:
+                    # Show only first line of docstring
+                    lines = docstring.strip().split('\n')
+                    first_line = lines[0].strip()
+                    if len(lines) > 1:
+                        print_server(f"    {first_line} [...]")
+                    else:
+                        print_server(f"    {first_line}")
+            else:
+                print_cli(f"\n{method}")
 
-    for category, method_list in methods.items():
-        print_cli(f"\n{category}:")
-        for method in method_list:
-            print_server(f"  {method}")
+        print_cli(f"\n" + "-"*70)
+        print_cli(f"Total: {len(result)} methods")
+        print_cli(f"Use --help-method METHOD for full documentation")
+    else:
+        print_server(json.dumps(result, indent=2))
 
     print_cli("\n" + "="*70)
     print_cli("USAGE:")
     print_cli("  Generic call: pvs-cli.sh --call METHOD [PARAM1] [PARAM2]...")
-    print_cli("  Example: pvs-cli.sh --call parse example")
-    print_cli("  Example: pvs-cli.sh --call help parse")
+    print_cli("  Get help:     pvs-cli.sh --help-method METHOD")
+    print_cli("  Example:      pvs-cli.sh --call parse example")
     print_cli("="*70)
 
 async def generic_call(method_name: str, params: List[str], ws):
@@ -1161,7 +1143,18 @@ async def help_method(method_name: str, ws):
 
     result = await request("help", [method_name], ws)
 
-    if result:
+    if result and isinstance(result, dict):
+        argspec = result.get("argspec", [])
+        docstring = result.get("docstring", "")
+        signature = format_argspec(argspec)
+        header = f"{method_name} {signature}" if signature else method_name
+        print_cli(f"\n{header}")
+        if docstring:
+            for line in docstring.strip().split('\n'):
+                print_server(f"    {line}")
+        print_cli("")
+        return True
+    elif result:
         print_cli(f"Help for '{method_name}':")
         print_server(json.dumps(result, indent=2))
         return True
@@ -1182,42 +1175,63 @@ async def interrupt_operation(ws):
     print_cli_error("Use --interrupt-proof <ID> to interrupt a specific proof session")
     return False
 
+async def ping_server(ws, verbose_info=False):
+    """Ping the PVS server to check if it's running and responsive"""
+    # Use list-methods as a lightweight ping - it always works and returns valid JSON
+    result = await request("list-methods", [], ws)
+
+    if result:
+        method_count = len(result) if isinstance(result, list) else "unknown"
+        if verbose_info:
+            print_cli(f"PVS server is running")
+            print_cli(f"  Available methods: {method_count}")
+            print_cli(f"  Connection: ws://localhost:23456")
+        else:
+            print_cli(f"PVS server is running ({method_count} methods available)")
+        return True
+    else:
+        print_cli_error("Error: Server connected but did not respond to ping")
+        return False
+
+
 async def main():
     global VERBOSE, USE_COLORS
 
     parser = argparse.ArgumentParser(
         description='PVS Command-Line Interface - Interact with PVS theorem prover via JSON-RPC',
         epilog='''
+REFERENCE TYPES:
+  theory-ref (THREF):
+    Format: [file-ref] [#theory-id]
+    file-ref: [workspace-ref] name [.pvs]
+    workspace-ref: dir/ (relative/absolute) or lib@ (library)
+    Example: theories/mylib#my_theory  or  /path/to/file.pvs#theory
+
+  formula-ref (FORMREF):
+    Format: dir/file.pvs#theory#formula  or  lib@file.pvs#theory#formula
+    where dir is a relative/absolute path, lib is usually in PVS_LIBRARY_PATH
+    Example: /path/to/file.pvs#theory#my_lemma  or  lib@file.pvs#theory#lemma
+
 BASIC USAGE:
+  1. Typecheck and prove:
+     pvs-cli.sh --typecheck file.pvs
+     pvs-cli.sh --prove "theory#lemma"
+     pvs-cli.sh --proof-command "(skolem!)"
 
-1. Typecheck and prove:
-   pvs-cli.sh --typecheck file.pvs
-   pvs-cli.sh --prove "theory#lemma"
-   pvs-cli.sh --proof-command "(skolem!)"
+  2. Generic method calls (for any PVS method):
+     pvs-cli.sh --call METHOD [PARAM1] [PARAM2]...
+     Examples:
+       pvs-cli.sh --call list-methods
+       pvs-cli.sh --call parse example
+       pvs-cli.sh --call help parse
 
-2. Generic method calls (for any PVS method):
-   pvs-cli.sh --call METHOD [PARAM1] [PARAM2]...
-   Examples:
-     pvs-cli.sh --call list-methods
-     pvs-cli.sh --call parse example
-     pvs-cli.sh --call help parse
-
-3. List all available methods:
-   pvs-cli.sh --describe-server-methods
+  3. List all available methods (queries server):
+     pvs-cli.sh --describe-server-methods
 
 REQUIREMENTS:
-- PVS server must be running: pvs -port 23456
-- All parameters are treated as strings (no type conversion)
-- Use --verbose for debugging
-
-METHOD CATEGORIES:
-- Basic: help, reset, interrupt
-- File: parse, typecheck, names-info, term-at, show-tccs, latex-pvs-file
-- Proof: prove-formula, proof-command, interrupt-proof, proof-status, proof-script, all-proofs-of-formula
-- Context: change-context, change-workspace, clear-workspace, find-declaration, collect-theory-usings
-- Other: lisp, add-pvs-library, pvsio-start, pvsio-eval
-
-See --list-all-methods for method signatures and full reference.
+  - PVS server must be running: pvs -port 23456
+  - All parameters are treated as strings (no type conversion)
+  - Use --verbose for debugging
 ''',
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1241,6 +1255,8 @@ See --list-all-methods for method signatures and full reference.
                       help='Quit a proof without saving it (does not auto-save or mark as default)')
     group.add_argument('--status', action='store_true',
                       help='Show current proof session status')
+    group.add_argument('--ping', action='store_true',
+                      help='Check if PVS server is running and responsive')
 
     # Generic method call
     group.add_argument('--call', nargs='+', metavar=('METHOD', 'PARAM'),
@@ -1306,6 +1322,8 @@ See --list-all-methods for method signatures and full reference.
                        help='PVS server host (default: localhost)')
     parser.add_argument('--port', type=int, default=23456,
                        help='PVS server port (default: 23456)')
+    parser.add_argument('--timeout', type=float, default=10.0,
+                       help='Connection timeout in seconds (default: 10)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='Enable verbose output')
     parser.add_argument('--debug', action='store_true',
@@ -1353,14 +1371,13 @@ See --list-all-methods for method signatures and full reference.
         list_active_proofs()
         return
 
-    if args.describe_server_methods:
-        list_all_pvs_methods()
-        return
-
     try:
         uri = f"ws://{args.host}:{args.port}"
         # Set close_timeout to 0 to avoid waiting for clean close
-        async with websockets.connect(uri, close_timeout=0) as ws:
+        # Use open_timeout for connection timeout
+        # Set max_size to 50MB to handle large proof responses (rerun can generate very large output)
+        # Disable ping timeout to avoid disconnection during long-running proof commands
+        async with websockets.connect(uri, close_timeout=0, open_timeout=args.timeout, max_size=50*1024*1024, ping_timeout=None) as ws:
             # Core proof commands
             if args.typecheck:
                 await typecheck_file(args.typecheck, ws)
@@ -1376,6 +1393,10 @@ See --list-all-methods for method signatures and full reference.
                 await fail_proof(args.fail_proof, ws)
             elif args.status:
                 await show_proof_status(ws)
+            elif args.ping:
+                success = await ping_server(ws, verbose_info=VERBOSE)
+                if not success:
+                    sys.exit(1)
 
             # Generic method call
             elif args.call:
@@ -1437,6 +1458,16 @@ See --list-all-methods for method signatures and full reference.
             elif args.save_all_proofs:
                 await save_all_proofs(args.save_all_proofs, ws)
 
+            # Server info
+            elif args.describe_server_methods:
+                await list_all_pvs_methods(ws)
+
+    except asyncio.TimeoutError:
+        print_cli_error(f"Error: Connection to PVS server at {args.host}:{args.port} timed out after {args.timeout}s")
+        print_cli_error("")
+        print_cli_error("The PVS server is not responding. Please start it with:")
+        print_cli_error(f"  pvs -port {args.port}")
+        sys.exit(1)
     except (ConnectionRefusedError, OSError) as e:
         print_cli_error(f"Error: Could not connect to PVS server at {args.host}:{args.port}")
         print_cli_error("")
