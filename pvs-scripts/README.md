@@ -11,6 +11,7 @@ The NASALib also provides a collection of scripts that automates several tasks.
 * [`dependencygraph`](#dependencygraph) - Generates a library dependency graph for libraries in the current directory.
 * [`dependency-all`](#dependency-all) - Generates the dependency graphs for the PVS libraries in the current folder.
 * [`test-pvs-mcp`](#test-pvs-mcp) - Tests and configures the PVS MCP server for Claude Code.
+* [`replay-trace.py`](#replay-tracepy) - Replays proof traces to detect where proofs diverge between PVS versions.
 
 # `proveit`
 
@@ -451,4 +452,104 @@ $ ./test-pvs-mcp.sh --help
 Run the full setup check and configuration:
 ```shell
 $ ./test-pvs-mcp.sh
+```
+
+# `replay-trace.py`
+
+Replays PVS proof traces step-by-step to detect where proofs diverge.
+
+## Purpose
+
+When upgrading PVS versions, some proofs may break due to changes in prover behavior. This script helps identify exactly which proof step causes the divergence by replaying a recorded proof trace (`.trf` file) and comparing the actual PVS output against the expected sequents from the trace.
+
+Proof traces are generated using `proveit --traces` and follow the naming convention:
+```
+<library>-<theory>-<formula>-<pvs-version>-<date>[-<git-hash>][-BAD].trf
+```
+
+## Prerequisites
+
+- Python 3.7+
+- `pvs-cli.sh` available (either in the same directory as the script, or in PATH)
+- PVS server running: `pvs -port 23456`
+
+## Typical Usage
+
+### Replay a proof trace until the first discrepancy
+
+```shell
+$ ./replay-trace.py path/to/CCG-measures-card_measure_matrices-8.0-20260917.trf
+```
+
+The script will typecheck the theory, start the proof, and replay each step. It stops when it finds a discrepancy between the expected and actual sequent, showing a colored diff.
+
+### Replay a limited number of steps
+
+Use `--max-steps` to replay only a specific number of proof steps:
+
+```shell
+$ ./replay-trace.py trace.trf --max-steps 10
+```
+
+### Resume an interrupted replay
+
+After stopping (via `--max-steps` or a discrepancy), you can resume:
+
+```shell
+$ ./replay-trace.py --resume                    # Resume most recent
+$ ./replay-trace.py --resume card_measure       # Resume by formula name
+$ ./replay-trace.py --resume path/to/trace.trf  # Resume by trace file
+```
+
+### Check status of tracked replays
+
+```shell
+$ ./replay-trace.py --status
+```
+
+### Clean up completed/failed sessions
+
+This also quits the associated proof sessions in PVS:
+
+```shell
+$ ./replay-trace.py --clean
+```
+
+## Understanding the Output
+
+### Warnings (yellow)
+Subgoal count mismatches are shown as warnings but don't stop the replay. For example, if the trace expected 3 subgoals but PVS produced 4, this indicates the proof structure changed but may still succeed.
+
+### Discrepancies (colored diff)
+When sequents differ, the script shows:
+1. **BEFORE**: The state before the command (both expected and actual)
+2. **COMMAND**: The proof command that was applied
+3. **AFTER**: A side-by-side diff with colors:
+   - Red: formulas/parts in the OLD trace but missing from current proof
+   - Green: formulas/parts NEW in the current proof but not in the trace
+
+## Verbosity Levels
+
+| Flag | Level | Description |
+| --- | --- | --- |
+| (none) | 0 | Minimal output, shows discrepancies only |
+| `-v` | 1 | Show progress and commands being sent |
+| `-vv` | 2 | Also show previous sequents on discrepancy |
+| `-vvv` | 3 | Show all expected vs actual sequents |
+
+## Examples
+
+Replay with verbose output and wider columns for the diff display:
+```shell
+$ ./replay-trace.py -vv --column-width 80 trace.trf
+```
+
+Replay with a custom timeout per proof command (default is 300 seconds):
+```shell
+$ ./replay-trace.py --timeout 600 trace.trf
+```
+
+Disable colored output:
+```shell
+$ ./replay-trace.py --no-color trace.trf
 ```
