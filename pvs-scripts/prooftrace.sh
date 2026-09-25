@@ -141,10 +141,6 @@ do
 	    else
 		file="$dir/$ctx/$theory.pvs"
 	    fi
-	    if [ ! -f "$file" ]; then
-		echo "** Error: Theory file $file not found"
-		exit 1
-	    fi
     esac
     shift 
 done
