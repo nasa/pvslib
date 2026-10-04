@@ -2,219 +2,214 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use File::Basename;
+use Cwd qw(abs_path);
 
-my $filename = '.pvslib';
-my $format_default = "<id> - <dir>";
+my $findpvslib = basename($0);
+my $pvslib = '.pvslib';
+my $default_format = "{id} - {dir}";
 
-my $help_str = "$0 [ --help | <options> ] [<libname>]*
-Find all library records in \$PVS_LIBRARY_PATH whose id matches any <libname>. By default, <libname> is case 
-insensitive and partial unless the flag --strict is provided. Exit with an error if a record matching a <libname> 
-is not found in \$PVS_LIBRARY_PATH.
+my $help_str = "NAME
+  $findpvslib -- find PVS library records
 
-Valid <options> are 
---key <keyname>            : Select key <keyname> of every library record. More than one --key option could be
-                             provided. For each library record, selected keys are printed using the format 
-                             <key1>:<val1>|...|<keyn>:<valn>. By default, key 'id' is always selected. 
---allkeys                  : Select all keys of a record. 
---strict                   : Find library records whose id strictly match a <libname>. This flag requires
-                             at least one <libname> to be provided.
---format <formatstr>       : If keys are not provided, print library records using the format strubg <formatstr>.
-                             This string may contain metavariables of the form \"<key>\", which are replaced by the actual
-                             key value. By default, <formatstr> is \"$format_default\".  
---quiet                    : Fail silently if records in .pvslib files are not well-formed, e.g., they don't have a 
-                             unique id, etc. 
---clearpath                : Set library path to empty and ignore \$PVS_LIBRARY_PATH. This option could be used in
-                             combination with --addpath.
---addpath [<path>]         : Add <path> to library path, where <path> is a colon separated list of directories. More
-                             than one --addpath option could be provided. If <path> is empty, add current directory.
+SYNOPSIS
+  $findpvslib [ --help | <options> ] [<libname>]*
 
-Examples of use: 
-$0                                      <--- Print all records using default format
-$0 --format \"<id> <version> (<date>)\"   <--- Print all records in the provided format 
-$0 NASALib --strict --allkeys           <--- Print all keys of the record of NASALib using default format
-$0 nasa --key dir --key date            <--- Print keys id (implicit), dir, and date of all library records 
-                                                      matching (case insensitive and partial) the string \"nasa\"
+  Find library records in PVS_LIBRARY_PATH whose ids match <libname>. By default, match is case
+  insensitive and partial unless the flag --strict is provided.
 
-Technical Note: This command searches a file called $filename in the root of each directory in \$PVS_LIBRARY_PATH. This file
-is assumed to be a set of lines of the form <key>:<val>, where at least one of the keys is \"id\". This file is considered to
-be a record storing meta-information of a library. Keys are semantic agnostic, except for the following ones:
-* \"id\": Library id, assumed to be globally unique.
-* \"dir\": This is an implict key in every record and points to the absolute directory of the library. It's computed 
-  automatically by the script. 
-* \"sublibdirs\": Colon (\":\") separated list of directories, relative to the library, containing sublibraries. These directories 
-  will automatically be added to \$PVS_LIBRARY_PATH by PVS.
-* \"lisploads\": Colon (\":\") separated list of files, relative to the library, containing lisp code. These files will 
-  be automatically loaded by PVS. 
-* \"libdeps\": Colon (\":\") separated list of library ids, on which the library depend. The scripts checks that these dependencies are available in
-  in \$PVS_LIBRARY_PATH.
-* \"preludelib\": Any value different from emtpy states that this library is a prelude extension. 
+OPTIONS
+  Options are processed in the order they appear. Options marked [+] can be
+  used multiple times and are cumulative. One letter options can be combined.
+
+[*]--add-path <path>
+     Add <path> to PVS_LIBRARY_PATH, where <path> is a colon separated list of directories
+   --clear-path
+     Clear PVS_LIBRARY_PATH
+   --format <formatstr>
+     If keys are not provided, print library records using the format string <formatstr>.
+     This string may contain metavariables of the form \"{key}\", which are replaced by the actual
+     key value. The metavariable {default} represents \"$default_format\".
+     If --format and --key are both provided, --key options are ignored
+[*]--key <keyname>
+     Select key <keyname> of every library record
+   --quiet
+     Be silent
+   --strict
+     Find library records whose ids exactly match <libname>
+
+EXAMPLES
+  * $findpvslib
+    Print all library records and their keys
+
+  * $findpvslib --format \"{id} {version} ({date})\"
+    Print all library records in the provided format
+
+  * $findpvslib NASALib --strict --format \"{default}\"
+    Print all keys of the record of NASALib using the default format
+
+  * $findpvslib nasa --key dir --key date
+    Print speficied keys of library records matching \"nasa\" (case insensitive)
+
+TECHNICAL COMMENT:
+  This command searches a file called $pvslib in the root of each directory in PVS_LIBRARY_PATH. This file
+  is assumed to be a set of lines of the form <key>:<val>. This file is considered to
+  be a record storing meta-information of a library. Keys are semantic agnostic, except for the following ones:
+  * \"id\": Library id, assumed to be globally unique. If not provided, it is assummed to be the basename of the path.
+  * \"dir\": This is an implict key in every record and points to the absolute directory of the library.
+  * \"sublibdirs\": Comma separated list of directories, relative to the library, containing sublibraries. These directories
+    will automatically be added to PVS_LIBRARY_PATH by PVS.
+  * \"lisploads\": Comma separated list of files, relative to the library, containing lisp code. These files will
+    be automatically loaded by PVS.
+  * \"preludedirs\": Comma separated list of prelude extension directories, which are relative to the library.
 ";
 
 my @keys;
-my $allkeys;
 my $strict;
 my $quiet;
 my $format;
 my $clearpath;
-my @addpath;
+my @addpath = split(":",$ENV{PVS_LIBRARY_PATH});
 my $help;
 
 GetOptions('key=s' => \@keys,
-	   'allkeys' => \$allkeys,
 	   'strict' => \$strict,
-	   'quiet!' => \$quiet,
+	   'quiet' => \$quiet,
 	   'format=s' => \$format,
-	   'clearpath' => \$clearpath,
-	   'addpath:s' => \@addpath,
+	   'clear-path' => sub { @addpath = (); },
+	   'add-path=s' => sub {
+	     my ($opt_name, $opt_value) = @_;
+	     my @dir = split(":",$opt_value);
+	     @dir = map { abs_path($_) } @dir;
+	     push(@addpath,join ":",@dir);
+	   },
 	   'help' => \$help) or
-    die "$help_str";
+    die "\n";
 
 my @libnames = @ARGV;
-
-$format = $format_default if !$format;
 
 die "Flag --strict requires a <libname>\n" if $strict && !@libnames;
 
 if ($help) {
-    print "$help_str";
-    exit(1);
+  print "$help_str";
+  exit(1);
 }
 my %pvslibs;     # Hash of all library hashes
 my %dups;        # Hash of ids that are duplicated. The key is the id and the val is a list of paths to the .pvslib files
 my %nosubdirs;   # Hash of ids without valid subdirs. The key is the id and the val is a list of directories
 my %nolisploads; # Hash of ids without valid lisp load files. The key is the id and the val is a list of files
-my %libdeps;     # Hash of library depencies. The key is the library id and the val is a list of ids that depend on it.
 my @noids;       # List of .pvslib without ids
-my @nopvslib;    # List of libraries without .pvslib
 my @foundlibs;   # List of found libraries that need to be processed
 
-my $pvslibrarypath = $ENV{PVS_LIBRARY_PATH};
-$pvslibrarypath = "" if $clearpath || ! $pvslibrarypath;
-# Treat empty addpath entries as current directory
-@addpath = map { $_ eq "" ? "." : $_ } @addpath;
-$pvslibrarypath .= ":".join ":", @addpath if @addpath;
+my $pvslibrarypath = join ":", @addpath;
 
 my @dirs = split(':',$pvslibrarypath);
 foreach my $dir (@dirs) {
-  if (-e "$dir/$filename") {
-    my %data;
-    open(FH, '<', "$dir/$filename");
+  my %data;
+  my $base = basename($dir);
+  my @fields = ( $base );
+  $data{"id"} = \@fields;
+  if (-e "$dir/$pvslib") {
+    open(FH, '<', "$dir/$pvslib");
     while(<FH>) {
       $_ =~ s/#.*$//;
       next if /^\s*$/;  # Skip empty lines
       my @fields = split(':',$_);
-      next if scalar(@fields) < 2;
-      s{^\s+|\s+$}{}g foreach @fields; # Trim spaces of all fields
+      next if scalar(@fields) <= 1;
       my $key = shift @fields;
+      if (scalar(@fields) == 1) {
+	@fields = split(",",$fields[0]);
+      }
+      s{^\s+|\s+$}{}g foreach @fields; # Trim spaces of all fields
       $data{$key} = \@fields;
     }
     close(FH);
-    my @thisdir;
-    push @thisdir, $dir;
-    $data{'dir'} = \@thisdir;
-    my $libid = $data{'id'}[0];
-    if ($libid) {
-      if ($pvslibs{$libid}) { # id is already in the list
-	# id is duplicated
-	if ($dups{$libid}) { # id is already known to be duplicated
-	  push @{$dups{$libid}}, "$dir/$filename";
-	} else { # id is a new duplicate
-	  my @thisdup;
-	  push @thisdup, "$pvslibs{$libid}{'dir'}[0]", "$dir/$filename";
-	  $dups{$libid} = \@thisdup;
-	}
-      } else {
-	# Only non-duplicated id's are processed
-	$pvslibs{$libid} = \%data;
+  }
+  my @thisdir;
+  push @thisdir, $dir;
+  $data{'dir'} = \@thisdir;
+  my $libid = $data{'id'}[0];
+  if ($libid) {
+    if ($pvslibs{$libid}) { # id is already in the list
+      # id is duplicated
+      if ($dups{$libid}) { # id is already known to be duplicated
+	push @{$dups{$libid}}, "$dir/$pvslib";
+      } else { # id is a new duplicate
+	my @thisdup;
+	push @thisdup, "$pvslibs{$libid}{'dir'}[0]", "$dir/$pvslib";
+	$dups{$libid} = \@thisdup;
+      }
+    } else {
+      # Only non-duplicated id's are processed
+      $pvslibs{$libid} = \%data;
 
-	# Add sublibs to $pvslibrarypath
-	my @subdirs = @{$data{'sublibdirs'}} if $data{'sublibdirs'};
-	if (@subdirs) {
-	  for my $subdir (@subdirs) {
-	    if ( -d "$dir/$subdir" ) {
-	      push @dirs,"$dir/$subdir";
-	    } elsif ($nosubdirs{$libid}) {
-	      push @{$nosubdirs{$libid}},"$dir/$subdir";
-	    } else {
-	      my @thissubdir;
-	      push @thissubdir,"$dir/$subdir";
-	      $nosubdirs{$libid} = \@thissubdir;
-	    }
-	  }
-	}
-
-	# Check lispload files exist
-	my @lisploads = @{$data{'lisploads'}} if $data{'lisploads'};
-	for my $lispload (@lisploads) {
-	  next if -e "$dir/$lispload";
-	  if ($nolisploads{$libid}) {
-	    push @{$nolisploads{$libid}},"$dir/$lispload";
+      # Add sublibs to $pvslibrarypath
+      my @subdirs = @{$data{'sublibdirs'}} if $data{'sublibdirs'};
+      if (@subdirs) {
+	for my $subdir (@subdirs) {
+	  if ( -d "$dir/$subdir" ) {
+	    push @dirs,"$dir/$subdir";
+	  } elsif ($nosubdirs{$libid}) {
+	    push @{$nosubdirs{$libid}},"$dir/$subdir";
 	  } else {
-	    my @thislisp;
-	    push @thislisp, "$dir/$lispload";
-	    $nolisploads{$libid} = \@thislisp;
+	    my @thissubdir;
+	    push @thissubdir,"$dir/$subdir";
+	    $nosubdirs{$libid} = \@thissubdir;
 	  }
-	}
-	
-	# Check lisp dependencies
-	my @deps = @{$data{'libdeps'}} if $data{'libdeps'};
-	for my $dep (@deps) {
-	  if ($libdeps{$dep}) {
-	    push @{$libdeps{$dep}},"$libid";
-	  } else {
-	    my @thisdep;
-	    push @thisdep, $libid;
-	    $libdeps{$dep} = \@thisdep;
-	  }
-	}
-	
-	if ( !@libnames || ($strict && grep { $libid eq $_ } @libnames) ||
-	     (!$strict && grep { $libid =~ m/$_/i } @libnames) ) {
-	  ## This record has to be processed
-	  push @foundlibs, $libid;
-	  last if $strict;
 	}
       }
-    } else { # No id
-      push @noids, "$dir/$filename";
+
+      # Check lispload files exist
+      my @lisploads = @{$data{'lisploads'}} if $data{'lisploads'};
+      for my $lispload (@lisploads) {
+	next if -e "$dir/$lispload";
+	if ($nolisploads{$libid}) {
+	  push @{$nolisploads{$libid}},"$dir/$lispload";
+	} else {
+	  my @thislisp;
+	  push @thislisp, "$dir/$lispload";
+	  $nolisploads{$libid} = \@thislisp;
+	}
+      }
+
+      if ( !@libnames || ($strict && grep { $libid eq $_ } @libnames) ||
+	   (!$strict && grep { $libid =~ m/$_/i } @libnames) ) {
+	## This record has to be processed
+	push @foundlibs, $libid;
+	last if $strict;
+      }
     }
-  } else {
-    push @nopvslib, "$dir";
+  } else { # No id
+    push @noids, "$dir/$pvslib";
   }
 }
 
 # Print check message
 my $checkmsg;
+my $msg = "";
 if (!$quiet) {
-  my $msg = join ",", @nopvslib;
-  $checkmsg = "Warning: Library paths without $filename ($msg)\n" if $msg;
   $msg = join ",", @noids;
-  $checkmsg .= "Warning: $filename without library id ($msg)\n" if $msg;
+  $checkmsg .= "Warning: $pvslib without library id ($msg)\n" if $msg;
   for my $id (keys %dups) {
-    my $msgstr = join ":", @{$dups{$id}}; 
+    my $msgstr = join ":", @{$dups{$id}};
     $checkmsg .= "Warning: Duplicated library id $id ($msgstr)\n";
   }
   for my $id (keys %nosubdirs) {
-    my $msgstr = join ":", @{$nosubdirs{$id}}; 
+    my $msgstr = join ":", @{$nosubdirs{$id}};
     $checkmsg .= "Warning: Library sub directories of library $id not found ($msgstr)\n";
-  }    
-  for my $id (keys %nolisploads) {
-    my $msgstr = join ":", @{$nolisploads{$id}}; 
-    $checkmsg .= "Warning: Lisp load files of library $id not found ($msgstr)\n";
   }
-  for my $id (keys %libdeps) {
-    my $msgstr = join ":", @{$libdeps{$id}}; 
-    $checkmsg .= "Warning: Library id $id not found. Other libraries depend on it ($msgstr)\n"
-      if !$pvslibs{$id};
+  for my $id (keys %nolisploads) {
+    my $msgstr = join ":", @{$nolisploads{$id}};
+    $checkmsg .= "Warning: Lisp load files of library $id not found ($msgstr)\n";
   }
 }
 
 if (!@foundlibs) {
   my $strictstr = "";
   $strictstr = " strictly" if $strict;
-  my $libnamestr = join ",", @libnames; 
-  $libnamestr = "any id" unless $libnamestr; 
-  $checkmsg .= "No library id$strictstr matching $libnamestr found in files $filename in \$PVS_LIBRARY_PATH ($pvslibrarypath)\n";
+  my $libnamestr = join ",", @libnames;
+  $libnamestr = "any id" unless $libnamestr;
+  $checkmsg .= "No library id$strictstr matching $libnamestr found in files $pvslib in PVS_LIBRARY_PATH\n";
 }
 
 ## Processing the found libraries
@@ -229,33 +224,36 @@ sub compare {
   }
 }
 
+print "PVS_LIBRARY_PATH=$pvslibrarypath\n" if !$quiet;
+
 for my $libid (@foundlibs) {
   my %data = %{$pvslibs{$libid}};
   my @datakeys = keys %data;
 
-  if (@keys || $allkeys) {
-    if ( @keys ) {
-      @datakeys = @keys;
-      unshift(@datakeys,'id') unless grep { 'id' eq $_ } @keys;
-    } elsif ($allkeys) {
+  if ($format) {
+    my $str = $format;
+    $str =~ s/{default}/$default_format/g;
+    for my $key ( @datakeys ) {
+      $str =~ s/{$key}/@{$data{$key}}/g;
+    }
+    $str =~ s/{[A-Za-z][A-Za-z0-9_]*}//g;
+    print "$str\n";
+  } else {
+    if (@keys) {
+      @datakeys = split(",",join ",", @keys);
+      unshift(@datakeys,'id') unless grep { 'id' eq $_ } @datakeys;
+    } else {
       @datakeys = sort compare @datakeys;
     }
     my $n = $#datakeys;
     for my $key ( @datakeys ) {
       my $valstr = "";
-      $valstr = join ":", @{$data{$key}} if $data{$key};
+      $valstr = join ", ", @{$data{$key}} if $data{$key};
       print "$key:$valstr";
-      print "|" if $n; 
+      print " | " if $n;
       $n--;
     }
     print("\n");
-  } elsif ($format) {
-    my $str = $format;
-    for my $key ( @datakeys ) {
-      $str =~ s/<$key>/@{$data{$key}}/g;
-    }
-    $str =~ s/<.+>//g;
-    print "$str\n";
   }
 }
 

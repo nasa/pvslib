@@ -1,0 +1,999 @@
+#!/usr/bin/env perl
+#
+# provethem.in
+# Release: ProofLite-8.0 (10/13/2023)
+#
+# Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
+# NASA Langley Research Center
+# http://shemesh.larc.nasa.gov/people/cam/ProofLite
+#
+# Copyright (c) 2011-2012 United States Government as represented by
+# the National Aeronautics and Space Administration.  No copyright
+# is claimed in the United States under Title 17, U.S.Code. All Other
+# Rights Reserved.
+#
+# Mariano Moscato (12/07/2023)
+#
+# Script for batch proving several libraries in PVS
+#
+
+use strict;
+use warnings;
+use Getopt::Long qw(GetOptionsFromString);
+use File::Basename;
+use Term::ANSIColor qw(:constants);
+use Cwd qw(abs_path);
+use File::Temp qw/ tempdir /;
+use File::Path qw(make_path);
+
+$Term::ANSIColor::AUTORESET = 1;
+
+sub normalize_dir {
+  my ($path) = @_;
+  return $path =~ /\/$/ ? $path : "$path/";
+}
+
+sub resolve_script_dir {
+  my $path = shift;
+  if ($path !~ /\//) {
+    my $candidate = `command -v "$path" 2>/dev/null`;
+    chomp $candidate;
+    $path = $candidate if $candidate ne "";
+  }
+  my $resolved = abs_path($path);
+  return defined $resolved ? dirname($resolved) : undef;
+}
+
+my $PVSPATH = $ENV{PVSPATH};
+if (defined $PVSPATH && -d $PVSPATH) {
+  my $resolved = abs_path($PVSPATH);
+  $PVSPATH = defined $resolved ? normalize_dir($resolved) : normalize_dir($PVSPATH);
+} else {
+  my $script_dir = resolve_script_dir($0);
+  die "Error (provethem): The PVS installation could not be located from $0\n"
+    unless defined $script_dir;
+  $PVSPATH = normalize_dir($script_dir);
+}
+
+my @prelude = ("bitvector", "finite_sets");
+
+my $OUTPUT_AUTOFLUSH=1;
+my $VERSION="";
+my $PROVEIT="${PVSPATH}proveit";
+
+my $usageln = "Usage: provethem [--help | <option> ...] [<input-file>] [-- <proveit-options>]";
+
+if (system("test -x \"$PROVEIT\" > /dev/null 2>&1")) {
+  die "Error (provethem): The provethem script could not be located relative to $PVSPATH\n";
+}
+
+sub readVersion() {
+  $VERSION = `$PROVEIT --version`;
+  $VERSION =~ s/^(.*)[\r\n]*$/$1/;
+}
+
+sub trim($) {
+  my $string = shift;
+  $string =~ s/^\s+//;
+  $string =~ s/\s+$//;
+  return $string;
+}
+
+sub usage() {
+  readVersion();
+
+  print <<EOF;
+NAME
+   provethem -- run proveit on a collection of libraries
+
+SYNOPSYS
+   $usageln
+
+   File <input-file> is a list of libraries to be processed by proveit. If <input-file>
+is not provided, the file name \"all-libraries\" is assumed. Lines in <input-file> have either
+the form <provethem-options> or <lib> [: <proveit-options>], where <provethem-options> is
+a preset list of provethem options, <lib> is a directory library in the working path, and
+<proveit-options> is a preset list of proveit options for library <lib>. When <lib> is empty,
+<proveit-options> apply to all libraries thenceforth.  Output file can be
+specified using the option --out.  Otherwise, a default name having the form
+<input-file><postfix>.grandtotals is used. The <postfix> depends on the options
+--do,--but,--from,--to,--after,--before given to the script. Summaries for each <lib> are
+saved in the directory \"summaries\", unless the option --dir is provided.
+
+OPTIONS
+   Options are processed in the order they appear. Options marked [+] can be
+   used multiple times and are cumulative.
+
+The following options filter the set of libraries to process
+   --after=<dir>           prove all libraries after <dir>, exclusive
+   --before=<dir>          prove all libraries before <dir>, exclusive
+[*]--but=<dir1>,..,<dirn>  do not process libraries <dir1>,..,<dirn>
+[*]--do=<dir1>,..,<dirn>   process libraries <dir1>,..,<dirn>
+   --from=<dir>            prove all libraries from <dir>, inclusive
+   --to=<dir>              prove all libraries to <dir>, inclusive
+
+The following options control the behavior of provethem
+   --action-name <name>    use <name> to summarize  <command> action
+   -C|--clean-only         remove .pvscontext and binary files in the pvsbin folder, and quit
+   --clean-all             remove .pvscontext, orphaned-proofs.prf, and all files in pvsbin, and quit
+   --color                 use colors (default behavior)
+   --no-color		   don't use colors
+   -d|--dir <dir>          use <dir> as default directory for generated files
+   --dry-run               print commands wihtout executing them
+   --no-dry-run            disable dry run
+   --execute <command>     execute Unix <command> on all libraries, interpolating \%DIR\% and \%FILE\%
+   -f|--force              force provethem to go even if there is a proveit error
+   -o|--out <file>         save output to <file>
+   -q|--quiet              be silent
+[*]--ret-val-label <val>=<label> use <label> to print the return value <val> of <command>
+   -T|--typecheck-only     typecheck but do not prove the libraries
+   --top <name>            use <name>.pvs instead of \"top.pvs\" as top theory
+   -v|--verbose            print summary information for all theories
+
+The following options can only be used in the command line interface, i.e., they cannot be preset
+as provethem options in <input-file>.
+   --generate-input        generate <input-file> if it doesn't exist
+   -h|--help               print this message
+[+]--proveit-option <opt>  pass <opt> to proveit, where <opt> doesn't have a leading '-',
+[+]--pvs-option <opt>      pass <opt> to PVS, where <opt> doesn't have a leading '-',
+   --version               print version information and exit
+
+VERSION
+   $VERSION
+EOF
+  exit;
+}
+
+my $provethem_opts;
+
+sub push_arg {
+  my ($opt_name, $opt_value) = @_;
+  if (length($opt_name) == 1) {
+    $provethem_opts .= "-$opt_name ";
+  } else {
+    $provethem_opts .= "--$opt_name ";
+  }
+  $provethem_opts .= "$opt_value " if $opt_value;
+}
+
+sub push_bool_arg {
+  my ($opt_name, $opt_value) = @_;
+  if (length($opt_name) == 1) {
+    $provethem_opts .= "-$opt_name ";
+  } elsif ($opt_value) {
+    $provethem_opts .= "--$opt_name ";
+  } else {
+    $provethem_opts .= "--no-$opt_name ";
+  }
+}
+
+my $SUMMARIES="summaries";
+my $TOP="top";
+my $ALLLIBRARIES="all-libraries";
+
+my $help;
+my $generateinput;
+my @proveit_opts;
+my @pvs_opts;
+my $version;
+
+my $dir2;
+my $dryrun2;
+my $force2;
+my $verbose2;
+my $top2;
+
+sub generate_all_libraries($) {
+  my $file = shift;
+  if ($generateinput) {
+    print "Input file $file not found. It will be generated!\n";
+
+    opendir(current_directory, ".");
+    my @libdirs = readdir(current_directory);
+    closedir(current_directory);
+
+    my $depdir = $dir2 || $SUMMARIES;
+    my $topname = $top2 || $TOP;
+
+    if (! -d $depdir) {
+	die "About to run: mkdir $depdir" if $dryrun2;
+	make_path($depdir) or die "Error (provethem): Failed to create $depdir\n";
+    }
+
+    my $depopt = " --typecheck-only --dependencies --generate-top --dir $depdir --top $topname";
+
+    my %lib_deps;
+    my @all_libraries=();
+    my $over_opts='';
+    $over_opts .= "--pvs-option '".join("' --pvs-options '",@pvs_opts)."'" if @pvs_opts;
+    $over_opts .= "--".join(" --",@proveit_opts) if @proveit_opts;
+    foreach my $libdir (@libdirs) {
+      # skip . and ..
+      next if($libdir =~ /^\.$/);
+      next if($libdir =~ /^\.\.$/);
+
+      if (-d $libdir) {
+	my @files_in_subdir = glob("$libdir/*.pvs");
+
+	# Only take into considerations folders that have at least one pvs file
+	if ( scalar @files_in_subdir > 0) {
+	  # look into the dep file to check dependencies
+	  my $depfile = "$depdir/$libdir.dep";
+	  my $topfile = "$libdir/$topname.pvs";
+	  if (! -f $topfile && ! $force2) {
+	      print "File $topfile not found. It could be generated, but it takes time\n";
+	      print "Do you want to continue? [y/n] n\b";
+	      my $answer = <STDIN>;
+	      chomp $answer;
+	      exit 0 unless $answer =~ /^[yY]/;
+	  } elsif (! -f $depfile && ! $force2) {
+	      print "No dependency file $depfile found. It could be generated, but it may take time\n";
+	      print "Do you want to continue? [y/n] n\b";
+	      my $answer = <STDIN>;
+	      chomp $answer;
+	      exit 0 unless $answer =~ /^[yY]/;
+	  }
+	  my $depcomm = "$PROVEIT $depopt $over_opts $libdir";
+	  print "About to run: $depcomm\n" if $verbose2 || $dryrun2;
+	  exit 0 if $dryrun2;
+	  my $depout = `$depcomm`;
+	  if (-f $depfile) {
+	    push(@all_libraries,$libdir);
+	    my $localws;
+	    my $localbase;
+	    open (DEPFILE,"$depfile");
+	    while (<DEPFILE>) {
+	      my $line = $_;
+	      $line =~ s/#.*//;
+	      $line = trim($line);
+	      next if !$line;
+
+	      die "Error (provethem): File $depfile appears to be corrupted ",
+		  "(line ",${\*DEPFILE}->input_line_number,")\n" if ($line =~ tr/://) != 1;
+
+	      my @list = split ":",$line;
+	      my $wspath = trim($list[0]);
+	      if ($wspath =~ /^(?:\[([^\]]+)\])?([^\/]+)(?:\/(.+))?$/) {
+		my $collection  = $1 // '';   # optional [name]
+		my $base = $2;         # required base
+		my $path = $3 // '';   # optional /path
+
+		next if !$collection && !$path; # These are local dependencies
+		if (!$localws) {
+		  $localws = $wspath;
+		  $localbase = $base;
+		} elsif ($localbase eq $base) {
+		  push(@{$lib_deps{$libdir}}, $path);
+		}
+	      }
+	    }
+	    close (DEPFILE);
+	  } else {
+	      die "${depout}Error (provethem): File $depfile could not be generated\n"
+	  }
+	}
+      }
+    }
+
+    # Order the arrays of libraries according to its its dependencies.
+    my $lib_cmp = sub($$) {
+      my $a = $_[0];
+      my $b = $_[1];
+      my $result=0;
+      if (exists $lib_deps{$a} && grep { $b eq $_ } @{$lib_deps{$a}}){
+	$result=1;
+      } elsif (exists $lib_deps{$b} && grep { $a eq $_ } @{$lib_deps{$b}}){
+	$result=-1;
+      }
+      return $result;
+    };
+    @all_libraries = sort {$lib_cmp->($a,$b)} @all_libraries;
+
+    # Finally, print the list into the all-libraries file.
+    my $datestring = localtime();
+    open (all_libraries_file,">$file") or die "Error (provethem): File $file cannot be written\n";
+    print all_libraries_file "# This file was generated automatically by provethem on $datestring\n";
+    print all_libraries_file "--top $top2 " if $top2;
+    print all_libraries_file "--dir $dir2 " if $dir2;
+    print all_libraries_file "\n" if $top2 || $dir2;
+    print all_libraries_file ": $over_opts\n" if $over_opts;
+    print all_libraries_file join("\n",@all_libraries), "\n";
+    close(all_libraries_file);
+    print "File $file generated\n" if $verbose2;
+  } else {
+    die "Error (provethem): File $file not found. Use --generate-input to generate it\n";
+  }
+}
+
+GetOptions(
+  # Options that are only available at the command line interface
+  'generate-input'=>\$generateinput,
+  'help|h'=>\$help,
+  'proveit-option=s'=>\@proveit_opts,
+  'pvs-option=s'=>\@pvs_opts,
+  'version'=>\$version,
+  # Options that overwrite options passed in <input-file>
+  'action-name=s'=>\&push_arg,
+  'after=s'=>\&push_arg,
+  'before=s'=>\&push_arg,
+  'but=s'=>\&push_arg,
+  'do=s'=>\&push_arg,
+  'from=s'=>\&push_arg,
+  'to=s'=>\&push_arg,
+  'color!'=>\&push_bool_arg,
+  'clean-only|C'=>\&push_bool_arg,
+  'clean-all'=>\&push_bool_arg,
+  'dir|d=s'=>\$dir2,
+  'dry-run!'=>\$dryrun2,
+  'execute=s'=>\&push_arg,
+  'force|f'=>\$force2,
+  'out|o=s'=>\&push_arg,
+  'quiet|q'=>sub { $verbose2=0; },
+  'ret-val-label=s'=>\&push_arg,
+  'top=s'=>\$top2,
+  'typecheck-only|T'=>\&push_bool_arg,
+  'verbose|v'=> \$verbose2,
+  # Deprecated options
+  'clearpath'=> sub {
+    #print "*** Warning (provethem): Deprecated option --clearpath. Use --proveit-option 'clear-path' instead\n";
+    push @proveit_opts,"clear-path";
+  },
+  'addpath' => sub {
+    #print "*** Warning (provethem): Deprecated option --addpath. Use --proveit-option 'add-path .' instead\n";
+    push @proveit_opts,"add-path .";
+  }
+    ) or die "\n";
+
+s/^\s+|\s+$//g for @proveit_opts;
+s/^\s+|\s+$//g for @pvs_opts;
+
+die "Error (provethem): Expected --proveit-option <option>, where <option> doesn't have a leading '-'\n"
+    if grep { /^-/ } @proveit_opts;
+
+die "Error (provethem): Expected --pvs-option <option>, where <option> doesn't have a leading '-'\n"
+    if grep { /^-/ } @pvs_opts;
+
+my $file = shift;
+my $rest = shift;
+
+die "Error (provethem): Argument $rest is unexpected\n" if $rest;
+
+if ($version) {
+  readVersion();
+  print "$VERSION\n";
+  exit 0;
+}
+
+usage if $help;
+
+if (!$file) {
+  $file = $ALLLIBRARIES;
+  if ( -f 'all-theories' ) {
+    print "*** Warning (provethem): File name \"all-theories\" is DEPRECATED, use \"$ALLLIBRARIES\" instead\n";
+    $file = 'all-theories';
+  }
+  if (-f $file && !$force2) {
+    print "No input file provided. Default file $file will be used\n";
+    print "Do you want to continue? [y/n] n\b";
+    my $answer = <STDIN>;
+    chomp $answer;
+    exit 0 unless $answer =~ /^[yY]/;
+  }
+}
+
+if ( -d $file ) {
+  die "Error (provethem): Expected a file name instead of directory name ($file)\n";
+} elsif ( ! -f $file ) {
+    generate_all_libraries($file);
+    exit 0;
+}
+
+$provethem_opts .= "--dir $dir2 " if $dir2;
+$provethem_opts .= "--dry-run " if $dryrun2;
+$provethem_opts .= "--force " if $force2;
+$provethem_opts .= "--verbose " if $verbose2;
+$provethem_opts .= "--top $top2 " if $top2;
+
+my $over_opts='';
+$over_opts .= "--pvs-option '".join("' --pvs-options '",@pvs_opts)."'" if @pvs_opts;
+$over_opts .= "--".join(" --",@proveit_opts) if @proveit_opts;
+
+my %ret_val_labels;
+$ret_val_labels{'127'} = "CMD-NOT-FOUND";
+$ret_val_labels{'0'} = "OK";
+
+my $no_printout; # Check if it should be an option
+
+my $column_width=`sed -E "s/^([^ ]*) .*\$/\\1/g" $file  | awk "length > max_length { max_length = length; longest_line = \$0 } END { print max_length }"`+3;
+
+my @all_libraries=();
+my $clean;
+my $cleanall;
+my $dir;
+my $typecheckonly;
+my @but;
+my $act;
+my $color=1;
+my @do;
+my $execute;
+my $force;
+my $after="";
+my $before="";
+my $from="";
+my $to="";
+my $out;
+my $dryrun;
+my $top;
+my $verbose;
+
+open (all_libraries_file,$file);
+
+my $global_options_flag=1;
+my $process_line=1;
+while (<all_libraries_file>) {
+  my $line = $_;
+  $line =~ s/\#.*$//;
+  $line = trim($line);
+  next if !$line;
+  if ($line =~ m/^-.*$/) {
+    die "Error (provethem): Global options '$line' misplaced ",
+      "(line ",${\*all_libraries_file}->input_line_number,
+	" in $file)\n" unless $global_options_flag;
+    $provethem_opts = $line." ".$provethem_opts;
+    $process_line=0;
+  }
+  if ($global_options_flag) {
+    my @rest;
+    my ($ret,$rest) = GetOptionsFromString($provethem_opts,
+					   'action-name=s'=>\$act,
+					   'after=s'=>\$after,
+					   'before=s'=>\$before,
+					   'but=s'=>\@but,
+					   'do=s'=>\@do,
+					   'from=s'=>\$from,
+					   'to=s'=>\$to,
+					   'color!'=>\$color,
+					   'C|clean-only'=>\$clean,
+					   'clean-all'=>\$cleanall,
+					   'd|dir=s'=>\$dir,
+					   'dry-run!'=>\$dryrun,
+					   'execute=s'=>\$execute,
+					   'f|force'=>\$force,
+					   'o|out=s'=>\$out,
+					   'quiet|q'=>sub { $verbose=0; },
+					   'ret-val-label=s'=>\%ret_val_labels,
+					   'top=s'=>\$top,
+					   'T|typecheck-only'=>\$typecheckonly,
+					   'v|verbose'=>\$verbose,
+	) or die "\n";
+    die "Error (provethem): Unexpected arguments '@{$rest}' ",
+	"(line ",${\*all_libraries_file}->input_line_number,
+	" in $file)\n" if @{$rest};
+    $global_options_flag=0;
+  }
+  if ($process_line) {
+    my @list = split /:/,$line;
+    my $lib = trim($list[0]);
+    push(@all_libraries,$lib) if $lib;
+  } else {
+    $process_line=1;
+  }
+}
+close(all_libraries_file);
+
+$dir=$SUMMARIES if !$dir;
+
+if (! -d $dir) {
+    die "About to run: mkdir $dir" if $dryrun;
+    make_path($dir) or die "Error (provethem): Failed to create $dir\n";
+}
+
+my @dolist = split /,/,join(',',@do);
+my @butlist = split /,/,join(',',@but);
+my $checkdep= !$execute && !$clean && !$cleanall;
+
+#
+# Options check
+#
+sub check_arg_lib {
+  my ($arg_name,$lib,$die_on_error) = @_;
+  my $error_msg;
+  if (! -d $lib) {
+    $error_msg = "Library $lib, appearing in option $arg_name,".
+      " not found in the current folder\n";
+  } elsif (! grep { $lib eq $_ } @all_libraries) {
+    $error_msg = "Library $lib, appearing in option $arg_name,".
+      " not found in $file\n";
+  }
+
+  if ($error_msg){
+    print "Error (provethem): " if $die_on_error;
+    print "*** Warning (provethem): " unless $die_on_error;
+    print $error_msg;
+    exit 1 if $die_on_error;
+  }
+}
+
+sub iterate_command_libs($){
+  my $go = shift;
+  print "Executing shell command \"$execute\" on each library\n" if $verbose;
+
+  my $return_value=0;
+  my $processed_libs=0;
+  my $summary;
+  my @libraries;
+
+  open(INFILE,"$file");
+  while (<INFILE>) {
+    my $line = $_;
+    $line =~ s/\#.*$//;
+    $line = trim($line);
+    next if !$line || $line =~ m/^ *-.*$/;
+    if ($line) {
+      my @list = split /:/,$line;
+      my $lib = trim($list[0]);
+      my $opts = trim($list[1] // '');
+      if ($lib) {
+	$go = "ok" if $from eq $lib;
+	last if $before eq $lib;
+
+	if (($go || grep { "$_" eq $lib } @dolist) &&
+	    !(grep { "$_" eq $lib } @butlist)) {
+	  $processed_libs += 1;
+	  my $pathlib;
+	  my $baselib;
+	  if (-d $lib) {
+	    $pathlib = $lib;
+	    $baselib = "";
+	  } elsif (-f $lib) {
+	    my $typelib;
+	    ($baselib,$pathlib,$typelib) = fileparse($lib,qr{\..*});
+	    $baselib .= $typelib;
+	  } else {
+	    die "Error (provethem): $lib is neither a file nor a directory\n";
+	  }
+	  my $command = $execute;
+	  $command =~ s/\%DIR\%/$pathlib/g;
+	  $command =~ s/\%FILE\%/$baselib/g;
+
+	  if ($command) {
+	      print "Executing shell \"$command\"\n" if $verbose;
+	      my $beginln = sprintf "%-".$column_width."s",$lib;
+	      $beginln .= "$act... ";
+	      print $beginln;
+	      my $fail_msg;
+	      my $warn_msg;
+	      my $fail;
+	      my $proveout;
+	      if (! -d $lib) {
+		$fail = 1;
+		$fail_msg = "Library not found";
+		$proveout="Library $lib not found\n";
+
+		print OUTFILE "$proveout\n" if $out;
+	      } else {
+		$proveout=`$command`;
+
+		if ($? == -1) {
+		  $fail = 127;
+		} elsif ($? & 127) {
+		  $fail = ($? & 127);
+		} else {
+		  $fail = ($? >> 8);
+		}
+
+		print OUTFILE "$proveout\n" if $out;
+
+		my @warnings = ($proveout =~ m/(Warning.*[:]? .*)/g);
+		if (@warnings) {
+		  $warn_msg = join("\n*** ",@warnings);
+		}
+
+		my @errors = ($proveout =~ m/(Error.*[:]? .*)/g);
+		if (@errors) {
+		  $fail_msg = join("\n*** ",@errors);
+		}
+	      }
+
+	      my $status;
+
+	      if ($fail > 0) {
+		$status = "FAIL";
+		my $custom_status=$ret_val_labels{$fail};
+		$status=$custom_status if $custom_status;
+		print "[";
+		if ($color) {
+		  print DARK RED $status;
+		} else {
+		  print $status;
+		}
+		$fail_msg .= " (return value: $fail)" if $verbose;
+		if ($fail_msg) {
+		  print "]\n*** $fail_msg\n";
+		  $summary .= "$beginln\[$status: $fail_msg]\n";
+		} else {
+		  print "]\n";
+		  $summary .= "$beginln\[$status]\n";
+		}
+		# Update my return value
+		$return_value=$fail if ($fail > $return_value);
+	      }
+
+	      if ($fail == 0) {
+		$status = $ret_val_labels{0};
+		$status = "OK" if ! $status;
+		print "[";
+		$beginln.= "[";
+		if ($color) {
+		  print DARK GREEN $status;
+		} else {
+		  print $status;
+		}
+		my $endln = "]\n";
+		print $endln;
+		print "\n$proveout\n" if $proveout && !$no_printout;
+		$summary .= "$beginln$status$endln";
+	      }
+	      # Only print warnings if the proveout is not printed
+	      # since warnings are already there.
+	      print "*** $warn_msg\n" if $warn_msg && $no_printout;
+	      last if !$force && ($fail > 1) && !$ret_val_labels{$fail};
+	  }
+	}
+	push(@libraries,$lib);
+	$go = "ok" if $after eq $lib;
+	last if $to eq $lib;
+      }
+    }
+  }
+
+  my $mssg = "\n";
+  $mssg .= "*** Number of libraries: $processed_libs\n";
+  print $mssg;
+  $summary .= $mssg;
+
+  close(INFILE);
+
+  print OUTFILE $summary if $out;
+
+  return($return_value);
+}
+
+my @current_wspaths;
+
+sub check_dependencies {
+  my ($depdir,$deplib) = @_;
+  my $depfile = "$depdir/$deplib.dep";
+  my $localws;
+  my $localbase;
+
+  if (-f $depfile) {
+    open (DEPFILE,"$depfile");
+    while (<DEPFILE>) {
+      my $line = $_;
+      $line =~ s/#.*//;
+      $line = trim($line);
+      next if !$line;
+
+      die "Error (provethem): File $depfile appears to be corrupted ",
+	  "(line ",${\*DEPFILE}->input_line_number,")\n" if ($line =~ tr/://) != 1;
+
+      my @list = split ":",$line;
+      my $wspath = trim($list[0]);
+      if ($wspath =~ /^(?:\[([^\]]+)\])?([^\/]+)(?:\/(.+))?$/) {
+	my $collection  = $1 // '';   # optional [name]
+	my $base = $2;         # required base
+	my $path = $3 // '';   # optional /path
+
+	next if !$collection && !$path; # These are local dependencies
+
+	if (!$localws) {
+	  $localws = $wspath;
+	  $localbase = $base;
+	  push @current_wspaths, $localws;
+	} elsif ($localbase eq $base) {
+	  print "*** Warning (provethem): Library $path is either missing or out of order. It should appear before $deplib in $file\n"
+	      if !grep { $_ eq $wspath } @current_wspaths;
+	}
+      }
+    }
+    close (DEPFILE);
+  } elsif ( $checkdep ) {
+    print "*** Warning (provethem): File $depfile not found\n";
+  }
+}
+
+# ad-hoc version of iterate_command_libs to apply proveit on each library in the scope
+sub iterate_proveit_libs($) {
+  my $go = shift;
+  $execute="$PROVEIT --dependencies %OVEROPTS% %OPTS% %DIR%";
+
+  $ret_val_labels{'142'}="MISS";
+  $ret_val_labels{'15'}="FAIL - terminated";
+
+  $no_printout="t";
+
+  #
+
+  print "Executing shell command \"$execute\" on each library\n" if $verbose || $dryrun;
+
+  #<
+  my $totalformulas = 0;
+  my $totalproofs = 0;
+  #>
+
+  my $return_value=0;
+  my $processed_libs = 0;
+  my $summary;
+
+  open(INFILE,"$file");
+  while (<INFILE>) {
+    my $line = $_;
+    $line =~ s/\#.*$//;
+    $line = trim($line);
+    next if !$line;
+    next if $line =~ m/^-.*$/;
+
+    my @list = split /:/,$line;
+    my $lib = trim($list[0]);
+    my $opts = trim($list[1] // '');
+
+    if (!$lib) {
+      $over_opts = $opts." ".$over_opts;
+      next;
+    }
+
+    $go = "ok" if $from eq $lib;
+    last if $before eq $lib;
+
+    if (($go || grep { "$_" eq $lib } @dolist) &&
+	!(grep { "$_" eq $lib } @butlist)) {
+      $processed_libs += 1;
+      my $pathlib;
+      my $baselib;
+      if (-d $lib) {
+	$pathlib = $lib;
+	$baselib = "";
+      } elsif (-f $lib) {
+	my $typelib;
+	($baselib,$pathlib,$typelib) = fileparse($lib,qr{\..*});
+	$baselib .= $typelib;
+      } else {
+	die "Error (provethem): $lib is neither a file nor a directory\n";
+      }
+      my $command = $execute;
+      $command =~ s/\%DIR\%/$pathlib/g;
+      $command =~ s/\%FILE\%/$baselib/g;
+      $command =~ s/\%OVEROPTS\%/$over_opts/g;
+      $command =~ s/\%OPTS\%/$opts/g;
+
+      print "About to run: $command\n" if $verbose || $dryrun;
+      next if $dryrun;
+
+      my $beginln = sprintf "%-".$column_width."s",$lib;
+      $beginln .= "$act... ";
+      print $beginln;
+      my $fail_msg;
+      my $warn_msg;
+      my $fail;
+      my $proveout;
+      my $current_formulas;
+      my $current_attempted;
+      my $current_proofs;
+
+      $proveout=`$command`;
+
+      if ($? == -1) {
+	$fail = 127;
+      } elsif ($? & 127) {
+	$fail = ($? & 127);
+      } else {
+	$fail = ($? >> 8);
+      }
+
+      print OUTFILE "$proveout" if $out;
+
+      my @warnings = ($proveout =~ m/(Warning.*[:]? .*)/g);
+      if (@warnings) {
+	#<
+	for my $warning ( @warnings ) {
+	  next if ($warning =~ m/Missed \d+ formula/);
+	  $warn_msg .= "*** ".$warning."\n";
+	}
+	#>
+      }
+
+      my @errors = ($proveout =~ m/(Error.*[:]? .*)/g);
+      $fail_msg = join("\n*** ",@errors) if @errors;
+
+      #<
+      if($proveout =~ m/Grand Totals: (\d+) proofs, (\d+) attempted, (\d+) succeeded/){
+	$current_formulas = $1;
+	$current_attempted = $2;
+	$current_proofs = $3;
+
+	$totalformulas += $current_formulas;
+	$totalproofs += $current_proofs;
+      } else {
+	$current_formulas = -1;
+      }
+      #>
+
+      my $status;
+
+      if ($fail > 0) {
+	$status = "FAIL";
+	my $custom_status=$ret_val_labels{$fail};
+	$status=$custom_status if $custom_status;
+	print "[";
+	if ($color) {
+	  print DARK RED $status;
+	} else {
+	  print $status;
+	}
+	#<
+	my $status_message = "";
+	if ( $current_formulas >= 0 ) {
+	  my $miss   = $current_formulas-$current_attempted;
+	  my $unsucc = $current_formulas-$current_proofs;
+	  my $comma  = "";
+	  my $msguna = "";
+	  if ($miss) {
+	    $comma = ", ";
+	    $msguna = "$miss unattempted";
+	  }
+	  my $msguns = "$comma$unsucc unsuccessful" if $unsucc;
+	  $status_message = ": $msguna$msguns / $current_formulas formulas";
+	}
+	#>
+	$fail_msg .= " (return value: $fail)" if $verbose;
+	if ($fail_msg) {
+	  #<
+	  print "$status_message]\n*** $fail_msg\n";
+	  my $one_line_fail_msg = $fail_msg;
+	  $one_line_fail_msg =~ s/\R/ /g;
+	  $summary .= "$beginln\[$status$status_message - $one_line_fail_msg]\n";
+	  #>
+	} else {
+	  #<
+	  print "$status_message]\n";
+	  $summary .= "$beginln\[$status$status_message]\n";
+	  #>
+	}
+	# Update my return value
+	$return_value=$fail if ($fail > $return_value);
+      }
+
+      if ($fail == 0) {
+	$status = $ret_val_labels{0};
+	$status = "OK" if ! $status;
+	print "[";
+	$beginln.= "[";
+	if ($color) {
+	  print DARK GREEN $status;
+	} else {
+	  print $status;
+	}
+	#<
+	my $endln = "]\n";
+	$endln = ": $current_proofs proofs".$endln if $current_proofs;
+	#>
+	print $endln;
+	print "\n$proveout\n" if $proveout && !$no_printout;
+	$summary .= "$beginln$status$endln";
+      }
+      # Only print warnings if the proveout is not printed
+      # since warnings are already there.
+      print "*** $warn_msg\n" if $warn_msg && $no_printout;
+      check_dependencies($dir,$lib) if $checkdep;
+      last if !$force && ($fail > 1) && !$ret_val_labels{$fail};
+    }
+    $go = "ok" if $after eq $lib;
+    last if $to eq $lib;
+  }
+  close(INFILE);
+
+  my $mssg = "\n";
+  #<
+  if (!$cleanall && !$clean && !$typecheckonly) {
+    my $missed = $totalformulas-$totalproofs;
+    $mssg .= "*** Grand Totals: $totalproofs proofs / $totalformulas formulas. Missed: $missed formulas\n";
+  }
+  $mssg .= "*** Number of libraries: $processed_libs\n";
+  print $mssg;
+  $summary .= $mssg;
+  #>
+
+  print OUTFILE $summary if $out;
+  return($return_value);
+}
+
+#
+# Main
+#
+
+check_arg_lib("--from",$from,1) if $from;
+check_arg_lib("--to",$to,1) if $to;
+check_arg_lib("--before",$before,1) if $before;
+check_arg_lib("--after",$after,1) if $after;
+
+foreach (@dolist) {
+  $_ =~ s/\/$//;
+  my $dolib = $_;
+  check_arg_lib("--do",$dolib,1);
+}
+
+foreach (@butlist) {
+  $_ =~ s/\/$//;
+  my $butlib = $_;
+  check_arg_lib("--but",$butlib,0);
+}
+
+die "Error (provethem): $file is a directory\n" if -d $file;
+
+if (!$out && !$cleanall && !$clean && !$execute && !$dryrun) {
+  my ($base,$path,$type) = fileparse($file,qr{\..*});
+  $out  = "$path$base";
+
+  my $dol = join('_',@dolist);
+  $dol =~ s/\//-/g;
+  $out .= "-$dol" if $dol;
+
+  my $butl = join('_',@butlist);
+  $butl =~ s/\//-/;
+  $out .= "-but_$butl" if $butl;
+
+  $out .= "-from_$from" if $from;
+  $out .= "-to_$to" if $to;
+  $out .= "-after_$after" if $after;
+  $out .= "-before_$before" if $before;
+  $out .= ".grandtotals";
+  $out .= "-tc" if $typecheckonly;
+}
+
+if ($out) {
+  open (OUTFILE,">$out") or print "*** Warnining: cannot create output file $out\n";
+}
+
+print "Processing $file";
+if ($out) {
+    print ". Writing output into $out\n";
+} else {
+    print "\n"
+}
+
+if (! $act ) {
+  if ($clean || $cleanall) {
+    $act = "Cleaning";
+  } elsif ($typecheckonly) {
+    $act = "Typing";
+  } elsif ($execute) {
+    $act = "Processing";
+  } else {
+    $act = "Proving";
+  }
+}
+
+# Set global options
+$over_opts .= " --clean-only" if !$cleanall && $clean;
+$over_opts .= " --clean-all" if $cleanall;
+$over_opts .= " --typecheck-only" if $typecheckonly;
+$over_opts .= " --dir \"$dir\"" if $dir;
+$over_opts .= " --top \"$top\"" if $top;
+
+my $go = "ok" if !($from || $after || @dolist);
+my $return_value=0;
+
+if(!$execute) {
+  # If no command has been given, the command to iterate is
+  # assumend to be proveit
+  $return_value=iterate_proveit_libs($go);
+} else {
+  $return_value=iterate_command_libs($go);
+}
+
+if ($out) {
+  close(OUTFILE);
+}
+
+exit($return_value);
