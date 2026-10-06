@@ -1,0 +1,50 @@
+sturm_step: THEORY
+%----------------------------------------------------------------------------
+% One step of the symbolic Sturm sequence.
+%
+% The fifth condition of Sturm@sturm's constructed_sturm_sequence? asks each
+% element of the chain to be a NEGATIVE multiple of the remainder of the two
+% before it: polynomial(p(j), n(j)) = polynomial(-c * rem, rdeg) with c
+% positive.  Pseudo-division gives instead b^k times that remainder, and the
+% sign of b^k is not known symbolically when k is odd.  Multiplying the
+% pseudo-remainder once more by b makes the multiplier (b^k)^2, positive for
+% every value of b that is not zero, so no branch on the sign of b is needed:
+%
+%     sstep(l1, l2) = -b^k * prem(l1, l2),   c = (b^k)^2.
+%
+% The cost is one extra factor of b in the coefficients at each step; a
+% subresultant sequence would keep them smaller and is the natural successor.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING earr_deriv
+
+  l1, l2: VAR list[mpoly]
+  ys: VAR list[real]
+  x, w: VAR real
+
+  %% the multiplier, - b^k, as a coefficient-level term
+  smul(l1, (l2 | cons?(l2))): mpoly = mneg(mpow(llast(l2), pk(l1, l2)))
+  smul_eval: LEMMA cons?(l2) IMPLIES meval(smul(l1, l2))(ys) = -(blc(l2, ys) ^ pk(l1, l2))
+
+  %% one step of the sequence
+  sstep(l1, (l2 | cons?(l2))): list[mpoly] = lscal(smul(l1, l2), prem(l1, l2))
+
+  sstep_length: LEMMA cons?(l2) IMPLIES length(sstep(l1, l2)) = length(prem(l1, l2))
+  sstep_short: LEMMA cons?(l2) IMPLIES length(sstep(l1, l2)) < length(l2)
+  sstep_eval: LEMMA cons?(l2) IMPLIES
+    meval(mpol(sstep(l1, l2)))(cons(x, ys)) =
+      -(blc(l2, ys) ^ pk(l1, l2)) * meval(mpol(prem(l1, l2)))(cons(x, ys))
+
+  %% the step is minus a square times NASALib's remainder
+  sstep_pval: LEMMA length(l2) >= 2 AND blc(l2, ys) /= 0 IMPLIES
+    polynomial(earr(sstep(l1, l2), ys), dg(sstep(l1, l2)))(x) =
+      -(bpow(l1, l2, ys) * bpow(l1, l2, ys))
+        * polynomial(pr(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1),
+                     prd(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1))(x)
+
+  sstep_sturm: THEOREM length(l2) >= 2 AND blc(l2, ys) /= 0 IMPLIES
+    EXISTS (c: posreal):
+      polynomial(earr(sstep(l1, l2), ys), dg(sstep(l1, l2))) =
+        polynomial(-c * pr(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1),
+                   prd(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1))
+END sturm_step

@@ -1,0 +1,55 @@
+decc_def: THEORY
+%----------------------------------------------------------------------------
+% The decision over the Collins tower, executable.
+%
+% decc_o decides on towern_od's descriptor walk, with no read closures:
+% every sector of the outermost line gets the same tower ctw(F, k) of
+% Collins projections (col_tower_def), and the line is cut at the roots of
+% the projection of its lowest family.  The value is the walk's (scval over
+% the sector's tables); the certificate okw_o is towern_od's okn_o without
+% the closure condition (every level's walk passes at every cell of the tree).
+% Delineability comes from collins_stack instead of the closure (col_tower's
+% ctw_cad).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING towern_od, col_tower_def
+
+  u: VAR nat
+  qs: VAR list[bool]
+  F: VAR list[list[mpoly]]
+  Psi: VAR [SV -> bool]
+  TW: VAR Tower
+  TB: VAR list[CT]
+  od: VAR OD
+  s: VAR Sect
+
+  %% every level's walk passes at every cell of the tree (okn_o without cellok_o)
+  okw_o(u, TW, TB, od): RECURSIVE bool =
+    IF null?(TW) OR null?(TB) THEN FALSE
+    ELSE lvok_o(u, car(TW), od, car(TB)) AND
+      (null?(cdr(TW)) OR
+        (cons?(cdr(TB)) AND
+         (LET P = feff(car(TW), od), tb = car(TB), Y = seps_t(u, P, od, tb) IN
+          every(LAMBDA (b: bool): b)
+               (cellsf_o(LAMBDA (od2: OD): okw_o(u, cdr(TW), cdr(TB), od2), P, od, tb, Y)))))
+    ENDIF
+  MEASURE length(TW)
+
+  %% a sector with the fixed tower and its tables
+  cscof(u, TW)(s): SC = (# ssec := s, stw := TW, stb := tables(u, TW, odS(s)) #)
+  okc?(u)(sc: SC): bool = okw_o(u, sc`stw, sc`stb, odS(sc`ssec))
+
+  %% the outer family: the projection of the tower's lowest family
+  cbot(TW): list[list[mpoly]] = IF cons?(TW) THEN pdown(car(TW)) ELSE null[list[mpoly]] ENDIF
+
+  %% qs OUTERMOST first, at least two quantifiers
+  decc_o(u, qs, F, Psi): [# ok: bool, val: bool #] =
+    IF null?(qs) OR null?(cdr(qs)) THEN (# ok := FALSE, val := FALSE #)
+    ELSE LET TW = ctw(F, length(cdr(qs))),
+             Q = cbot(TW),
+             ss = sects(rts(Q)),
+             cs = map(cscof(u, TW))(ss) IN
+         (# ok := gaps_ok(rts(Q)) AND every(okc?(u))(cs),
+            val := IF car(qs) THEN every(scval(u, cdr(qs), Psi))(cs) ELSE some(scval(u, cdr(qs), Psi))(cs) ENDIF #)
+    ENDIF
+END decc_def

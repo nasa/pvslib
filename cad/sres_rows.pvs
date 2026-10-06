@@ -1,0 +1,116 @@
+sres_rows: THEORY
+%----------------------------------------------------------------------------
+% The rows of a subresultant matrix are shifted coefficient lists.
+%
+% For real coefficient arrays A (degree p) and B (degree q), sylj(A, p, B, q, j)
+% is subres' sresm(f, g, j) at a point: q - j rows carrying z^(q-j-1-a) A(z),
+% then p - j rows carrying z^(p-j-1-a') B(z), in columns of descending degree
+% p+q-j-1, ..., 0; the first p + q - 2j columns (degrees >= j) are sresm's
+% square matrix.  A complex combination c of the rows is the coefficient list
+% of u*A + v*B, where up(c) has the coefficients c(0..q-j-1) and vp(c) the
+% rest, highest first (comb_poly).  So
+%   comb_low    c in the left kernel of the square part: u*A + v*B has only
+%               coefficients of degree below j
+%   comb_zero   u*A + v*B = 0: c is in the left kernel
+% and complex left-kernel vectors meet rdet_nl through their real and
+% imaginary parts (rdet_ckernel, rdet_zero_ckernel).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sylvester, cpoly_div, rdet_lin
+
+  A, B: VAR [nat -> real]
+  p, q, j, a, b, k, i, m, s, n: VAR nat
+  c, F, G: VAR [nat -> complex]
+  cr: VAR [nat -> real]
+  R: VAR RMat
+  z, x: VAR complex
+
+  %% integer facts the decision procedures miss inside some proofs
+  nat_lt_sub: LEMMA FORALL (x, y: nat): x < y IMPLIES y - 1 - x >= 0
+
+  %% ---- finite complex sums --------------------------------------------------------------
+  csum(m, F): RECURSIVE complex = IF m = 0 THEN real_(0) ELSE csum(m - 1, F) + F(m - 1) ENDIF
+  MEASURE m
+  csum_eq: LEMMA FORALL m: (FORALL i: i < m IMPLIES F(i) = G(i)) IMPLIES csum(m, F) = csum(m, G)
+  csum_zero: LEMMA FORALL m: (FORALL i: i < m IMPLIES F(i) = real_(0)) IMPLIES csum(m, F) = real_(0)
+  csum_add: LEMMA FORALL m: csum(m, LAMBDA i: F(i) + G(i)) = csum(m, F) + csum(m, G)
+  csum_Re: LEMMA FORALL m: Re(csum(m, F)) = sigma(0, m - 1, LAMBDA i: Re(F(i)))
+  csum_Im: LEMMA FORALL m: Im(csum(m, F)) = sigma(0, m - 1, LAMBDA i: Im(F(i)))
+
+  %% ---- complex left kernels ----------------------------------------------------------------
+  ckernel?(n, c, R): bool = FORALL b: b < n IMPLIES csum(n, LAMBDA a: c(a) * real_(R(a, b))) = real_(0)
+  ckernel_parts: LEMMA ckernel?(n, c, R) IMPLIES
+    lker?(n, LAMBDA a: Re(c(a)), R) AND lker?(n, LAMBDA a: Im(c(a)), R)
+  ckernel_real: LEMMA lker?(n, cr, R) IMPLIES ckernel?(n, LAMBDA a: real_(cr(a)), R)
+  rdet_ckernel: LEMMA rdet(n, R) /= 0 AND ckernel?(n, c, R) IMPLIES FORALL a: a < n IMPLIES c(a) = real_(0)
+  rdet_zero_ckernel: LEMMA rdet(n, R) = 0 IMPLIES
+    EXISTS c: (EXISTS a: a < n AND c(a) /= real_(0)) AND ckernel?(n, c, R)
+
+  %% ---- the matrix and the polynomials ---------------------------------------------------------
+  sylj(A, p, B, q, j): RMat = LAMBDA (a, b: nat):
+    IF a < q - j THEN rcoef_at(A, p, (p + q - j - 1 - b) - (q - j - 1 - a))
+    ELSE rcoef_at(B, q, (p + q - j - 1 - b) - (p - j - 1 - (a - (q - j))))
+    ENDIF
+
+  rp(A, p)(z): complex = cpolynomial(LAMBDA i: real_(A(i)), p)(z)
+
+  %% truncated subtraction, so that the definitions need no hypothesis on j
+  msub(m, n): nat = IF n <= m THEN m - n ELSE 0 ENDIF
+  msub_le: LEMMA n <= m IMPLIES msub(m, n) = m - n
+
+  ucf(c, q, j)(i): complex = IF i < q - j THEN c(q - j - 1 - i) ELSE real_(0) ENDIF
+  vcf(c, p, q, j)(i): complex = IF i < p - j THEN c(msub(q, j) + (p - j - 1 - i)) ELSE real_(0) ENDIF
+  up(c, q, j)(z): complex = cpolynomial(ucf(c, q, j), msub(q, j))(z)
+  vp(c, p, q, j)(z): complex = cpolynomial(vcf(c, p, q, j), msub(p, j))(z)
+  comb(c, A, p, B, q, j)(z): complex = up(c, q, j)(z) * rp(A, p)(z) + vp(c, p, q, j)(z) * rp(B, q)(z)
+
+  %% the coefficient of degree k of the combination
+  ecf(c, A, p, B, q, j)(k): complex =
+    IF k < p + q - j
+      THEN csum(msub(p + q, 2 * j), LAMBDA a: c(a) * real_(sylj(A, p, B, q, j)(a, p + q - j - 1 - k)))
+    ELSE real_(0) ENDIF
+
+  %% ---- one row ---------------------------------------------------------------------------------
+  monom(s)(i): complex = IF i = s THEN real_(1) ELSE real_(0) ENDIF
+  cpoly_monom: LEMMA s <= n IMPLIES cpolynomial(monom(s), n)(z) = cpow(z)(s)
+  rp_shift: LEMMA FORALL s, n: s + p <= n IMPLIES
+    cpolynomial(LAMBDA k: real_(rcoef_at(A, p, k - s)), n)(z) = cpow(z)(s) * rp(A, p)(z)
+
+  %% ---- the combination, one row at a time ------------------------------------------------------
+  e1, e2: VAR [nat -> complex]
+  cpoly_lin: LEMMA cpolynomial(LAMBDA i: e1(i) + x * e2(i), n)(z) = cpolynomial(e1, n)(z) + x * cpolynomial(e2, n)(z)
+  csum_one: LEMMA (FORALL i: i < n AND i /= m IMPLIES F(i) = real_(0)) AND m < n IMPLIES csum(n, F) = F(m)
+
+  cres(c, m)(a): complex = IF a < m THEN c(a) ELSE real_(0) ENDIF
+  rowc(A, p, B, q, j, m)(k): complex =
+    IF k < p + q - j THEN real_(sylj(A, p, B, q, j)(m, p + q - j - 1 - k)) ELSE real_(0) ENDIF
+
+  ucf_step: LEMMA m < q - j IMPLIES
+    ucf(cres(c, m + 1), q, j) = (LAMBDA i: ucf(cres(c, m), q, j)(i) + c(m) * monom(q - j - 1 - m)(i))
+  ucf_same: LEMMA q - j <= m IMPLIES ucf(cres(c, m + 1), q, j) = ucf(cres(c, m), q, j)
+  vcf_step: LEMMA j <= q AND q - j <= m AND m < p + q - 2 * j IMPLIES
+    vcf(cres(c, m + 1), p, q, j) = (LAMBDA i: vcf(cres(c, m), p, q, j)(i) + c(m) * monom(p + q - 2 * j - 1 - m)(i))
+  vcf_same: LEMMA j <= q AND m < q - j IMPLIES vcf(cres(c, m + 1), p, q, j) = vcf(cres(c, m), p, q, j)
+  ecf_step: LEMMA j <= p AND j <= q AND m < p + q - 2 * j IMPLIES
+    ecf(cres(c, m + 1), A, p, B, q, j) = (LAMBDA k: ecf(cres(c, m), A, p, B, q, j)(k) + c(m) * rowc(A, p, B, q, j, m)(k))
+  row_poly: LEMMA j <= p AND j <= q AND m < p + q - 2 * j IMPLIES
+    cpolynomial(rowc(A, p, B, q, j, m), p + q - j - 1)(z) =
+      IF m < q - j THEN cpow(z)(q - j - 1 - m) * rp(A, p)(z)
+      ELSE cpow(z)(p + q - 2 * j - 1 - m) * rp(B, q)(z) ENDIF
+
+  comb_pre: LEMMA FORALL m: j <= p AND j <= q AND j < p + q AND m <= p + q - 2 * j IMPLIES
+    comb(cres(c, m), A, p, B, q, j)(z) = cpolynomial(ecf(cres(c, m), A, p, B, q, j), p + q - j - 1)(z)
+  comb_cres: LEMMA j <= p AND j <= q IMPLIES
+    comb(cres(c, p + q - 2 * j), A, p, B, q, j) = comb(c, A, p, B, q, j) AND
+    ecf(cres(c, p + q - 2 * j), A, p, B, q, j) = ecf(c, A, p, B, q, j)
+
+  %% ---- the combination ----------------------------------------------------------------------
+  comb_poly: LEMMA j <= p AND j <= q AND j < p + q IMPLIES
+    comb(c, A, p, B, q, j)(z) = cpolynomial(ecf(c, A, p, B, q, j), p + q - j - 1)(z)
+
+  comb_low: LEMMA j <= p AND j <= q AND j < p + q AND ckernel?(p + q - 2 * j, c, sylj(A, p, B, q, j)) IMPLIES
+    comb(c, A, p, B, q, j)(z) = cpolynomial(LAMBDA k: IF k < j THEN ecf(c, A, p, B, q, j)(k) ELSE real_(0) ENDIF,
+                                            p + q - j - 1)(z)
+  comb_zero: LEMMA j <= p AND j <= q AND j < p + q AND (FORALL z: comb(c, A, p, B, q, j)(z) = real_(0)) IMPLIES
+    ckernel?(p + q - 2 * j, c, sylj(A, p, B, q, j))
+END sres_rows

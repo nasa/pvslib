@@ -1,0 +1,51 @@
+qe2cd_def: THEORY
+%----------------------------------------------------------------------------
+% Quantifier elimination for m >= 2 free variables over the Collins tower
+% with derivative-closed free levels.  Executable.
+%
+% qe2cc_def's qe2cc_c on ctwd(F, k, m - 1) (ctwd_def): the m - 1 free
+% families of the tower are closed under the derivative, so by Thom's lemma
+% (qe2_sep's ents_sep) the signs of the free polynomials always separate the
+% free cells and the answer is always quantifier-free.  The certificate and
+% the records are twrun_def's; qe2cd_u raises u until the certificate holds
+% (twrun_ok's twok_ev).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING twrun_ok, ctwd
+
+  u, N: VAR nat
+  m: VAR posnat
+  qb: VAR list[bool]
+  F: VAR list[list[mpoly]]
+  Psi: VAR [SV -> bool]
+  bphi: VAR BF
+  TW: VAR Tower
+
+  %% some u from which on the certificate holds (not computed)
+  ubw(TW): nat = epsilon(LAMBDA (N: nat): FORALL u: u >= N IMPLIES twok(u, TW))
+  umw(TW, u): nat = IF u < ubw(TW) THEN ubw(TW) - u ELSE 0 ENDIF
+
+  qe2cd_tw(m, qb, F): Tower = ctwd(F, m - 1 + length(qb), m - 1)
+
+  qe2cd_c(u, m, qb, F, Psi): QER =
+    LET TW = qe2cd_tw(m, qb, F),
+        R = cad_outw(u, F, TW),
+        parts = map(LAMBDA (s: Sect):
+                      LET so = secout(m, qb, Psi, s, TW, secr(s, R)) IN
+                      IF so = ffalse THEN ffalse
+                      ELSIF so = ftrue THEN liftF(sectX(s), m - 1)
+                      ELSE fand(liftF(sectX(s), m - 1), so) ENDIF)
+                   (sects(rts(cbot(TW)))),
+        o = f_orl(filter(LAMBDA (f: Fm): f /= ffalse)(parts)) IN
+    (# ok := TRUE, qf := qf?(o), out := o #)
+
+  qe2cd_o(u, m, qb, F, Psi): QER =
+    IF m >= 2 AND cons?(qb) AND twok(u, qe2cd_tw(m, qb, F)) THEN qe2cd_c(u, m, qb, F, Psi) ELSE qbad ENDIF
+
+  qe2cd_u(m, qb, F, Psi, u): RECURSIVE QER =
+    LET dd = qe2cd_o(u, m, qb, F, Psi) IN
+    IF dd`ok OR m < 2 OR null?(qb) THEN dd ELSE qe2cd_u(m, qb, F, Psi, u + 1) ENDIF
+  MEASURE umw(qe2cd_tw(m, qb, F), u)
+
+  qe2cd(m, qb, F, bphi): QER = qe2cd_u(m, qb, F, LAMBDA (v: SV): bfsv(bphi, v), 0)
+END qe2cd_def

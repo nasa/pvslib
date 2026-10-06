@@ -1,0 +1,89 @@
+alg_count: THEORY
+%----------------------------------------------------------------------------
+% Counting the real roots of a univariate polynomial in a closed rational
+% interval, on top of NASALib's Sturm library.
+%
+% The representation is Sturm's Polylist (rational coefficients, lowest
+% degree first), which is what mpoly_univ.partial_eval produces; the Sturm
+% procedures want an integer polynomial [nat -> int] with a precomputed
+% Sturm chain, so ipoly clears denominators (rat_poly_to_int) and chain
+% computes the chain. nroots(pl, lb, ub) is roots_closed_int of the Sturm
+% library and comes with the specification the other alg_* theories use:
+% nroots = 0 iff no root, nroots >= 1 iff some root, nroots = 1 iff exactly
+% one root in [lb, ub].
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sturm_fast
+
+  pl: VAR Polylist
+  lb, ub: VAR rat
+  x, z, z1, z2: VAR real
+  i, j: VAR nat
+
+  %% the integer polynomial handed to the Sturm procedures
+  ipoly(pl): [nat -> int] =
+    LET a = rat_poly_to_int(list2array[rat](0)(pl), deg(pl)) IN
+      LAMBDA (i: nat): IF i <= deg(pl) THEN a(i) ELSE 0 ENDIF
+
+  ipoly_scale: LEMMA EXISTS (cp: posrat): FORALL (j: upto(deg(pl))): ipoly(pl)(j) = cp * nth(pl, j)
+  ipoly_lc: LEMMA deg(pl) > 0 IMPLIES ipoly(pl)(deg(pl)) /= 0
+  ipoly_eval: LEMMA deg(pl) > 0 IMPLIES
+    EXISTS (cp: posrat): polynomial(ipoly(pl), deg(pl))(x) = cp * polylist(pl)(x)
+  ipoly_root: LEMMA deg(pl) > 0 IMPLIES (polynomial(ipoly(pl), deg(pl))(x) = 0 IFF polylist(pl)(x) = 0)
+
+  %% the integer-array level: any A: [nat -> int] with A(n) /= 0, n > 0
+  A: VAR [nat -> int]
+  wrap(A, (n: nat)): [nat -> int] = LAMBDA (i: nat): IF i <= n THEN A(i) ELSE 0 ENDIF
+  chain_a(A, (n: posnat | A(n) /= 0)): (Eq_computed_remainder?(A, n)) = sturm_chain(wrap(A, n), n)
+
+  roots_in_a(A, (n: nat), lb, ub): set[real] = {z | lb <= z AND z <= ub AND polynomial(A, n)(z) = 0}
+
+  nroots_a(A, (n: posnat | A(n) /= 0), lb, (ub | lb < ub)): nat =
+    rcf(A, n, lb, ub, chain_a(A, n))
+
+  nroots_a_bij: LEMMA FORALL (n: posnat): A(n) /= 0 AND lb < ub IMPLIES
+    EXISTS (bij: [below(nroots_a(A, n, lb, ub)) -> (roots_in_a(A, n, lb, ub))]): bijective?(bij)
+
+  %% the Polylist level
+  chain(pl | deg(pl) > 0): (Eq_computed_remainder?(ipoly(pl), deg(pl))) = chain_a(ipoly(pl), deg(pl))
+
+  roots_in(pl, lb, ub): set[real] = {z | lb <= z AND z <= ub AND polylist(pl)(z) = 0}
+  roots_in_eq: LEMMA deg(pl) > 0 IMPLIES roots_in(pl, lb, ub) = roots_in_a(ipoly(pl), deg(pl), lb, ub)
+
+  nroots(pl | deg(pl) > 0, lb, (ub | lb < ub)): nat = nroots_a(ipoly(pl), deg(pl), lb, ub)
+
+  %% consequences of the bijection
+  bij_empty: LEMMA FORALL (S: set[real], n: nat, bij: [below(n) -> (S)]):
+    bijective?(bij) IMPLIES (n = 0 IFF empty?(S))
+  bij_single: LEMMA FORALL (S: set[real], n: nat, bij: [below(n) -> (S)]):
+    bijective?(bij) IMPLIES (n = 1 IFF (nonempty?(S) AND FORALL z1, z2: S(z1) AND S(z2) IMPLIES z1 = z2))
+
+  nroots_a_zero: LEMMA FORALL (n: posnat): A(n) /= 0 AND lb < ub IMPLIES
+    (nroots_a(A, n, lb, ub) = 0 IFF empty?(roots_in_a(A, n, lb, ub)))
+  nroots_a_pos: LEMMA FORALL (n: posnat): A(n) /= 0 AND lb < ub IMPLIES
+    (nroots_a(A, n, lb, ub) >= 1 IFF nonempty?(roots_in_a(A, n, lb, ub)))
+  nroots_a_one: LEMMA FORALL (n: posnat): A(n) /= 0 AND lb < ub IMPLIES
+    (nroots_a(A, n, lb, ub) = 1 IFF
+     (nonempty?(roots_in_a(A, n, lb, ub)) AND
+      FORALL z1, z2: roots_in_a(A, n, lb, ub)(z1) AND roots_in_a(A, n, lb, ub)(z2) IMPLIES z1 = z2))
+
+  nroots_zero: LEMMA deg(pl) > 0 AND lb < ub IMPLIES
+    (nroots(pl, lb, ub) = 0 IFF empty?(roots_in(pl, lb, ub)))
+  nroots_pos: LEMMA deg(pl) > 0 AND lb < ub IMPLIES
+    (nroots(pl, lb, ub) >= 1 IFF nonempty?(roots_in(pl, lb, ub)))
+  nroots_one: LEMMA deg(pl) > 0 AND lb < ub IMPLIES
+    (nroots(pl, lb, ub) = 1 IFF
+     (nonempty?(roots_in(pl, lb, ub)) AND
+      FORALL z1, z2: roots_in(pl, lb, ub)(z1) AND roots_in(pl, lb, ub)(z2) IMPLIES z1 = z2))
+
+  %% the forms used downstream
+  roots_in_sub: LEMMA FORALL (lb2, ub2: rat): lb <= lb2 AND ub2 <= ub AND roots_in(pl, lb2, ub2)(z) IMPLIES roots_in(pl, lb, ub)(z)
+  nroots_pos_intro: LEMMA deg(pl) > 0 AND lb < ub AND roots_in(pl, lb, ub)(z) IMPLIES nroots(pl, lb, ub) >= 1
+  nroots_zero_elim: LEMMA deg(pl) > 0 AND lb < ub AND nroots(pl, lb, ub) = 0 IMPLIES NOT roots_in(pl, lb, ub)(z)
+  nroots_one_intro: LEMMA deg(pl) > 0 AND lb < ub AND roots_in(pl, lb, ub)(z) AND
+    (FORALL z1, z2: roots_in(pl, lb, ub)(z1) AND roots_in(pl, lb, ub)(z2) IMPLIES z1 = z2)
+    IMPLIES nroots(pl, lb, ub) = 1
+  nroots_one_elim: LEMMA deg(pl) > 0 AND lb < ub AND nroots(pl, lb, ub) = 1 IMPLIES EXISTS z: roots_in(pl, lb, ub)(z)
+  nroots_one_unique: LEMMA deg(pl) > 0 AND lb < ub AND nroots(pl, lb, ub) = 1 AND
+    roots_in(pl, lb, ub)(z1) AND roots_in(pl, lb, ub)(z2) IMPLIES z1 = z2
+END alg_count

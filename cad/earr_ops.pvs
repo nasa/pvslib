@@ -1,0 +1,81 @@
+earr_ops: THEORY
+%----------------------------------------------------------------------------
+% Coefficient arrays of the list operations, and proportional lists
+% (for speed).
+%
+% earr(l, ys) is the coefficient array of the list l at the valuation ys
+% (mpoly_real). This theory computes it through the operations of
+% pseudo-division (lscal, shiftl, lsub, lbut, pstep) and defines
+% prop(l1, l2, c, ys): l1 and l2 have the same length and coefficients in
+% the ratio c at ys. Proportionality passes through the pseudo-remainder
+% (prop_prem, with the ratio c1 * c2^pk), through the Sturm step of
+% sturm_step (prop_sstep, ratio c1 * c2^(2 pk)) and, for c > 0, through
+% normalization at ys (prop_snorm). This is what lets a chain built with a different step be
+% compared with the chain of branch_prs element by element (sg_chain2).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING snorm_arr, sturm_step
+
+  l, l1, l2, m1, m2: VAR list[mpoly]
+  h: VAR mpoly
+  ys: VAR list[real]
+  i, k: VAR nat
+  c, c1, c2: VAR real
+
+  %% the array of a list, one element at a time
+  a: VAR mpoly
+  r: VAR rat
+  earr_null: LEMMA earr(null[mpoly], ys)(i) = 0
+  earr_cons: LEMMA earr(cons(a, l), ys)(i) = IF i = 0 THEN meval(a)(ys) ELSE earr(l, ys)(i - 1) ENDIF
+
+  %% the list operations, one element at a time
+  lscal_cons: LEMMA lscal(h, cons(a, l)) = cons(mmul(h, a), lscal(h, l))
+  nth_lscal: LEMMA FORALL l: FORALL i: i < length(l) IMPLIES nth(lscal(h, l), i) = mmul(h, nth(l, i))
+  earr_madd: LEMMA FORALL l1: FORALL l2, i:
+    earr(as_list(madd(mpol(l1), mpol(l2))), ys)(i) = earr(l1, ys)(i) + earr(l2, ys)(i)
+  earr_mscal: LEMMA FORALL l: FORALL i: earr(as_list(mscal(r, mpol(l))), ys)(i) = r * earr(l, ys)(i)
+
+  %% the array through the list operations
+  earr_lscal: LEMMA earr(lscal(h, l), ys)(i) = meval(h)(ys) * earr(l, ys)(i)
+  earr_shiftl: LEMMA FORALL k: FORALL i:
+    earr(shiftl(k, l), ys)(i) = IF i < k THEN 0 ELSE earr(l, ys)(i - k) ENDIF
+  earr_lsub: LEMMA earr(lsub(l1, l2), ys)(i) = earr(l1, ys)(i) - earr(l2, ys)(i)
+  earr_lbut_lt: LEMMA FORALL l: FORALL i:
+    cons?(l) AND i < length(l) - 1 IMPLIES earr(lbut(l), ys)(i) = earr(l, ys)(i)
+  earr_map_mnorm: LEMMA earr(map(mnorm)(l), ys)(i) = earr(l, ys)(i)
+  earr_pstep: LEMMA cons?(l2) AND length(l2) <= length(l1) IMPLIES
+    earr(pstep(l1, l2), ys)(i) =
+      blc(l2, ys) * earr(l1, ys)(i) -
+      (IF i < length(l1) - length(l2) THEN 0
+       ELSE meval(llast(l1))(ys) * earr(l2, ys)(i - (length(l1) - length(l2))) ENDIF)
+
+  %% proportional lists
+  prop(l1, l2, c, ys): bool =
+    length(l1) = length(l2) AND FORALL i: earr(l1, ys)(i) = c * earr(l2, ys)(i)
+  prop_refl: LEMMA prop(l, l, 1, ys)
+  llast_null: LEMMA NOT cons?(l) IMPLIES llast(l) = zero
+  prop_len: LEMMA prop(l1, l2, c, ys) IMPLIES length(l1) = length(l2)
+  prop_trans: LEMMA prop(l, l1, c1, ys) AND prop(l1, l2, c2, ys) IMPLIES prop(l, l2, c1 * c2, ys)
+  prop_lc: LEMMA prop(l1, l2, c, ys) IMPLIES meval(llast(l1))(ys) = c * meval(llast(l2))(ys)
+  prop_pstep: LEMMA cons?(l2) AND length(l2) <= length(l1) AND
+    prop(l1, m1, c1, ys) AND prop(l2, m2, c2, ys) IMPLIES
+    prop(pstep(l1, l2), pstep(m1, m2), c1 * c2, ys)
+
+  %% the pseudo-remainder, one reduction step at a time
+  prem_low: LEMMA cons?(l2) AND length(l1) < length(l2) IMPLIES prem(l1, l2) = l1
+  prem_step: LEMMA cons?(l2) AND length(l2) <= length(l1) IMPLIES prem(l1, l2) = prem(pstep(l1, l2), l2)
+  pk_step: LEMMA cons?(l2) AND length(l2) <= length(l1) IMPLIES pk(l1, l2) = pk(pstep(l1, l2), l2) + 1
+  prop_prem: LEMMA FORALL l1, m1: cons?(l2) AND cons?(m2) AND prop(l1, m1, c1, ys) AND prop(l2, m2, c2, ys) IMPLIES
+    prop(prem(l1, l2), prem(m1, m2), c1 * c2 ^ pk(l1, l2), ys)
+  prop_sstep: LEMMA FORALL (c1, c2: posreal):
+    cons?(l2) AND cons?(m2) AND prop(l1, m1, c1, ys) AND prop(l2, m2, c2, ys) IMPLIES
+    prop(sstep(l1, l2), sstep(m1, m2), c1 * c2 ^ (2 * pk(l1, l2)), ys)
+
+  %% normalization at ys and the leading sign
+  snorm_top: LEMMA cons?(select(snorm(l), ys)) IMPLIES
+    earr(l, ys)(length(select(snorm(l), ys)) - 1) /= 0
+  snorm_above: LEMMA i >= length(select(snorm(l), ys)) IMPLIES earr(l, ys)(i) = 0
+  prop_snorm: LEMMA c > 0 AND prop(l1, l2, c, ys) IMPLIES
+    prop(select(snorm(l1), ys), select(snorm(l2), ys), c, ys)
+  sign3_mult_earr_ops: LEMMA FORALL (x, y: real): sign3(x * y) = sign3(x) * sign3(y)
+END earr_ops

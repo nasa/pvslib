@@ -1,0 +1,59 @@
+rdet_lin: THEORY
+%----------------------------------------------------------------------------
+% The determinant is linear in each column.
+%
+% setcol(R, j, v) is R with column j replaced by v.  rdet_col_lin: by
+% induction on the size, through the first-row expansion: the term of
+% column j is v(0) times a minor without column j, and every other term's
+% minor still has the column (at cj(j, k): one place to the left when it lies
+% right of the removed one), with v shifted up one row (vsh).
+% rdet_col_sum: the determinant with column j set to v is the combination of
+% the ones with the unit columns ecol(i), weighted by v(i).  With rdet_nl's
+% rdet_cols_eq this is what turns the subresultant's last column into a
+% polynomial combination of its rows.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING rdet_nl
+
+  R: VAR RMat
+  n, m: VAR nat
+  i, j, k, a, b: VAR nat
+  v, w: VAR [nat -> real]
+  r, s: VAR real
+
+  setcol(R, j, v): RMat = LAMBDA (a, b: nat): IF b = j THEN v(a) ELSE R(a, b) ENDIF
+  setcol_at: LEMMA setcol(R, j, v)(a, j) = v(a)
+  setcol_off: LEMMA b /= j IMPLIES setcol(R, j, v)(a, b) = R(a, b)
+
+  %% a combination of two columns, a column shifted up, a column's place in a minor
+  lc2(r, v, s, w)(a): real = r * v(a) + s * w(a)
+  vsh(v)(a): real = v(a + 1)
+  cj(j, k): nat = IF j <= k THEN j ELSE j - 1 ENDIF
+  vsh_lc2: LEMMA vsh(lc2(r, v, s, w)) = lc2(r, vsh(v), s, vsh(w))
+
+  %% one step of the expansion
+  rdet_succ: LEMMA rdet(n + 1, R) =
+    sigma(0, n, LAMBDA (k: nat): rsgn(k) * R(0, k) * rdet(n, rminor(R, 0, k)))
+
+  %% the minors of a matrix with a column replaced
+  minor_setcol_eq: LEMMA rminor(setcol(R, j, v), 0, j) = rminor(R, 0, j)
+  minor_setcol_ne: LEMMA k /= j IMPLIES
+    rminor(setcol(R, j, v), 0, k) = setcol(rminor(R, 0, k), cj(j, k), vsh(v))
+
+  %% the k-th term, linearly
+  x, y, z, c: VAR real
+  lin_term: LEMMA z = r * x + s * y IMPLIES c * z = r * (c * x) + s * (c * y)
+
+  rdet_col_lin: LEMMA FORALL n: FORALL R, j, v, w, r, s: j < n IMPLIES
+    rdet(n, setcol(R, j, lc2(r, v, s, w))) = r * rdet(n, setcol(R, j, v)) + s * rdet(n, setcol(R, j, w))
+
+  rdet_col_zero: LEMMA j < n IMPLIES rdet(n, setcol(R, j, LAMBDA (a: nat): 0)) = 0
+
+  %% the expansion in unit columns
+  ecol(i)(a): real = IF a = i THEN 1 ELSE 0 ENDIF
+  vpre(v, m)(a): real = IF a < m THEN v(a) ELSE 0 ENDIF
+  rdet_col_pre: LEMMA FORALL m: j < n IMPLIES
+    rdet(n, setcol(R, j, vpre(v, m))) = sigma(0, m - 1, LAMBDA (i: nat): v(i) * rdet(n, setcol(R, j, ecol(i))))
+  rdet_col_sum: LEMMA j < n IMPLIES
+    rdet(n, setcol(R, j, v)) = sigma(0, n - 1, LAMBDA (i: nat): v(i) * rdet(n, setcol(R, j, ecol(i))))
+END rdet_lin

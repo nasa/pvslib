@@ -1,0 +1,143 @@
+walk_search: THEORY
+%----------------------------------------------------------------------------
+% The walk's search succeeds at every exact oracle, given enough fuel, and
+% more fuel changes nothing.
+%
+% seps_n widens (swide), then bisects (sint, splitting at the first probe
+% spick finds where no live member vanishes).  Each search returns its
+% FIRST success, so once it succeeds within some fuel it returns the same
+% for every larger fuel (spick_mono, sint_mono, swide_mono).  At an exact
+% oracle with a certified family it does succeed:
+%   swide  past every root of the product the widening condition holds
+%          (swide_exists: lo_exist/hi_exist, left_pos/right_pos);
+%   spick  the probes are distinct, so more than total(...) of them cannot
+%          all be roots (spick_exists: cnt_ge against cnt_le_total);
+%   sint   by induction on the count N of the product in the gap: N <= 1
+%          stops (walk_count's stop_ok); otherwise two roots z1 < z2 lie in
+%          it, and a child keeping all N roots keeps z1, z2 and is at least
+%          (z2 - z1)/2^(T+1) narrower (spick_lb), which cannot go on
+%          forever (sint_inner) -- no global root separation is needed.
+% seps_ok: some fuel N makes wok? hold, and every n >= N gives the same
+% separators.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_count
+
+  F, G: VAR list[list[mpoly]]
+  g: VAR list[mpoly]
+  sg: VAR SG
+  ys: VAR list[real]
+  lo, hi, m, y0: VAR rat
+  n, n2, t, N, K, j: VAR nat
+  b: VAR posrat
+  Y, A: VAR list[rat]
+  z, z1, z2: VAR real
+
+  %% ---- spick ---------------------------------------------------------------------------
+  spick_ok?(F, sg, lo, hi, n): RECURSIVE bool =
+    nzat?(F, sg, (lo + hi) / 2, F) OR (n > 0 AND spick_ok?(F, sg, lo, (lo + hi) / 2, n - 1))
+  MEASURE n
+
+  spick_nz: LEMMA FORALL n: FORALL lo, hi: spick_ok?(F, sg, lo, hi, n)
+    IMPLIES nzat?(F, sg, spick(F, sg, lo, hi, n), F)
+  spick_in: LEMMA FORALL n: FORALL lo, hi: lo < hi IMPLIES
+    lo < spick(F, sg, lo, hi, n) AND spick(F, sg, lo, hi, n) <= (lo + hi) / 2
+  spick_lb: LEMMA FORALL n: FORALL lo, hi: lo < hi IMPLIES
+    spick(F, sg, lo, hi, n) - lo >= (hi - lo) / 2 ^ (n + 1)
+  spick_mono: LEMMA FORALL n: FORALL lo, hi, n2: spick_ok?(F, sg, lo, hi, n) AND n <= n2 IMPLIES
+    spick(F, sg, lo, hi, n2) = spick(F, sg, lo, hi, n) AND spick_ok?(F, sg, lo, hi, n2)
+
+  %% a failed search saw a root at every probe
+  spick_fail: LEMMA FORALL n: FORALL hi: NOT spick_ok?(F, sg, lo, hi, n) IMPLIES
+    FORALL t: t <= n IMPLIES NOT nzat?(F, sg, lo + (hi - lo) / 2 ^ (t + 1), F)
+
+  total_nneg: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) AND lo < hi
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    IMPLIES total(bk(F), msg(ys), bprod(F)) >= 0
+  spick_exists: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) AND lo < hi
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    IMPLIES spick_ok?(F, msg(ys), lo, hi, total(bk(F), msg(ys), bprod(F)))
+
+  %% ---- sint -----------------------------------------------------------------------------
+  sint_ok?(F, sg, lo, hi, n): RECURSIVE bool =
+    (atmost1?(F, sg, lo, hi, F) AND coins?(F, sg, lo, hi, F))
+    OR (n > 0 AND spick_ok?(F, sg, lo, hi, n)
+        AND sint_ok?(F, sg, lo, spick(F, sg, lo, hi, n), n - 1)
+        AND sint_ok?(F, sg, spick(F, sg, lo, hi, n), hi, n - 1))
+  MEASURE n
+
+  sint_mono: LEMMA FORALL n: FORALL lo, hi, n2: sint_ok?(F, sg, lo, hi, n) AND n <= n2 IMPLIES
+    sint(F, sg, lo, hi, n2) = sint(F, sg, lo, hi, n) AND sint_ok?(F, sg, lo, hi, n2)
+
+  app_cons: LEMMA append(cons(y0, A), Y) = cons(y0, append(A, Y))
+  app_car: LEMMA cons?(A) IMPLIES car(append(A, Y)) = car(A)
+  sepok_app: LEMMA FORALL A: cons?(Y) AND sepok?(F, sg, append(A, (: car(Y) :))) AND sepok?(F, sg, Y)
+    IMPLIES sepok?(F, sg, append(A, Y))
+  S1, S2: VAR list[rat]
+  sep_join: LEMMA sepok?(F, sg, cons(lo, append(S1, (: m :)))) AND sepok?(F, sg, cons(m, append(S2, (: hi :))))
+    IMPLIES sepok?(F, sg, cons(lo, append(append(append(S1, (: m :)), S2), (: hi :))))
+  sint_sep: LEMMA FORALL n: FORALL lo, hi: sint_ok?(F, sg, lo, hi, n) AND lo < hi
+    AND nzat?(F, sg, lo, F) AND nzat?(F, sg, hi, F)
+    IMPLIES sepok?(F, sg, cons(lo, append(sint(F, sg, lo, hi, n), (: hi :))))
+
+  %% a gap holding at most one root of the product stops at once
+  sint_one: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) AND lo < hi
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0 AND cnt(bk(F), msg(ys), bprod(F), lo, hi) <= 1
+    IMPLIES sint_ok?(F, msg(ys), lo, hi, n)
+
+  %% the split of an interval with both ends off the product's roots
+  sint_split: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) AND lo < hi
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    AND sint_ok?(F, msg(ys), lo, spick(F, msg(ys), lo, hi, total(bk(F), msg(ys), bprod(F))), n)
+    AND sint_ok?(F, msg(ys), spick(F, msg(ys), lo, hi, total(bk(F), msg(ys), bprod(F))), hi, n2)
+    IMPLIES sint_ok?(F, msg(ys), lo, hi, max(max(n, n2), total(bk(F), msg(ys), bprod(F))) + 1)
+
+  %% the counting induction
+  sint_inner: LEMMA cert?(F, msg(ys)) AND cons?(lives(F))
+    AND (FORALL lo, hi: lo < hi AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+           AND cnt(bk(F), msg(ys), bprod(F), lo, hi) < N
+           IMPLIES EXISTS n: sint_ok?(F, msg(ys), lo, hi, n))
+    AND z1 < z2 AND P(F, ys)(z1) = 0 AND P(F, ys)(z2) = 0
+    IMPLIES FORALL K: FORALL lo, hi: lo < hi AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+      AND cnt(bk(F), msg(ys), bprod(F), lo, hi) = N
+      AND lo < z1 AND z2 <= hi
+      AND hi - lo < (z2 - z1) + K * (z2 - z1) / 2 ^ (total(bk(F), msg(ys), bprod(F)) + 1)
+      IMPLIES EXISTS n: sint_ok?(F, msg(ys), lo, hi, n)
+
+  sint_exists: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) IMPLIES
+    FORALL N: FORALL lo, hi: lo < hi AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+      AND cnt(bk(F), msg(ys), bprod(F), lo, hi) = N
+      IMPLIES EXISTS n: sint_ok?(F, msg(ys), lo, hi, n)
+
+  %% ---- swide ----------------------------------------------------------------------------
+  swcond?(F, sg, b): bool = nzat?(F, sg, -b, F) AND nzat?(F, sg, b, F)
+    AND leftok?(F, sg, -b, F) AND rightok?(F, sg, b, F)
+  swide_ok?(F, sg, b, n): RECURSIVE bool =
+    n > 0 AND (swcond?(F, sg, b) OR swide_ok?(F, sg, 2 * b, n - 1))
+  MEASURE n
+
+  swide_cond: LEMMA FORALL n: FORALL b: swide_ok?(F, sg, b, n) IMPLIES swcond?(F, sg, swide(F, sg, b, n))
+  swide_mono: LEMMA FORALL n: FORALL b, n2: swide_ok?(F, sg, b, n) AND n <= n2 IMPLIES
+    swide(F, sg, b, n2) = swide(F, sg, b, n) AND swide_ok?(F, sg, b, n2)
+  swide_reach: LEMMA FORALL j: FORALL b: swcond?(F, sg, 2 ^ j * b) IMPLIES swide_ok?(F, sg, b, j + 1)
+
+  %% no member root at or beyond y: the per-member outer conditions hold
+  left_mem0: LEMMA cert?(F, msg(ys)) AND member(g, F) AND length(strip(g)) >= 2
+    AND (FORALL z: z <= y0 IMPLIES P(F, ys)(z) /= 0) IMPLIES left(bk(F), msg(ys), strip(g), y0) = 0
+  right_mem0: LEMMA cert?(F, msg(ys)) AND member(g, F) AND length(strip(g)) >= 2
+    AND (FORALL z: z >= y0 IMPLIES P(F, ys)(z) /= 0) IMPLIES right(bk(F), msg(ys), strip(g), y0) = 0
+  leftok_P: LEMMA FORALL G: cert?(F, msg(ys)) AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    AND (FORALL z: z <= y0 IMPLIES P(F, ys)(z) /= 0) IMPLIES leftok?(F, msg(ys), y0, G)
+  rightok_P: LEMMA FORALL G: cert?(F, msg(ys)) AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    AND (FORALL z: z >= y0 IMPLIES P(F, ys)(z) /= 0) IMPLIES rightok?(F, msg(ys), y0, G)
+
+  %% the product has no root outside some bounded interval
+  P_bounded: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) IMPLIES
+    EXISTS (B: posrat): FORALL z: abs(z) >= B IMPLIES P(F, ys)(z) /= 0
+  swide_exists: LEMMA cert?(F, msg(ys)) AND cons?(lives(F)) IMPLIES EXISTS n: swide_ok?(F, msg(ys), 1, n)
+
+  %% ---- the separators ---------------------------------------------------------------------
+  rlast_app: LEMMA FORALL (A: list[rat]), (x0, x1: rat): rlast(cons(x0, append(A, (: x1 :)))) = x1
+  seps_ok: THEOREM cert?(F, msg(ys)) IMPLIES EXISTS N: FORALL n: n >= N IMPLIES
+    wok?(F, msg(ys), seps_n(F, msg(ys), n)) AND seps_n(F, msg(ys), n) = seps_n(F, msg(ys), N)
+END walk_search

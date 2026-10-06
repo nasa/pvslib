@@ -1,0 +1,91 @@
+cpoly_alg: THEORY
+%----------------------------------------------------------------------------
+% Complex polynomials as functions with coefficient witnesses.
+%
+% cpol?(P, n): P is a polynomial function of degree at most n.
+% clead?(P, n, c): P has degree exactly n and leading coefficient c /= 0.
+% Products go through croots' factorization instead of a convolution
+% formula: a polynomial of degree n with leading coefficient c is c times n
+% linear factors (clead_cprod), a product of linear factors is monic of its
+% length (cprod_lead), so a product of polynomials has the sum of the degrees
+% and the product of the leading coefficients (clead_mul).  Also:
+%   cpol_cases   a polynomial is 0 or has an exact degree
+%   clead_low    a polynomial of degree n is of degree at most m only if n <= m
+%   clead_deg    degree and leading coefficient are unique
+%   cmul_zero    no zero divisors
+%   clow_zero    a multiple of H of degree below deg H is 0
+%   cfactor      the factor theorem, with the cofactor's degree
+%   ccancel      a linear factor cancels
+% Complex ring identities are proved by components (the cring strategy).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING croots
+
+  P, Q, H, U, V, W, S: VAR [complex -> complex]
+  a, b: VAR sequence[complex]
+  r, s: VAR [nat -> complex]
+  n, m, k, i, j, n0, n1: VAR nat
+  z, y, c, d: VAR complex
+
+  cpol?(P, n): bool = EXISTS a: FORALL z: P(z) = cpolynomial(a, n)(z)
+  clead?(P, n, c): bool = c /= real_(0) AND EXISTS a: a(n) = c AND FORALL z: P(z) = cpolynomial(a, n)(z)
+  cz?(P): bool = FORALL z: P(z) = real_(0)
+
+  %% named operations
+  ccon(c)(z): complex = c
+  clin(y)(z): complex = z - y
+  cmul(P, Q)(z): complex = P(z) * Q(z)
+  cadd(P, Q)(z): complex = P(z) + Q(z)
+  csub(P, Q)(z): complex = P(z) - Q(z)
+  csc(c, P)(z): complex = c * P(z)
+  cpr(r, n)(z): complex = cprod(r, n)(z)
+
+  %% ---- coefficients beyond the degree -----------------------------------------------------
+  pad(a, n)(i): complex = IF i <= n THEN a(i) ELSE real_(0) ENDIF
+  cpoly_pad: LEMMA FORALL m: n <= m IMPLIES cpolynomial(pad(a, n), m)(z) = cpolynomial(a, n)(z)
+  cpol_mono: LEMMA cpol?(P, n) AND n <= m IMPLIES cpol?(P, m)
+  csigma_zero: LEMMA FORALL n: csigma(LAMBDA i: real_(0), n) = real_(0)
+  cpoly_zero: LEMMA cpolynomial(LAMBDA i: real_(0), n)(z) = real_(0)
+  cpoly_0: LEMMA cpolynomial(a, 0)(z) = a(0)
+  cpoly_scal: LEMMA cpolynomial(LAMBDA i: d * a(i), n)(z) = d * cpolynomial(a, n)(z)
+  cz_cpol: LEMMA cz?(P) IMPLIES cpol?(P, n)
+  clead_cpol: LEMMA clead?(P, n, c) IMPLIES cpol?(P, n)
+
+  %% ---- exact degree -----------------------------------------------------------------------
+  cpol_cases: LEMMA FORALL n: FORALL P: cpol?(P, n) IMPLIES
+    cz?(P) OR EXISTS m, c: m <= n AND clead?(P, m, c)
+  clead_low: LEMMA clead?(P, n, c) AND cpol?(P, m) IMPLIES n <= m
+  clead_deg: LEMMA clead?(P, n, c) AND clead?(P, m, d) IMPLIES n = m AND c = d
+  clead_nz: LEMMA clead?(P, n, c) IMPLIES NOT cz?(P)
+  clead_ext: LEMMA clead?(P, n, c) AND (FORALL z: Q(z) = P(z)) IMPLIES clead?(Q, n, c)
+  cpol_ext: LEMMA cpol?(P, n) AND (FORALL z: Q(z) = P(z)) IMPLIES cpol?(Q, n)
+
+  %% ---- products of linear factors -----------------------------------------------------------
+  cprod_lead: LEMMA FORALL n: FORALL r: clead?(cpr(r, n), n, real_(1))
+  clead_cprod: LEMMA clead?(P, n, c) IMPLIES EXISTS r: FORALL z: P(z) = c * cprod(r, n)(z)
+  join(r, n, s)(i): complex = IF i < n THEN r(i) ELSE s(i - n) ENDIF
+  cprod_join: LEMMA FORALL m: FORALL r, s, n, z:
+    cprod(join(r, n, s), n + m)(z) = cprod(r, n)(z) * cprod(s, m)(z)
+
+  %% ---- closure ------------------------------------------------------------------------------
+  clead_scal: LEMMA clead?(P, n, c) AND d /= real_(0) IMPLIES clead?(csc(d, P), n, d * c)
+  clead_mul: LEMMA clead?(P, n, c) AND clead?(Q, m, d) IMPLIES clead?(cmul(P, Q), n + m, c * d)
+  cpol_mul: LEMMA cpol?(P, n) AND cpol?(Q, m) IMPLIES cpol?(cmul(P, Q), n + m)
+  cpol_add: LEMMA cpol?(P, n) AND cpol?(Q, n) IMPLIES cpol?(cadd(P, Q), n)
+  cpol_scal: LEMMA cpol?(P, n) IMPLIES cpol?(csc(c, P), n)
+  cpol_sub: LEMMA cpol?(P, n) AND cpol?(Q, n) IMPLIES cpol?(csub(P, Q), n)
+  clead_con: LEMMA c /= real_(0) IMPLIES clead?(ccon(c), 0, c)
+  clead_lin: LEMMA clead?(clin(y), 1, real_(1))
+
+  %% ---- consequences -------------------------------------------------------------------------
+  cmul_zero: LEMMA clead?(P, n, c) AND cpol?(Q, m) AND cz?(cmul(P, Q)) IMPLIES cz?(Q)
+  clow_zero: LEMMA clead?(H, k, c) AND cpol?(S, n0) AND cpol?(W, m) AND m < k
+    AND (FORALL z: W(z) = H(z) * S(z)) IMPLIES cz?(S)
+  cfactor: LEMMA clead?(P, n, c) AND n > 0 AND P(y) = real_(0) IMPLIES
+    EXISTS Q: clead?(Q, n - 1, c) AND FORALL z: P(z) = (z - y) * Q(z)
+  x1, x2: VAR complex
+  csub_zero: LEMMA x1 - x2 = real_(0) IMPLIES x1 = x2
+  cmul_cancel: LEMMA d /= real_(0) AND d * x1 = d * x2 IMPLIES x1 = x2
+  ccancel: LEMMA cpol?(P, n) AND cpol?(Q, n) AND (FORALL z: (z - y) * P(z) = (z - y) * Q(z))
+    IMPLIES FORALL z: P(z) = Q(z)
+END cpoly_alg

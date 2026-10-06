@@ -1,0 +1,91 @@
+oddef: THEORY
+%----------------------------------------------------------------------------
+% What a descriptor denotes, and when its oracle is right.
+%
+%   den(od)     the point: a rational point and a mix are exact; a separator
+%               y0 over od is (y0, den(od)); a section over od is the section
+%               root of the gap (secbeta) in front of den(od)
+%   wf?(od)     every section in od is a level gap at the point below it (lvl?:
+%               the family's certificate there and gapf?)
+%   okqs_agree  if od is well formed and okqs(od, R) -- the executable's
+%               recursive certificate of the answers on R -- then od's oracle
+%               agrees with msg(den(od)) on R: a separator passes the reads down
+%               through sub1 (sub1_eval), a section is allok_agree2 at the
+%               oracle below, which is right on the queries' reads by induction
+%   opt_den / osec_den   the cells' descriptors denote the cell points: a
+%               separator trivially; a section over a rational point becomes a
+%               mix whose algebraic number is the root of a member (or of the
+%               product) in [lo, hi], hence THE root of the gap (osec_val), or
+%               a rational point when that root is rational (alg_rat's ratx_r);
+%               any other section is a sec, whose den is secbeta by definition
+%   feff_zf     the executable's effective family and zero insertion are zf and
+%               insz at the point, once the oracle is right on the member
+%               coefficients (the filter and the truncations are decided by
+%               their signs)
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING odreads, qsec_lift, cvl, zfam, map_member[mpoly, mpoly], alg_rat
+
+  od, od1: VAR OD
+  P, F, G: VAR list[list[mpoly]]
+  g: VAR list[mpoly]
+  rs, rys: VAR list[rat]
+  a: VAR Alg
+  y0, lo, hi: VAR rat
+  R: VAR list[mpoly]
+  c: VAR mpoly
+  ys, ws: VAR list[real]
+  beta, z: VAR real
+  v: VAR SV
+  tb: VAR CT
+  u: VAR nat
+
+  %% ---- the point a descriptor denotes ---------------------------------------------------
+  den(od): RECURSIVE list[real] =
+    CASES od OF
+      pt(rys): rys,
+      mix(rs, a, rys): append(rs, cons(value(a), rys)),
+      sec(od1, P, lo, hi): cons(secbeta(P, den(od1), lo, hi), den(od1)),
+      sp(od1, y0): cons(y0, den(od1))
+    ENDCASES
+  MEASURE od BY <<
+
+  wf?(od): RECURSIVE bool =
+    CASES od OF
+      sec(od1, P, lo, hi): wf?(od1) AND lvl?(P, den(od1), lo, hi, secbeta(P, den(od1), lo, hi)),
+      sp(od1, y0): wf?(od1)
+      ELSE TRUE
+    ENDCASES
+  MEASURE od BY <<
+
+  %% ---- the oracle is right where certified ------------------------------------------------
+  exact_msg: LEMMA exact?(od) IMPLIES osg(od) = msg(den(od))
+  agree_refl: LEMMA agree(msg(ws), msg(ws), R)
+  agree_dedup: LEMMA agree(msg(ws), osg(od), dedup1(R)) IFF agree(msg(ws), osg(od), R)
+  sub1_rd_mem: LEMMA member(c, R) IMPLIES member(sub1(as_list(c), y0), sub1_rd(R, y0))
+  okqs_agree: THEOREM FORALL od: FORALL R: wf?(od) AND okqs(od, R) IMPLIES agree(osg(od), msg(den(od)), R)
+
+  %% ---- the cells' descriptors -----------------------------------------------------------
+  opt_den: LEMMA den(opt(od, y0)) = cons(y0, den(od))
+  opt_wf: LEMMA wf?(od) IMPLIES wf?(opt(od, y0))
+
+  secp_n_mem: LEMMA FORALL G: secp_n(P, rys, G, lo, hi) = bprod(P) OR
+    EXISTS g: member(g, G) AND length(strip(g)) >= 2 AND secp_n(P, rys, G, lo, hi) = strip(g)
+  %% a root of the query polynomial of osec is a root of the level's product
+  secp_n_root: LEMMA meval(mpol(secp_n(P, rys, P, lo, hi)))(cons(z, rys)) = 0 IMPLIES P(P, rys)(z) = 0
+
+  %% the coordinate of a section over a rational point is the gap's root
+  osec_val: LEMMA lvl?(P, rys, lo, hi, beta) AND
+    alg?((# p := partial_eval(mpol(secp_n(P, rys, P, lo, hi)), rys), lb := lo, ub := hi #)) IMPLIES
+    value((# p := partial_eval(mpol(secp_n(P, rys, P, lo, hi)), rys), lb := lo, ub := hi #)) = beta
+
+  osec_den: LEMMA wf?(od) AND lvl?(P, den(od), lo, hi, beta) IMPLIES
+    den(osec(od, P, lo, hi)) = cons(beta, den(od)) AND wf?(osec(od, P, lo, hi))
+
+  %% ---- the filter and the zeros -----------------------------------------------------------
+  feff_zf: LEMMA FORALL F: agree(osg(od), msg(den(od)), crd(F)) IMPLIES
+    feff(F, od) = zf(F, den(od)) AND FORALL v: ins0(F, od, v) = insz(F, den(od), v)
+
+  %% the member coefficients are among the reads the executable lists (crd_wi)
+  crd_wr: LEMMA member(c, crd(F)) IMPLIES member(c, wr_t(u, F, od, tb))
+END oddef

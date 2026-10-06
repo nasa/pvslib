@@ -1,0 +1,180 @@
+sturm_sg: THEORY
+%----------------------------------------------------------------------------
+% Sturm counting THROUGH A SIGN ORACLE.
+%
+% Sturm's theorem counts the roots of a polynomial at one valuation:
+% fchain_sturm holds at ANY real valuation ys, and rchain_sg_at says the chain
+% built from the oracle msg(ys) is the chain at ys.  So the counts are stated
+% here for an arbitrary sg: SG and proved at sg = msg(ys), with ys of any
+% length -- which is what
+% lets one lifting serve every level, and what makes the computation's
+% dependence on the parameters visible as a finite list of oracle reads.
+%
+% A chain entry is read at a rational y0 as sg(sub1(c, y0)), where sub1
+% substitutes the main variable INSIDE the mpoly ring (Horner over madd and
+% mscal), with no variable swap.  sign3_scale: a sign is a positive multiple
+% of the value, so counting the sign changes of signs counts those of the
+% values.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING nsc_scale, sg_chain2
+
+  sg: VAR SG
+  ys: VAR list[real]
+  f, c: VAR list[mpoly]
+  k, i: VAR nat
+  y0, y1: VAR rat
+
+  %% ---- substitution for the main variable ------------------------------
+  sub1(c, y0): RECURSIVE mpoly =
+    IF null?(c) THEN mconst(0)
+    ELSE madd(car(c), mscal(y0, sub1(cdr(c), y0)))
+    ENDIF
+  MEASURE length(c)
+
+  sub1_eval: LEMMA FORALL c: meval(sub1(c, y0))(ys) = meval(mpol(c))(cons(y0, ys))
+
+  %% ---- the chain and its entries ----------------------------------------
+  %% THE REDUCED CHAIN (Collins): sg_chain2's rchain2_sg, each step divided
+  %% by the previous leading coefficient to the degree-drop power, the
+  %% division checked exact at run time.  At msg(ys) it is, entry by entry,
+  %% a POSITIVE multiple of branch_prs's fchain (schain_prop), and sign
+  %% variations, entry signs, leading signs and degrees do not see the
+  %% factor -- that is all the counts below use.  Before 2026-09-22 this was
+  %% the unreduced rchain_sg, equal to fchain, whose coefficients carry
+  %% extraneous powers of leading coefficients; as the reads of the walk they
+  %% bloated the read closure at four variables.
+  schain(k, sg, f): list[list[mpoly]] = cons(f, rchain2_sg(k, f, lderiv(f), mconst(1), 0, sg))
+  slc?(k, sg, f): bool = length(f) >= 2 AND sg(llast(f)) /= 0 AND length(f) <= k
+  sign3_posmul: LEMMA FORALL (c: posreal, v: real): sign3(c * v) = sign3(v)
+  prop_earr: LEMMA FORALL (l1, l2: list[mpoly]), (c: posreal): prop(l1, l2, c, ys) IMPLIES earr(l1, ys) = c * earr(l2, ys)
+  prop_dg: LEMMA FORALL (l1, l2: list[mpoly]), (c: posreal): prop(l1, l2, c, ys) IMPLIES dg(l1) = dg(l2)
+  schain_prop: LEMMA slc?(k, msg(ys), f) IMPLIES chprop(schain(k, msg(ys), f), fchain(k, f, ys), ys)
+  schain_len: LEMMA slc?(k, msg(ys), f) IMPLIES length(schain(k, msg(ys), f)) = length(fchain(k, f, ys))
+  schain_nth: LEMMA slc?(k, msg(ys), f) AND i < length(fchain(k, f, ys)) IMPLIES
+    EXISTS (c: posreal): prop(nthl(schain(k, msg(ys), f), i), nthl(fchain(k, f, ys), i), c, ys)
+  schain_sign: LEMMA slc?(k, msg(ys), f) AND i < length(fchain(k, f, ys)) IMPLIES
+    sign3(meval(mpol(nthl(schain(k, msg(ys), f), i)))(cons(y0, ys)))
+    = sign3(meval(mpol(nthl(fchain(k, f, ys), i)))(cons(y0, ys)))
+  schain_lc: LEMMA slc?(k, msg(ys), f) AND i < length(fchain(k, f, ys)) IMPLIES
+    sign3(meval(llast(nthl(schain(k, msg(ys), f), i)))(ys)) = sign3(meval(llast(nthl(fchain(k, f, ys), i)))(ys))
+    AND dg(nthl(schain(k, msg(ys), f), i)) = dg(nthl(fchain(k, f, ys), i))
+
+  sent(sg, c, y0): Sign3 = sg(sub1(c, y0))
+  sent_sign: LEMMA sent(msg(ys), c, y0) = sign3(meval(mpol(c))(cons(y0, ys)))
+
+  slen(k, sg, f): nat =
+    IF length(schain(k, sg, f)) >= 2 THEN length(schain(k, sg, f)) - 2 ELSE 0 ENDIF
+
+  svarf(k, sg, f, y0): [nat -> real] =
+    LAMBDA (i: nat): sent(sg, nthl(schain(k, sg, f), i), y0)
+
+  %% The counts take the chain as an ARGUMENT, built once by the caller: with
+  %% the chain inside the lambda the ground evaluator rebuilt it at every
+  %% index of every count (2026-09-21: a single cnt on a cubic in four
+  %% variables took 19 s, of which the chain was 1.5 s).  svar, slo, shi are
+  %% the same functions as before, stated through the shared form.
+  ch: VAR list[list[mpoly]]
+  clen(ch): nat = IF length(ch) >= 2 THEN length(ch) - 2 ELSE 0 ENDIF
+  svarc(sg, ch, y0): nat =
+    number_sign_changes(LAMBDA (i: nat): sent(sg, nthl(ch, i), y0), clen(ch))`num
+  svar(k, sg, f, y0): nat = svarc(sg, schain(k, sg, f), y0)
+  svar_def: LEMMA svar(k, sg, f, y0) = number_sign_changes(svarf(k, sg, f, y0), slen(k, sg, f))`num
+  cntc(sg, ch, y0, y1): int = svarc(sg, ch, y0) - svarc(sg, ch, y1)
+
+  %% the whole condition: length, LEADING coefficient, fuel: slc? above
+
+  slc_fok: LEMMA slc?(k, msg(ys), f) IMPLIES fok(k, f, ys)
+  schain_len3: LEMMA slc?(k, msg(ys), f) IMPLIES length(schain(k, msg(ys), f)) >= 3
+  slen_at: LEMMA slc?(k, msg(ys), f)
+    IMPLIES slen(k, msg(ys), f) = length(fchain(k, f, ys)) - 2
+
+  schain_entry: LEMMA slc?(k, msg(ys), f) AND i < length(fchain(k, f, ys)) IMPLIES
+    sent(msg(ys), nthl(schain(k, msg(ys), f), i), y0)
+    = sign3(polynomial(carr(fchain(k, f, ys), ys)(i), cdeg(fchain(k, f, ys))(i))(y0))
+
+  %% every real is a POSITIVE multiple of its own sign, which is what lets
+  %% nsc_scale turn counting the signs into counting the values
+  sign3_scale: LEMMA FORALL (v: real): EXISTS (cp: posreal): sign3(v) = cp * v
+
+  svar_nsc: LEMMA slc?(k, msg(ys), f) IMPLIES svar(k, msg(ys), f, y0) =
+    number_sign_changes(LAMBDA (i: nat):
+        polynomial(carr(fchain(k, f, ys), ys)(i), cdeg(fchain(k, f, ys))(i))(y0),
+      length(fchain(k, f, ys)) - 2)`num
+
+  %% ---- the bounded count -------------------------------------------------
+  cnt(k, sg, f, y0, y1): int = cntc(sg, schain(k, sg, f), y0, y1)
+  cnt_def: LEMMA cnt(k, sg, f, y0, y1) = svar(k, sg, f, y0) - svar(k, sg, f, y1)
+
+  ends?(ys, f, y0, y1): bool = y0 < y1
+    AND meval(mpol(f))(cons(y0, ys)) /= 0 AND meval(mpol(f))(cons(y1, ys)) /= 0
+
+  cnt_nneg: THEOREM slc?(k, msg(ys), f) AND ends?(ys, f, y0, y1)
+    IMPLIES cnt(k, msg(ys), f, y0, y1) >= 0
+
+  cnt_zero: THEOREM slc?(k, msg(ys), f) AND ends?(ys, f, y0, y1)
+    AND cnt(k, msg(ys), f, y0, y1) = 0
+    IMPLIES FORALL (z: real): y0 < z AND z <= y1
+      IMPLIES meval(mpol(f))(cons(z, ys)) /= 0
+
+  cnt_pos: THEOREM slc?(k, msg(ys), f) AND ends?(ys, f, y0, y1)
+    AND cnt(k, msg(ys), f, y0, y1) > 0
+    IMPLIES EXISTS (z: real): y0 < z AND z <= y1
+      AND meval(mpol(f))(cons(z, ys)) = 0
+
+  %% a count of one means the root is UNIQUE: what lets a gap's section be
+  %% identified with the root of whichever member vanishes in it
+  cnt_one: THEOREM slc?(k, msg(ys), f) AND ends?(ys, f, y0, y1)
+    AND cnt(k, msg(ys), f, y0, y1) = 1
+    IMPLIES FORALL (z1, z2: real):
+      y0 < z1 AND z1 <= y1 AND meval(mpol(f))(cons(z1, ys)) = 0 AND
+      y0 < z2 AND z2 <= y1 AND meval(mpol(f))(cons(z2, ys)) = 0
+      IMPLIES z1 = z2
+
+  %% ---- the counts at +-infinity --------------------------------------------
+  shif(k, sg, f): [nat -> real] =
+    LAMBDA (i: nat): sg(llast(nthl(schain(k, sg, f), i)))
+  slof(k, sg, f): [nat -> real] =
+    LAMBDA (i: nat): (-1)^(dg(nthl(schain(k, sg, f), i)))
+                     * sg(llast(nthl(schain(k, sg, f), i)))
+  shic(sg, ch): nat =
+    number_sign_changes(LAMBDA (i: nat): sg(llast(nthl(ch, i))), clen(ch))`num
+  sloc(sg, ch): nat =
+    number_sign_changes(LAMBDA (i: nat): (-1)^(dg(nthl(ch, i))) * sg(llast(nthl(ch, i))), clen(ch))`num
+  shi(k, sg, f): nat = shic(sg, schain(k, sg, f))
+  slo(k, sg, f): nat = sloc(sg, schain(k, sg, f))
+  shi_def: LEMMA shi(k, sg, f) = number_sign_changes(shif(k, sg, f), slen(k, sg, f))`num
+  slo_def: LEMMA slo(k, sg, f) = number_sign_changes(slof(k, sg, f), slen(k, sg, f))`num
+  leftc(sg, ch, y0): int = sloc(sg, ch) - svarc(sg, ch, y0)
+  rightc(sg, ch, y1): int = svarc(sg, ch, y1) - shic(sg, ch)
+
+  shi_nsc: LEMMA slc?(k, msg(ys), f) IMPLIES shi(k, msg(ys), f) =
+    number_sign_changes(LAMBDA (i: nat):
+        carr(fchain(k, f, ys), ys)(i)(cdeg(fchain(k, f, ys))(i)),
+      length(fchain(k, f, ys)) - 2)`num
+  slo_nsc: LEMMA slc?(k, msg(ys), f) IMPLIES slo(k, msg(ys), f) =
+    number_sign_changes(LAMBDA (i: nat):
+        (-1)^(cdeg(fchain(k, f, ys))(i))
+        * carr(fchain(k, f, ys), ys)(i)(cdeg(fchain(k, f, ys))(i)),
+      length(fchain(k, f, ys)) - 2)`num
+
+  total(k, sg, f): int = slo(k, sg, f) - shi(k, sg, f)
+  left(k, sg, f, y0): int = leftc(sg, schain(k, sg, f), y0)
+  right(k, sg, f, y1): int = rightc(sg, schain(k, sg, f), y1)
+  left_def: LEMMA left(k, sg, f, y0) = slo(k, sg, f) - svar(k, sg, f, y0)
+  right_def: LEMMA right(k, sg, f, y1) = svar(k, sg, f, y1) - shi(k, sg, f)
+
+  split: LEMMA total(k, sg, f)
+    = left(k, sg, f, y0) + cnt(k, sg, f, y0, y1) + right(k, sg, f, y1)
+
+  left_nneg: THEOREM slc?(k, msg(ys), f) AND meval(mpol(f))(cons(y0, ys)) /= 0
+    IMPLIES left(k, msg(ys), f, y0) >= 0
+  right_nneg: THEOREM slc?(k, msg(ys), f) AND meval(mpol(f))(cons(y1, ys)) /= 0
+    IMPLIES right(k, msg(ys), f, y1) >= 0
+  left_zero_sg: THEOREM slc?(k, msg(ys), f) AND meval(mpol(f))(cons(y0, ys)) /= 0
+    AND left(k, msg(ys), f, y0) = 0
+    IMPLIES FORALL (z: real): z <= y0 IMPLIES meval(mpol(f))(cons(z, ys)) /= 0
+  right_zero_sg: THEOREM slc?(k, msg(ys), f) AND meval(mpol(f))(cons(y1, ys)) /= 0
+    AND right(k, msg(ys), f, y1) = 0
+    IMPLIES FORALL (z: real): z > y1 IMPLIES meval(mpol(f))(cons(z, ys)) /= 0
+END sturm_sg

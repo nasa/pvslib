@@ -1,0 +1,92 @@
+cad_results_ex: THEORY
+%----------------------------------------------------------------------------
+% The library's main results applied to data: the Collins CAD of the unit
+% circle and of the line, and quantifier elimination on one formula.
+%
+% F = { x^2 + y^2 - 1, x^2 - 1 } (circF): members are polynomials in the
+% inner variable y with coefficients in x.  col_found raises the search
+% effort u until the run's certificate holds; here it stops at u = 0
+% (circ_u) and returns 15 records for the 13 cells (circ_adr, circ_sv: over
+% x < -1, x = -1, -1 < x < 1, x = 1, x > 1 the stacks have 1, 3, 5, 3, 1
+% cells, and a band that holds two of the run's separators has a record for
+% each).  By col_found_cad, every record's sample lies in its cell with F's
+% signs there, and every nonempty cell has a record (circ_cad).  By
+% col_found_decides the records decide every sentence over F in two
+% variables (circ_dec): FORALL x: EXISTS y: x^2 + y^2 - 1 = 0 OR x^2 - 1 > 0
+% (circ_holds).  The run's certificate holds at u = 0 (circ_ok), so its
+% cells form a CAD adapted to F (circ_ccad, by col_verified); the cells of
+% decide8's run, the line cut at the roots of the smaller bottom step, cover
+% the plane (circ_decb, by decb_cad_run); every cell is quantifier-free
+% definable (circ_sa, by col_cells_sa).  One variable: x^2 - 1 cuts the line
+% into 5 sectors (line_sv).
+%
+% Quantifier elimination: qelim eliminates y from EXISTS y: x^2 + y^2 - 1 = 0
+% (circ_proj) and gives 4x^2 - 4 < 0 OR 4x^2 - 4 = 0 (proj_answer), which is
+% quantifier-free (proj_qf, by qelim_qf) and equivalent (proj_ok, by
+% qelim_ok); the set it defines is quantifier-free definable (proj_qfd, by
+% fod_qfd).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad@col_found_ok, cad@decb_run, cad@col_verified, cad@cad_sa, cad@qelim_ok
+  x2m1: mpoly = mpol((: mconst(-1), mconst(0), mconst(1) :))                         % x^2 - 1
+  circF: list[list[mpoly]] = (: (: x2m1, mconst(0), mconst(1) :), (: x2m1 :) :)   % x^2+y^2-1, x^2-1
+  qs2: list[bool] = (: TRUE, TRUE :)
+  lineF: list[list[mpoly]] = (: (: mconst(-1), mconst(0), mconst(1) :) :)         % x^2 - 1
+  circ_proj: Fm = fex(fsg(mpol((: x2m1, mconst(0), mconst(1) :)), 0))            % EXISTS y: x^2+y^2-1 = 0
+
+  %% the sign condition x^2 + y^2 - 1 = 0 OR x^2 - 1 > 0 on F's sign vector
+  psi_on(v: SV): bool = cons?(v) AND (car(v) = 0 OR (cons?(cdr(v)) AND car(cdr(v)) = 1))
+
+  %% ---- the Collins CAD of the circle, as data ----
+  circ_u: LEMMA col_found(qs2, circF)`fu = 0
+
+  circ_adr: LEMMA map(LAMBDA (c: ORec): c`radr)(col_found(qs2, circF)`frecs) =
+    (: (: 0 :), (: 0 :),
+       (: 0 :), (: 1 :), (: 2 :),
+       (: 0 :), (: 1 :), (: 2 :), (: 3 :), (: 4 :),
+       (: 0 :), (: 1 :), (: 2 :),
+       (: 0 :), (: 0 :) :)
+
+  circ_sv: LEMMA map(LAMBDA (c: ORec): c`rsv)(col_found(qs2, circF)`frecs) =
+    (: (: 1, 1 :), (: 1, 1 :),
+       (: 1, 0 :), (: 0, 0 :), (: 1, 0 :),
+       (: 1, -1 :), (: 0, -1 :), (: -1, -1 :), (: 0, -1 :), (: 1, -1 :),
+       (: 1, 0 :), (: 0, 0 :), (: 1, 0 :),
+       (: 1, 1 :), (: 1, 1 :) :)
+
+  circ_cad: LEMMA cfound?(qs2, circF, col_found(qs2, circF)`frecs)
+
+  %% ---- the records decide sentences over F ----
+  circ_dec: LEMMA cfold((: TRUE, FALSE :), psi_on, col_found(qs2, circF)`frecs) IFF
+                  sem((: TRUE, FALSE :), circF, psi_on, null[real])
+
+  circ_holds: LEMMA sem((: TRUE, FALSE :), circF, psi_on, null[real])
+
+  %% ---- the run is a CAD; decide8's run covers the plane; the cells are semi-algebraic ----
+  circ_ok: LEMMA decc_o(0, qs2, circF, psi_c)`ok
+
+  circ_ccad: LEMMA ccad_of?(0, qs2, circF)
+
+  circ_decb: LEMMA FORALL (p: list[real]): length(p) = 2 IMPLIES
+    EXISTS (s: Sect), (A: list[nat]): member(s, bsects(1, circF)) AND length(A) = 1 AND
+                                      ccell(1, circF)(s, A)(p)
+
+  circ_sa: LEMMA FORALL (s: Sect), (A: list[nat]):
+    member(s, csects(1, circF)) AND length(A) <= 1 IMPLIES qfd?(1 + length(A))(ccell(1, circF)(s, A))
+
+  %% ---- one variable ----
+  line_sv: LEMMA map(LAMBDA (c: ORec): c`rsv)(col_found((: TRUE :), lineF)`frecs) =
+    (: (: 1 :), (: 0 :), (: -1 :), (: 0 :), (: 1 :) :)
+
+  %% ---- quantifier elimination ----
+  proj_answer: LEMMA qelim(circ_proj, 1) =
+    fnot(fand(fnot(fsg(mpol((: mconst(-4), mconst(0), mconst(4) :)), -1)),
+              fnot(fsg(mpol((: mconst(-4), mconst(0), mconst(4) :)), 0))))
+
+  proj_qf: LEMMA qf?(qelim(circ_proj, 1))
+
+  proj_ok: LEMMA FORALL (pt: list[real]): length(pt) = 1 IMPLIES
+    (fsem(qelim(circ_proj, 1))(pt) IFF fsem(circ_proj)(pt))
+
+  proj_qfd: LEMMA qfd?(1)(fsem(circ_proj))
+END cad_results_ex

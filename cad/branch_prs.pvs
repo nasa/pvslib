@@ -1,0 +1,72 @@
+branch_prs: THEORY
+%----------------------------------------------------------------------------
+% The pseudo-remainder sequence at one valuation.
+%
+% rchain(k, l1, l2, ys) is the Sturm chain that follows the pair (l1, l2)
+% at the valuation ys: each step takes the pseudo-remainder of the two
+% before it (sturm_step), normalizes it at ys (branch_norm's snorm, select),
+% and repeats with the pair moved one along.  The recursion is bounded by a
+% step count k: each step shortens the divisor, so k = length(l2) + 1 is
+% always enough, and the caller supplies it.  The structural facts of the
+% sequence: it ends with the zero polynomial, every earlier element is a
+% nonempty list whose leading coefficient is nonzero at ys, the lengths
+% strictly decrease, and each element from the third on is the normalized
+% step of the two before it.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sturm_step, branch_norm
+
+  k, u: VAR nat
+  l1, l2: VAR list[mpoly]
+  ys: VAR list[real]
+
+  %% small facts about lists used throughout
+  not_cons_null: LEMMA NOT cons?(l2) IMPLIES l2 = null[mpoly]
+  nth_one: LEMMA nth((: null[mpoly] :), 0) = null[mpoly]
+
+  %% the element after the pair (l1, l2) at the valuation ys
+  snext(l1, (l2 | cons?(l2)), ys): list[mpoly] = select(snorm(sstep(l1, l2)), ys)
+
+  snext_short: LEMMA cons?(l2) IMPLIES length(snext(l1, l2, ys)) < length(l2)
+  snext_lc: LEMMA cons?(l2) AND cons?(snext(l1, l2, ys)) IMPLIES
+    meval(llast(snext(l1, l2, ys)))(ys) /= 0
+
+  %% the same chain at one valuation
+  rchain(k, l1, l2, ys): RECURSIVE list[list[mpoly]] =
+    IF cons?(l2) AND k > 0
+    THEN cons(l2, rchain(k - 1, l2, snext(l1, l2, ys), ys))
+    ELSE (: null[mpoly] :)
+    ENDIF
+  MEASURE k
+
+  %% peeling one step off the chain
+  rchain_base: LEMMA (NOT cons?(l2) OR k = 0) IMPLIES rchain(k, l1, l2, ys) = (: null[mpoly] :)
+  rchain_pos: LEMMA length(rchain(k, l1, l2, ys)) > 0
+  rchain_len1: LEMMA (NOT cons?(l2) OR k = 0) IMPLIES length(rchain(k, l1, l2, ys)) = 1
+  rchain_nth0: LEMMA (NOT cons?(l2) OR k = 0) IMPLIES nth(rchain(k, l1, l2, ys), 0) = null[mpoly]
+  rchain_cons: LEMMA cons?(l2) AND k > 0 IMPLIES
+    rchain(k, l1, l2, ys) = cons(l2, rchain(k - 1, l2, snext(l1, l2, ys), ys))
+  rchain_head: LEMMA cons?(l2) AND k > 0 IMPLIES nth(rchain(k, l1, l2, ys), 0) = l2
+  rchain_len: LEMMA cons?(l2) AND k > 0 IMPLIES
+    length(rchain(k, l1, l2, ys)) = 1 + length(rchain(k - 1, l2, snext(l1, l2, ys), ys))
+  rchain_nth: LEMMA cons?(l2) AND k > 0 AND u > 0 AND u < length(rchain(k, l1, l2, ys)) IMPLIES
+    nth(rchain(k, l1, l2, ys), u) = nth(rchain(k - 1, l2, snext(l1, l2, ys), ys), u - 1)
+  rchain_snd: LEMMA cons?(l2) AND length(l2) < k IMPLIES
+    nth(rchain(k, l1, l2, ys), 1) = snext(l1, l2, ys)
+
+  %% structure of the chain: it ends with the zero polynomial, every earlier
+  %% element is a nonempty list with a nonzero leading coefficient at ys, the
+  %% lengths strictly decrease, and every element from the third on is the
+  %% normalized step of the two before it
+  rchain_last: LEMMA length(l2) < k IMPLIES
+    null?(nth(rchain(k, l1, l2, ys), length(rchain(k, l1, l2, ys)) - 1))
+  rchain_nonnull: LEMMA u < length(rchain(k, l1, l2, ys)) - 1 IMPLIES
+    cons?(nth(rchain(k, l1, l2, ys), u))
+  rchain_lc: LEMMA u > 0 AND u < length(rchain(k, l1, l2, ys)) - 1 IMPLIES
+    meval(llast(nth(rchain(k, l1, l2, ys), u)))(ys) /= 0
+  rchain_dec: LEMMA u + 1 < length(rchain(k, l1, l2, ys)) - 1 IMPLIES
+    length(nth(rchain(k, l1, l2, ys), u + 1)) < length(nth(rchain(k, l1, l2, ys), u))
+  rchain_step: LEMMA length(l2) < k AND u + 2 < length(rchain(k, l1, l2, ys)) IMPLIES
+    nth(rchain(k, l1, l2, ys), u + 2) =
+      snext(nth(rchain(k, l1, l2, ys), u), nth(rchain(k, l1, l2, ys), u + 1), ys)
+END branch_prs

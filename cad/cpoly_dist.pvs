@@ -1,0 +1,71 @@
+cpoly_dist: THEORY
+%----------------------------------------------------------------------------
+% The number of distinct roots is the degree minus the degree of
+% gcd(F, F').
+%
+% For a list L of distinct complex numbers and orders k, lpw(L, k) is the
+% product of the (z - a)^k(a), a in L: monic of degree lsum(L, k)
+% (lpw_lead), of order k(a) at each a in L (lpw_ord_in) and nonzero off L.
+%   lpw_dvd   if P has order at least k(a) at every a in L, lpw(L, k) divides
+%             P (the cofactor keeps P's orders off the factor taken out)
+%   ord_sum   if every root of P is in L, the orders of P over L add up to
+%             its degree (the cofactor of lpw(L, ord(P)) has no root)
+%   dist_lo   F of degree e >= 1 whose distinct roots are listed by L, and
+%   dist_hi   F' its derivative: F and F' have a common divisor of degree
+%             e - length(L) (the product of (z - a)^(ord - 1)) and none of
+%             degree e - length(L) + 1 (a divisor of F' has order at most
+%             ord(F, a) - 1 at a, by cpoly_ord's ord_der)
+% With sres_thm this makes the psc of (f, f') determine the number of
+% distinct complex roots of f.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cpoly_ord
+
+  P, Q, F, D, H, W: VAR [complex -> complex]
+  L: VAR list[complex]
+  k, k1, k2: VAR [complex -> nat]
+  n, m, e: VAR nat
+  y, z, c, d: VAR complex
+
+  dist?(L): RECURSIVE bool =
+    IF null?(L) THEN TRUE ELSE NOT member(car(L), cdr(L)) AND dist?(cdr(L)) ENDIF
+  MEASURE length(L)
+
+  lpw(L, k)(z): RECURSIVE complex =
+    IF null?(L) THEN real_(1) ELSE cpw(car(L), k(car(L)))(z) * lpw(cdr(L), k)(z) ENDIF
+  MEASURE length(L)
+
+  lsum(L, k): RECURSIVE nat = IF null?(L) THEN 0 ELSE k(car(L)) + lsum(cdr(L), k) ENDIF
+  MEASURE length(L)
+
+  %% ---- sums over the list ----------------------------------------------------------------
+  lsum_le: LEMMA FORALL L: (FORALL y: member(y, L) IMPLIES k1(y) <= k2(y)) IMPLIES lsum(L, k1) <= lsum(L, k2)
+  dec(k)(y): nat = IF k(y) >= 1 THEN k(y) - 1 ELSE 0 ENDIF
+  lsum_pred: LEMMA FORALL L: (FORALL y: member(y, L) IMPLIES k(y) >= 1) IMPLIES
+    lsum(L, dec(k)) + length(L) = lsum(L, k)
+
+  %% ---- the product over the list ---------------------------------------------------------
+  lpw_cons: LEMMA lpw(cons(y, L), k)(z) = cpw(y, k(y))(z) * lpw(L, k)(z)
+  cpw_ord: LEMMA ordp?(cpw(y, m), y, m)
+  lpw_lead: LEMMA FORALL L: clead?(lpw(L, k), lsum(L, k), real_(1))
+  lpw_off: LEMMA FORALL L: NOT member(y, L) IMPLIES lpw(L, k)(y) /= real_(0)
+  lpw_ord_in: LEMMA FORALL L: dist?(L) AND member(y, L) IMPLIES ordp?(lpw(L, k), y, k(y))
+
+  lpw_dvd: LEMMA FORALL L: FORALL P, n, c: dist?(L) AND clead?(P, n, c) AND
+    (FORALL y: member(y, L) IMPLIES k(y) <= ord(P, y))
+    IMPLIES EXISTS W, m: cpol?(W, m) AND FORALL z: P(z) = lpw(L, k)(z) * W(z)
+
+  ord_sum: LEMMA clead?(P, n, c) AND dist?(L) AND (FORALL z: P(z) = real_(0) IMPLIES member(z, L))
+    IMPLIES lsum(L, LAMBDA y: ord(P, y)) = n
+
+  %% ---- the derivative's leading coefficient ---------------------------------------------------
+  cder_lead: LEMMA clead?(F, e, c) AND e >= 1 AND cder?(F, D) IMPLIES clead?(D, e - 1, real_(e) * c)
+
+  %% ---- distinct roots and gcd(F, F') ----------------------------------------------------------
+  dist_len: LEMMA clead?(F, e, c) AND dist?(L) AND (FORALL z: F(z) = real_(0) IFF member(z, L))
+    IMPLIES length(L) <= e
+  dist_lo: THEOREM clead?(F, e, c) AND e >= 1 AND dist?(L) AND (FORALL z: F(z) = real_(0) IFF member(z, L))
+    AND cder?(F, D) IMPLIES ccd?(F, D, e - length(L))
+  dist_hi: THEOREM clead?(F, e, c) AND e >= 1 AND dist?(L) AND (FORALL z: F(z) = real_(0) IFF member(z, L))
+    AND cder?(F, D) IMPLIES NOT ccd?(F, D, e - length(L) + 1)
+END cpoly_dist

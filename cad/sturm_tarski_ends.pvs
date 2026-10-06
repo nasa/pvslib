@@ -1,0 +1,75 @@
+sturm_tarski_ends: THEORY
+%----------------------------------------------------------------------------
+% The Tarski query with only the first polynomial nonzero at the ends.
+%
+% NASALib's sturm_tarski (Tarski@sturmtarski) asks every entry of the
+% constructed Sturm sequence of p0 and p0' g to be nonzero at both ends x
+% and y.  The standard theorem asks it only of p0, and that is what lets the
+% bounded query of tower_def run at the ends of a gap directly, with no
+% search (the search is what a fixed fuel could exhaust).  The proof moves
+% each end inward to a point where no entry vanishes and p0 gains no root
+% (ends_inward: all the entries' roots in (x, y] are finitely many,
+% constructed_sturm_roots_between_enum), applies sturm_tarski there, and
+% carries both sides back:
+%   - the root sets agree, since p0 has no root in the two thin end pieces;
+%   - the sign-change counts agree (tsig_near, from NASALib's nsc_edge_diff):
+%     an entry vanishing at an end has neighbours of opposite signs
+%     (tss_opposite, from the remainder relation) and no two consecutive
+%     entries vanish there, since p0 does not (tss_no_two_zeros, from
+%     constructed_sturm_seq_repeated_root).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING Tarski@sturmtarski
+
+  p: VAR [nat -> [nat -> real]]
+  n: VAR [nat -> nat]
+  g: VAR [nat -> real]
+  k: VAR nat
+  m: VAR posnat
+  i, j: VAR nat
+  x, y, xp, c: VAR real
+
+  %% the sign changes of the sequence at a point
+  tsig(p, n, m)(x): nat = number_sign_changes(LAMBDA (i: nat): polynomial(p(i), n(i))(x), m - 1)`num
+
+  %% the last entry is the zero polynomial
+  tss_last: LEMMA constructed_sturm_sequence?(p, n, g, k, m) IMPLIES polynomial(p(m), n(m))(x) = 0
+
+  %% no two consecutive entries vanish where p0 does not
+  tss_no_two_zeros: LEMMA constructed_sturm_sequence?(p, n, g, k, m) AND polynomial(p(0), n(0))(x) /= 0 AND
+    j + 1 <= m AND polynomial(p(j), n(j))(x) = 0 IMPLIES polynomial(p(j + 1), n(j + 1))(x) /= 0
+
+  %% at a zero of an inner entry the neighbours have opposite signs
+  tss_opposite: LEMMA constructed_sturm_sequence?(p, n, g, k, m) AND 0 < j AND j < m AND
+    polynomial(p(j), n(j))(x) = 0 IMPLIES
+    sign_ext(polynomial(p(j - 1), n(j - 1))(x)) = -sign_ext(polynomial(p(j + 1), n(j + 1))(x))
+
+  %% a polynomial without roots on the closed segment keeps its sign
+  sign_keep: LEMMA (FORALL c: min(x, xp) <= c AND c <= max(x, xp) IMPLIES polynomial(g, k)(c) /= 0) IMPLIES
+    sign_ext(polynomial(g, k)(x)) = sign_ext(polynomial(g, k)(xp))
+
+  %% the count is the same at an end where p0 does not vanish and at a nearby
+  %% point, when no entry vanishes between them or at the nearby point
+  tsig_near: LEMMA constructed_sturm_sequence?(p, n, g, k, m) AND x /= xp AND
+    polynomial(p(0), n(0))(x) /= 0 AND
+    (FORALL c, i: i < m AND c /= x AND min(x, xp) <= c AND c <= max(x, xp) IMPLIES polynomial(p(i), n(i))(c) /= 0)
+    IMPLIES tsig(p, n, m)(x) = tsig(p, n, m)(xp)
+
+  %% the ends can be moved inward past no root of any entry
+  ends_inward: LEMMA x < y AND constructed_sturm_sequence?(p, n, g, k, m) IMPLIES
+    EXISTS (x1, y1: real): x < x1 AND x1 < y1 AND y1 < y AND
+      (FORALL c, i: i < m AND ((x < c AND c <= x1) OR (y1 <= c AND c < y)) IMPLIES polynomial(p(i), n(i))(c) /= 0)
+
+  %% no root of p0 in the segment: no solution counted
+  aa: VAR [nat -> real]
+  dd: VAR nat
+  rel: VAR [[real, real] -> bool]
+  nsol_none: LEMMA aa(dd) /= 0 AND (FORALL c: x <= c AND c <= y IMPLIES polynomial(aa, dd)(c) /= 0) IMPLIES
+    NSol(aa, dd, g, k, rel, x, y, TRUE, TRUE) = 0
+
+  %% the main theorem
+  sturm_tarski_ends: THEOREM x < y AND constructed_sturm_sequence?(p, n, g, k, m) AND
+    polynomial(p(0), n(0))(x) /= 0 AND polynomial(p(0), n(0))(y) /= 0 IMPLIES
+    tsig(p, n, m)(x) - tsig(p, n, m)(y) =
+      NSol(p(0), n(0), g, k, >, x, y, TRUE, TRUE) - NSol(p(0), n(0), g, k, <, x, y, TRUE, TRUE)
+END sturm_tarski_ends

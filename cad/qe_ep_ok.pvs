@@ -1,0 +1,67 @@
+qe_ep_ok: THEORY
+%----------------------------------------------------------------------------
+% The check of qe_ep_def always passes (epc_ok): every
+% real algebraic number gets a quantifier-free description, so quantifier
+% elimination for one free variable always returns a quantifier-free formula.
+%
+% deriv_bridge: the derivative of a Polylist (pderiv, thom_enc) evaluates as
+% the derivative of the polynomial function (crit_pos, NASALib analysis).
+% simple_change: a root v of q with q'(v) /= 0 and no other root of q in
+% [a, c] (a < v < c) is a sign change: q(a) q(c) < 0, since otherwise v would
+% be an interior extremum (deriv_maximum / deriv_minimum).  mltd_inv: the
+% multiplicity search stops at the order k < deg with p^(k)(v) = 0 and
+% p^(k+1)(v) /= 0 (the deg-th derivative is a nonzero constant, nderiv_top).
+% epc_ok: a rational root found among the candidates, or the clearing clrx of
+% q = p^(k) around v: an end of the cleared interval that is a root of q is
+% v itself (rational), and otherwise q has v as its only root there and
+% changes sign across it.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_ep, crit_pos
+
+  b: VAR Alg
+  ql: VAR Polylist
+  x, v, a, c, z: VAR real
+  ys: VAR list[real]
+  r: VAR rat
+  rs: VAR list[rat]
+  j, k, n: VAR nat
+
+  %% ---- the derivative ------------------------------------------------------------------------
+  l: VAR list[rat]
+  i: VAR nat
+  len_mc: LEMMA FORALL l: length(map(mconst)(l)) = length(l)
+  nth_mc: LEMMA FORALL l: FORALL i: i < length(l) IMPLIES nth(map(mconst)(l), i) = mconst(nth(l, i))
+  len_pmc: LEMMA length(pmc(ql)) = length(ql)
+  len_ld: LEMMA length(lderiv(pmc(ql))) = length(ql) - 1
+  L: VAR list[mpoly]
+  len_cons_qe_ep_ok: LEMMA length(L) >= 1 IMPLIES cons?(L)
+  len0_null: LEMMA length(L) = 0 IMPLIES L = null
+  earr_pmc: LEMMA earr(pmc(ql), ys) = arr(ql)
+  deriv_bridge: LEMMA meval(mpol(lderiv(pmc(ql))))(cons(x, ys)) = polylist(pderiv(ql))(x)
+  deriv_min_pf: LEMMA FORALL (l: list[mpoly]): cons?(l) AND a < c AND c < z AND
+    (FORALL (w: real): a < w AND w < z IMPLIES pf(l, ys)(c) <= pf(l, ys)(w))
+    IMPLIES meval(mpol(lderiv(l)))(cons(c, ys)) = 0
+
+  w: VAR real
+  side_sign: LEMMA a < v AND v < c AND (FORALL z: a <= z AND z <= c AND z /= v IMPLIES polylist(ql)(z) /= 0)
+    AND a <= w AND w <= c
+    IMPLIES (w < v IMPLIES sign3(polylist(ql)(w)) = sign3(polylist(ql)(a)))
+        AND (w > v IMPLIES sign3(polylist(ql)(w)) = sign3(polylist(ql)(c)))
+  simple_change: LEMMA a < v AND v < c AND polylist(ql)(v) = 0 AND polylist(pderiv(ql))(v) /= 0
+    AND (FORALL z: a <= z AND z <= c AND z /= v IMPLIES polylist(ql)(z) /= 0)
+    IMPLIES polylist(ql)(a) * polylist(ql)(c) < 0
+
+  %% ---- the multiplicity search -----------------------------------------------------------------
+  deg0_dz: LEMMA deg(ql) = 0 IMPLIES polylist(pderiv(ql))(x) = 0
+  nderiv_top: LEMMA deg(ql) > 0 IMPLIES polylist(nderiv(ql, deg(ql)))(x) /= 0
+  mltd_inv: LEMMA FORALL n: FORALL j: j + n = deg(b`p) AND polylist(nderiv(b`p, j))(value(b)) = 0 IMPLIES
+    mltd(b, j, n) < deg(b`p) AND polylist(nderiv(b`p, mltd(b, j, n)))(value(b)) = 0
+    AND polylist(nderiv(b`p, mltd(b, j, n) + 1))(value(b)) /= 0
+
+  %% ---- the constructor --------------------------------------------------------------------------
+  ratroot_spec: LEMMA FORALL rs: member(r, ratroot(b, rs)) IMPLIES
+    polylist(b`p)(r) = 0 AND b`lb <= r AND r <= b`ub
+
+  epc_ok: THEOREM epok?(b)(epc(b))
+END qe_ep_ok

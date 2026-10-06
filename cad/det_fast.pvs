@@ -1,0 +1,122 @@
+det_fast: THEORY
+%----------------------------------------------------------------------------
+% detf is the determinant.
+%
+%   detf_det   detf(n, M) = det(n, M), as mpolys (the same expression)
+%
+% smat(M, r, S) is the submatrix of the rows r, r + 1, ... and the columns S.
+% Its first-row minor at position b is the submatrix of the next row and S
+% without its b-th column (minor_smat), and det depends only on the entries
+% below the size (det_cong), so the expansion dxrow over a table that holds
+% the smaller determinants is ring_det's detl (dxrow_detl).  dsubs(0, n, m) is
+% exactly the increasing lists of m numbers below n (dsubs_mem), and removing
+% a member keeps a list increasing (drem_incr), so every minor the expansion
+% looks up is in the table below (dtab_ok, by induction on m).  The whole
+% matrix is the set dcols(0, n) of all its columns.
+%
+% The trie (2026-10-02): inserting into a trie and then looking
+% up behaves like an association list (tlook_tins), the bits of increasing
+% column sets in range are injective (dbits_inj), so the trie of a table
+% answers what dlook answers (tlook_tbuild), dtabt is dtab (dtabt_dtab), and
+% detf, which uses the trie, is the former detf (detf_eq, detf0_det).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING det_fast_def, map_member[list[nat], list[nat]], structures@list2set_props[list[nat]]
+
+  n, m, r, a, b, c, j, x: VAR nat
+  M, M1, M2: VAR MMat
+  S, S1, S2: VAR list[nat]
+  T: VAR list[DEnt]
+
+  %% ---- determinants depend only on the entries below the size --------------------------------
+  detl_cong: LEMMA FORALL n, j, M1, M2: (FORALL a, b: a < n AND b < n IMPLIES M1(a, b) = M2(a, b))
+    IMPLIES detl(n, M1, j) = detl(n, M2, j)
+  det_cong: LEMMA (FORALL a, b: a < n AND b < n IMPLIES M1(a, b) = M2(a, b)) IMPLIES det(n, M1) = det(n, M2)
+
+  %% ---- column sets ---------------------------------------------------------------------------
+  lo: VAR nat
+  dincr?(S): RECURSIVE bool =
+    IF null?(S) OR null?(cdr(S)) THEN TRUE ELSE car(S) < car(cdr(S)) AND dincr?(cdr(S)) ENDIF
+  MEASURE length(S)
+  inr?(lo, n)(S): bool = FORALL x: member(x, S) IMPLIES lo <= x AND x < n
+
+  dincr_ge: LEMMA FORALL S: dincr?(S) AND cons?(S) AND member(x, S) IMPLIES car(S) <= x
+  dincr_tail: LEMMA dincr?(cons(a, S)) AND member(x, S) IMPLIES a < x AND dincr?(S)
+  dincr_cons: LEMMA dincr?(S) AND (FORALL x: member(x, S) IMPLIES a < x) IMPLIES dincr?(cons(a, S))
+  dincr_cdr: LEMMA dincr?(S) AND cons?(S) IMPLIES
+    dincr?(cdr(S)) AND (FORALL x: member(x, cdr(S)) IMPLIES car(S) < x)
+  LL: VAR list[list[nat]]
+  mem_cmap: LEMMA FORALL LL: member(S, map(LAMBDA (S1: list[nat]): cons(lo, S1))(LL)) IFF
+    (cons?(S) AND car(S) = lo AND member(cdr(S), LL))
+  dsubs_triv: LEMMA n <= lo OR m = 0 IMPLIES
+    (member(S, dsubs(lo, n, m)) IFF (dincr?(S) AND length(S) = m AND inr?(lo, n)(S)))
+  dsubs_mem: LEMMA FORALL (k: nat): FORALL lo, n, m, S: n - lo <= k IMPLIES
+    (member(S, dsubs(lo, n, m)) IFF (dincr?(S) AND length(S) = m AND inr?(lo, n)(S)))
+  drem_len: LEMMA FORALL S: FORALL b: b < length(S) IMPLIES length(drem(S, b)) = length(S) - 1
+  drem_mem: LEMMA FORALL S: FORALL b: member(x, drem(S, b)) IMPLIES member(x, S)
+  drem_incr: LEMMA FORALL S: FORALL b: dincr?(S) IMPLIES dincr?(drem(S, b))
+  nth_drem: LEMMA FORALL S: FORALL b, c: b < length(S) AND c < length(S) - 1 IMPLIES
+    nth(drem(S, b), c) = IF c < b THEN nth(S, c) ELSE nth(S, c + 1) ENDIF
+  dcols_len: LEMMA FORALL (k: nat): FORALL lo, n: n - lo <= k AND lo <= n IMPLIES length(dcols(lo, n)) = n - lo
+  dcols_nth: LEMMA FORALL (k: nat): FORALL lo, n, b: n - lo <= k AND b + lo < n IMPLIES nth(dcols(lo, n), b) = lo + b
+  dcols_ok: LEMMA FORALL (k: nat): FORALL lo, n: n - lo <= k IMPLIES dincr?(dcols(lo, n)) AND inr?(lo, n)(dcols(lo, n))
+  dcols_sub: LEMMA FORALL (k: nat): FORALL lo, n: n - lo <= k AND lo <= n IMPLIES member(dcols(lo, n), dsubs(lo, n, n - lo))
+
+  %% ---- the submatrices -----------------------------------------------------------------------
+  smat(M, r, S): MMat = LAMBDA (a, b: nat): M(r + a, IF b < length(S) THEN nth(S, b) ELSE 0 ENDIF)
+
+  minor_smat: LEMMA b < length(S) AND j < length(S) - 1 AND c < length(S) - 1 IMPLIES
+    minor(smat(M, r, S), 0, b)(j, c) = smat(M, r + 1, drem(S, b))(j, c)
+
+  dxrow_detl: LEMMA cons?(S)
+    AND (FORALL b: b < length(S) IMPLIES dlook(drem(S, b), T) = det(length(S) - 1, smat(M, r + 1, drem(S, b))))
+    IMPLIES FORALL b: b <= length(S) IMPLIES dxrow(M, r, S, T, b) = detl(length(S), smat(M, r, S), b)
+
+  %% ---- the table -----------------------------------------------------------------------------
+  h: VAR [list[nat] -> mpoly]
+  L: VAR list[list[nat]]
+  dleq_eq: LEMMA FORALL S1: FORALL S2: dleq(S1, S2) IFF S1 = S2
+  dlook_map: LEMMA FORALL L: member(S, L) IMPLIES
+    dlook(S, map(LAMBDA (S1: list[nat]): (S1, h(S1)))(L)) = h(S)
+
+  dtab_ok: LEMMA FORALL m: m <= n IMPLIES FORALL S: member(S, dsubs(0, n, m)) IMPLIES
+    dlook(S, dtab(n, M, m)) = det(m, smat(M, n - m, S))
+
+  detf0_det: THEOREM detf0(n, M) = det(n, M)
+
+  %% ---- the trie --------------------------------------------------------------------------------
+  bs, bs2, rs: VAR list[bool]
+  v: VAR mpoly
+  t, TT: VAR DTrie
+  y: VAR bool
+
+  tlook_null: LEMMA tlook(null, t) = tv(t)
+  tlook_cons: LEMMA tlook(cons(y, rs), t) = IF y THEN tlook(rs, tt(t)) ELSE tlook(rs, ts(t)) ENDIF
+  tlook_tins: LEMMA FORALL bs: FORALL bs2, v, t:
+    tlook(bs, tins(bs2, v, t)) = IF bs = bs2 THEN v ELSE tlook(bs, t) ENDIF
+
+  inr_empty: LEMMA n <= c AND inr?(c, n)(S) IMPLIES null?(S)
+  inr_skip: LEMMA dincr?(S) AND inr?(c, n)(S) AND NOT (cons?(S) AND car(S) = c) IMPLIES inr?(c + 1, n)(S)
+  inr_take: LEMMA dincr?(S) AND inr?(c, n)(S) AND cons?(S) AND car(S) = c IMPLIES
+    dincr?(cdr(S)) AND inr?(c + 1, n)(cdr(S))
+  dbits_inj: LEMMA FORALL (k: nat): FORALL S1, S2, c, n: n - c <= k
+    AND dincr?(S1) AND inr?(c, n)(S1) AND dincr?(S2) AND inr?(c, n)(S2)
+    AND dbits(S1, c, n) = dbits(S2, c, n) IMPLIES S1 = S2
+
+  keyok?(n)(e: DEnt): bool = dincr?(e`1) AND inr?(0, n)(e`1)
+  tlook_tbuild: LEMMA FORALL T: every(keyok?(n))(T) AND dincr?(S) AND inr?(0, n)(S) IMPLIES
+    tlook(dbits(S, 0, n), tbuild(n, T)) = dlook(S, T)
+
+  dxrowt_dxrow: LEMMA (FORALL b: b < length(S) IMPLIES tlook(dbits(drem(S, b), 0, n), TT) = dlook(drem(S, b), T))
+    IMPLIES FORALL (k: nat): FORALL b: length(S) - b <= k IMPLIES dxrowt(n, M, r, S, TT, b) = dxrow(M, r, S, T, b)
+
+  f, g: VAR [list[nat] -> DEnt]
+  map_ext: LEMMA FORALL L: (FORALL S: member(S, L) IMPLIES f(S) = g(S)) IMPLIES map(f)(L) = map(g)(L)
+  every_mapk: LEMMA FORALL L: (FORALL S: member(S, L) IMPLIES dincr?(S) AND inr?(0, n)(S)) IMPLIES
+    every(keyok?(n))(map(LAMBDA (S1: list[nat]): (S1, h(S1)))(L))
+  every_dtab: LEMMA m <= n IMPLIES every(keyok?(n))(dtab(n, M, m))
+
+  dtabt_dtab: LEMMA FORALL m: m <= n IMPLIES dtabt(n, M, m) = dtab(n, M, m)
+  detf_eq: LEMMA detf(n, M) = detf0(n, M)
+  detf_det: THEOREM detf(n, M) = det(n, M)
+END det_fast

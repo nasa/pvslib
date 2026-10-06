@@ -1,0 +1,289 @@
+walk_od: THEORY
+%----------------------------------------------------------------------------
+% The walk through an ORACLE DESCRIPTOR and a CHAIN TABLE.  Nothing trusted
+% changes: every function here is proved equal to
+% its walk_def / sturm_sg original at the oracle the descriptor denotes,
+% for any table that is VALID (built from real chains at some oracle).
+%
+%   OD   pt(ys)              the rational point ys: signs by evaluation
+%        mix(...)            a point with algebraic coordinates
+%        sec(od, P, lo, hi)  the section of P in (lo, hi] over od
+%        sp(od, y0)          a separator over a tower point
+%                            (the datatype's own comment below has the fields)
+%   osg(od): SG              what the descriptor means
+%
+% Why.  The walk builds Sturm chains SYMBOLICALLY (coefficients in every
+% variable the oracle has not eliminated) and rebuilt them at every cell,
+% every gap and every section query (2026-09-22, four variables: one bottom
+% walk at a section 56 s, a level 82 s per closure round).  Two facts already
+% proved make both unnecessary:
+%   sent_sign   at a rational point the sign of a chain entry is meval there
+%   i_det       two oracles that agree on a chain's reads build the same chain
+% so a chain is built ONCE (per level, per sector) and reused at every cell
+% whose oracle agrees with the recorded signs of its reads.  A miss falls
+% back to building the chain.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING tower_def, chain_rd, alg_isign, walk_fuel
+
+  sg: VAR SG
+  F, G, P: VAR list[list[mpoly]]
+  f, g: VAR list[mpoly]
+  c: VAR mpoly
+  ys: VAR list[real]
+  rys, rs: VAR list[rat]
+  Y: VAR list[rat]
+  y0, y1, lo, hi: VAR rat
+  k, i: VAR nat
+  R: VAR list[mpoly]
+  a: VAR Alg
+
+  %% ---- the descriptor -------------------------------------------------------------
+  %%   pt(ys)            the rational point ys (innermost first)
+  %%   mix(rs, a, ys)    the point rs ++ (value(a)) ++ ys: rationals above ONE
+  %%                     algebraic coordinate above rationals; the sign of c
+  %%                     there is alg_isign on c with rs substituted and ys
+  %%                     evaluated (partial_eval), no chain built
+  %%   sec(od, P, lo, hi) the section of P in (lo, hi] over od, through the
+  %%                     tower query sg_sec (a point with two algebraic
+  %%                     coordinates)
+  %%   sp(od, y0)        the separator y0 over a tower point
+  OD: DATATYPE
+  BEGIN
+    pt(pys: list[rat]): pt?
+    mix(prs: list[rat], pa: Alg, mys: list[rat]): mix?
+    sec(od_of: OD, pP: list[list[mpoly]], plo: rat, phi: rat): sec?
+    sp(od_sp: OD, py0: rat): sp?
+  END OD
+
+  od: VAR OD
+  %% substitute the rationals rs for the top variables, innermost first
+  subs(c, rs): RECURSIVE mpoly =
+    IF null?(rs) THEN c ELSE subs(sub1(as_list(c), car(rs)), cdr(rs)) ENDIF
+  MEASURE length(rs)
+  subs_eval: LEMMA FORALL rs: FORALL c: meval(subs(c, rs))(ys) = meval(c)(append(rs, ys))
+
+  osg(od): RECURSIVE SG =
+    CASES od OF
+      pt(rys): msg(rys),
+      mix(rs, a, rys): LAMBDA c: alg_isign(a, partial_eval(subs(c, rs), rys)),
+      sec(od1, P, lo, hi): sg_sec(osg(od1), P, lo, hi),
+      sp(od1, y0): sg_pt(osg(od1), y0)
+    ENDCASES
+  MEASURE od BY <<
+
+  %% what a descriptor denotes, where that is a point: pt and mix are EXACT
+  mix_exact: LEMMA osg(mix(rs, a, rys)) = msg(append(rs, cons(value(a), rys)))
+
+  %% the sign of a chain entry at y0: evaluation at a rational point
+  osent(od, f, y0): Sign3 =
+    CASES od OF
+      pt(rys): sign3(meval(mpol(f))(cons(y0, rys)))
+      ELSE sent(osg(od), f, y0)
+    ENDCASES
+  osent_eq: LEMMA osent(od, f, y0) = sent(osg(od), f, y0)
+
+  %% the descriptor of the separator y0 over od
+  sg_pt_msg2: LEMMA sg_pt(msg(ys), y0) = msg(cons(y0, ys))
+  opt(od, y0): OD =
+    CASES od OF
+      pt(rys): pt(cons(y0, rys)),
+      mix(rs, a, rys): mix(cons(y0, rs), a, rys)
+      ELSE sp(od, y0)
+    ENDCASES
+
+  %% ---- the chain table --------------------------------------------------------------
+  CE: TYPE = [# f: list[mpoly], k: nat, ch: list[list[mpoly]], rd: list[mpoly], sgs: list[Sign3] #]
+  CT: TYPE = list[CE]
+  tbl, tbl2: VAR CT
+  e: VAR CE
+
+  sgl(sg, R): list[Sign3] = map(sg)(R)
+  agrees?(sg, R, (ss: list[Sign3])): RECURSIVE bool =
+    IF null?(R) OR null?(ss) THEN null?(R) AND null?(ss)
+    ELSE sg(car(R)) = car(ss) AND agrees?(sg, cdr(R), cdr(ss))
+    ENDIF
+  MEASURE length(R)
+  agrees_agree: LEMMA FORALL (sg1, sg2: SG): FORALL R: agrees?(sg2, R, sgl(sg1, R)) IMPLIES agree(sg1, sg2, R)
+
+  %% the chain and its reads in one pass (chain_rd)
+  mkce(k, sg, f): CE =
+    LET c = schain_rd(k, sg, f) IN (# f := f, k := k, ch := c`ch, rd := c`rd, sgs := sgl(sg, c`rd) #)
+  valid?(tbl): bool = FORALL e: member(e, tbl) IMPLIES EXISTS sg: e = mkce(e`k, sg, e`f)
+  valid_null: LEMMA valid?(null[CE])
+  valid_cons: LEMMA valid?(cons(mkce(k, sg, f), tbl)) IFF valid?(tbl)
+
+  chain_t(k, sg, f, tbl): RECURSIVE list[list[mpoly]] =
+    IF null?(tbl) THEN schain(k, sg, f)
+    ELSIF car(tbl)`k = k AND leq(car(tbl)`f, f) AND agrees?(sg, car(tbl)`rd, car(tbl)`sgs)
+      THEN car(tbl)`ch
+    ELSE chain_t(k, sg, f, cdr(tbl))
+    ENDIF
+  MEASURE length(tbl)
+  chain_t_eq: THEOREM FORALL tbl: valid?(tbl) IMPLIES chain_t(k, sg, f, tbl) = schain(k, sg, f)
+
+  %% the table of a family: the product and every live member, at one oracle
+  mktbl(F, sg, G): RECURSIVE CT =
+    IF null?(G) THEN null[CE]
+    ELSIF length(strip(car(G))) >= 2 THEN cons(mkce(bk(F), sg, strip(car(G))), mktbl(F, sg, cdr(G)))
+    ELSE mktbl(F, sg, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  %% the pair products of the live members, for the coincidence tests
+  mkpairs1(sg, g, G): RECURSIVE CT =
+    IF null?(G) THEN null[CE]
+    ELSIF length(strip(car(G))) >= 2
+      THEN cons(mkce(ppk(g, car(G)), sg, pprod(g, car(G))), mkpairs1(sg, g, cdr(G)))
+    ELSE mkpairs1(sg, g, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  mkpairs(sg, G): RECURSIVE CT =
+    IF null?(G) THEN null[CE]
+    ELSIF length(strip(car(G))) >= 2 THEN append(mkpairs1(sg, car(G), cdr(G)), mkpairs(sg, cdr(G)))
+    ELSE mkpairs(sg, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  tblof(F, sg): CT = append(mktbl(F, sg, F), mkpairs(sg, F))
+  valid_append: LEMMA valid?(tbl) AND valid?(tbl2) IMPLIES valid?(append(tbl, tbl2))
+  mkpairs1_valid: LEMMA FORALL G: valid?(mkpairs1(sg, g, G))
+  mkpairs_valid: LEMMA FORALL G: valid?(mkpairs(sg, G))
+  mktbl_valid: LEMMA FORALL G: valid?(mktbl(F, sg, G))
+  tblof_valid: LEMMA valid?(tblof(F, sg))
+
+  %% ---- the walk through descriptor and table -----------------------------------------
+  %% the counts read the entries through osent
+  svarc_o(od, (ch: list[list[mpoly]]), y0): nat =
+    number_sign_changes(LAMBDA (i: nat): osent(od, nthl(ch, i), y0), clen(ch))`num
+  svarc_o_eq: LEMMA FORALL (ch: list[list[mpoly]]): svarc_o(od, ch, y0) = svarc(osg(od), ch, y0)
+  cnt_t(k, od, f, y0, y1, tbl): int =
+    LET ch = chain_t(k, osg(od), f, tbl) IN
+    svarc_o(od, ch, y0) - svarc_o(od, ch, y1)
+  cnt_t_eq: LEMMA valid?(tbl) IMPLIES cnt_t(k, od, f, y0, y1, tbl) = cnt(k, osg(od), f, y0, y1)
+  left_t(k, od, f, y0, tbl): int = leftc(osg(od), chain_t(k, osg(od), f, tbl), y0)
+  right_t(k, od, f, y1, tbl): int = rightc(osg(od), chain_t(k, osg(od), f, tbl), y1)
+  left_t_eq: LEMMA valid?(tbl) IMPLIES left_t(k, od, f, y0, tbl) = left(k, osg(od), f, y0)
+  right_t_eq: LEMMA valid?(tbl) IMPLIES right_t(k, od, f, y1, tbl) = right(k, osg(od), f, y1)
+
+  mcnt_t(F, od, g, lo, hi, tbl): int = cnt_t(bk(F), od, strip(g), lo, hi, tbl)
+  rootin_t(F, od, g, lo, hi, tbl): bool = length(strip(g)) >= 2 AND mcnt_t(F, od, g, lo, hi, tbl) > 0
+  sgn_t(F, od, g, lo, hi, tbl): Sign3 =
+    IF rootin_t(F, od, g, lo, hi, tbl) THEN 0 ELSE osent(od, g, lo) ENDIF
+  sec_t(F, od, lo, hi, tbl): SV = map(LAMBDA g: sgn_t(F, od, g, lo, hi, tbl))(F)
+  vec_t(F, od, y0): SV = map(LAMBDA g: osent(od, g, y0))(F)
+  gap_t(F, od, lo, hi, tbl): bool = some(LAMBDA g: rootin_t(F, od, g, lo, hi, tbl))(F)
+  rootin_t_eq: LEMMA valid?(tbl) IMPLIES rootin_t(F, od, g, lo, hi, tbl) = rootin?(F, osg(od), g, lo, hi)
+  sgn_t_eq: LEMMA valid?(tbl) IMPLIES sgn_t(F, od, g, lo, hi, tbl) = sgn_sg(F, osg(od), g, lo, hi)
+  sec_t_eq: LEMMA valid?(tbl) IMPLIES sec_t(F, od, lo, hi, tbl) = sec_sg(F, osg(od), lo, hi)
+  vec_t_eq: LEMMA vec_t(F, od, y0) = vec_sg(F, osg(od), y0)
+  gap_t_eq: LEMMA valid?(tbl) IMPLIES gap_t(F, od, lo, hi, tbl) = gap?(F, osg(od), lo, hi)
+
+  walk_t(F, od, Y, tbl): RECURSIVE SVL =
+    IF null?(Y) THEN null[SV]
+    ELSIF null?(cdr(Y)) THEN (: vec_t(F, od, car(Y)) :)
+    ELSE LET r1: rat = car(Y), r2: rat = car(cdr(Y)) IN
+         cons(vec_t(F, od, r1),
+              IF gap_t(F, od, r1, r2, tbl)
+                THEN cons(sec_t(F, od, r1, r2, tbl), walk_t(F, od, cdr(Y), tbl))
+              ELSE walk_t(F, od, cdr(Y), tbl)
+              ENDIF)
+    ENDIF
+  MEASURE length(Y)
+  walk_t_eq: THEOREM FORALL Y: valid?(tbl) IMPLIES walk_t(F, od, Y, tbl) = walk(F, osg(od), Y)
+
+  nzat_t(F, od, y0, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(car(G)) < 2 OR osent(od, car(G), y0) /= 0) AND nzat_t(F, od, y0, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  atmost1_t(F, od, lo, hi, G, tbl): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR mcnt_t(F, od, car(G), lo, hi, tbl) <= 1)
+         AND atmost1_t(F, od, lo, hi, cdr(G), tbl)
+    ENDIF
+  MEASURE length(G)
+  coin_t(F, od, lo, hi, g, G, tbl): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (NOT rootin_t(F, od, g, lo, hi, tbl) OR NOT rootin_t(F, od, car(G), lo, hi, tbl)
+          OR (slc?(ppk(g, car(G)), osg(od), pprod(g, car(G)))
+              AND cnt_t(ppk(g, car(G)), od, pprod(g, car(G)), lo, hi, tbl) = 1))
+         AND coin_t(F, od, lo, hi, g, cdr(G), tbl)
+    ENDIF
+  MEASURE length(G)
+  coins_t(F, od, lo, hi, G, tbl): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE coin_t(F, od, lo, hi, car(G), cdr(G), tbl) AND coins_t(F, od, lo, hi, cdr(G), tbl)
+    ENDIF
+  MEASURE length(G)
+  gapok_t(F, od, lo, hi, tbl): bool =
+    lo < hi AND nzat_t(F, od, lo, F) AND atmost1_t(F, od, lo, hi, F, tbl) AND coins_t(F, od, lo, hi, F, tbl)
+  sepok_t(F, od, Y, tbl): RECURSIVE bool =
+    IF null?(Y) THEN TRUE
+    ELSIF null?(cdr(Y)) THEN nzat_t(F, od, car(Y), F)
+    ELSE gapok_t(F, od, car(Y), car(cdr(Y)), tbl) AND sepok_t(F, od, cdr(Y), tbl)
+    ENDIF
+  MEASURE length(Y)
+  leftok_t(F, od, y0, G, tbl): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR left_t(bk(F), od, strip(car(G)), y0, tbl) = 0)
+         AND leftok_t(F, od, y0, cdr(G), tbl)
+    ENDIF
+  MEASURE length(G)
+  rightok_t(F, od, y0, G, tbl): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR right_t(bk(F), od, strip(car(G)), y0, tbl) = 0)
+         AND rightok_t(F, od, y0, cdr(G), tbl)
+    ENDIF
+  MEASURE length(G)
+  nzat_t_eq: LEMMA FORALL G: nzat_t(F, od, y0, G) = nzat?(F, osg(od), y0, G)
+  atmost1_t_eq: LEMMA FORALL G: valid?(tbl) IMPLIES atmost1_t(F, od, lo, hi, G, tbl) = atmost1?(F, osg(od), lo, hi, G)
+  coin_t_eq: LEMMA FORALL G: valid?(tbl) IMPLIES coin_t(F, od, lo, hi, g, G, tbl) = coin?(F, osg(od), lo, hi, g, G)
+  coins_t_eq: LEMMA FORALL G: valid?(tbl) IMPLIES coins_t(F, od, lo, hi, G, tbl) = coins?(F, osg(od), lo, hi, G)
+  sepok_t_eq: LEMMA FORALL Y: valid?(tbl) IMPLIES sepok_t(F, od, Y, tbl) = sepok?(F, osg(od), Y)
+  leftok_t_eq: LEMMA FORALL G: valid?(tbl) IMPLIES leftok_t(F, od, y0, G, tbl) = leftok?(F, osg(od), y0, G)
+  rightok_t_eq: LEMMA FORALL G: valid?(tbl) IMPLIES rightok_t(F, od, y0, G, tbl) = rightok?(F, osg(od), y0, G)
+
+  wok_t(F, od, Y, tbl): bool =
+    cons?(Y) AND memok?(F, osg(od), F) AND
+    (null?(lives(F)) OR
+      (slc?(bk(F), osg(od), bprod(F)) AND sepok_t(F, od, Y, tbl)
+       AND leftok_t(F, od, car(Y), F, tbl) AND rightok_t(F, od, rlast(Y), F, tbl)))
+  wok_t_eq: THEOREM valid?(tbl) IMPLIES wok_t(F, od, Y, tbl) = wok?(F, osg(od), Y)
+
+  %% the separator search with the table (untrusted, but equal to seps)
+  spick_t(F, od, lo, hi, (n: nat)): RECURSIVE rat =
+    LET m: rat = (lo + hi) / 2 IN
+    IF n = 0 OR nzat_t(F, od, m, F) THEN m ELSE spick_t(F, od, lo, m, n - 1) ENDIF
+  MEASURE n
+  sint_t(F, od, lo, hi, (n: nat), tbl): RECURSIVE list[rat] =
+    IF n = 0 OR (atmost1_t(F, od, lo, hi, F, tbl) AND coins_t(F, od, lo, hi, F, tbl)) THEN null[rat]
+    ELSE LET m: rat = spick_t(F, od, lo, hi, n) IN
+         append(append(sint_t(F, od, lo, m, n - 1, tbl), (: m :)), sint_t(F, od, m, hi, n - 1, tbl))
+    ENDIF
+  MEASURE n
+  swide_t(F, od, (b: posrat), (n: nat), tbl): RECURSIVE posrat =
+    IF n = 0 THEN b
+    ELSIF nzat_t(F, od, -b, F) AND nzat_t(F, od, b, F)
+          AND leftok_t(F, od, -b, F, tbl) AND rightok_t(F, od, b, F, tbl)
+      THEN b
+    ELSE swide_t(F, od, 2 * b, n - 1, tbl)
+    ENDIF
+  MEASURE n
+  %% the fuel is sfuel2 + u: u is the escalation parameter of the decision;
+  %% at u = 0 this is the search of walk_def's seps
+  u: VAR nat
+  seps_t(u, F, od, tbl): list[rat] =
+    IF null?(lives(F)) THEN (: 0 :)
+    ELSE LET b: posrat = swide_t(F, od, 1, sfuel2 + u, tbl) IN
+         cons(-b, append(sint_t(F, od, -b, b, sfuel2 + u, tbl), (: b :)))
+    ENDIF
+  spick_t_eq: LEMMA FORALL (n: nat): FORALL lo, hi: spick_t(F, od, lo, hi, n) = spick(F, osg(od), lo, hi, n)
+  sint_t_eq: LEMMA FORALL (n: nat): FORALL lo, hi: valid?(tbl) IMPLIES
+    sint_t(F, od, lo, hi, n, tbl) = sint(F, osg(od), lo, hi, n)
+  swide_t_eq: LEMMA FORALL (n: nat): FORALL (b: posrat): valid?(tbl) IMPLIES
+    swide_t(F, od, b, n, tbl) = swide(F, osg(od), b, n)
+  seps_t_eq: LEMMA valid?(tbl) IMPLIES seps_t(u, F, od, tbl) = seps_n(F, osg(od), sfuel2 + u)
+
+  %% THE LIFTING and its check, through descriptor and table
+  svs_t(u, F, od, tbl): SVL = walk_t(F, od, seps_t(u, F, od, tbl), tbl)
+  svs_t_eq: THEOREM valid?(tbl) IMPLIES svs_t(u, F, od, tbl) = walk(F, osg(od), seps_n(F, osg(od), sfuel2 + u))
+END walk_od

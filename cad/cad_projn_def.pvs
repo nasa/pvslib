@@ -1,0 +1,110 @@
+cad_projn_def: THEORY
+%----------------------------------------------------------------------------
+% Collins' N-reducta projection, executable.
+%
+% For a family G (members are coefficient lists in the main variable):
+%   kd(g, length(g))  the degrees of the reducta Collins keeps, from the top
+%                     down, stopping after the first coefficient that
+%                     normalizes to a nonzero constant (nzc?)
+%   pj1(g)            the coefficients at those degrees
+%   pj2(g)            psc_j(f, f') for the kept reducta f of degree k >= 2
+%                     whose leading coefficient does not normalize to 0
+%                     (j <= k - 2)
+%   pj3(g, h)         psc_j(f, h') for kept reducta f of g and h' of h
+%                     (j < both degrees), the same exclusion
+%   projn(G)          all of these over the members and the pairs of members
+%                     at positions i1 < i2, normalized (mnorm), without
+%                     constants and without repetitions
+% cad_projn proves that sign-invariance of projn(G) on a set gives col_def's
+% colh?, hence (col_stack) delineability of G over a connected set.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_def, bareiss_def
+
+  g, h: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  u: VAR mpoly
+  U, V: VAR list[mpoly]
+  K, K1, K2: VAR list[nat]
+  k, k1, k2, j, n: VAR nat
+
+  %% a coefficient that normalizes to a nonzero constant / to zero
+  nzc?(u): bool = LET v = mnorm(u) IN mconst?(v) AND mc(v) /= 0
+  zcst?(u): bool = LET v = mnorm(u) IN mconst?(v) AND mc(v) = 0
+
+  %% the coefficient of degree k (0 above the list)
+  cf(g, k): mpoly = IF k < length(g) THEN nth(g, k) ELSE mconst(0) ENDIF
+
+  %% the kept degrees below n, from the top down
+  kd(g, n): RECURSIVE list[nat] =
+    IF n = 0 THEN null[nat]
+    ELSE cons(n - 1, IF nzc?(cf(g, n - 1)) THEN null[nat] ELSE kd(g, n - 1) ENDIF)
+    ENDIF
+  MEASURE n
+
+  %% psc with its degree condition as a guard
+  %% psc(g, h, j) through bareiss_def's bdet (fraction-free elimination,
+  %% O(n^3); bareiss' bdet_det: the normal form of subres' Laplace-expansion
+  %% psc), in normal form
+  pscg(g, h, j): mpoly =
+    IF 2 * j <= dg(g) + dg(h) THEN mnorm(bdet(dg(g) + dg(h) - 2 * j, sresm(g, h, j))) ELSE mconst(0) ENDIF
+
+  %% psc_j for j < n
+  pscs(g, h, n): RECURSIVE list[mpoly] =
+    IF n = 0 THEN null[mpoly] ELSE cons(pscg(g, h, n - 1), pscs(g, h, n - 1)) ENDIF
+  MEASURE n
+
+  %% the members' own parts
+  pj1(g): list[mpoly] = map(LAMBDA (k: nat): cf(g, k))(kd(g, length(g)))
+  pj2k(g, K): RECURSIVE list[mpoly] =
+    IF null?(K) THEN null[mpoly]
+    ELSIF car(K) >= 2 AND NOT zcst?(cf(g, car(K)))
+      THEN append(pscs(rdc(g, car(K)), lderiv(rdc(g, car(K))), car(K) - 1), pj2k(g, cdr(K)))
+    ELSE pj2k(g, cdr(K))
+    ENDIF
+  MEASURE length(K)
+  pj2(g): list[mpoly] = pj2k(g, kd(g, length(g)))
+
+  %% a pair of members
+  pj3k(g, k1, h, K2): RECURSIVE list[mpoly] =
+    IF null?(K2) THEN null[mpoly]
+    ELSIF NOT zcst?(cf(h, car(K2)))
+      THEN append(pscs(rdc(g, k1), rdc(h, car(K2)), min(k1, car(K2))), pj3k(g, k1, h, cdr(K2)))
+    ELSE pj3k(g, k1, h, cdr(K2))
+    ENDIF
+  MEASURE length(K2)
+  pj3kk(g, K1, h, K2): RECURSIVE list[mpoly] =
+    IF null?(K1) THEN null[mpoly]
+    ELSIF NOT zcst?(cf(g, car(K1)))
+      THEN append(pj3k(g, car(K1), h, K2), pj3kk(g, cdr(K1), h, K2))
+    ELSE pj3kk(g, cdr(K1), h, K2)
+    ENDIF
+  MEASURE length(K1)
+  pj3(g, h): list[mpoly] = pj3kk(g, kd(g, length(g)), h, kd(h, length(h)))
+
+  %% one member against the later ones, and the whole family
+  pjr(g, G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly] ELSE append(pj3(g, car(G)), pjr(g, cdr(G))) ENDIF
+  MEASURE length(G)
+  pjall(G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(pj1(car(G)), append(pj2(car(G)), append(pjr(car(G), cdr(G)), pjall(cdr(G)))))
+    ENDIF
+  MEASURE length(G)
+
+  %% membership by mpoly_eqd's meq: the ground evaluator cannot run the
+  %% prelude's member on mpolys ("Equality unknown between types NULL and
+  %% CONS"), as for mpoly_eqd's memb1
+  pmem(u, V): RECURSIVE bool =
+    IF null?(V) THEN FALSE ELSIF meq(car(V), u) THEN TRUE ELSE pmem(u, cdr(V)) ENDIF
+  MEASURE length(V)
+
+  %% normalized, without constants and repetitions
+  clean(U, V): RECURSIVE list[mpoly] =
+    IF null?(U) THEN V
+    ELSE LET v = mnorm(car(U)) IN
+      IF mconst?(v) OR pmem(v, V) THEN clean(cdr(U), V) ELSE clean(cdr(U), cons(v, V)) ENDIF
+    ENDIF
+  MEASURE length(U)
+  projn(G): list[mpoly] = clean(pjall(G), null[mpoly])
+END cad_projn_def

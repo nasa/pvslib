@@ -1,0 +1,111 @@
+alg_isolate: THEORY
+%----------------------------------------------------------------------------
+% Isolating all the real roots of a rational polynomial.
+%
+% iso(p, lb, ub) returns the roots of p in the half-open interval (lb, ub]
+% as a list of algebraic numbers with strictly increasing values, by
+% bisection: with half-open counting (nroots_h, from Sturm's
+% number_roots_interval) a root at a split point belongs to exactly one
+% half, so nothing is counted twice. A single root sitting at the right
+% endpoint ub is rational; shrink finds a symmetric interval around it that
+% isolates it. Both loops terminate because the width halves while two
+% distinct roots of p are farther apart than mrd (min_poly_root_dist).
+% roots(p) isolates every real root, using the Cauchy-type bound of the
+% Sturm library for the initial interval.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_def, structures@list2set_props[Alg]
+
+  pl: VAR Polylist
+  lb, ub, r: VAR rat
+  x, y, z, z1, z2: VAR real
+  a: VAR alg
+  l, l2: VAR list[Alg]
+  %% real-valued measures for the epsilon order
+  mw(w: posrat): real = w
+  rwd(lb, ub): real = ub - lb
+
+  %% a rational bound on the absolute value of every root (NASALib's poly_root_bound)
+  rbound(pl | deg(pl) > 0): posrat =
+    max(2, sigma(0, deg(pl) - 1, LAMBDA (i: nat): abs(ipoly(pl)(i))) / abs(ipoly(pl)(deg(pl))) + 1)
+  rbound_def: LEMMA deg(pl) > 0 IMPLIES rbound(pl) = poly_root_bound(ipoly(pl), deg(pl))
+  rbound_root: LEMMA deg(pl) > 0 AND polylist(pl)(x) = 0 IMPLIES abs(x) < rbound(pl)
+
+  %% the root separation of p
+  mrd(pl | deg(pl) > 0): posreal = min_poly_root_dist(ipoly(pl), deg(pl))
+  mrd_sep: LEMMA deg(pl) > 0 AND polylist(pl)(x) = 0 AND polylist(pl)(y) = 0 AND x /= y IMPLIES abs(x - y) > mrd(pl)
+
+  %% roots in the half-open interval (lb, ub]
+  hopen(lb, ub): RealInt = (# lb := lb, ub := ub, bounded_below := TRUE, bounded_above := TRUE,
+                             closed_below := FALSE, closed_above := TRUE #)
+  roots_h(pl, lb, ub): set[real] = {z | lb < z AND z <= ub AND polylist(pl)(z) = 0}
+  %% the same count through sturm_fast's rcf: one Horner
+  %% evaluation per chain element instead of NASALib's repeated sums
+  nrh(A: [nat -> int], (n: posnat | A(n) /= 0), lb, (ub | lb < ub), (sl: (Eq_computed_remainder?(A, n)))): int =
+    rcf(A, n, lb, ub, sl) + IF hornA(A, n, lb) = 0 THEN -1 ELSE 0 ENDIF
+  nrh_eq: LEMMA FORALL (A: [nat -> int], (n: posnat | A(n) /= 0), (sl: (Eq_computed_remainder?(A, n)))):
+    lb < ub IMPLIES nrh(A, n, lb, ub, sl) = number_roots_interval(A, n, hopen(lb, ub), sl)
+  nroots_h(pl | deg(pl) > 0, lb, (ub | lb < ub)): nat = number_roots_interval(ipoly(pl), deg(pl), hopen(lb, ub), chain(pl))
+  nroots_h_bij: LEMMA deg(pl) > 0 AND lb < ub IMPLIES
+    EXISTS (bij: [below(nroots_h(pl, lb, ub)) -> (roots_h(pl, lb, ub))]): bijective?(bij)
+  nroots_h_zero: LEMMA deg(pl) > 0 AND lb < ub IMPLIES (nroots_h(pl, lb, ub) = 0 IFF empty?(roots_h(pl, lb, ub)))
+  nroots_h_one: LEMMA deg(pl) > 0 AND lb < ub IMPLIES
+    (nroots_h(pl, lb, ub) = 1 IFF
+     (nonempty?(roots_h(pl, lb, ub)) AND FORALL z1, z2: roots_h(pl, lb, ub)(z1) AND roots_h(pl, lb, ub)(z2) IMPLIES z1 = z2))
+  nroots_h_two: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) >= 2 IMPLIES
+    EXISTS z1, z2: roots_h(pl, lb, ub)(z1) AND roots_h(pl, lb, ub)(z2) AND z1 /= z2
+  roots_h_split: LEMMA lb < r AND r < ub IMPLIES
+    (roots_h(pl, lb, ub)(z) IFF roots_h(pl, lb, r)(z) OR roots_h(pl, r, ub)(z))
+  %% two distinct roots in a closed interval with count >= 2
+  nroots_two: LEMMA deg(pl) > 0 AND lb < ub AND nroots(pl, lb, ub) >= 2 IMPLIES
+    EXISTS z1, z2: roots_in(pl, lb, ub)(z1) AND roots_in(pl, lb, ub)(z2) AND z1 /= z2
+  %% the closed interval isolates the root when the left endpoint is not a root
+  iso_one: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) = 1 AND polylist(pl)(lb) /= 0 IMPLIES
+    nroots(pl, lb, ub) = 1
+  %% whenever iso bisects, the interval is wider than the root separation
+  iso_step: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) /= 0 AND
+    NOT (nroots_h(pl, lb, ub) = 1 AND polylist(pl)(ub) = 0) AND
+    NOT (nroots_h(pl, lb, ub) = 1 AND polylist(pl)(lb) /= 0) IMPLIES ub - lb > mrd(pl)
+
+  %% isolating a known rational root r: a symmetric interval that contains no other root
+  shrinkw(pl | deg(pl) > 0, (r | polylist(pl)(r) = 0), (w: posrat)): RECURSIVE {w2: posrat | nroots(pl, r - w2, r + w2) = 1} =
+    IF nroots(pl, r - w, r + w) = 1 THEN w ELSE shrinkw(pl, r, w / 2) ENDIF
+  MEASURE mw(w) BY real_ord_ep(mrd(pl) / 2)
+  shrink(pl | deg(pl) > 0, (r | polylist(pl)(r) = 0), (w: posrat)): Alg =
+    LET w2 = shrinkw(pl, r, w) IN (# p := pl, lb := r - w2, ub := r + w2 #)
+  shrink_value: LEMMA deg(pl) > 0 AND polylist(pl)(r) = 0 IMPLIES FORALL (w: posrat): value(shrink(pl, r, w)) = r
+
+  %% the isolation
+  iso(pl | deg(pl) > 0, lb, (ub | lb < ub)): RECURSIVE list[Alg] =
+    LET n = nroots_h(pl, lb, ub) IN
+    IF n = 0 THEN null
+    ELSIF n = 1 AND polylist(pl)(ub) = 0 THEN (: shrink(pl, ub, ub - lb) :)
+    ELSIF n = 1 AND polylist(pl)(lb) /= 0 THEN (: (# p := pl, lb := lb, ub := ub #) :)
+    ELSE append(iso(pl, lb, (lb + ub) / 2), iso(pl, (lb + ub) / 2, ub)) ENDIF
+  MEASURE rwd(lb, ub) BY real_ord_ep(mrd(pl))
+
+  %% the specification: all elements are algebraic numbers of p whose values are exactly
+  %% the roots of p in (lb, ub], in strictly increasing order
+  increasing(l): RECURSIVE bool =
+    CASES l OF null: TRUE, cons(a, r): (FORALL (b: Alg): member(b, r) IMPLIES value(a) < value(b)) AND increasing(r) ENDCASES
+  MEASURE length(l)
+  increasing_append: LEMMA increasing(l) AND increasing(l2) AND
+    (FORALL (a, b: Alg): member(a, l) AND member(b, l2) IMPLIES value(a) < value(b)) IMPLIES increasing(append(l, l2))
+  iso_spec?(pl, lb, ub, l): bool =
+    (FORALL (a: Alg): member(a, l) IMPLIES a`p = pl AND roots_h(pl, lb, ub)(value(a))) AND
+    (FORALL z: roots_h(pl, lb, ub)(z) IMPLIES EXISTS (a: Alg): member(a, l) AND value(a) = z) AND
+    increasing(l)
+  %% the four cases of iso
+  iso_case0: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) = 0 IMPLIES iso_spec?(pl, lb, ub, null)
+  iso_case1: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) = 1 AND polylist(pl)(ub) = 0 IMPLIES
+    iso_spec?(pl, lb, ub, (: shrink(pl, ub, ub - lb) :))
+  iso_case2: LEMMA deg(pl) > 0 AND lb < ub AND nroots_h(pl, lb, ub) = 1 AND polylist(pl)(lb) /= 0 IMPLIES
+    iso_spec?(pl, lb, ub, (: (# p := pl, lb := lb, ub := ub #) :))
+  iso_case3: LEMMA lb < r AND r < ub AND iso_spec?(pl, lb, r, l) AND iso_spec?(pl, r, ub, l2) IMPLIES
+    iso_spec?(pl, lb, ub, append(l, l2))
+  iso_spec: LEMMA deg(pl) > 0 AND lb < ub IMPLIES iso_spec?(pl, lb, ub, iso(pl, lb, ub))
+
+  %% all real roots
+  roots(pl | deg(pl) > 0): list[Alg] = iso(pl, -rbound(pl), rbound(pl))
+  roots_complete: LEMMA deg(pl) > 0 AND polylist(pl)(z) = 0 IMPLIES EXISTS (a: Alg): member(a, roots(pl)) AND value(a) = z
+END alg_isolate

@@ -1,0 +1,70 @@
+mpoly_norm: THEORY
+%----------------------------------------------------------------------------
+% Canonical form of recursive multivariate polynomials.
+%
+% mnorm strips trailing zero coefficients at every level, turns the empty
+% list into the constant 0, and collapses a one-element list whose element is
+% a constant into that constant (a one-element list around a non-constant is
+% kept: it is a polynomial that does not depend on the main variable and must
+% stay at its depth, since variables are positional).
+%
+% normal? is the syntactic characterization of the image of mnorm; its
+% "tail" mode describes the coefficient list from position 1 on, whose last
+% element must be a non-zero term.  One function normalx(tail?, p) carries
+% both modes.
+%
+% Soundness (meval_mnorm) is what the mpoly-eq strategy needs: equal normal
+% forms give equal functions.  Completeness (equal functions give equal normal
+% forms) is proved in mpoly_unique.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_arith
+
+  p, h, r: VAR mpoly
+  c: VAR rat
+  l: VAR list[mpoly]
+  xs: VAR list[real]
+  tail?: VAR bool
+
+  mnorm(p): RECURSIVE mpoly =
+    CASES p OF
+      mconst(c): p,
+      mpol(l):
+        IF null?(l) THEN zero
+        ELSE LET h = mnorm(car(l)), r = mnorm(mpol(cdr(l))) IN
+             IF r = zero THEN (IF mconst?(h) THEN h ELSE mpol((: h :)) ENDIF)
+             ELSE mpol(cons(h, as_list(r))) ENDIF
+        ENDIF
+    ENDCASES
+  MEASURE msize(p)
+
+  mnorm_c: LEMMA mconst?(p) IMPLIES mnorm(p) = p
+  mnorm_null: LEMMA mpol?(p) AND null?(coeffs(p)) IMPLIES mnorm(p) = zero
+  mnorm_cons: LEMMA mpol?(p) AND cons?(coeffs(p)) IMPLIES
+    mnorm(p) = LET h = mnorm(car(coeffs(p))), r = mnorm(mpol(cdr(coeffs(p)))) IN
+               IF r = zero THEN (IF mconst?(h) THEN h ELSE mpol((: h :)) ENDIF)
+               ELSE mpol(cons(h, as_list(r))) ENDIF
+
+  meval_mnorm: LEMMA meval(mnorm(p))(xs) = meval(p)(xs)
+
+  % the syntactic image of mnorm
+  normalx(tail?, p): RECURSIVE bool =
+    CASES p OF
+      mconst(c): NOT tail?,
+      mpol(l):
+        cons?(l) AND normalx(FALSE, car(l)) AND
+        (IF null?(cdr(l)) THEN (IF tail? THEN car(l) /= zero ELSE NOT mconst?(car(l)) ENDIF)
+         ELSE normalx(TRUE, mpol(cdr(l))) ENDIF)
+    ENDCASES
+  MEASURE msize(p)
+
+  normal?(p): bool = normalx(FALSE, p)
+
+  normalx_c: LEMMA mconst?(p) IMPLIES (normalx(tail?, p) IFF NOT tail?)
+
+  % a normal non-zero term, viewed as a coefficient list, is a normal tail
+  normal_as_list_cons: LEMMA normal?(r) AND r /= zero IMPLIES cons?(as_list(r))
+  normal_as_list_tail: LEMMA normal?(r) AND r /= zero IMPLIES normalx(TRUE, mpol(as_list(r)))
+
+  mnorm_normal: LEMMA normal?(mnorm(p))
+END mpoly_norm

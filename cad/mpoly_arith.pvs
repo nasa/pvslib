@@ -1,0 +1,137 @@
+mpoly_arith: THEORY
+%----------------------------------------------------------------------------
+% Ring operations on recursive multivariate polynomials and their evaluation
+% homomorphism lemmas.
+%
+% Two terms are combined "at the same level": their main variables are the
+% same variable.  A constant may sit at any level.  Multiplication needs a
+% second mode, "coefficient mode", in which the first argument lives one level
+% below the second and is multiplied into each of its coefficients; both modes
+% are one PVS function mmulx(coef?, p, q) because PVS has no mutual recursion.
+%
+% Every lemma named meval_<op> states that evaluation is a homomorphism for
+% <op>; they hold for all terms, with no well-formedness hypothesis.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_def
+
+  p, q, h, h1, h2: VAR mpoly
+  c, d: VAR rat
+  l, l1, l2, t, t1, t2: VAR list[mpoly]
+  xs: VAR list[real]
+  n: VAR nat
+  coef?: VAR bool
+
+  %% addition
+
+  madd(p, q): RECURSIVE mpoly =
+    CASES p OF
+      mconst(c):
+        CASES q OF
+          mconst(d): mconst(c + d),
+          mpol(l): IF null?(l) THEN mpol((: p :)) ELSE mpol(cons(madd(p, car(l)), cdr(l))) ENDIF
+        ENDCASES,
+      mpol(l):
+        IF null?(l) THEN (CASES q OF mconst(d): mpol((: q :)), mpol(l2): q ENDCASES)
+        ELSE CASES q OF
+          mconst(d): mpol(cons(madd(car(l), q), cdr(l))),
+          mpol(l2): IF null?(l2) THEN p
+                    ELSE mpol(cons(madd(car(l), car(l2)), as_list(madd(mpol(cdr(l)), mpol(cdr(l2)))))) ENDIF
+        ENDCASES ENDIF
+    ENDCASES
+  MEASURE msize(p) + msize(q)
+
+  % defining equations with recognizer hypotheses, for rewriting
+  madd_cc: LEMMA mconst?(p) AND mconst?(q) IMPLIES madd(p, q) = mconst(mc(p) + mc(q))
+  madd_c_null: LEMMA mconst?(p) AND mpol?(q) AND null?(coeffs(q)) IMPLIES madd(p, q) = mpol((: p :))
+  madd_c_cons: LEMMA mconst?(p) AND mpol?(q) AND cons?(coeffs(q)) IMPLIES
+    madd(p, q) = mpol(cons(madd(p, car(coeffs(q))), cdr(coeffs(q))))
+  madd_null_c: LEMMA mpol?(p) AND null?(coeffs(p)) AND mconst?(q) IMPLIES madd(p, q) = mpol((: q :))
+  madd_null_p: LEMMA mpol?(p) AND null?(coeffs(p)) AND mpol?(q) IMPLIES madd(p, q) = q
+  madd_cons_c: LEMMA mpol?(p) AND cons?(coeffs(p)) AND mconst?(q) IMPLIES
+    madd(p, q) = mpol(cons(madd(car(coeffs(p)), q), cdr(coeffs(p))))
+  madd_cons_null: LEMMA mpol?(p) AND cons?(coeffs(p)) AND mpol?(q) AND null?(coeffs(q)) IMPLIES
+    madd(p, q) = p
+  madd_cons_cons: LEMMA mpol?(p) AND cons?(coeffs(p)) AND mpol?(q) AND cons?(coeffs(q)) IMPLIES
+    madd(p, q) = mpol(cons(madd(car(coeffs(p)), car(coeffs(q))),
+                           as_list(madd(mpol(cdr(coeffs(p))), mpol(cdr(coeffs(q)))))))
+
+  meval_madd: LEMMA meval(madd(p, q))(xs) = meval(p)(xs) + meval(q)(xs)
+
+  %% scalar multiplication and negation
+
+  mscal(c, p): RECURSIVE mpoly =
+    CASES p OF
+      mconst(d): mconst(c * d),
+      mpol(l): IF null?(l) THEN p ELSE mpol(cons(mscal(c, car(l)), as_list(mscal(c, mpol(cdr(l)))))) ENDIF
+    ENDCASES
+  MEASURE msize(p)
+
+  mscal_c: LEMMA mconst?(p) IMPLIES mscal(c, p) = mconst(c * mc(p))
+  mscal_null: LEMMA mpol?(p) AND null?(coeffs(p)) IMPLIES mscal(c, p) = p
+  mscal_cons: LEMMA mpol?(p) AND cons?(coeffs(p)) IMPLIES
+    mscal(c, p) = mpol(cons(mscal(c, car(coeffs(p))), as_list(mscal(c, mpol(cdr(coeffs(p)))))))
+
+  meval_mscal: LEMMA meval(mscal(c, p))(xs) = c * meval(p)(xs)
+
+  mneg(p): mpoly = mscal(-1, p)
+  msub(p, q): mpoly = madd(p, mneg(q))
+
+  meval_mneg: LEMMA meval(mneg(p))(xs) = - meval(p)(xs)
+  meval_msub: LEMMA meval(msub(p, q))(xs) = meval(p)(xs) - meval(q)(xs)
+
+  %% multiplication
+  %   coef? = FALSE: p * q at the same level
+  %   coef? = TRUE : p lives one level below q; multiply p into each coefficient of q
+  %   (h1 + x*t1) * q = h1 * q + x * (t1 * q)
+
+  mmulx(coef?: bool, p, q): RECURSIVE mpoly =
+    IF coef? THEN
+      CASES q OF
+        mconst(d): mpol((: mscal(d, p) :)),
+        mpol(l): IF null?(l) THEN q
+                 ELSE mpol(cons(mmulx(FALSE, p, car(l)), as_list(mmulx(TRUE, p, mpol(cdr(l)))))) ENDIF
+      ENDCASES
+    ELSE
+      CASES p OF
+        mconst(c): mscal(c, q),
+        mpol(l):
+          IF null?(l) THEN zero
+          ELSE CASES q OF
+            mconst(d): mscal(d, p),
+            mpol(l2): madd(mmulx(TRUE, car(l), q),
+                           mpol(cons(zero, as_list(mmulx(FALSE, mpol(cdr(l)), q)))))
+          ENDCASES ENDIF
+      ENDCASES
+    ENDIF
+  MEASURE msize(p) + msize(q)
+
+  mmulx_t_c: LEMMA mconst?(q) IMPLIES mmulx(TRUE, p, q) = mpol((: mscal(mc(q), p) :))
+  mmulx_t_null: LEMMA mpol?(q) AND null?(coeffs(q)) IMPLIES mmulx(TRUE, p, q) = q
+  mmulx_t_cons: LEMMA mpol?(q) AND cons?(coeffs(q)) IMPLIES
+    mmulx(TRUE, p, q) = mpol(cons(mmulx(FALSE, p, car(coeffs(q))), as_list(mmulx(TRUE, p, mpol(cdr(coeffs(q)))))))
+  mmulx_f_c: LEMMA mconst?(p) IMPLIES mmulx(FALSE, p, q) = mscal(mc(p), q)
+  mmulx_f_null: LEMMA mpol?(p) AND null?(coeffs(p)) IMPLIES mmulx(FALSE, p, q) = zero
+  mmulx_f_cons_c: LEMMA mpol?(p) AND cons?(coeffs(p)) AND mconst?(q) IMPLIES mmulx(FALSE, p, q) = mscal(mc(q), p)
+  mmulx_f_cons_p: LEMMA mpol?(p) AND cons?(coeffs(p)) AND mpol?(q) IMPLIES
+    mmulx(FALSE, p, q) = madd(mmulx(TRUE, car(coeffs(p)), q),
+                              mpol(cons(zero, as_list(mmulx(FALSE, mpol(cdr(coeffs(p))), q)))))
+
+  % both modes at once, by induction on msize(p) + msize(q)
+  meval_mmulx: LEMMA
+    meval(mmulx(coef?, p, q))(xs) =
+      (IF coef? THEN meval(p)(tl(xs)) ELSE meval(p)(xs) ENDIF) * meval(q)(xs)
+
+  mmul(p, q): mpoly = mmulx(FALSE, p, q)
+
+  meval_mmul: LEMMA meval(mmul(p, q))(xs) = meval(p)(xs) * meval(q)(xs)
+
+  %% powers
+
+  mpow(p, n): RECURSIVE mpoly =
+    IF n = 0 THEN one ELSE mmul(p, mpow(p, n - 1)) ENDIF
+  MEASURE n
+
+  meval_mpow: LEMMA meval(mpow(p, n))(xs) = meval(p)(xs) ^ n
+
+END mpoly_arith

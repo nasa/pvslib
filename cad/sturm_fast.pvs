@@ -1,0 +1,77 @@
+sturm_fast: THEORY
+%----------------------------------------------------------------------------
+% A faster Sturm root count: the same number as NASALib's
+% roots_closed_int(a, n, lo, hi, TRUE, TRUE, sl), with every element of the
+% chain evaluated ONCE, by Horner's rule.
+%
+% roots_closed_int evaluates the chain's elements through reals' polynomial
+% (a sigma of a(j) * x^j, each power computed again) inside
+% number_sign_changes, which asks for each element up to three times; with
+% chains of degree up to 102 (one three-variable benchmark) that is most of an
+% invariance check.  chvals lists the values at x once (hornz); rcf reads the
+% counts off it; rcf_eq says it is roots_closed_int.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING Sturm@poly_strategy
+
+  l: VAR list[int]
+  sl: VAR list[list[int]]
+  x: VAR real
+  i: VAR nat
+  a: VAR [nat -> int]
+
+  %% Horner on an integer coefficient list, lowest coefficient first
+  hornz(l, x): RECURSIVE real = IF null?(l) THEN 0 ELSE car(l) + x * hornz(cdr(l), x) ENDIF
+  MEASURE length(l)
+  hornz_poly: LEMMA FORALL l: hornz(l, x) = polynomial(list2array[int](0)(l), max(length(l) - 1, 0))(x)
+
+  %% Horner on a coefficient array of degree n
+  nn: VAR nat
+  hornA(a, nn, x): RECURSIVE real =
+    IF nn = 0 THEN a(0) ELSE a(0) + x * hornA(LAMBDA (i: nat): a(i + 1), nn - 1, x) ENDIF
+  MEASURE nn
+  hornA_poly: LEMMA FORALL nn: FORALL a: hornA(a, nn, x) = polynomial(a, nn)(x)
+
+  %% element i of the chain, in roots_closed_int's order (the list is stored last element first)
+  chel(sl, i): list[int] = IF i < length(sl) THEN nth(sl, length(sl) - 1 - i) ELSE null[int] ENDIF
+
+  %% the values of the chain's elements at x, each computed once
+  chvals(sl, x): [nat -> real] =
+    LET vs = map(LAMBDA (e: list[int]): hornz(e, x))(reverse(sl)) IN
+    LAMBDA i: IF i < length(vs) THEN nth(vs, i) ELSE 0 ENDIF
+  chvals_eq: LEMMA chvals(sl, x)(i) = hornz(chel(sl, i), x)
+
+  %% roots_closed_int's element j at x is hornz of chel
+  j: VAR nat
+  pn_hornz: LEMMA polynomial(IF j < length(sl) THEN list2array[int](0)(nth(sl, length(sl) - 1 - j))
+                             ELSE (LAMBDA (i: nat): 0) ENDIF,
+                             IF j < length(sl) THEN max(length(nth(sl, length(sl) - 1 - j)) - 1, 0)
+                             ELSE 0 ENDIF)(x)
+                  = hornz(chel(sl, j), x)
+
+  %% the form roots_closed_int's count takes once its LET is unfolded: the
+  %% end point's choice lifted into the sequence
+  lam_if: LEMMA FORALL (b: bool), (u, v: real):
+    (LAMBDA (i: nat): IF b THEN polynomial(IF i < length(sl) THEN list2array[int](0)(nth(sl, length(sl) - 1 - i))
+                                           ELSE (LAMBDA (i: nat): 0) ENDIF,
+                                           IF i < length(sl) THEN max(length(nth(sl, length(sl) - 1 - i)) - 1, 0)
+                                           ELSE 0 ENDIF)(u)
+                      ELSE polynomial(IF i < length(sl) THEN list2array[int](0)(nth(sl, length(sl) - 1 - i))
+                                      ELSE (LAMBDA (i: nat): 0) ENDIF,
+                                      IF i < length(sl) THEN max(length(nth(sl, length(sl) - 1 - i)) - 1, 0)
+                                      ELSE 0 ENDIF)(v)
+                      ENDIF)
+    = chvals(sl, IF b THEN u ELSE v ENDIF)
+
+  rcf(a, (n: posnat | a(n) /= 0), (lo: real), (hi: real | lo < hi), (sl: (Eq_computed_remainder?(a, n)))): int =
+    LET p0l = hornz(chel(sl, 0), lo), p1l = hornz(chel(sl, 1), lo),
+        p0h = hornz(chel(sl, 0), hi), p1h = hornz(chel(sl, 1), hi),
+        newlow = IF p0l /= 0 OR p1l /= 0 THEN lo ELSE lo - poly_rootless_width(a, n, lo, TRUE) / 2 ENDIF,
+        newhigh = IF p0h /= 0 OR p1h /= 0 THEN hi ELSE hi + poly_rootless_width(a, n, hi, TRUE) / 2 ENDIF IN
+    number_sign_changes(chvals(sl, newlow), length(sl) - 2)`num
+      - number_sign_changes(chvals(sl, newhigh), length(sl) - 2)`num
+      + IF p0l = 0 AND p1l /= 0 THEN 1 ELSE 0 ENDIF
+
+  rcf_eq: LEMMA FORALL (n: posnat | a(n) /= 0), (lo: real), (hi: real | lo < hi), (sl: (Eq_computed_remainder?(a, n))):
+    rcf(a, n, lo, hi, sl) = roots_closed_int(a, n, lo, hi, TRUE, TRUE, sl)
+END sturm_fast

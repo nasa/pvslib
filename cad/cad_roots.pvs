@@ -1,0 +1,106 @@
+cad_roots: THEORY
+%----------------------------------------------------------------------------
+% The roots of a family over a point, as a sorted list.
+%
+% rootat?(G, p)(y): some member of G that is not identically zero on the
+% fibre over p vanishes at y.  This is the classical zero set of the product
+% of the non-nullified members, stated without any of the walk's internals.
+% rl?(G, p)(L): L lists those roots, strictly increasing; there is at most
+% one such L (rl_unique), and rtl(G, p) chooses it.  nroot and rt are the
+% root count and the i-th root, the section functions of a CAD.
+%
+% Wherever the walk's certificate holds (certz?), the list exists: it is the
+% sequence of the roots the walk finds in its gaps, one per gap that holds
+% one (groots, rl_groots), so rtl is the walk's root list whatever the
+% separators (rtl_groots).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING zfam, cvl
+
+  G, F: VAR list[list[mpoly]]
+  g: VAR list[mpoly]
+  p, ys: VAR list[real]
+  L, L1, L2, R: VAR list[real]
+  Y: VAR list[rat]
+  a, b, y, z: VAR real
+  i: VAR nat
+
+  %% ---- the roots, as a set and as a sorted list ----------------------------------------
+  rootat?(G, p)(y): bool =
+    EXISTS g: member(g, G) AND meval(mpol(g))(cons(y, p)) = 0
+      AND (EXISTS z: meval(mpol(g))(cons(z, p)) /= 0)
+
+  sincr?(L): RECURSIVE bool =
+    IF null?(L) OR null?(cdr(L)) THEN TRUE ELSE car(L) < car(cdr(L)) AND sincr?(cdr(L)) ENDIF
+  MEASURE length(L)
+
+  sincr_cdr: LEMMA sincr?(cons(a, L)) IMPLIES sincr?(L)
+  sincr_lt: LEMMA FORALL L: sincr?(cons(a, L)) AND member(y, L) IMPLIES a < y
+  sincr_cons: LEMMA sincr?(L) AND (FORALL y: member(y, L) IMPLIES a < y) IMPLIES sincr?(cons(a, L))
+  sincr_eq_hd: LEMMA sincr?(cons(a, L1)) AND sincr?(cons(b, L2))
+    AND (FORALL y: member(y, cons(a, L1)) IFF member(y, cons(b, L2)))
+    IMPLIES a = b
+  sincr_eq_tl: LEMMA sincr?(cons(a, L1)) AND sincr?(cons(b, L2))
+    AND (FORALL y: member(y, cons(a, L1)) IFF member(y, cons(b, L2)))
+    IMPLIES (FORALL y: member(y, L1) IFF member(y, L2))
+  sincr_eq: LEMMA FORALL L1, L2: sincr?(L1) AND sincr?(L2)
+    AND (FORALL y: member(y, L1) IFF member(y, L2)) IMPLIES L1 = L2
+
+  rl?(G, p)(L): bool = sincr?(L) AND (FORALL y: member(y, L) IFF rootat?(G, p)(y))
+
+  rl_unique: LEMMA rl?(G, p)(L1) AND rl?(G, p)(L2) IMPLIES L1 = L2
+
+  rtl(G, p): list[real] = epsilon(rl?(G, p))
+  rtl_eq: LEMMA rl?(G, p)(L) IMPLIES rtl(G, p) = L
+
+  nroot(G, p): nat = length(rtl(G, p))
+  rt(G, p, i): real = IF i < nroot(G, p) THEN nth(rtl(G, p), i) ELSE 0 ENDIF
+
+  %% ---- the roots are the zeros of the walk's product ---------------------------------------
+  short_eval: LEMMA length(g) <= 1
+    IMPLIES meval(mpol(g))(cons(y, p)) = meval(mpol(g))(cons(z, p))
+
+  rootat_P: LEMMA wok?(zf(G, p), msg(p), Y)
+    IMPLIES (rootat?(G, p)(y) IFF P(zf(G, p), p)(y) = 0)
+
+  %% ---- the roots the walk finds, gap by gap ----------------------------------------------
+  groots(F, ys, Y): RECURSIVE list[real] =
+    IF null?(Y) OR null?(cdr(Y)) THEN null[real]
+    ELSIF gap?(F, msg(ys), car(Y), car(cdr(Y)))
+      THEN cons(secbeta(F, ys, car(Y), car(cdr(Y))), groots(F, ys, cdr(Y)))
+    ELSE groots(F, ys, cdr(Y))
+    ENDIF
+  MEASURE length(Y)
+
+  lo, hi: VAR rat
+  sg: VAR SG
+
+  gap_nolive: LEMMA null?(lives(F)) IMPLIES NOT gap?(F, sg, lo, hi)
+  groots_nolive: LEMMA FORALL Y: null?(lives(F)) IMPLIES groots(F, ys, Y) = null[real]
+  groots_gap: LEMMA gap?(F, msg(ys), lo, hi) IMPLIES
+    groots(F, ys, cons[rat](lo, cons[rat](hi, Y))) = cons(secbeta(F, ys, lo, hi), groots(F, ys, cons[rat](hi, Y)))
+  groots_nogap: LEMMA NOT gap?(F, msg(ys), lo, hi) IMPLIES
+    groots(F, ys, cons[rat](lo, cons[rat](hi, Y))) = groots(F, ys, cons[rat](hi, Y))
+  rlast_ge: LEMMA FORALL Y, hi: sepok?(F, sg, cons(hi, Y)) IMPLIES hi <= rlast(cons(hi, Y))
+
+  %% what the walk's root list is, for separators Y
+  grok?(F, ys, (Y: (cons?[rat]))): bool =
+    sincr?(groots(F, ys, Y))
+    AND (FORALL y: member(y, groots(F, ys, Y)) IFF (car(Y) < y AND y <= rlast(Y) AND P(F, ys)(y) = 0))
+
+  grok_one: LEMMA grok?(F, ys, (: lo :))
+  gap_root: LEMMA memok?(F, msg(ys), F) AND gapok?(F, msg(ys), lo, hi)
+    AND nzat?(F, msg(ys), hi, F) AND gap?(F, msg(ys), lo, hi)
+    IMPLIES gapf?(F, ys, lo, hi, secbeta(F, ys, lo, hi))
+  groots_step: LEMMA memok?(F, msg(ys), F) AND gapok?(F, msg(ys), lo, hi)
+    AND sepok?(F, msg(ys), cons[rat](hi, Y)) AND grok?(F, ys, cons[rat](hi, Y))
+    IMPLIES grok?(F, ys, cons[rat](lo, cons[rat](hi, Y)))
+  groots_ok: LEMMA FORALL Y: cons?(Y) AND memok?(F, msg(ys), F) AND sepok?(F, msg(ys), Y)
+    IMPLIES grok?(F, ys, Y)
+
+  rl_groots: LEMMA wok?(zf(G, p), msg(p), Y) IMPLIES rl?(G, p)(groots(zf(G, p), p, Y))
+
+  rtl_groots: LEMMA wok?(zf(G, p), msg(p), Y) IMPLIES rtl(G, p) = groots(zf(G, p), p, Y)
+
+  rtl_ok: LEMMA certz?(G, p) IMPLIES rl?(G, p)(rtl(G, p))
+END cad_roots

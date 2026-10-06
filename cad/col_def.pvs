@@ -1,0 +1,56 @@
+col_def: THEORY
+%----------------------------------------------------------------------------
+% Collins' projection hypothesis.
+%
+% A member g of a family is a list of mpoly coefficients in the main
+% variable.  rdc(g, k) is its reductum of degree k (the first k + 1
+% coefficients).  Collins' N-reducta rule keeps the reductum of degree k
+% unless some coefficient above it is nonzero everywhere (kept?): then g
+% never drops to degree k, so that reductum is never the polynomial g is.
+%
+% colh?(G, C) is what sign-invariance on C of the N-reducta projection of G
+% gives: for every member and every kept reductum f of it, the leading
+% coefficient of f has one sign on C, and so do psc_j(f, f') (j < deg f - 1)
+% and, for members at positions i1 < i2 and kept reducta f, h of them,
+% psc_j(f, h) (j < deg f, deg h) -- these only for reducta whose leading
+% coefficient is not identically zero (zall?), which can never be the
+% polynomial the member is over a point.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING subres, sign_vec
+
+  g: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, q: VAR list[real]
+  u: VAR mpoly
+  i, i1, i2, j, k, k1, k2: VAR nat
+
+  %% the reductum of degree k
+  rdc(g, k): RECURSIVE list[mpoly] =
+    IF null?(g) THEN null[mpoly]
+    ELSIF k = 0 THEN (: car(g) :)
+    ELSE cons(car(g), rdc(cdr(g), k - 1))
+    ENDIF
+  MEASURE length(g)
+
+  rdc_len: LEMMA FORALL g: FORALL k: k < length(g) IMPLIES length(rdc(g, k)) = k + 1
+  dg_rdc: LEMMA k < length(g) IMPLIES dg(rdc(g, k)) = k
+  dg_lderiv_rdc: LEMMA 1 <= k AND k < length(g) IMPLIES dg(lderiv(rdc(g, k))) = k - 1
+
+  %% one sign on C; nonzero everywhere; the reducta Collins keeps
+  cinv?(u, C): bool = FORALL p, q: C(p) AND C(q) IMPLIES sign3(meval(u)(p)) = sign3(meval(u)(q))
+  nzall?(u): bool = FORALL p: meval(u)(p) /= 0
+  zall?(u): bool = FORALL p: meval(u)(p) = 0
+  kept?(g, k): bool = k < length(g) AND FORALL j: k < j AND j < length(g) IMPLIES NOT nzall?(nth(g, j))
+
+  colh?(G, C): bool =
+        (FORALL i, k: i < length(G) AND kept?(nth(G, i), k) IMPLIES cinv?(nth(nth(G, i), k), C))
+    AND (FORALL i, k, j: i < length(G) AND kept?(nth(G, i), k) AND NOT zall?(nth(nth(G, i), k))
+           AND j + 2 <= k IMPLIES
+           cinv?(psc(rdc(nth(G, i), k), lderiv(rdc(nth(G, i), k)), j), C))
+    AND (FORALL i1, i2, k1, k2, j: i1 < i2 AND i2 < length(G) AND kept?(nth(G, i1), k1)
+           AND kept?(nth(G, i2), k2) AND NOT zall?(nth(nth(G, i1), k1)) AND NOT zall?(nth(nth(G, i2), k2))
+           AND j < k1 AND j < k2 IMPLIES
+           cinv?(psc(rdc(nth(G, i1), k1), rdc(nth(G, i2), k2), j), C))
+END col_def

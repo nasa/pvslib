@@ -1,0 +1,80 @@
+alg_sign: THEORY
+%----------------------------------------------------------------------------
+% The sign of a rational polynomial q at an algebraic number a.
+%
+% alg_sign(a, q) = sign of q(value(a)), computed as follows: if q vanishes at
+% value(a) (alg_zero) the sign is 0; if q is constant its sign is read off;
+% otherwise the isolating interval of a is bisected (sep) until q has no root
+% in it, and then q keeps one sign on the interval, decided by the Sturm
+% library's compute_poly_sat at the midpoint. The loop terminates because
+% value(a) is at positive distance qdist from every root of q: qdist is
+% NASALib's min_poly_root_dist of the product p*q (value(a) and the roots of
+% q are distinct roots of p*q), and the width halves each round, which is
+% decreasing for the epsilon order real_ord_ep(qdist).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_zero, reals@sign3
+
+  P, Q: VAR [nat -> int]
+  n, m, i, k: VAR nat
+  x, r: VAR real
+  pl, ql: VAR Polylist
+  a, b: VAR alg
+  lb, ub: VAR rat
+
+  %% the product of integer polynomials (polynomial_prod with integer typing)
+  iprod(P, n, Q, m)(i): int = sigma(max(i - m, 0), n, LAMBDA k: IF k <= i THEN P(k) * Q(i - k) ELSE 0 ENDIF)
+  iprod_fun: LEMMA iprod(P, n, Q, m) = polynomial_prod(P, n, Q, m)
+  iprod_top: LEMMA iprod(P, n, Q, m)(n + m) = P(n) * Q(m)
+  iprod_eval: LEMMA polynomial(iprod(P, n, Q, m), n + m)(x) = polynomial(P, n)(x) * polynomial(Q, m)(x)
+
+  pq(pl, ql): [nat -> int] = iprod(ipoly(pl), deg(pl), ipoly(ql), deg(ql))
+  pqdeg(pl, ql): nat = deg(pl) + deg(ql)
+  pq_lc: LEMMA deg(pl) > 0 AND deg(ql) > 0 IMPLIES pq(pl, ql)(pqdeg(pl, ql)) /= 0
+  pq_root: LEMMA polynomial(pq(pl, ql), pqdeg(pl, ql))(x) = 0 IFF polylist(pl)(x) = 0 OR polylist(ql)(x) = 0
+
+  %% the separation distance: value(a) is farther than qdist from every root of q
+  %% (it depends only on the defining polynomial, so it is invariant under refine)
+  qdist(pl | deg(pl) > 0, (ql | deg(ql) > 0)): posreal = min_poly_root_dist(pq(pl, ql), pqdeg(pl, ql))
+  qdist_sep: LEMMA alg?(a) AND deg(ql) > 0 AND polylist(ql)(value(a)) /= 0 AND polylist(ql)(r) = 0 IMPLIES
+    abs(value(a) - r) > qdist(a`p, ql)
+  %% one bisection round shrinks the width in the epsilon order as long as q still has a root inside
+  rwidth(a): real = a`ub - a`lb
+  sep_step: LEMMA alg?(a) AND deg(ql) > 0 AND NOT zero_at(a, ql) AND nroots(ql, a`lb, a`ub) /= 0 IMPLIES
+    real_ord_ep(qdist(a`p, ql))(rwidth(refine(a)), rwidth(a))
+
+  %% bisect until q has no root in the isolating interval
+  sep(a: Alg, (ql | deg(ql) > 0 AND NOT zero_at(a, ql))): RECURSIVE Alg =
+    IF nroots(ql, a`lb, a`ub) = 0 THEN a ELSE sep(refine(a), ql) ENDIF
+  MEASURE rwidth(a) BY real_ord_ep(qdist(a`p, ql))
+
+  sep_inv: LEMMA FORALL (pl0: Polylist): deg(pl0) > 0 AND deg(ql) > 0 IMPLIES
+    FORALL a: alg?(a) AND a`p = pl0 AND NOT zero_at(a, ql) IMPLIES
+      sep(a, ql)`p = a`p AND value(sep(a, ql)) = value(a) AND nroots(ql, sep(a, ql)`lb, sep(a, ql)`ub) = 0
+  sep_value: LEMMA alg?(a) AND deg(ql) > 0 AND NOT zero_at(a, ql) IMPLIES value(sep(a, ql)) = value(a)
+  sep_free: LEMMA alg?(a) AND deg(ql) > 0 AND NOT zero_at(a, ql) IMPLIES nroots(ql, sep(a, ql)`lb, sep(a, ql)`ub) = 0
+
+  %% the closed interval of an algebraic number, for the Sturm library
+  closedI(b): RealInt = (# lb := b`lb, ub := b`ub, bounded_below := TRUE, bounded_above := TRUE,
+                           closed_below := TRUE, closed_above := TRUE #)
+  %% with no root of q in [lb, ub], sturm decides the constant sign of q there
+  ipoly_rpi: LEMMA ipoly(pl) = rat_poly_to_int(list2array[rat](0)(pl), deg(pl))
+  nri_closed: LEMMA deg(ql) > 0 AND lb < ub IMPLIES
+    number_roots_interval(ipoly(ql), deg(ql), closedI((# p := ql, lb := lb, ub := ub #)), chain(ql)) = nroots(ql, lb, ub)
+  sturm_sign: LEMMA deg(ql) > 0 AND b`lb < b`ub AND nroots(ql, b`lb, b`ub) = 0 IMPLIES
+    sturm(ql, closedI(b), gt_) OR sturm(ql, closedI(b), lt_)
+
+  sturm_gt_at: LEMMA deg(ql) > 0 AND b`lb < b`ub AND sturm(ql, closedI(b), gt_) AND b`lb <= x AND x <= b`ub IMPLIES
+    polylist(ql)(x) > 0
+  sturm_lt_at: LEMMA deg(ql) > 0 AND b`lb < b`ub AND sturm(ql, closedI(b), lt_) AND b`lb <= x AND x <= b`ub IMPLIES
+    polylist(ql)(x) < 0
+
+  %% the sign
+  alg_sign(a: Alg, ql): Sign3 =
+    IF zero_at(a, ql) THEN 0
+    ELSIF deg(ql) = 0 THEN sign3(nth(ql, 0))
+    ELSIF sturm(ql, closedI(sep(a, ql)), gt_) THEN 1
+    ELSE -1 ENDIF
+
+  alg_sign_def: THEOREM alg?(a) IMPLIES alg_sign(a, ql) = sign3(polylist(ql)(value(a)))
+END alg_sign

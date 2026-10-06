@@ -1,0 +1,176 @@
+mpoly_gcd_def: THEORY
+%----------------------------------------------------------------------------
+% Greatest common divisors, squarefree parts and a pairwise coprime basis of
+% multivariate polynomials over Q, executable.
+%
+% NOTHING HERE IS PROVED OR TRUSTED.  These functions only PROPOSE a basis B
+% of a list of polynomials U and, for each u in U, a constant c and
+% exponents e with u = c * product of b^e over B; mpoly_cert checks each
+% proposal by normal forms (mnorm, complete: mpoly_unique's mnorm_eq_iff)
+% and uses the basis only when every check passes.  A wrong answer from this
+% code can only make the check fail.
+%
+%   gx       gcd (mode 0, up to a rational factor), content of a coefficient
+%            list (mode 1), the gcd of primitive a, b (mode 2: the last member
+%            of the subresultant remainder sequence gsr, made primitive); one
+%            function, since PVS has no mutual recursion, with fuel
+%   gsr      the subresultant remainder sequence (Cohen, Algorithm 3.3.1),
+%            with prl / mprem, the pseudo-remainder without the quotient
+%   mex      exact division, used where the quotient is known to exist
+%   sqf      Yun's squarefree decomposition in the main variable
+%   parts    squarefree parts in every variable (contents recursively)
+%   ins      insertion into a pairwise coprime list (gcd splitting)
+%   mexp     how often b divides u exactly
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_div, earr_deriv
+
+  fuel, i: VAR nat
+  p, q, a, b, c, d, u: VAR mpoly
+  l: VAR list[mpoly]
+  U, B: VAR list[mpoly]
+
+  %% the normal form's coefficient list in the main variable (null for zero)
+  nl(p): list[mpoly] = LET n = mnorm(p) IN
+    IF mconst?(n) THEN (IF mc(n) = 0 THEN null[mpoly] ELSE (: n :) ENDIF) ELSE coeffs(n) ENDIF
+  mzero?(p): bool = null?(nl(p))
+  mone?(p): bool = mconst?(mnorm(p))
+
+  %% a polynomial of degree 0 in the main variable, from its coefficient
+  lift(c): mpoly = mnorm(mpol((: c :)))
+
+  %% exact division attempt: a divisor of degree 0 in the main variable divides each
+  %% coefficient (one variable down); otherwise long division by leading coefficients.
+  %% (mpoly_div's mdiv divides by such a divisor's coefficient read in the wrong
+  %% variable frame; it is only used where its result is checked.)
+  mexf(fuel, p, d): RECURSIVE mpoly =
+    IF fuel = 0 THEN zero
+    ELSE LET ld = nl(d), lp = nl(p) IN
+      IF null?(ld) OR null?(lp) THEN zero
+      ELSIF null?(cdr(ld)) THEN
+        (IF mconst?(car(ld)) AND mc(car(ld)) /= 0 THEN mnorm(mscal(1 / mc(car(ld)), p))
+         ELSE mnorm(mpol(map(LAMBDA (h: mpoly): mexf(fuel - 1, h, car(ld)))(lp))) ENDIF)
+      ELSIF length(lp) < length(ld) THEN zero
+      ELSE LET qc = mexf(fuel - 1, llast(lp), llast(ld)), k = length(lp) - length(ld),
+               t = monom_main(qc, k) IN
+           mnorm(madd(t, mexf(fuel - 1, msub(p, mmul(t, d)), d)))
+      ENDIF
+    ENDIF
+  MEASURE fuel
+  mex(p, d): mpoly = mexf(2 * (msize(p) + msize(d)) + 4, p, d)
+
+  %% derivative and pseudo-remainder in the main variable (the remainder alone:
+  %% mpoly_pdiv's pquo_rem also builds the quotient, with a power of b's leading
+  %% coefficient, which the gcd does not use)
+  mder(p): mpoly = mnorm(mpol(lderiv(nl(p))))
+  prl((l1: list[mpoly]), (l2: list[mpoly] | cons?(l2))): RECURSIVE list[mpoly] =
+    IF length(l1) < length(l2) THEN l1 ELSE prl(pstep(l1, l2), l2) ENDIF
+  MEASURE length(l1)
+  mprem(a, b): mpoly = IF null?(nl(b)) THEN mnorm(a) ELSE mnorm(mpol(prl(nl(a), nl(b)))) ENDIF
+
+  %% degree and leading coefficient in the main variable
+  mdg(p): nat = IF null?(nl(p)) THEN 0 ELSE length(nl(p)) - 1 ENDIF
+  mlc(p): mpoly = IF null?(nl(p)) THEN zero ELSE llast(nl(p)) ENDIF
+
+  %% the subresultant remainder sequence (Cohen, Algorithm 3.3.1) of a and b,
+  %% deg a >= deg b, with g and h as there (coefficients: one variable down):
+  %% its last nonzero member, or one when a remainder is a nonzero constant in
+  %% the main variable.  The divisions by g * h^delta (lifted to the main
+  %% variable's frame) and h^(delta - 1) are exact (mex); only the content of
+  %% the result is taken afterwards, where the primitive sequence takes the
+  %% content of every remainder (a gcd one variable down at each step)
+  gsr(fuel, a, b, (g, h: mpoly)): RECURSIVE mpoly =
+    IF fuel = 0 OR mzero?(b) THEN mnorm(a)
+    ELSE LET d = IF mdg(b) <= mdg(a) THEN mdg(a) - mdg(b) ELSE 0 ENDIF, r = mprem(a, b) IN
+      IF mzero?(r) THEN mnorm(b)
+      ELSIF mdg(r) = 0 THEN one
+      ELSE LET g2 = mlc(b),
+               h2 = IF d = 0 THEN h ELSIF d = 1 THEN g2 ELSE mex(mpow(g2, d), mpow(h, d - 1)) ENDIF IN
+           gsr(fuel - 1, b, mex(r, lift(mmul(g, mpow(h, d)))), g2, h2)
+      ENDIF
+    ENDIF
+  MEASURE fuel
+
+  %% mode 0: gcd(a, b); mode 1: the gcd of the members of l; mode 2: the gcd of primitive a, b
+  %% (deg a >= deg b in the main variable): the last member of the subresultant remainder
+  %% sequence gsr, made primitive
+  gx(fuel, (mode: below(3)), a, b, l): RECURSIVE mpoly =
+    IF fuel = 0 THEN one
+    ELSIF mode = 1 THEN
+      (IF null?(l) THEN zero ELSE gx(fuel - 1, 0, car(l), gx(fuel - 1, 1, zero, zero, cdr(l)), null[mpoly]) ENDIF)
+    ELSIF mode = 2 THEN
+      (LET s = gsr(fuel, a, b, one, one) IN
+         IF mone?(s) OR mzero?(s) THEN s
+         ELSE mex(s, lift(gx(fuel - 1, 1, zero, zero, nl(s)))) ENDIF)
+    ELSIF mzero?(a) THEN mnorm(b)
+    ELSIF mzero?(b) THEN mnorm(a)
+    ELSIF mone?(a) OR mone?(b) THEN one
+    ELSE LET la = nl(a), lb = nl(b) IN
+      IF null?(cdr(la)) AND null?(cdr(lb)) THEN lift(gx(fuel - 1, 0, car(la), car(lb), null[mpoly]))
+      ELSE LET ca = gx(fuel - 1, 1, zero, zero, la), cb = gx(fuel - 1, 1, zero, zero, lb),
+               cg = gx(fuel - 1, 0, ca, cb, null[mpoly]),
+               pa = mex(a, lift(ca)), pb = mex(b, lift(cb)),
+               g = IF length(la) >= length(lb) THEN gx(fuel - 1, 2, pa, pb, null[mpoly])
+                   ELSE gx(fuel - 1, 2, pb, pa, null[mpoly]) ENDIF IN
+           mnorm(mmul(lift(cg), g))
+      ENDIF
+    ENDIF
+  MEASURE fuel
+
+  gfuel(a, b): nat = 4 * (msize(a) + msize(b)) + 20
+  mgcd(a, b): mpoly = gx(gfuel(a, b), 0, a, b, null[mpoly])
+  mcont(l): mpoly = gx(gfuel(mpol(l), zero), 1, zero, zero, l)
+
+  %% Yun: for the squarefree decomposition of a primitive polynomial, the nonconstant
+  %% factors a_i (a = product of a_i^i), with c and d as in Yun's loop
+  yun(fuel, c, d): RECURSIVE list[mpoly] =
+    IF fuel = 0 OR mone?(c) OR mzero?(c) THEN null[mpoly]
+    ELSE LET ai = mgcd(c, d), c2 = mex(c, ai), d2 = msub(mex(d, ai), mder(c2)) IN
+      IF mone?(ai) THEN yun(fuel - 1, c2, d2) ELSE cons(ai, yun(fuel - 1, c2, d2)) ENDIF
+    ENDIF
+  MEASURE fuel
+  sqf(a): list[mpoly] =
+    LET g = mgcd(a, mder(a)), c = mex(a, g), d = msub(mex(mder(a), g), mder(c)) IN
+    yun(length(nl(a)) + 2, c, d)
+
+  %% squarefree parts in every variable: those of the content (one variable fewer,
+  %% lifted) and those of the primitive part
+  parts(fuel, u): RECURSIVE list[mpoly] =
+    IF fuel = 0 OR mone?(u) OR mzero?(u) THEN null[mpoly]
+    ELSE LET l = nl(u) IN
+      IF null?(cdr(l)) THEN map(lift)(parts(fuel - 1, car(l)))
+      ELSE LET cu = mcont(l), pu = mex(u, lift(cu)) IN
+           append(map(lift)(parts(fuel - 1, cu)), sqf(pu))
+      ENDIF
+    ENDIF
+  MEASURE fuel
+
+  %% insert a squarefree polynomial into a pairwise coprime list of squarefree ones
+  ins(fuel, p, B): RECURSIVE list[mpoly] =
+    IF fuel = 0 OR mone?(p) OR mzero?(p) THEN B
+    ELSIF null?(B) THEN (: mnorm(p) :)
+    ELSE LET g = mgcd(p, car(B)) IN
+      IF mone?(g) THEN cons(car(B), ins(fuel - 1, p, cdr(B)))
+      ELSE LET b2 = mex(car(B), g), p2 = mex(p, g) IN
+        cons(g, IF mone?(b2) THEN ins(fuel - 1, p2, cdr(B)) ELSE cons(b2, ins(fuel - 1, p2, cdr(B))) ENDIF)
+      ENDIF
+    ENDIF
+  MEASURE fuel
+  insl(l, B): RECURSIVE list[mpoly] =
+    IF null?(l) THEN B ELSE insl(cdr(l), ins(length(B) + 2, car(l), B)) ENDIF
+  MEASURE length(l)
+
+  %% the proposed basis of U
+  basis(U): RECURSIVE list[mpoly] =
+    IF null?(U) THEN null[mpoly] ELSE insl(parts(msize(car(U)) + 2, car(U)), basis(cdr(U))) ENDIF
+  MEASURE length(U)
+
+  %% how often b divides u exactly (b nonconstant)
+  mexp(fuel, u, b): RECURSIVE nat =
+    IF fuel = 0 OR mone?(b) OR mzero?(u) THEN 0
+    ELSE LET q = mex(u, b) IN
+      IF meq(mnorm(mmul(q, b)), mnorm(u)) THEN 1 + mexp(fuel - 1, q, b) ELSE 0 ENDIF
+    ENDIF
+  MEASURE fuel
+  exps(u, B): list[nat] = map(LAMBDA b: mexp(length(nl(u)) + msize(u) + 2, u, b))(B)
+END mpoly_gcd_def

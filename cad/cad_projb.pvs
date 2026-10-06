@@ -1,0 +1,108 @@
+cad_projb: THEORY
+%----------------------------------------------------------------------------
+% The smaller bottom-step projection delineates where it is nonzero.
+%
+% kconst_nz: if every member of pball(G) that does not normalize to 0 is
+% nonzero at every point of C, then col_pair's kconst?(G, C) holds:
+%   - the effective degree of each member is kt (its top coefficient that
+%     does not normalize to 0 is nonzero on C, the ones above vanish
+%     everywhere: kt_edeg);
+%   - the common divisors of a member and its derivative have degree at
+%     least m exactly when the psc below m vanish (sres_ccd), and with the
+%     first psc that does not normalize to 0 nonzero on C and the ones before
+%     it vanishing everywhere, that is m <= the index of that psc, the same
+%     at every point (fpsc_nil, fpsc_cons, ccd1_iff);
+%   - the same for each pair (ccd2_iff).
+% kconst_one: on a set with at most one point kconst? holds trivially.
+% projb_kconst / projb_delin: the same for the normalized projb, and with
+% col_stack's kcol_stack, delineability over a connected set.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_projb_def, cad_projn
+
+  g, h, f: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, q, p0, p1: VAR list[real]
+  u, v, w: VAR mpoly
+  U, V: VAR list[mpoly]
+  i, i1, i2, j, k, k1, k2, m, n: VAR nat
+
+  %% nonzero at every point of C
+  nzon?(u, C): bool = FORALL p: C(p) IMPLIES meval(u)(p) /= 0
+
+  %% ---- the normalized list ----------------------------------------------------------------------
+  nzon_norm: LEMMA nzon?(mnorm(u), C) IMPLIES nzon?(u, C)
+  nzon_const: LEMMA mconst?(mnorm(u)) AND NOT zcst?(u) IMPLIES nzon?(u, C)
+  clean_nz: LEMMA FORALL U: FORALL V: (FORALL v: member(v, clean(U, V)) IMPLIES nzon?(v, C)) IMPLIES
+    (FORALL u: member(u, U) AND NOT zcst?(u) IMPLIES nzon?(u, C)) AND (FORALL v: member(v, V) IMPLIES nzon?(v, C))
+
+  %% ---- membership in pball --------------------------------------------------------------------
+  pbr_mem: LEMMA FORALL G: member(h, G) AND member(u, pb2(g, h)) IMPLIES member(u, pbr(g, G))
+  pball_own: LEMMA FORALL G: i < length(G) AND member(u, pb1(nth(G, i))) IMPLIES member(u, pball(G))
+  pball_pair: LEMMA FORALL G: FORALL i1, i2: i1 < i2 AND i2 < length(G) AND member(u, pb2(nth(G, i1), nth(G, i2)))
+    IMPLIES member(u, pball(G))
+
+  %% ---- the top coefficient --------------------------------------------------------------------
+  ktop_props: LEMMA FORALL n:
+       (ktop(g, n) = -1 AND FORALL j: j < n IMPLIES zcst?(cf(g, j)))
+    OR (0 <= ktop(g, n) AND ktop(g, n) < n AND NOT zcst?(cf(g, ktop(g, n)))
+        AND FORALL j: ktop(g, n) < j AND j < n IMPLIES zcst?(cf(g, j)))
+  earr_cf: LEMMA earr(g, p)(j) = meval(cf(g, j))(p)
+  kt_neg: LEMMA kt(g) < 0 IMPLIES edeg(g, p) = -1
+  kt_edeg: LEMMA kt(g) >= 0 AND meval(cf(g, kt(g)))(p) /= 0 IMPLIES edeg(g, p) = kt(g)
+
+  %% ---- the first psc that does not normalize to 0 ---------------------------------------------
+  fpsc_nil: LEMMA FORALL (d: nat): FORALL j, n: n - j <= d AND null?(fpsc(g, h, j, n)) IMPLIES
+    FORALL i: j <= i AND i < n IMPLIES zcst?(pscg(g, h, i))
+  fpsc_cons: LEMMA FORALL (d: nat): FORALL j, n: n - j <= d AND cons?(fpsc(g, h, j, n)) IMPLIES
+    EXISTS (j0: nat): j <= j0 AND j0 < n AND car(fpsc(g, h, j, n)) = pscg(g, h, j0)
+      AND NOT zcst?(pscg(g, h, j0)) AND FORALL i: j <= i AND i < j0 IMPLIES zcst?(pscg(g, h, i))
+
+  %% at a point where the first psc of fpsc(g, h, 0, n) that does not normalize to 0 is
+  %% nonzero, the psc below m all vanish exactly when m is at most its index
+  fidx(g, h, n): nat =
+    IF cons?(fpsc(g, h, 0, n))
+      THEN epsilon! (j0: nat): j0 < n AND car(fpsc(g, h, 0, n)) = pscg(g, h, j0)
+             AND NOT zcst?(pscg(g, h, j0)) AND FORALL i: i < j0 IMPLIES zcst?(pscg(g, h, i))
+    ELSE n ENDIF
+  fidx_props: LEMMA
+    (cons?(fpsc(g, h, 0, n)) IMPLIES fidx(g, h, n) < n AND car(fpsc(g, h, 0, n)) = pscg(g, h, fidx(g, h, n))
+        AND NOT zcst?(pscg(g, h, fidx(g, h, n))))
+    AND (FORALL i: i < fidx(g, h, n) AND i < n IMPLIES zcst?(pscg(g, h, i)))
+  psc_zero_iff: LEMMA m <= n
+    AND (cons?(fpsc(g, h, 0, n)) IMPLIES meval(car(fpsc(g, h, 0, n)))(p) /= 0) IMPLIES
+    ((FORALL i: i < m IMPLIES meval(pscg(g, h, i))(p) = 0) IFF m <= fidx(g, h, n))
+
+  %% ---- the executable psc at a point --------------------------------------------------------------
+  pscg1_ev: LEMMA k < length(g) AND j + 2 <= k IMPLIES
+    meval(pscg(rdc(g, k), lderiv(rdc(g, k)), j))(p) =
+      rdet(k + (k - 1) - 2 * j, sylj(earr(rdc(g, k), p), k, poly_deriv(earr(rdc(g, k), p)), k - 1, j))
+  pscg2_ev: LEMMA k1 < length(g) AND k2 < length(h) AND j < k1 AND j < k2 IMPLIES
+    meval(pscg(rdc(g, k1), rdc(h, k2), j))(p) =
+      rdet(k1 + k2 - 2 * j, sylj(earr(rdc(g, k1), p), k1, earr(rdc(h, k2), p), k2, j))
+
+  %% ---- on a set where pball is nonzero -----------------------------------------------------------
+  %% (hyp: every member of pball(G) that does not normalize to 0 is nonzero on C)
+  ed_kt: LEMMA (FORALL u: member(u, pball(G)) AND NOT zcst?(u) IMPLIES nzon?(u, C))
+    AND i < length(G) AND C(p) IMPLIES edeg(nth(G, i), p) = kt(nth(G, i))
+  lead_kt: LEMMA (FORALL u: member(u, pball(G)) AND NOT zcst?(u) IMPLIES nzon?(u, C))
+    AND i < length(G) AND C(p) AND kt(nth(G, i)) = k AND k >= 0 IMPLIES earr(rdc(nth(G, i), k), p)(k) /= 0
+  ccd1_iff: LEMMA (FORALL u: member(u, pball(G)) AND NOT zcst?(u) IMPLIES nzon?(u, C))
+    AND i < length(G) AND C(p) AND kt(nth(G, i)) = k AND k >= 1 AND m <= k - 1 IMPLIES
+    (ccd?(rp(earr(rdc(nth(G, i), k), p), k), rp(poly_deriv(earr(rdc(nth(G, i), k), p)), k - 1), m) IFF
+     m <= fidx(rdc(nth(G, i), k), lderiv(rdc(nth(G, i), k)), k - 1))
+  ccd2_iff: LEMMA (FORALL u: member(u, pball(G)) AND NOT zcst?(u) IMPLIES nzon?(u, C))
+    AND i1 < i2 AND i2 < length(G) AND C(p) AND kt(nth(G, i1)) = k1 AND kt(nth(G, i2)) = k2
+    AND k1 >= 0 AND k2 >= 0 AND m <= k1 AND m <= k2 IMPLIES
+    (ccd?(rp(earr(rdc(nth(G, i1), k1), p), k1), rp(earr(rdc(nth(G, i2), k2), p), k2), m) IFF
+     m <= fidx(rdc(nth(G, i1), k1), rdc(nth(G, i2), k2), min(k1, k2)))
+
+  %% ---- the core ---------------------------------------------------------------------------------
+  kconst_nz: LEMMA (FORALL u: member(u, pball(G)) AND NOT zcst?(u) IMPLIES nzon?(u, C)) IMPLIES kconst?(G, C)
+  kconst_one: LEMMA (FORALL p, q: C(p) AND C(q) IMPLIES p = q) IMPLIES kconst?(G, C)
+
+  projb_kconst: LEMMA (FORALL u: member(u, projb(G)) IMPLIES nzon?(u, C)) IMPLIES kconst?(G, C)
+  projb_delin: LEMMA conn?(C) AND C(p0) AND (FORALL u: member(u, projb(G)) IMPLIES nzon?(u, C))
+    IMPLIES delin_cl?(G, C)
+END cad_projb

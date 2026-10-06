@@ -1,0 +1,82 @@
+rdet_nl: THEORY
+%----------------------------------------------------------------------------
+% ring_det's real determinant is NASALib's, and what that gives.
+%
+% rdet(n, R) is the first-row Laplace expansion of the n-corner of R;
+% NASALib's matrices@matrix_props det is the same expansion of a
+% list-of-lists matrix, so for n >= 1 rdet(n, R) = det(nlm(R, n)) (rdet_nl),
+% and NASALib's matrix theory applies:
+%   rdet_tr         the transpose has the same determinant (det_transpose)
+%   rdet_rows_eq    two equal rows give 0 (det_rows_eq_0), so do two equal
+%   rdet_cols_eq    columns
+%   rdet_lker       rdet /= 0: the only left-kernel vector is 0 (an inverse
+%                   exists: matrix_inv's invertible_det)
+%   rdet_zero_lker  rdet = 0: a nonzero vector is in the left kernel (Gaussian
+%                   elimination: matrix_diag's diag_det_zero_row; the row of
+%                   the elimination matrix at the zero row)
+% where c is in the left kernel of R's n-corner when sum_a c(a) R(a, b) = 0
+% for every b < n.  These are the two halves of the subresultant theorem's
+% "psc_j = 0 iff a kernel vector exists".
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING ring_det, matrices@matrix_inv
+
+  R, T: VAR RMat
+  n: VAR nat
+  pn: VAR posnat
+  c: VAR [nat -> real]
+  i, j, k, a, b: VAR nat
+
+  %% the n-corner as a NASALib matrix
+  nlm(R, n): Matrix = form_matrix(R, n, n)
+
+  nlm_rows: LEMMA rows(nlm(R, n)) = n
+  nlm_cols: LEMMA columns(nlm(R, n)) = n
+  nlm_null: LEMMA null?(nlm(R, n)) IFF n = 0
+  nlm_entry: LEMMA a < n AND b < n IMPLIES entry(nlm(R, n))(a, b) = R(a, b)
+  %% a square NASALib matrix when n > 0 (what det_transpose and matrix_inv ask)
+  nlm_sq: LEMMA n > 0 IMPLIES
+    (null?(nlm(R, n)) OR FORALL (i, j: below(length(nlm(R, n)))):
+       length(nth(nlm(R, n), i)) = length(nth(nlm(R, n), j)))
+    AND rows(nlm(R, n)) > 0 AND columns(nlm(R, n)) > 0 AND rows(nlm(R, n)) = columns(nlm(R, n))
+  nlm_remove: LEMMA n >= 2 AND k < n IMPLIES remove(nlm(R, n), 0, k) = nlm(rminor(R, 0, k), n - 1)
+
+  %% the expansion from column j on, as a sum
+  rdetl_sigma: LEMMA FORALL (m: nat): FORALL (pn: posnat), j, R: j + m = pn IMPLIES
+    rdetl(pn, R, j) = sigma(j, pn - 1, LAMBDA (k: nat): rsgn(k) * R(0, k) * rdet(pn - 1, rminor(R, 0, k)))
+
+  rsgn_expt: LEMMA rsgn(k) = (-1) ^ k
+
+  rdet_nl: THEOREM rdet(pn, R) = det(nlm(R, pn))
+
+  %% only the corner matters
+  rdet_ext: LEMMA (FORALL a, b: a < n AND b < n IMPLIES R(a, b) = T(a, b)) IMPLIES rdet(n, R) = rdet(n, T)
+
+  %% the transpose, and equal rows or columns
+  rtr(R): RMat = LAMBDA (a, b: nat): R(b, a)
+  rdet_tr: LEMMA rdet(n, rtr(R)) = rdet(n, R)
+  rdet_rows_eq: LEMMA i < n AND j < n AND i /= j AND (FORALL b: b < n IMPLIES R(i, b) = R(j, b))
+    IMPLIES rdet(n, R) = 0
+  rdet_cols_eq: LEMMA i < n AND j < n AND i /= j AND (FORALL a: a < n IMPLIES R(a, i) = R(a, j))
+    IMPLIES rdet(n, R) = 0
+
+  %% the left kernel
+  lcomb(n, c, R)(b): real = sigma(0, n - 1, LAMBDA (a: nat): c(a) * R(a, b))
+  lker?(n, c, R): bool = FORALL b: b < n IMPLIES lcomb(n, c, R)(b) = 0
+  nzv?(n, c): bool = EXISTS a: a < n AND c(a) /= 0
+
+  %% c as a row matrix, and products with it
+  d: VAR [nat -> real]
+  rowv(n, c): Matrix = form_matrix(LAMBDA (i, a: nat): c(a), 1, n)
+  rowv_entry: LEMMA a < n IMPLIES entry(rowv(n, c))(0, a) = c(a)
+  rowv_eq: LEMMA (FORALL a: a < n IMPLIES c(a) = d(a)) IMPLIES rowv(n, c) = rowv(n, d)
+  rowv_nlm: LEMMA rowv(pn, c) * nlm(R, pn) = rowv(pn, lcomb(pn, c, R))
+  rowv_zero: LEMMA FORALL (IQ: SquareMatrix(pn)):
+    rowv(pn, LAMBDA (a: nat): 0) * IQ = rowv(pn, LAMBDA (a: nat): 0)
+  rowv_id: LEMMA rowv(pn, c) * Id(pn) = rowv(pn, c)
+  sq_mult_entry: LEMMA FORALL (M, N: SquareMatrix(pn)): i < pn AND j < pn IMPLIES
+    entry(M * N)(i, j) = sigma(0, pn - 1, LAMBDA (d: nat): entry(M)(i, d) * entry(N)(d, j))
+
+  rdet_lker: THEOREM rdet(n, R) /= 0 AND lker?(n, c, R) IMPLIES NOT nzv?(n, c)
+  rdet_zero_lker: THEOREM rdet(n, R) = 0 IMPLIES EXISTS c: nzv?(n, c) AND lker?(n, c, R)
+END rdet_nl

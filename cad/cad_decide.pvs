@@ -1,0 +1,59 @@
+cad_decide: THEORY
+%----------------------------------------------------------------------------
+% The meaning of a prenex sentence.
+%
+% A closed prenex formula: a quantifier list qs (TRUE for FORALL), a family F
+% of polynomials in the innermost variable with coefficients in the outer
+% ones, and a truth function Psi on the sign vectors of F.  sem(os, F, Psi,
+% ys) reads the quantifiers outermost first, the values assigned so far in
+% ys; fsem is the same for a Boolean formula phi over sign atoms (bform),
+% and fsem_sem relates them.  qfold folds one quantifier over a list of
+% sign vectors.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING bform
+
+  F: VAR list[list[mpoly]]
+  os, r: VAR list[bool]
+  q: VAR bool
+  ys: VAR list[real]
+  x: VAR real
+  Psi: VAR [SV -> bool]
+  vs: VAR SVL
+  v: VAR SV
+  phi: VAR BF
+
+  %% list facts
+  every_mem: LEMMA FORALL vs: every(Psi)(vs) AND member(v, vs) IMPLIES Psi(v)
+  every_all: LEMMA FORALL vs: (FORALL v: member(v, vs) IMPLIES Psi(v)) IMPLIES every(Psi)(vs)
+  w: VAR SV
+  mem_cons_sv: LEMMA member(v, cons(w, vs)) IFF (v = w OR member(v, vs))
+  some_mem: LEMMA FORALL vs: some(Psi)(vs) IMPLIES EXISTS v: member(v, vs) AND Psi(v)
+  some_intro: LEMMA FORALL vs: member(v, vs) AND Psi(v) IMPLIES some(Psi)(vs)
+
+  qfold(q, vs, Psi): bool = IF q THEN every(Psi)(vs) ELSE some(Psi)(vs) ENDIF
+
+  %% the semantics, quantifiers outermost first, the values assigned so far in ys
+  sem(os, F, Psi, ys): RECURSIVE bool =
+    CASES os OF
+      null: Psi(svec(F, ys)),
+      cons(q, r): IF q THEN FORALL x: sem(r, F, Psi, cons(x, ys))
+                  ELSE EXISTS x: sem(r, F, Psi, cons(x, ys)) ENDIF
+    ENDCASES
+  MEASURE length(os)
+
+  sem_null: LEMMA sem(null[bool], F, Psi, ys) = Psi(svec(F, ys))
+  sem_cons: LEMMA sem(cons(q, r), F, Psi, ys) =
+    IF q THEN FORALL x: sem(r, F, Psi, cons(x, ys))
+    ELSE EXISTS x: sem(r, F, Psi, cons(x, ys)) ENDIF
+
+  %% the formula version
+  fsem(os, F, phi, ys): RECURSIVE bool =
+    CASES os OF
+      null: bfeval(phi, F, ys),
+      cons(q, r): IF q THEN FORALL x: fsem(r, F, phi, cons(x, ys))
+                  ELSE EXISTS x: fsem(r, F, phi, cons(x, ys)) ENDIF
+    ENDCASES
+  MEASURE length(os)
+  fsem_sem: LEMMA FORALL os: FORALL ys: fsem(os, F, phi, ys) IFF sem(os, F, LAMBDA v: bfsv(phi, v), ys)
+END cad_decide

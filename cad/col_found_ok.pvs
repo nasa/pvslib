@@ -1,0 +1,77 @@
+col_found_ok: THEORY
+%----------------------------------------------------------------------------
+% col_found always returns the Collins CAD as data, in every dimension, and
+% its records decide every sentence over F.
+%
+% cfound?(qs, F, L): the cells of the Collins run for F in length(qs)
+% variables form a CAD adapted to F (col_line's ccells?), every record of L
+% lies in the cell its sector and indices name and carries F's sign vector
+% at its sample, and every nonempty cell has a record.  For two or more
+% variables, col_verified's ccad_of? gives it for L = cad_outc(u, qs, F)
+% (ccad_cfound).
+%   col_found_cad      cfound? for col_found's records, for every nonempty
+%                      prefix qs: no search-effort hypothesis, one variable
+%                      included (the sectors of the line, lrecs_found)
+%   cfound_decides     records with cfound? decide every sentence over F in
+%                      the same variables (cad_fold_ok's afold_sem on every
+%                      sector)
+%   col_found_decides  so do col_found's records
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_found_def, col_verified, col_line, cad_fold_ok, map_member[Sect, ORec]
+
+  u, k: VAR nat
+  qs, qs2: VAR list[bool]
+  F: VAR list[list[mpoly]]
+  Psi2: VAR [SV -> bool]
+  L: VAR list[ORec]
+  r: VAR ORec
+  s: VAR Sect
+  A: VAR list[nat]
+  q: VAR list[real]
+  x: VAR real
+
+  cfound?(qs, F, L): bool = cons?(qs) AND
+    LET k = length(cdr(qs)), ss = csects(k, F) IN
+        ccells?(k, F)
+    AND (FORALL r: member(r, L) IMPLIES
+           member(r`rsec, ss) AND length(r`radr) = k
+           AND ccell(k, F)(r`rsec, r`radr)(den(r`rsod))
+           AND r`rsv = svec(F, den(r`rsod)))
+    AND (FORALL s, A: member(s, ss) AND length(A) = k AND (EXISTS q: ccell(k, F)(s, A)(q))
+           IMPLIES EXISTS r: member(r, L) AND r`rsec = s AND r`radr = A)
+
+  ccad_cfound: LEMMA ccad_of?(u, qs, F) IMPLIES cfound?(qs, F, cad_outc(u, qs, F))
+
+  %% ---- the line -------------------------------------------------------------------------------------
+  lsect_in: LEMMA member(s, sects(rts(F))) IMPLIES in?(s, value(sample(s)))
+  lrecs_mem: LEMMA member(r, lrecs(F)) IFF EXISTS s: member(s, sects(rts(F))) AND r = lrec(F)(s)
+  lrecs_found: LEMMA cons?(qs) AND null?(cdr(qs)) IMPLIES cfound?(qs, F, lrecs(F))
+
+  %% ---- the search ------------------------------------------------------------------------------------
+  cadcu_ok: LEMMA cons?(qs) AND cons?(cdr(qs)) IMPLIES decc_o(cad_outcu(qs, F, u)`fu, qs, F, psi_c)`ok
+  cadcu_recs: LEMMA cons?(qs) AND cons?(cdr(qs)) IMPLIES
+    cad_outcu(qs, F, u)`frecs = cad_outc(cad_outcu(qs, F, u)`fu, qs, F)
+  cadcu_line: LEMMA cons?(qs) AND null?(cdr(qs)) IMPLIES cad_outcu(qs, F, u)`frecs = lrecs(F)
+
+  %% ---- THE COLLINS CAD, FOUND, IN EVERY DIMENSION ---------------------------------------------------
+  col_found_cad: THEOREM cons?(qs) IMPLIES cfound?(qs, F, col_found(qs, F)`frecs)
+
+  %% ---- the records decide every sentence -----------------------------------------------------------
+  cf_sector_of: LEMMA EXISTS s: member(s, csects(k, F)) AND in?(s, x)
+  cf_sector_recs: LEMMA cfound?(qs, F, L) AND member(s, csects(length(cdr(qs)), F))
+    IMPLIES cad_over?(ctw(F, length(cdr(qs))), scell(s))
+      AND recin?(ctw(F, length(cdr(qs))), scell(s), F, secr(s, L))
+      AND reccov?(ctw(F, length(cdr(qs))), scell(s), secr(s, L))
+      AND fsinv?(ctw(F, length(cdr(qs))), scell(s), F)
+  cf_sector_has: LEMMA cfound?(qs, F, L) AND member(s, csects(length(cdr(qs)), F))
+    IMPLIES EXISTS r: member(r, L) AND r`rsec = s
+  cf_sector_fold: LEMMA cfound?(qs, F, L) AND length(qs2) = length(qs)
+    AND member(s, csects(length(cdr(qs)), F)) AND in?(s, x)
+    IMPLIES (afold(cdr(qs2), Psi2, secr(s, L)) IFF sem(cdr(qs2), F, Psi2, (: x :)))
+
+  cfound_decides: THEOREM cfound?(qs, F, L) AND length(qs2) = length(qs)
+    IMPLIES (cfold(qs2, Psi2, L) IFF sem(qs2, F, Psi2, null[real]))
+  col_found_decides: THEOREM cons?(qs) AND length(qs2) = length(qs)
+    IMPLIES (cfold(qs2, Psi2, col_found(qs, F)`frecs) IFF sem(qs2, F, Psi2, null[real]))
+END col_found_ok

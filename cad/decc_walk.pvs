@@ -1,0 +1,74 @@
+decc_walk: THEORY
+%----------------------------------------------------------------------------
+% The walk over a Collins tower reads the truth.
+%
+%   innern_cad   over a base cell C on which the tower is a CAD (cad_over?),
+%                with valid tables, a well formed descriptor whose point lies
+%                in C, and the walk's certificate okw_o:
+%                  innern_o(u, qs, TW, TB, Psi, od) IFF sem(qs, tlast(TW), Psi, den(od))
+%   okw_ev       the certificate holds for every large enough u
+%
+% By induction on the tower.
+% The bottom level is innern_base (on one family okw_o is okn_o, okw_one).
+% Above it the cell list of the walk is the cell value list of the point
+% (cellsf_cvl): a separator's descriptor denotes cons(y0, den(od)), which
+% lies in the stack cell of its index over C, over which the rest of the
+% tower is a CAD, so the induction hypothesis applies there (ic_sep); the
+% same at the root of a gap (ic_sec).  The fold of the list is the
+% quantifier because the CAD makes the truth constant along a root-free
+% interval (col_sem's sem_cvlc).  The certificate is the walk half of okn_o,
+% so tower_ev's lvall? gives it eventually (lvall_okw).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING decc_def, col_sem, tower_ev
+
+  TW, TW1: VAR Tower
+  TB: VAR list[CT]
+  P: VAR list[list[mpoly]]
+  qs, qs1: VAR list[bool]
+  Psi: VAR [SV -> bool]
+  od, od2: VAR OD
+  y0, lo, hi: VAR rat
+  u: VAR nat
+  C: VAR [list[real] -> bool]
+
+  %% ---- the bottom level -------------------------------------------------------------------
+  okw_one: LEMMA okw_o(u, (: P :), TB, od) = okn_o(u, (: P :), TB, od)
+
+  %% ---- the induction ------------------------------------------------------------------------
+  IC(u, TW): bool = FORALL qs, TB, Psi, od, C:
+    length(qs) = length(TW) AND vtb?(TB) AND wf?(od) AND okw_o(u, TW, TB, od)
+    AND cad_over?(TW, C) AND C(den(od))
+    IMPLIES (innern_o(u, qs, TW, TB, Psi, od) IFF sem(qs, tlast(TW), Psi, den(od)))
+
+  %% the context of a level with a level below it
+  ctxC?(u, P, TW1, TB, od): bool =
+    cons?(TW1) AND vtb?(TB) AND cons?(TB) AND cons?(cdr(TB)) AND wf?(od)
+    AND lvok_o(u, P, od, car(TB))
+    AND every(LAMBDA (b: bool): b)
+         (cellsf_o(LAMBDA (od2: OD): okw_o(u, TW1, cdr(TB), od2),
+                   feff(P, od), od, car(TB), seps_t(u, feff(P, od), od, car(TB))))
+
+  ic_sep: LEMMA IC(u, TW1) AND ctxC?(u, P, TW1, TB, od) AND length(qs1) = length(TW1)
+    AND cad_over?(cons(P, TW1), C) AND C(den(od))
+    AND member(y0, seps_t(u, feff(P, od), od, car(TB)))
+    IMPLIES innern_o(u, qs1, TW1, cdr(TB), Psi, opt(od, y0)) = Tv(qs1, TW1, Psi, den(od))(y0)
+
+  ic_sec: LEMMA IC(u, TW1) AND ctxC?(u, P, TW1, TB, od) AND length(qs1) = length(TW1)
+    AND cad_over?(cons(P, TW1), C) AND C(den(od))
+    AND adj?(seps_t(u, feff(P, od), od, car(TB)), lo, hi)
+    AND gap?(zf(P, den(od)), msg(den(od)), lo, hi)
+    IMPLIES innern_o(u, qs1, TW1, cdr(TB), Psi, osec(od, feff(P, od), lo, hi))
+            = Tv(qs1, TW1, Psi, den(od))(secbeta(zf(P, den(od)), den(od), lo, hi))
+
+  ic_step: LEMMA cons?(TW1) AND IC(u, TW1) IMPLIES IC(u, cons(P, TW1))
+
+  innern_cad: THEOREM FORALL TW: FORALL qs, TB, Psi, od, C:
+    cons?(TW) AND length(qs) = length(TW) AND vtb?(TB) AND wf?(od) AND okw_o(u, TW, TB, od)
+    AND cad_over?(TW, C) AND C(den(od))
+    IMPLIES (innern_o(u, qs, TW, TB, Psi, od) IFF sem(qs, tlast(TW), Psi, den(od)))
+
+  %% ---- the certificate holds eventually --------------------------------------------------------
+  lvall_okw: LEMMA FORALL TW: FORALL TB, od: lvall?(u, TW, TB, od) IMPLIES okw_o(u, TW, TB, od)
+  okw_ev: LEMMA cons?(TW) AND wf?(od) IMPLIES ev?(LAMBDA u: okw_o(u, TW, tables(u, TW, od), od))
+END decc_walk

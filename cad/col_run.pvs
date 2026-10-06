@@ -1,0 +1,70 @@
+col_run: THEORY
+%----------------------------------------------------------------------------
+% The Collins run decomposes R^(k+1) into a CAD adapted to F, with no
+% certificate.
+%
+% The line of the outermost variable is cut into the sectors of the roots
+% of pbot(F, k), the k-th Collins projection of F (csects), and every sector
+% carries the same tower ctw(F, k): F's projections, lowest first, then F.
+% ccell(k, F)(s, A) is the cell over the sector s with stack indices A (one
+% per level above the outermost variable).  col_cad_run: for every F and
+% every k >= 1
+%   (1) the cells of R^(k+1) cover it, and two of them meet only if they
+%       are the same (sector and indices);
+%   (2) every cell, at every level, is connected and first-order definable
+%       (rcf_cad_def's cellF, by rcf_cells' cellF_ok; semi-algebraic in the
+%       sense of first-order definable, and quantifier-free definable by
+%       cad_sa's col_cells_sa);
+%   (3) over each sector the tower is a CAD (cad_over?): every level is
+%       delineable over every cell below it, and its cells are the sections
+%       and bands of the root functions;
+%   (4) the graph of every root function over a cell is definable;
+%   (5) every polynomial of F has one sign on every cell of R^(k+1).
+% Nothing depends on u or on a certificate: delineability is Collins'
+% theorem through col_tower's
+% ctw_cad, and the outer family is sign-invariant on its sectors (col_sem's
+% sinv_sect) because the gaps of sorted roots always pass (gaps_ok_incr).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_sem, rcf_cells
+
+  k, i: VAR nat
+  F: VAR list[list[mpoly]]
+  s, s1, s2: VAR Sect
+  A, A1, A2: VAR list[nat]
+  p, p1, p2, q: VAR list[real]
+
+  %% the sectors of the outer line and the cells over them
+  csects(k, F): list[Sect] = sects(rts(pbot(F, k)))
+  ccell(k, F)(s, A): [list[real] -> bool] = tcell(ctw(F, k), scell(s), A)
+
+  ctw_shape: LEMMA k >= 1 IMPLIES cons?(ctw(F, k)) AND length(ctw(F, k)) = k AND tlast(ctw(F, k)) = F
+
+  %% over each sector the tower is a CAD
+  csector_cad: LEMMA k >= 1 AND member(s, csects(k, F)) IMPLIES cad_over?(ctw(F, k), scell(s))
+
+  %% every cell is first-order definable
+  ccell_ok_le: LEMMA k >= 1 AND length(A) <= k AND length(p) = 1 + length(A)
+    IMPLIES (ccell(k, F)(s, A)(p) IFF fsem(cellF(ctw(F, k), sectF(s), A))(p))
+  ccell_fod_le: LEMMA k >= 1 AND length(A) <= k IMPLIES fod?(1 + length(A))(ccell(k, F)(s, A))
+
+  %% ---- THE COLLINS RUN IS A CAD ADAPTED TO F -------------------------------------------------
+  col_cad_run: THEOREM k >= 1 IMPLIES
+        (FORALL p: length(p) = k + 1 IMPLIES
+           EXISTS s, A: member(s, csects(k, F)) AND length(A) = k AND ccell(k, F)(s, A)(p))
+    AND (FORALL p, s1, s2, A1, A2: member(s1, csects(k, F)) AND member(s2, csects(k, F))
+           AND length(A1) = k AND length(A2) = k
+           AND ccell(k, F)(s1, A1)(p) AND ccell(k, F)(s2, A2)(p)
+           IMPLIES s1 = s2 AND A1 = A2)
+    AND (FORALL s, A: member(s, csects(k, F)) AND length(A) <= k IMPLIES
+           conn?(ccell(k, F)(s, A)) AND fod?(1 + length(A))(ccell(k, F)(s, A)))
+    AND (FORALL s: member(s, csects(k, F)) IMPLIES cad_over?(ctw(F, k), scell(s)))
+    AND (FORALL s, A, i: member(s, csects(k, F)) AND length(A) < k
+           AND (FORALL q: ccell(k, F)(s, A)(q) IMPLIES i < nroot(nth(ctw(F, k), length(A)), q))
+           IMPLIES fod?(2 + length(A))
+             (LAMBDA p: cons?(p) AND ccell(k, F)(s, A)(cdr(p))
+                        AND car(p) = rt(nth(ctw(F, k), length(A)), cdr(p), i)))
+    AND (FORALL s, A, p1, p2: member(s, csects(k, F)) AND length(A) = k
+           AND ccell(k, F)(s, A)(p1) AND ccell(k, F)(s, A)(p2)
+           IMPLIES svec(F, p1) = svec(F, p2))
+END col_run

@@ -1,0 +1,45 @@
+chain_rd: THEORY
+%----------------------------------------------------------------------------
+% A Sturm chain and its reads in ONE pass.
+%
+% A chain-table entry (walk_od's mkce) needs the chain (schain) and the reads
+% its construction makes (i_rd).  Computed separately, i_rd builds the chain
+% again -- rchain2_rd continues with snext2_sg, and snext2_rd computes the
+% same step once more for its reads -- and mkce asked for i_rd twice: about
+% seven pseudo-remainder steps for each step of the chain.  rchain2_cr takes
+% each step once and returns both; rchain2_cr_eq and schain_rd_eq say it is
+% the pair of the separate computations, so nothing proved about schain and
+% i_rd changes.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_rd
+
+  CR: TYPE = [# ch: list[list[mpoly]], rd: list[mpoly] #]
+
+  k, e: VAR nat
+  l1, l2, f: VAR list[mpoly]
+  cc: VAR mpoly
+  sg: VAR SG
+
+  rchain2_cr(k, l1, l2, cc, e, sg): RECURSIVE CR =
+    IF cons?(l2) AND k > 0
+    THEN LET r = sstep2(l1, l2, cc, e, sg),
+             n = snorm_sg(r, sg),
+             rest = rchain2_cr(k - 1, l2, n, llast(l2), nexp(l1, l2), sg) IN
+         (# ch := cons(l2, rest`ch),
+            rd := append(append(sstep2_rd(l1, l2, cc, e, sg), snorm_rd(r, sg)), rest`rd) #)
+    ELSE (# ch := (: null[mpoly] :), rd := null[mpoly] #)
+    ENDIF
+  MEASURE k
+
+  rchain2_cr_eq: LEMMA FORALL k: FORALL l1, l2, cc, e:
+    rchain2_cr(k, l1, l2, cc, e, sg) =
+      (# ch := rchain2_sg(k, l1, l2, cc, e, sg), rd := rchain2_rd(k, l1, l2, cc, e, sg) #)
+
+  %% the chain of f and the reads of its construction
+  schain_rd(k, sg, f): CR =
+    LET c = rchain2_cr(k, f, lderiv(f), mconst(1), 0, sg), ch = cons(f, c`ch) IN
+    (# ch := ch, rd := append(c`rd, lc_rd(ch)) #)
+
+  schain_rd_eq: LEMMA schain_rd(k, sg, f) = (# ch := schain(k, sg, f), rd := i_rd(k, sg, f) #)
+END chain_rd

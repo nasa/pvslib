@@ -1,0 +1,90 @@
+qsec_rd: THEORY
+%----------------------------------------------------------------------------
+% The reads of one section query.
+%
+% qsec(sg, P, lo, hi, c) answers the sign of c at the section of P in
+% (lo, hi] through the oracle sg: it normalizes c by the signs of its
+% coefficients (snorm_sg), picks the member of P that vanishes there (secp),
+% builds the Tarski chain of that member and c (tchain_sg), and counts sign
+% changes at the two ends of the gap.
+% Every one of these decisions is a sign query on a polynomial; q_rd lists
+% them, and qsec_det says the answer -- ok flag and value -- depends on the
+% oracle only through the signs it gives on q_rd.  At n levels the oracle of
+% a cell is a section oracle over a section oracle, right only on the reads
+% its own queries certified; this is what lets claim A be stated with a read
+% list (innern_sem) instead of an exact oracle.
+%
+% (Until 2026-09-28 the query searched for its ends with a fixed fuel, and
+% the probes of that search were reads too; the search is gone.)
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING tower_def, walk_rd
+
+  P, G: VAR list[list[mpoly]]
+  l0, g, f: VAR list[mpoly]
+  cs, c0, ch: VAR list[list[mpoly]]
+  c: VAR mpoly
+  sg, sg1, sg2: VAR SG
+  lo, hi, y0, y1: VAR rat
+  n, j, k: VAR nat
+  R: VAR list[mpoly]
+
+  %% ---- a chain read at a point ----------------------------------------------------
+  svarc_det: LEMMA cons?(ch) AND agree(sg1, sg2, ent_rd(ch, y0)) IMPLIES svarc(sg2, ch, y0) = svarc(sg1, ch, y0)
+  cntc_det: LEMMA cons?(ch) AND agree(sg1, sg2, ent_rd(ch, y0)) AND agree(sg1, sg2, ent_rd(ch, y1))
+    IMPLIES cntc(sg2, ch, y0, y1) = cntc(sg1, ch, y0, y1)
+  %% the first entry's sign is one of the chain's reads at the point
+  sent_det: LEMMA cons?(ch) AND agree(sg1, sg2, ent_rd(ch, y0)) IMPLIES sent(sg2, car(ch), y0) = sent(sg1, car(ch), y0)
+
+  %% ---- the vanishing member -----------------------------------------------------------
+  %% each candidate's chain reads and its count's entry reads at lo and hi, up to the chosen one
+  secp_rd(P, sg, G, lo, hi): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSIF length(strip(car(G))) >= 2
+      THEN append(i_rd(bk(P), sg, strip(car(G))),
+             append(e_rd(bk(P), sg, strip(car(G)), (: lo, hi :)),
+               IF cnt(bk(P), sg, strip(car(G)), lo, hi) > 0 THEN null[mpoly]
+               ELSE secp_rd(P, sg, cdr(G), lo, hi) ENDIF))
+    ELSE secp_rd(P, sg, cdr(G), lo, hi)
+    ENDIF
+  MEASURE length(G)
+  secp_det: LEMMA FORALL G: agree(sg1, sg2, secp_rd(P, sg1, G, lo, hi)) IMPLIES
+    secp(P, sg2, G, lo, hi) = secp(P, sg1, G, lo, hi)
+    AND secp_rd(P, sg2, G, lo, hi) = secp_rd(P, sg1, G, lo, hi)
+
+  %% ---- one query --------------------------------------------------------------------------
+  ql_rd(sg, l0, c0, lo, hi, c): list[mpoly] =
+    LET g = snorm_sg(as_list(c), sg) IN
+    append(snorm_rd(as_list(c), sg),
+      IF null?(g) THEN null[mpoly]
+      ELSIF null?(cdr(g)) THEN (: car(g) :)
+      ELSE LET k2 = length(l0) + length(g) + 2,
+               ch = tchain_sg(k2, l0, g, sg) IN
+           append(tchain_rd(k2, l0, g, sg),
+             append(ent_rd(ch, lo), append(ent_rd(ch, hi),
+               append(ent_rd(c0, lo), ent_rd(c0, hi)))))
+      ENDIF)
+  qsecl_det: LEMMA cons?(c0) AND agree(sg1, sg2, ql_rd(sg1, l0, c0, lo, hi, c)) IMPLIES
+    qsecl(sg2, l0, c0, lo, hi, c) = qsecl(sg1, l0, c0, lo, hi, c)
+    AND ql_rd(sg2, l0, c0, lo, hi, c) = ql_rd(sg1, l0, c0, lo, hi, c)
+
+  %% the member's own chain is built by the caller: its construction reads come first
+  q_rd(sg, P, lo, hi, c): list[mpoly] =
+    LET l0 = secp(P, sg, P, lo, hi) IN
+    append(secp_rd(P, sg, P, lo, hi),
+      append(i_rd(bk(P), sg, l0), ql_rd(sg, l0, schain(bk(P), sg, l0), lo, hi, c)))
+  qsec_det: THEOREM agree(sg1, sg2, q_rd(sg1, P, lo, hi, c)) IMPLIES
+    qsec(sg2, P, lo, hi, c) = qsec(sg1, P, lo, hi, c)
+    AND q_rd(sg2, P, lo, hi, c) = q_rd(sg1, P, lo, hi, c)
+
+  %% ---- all the queries of a read list ------------------------------------------------------
+  qs_rd(sg, P, lo, hi, R): RECURSIVE list[mpoly] =
+    IF null?(R) THEN null[mpoly]
+    ELSE append(q_rd(sg, P, lo, hi, car(R)), qs_rd(sg, P, lo, hi, cdr(R)))
+    ENDIF
+  MEASURE length(R)
+  qs_det: LEMMA FORALL R: agree(sg1, sg2, qs_rd(sg1, P, lo, hi, R)) IMPLIES
+    (allok?(sg2, P, lo, hi, R) IFF allok?(sg1, P, lo, hi, R))
+    AND agree(sg_sec(sg1, P, lo, hi), sg_sec(sg2, P, lo, hi), R)
+    AND qs_rd(sg2, P, lo, hi, R) = qs_rd(sg1, P, lo, hi, R)
+END qsec_rd

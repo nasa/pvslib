@@ -1,0 +1,66 @@
+rcf_cad_def: THEORY
+%----------------------------------------------------------------------------
+% The formulas that define the cells of a cylindrical decomposition.
+% Executable builders only; the
+% proofs are in root_fol and rcf_cells.
+%
+% Points are lists, innermost coordinate first.  At cons(v, q):
+%   rootF(G)     v is a root over q of a member of G not identically zero
+%                on the fibre (rootat?);
+%   geF(G, i)    at least i such roots lie below v;
+%   sidxF(G, a)  the stack index of v over q is a.
+% stkF(G, phi, a) defines the stack cell of index a over the set phi defines,
+% and cellF(TW, phi, A) the cell of a tower with stack indices A over it.
+% cmpF(b, t) at cons(x, ys) says x - value(b) has sign t; sectF(s) defines
+% the sector s of the line.  lt21 is the second variable minus the first.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING rcf_fol, sect_inv
+
+  G: VAR list[list[mpoly]]
+  g: VAR list[mpoly]
+  i, a: VAR nat
+  t: VAR int
+  phi: VAR Fm
+  TW: VAR list[list[list[mpoly]]]
+  A: VAR list[nat]
+  s: VAR Sect
+
+  lt21: mpoly = msub(mvar(2), mvar(1))
+
+  nzF(g): Fm = fex(fnot(fsg(mins(mpol(g), 1), 0)))
+  rootF(G): RECURSIVE Fm =
+    IF null?(G) THEN fnot(ftrue)
+    ELSE f_or(fand(fsg(mpol(car(G)), 0), nzF(car(G))), rootF(cdr(G))) ENDIF
+  MEASURE length(G)
+
+  geF(G, i): RECURSIVE Fm =
+    IF i = 0 THEN ftrue
+    ELSE fex(fand(shiftF(rootF(G), 1), fand(fsg(lt21, 1), shiftF(geF(G, i - 1), 1)))) ENDIF
+  MEASURE i
+
+  sidxF(G, a): Fm =
+    LET h = floor(a / 2) IN
+    fand(geF(G, h), fand(fnot(geF(G, h + 1)), IF even?(a) THEN fnot(rootF(G)) ELSE rootF(G) ENDIF))
+
+  stkF(G, phi, a): Fm = fand(shiftF(phi, 0), sidxF(G, a))
+
+  cellF(TW, phi, A): RECURSIVE Fm =
+    IF null?(TW) OR null?(A) THEN phi ELSE cellF(cdr(TW), stkF(car(TW), phi, car(A)), cdr(A)) ENDIF
+  MEASURE length(TW)
+
+  cmpF(b: Alg, t): Fm =
+    fex(fand(fsg(mpol(pmc(b`p)), 0),
+        fand(fnot(fsg(mpol(pmc((: -b`lb, 1 :))), -1)),
+        fand(fnot(fsg(mpol(pmc((: -b`ub, 1 :))), 1)),
+             fsg(lt21, t)))))
+
+  sectF(s): Fm =
+    CASES s OF
+      below(h): cmpF(h, -1),
+      at(b): cmpF(b, 0),
+      mid(l, h): fand(cmpF(l, 1), cmpF(h, -1)),
+      above(l): cmpF(l, 1),
+      whole: ftrue
+    ENDCASES
+END rcf_cad_def

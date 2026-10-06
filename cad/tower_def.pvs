@@ -1,0 +1,111 @@
+tower_def: THEORY
+%----------------------------------------------------------------------------
+% The oracle tower, executable part: the oracles
+% of the cells of a level below the outermost.
+%
+% A level below the outermost has no sectors and no algebraic numbers: it is
+% a WALK over rational separators through the oracle sg of the level above.
+% Its cells are the separators (one per open interval) and the gaps that hold
+% a root (the sections).  The oracle of a cell is
+%
+%   sg_pt(sg, y0)             at a separator: substitute, then ask sg
+%   sg_sec(sg, P, lo, hi)     at the section in (lo, hi]: a bounded Tarski
+%                             query of the polynomial against the live
+%                             product of P, through sg; with the unique root
+%                             of the gap that IS its sign there
+%
+% The query reads its chain at the ends of the gap itself: the Tarski query
+% needs only the vanishing member nonzero there (sturm_tarski_ends), and the
+% walk above chose the separators where no live member vanishes.  (Until
+% 2026-09-28 each query searched, with a fixed fuel, for ends where no entry
+% of the chain vanished, as NASALib's sturm_tarski asks.)
+% allok? (every query a section's walk makes is sound) and clok? (a walk's
+% reads are members of the family) are checked at the cells by towern_od.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_def
+
+  sg: VAR SG
+  P: VAR list[list[mpoly]]
+  l0, g: VAR list[mpoly]
+  k: VAR nat
+  lo, hi, y0: VAR rat
+  c: VAR mpoly
+
+  s3(t: int): Sign3 = IF t > 0 THEN 1 ELSIF t < 0 THEN -1 ELSE 0 ENDIF
+
+  %% ---- at a separator -------------------------------------------------------
+  sg_pt(sg, y0): SG = LAMBDA c: sg(sub1(as_list(c), y0))
+
+  %% ---- the bounded Tarski query ------------------------------------------------
+  tlen(k, sg, l0, g): nat =
+    IF length(tchain_sg(k, l0, g, sg)) >= 2 THEN length(tchain_sg(k, l0, g, sg)) - 2 ELSE 0 ENDIF
+  tvarf(k, sg, l0, g, y0): [nat -> real] =
+    LAMBDA (i: nat): sent(sg, nthl(tchain_sg(k, l0, g, sg), i), y0)
+  %% through the shared-chain count of sturm_sg (the chain built once)
+  tvar(k, sg, l0, g, y0): nat = svarc(sg, tchain_sg(k, l0, g, sg), y0)
+  tvar_def: LEMMA tvar(k, sg, l0, g, y0) =
+    number_sign_changes(tvarf(k, sg, l0, g, y0), tlen(k, sg, l0, g))`num
+  tq_b(k, sg, l0, g, lo, hi): int =
+    LET ch = tchain_sg(k, l0, g, sg) IN svarc(sg, ch, lo) - svarc(sg, ch, hi)
+  tq_b_def: LEMMA tq_b(k, sg, l0, g, lo, hi) = tvar(k, sg, l0, g, lo) - tvar(k, sg, l0, g, hi)
+
+  %% the member of P whose root the section is: the query runs against it and
+  %% not against the whole product (measured on ex_three: the product has
+  %% degree 8 in x after the closure, the member degree 1)
+  secp(P, sg, (G: list[list[mpoly]]), lo, hi): RECURSIVE list[mpoly] =
+    IF null?(G) THEN bprod(P)
+    ELSIF length(strip(car(G))) >= 2 AND cnt(bk(P), sg, strip(car(G)), lo, hi) > 0
+      THEN strip(car(G))
+    ELSE secp(P, sg, cdr(G), lo, hi)
+    ENDIF
+  MEASURE length(G)
+
+  %% the sign of c at the section of (lo, hi], and whether the query was
+  %% sound.  qsecl takes the vanishing member l0 and its Sturm chain c0 as
+  %% ARGUMENTS: sg_sec computes them once per section cell, not once per
+  %% query (2026-09-21: with secp and three chain builds inside every query,
+  %% one bottom walk at a section cost 164 s; qsec is the old statement).
+  %% It is sound when l0 is nonzero at both ends and has exactly one root
+  %% between them, which the walk above already made sure of
+  qsecl(sg, l0, (c0: list[list[mpoly]]), lo, hi, c): [# ok: bool, val: Sign3 #] =
+    LET g = snorm_sg(as_list(c), sg) IN
+    IF null?(g) THEN (# ok := TRUE, val := s3(0) #)
+    ELSIF null?(cdr(g)) THEN (# ok := TRUE, val := sg(car(g)) #)
+    ELSE LET k2 = length(l0) + length(g) + 2,
+             ch = tchain_sg(k2, l0, g, sg) IN
+         (# ok := lo < hi AND sent(sg, l0, lo) /= 0 AND sent(sg, l0, hi) /= 0
+                  AND cntc(sg, c0, lo, hi) = 1,
+            val := s3(svarc(sg, ch, lo) - svarc(sg, ch, hi)) #)
+    ENDIF
+  qsec(sg, P, lo, hi, c): [# ok: bool, val: Sign3 #] =
+    LET l0 = secp(P, sg, P, lo, hi) IN qsecl(sg, l0, schain(bk(P), sg, l0), lo, hi, c)
+  qsec_def: LEMMA qsec(sg, P, lo, hi, c) =
+    LET g = snorm_sg(as_list(c), sg) IN
+    IF null?(g) THEN (# ok := TRUE, val := s3(0) #)
+    ELSIF null?(cdr(g)) THEN (# ok := TRUE, val := sg(car(g)) #)
+    ELSE LET l0 = secp(P, sg, P, lo, hi), k0 = bk(P), k2 = length(l0) + length(g) + 2 IN
+         (# ok := lo < hi AND sent(sg, l0, lo) /= 0 AND sent(sg, l0, hi) /= 0
+                  AND cnt(k0, sg, l0, lo, hi) = 1,
+            val := s3(tq_b(k2, sg, l0, g, lo, hi)) #)
+    ENDIF
+  sg_sec(sg, P, lo, hi): SG =
+    LET l0 = secp(P, sg, P, lo, hi), c0 = schain(bk(P), sg, l0) IN
+    LAMBDA c: qsecl(sg, l0, c0, lo, hi, c)`val
+  sg_sec_def: LEMMA sg_sec(sg, P, lo, hi) = LAMBDA c: qsec(sg, P, lo, hi, c)`val
+
+  bfold(q: bool, bs: list[bool]): bool =
+    IF q THEN every(LAMBDA (b: bool): b)(bs) ELSE some(LAMBDA (b: bool): b)(bs) ENDIF
+
+  %% ---- the certificate of a level -----------------------------------------------------
+  R: VAR list[mpoly]
+  %% every query the inner walk makes at a section was sound
+  allok?(sg, P, lo, hi, R): RECURSIVE bool =
+    null?(R) OR (qsec(sg, P, lo, hi, car(R))`ok AND allok?(sg, P, lo, hi, cdr(R)))
+  MEASURE length(R)
+  %% at a separator: the inner walk passes, and its intrinsic reads are MEMBERS
+  %% of the level's family, so they have no root where its product has none
+  clok?(P, R): RECURSIVE bool =
+    null?(R) OR (memb(as_list(car(R)), P) AND clok?(P, cdr(R)))
+  MEASURE length(R)
+END tower_def

@@ -1,0 +1,71 @@
+lev_ev: THEORY
+%----------------------------------------------------------------------------
+% One level at a well-formed cell.
+%
+% At a well-formed descriptor the oracle is exact (wf_exact), the effective
+% family is zf (feff_zf) and certified (certz_all), so the separator search
+% succeeds from some fuel on and returns the same separators for every
+% larger fuel (seps_ok): lvok_o holds for every large u, with any valid
+% table (lev_ok; the query half by okqs_complete).  When the walk passes,
+% the cells it visits are all well formed (cells_wf: a separator by opt_wf, a
+% section by gap_sec and osec_den).  cellsr_o only looks at the cells
+% (cellsr_cong).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING od_exact, cert_all, walk_search
+
+  u, N: VAR nat
+  F, P: VAR list[list[mpoly]]
+  od, od2: VAR OD
+  tb: VAR CT
+  Y: VAR list[rat]
+  fr, fr2: VAR [OD -> Tower]
+  y0, lo, hi: VAR rat
+
+  sg: VAR SG
+  %% at a general oracle: the head separator is not a root of a live member
+  sepok_hd_sg: LEMMA cons?(Y) AND sepok?(P, sg, Y) IMPLIES nzat?(P, sg, car(Y), P)
+  sepok_adj: LEMMA FORALL Y: sepok?(P, sg, Y) AND adj?(Y, lo, hi) IMPLIES
+    gapok?(P, sg, lo, hi) AND nzat?(P, sg, hi, P)
+  %% a gap with a member root means a live member
+  gap_lives: LEMMA gap?(P, sg, lo, hi) IMPLIES cons?(lives(P))
+  adj_mem: LEMMA FORALL Y: adj?(Y, lo, hi) IMPLIES member(lo, Y) AND member(hi, Y)
+
+  %% the separators of a level at a well-formed cell, from some fuel on
+  lsep(F, od, N): list[rat] = seps_n(zf(F, den(od)), msg(den(od)), sfuel2 + N)
+  lev_ok: LEMMA wf?(od) IMPLIES EXISTS N: FORALL u, tb: u >= N AND valid?(tb) IMPLIES
+    lvok_o(u, F, od, tb) AND seps_t(u, feff(F, od), od, tb) = lsep(F, od, N)
+    AND wok?(zf(F, den(od)), msg(den(od)), lsep(F, od, N))
+
+  TW: VAR Tower
+  f: VAR [OD -> bool]
+  %% ---- the cells of a walk ------------------------------------------------------------------
+  cells_o(P, od, tb, Y): RECURSIVE list[OD] =
+    IF null?(Y) THEN null[OD]
+    ELSE cons(opt(od, car(Y)),
+              IF null?(cdr(Y)) THEN null[OD]
+              ELSIF gap_t(P, od, car(Y), car(cdr(Y)), tb)
+                THEN cons(osec(od, P, car(Y), car(cdr(Y))), cells_o(P, od, tb, cdr(Y)))
+              ELSE cells_o(P, od, tb, cdr(Y)) ENDIF)
+    ENDIF
+  MEASURE length(Y)
+  cellsf_every: LEMMA FORALL Y: (FORALL od2: member(od2, cells_o(P, od, tb, Y)) IMPLIES f(od2))
+    IMPLIES every(LAMBDA (b: bool): b)(cellsf_o(f, P, od, tb, Y))
+
+  %% the tables of a tower, one per level
+  tables_len: LEMMA FORALL TW: FORALL od: length(tables(u, TW, od)) = length(TW)
+
+  %% ---- the cells ------------------------------------------------------------------------------
+  cells_mem: LEMMA FORALL Y: member(od2, cells_o(P, od, tb, Y)) IMPLIES
+    (EXISTS y0: member(y0, Y) AND od2 = opt(od, y0)) OR
+    (EXISTS lo, hi: adj?(Y, lo, hi) AND gap_t(P, od, lo, hi, tb) AND od2 = osec(od, P, lo, hi))
+
+  ys: VAR list[real]
+  gap_sec: LEMMA wok?(P, msg(ys), Y) AND adj?(Y, lo, hi) AND gap?(P, msg(ys), lo, hi)
+    IMPLIES EXISTS (beta: real): lvl?(P, ys, lo, hi, beta)
+
+  cells_wf: LEMMA wf?(od) AND valid?(tb) AND wok?(zf(F, den(od)), msg(den(od)), Y)
+    AND member(od2, cells_o(feff(F, od), od, tb, Y)) IMPLIES wf?(od2)
+  cellsr_cong: LEMMA FORALL Y: (FORALL od2: member(od2, cells_o(P, od, tb, Y)) IMPLIES fr(od2) = fr2(od2))
+    IMPLIES cellsr_o(fr, P, od, tb, Y) = cellsr_o(fr2, P, od, tb, Y)
+END lev_ev

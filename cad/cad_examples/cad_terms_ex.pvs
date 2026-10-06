@@ -1,0 +1,158 @@
+cad_terms_ex: THEORY
+%----------------------------------------------------------------------------
+% (cad) with constants, algebraic operators and functions of constants.
+% A real term with no variables that NASALib's interval arithmetic
+% evaluates is enclosed between two rationals, the precision rising until
+% the sequent is decided; sqrt, abs, max, min and quotients get the facts
+% that pin them down exactly.  (cad) does both by itself when the decision
+% with these terms as unknowns does not prove the goal (cad-num); the
+% enclosures need IMPORTING pvs_cad_num (pvs_cad and interval_arith's
+% strategies).  Under binders (T4) sqrt, abs, max, min and quotients are
+% read into formulas without them.  sin, cos, exp, ln and atan of terms
+% with constants of the sequent get trans_bounds's
+% polynomial bounds, then enclosures over pieces of the ranges that the
+% hypotheses give the constants.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad@pvs_cad_num
+  %% ---- constants ---------------------------------------------------------------------------
+  pi_quad: LEMMA FORALL (x: real): x^2 - pi * x + 3 > 0
+  pi_root: LEMMA EXISTS (x: real): x^2 = pi
+  %% 3 decimals do not settle this one, 6 do
+  pi_sq: LEMMA pi^2 < 9.87
+  e_quad: LEMMA FORALL (x: real): x^2 - e * x + 2 > 0
+  sin1_cube: LEMMA EXISTS (x: real): x^3 = sin(1) AND x > 0
+  ln2_quad: LEMMA FORALL (x: real): x^2 + ln(2) * x + 1/8 > 0
+  atan_pi: LEMMA 4 * atan(1) < 3.1416
+  pi_e: LEMMA FORALL (x: real): (x - pi) * (x - e) >= -1/4
+  %% a constant in a hypothesis
+  pi_hyp: LEMMA FORALL (x: real): x > pi IMPLIES x^2 > 9.86
+
+  %% ---- algebraic operators, exactly -----------------------------------------------------------
+  sqrt_prod: LEMMA sqrt(2) * sqrt(8) = 4
+  sqrt_nest: LEMMA sqrt(1 + sqrt(2)) < 1.554
+  sqrt_var: LEMMA FORALL (c: nnreal): sqrt(c) * sqrt(c) = c
+  sqrt_mono: LEMMA FORALL (a, b: nnreal): a < b IMPLIES sqrt(a) < sqrt(b)
+  abs_sq_terms_ex: LEMMA FORALL (c: real): abs(c) >= c AND abs(c) * abs(c) = c * c
+  abs_tri: LEMMA FORALL (a, b: real): abs(a + b) <= abs(a) + abs(b)
+  max_mean: LEMMA FORALL (a, b: real): max(a, b) >= (a + b) / 2
+  min_max_terms_ex: LEMMA FORALL (a, b: real): min(a, b) + max(a, b) = a + b
+  div_back: LEMMA FORALL (a: real, b: posreal): (a / b) * b = a
+  div_ineq: LEMMA FORALL (a, b: posreal): a / b + b / a >= 2
+
+  %% ---- both --------------------------------------------------------------------------------
+  sqrt_pi: LEMMA FORALL (x: real): x > sqrt(2) + pi IMPLIES x^2 > 20
+
+  %% ---- terms of skolem constants (after skeep): exact facts, their TCCs decided --------------
+  sk_sqrt: LEMMA FORALL (x: real): sqrt(x^2 + 1) > x
+  sk_sqrt_am: LEMMA FORALL (x: nnreal): sqrt(x) <= (x + 1) / 2
+  sk_abs_mult: LEMMA FORALL (x, y: real): abs(x * y) = abs(x) * abs(y)
+  sk_max: LEMMA FORALL (x, y: real): max(x, y) >= x AND max(x, y) >= y
+
+  %% ---- terms under binders (T4): read into formulas without them -----------------------------
+  ub_sqrt_all: LEMMA FORALL (x: real): sqrt(x^2 + 1) > x
+  ub_sqrt_ex: LEMMA EXISTS (x: real): sqrt(x^2 + 1) = 2
+  ub_sqrt_alt: LEMMA FORALL (y: real): EXISTS (x: real): x > 0 AND sqrt(x) > y
+  ub_sqrt_nest: LEMMA FORALL (x: nnreal): sqrt(1 + sqrt(x)) >= 1
+  ub_sqrt_hyp: LEMMA FORALL (a: nnreal): (FORALL (x: real): sqrt(x^2 + a) >= 1) IMPLIES a >= 1
+  ub_sqrt_not: LEMMA NOT (EXISTS (x: real): x > 1 AND sqrt(x) < 1)
+  ub_abs_ex: LEMMA EXISTS (x: real): abs(x - 1) < 1/2 AND x > 1
+  ub_abs_hyp: LEMMA FORALL (y: real): (FORALL (x: real): abs(x) >= y) IMPLIES y <= 0
+  ub_abs_two: LEMMA FORALL (x: real): EXISTS (y: real): abs(y) <= abs(x) AND y >= 0
+  ub_max_alt: LEMMA FORALL (y: real): EXISTS (x: real): max(x, y) = y + 1
+  ub_min_all: LEMMA FORALL (x, y: real): min(x, y) <= (x + y) / 2
+  ub_sqrt_abs: LEMMA FORALL (x, y: real): sqrt(x^2 + y^2) >= abs(x)
+  ub_sqrt_out: LEMMA FORALL (a: real): (FORALL (x: nnreal): sqrt(x) <= x + a) IMPLIES a >= 1/4
+  ub_sqrt_eq_abs: LEMMA FORALL (x: real): EXISTS (y: real): y >= 0 AND sqrt(y) = abs(x)
+
+  %% ---- quotients under binders: M(T / U) read as FORALL (q: real): q * U = T IMPLIES M(q) ----------
+  ub_div_pos: LEMMA FORALL (x: real): x > 0 IMPLIES 1 / x > 0
+  ub_div_inv: LEMMA FORALL (x: real): x /= 0 IMPLIES x * (1 / x) = 1
+  ub_div_ex: LEMMA EXISTS (x: real): x > 1 AND 1 / x < 1/2
+  ub_div_amgm: LEMMA FORALL (x: posreal): x + 1 / x >= 2
+  ub_div_hyp: LEMMA FORALL (c: real): (FORALL (x: posreal): c <= x + 1 / x) IMPLIES c <= 2
+
+  %% ---- abs, max, min around a sqrt or a quotient: each case walked on its own; written first,
+  %% ---- the sqrt or the quotient is taken first --------------------------------------------
+  ub_abs_sqrt: LEMMA FORALL (x: real): abs(x) <= sqrt(x^2 + 1)
+  ub_abs_div: LEMMA FORALL (x: real): x > 0 IMPLIES abs(x) * (1 / x) = 1
+  ub_sqrt_max: LEMMA FORALL (x: real): sqrt(max(x, 0)) <= 1 + max(x, 0)
+  ub_sqrt_min: LEMMA FORALL (x: real): sqrt(min(x^2, 1)) <= 1
+  ub_sqrt_abs_hyp: LEMMA FORALL (c: real): (FORALL (x: real): sqrt(abs(x)) >= c) IMPLIES c <= 0
+  ub_sqrt_abs_ex: LEMMA EXISTS (x: real): sqrt(abs(x)) = 2 AND x < 0
+  ub_div_abs: LEMMA FORALL (x: real): x /= 0 IMPLIES 1 / abs(x) > 0
+
+  %% ---- constants in formulas that are not prenex: their facts and enclosures too ------------------
+  np_sqrt2: LEMMA FORALL (x: real): (EXISTS (y: real): y * y = x) OR sqrt(2) * sqrt(2) = 2
+  np_pi: LEMMA FORALL (x: real): (EXISTS (y: real): y * y = x) OR pi > 3
+
+  %% ---- functions of constants (T5): polynomial bounds, enclosures over pieces of the ranges ---
+  %% the leading FORALL is skolemized first; sin(x) <= x touches at 0, where the bound decides
+  t5_sin_le: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES sin(x) <= x
+  t5_sin_half: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES sin(x) >= x / 2
+  %% no single enclosure decides it: [0, 1] is halved where the decision fails
+  t5_exp_pieces: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES exp(x) <= 1 + 2 * x
+  %% the bound of degree 3 near 0, enclosures further on
+  t5_sin_pos: LEMMA FORALL (x: real): 0 <= x AND x <= 3 IMPLIES sin(x) >= 0
+  %% two constants: the ranges alone; one enclosure each, decided over the two terms
+  t5_sin_cos: LEMMA FORALL (a, b: real): sin(a) * cos(b) <= 1
+  t5_exp_two: LEMMA FORALL (x, y: real):
+    0 <= x AND x <= 1 AND 0 <= y AND y <= 1 IMPLIES exp(x) * exp(y) <= 8
+  %% no range above: the bounds alone (ln, atan); atan(x) < 2 by the range
+  t5_ln: LEMMA FORALL (x: real): x > 0 IMPLIES ln(x) <= x - 1
+  t5_atan: LEMMA FORALL (x: real): x >= 0 IMPLIES atan(x) <= x
+  t5_atan_rng: LEMMA FORALL (x: real): atan(x) < 2
+  %% with a constant term, enclosed too
+  t5_pi: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES sin(x) < pi / 3
+  %% a constant of the theory; a posreal's range from its type; in a hypothesis
+  t5c: real
+  t5_const: LEMMA 0 <= t5c AND t5c <= 1 IMPLIES sin(t5c) <= t5c
+  t5_posreal: LEMMA FORALL (x: posreal): x <= 1 IMPLIES exp(x) <= 3
+  t5_hyp: LEMMA (EXISTS (x: real): 0 <= x AND x <= 1 AND sin(x) > x) IMPLIES FALSE
+  %% the bound of higher degree
+  t5_cos4: LEMMA FORALL (x: real): cos(x) <= 1 - x^2 / 2 + x^4 / 24
+
+  %% ---- paths without a lemma before the review of 2026-10-03; (cad) unless noted ------------
+  %% two goals, each tested on its own for FALSE: x < 0 OR sin(x) <= x
+  t5_or: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES (x < 0 OR sin(x) <= x)
+  t2_or: LEMMA pi < 3.1416 OR pi > 3.1417
+  %% pi enclosed next to a term of a constant; e's enclosure in the rung of degree 3
+  t5_pi4: LEMMA FORALL (x: real): 0 <= x AND x <= 3/4 IMPLIES sin(x) < pi / 4
+  t5_e27: LEMMA FORALL (x: real): 0 <= x IMPLIES sin(x) <= x * e / 2.7
+  %% after (skeep): the box from the hypotheses, by (cad) and by (cad *)
+  t5_box: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES sin(x) >= x / 2
+  t5_star: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES exp(x) <= 3
+  %% a fact whose TCC needs the guard inside the goal
+  tfc: real
+  tf_div: LEMMA tfc > 0 IMPLIES 1 / tfc > 0
+  tf_sq: LEMMA tfc >= 0 IMPLIES sqrt(tfc) * sqrt(tfc) = tfc
+  %% T5: a refuted hypothesis, x <= 0, the bounds of sin of degree 5 and of cos from below
+  t5_neg_hyp: LEMMA NOT (EXISTS (x: real): 0 <= x AND x <= 1 AND sin(x) > x)
+  t5_sin_neg: LEMMA FORALL (x: real): -1 <= x AND x <= 0 IMPLIES x <= sin(x)
+  t5_atan_neg: LEMMA FORALL (x: real): x <= 0 IMPLIES x <= atan(x)
+  t5_sin5: LEMMA FORALL (x: real): x >= 0 IMPLIES sin(x) <= x - x^3/6 + x^5/120
+  t5_cos_lb: LEMMA FORALL (x: real): 1 - x^2/2 <= cos(x)
+  %% T4: abs, max and quotients in refuted hypotheses; max and min walked case by case
+  ub_abs_not: LEMMA NOT (EXISTS (x: real): abs(x) < x)
+  ub_max_not: LEMMA NOT (EXISTS (x, y: real): max(x, y) < y)
+  ub_div_not: LEMMA NOT (EXISTS (x: real): x > 0 AND 1 / x <= 0)
+  ub_sqrt_max_hyp: LEMMA FORALL (c: real): (FORALL (x: real): sqrt(max(x, 0)) >= c) IMPLIES c <= 0
+  ub_sqrt_min_hyp: LEMMA FORALL (c: real): (FORALL (x: real): sqrt(min(x^2, 1)) <= c) IMPLIES c >= 1
+  ub_sqrt_sqrt_abs: LEMMA FORALL (x: real): sqrt(sqrt(abs(x))) = 2 IMPLIES abs(x) = 16
+  ub_div_div: LEMMA FORALL (x: real): x /= 0 IMPLIES 1 / (1 / x) = x
+  ub_div_ratio: LEMMA FORALL (x: real): x / (x^2 + 1) <= 1/2
+  %% T2, T3: a constant under an alternation, in a refuted hypothesis, under a binder
+  t2_alt: LEMMA FORALL (x: real): EXISTS (y: real): y^2 = x^2 + pi - 3
+  t2_hyp: LEMMA NOT (EXISTS (x: real): x^2 < pi - 16/5)
+  t3_hyp: LEMMA FORALL (x: real): NOT (sqrt(x^2 + 1) < abs(x))
+  ub_sqrt_pi: LEMMA FORALL (x: real): sqrt(x^2 + pi - 3) > x
+  %% the commands and their options: (cad-facts) then (cad * :cad-only? t); (cad-num
+  %% :precisions (6)); (cad-num) after (skeep); (cad-num :splits 9) after (skeep), on the
+  %% inequality that needs the halving (t5_exp_pieces)
+  cf_abs: LEMMA FORALL (a: real): abs(a) >= a
+  cn_prec: LEMMA pi^2 < 9.87
+  cn_star: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES exp(x) <= 3
+  cn_splits: LEMMA FORALL (x: real): 0 <= x AND x <= 1 IMPLIES exp(x) <= 1 + 2 * x
+  %% a failing (cad) changes nothing: (skeep), (cad 1) says FALSE, (cad (1 2)) closes it
+  t_fail_keep: LEMMA FORALL (x: real): x^2 > 0 OR x = 0
+END cad_terms_ex

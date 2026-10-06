@@ -1,0 +1,82 @@
+cad_fold_ok: THEORY
+%----------------------------------------------------------------------------
+% A CAD given by sample records decides every sentence over F.
+%
+% afold_sem: over a CAD base (cad_over?), when the records lie in the cells
+% their addresses name and carry F's sign vector at their samples (recin?),
+% every nonempty cell has a record (reccov?), and F has one sign vector on
+% each top cell (fsinv?), the fold of the inner quantifiers over the records
+% is their meaning at any point of the base cell.  At each level the records'
+% next indices are exactly the stack indices over the point (rec_idx,
+% idx_rec): nroot is constant over a delineable base and every index up to
+% 2 nroot is taken (sec_in), so a quantifier over the fibre is the same
+% quantifier over the records (lvl_all, lvl_some).  Nothing in afold_sem is
+% about the run: any cylindrical decomposition adapted to F (cad_over?),
+% given by sample records, decides every sentence over F.
+%
+% col_found_ok applies it to the Collins run's records: the CAD computed once
+% decides every sentence with the same polynomials and the same number of
+% variables, whatever its quantifiers and its Boolean combination of sign
+% conditions (col_found_decides).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_fold, cad_out_ok
+
+  TW: VAR Tower
+  C: VAR [list[real] -> bool]
+  F: VAR list[list[mpoly]]
+  L: VAR list[ORec]
+  r, r0: VAR ORec
+  A: VAR list[nat]
+  p, q, p1, p2: VAR list[real]
+  a, m: VAR nat
+  qs: VAR list[bool]
+  Psi: VAR [SV -> bool]
+  y: VAR real
+  s: VAR Sect
+  f: VAR [ORec -> bool]
+  V: VAR [nat -> bool]
+
+  %% ---- lists --------------------------------------------------------------------------------
+  every_mem_o: LEMMA FORALL L: every(f)(L) IFF (FORALL r: member(r, L) IMPLIES f(r))
+  some_mem_o: LEMMA FORALL L: some(f)(L) IFF (EXISTS r: member(r, L) AND f(r))
+  dnr_mem: LEMMA FORALL L: member(r, dnr(a, L)) IFF
+    EXISTS r0: member(r0, L) AND cons?(r0`radr) AND car(r0`radr) = a AND r = r0 WITH [radr := cdr(r0`radr)]
+  secr_mem: LEMMA FORALL L: member(r, secr(s, L)) IFF (member(r, L) AND r`rsec = s)
+
+  %% a point above p
+  padz(m, p): RECURSIVE list[real] = IF m = 0 THEN p ELSE cons(0, padz(m - 1, p)) ENDIF
+  MEASURE m
+  padz_len: LEMMA FORALL m: length(padz(m, p)) = m + length(p)
+  padz_drop: LEMMA FORALL m: dropn(m, padz(m, p)) = p
+
+  %% ---- records of the cells of a tower --------------------------------------------------------
+  recin?(TW, C, F, L): bool = FORALL r: member(r, L) IMPLIES
+    length(r`radr) = length(TW) AND tcell(TW, C, r`radr)(den(r`rsod)) AND r`rsv = svec(F, den(r`rsod))
+  reccov?(TW, C, L): bool = FORALL A: length(A) = length(TW) AND (EXISTS q: tcell(TW, C, A)(q))
+    IMPLIES EXISTS r: member(r, L) AND r`radr = A
+  fsinv?(TW, C, F): bool = FORALL A, p1, p2: length(A) = length(TW)
+    AND tcell(TW, C, A)(p1) AND tcell(TW, C, A)(p2) IMPLIES svec(F, p1) = svec(F, p2)
+
+  %% one level down, in the cell of next index a
+  recin_dnr: LEMMA cons?(TW) AND recin?(TW, C, F, L) IMPLIES recin?(cdr(TW), stk(car(TW), C, a), F, dnr(a, L))
+  reccov_dnr: LEMMA cons?(TW) AND reccov?(TW, C, L) IMPLIES reccov?(cdr(TW), stk(car(TW), C, a), dnr(a, L))
+  fsinv_dnr: LEMMA cons?(TW) AND fsinv?(TW, C, F) IMPLIES fsinv?(cdr(TW), stk(car(TW), C, a), F)
+
+  %% the next indices of the records are the stack indices over any point of the base
+  rec_idx: LEMMA cons?(TW) AND cad_over?(TW, C) AND recin?(TW, C, F, L) AND C(p) AND member(r, L)
+    IMPLIES cons?(r`radr) AND car(r`radr) <= 2 * nroot(car(TW), p)
+  idx_rec: LEMMA cons?(TW) AND reccov?(TW, C, L) AND C(p)
+    IMPLIES EXISTS r: member(r, L) AND cons?(r`radr) AND car(r`radr) = sidx(car(TW), p, y)
+
+  %% a quantifier over the fibre is the same quantifier over the records
+  lvl_all: LEMMA cons?(TW) AND cad_over?(TW, C) AND recin?(TW, C, F, L) AND reccov?(TW, C, L) AND C(p)
+    IMPLIES ((FORALL r: member(r, L) IMPLIES V(ix0(r`radr))) IFF (FORALL y: V(sidx(car(TW), p, y))))
+  lvl_some: LEMMA cons?(TW) AND cad_over?(TW, C) AND recin?(TW, C, F, L) AND reccov?(TW, C, L) AND C(p)
+    IMPLIES ((EXISTS r: member(r, L) AND V(ix0(r`radr))) IFF (EXISTS y: V(sidx(car(TW), p, y))))
+
+  %% ---- THE FOLD IS THE MEANING ------------------------------------------------------------------
+  afold_sem: LEMMA FORALL qs: FORALL TW, C, L, p: length(qs) = length(TW) AND cad_over?(TW, C)
+    AND recin?(TW, C, F, L) AND reccov?(TW, C, L) AND fsinv?(TW, C, F) AND C(p)
+    IMPLIES (afold(qs, Psi, L) IFF sem(qs, F, Psi, p))
+END cad_fold_ok

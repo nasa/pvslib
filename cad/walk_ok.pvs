@@ -1,0 +1,201 @@
+walk_ok: THEORY
+%----------------------------------------------------------------------------
+% The walk lists exactly the fibre's realized sign vectors.
+%
+%   walk_fib: wok?(F, msg(ys), Y) IMPLIES
+%             (member(v, walk(F, msg(ys), Y)) IFF fib(F, ys)(v))
+%
+% for ANY separators Y that pass wok?, at ANY real valuation ys.  Nothing is
+% assumed about how Y was found, so the bisection search stays outside the
+% trusted argument; and nothing is assumed about ys, so the same theorem
+% serves a rational sample, an algebraic one, and every point of a sector.
+%
+% The argument.  P is the product of the live members, stripped.
+%   - a member that is not live, or strips to length < 2, is CONSTANT along
+%     the fibre (short_const); a live one vanishes only where P does
+%     (bprod_zero).  So on an interval free of roots of P every member keeps
+%     its sign (mem_same) and the vector is constant (svec_same_live), even
+%     when a member vanishes identically
+%   - in a gap whose count is one the root beta of P is unique (cnt_one).  A
+%     member with cnt > 0 there has a root in the gap, which is a root of P,
+%     hence beta; one with cnt = 0 has no root in the closed gap and keeps
+%     the sign it has at the left separator.  That is sec_svec
+%   - soundness and completeness are then inductions along Y
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_def
+
+  ys: VAR list[real]
+  F, G: VAR list[list[mpoly]]
+  f, g: VAR list[mpoly]
+  Y: VAR list[rat]
+  lo, hi, y0: VAR rat
+  x, c, z, z1, z2, a, b, beta: VAR real
+  v: VAR SV
+
+  %% ---- stripping ---------------------------------------------------------
+  strip_len: LEMMA FORALL f: length(strip(f)) <= length(f)
+  strip_eval: LEMMA FORALL f: FORALL (xs: list[real]):
+    meval(mpol(strip(f)))(xs) = meval(mpol(f))(xs)
+
+  %% a member that strips to fewer than two coefficients is constant in z
+  short_const: LEMMA length(strip(g)) < 2 IMPLIES
+    meval(mpol(g))(cons(z1, ys)) = meval(mpol(g))(cons(z2, ys))
+
+  %% ---- the live product ------------------------------------------------------
+  lives_mem: LEMMA FORALL F: member(g, F) AND live?(g) IMPLIES member(g, lives(F))
+  lives_sub: LEMMA FORALL F: member(g, lives(F)) IMPLIES member(g, F) AND live?(g)
+  bprod_zero: LEMMA member(g, F) AND length(strip(g)) >= 2
+    AND meval(mpol(g))(cons(z, ys)) = 0
+    IMPLIES meval(mpol(bprod(F)))(cons(z, ys)) = 0
+
+  %% ---- vectors at a separator ---------------------------------------------------
+  vec_svec: LEMMA FORALL F: vec_sg(F, msg(ys), y0) = svec(F, cons(y0, ys))
+
+  %% ---- constancy away from the roots of the live product --------------------------
+  mem_same: LEMMA member(g, F) AND a <= x AND x <= b AND a <= c AND c <= b
+    AND (FORALL z: a <= z AND z <= b IMPLIES meval(mpol(bprod(F)))(cons(z, ys)) /= 0)
+    IMPLIES sign3(meval(mpol(g))(cons(x, ys))) = sign3(meval(mpol(g))(cons(c, ys)))
+
+  svec_sub: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F))
+    AND a <= x AND x <= b AND a <= c AND c <= b
+    AND (FORALL z: a <= z AND z <= b IMPLIES meval(mpol(bprod(F)))(cons(z, ys)) /= 0)
+    IMPLIES svec(G, cons(x, ys)) = svec(G, cons(c, ys))
+
+  svec_same_live: LEMMA a <= x AND x <= b AND a <= c AND c <= b
+    AND (FORALL z: a <= z AND z <= b IMPLIES meval(mpol(bprod(F)))(cons(z, ys)) /= 0)
+    IMPLIES svec(F, cons(x, ys)) = svec(F, cons(c, ys))
+
+  %% ---- a gap that holds exactly one root of the live product -------------------
+  P(F, ys)(z): real = meval(mpol(bprod(F)))(cons(z, ys))
+
+  gapf?(F, ys, lo, hi, beta): bool =
+    lo < beta AND beta <= hi AND P(F, ys)(beta) = 0
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    AND (FORALL z: lo < z AND z <= hi AND P(F, ys)(z) = 0 IMPLIES z = beta)
+
+  mok?(F, ys, g): bool =
+    length(strip(g)) < 2 OR slc?(bk(F), msg(ys), strip(g))
+
+  sent_P: LEMMA sent(msg(ys), bprod(F), y0) /= 0 IFF P(F, ys)(y0) /= 0
+
+  %% one member at the section
+  sgn_at: LEMMA member(g, F) AND mok?(F, ys, g) AND lo < hi
+    AND gapf?(F, ys, lo, hi, beta)
+    IMPLIES sgn_sg(F, msg(ys), g, lo, hi) = sign3(meval(mpol(g))(cons(beta, ys)))
+
+  sec_sub: LEMMA FORALL G:
+    (FORALL g: member(g, G) IMPLIES member(g, F) AND mok?(F, ys, g))
+    AND lo < hi AND gapf?(F, ys, lo, hi, beta)
+    IMPLIES map(LAMBDA (g: list[mpoly]): sgn_sg(F, msg(ys), g, lo, hi))(G)
+          = svec(G, cons(beta, ys))
+
+  memok_mem: LEMMA FORALL G: memok?(F, msg(ys), G) AND member(g, G)
+    IMPLIES mok?(F, ys, g)
+
+  sec_svec: LEMMA memok?(F, msg(ys), F) AND lo < hi AND gapf?(F, ys, lo, hi, beta)
+    IMPLIES sec_sg(F, msg(ys), lo, hi) = svec(F, cons(beta, ys))
+
+  %% ---- the inductions along Y ---------------------------------------------------
+  sg: VAR SG
+
+  yok?(F, ys, Y): bool = memok?(F, msg(ys), F) AND (null?(lives(F)) OR sepok?(F, msg(ys), Y))
+
+  %% ---- the per-member conditions give the product facts the lifting uses ------
+  P_zero_mem: LEMMA P(F, ys)(z) = 0 IFF
+    EXISTS g: member(g, F) AND live?(g) AND meval(mpol(g))(cons(z, ys)) = 0
+  nzat_mem: LEMMA FORALL G: nzat?(F, msg(ys), y0, G) AND member(g, G) AND live?(g)
+    IMPLIES meval(mpol(g))(cons(y0, ys)) /= 0
+  nzat_P: LEMMA nzat?(F, msg(ys), y0, F) IMPLIES P(F, ys)(y0) /= 0
+  atmost1_mem: LEMMA FORALL G: atmost1?(F, msg(ys), lo, hi, G) AND member(g, G) AND length(strip(g)) >= 2
+    IMPLIES mcnt(F, msg(ys), g, lo, hi) <= 1
+  %% one member's roots in the gap: at most one (from its count), by cnt_one
+  mem_one: LEMMA member(g, F) AND mok?(F, ys, g) AND length(strip(g)) >= 2 AND lo < hi
+    AND meval(mpol(g))(cons(lo, ys)) /= 0 AND meval(mpol(g))(cons(hi, ys)) /= 0
+    AND mcnt(F, msg(ys), g, lo, hi) <= 1
+    AND lo < z1 AND z1 <= hi AND meval(mpol(g))(cons(z1, ys)) = 0
+    AND lo < z2 AND z2 <= hi AND meval(mpol(g))(cons(z2, ys)) = 0
+    IMPLIES z1 = z2
+  %% two members' roots in the gap coincide: the pair product has one root
+  pair_one: LEMMA lo < hi AND slc?(ppk(f, g), msg(ys), pprod(f, g))
+    AND meval(mpol(f))(cons(lo, ys)) /= 0 AND meval(mpol(g))(cons(lo, ys)) /= 0
+    AND meval(mpol(f))(cons(hi, ys)) /= 0 AND meval(mpol(g))(cons(hi, ys)) /= 0
+    AND cnt(ppk(f, g), msg(ys), pprod(f, g), lo, hi) = 1
+    AND lo < z1 AND z1 <= hi AND meval(mpol(f))(cons(z1, ys)) = 0
+    AND lo < z2 AND z2 <= hi AND meval(mpol(g))(cons(z2, ys)) = 0
+    IMPLIES z1 = z2
+  coin_mem: LEMMA FORALL G: coin?(F, msg(ys), lo, hi, f, G) AND member(g, G)
+    AND rootin?(F, msg(ys), f, lo, hi) AND rootin?(F, msg(ys), g, lo, hi)
+    IMPLIES slc?(ppk(f, g), msg(ys), pprod(f, g)) AND cnt(ppk(f, g), msg(ys), pprod(f, g), lo, hi) = 1
+  coins_mem: LEMMA FORALL G: coins?(F, msg(ys), lo, hi, G) AND member(f, G) AND member(g, G) AND f /= g
+    AND rootin?(F, msg(ys), f, lo, hi) AND rootin?(F, msg(ys), g, lo, hi)
+    IMPLIES (slc?(ppk(f, g), msg(ys), pprod(f, g)) AND cnt(ppk(f, g), msg(ys), pprod(f, g), lo, hi) = 1)
+         OR (slc?(ppk(g, f), msg(ys), pprod(g, f)) AND cnt(ppk(g, f), msg(ys), pprod(g, f), lo, hi) = 1)
+  %% a member with a root in the gap has one, and every root of the product is it
+  rootin_root: LEMMA member(g, F) AND mok?(F, ys, g) AND lo < hi
+    AND meval(mpol(g))(cons(lo, ys)) /= 0 AND meval(mpol(g))(cons(hi, ys)) /= 0
+    AND rootin?(F, msg(ys), g, lo, hi)
+    IMPLIES EXISTS beta: lo < beta AND beta <= hi AND meval(mpol(g))(cons(beta, ys)) = 0
+  noroot: LEMMA member(g, F) AND mok?(F, ys, g) AND length(strip(g)) >= 2 AND lo < hi
+    AND meval(mpol(g))(cons(lo, ys)) /= 0 AND meval(mpol(g))(cons(hi, ys)) /= 0
+    AND NOT rootin?(F, msg(ys), g, lo, hi)
+    IMPLIES FORALL z: lo < z AND z <= hi IMPLIES meval(mpol(g))(cons(z, ys)) /= 0
+  gap_mem: LEMMA FORALL G: some(LAMBDA (g: list[mpoly]): rootin?(F, sg, g, lo, hi))(G)
+    IMPLIES EXISTS g: member(g, G) AND rootin?(F, sg, g, lo, hi)
+  strip_live: LEMMA length(strip(g)) >= 2 IMPLIES live?(g)
+  some_intro_walk_ok: LEMMA FORALL G: member(g, G) AND rootin?(F, sg, g, lo, hi)
+    IMPLIES some(LAMBDA (g: list[mpoly]): rootin?(F, sg, g, lo, hi))(G)
+  %% nothing outside [car(Y), rlast(Y)], member by member, hence for the product
+  leftok_mem: LEMMA FORALL G: leftok?(F, msg(ys), y0, G) AND member(g, G) AND length(strip(g)) >= 2
+    IMPLIES left(bk(F), msg(ys), strip(g), y0) = 0
+  rightok_mem: LEMMA FORALL G: rightok?(F, msg(ys), y0, G) AND member(g, G) AND length(strip(g)) >= 2
+    IMPLIES right(bk(F), msg(ys), strip(g), y0) = 0
+  left_P: LEMMA memok?(F, msg(ys), F) AND nzat?(F, msg(ys), y0, F) AND leftok?(F, msg(ys), y0, F)
+    AND z <= y0 IMPLIES P(F, ys)(z) /= 0
+  right_P: LEMMA memok?(F, msg(ys), F) AND nzat?(F, msg(ys), y0, F) AND rightok?(F, msg(ys), y0, F)
+    AND z >= y0 IMPLIES P(F, ys)(z) /= 0
+  gapok_beta: LEMMA memok?(F, msg(ys), F) AND gapok?(F, msg(ys), lo, hi) AND nzat?(F, msg(ys), hi, F)
+    AND gap?(F, msg(ys), lo, hi)
+    IMPLIES EXISTS beta: gapf?(F, ys, lo, hi, beta)
+  gapok_none: LEMMA memok?(F, msg(ys), F) AND gapok?(F, msg(ys), lo, hi) AND nzat?(F, msg(ys), hi, F)
+    AND NOT gap?(F, msg(ys), lo, hi)
+    IMPLIES FORALL z: lo <= z AND z <= hi IMPLIES P(F, ys)(z) /= 0
+
+  bprod_null: LEMMA null?(lives(F)) IMPLIES P(F, ys)(z) = 1
+
+  sepok_hd: LEMMA cons?(Y) AND sepok?(F, msg(ys), Y) IMPLIES nzat?(F, msg(ys), car(Y), F)
+  sepok_last: LEMMA FORALL Y: cons?(Y) AND sepok?(F, msg(ys), Y) IMPLIES nzat?(F, msg(ys), rlast(Y), F)
+  yok_cdr: LEMMA cons?(Y) AND cons?(cdr(Y)) AND yok?(F, ys, Y)
+    IMPLIES yok?(F, ys, cdr(Y))
+
+  walk_hd: LEMMA cons?(Y) IMPLIES member(vec_sg(F, sg, car(Y)), walk(F, sg, Y))
+  walk_tl: LEMMA cons?(Y) AND cons?(cdr(Y)) AND member(v, walk(F, sg, cdr(Y)))
+    IMPLIES member(v, walk(F, sg, Y))
+
+  walk_sec: LEMMA cons?(Y) AND cons?(cdr(Y)) AND gap?(F, sg, car(Y), car(cdr(Y)))
+    IMPLIES member(sec_sg(F, sg, car(Y), car(cdr(Y))), walk(F, sg, Y))
+
+  %% what one gap contributes: everything between two neighbouring separators
+  gap_cover: LEMMA cons?(Y) AND cons?(cdr(Y)) AND yok?(F, ys, Y)
+    AND car(Y) <= z AND z <= car(cdr(Y))
+    IMPLIES member(svec(F, cons(z, ys)), walk(F, msg(ys), Y))
+
+  %% a section the walk emits is the vector at the gap's root
+  sec_fib_walk_ok: LEMMA cons?(Y) AND cons?(cdr(Y)) AND yok?(F, ys, Y)
+    AND gap?(F, msg(ys), car(Y), car(cdr(Y)))
+    IMPLIES fib(F, ys)(sec_sg(F, msg(ys), car(Y), car(cdr(Y))))
+
+  walk_sound: LEMMA FORALL Y: yok?(F, ys, Y) AND member(v, walk(F, msg(ys), Y))
+    IMPLIES fib(F, ys)(v)
+
+  walk_mid: LEMMA FORALL Y: cons?(Y) AND yok?(F, ys, Y)
+    AND car(Y) <= z AND z <= rlast(Y)
+    IMPLIES member(svec(F, cons(z, ys)), walk(F, msg(ys), Y))
+
+  walk_last: LEMMA FORALL Y: cons?(Y)
+    IMPLIES member(vec_sg(F, sg, rlast(Y)), walk(F, sg, Y))
+
+  %% THE THEOREM
+  walk_fib: THEOREM wok?(F, msg(ys), Y) IMPLIES
+    (member(v, walk(F, msg(ys), Y)) IFF fib(F, ys)(v))
+END walk_ok

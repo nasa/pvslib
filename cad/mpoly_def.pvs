@@ -1,0 +1,107 @@
+mpoly_def: THEORY
+%----------------------------------------------------------------------------
+% Recursive multivariate polynomials: definitions and evaluation.
+%
+% A term of the datatype mpoly (mpoly.pvs) is either a rational constant
+% mconst(c) or mpol(l), a polynomial in its main variable whose coefficient
+% list l (low degree first) holds polynomials in the remaining variables.
+% Variables are positional: evaluation takes a list xs of reals whose head is
+% the main variable of the current level and whose tail is passed to the
+% coefficients.  A constant may sit at any depth.  Missing variables count
+% as 0, which keeps meval total.
+%
+% PVS has no mutual recursion, so recursion over the coefficient list is
+% recursion on mpol(cdr(l)) under the size measure msize.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly
+
+  p, q: VAR mpoly
+  c: VAR rat
+  h: VAR mpoly
+  l, t: VAR list[mpoly]
+  xs: VAR list[real]
+  x: VAR real
+  n: VAR nat
+  j: VAR posnat
+
+  %% size measure
+
+  sum_nat(ns: list[nat]): RECURSIVE nat =
+    CASES ns OF null: 0, cons(k, r): k + sum_nat(r) ENDCASES
+  MEASURE ns BY <<
+
+  sum_nat_cons: LEMMA FORALL (k: nat, r: list[nat]): sum_nat(cons(k, r)) = k + sum_nat(r)
+
+  msize: [mpoly -> nat] =
+    reduce_nat(LAMBDA c: 1, LAMBDA (ns: list[nat]): 1 + sum_nat(ns))
+
+  map_msize_cons: LEMMA map(msize)(cons(h, l)) = cons(msize(h), map(msize)(l))
+  msize_mconst: LEMMA msize(mconst(c)) = 1
+  msize_mpol: LEMMA msize(mpol(l)) = 1 + sum_nat(map(msize)(l))
+  msize_pos: LEMMA msize(p) >= 1
+  msize_car: LEMMA cons?(l) IMPLIES msize(car(l)) < msize(mpol(l))
+  msize_cdr: LEMMA cons?(l) IMPLIES msize(mpol(cdr(l))) < msize(mpol(l))
+  % selector forms, for use on a term known to be an mpol
+  msize_car_sel: LEMMA mpol?(p) AND cons?(coeffs(p)) IMPLIES msize(car(coeffs(p))) < msize(p)
+  msize_cdr_sel: LEMMA mpol?(p) AND cons?(coeffs(p)) IMPLIES msize(mpol(cdr(coeffs(p)))) < msize(p)
+
+  %% valuations
+
+  hd(xs): real = IF null?(xs) THEN 0 ELSE car(xs) ENDIF
+  tl(xs): list[real] = IF null?(xs) THEN xs ELSE cdr(xs) ENDIF
+
+  hd_cons: LEMMA hd(cons(x, xs)) = x
+  tl_cons: LEMMA tl(cons(x, xs)) = xs
+
+  %% evaluation, Horner form
+
+  meval(p)(xs): RECURSIVE real =
+    CASES p OF
+      mconst(c): c,
+      mpol(l): IF null?(l) THEN 0
+               ELSE meval(car(l))(tl(xs)) + hd(xs) * meval(mpol(cdr(l)))(xs) ENDIF
+    ENDCASES
+  MEASURE msize(p)
+
+  meval_mconst: LEMMA meval(mconst(c))(xs) = c
+  meval_mpol_null: LEMMA meval(mpol(null))(xs) = 0
+  meval_mpol_cons: LEMMA
+    meval(mpol(cons(h, t)))(xs) = meval(h)(tl(xs)) + hd(xs) * meval(mpol(t))(xs)
+  % selector forms
+  meval_const: LEMMA mconst?(p) IMPLIES meval(p)(xs) = mc(p)
+  meval_null: LEMMA mpol?(p) AND null?(coeffs(p)) IMPLIES meval(p)(xs) = 0
+  meval_cons: LEMMA mpol?(p) AND cons?(coeffs(p)) IMPLIES
+    meval(p)(xs) = meval(car(coeffs(p)))(tl(xs)) + hd(xs) * meval(mpol(cdr(coeffs(p))))(xs)
+
+  %% the coefficient list of a term, viewing a constant as a one-element list
+
+  as_list(p): list[mpoly] = CASES p OF mconst(c): (: p :), mpol(l): l ENDCASES
+
+  meval_as_list: LEMMA meval(mpol(as_list(p)))(xs) = meval(p)(xs)
+
+  %% constants and variables
+
+  zero: mpoly = mconst(0)
+  one: mpoly = mconst(1)
+
+  % the variable j positions from the head (1 = main variable of this level)
+  mvar(j): RECURSIVE mpoly =
+    IF j = 1 THEN mpol((: mconst(0), mconst(1) :)) ELSE mpol((: mvar(j - 1) :)) ENDIF
+  MEASURE j
+
+  % the j-th variable of a valuation, 0 when absent
+  nth0(xs, j): RECURSIVE real =
+    IF null?(xs) THEN 0 ELSIF j = 1 THEN car(xs) ELSE nth0(cdr(xs), j - 1) ENDIF
+  MEASURE j
+
+  meval_zero: LEMMA meval(zero)(xs) = 0
+  meval_one: LEMMA meval(one)(xs) = 1
+  meval_mvar: LEMMA meval(mvar(j))(xs) = nth0(xs, j)
+
+  %% degree in the main variable and leading coefficient
+
+  deg(p): nat =
+    CASES p OF mconst(c): 0, mpol(l): (IF null?(l) THEN 0 ELSE length(l) - 1 ENDIF) ENDCASES
+
+END mpoly_def

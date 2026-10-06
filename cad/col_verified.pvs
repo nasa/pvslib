@@ -1,0 +1,66 @@
+col_verified: THEORY
+%----------------------------------------------------------------------------
+% THE COLLINS RUN COMPUTES A CYLINDRICAL ALGEBRAIC DECOMPOSITION ADAPTED TO
+% F, returned as data.
+%
+% ccad_of?(u, qs, F) collects what the Collins run provides for the family F
+% in k + 1 = length(qs) variables.  Its cells of R^(j+1), j <= k, are
+% ccell(k, F)(s, A): over a sector s of the roots of F's k-th Collins
+% projection, the cell of the tower ctw(F, k) with the j stack indices A.
+%   - the cells of R^(k+1) cover it and two of them meet only if they are the
+%     same;
+%   - every cell, at every level, is connected and definable by a
+%     first-order formula over the reals with rational polynomial sign atoms
+%     (semi-algebraic in the sense of first-order definable);
+%   - over each sector the tower is a CAD (cad_over?): every level is
+%     delineable over every cell below it, and its cells are the sections
+%     and bands of its root functions;
+%   - the graph of every such root function over a cell is definable too;
+%   - every polynomial of F has one sign on every cell of R^(k+1);
+%   - cad_outc returns at least one record for each nonempty cell of
+%     R^(k+1) and none for any other, each with a sample point in its cell
+%     and F's sign vector there.
+% col_verified: this holds whenever decc_o's certificate does -- the cells
+% themselves need no certificate (col_run's col_cad_run), the records need
+% the walk's.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_out_ok
+
+  u: VAR nat
+  qs: VAR list[bool]
+  F: VAR list[list[mpoly]]
+  Psi: VAR [SV -> bool]
+  s, s1, s2: VAR Sect
+  A, A1, A2: VAR list[nat]
+  p, p1, p2, q: VAR list[real]
+  r: VAR ORec
+
+  ccad_of?(u, qs, F): bool = cons?(qs) AND
+    LET k = length(cdr(qs)), ss = csects(k, F) IN
+        (FORALL p: length(p) = k + 1 IMPLIES
+           EXISTS s, A: member(s, ss) AND length(A) = k AND ccell(k, F)(s, A)(p))
+    AND (FORALL p, s1, s2, A1, A2: member(s1, ss) AND member(s2, ss)
+           AND length(A1) = k AND length(A2) = k
+           AND ccell(k, F)(s1, A1)(p) AND ccell(k, F)(s2, A2)(p)
+           IMPLIES s1 = s2 AND A1 = A2)
+    AND (FORALL s, A: member(s, ss) AND length(A) <= k IMPLIES
+           conn?(ccell(k, F)(s, A)) AND fod?(1 + length(A))(ccell(k, F)(s, A)))
+    AND (FORALL s: member(s, ss) IMPLIES cad_over?(ctw(F, k), scell(s)))
+    AND (FORALL s, A, (i: nat): member(s, ss) AND length(A) < k
+           AND (FORALL q: ccell(k, F)(s, A)(q) IMPLIES i < nroot(nth(ctw(F, k), length(A)), q))
+           IMPLIES fod?(2 + length(A))
+             (LAMBDA p: cons?(p) AND ccell(k, F)(s, A)(cdr(p))
+                        AND car(p) = rt(nth(ctw(F, k), length(A)), cdr(p), i)))
+    AND (FORALL s, A, p1, p2: member(s, ss) AND length(A) = k
+           AND ccell(k, F)(s, A)(p1) AND ccell(k, F)(s, A)(p2)
+           IMPLIES svec(F, p1) = svec(F, p2))
+    AND (FORALL r: member(r, cad_outc(u, qs, F)) IMPLIES
+           member(r`rsec, ss) AND length(r`radr) = k
+           AND ccell(k, F)(r`rsec, r`radr)(den(r`rsod))
+           AND r`rsv = svec(F, den(r`rsod)))
+    AND (FORALL s, A: member(s, ss) AND length(A) = k AND (EXISTS q: ccell(k, F)(s, A)(q))
+           IMPLIES EXISTS r: member(r, cad_outc(u, qs, F)) AND r`rsec = s AND r`radr = A)
+
+  col_verified: THEOREM decc_o(u, qs, F, Psi)`ok AND length(qs) >= 2 IMPLIES ccad_of?(u, qs, F)
+END col_verified

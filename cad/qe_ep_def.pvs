@@ -1,0 +1,110 @@
+qe_ep_def: THEORY
+%----------------------------------------------------------------------------
+% Quantifier-free comparison with a real algebraic number.  Executable.
+%
+% An algebraic number b (value(b), the one root of b`p in [b`lb, b`ub]) is
+% described by an EP record e, checked at run time by epok?(b)(e):
+%   rational (ek = 0): er is a root of b`p in [b`lb, b`ub], so value(b) = er;
+%   isolated (ek /= 0): eq vanishes at value(b), has exactly one root in
+%     [elb, eub] and opposite signs at elb and eub, and b`p has a root in
+%     [elb, eub] inside [b`lb, b`ub].
+% Then x < value(b), x = value(b) and x > value(b) are quantifier-free in x
+% (ltQ, eqQ, gtQ): for an isolated value, x < value(b) iff x <= elb, or
+% x < eub and eq has at x the sign it has at elb.  epc builds e without proof
+% (a rational root among the interval ends and the linear root; otherwise
+% the derivative of b`p of order one less than the multiplicity, where
+% value(b) is a simple root, on an interval clrx clears of its other roots).
+% cmpX(b, t) is the sign condition sign3(x - value(b)) = t: from ltQ / eqQ /
+% gtQ when the check passes, else cmpF (correct, not quantifier-free).
+% sectX(s) is in?(s, x) the same way.  qe_ep proves them.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_fm_def, rcf_cad_def, thom_enc
+
+  b: VAR Alg
+  r: VAR rat
+  t: VAR int
+  s: VAR Sect
+  j, n: VAR nat
+  rs: VAR list[rat]
+
+  EP: TYPE = [# ek: nat, er: rat, eq: Polylist, elb: rat, eub: rat #]
+  e: VAR EP
+
+  epok?(b)(e): bool =
+    IF e`ek = 0 THEN polylist(b`p)(e`er) = 0 AND b`lb <= e`er AND e`er <= b`ub
+    ELSE deg(e`eq) > 0 AND e`elb < e`eub AND b`lb <= e`elb AND e`eub <= b`ub
+         AND nroots(b`p, e`elb, e`eub) >= 1
+         AND zero_at(b, e`eq)
+         AND nroots(e`eq, e`elb, e`eub) = 1
+         AND polylist(e`eq)(e`elb) * polylist(e`eq)(e`eub) < 0
+    ENDIF
+
+  %% x - r, as coefficients in the head variable
+  linp(r): list[mpoly] = pmc((: -r, 1 :))
+
+  ltQ(e): Fm =
+    IF e`ek = 0 THEN fsg(mpol(linp(e`er)), -1)
+    ELSE f_or(fnot(fsg(mpol(linp(e`elb)), 1)),
+              fand(fsg(mpol(linp(e`eub)), -1),
+                   fsg(mpol(pmc(e`eq)), sign3(polylist(e`eq)(e`elb)))))
+    ENDIF
+  eqQ(e): Fm =
+    IF e`ek = 0 THEN fsg(mpol(linp(e`er)), 0)
+    ELSE fand(fsg(mpol(linp(e`elb)), 1), fand(fsg(mpol(linp(e`eub)), -1), fsg(mpol(pmc(e`eq)), 0)))
+    ENDIF
+  gtQ(e): Fm =
+    IF e`ek = 0 THEN fsg(mpol(linp(e`er)), 1) ELSE fand(fnot(ltQ(e)), fnot(eqQ(e))) ENDIF
+
+  %% the constructor (no proof needed: epok? is checked)
+  ratroot(b, rs): RECURSIVE list[rat] =
+    IF null?(rs) THEN null[rat]
+    ELSIF polylist(b`p)(car(rs)) = 0 AND b`lb <= car(rs) AND car(rs) <= b`ub THEN (: car(rs) :)
+    ELSE ratroot(b, cdr(rs))
+    ENDIF
+  MEASURE length(rs)
+  %% the order k of the derivative with value(b) a simple root: p^(k+1) does not vanish there
+  mltd(b, j, n): RECURSIVE nat =
+    IF n = 0 OR NOT zero_at(b, nderiv(b`p, j + 1)) THEN j ELSE mltd(b, j + 1, n - 1) ENDIF
+  MEASURE n
+  %% candidates for a rational value(b): the root of a linear p or of a linear p^(k), rationals
+  %% with small denominators near the middle of the interval, 0, the ends
+  linr(q: Polylist): list[rat] =
+    IF length(q) = 2 AND nth(q, 1) /= 0 THEN (: -nth(q, 0) / nth(q, 1) :) ELSE null[rat] ENDIF
+  %% the simplest rationals near the middle of the isolating interval (denominators n, ..., 1)
+  midq(b, (q: posnat)): rat = floor(q * (b`lb + b`ub) / 2 + 1/2) / q
+  ratq(b, n): RECURSIVE list[rat] = IF n = 0 THEN null[rat] ELSE cons(midq(b, n), ratq(b, n - 1)) ENDIF
+  MEASURE n
+  ratc(b): list[rat] =
+    append(linr(b`p), append(linr(nderiv(b`p, mltd(b, 0, deg(b`p)))),
+                             append(ratq(b, 12), (: 0, b`lb, b`ub :))))
+  epbad: EP = (# ek := 1, er := 0, eq := (: 0 :), elb := 0, eub := 0 #)
+  epc(b): EP =
+    LET rr = ratroot(b, ratc(b)) IN
+    IF cons?(rr) THEN (# ek := 0, er := car(rr), eq := b`p, elb := 0, eub := 0 #)
+    ELSE LET q = nderiv(b`p, mltd(b, 0, deg(b`p))) IN
+      IF deg(q) > 0
+        THEN LET c = clrx(b, q, chain(q)) IN
+          IF polylist(q)(c`lb) = 0 THEN (# ek := 0, er := c`lb, eq := b`p, elb := 0, eub := 0 #)
+          ELSIF polylist(q)(c`ub) = 0 THEN (# ek := 0, er := c`ub, eq := b`p, elb := 0, eub := 0 #)
+          ELSE (# ek := 1, er := 0, eq := q, elb := c`lb, eub := c`ub #)
+          ENDIF
+      ELSE epbad
+      ENDIF
+    ENDIF
+
+  cmpX(b, t): Fm =
+    LET e = epc(b) IN
+    IF epok?(b)(e) THEN IF t < 0 THEN ltQ(e) ELSIF t = 0 THEN eqQ(e) ELSE gtQ(e) ENDIF
+    ELSE cmpF(b, t)
+    ENDIF
+
+  sectX(s): Fm =
+    CASES s OF
+      below(h): cmpX(h, -1),
+      at(p): cmpX(p, 0),
+      mid(l, h): fand(cmpX(l, 1), cmpX(h, -1)),
+      above(l): cmpX(l, 1),
+      whole: ftrue
+    ENDCASES
+END qe_ep_def

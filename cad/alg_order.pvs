@@ -1,0 +1,50 @@
+alg_order: THEORY
+%----------------------------------------------------------------------------
+% Comparing two algebraic numbers, possibly with different defining
+% polynomials.
+%
+% Equality: value(a) = value(b) iff value(a) is a root of b's polynomial and
+% lies in b's isolating interval, both decided by alg_sign (the sign of
+% x - r at a compares value(a) with a rational r). Order: if the values
+% differ, both intervals are bisected until they are disjoint (sepr); the
+% loop terminates because the widths halve while the values stay at their
+% fixed positive distance. alg_cmp(a, b) = sign3(value(a) - value(b)).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_sign
+
+  a, b: VAR Alg
+  r: VAR rat
+  x: VAR real
+
+  %% comparing with a rational: the sign of x - r at a
+  cmp_rat(a, r): Sign3 = alg_sign(a, (: -r, 1 :))
+  cmp_rat_def: LEMMA cmp_rat(a, r) = sign3(value(a) - r)
+
+  %% equality
+  alg_eq(a, b): bool = alg_sign(a, b`p) = 0 AND cmp_rat(a, b`lb) >= 0 AND cmp_rat(a, b`ub) <= 0
+  alg_eq_def: LEMMA alg_eq(a, b) IFF value(a) = value(b)
+
+  %% the distance between the values, for the termination of sepr
+  dist(a, (b | NOT alg_eq(a, b))): posreal = abs(value(a) - value(b)) / 2
+  mwidth(a, b): real = max(width(a), width(b))
+  %% overlapping intervals are at least as wide as the distance between the values
+  sepr_step: LEMMA NOT alg_eq(a, b) AND NOT (a`ub < b`lb OR b`ub < a`lb) IMPLIES
+    real_ord_ep(dist(a, b))(mwidth(refine(a), refine(b)), mwidth(a, b))
+
+  %% bisect both until the intervals are disjoint; TRUE iff a's interval ends up on the left
+  sepr(a, (b | NOT alg_eq(a, b))): RECURSIVE bool =
+    IF a`ub < b`lb THEN TRUE
+    ELSIF b`ub < a`lb THEN FALSE
+    ELSE sepr(refine(a), refine(b)) ENDIF
+  MEASURE mwidth(a, b) BY real_ord_ep(dist(a, b))
+
+  sepr_inv: LEMMA FORALL (a0, b0: Alg): NOT alg_eq(a0, b0) IMPLIES
+    FORALL (q: [Alg, Alg]): value(q`1) = value(a0) AND value(q`2) = value(b0) IMPLIES
+      (sepr(q`1, q`2) IFF value(q`1) < value(q`2))
+  sepr_def: LEMMA NOT alg_eq(a, b) IMPLIES (sepr(a, b) IFF value(a) < value(b))
+
+  %% the comparison
+  alg_cmp(a, b): Sign3 = IF alg_eq(a, b) THEN 0 ELSIF sepr(a, b) THEN -1 ELSE 1 ENDIF
+  alg_cmp_def: THEOREM alg_cmp(a, b) = sign3(value(a) - value(b))
+END alg_order

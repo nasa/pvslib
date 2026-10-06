@@ -1,0 +1,64 @@
+cad_stkc: THEORY
+%----------------------------------------------------------------------------
+% The cells of a stack are connected.
+%
+% stk(G, C, a) is the cell of stack index a over C: the points cons(y, q)
+% with q in C and sidx(G, q, y) = a.  Index 2i+1 is the graph of the i-th
+% root, index 2i the band below it (above the (i-1)-th root).  When G is
+% delineable over a connected C (delin_cl?), each cell is a slab
+% (cad_slab): its slice over q is an interval (sidx_conv), and a continuous
+% section runs through the slices (sec: the i-th root, or the band's fixed
+% point from bpts, which is continuous because it is built from the roots,
+% bpts_nth).  So every cell is connected (conn_stk), and G has one sign
+% vector on it (stk_sinv).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_stack, cad_slab
+
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, p1, q, x: VAR list[real]
+  y, y1, y2, z: VAR real
+  a, i, j, n: VAR nat
+  L: VAR list[real]
+  g, h: VAR [list[real] -> real]
+
+  stk(G, C, a)(p): bool = cons?(p) AND C(cdr(p)) AND sidx(G, cdr(p), car(p)) = a
+  sslice(G, a)(q)(y): bool = sidx(G, q, y) = a
+  stk_slab: LEMMA stk(G, C, a) = slab(C, sslice(G, a))
+
+  %% ---- the slices are intervals --------------------------------------------------------
+  nlt_mem: LEMMA FORALL L, i: sincr?(L) AND i < length(L) IMPLIES
+    member(nth(L, i), L) AND nlt(L, nth(L, i)) = i
+  sidx_le: LEMMA rl?(G, q)(rtl(G, q)) IMPLIES sidx(G, q, y) <= 2 * nroot(G, q)
+  sidx_conv: LEMMA rl?(G, q)(rtl(G, q)) IMPLIES conv?(sslice(G, a)(q))
+
+  %% ---- a point in each slice -------------------------------------------------------------
+  bmid_nth: LEMMA FORALL L, j: cons?(L) AND j < length(L) IMPLIES
+    nth(bmid(L), j) = IF j + 1 = length(L) THEN nth(L, j) + 1 ELSE (nth(L, j) + nth(L, j + 1)) / 2 ENDIF
+  bpts_nth: LEMMA FORALL L, i: sincr?(L) AND i <= length(L) IMPLIES
+    nth(bpts(L), i) =
+      IF length(L) = 0 THEN 0
+      ELSIF i = 0 THEN nth(L, 0) - 1
+      ELSIF i = length(L) THEN nth(L, i - 1) + 1
+      ELSE (nth(L, i - 1) + nth(L, i)) / 2
+      ENDIF
+
+  hf(a): nat = floor(a / 2)
+  hf_even: LEMMA even?(a) IMPLIES a = 2 * hf(a)
+  hf_odd: LEMMA NOT even?(a) IMPLIES a = 2 * hf(a) + 1
+
+  bp(G, q, i): real = IF i <= nroot(G, q) THEN nth(bpts(rtl(G, q)), i) ELSE 0 ENDIF
+  sec(G, a)(q): real = IF even?(a) THEN bp(G, q, hf(a)) ELSE rt(G, q, hf(a)) ENDIF
+
+  sec_in: LEMMA rl?(G, q)(rtl(G, q)) AND a <= 2 * nroot(G, q) IMPLIES sslice(G, a)(q)(sec(G, a)(q))
+
+  %% ---- the section is continuous ----------------------------------------------------------
+  cont_eq: LEMMA cont_on?(g, C) AND (FORALL q: C(q) IMPLIES h(q) = g(q)) IMPLIES cont_on?(h, C)
+  sec_cont: LEMMA delin_cl?(G, C) AND C(x) IMPLIES cont_on?(sec(G, a), C)
+
+  %% ---- the cells ---------------------------------------------------------------------------
+  conn_stk: THEOREM conn?(C) AND delin_cl?(G, C) IMPLIES conn?(stk(G, C, a))
+  stk_sinv: LEMMA delin_cl?(G, C) AND stk(G, C, a)(p) AND stk(G, C, a)(p1)
+    IMPLIES svec(G, p) = svec(G, p1)
+END cad_stkc

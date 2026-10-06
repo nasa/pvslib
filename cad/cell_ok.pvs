@@ -1,0 +1,80 @@
+cell_ok: THEORY
+%----------------------------------------------------------------------------
+% The cells of a level below the outermost are read correctly.
+%
+% A level's cells are the rational separators of its walk and the gaps that
+% hold a root.  The inner walk runs at each cell through the cell's oracle:
+%
+%   qsec_val    at the section beta of a gap the oracle sg_sec answers by
+%               bounded Tarski queries at the ends of the gap; each sound
+%               query (qsec`ok) returns the sign at (beta, ys) (from tower),
+%               and at a gap the walk certified every query IS sound
+%               (qsec_ok_complete, allok_complete); allok_agree: when every
+%               query on a list of reads is sound the oracle agrees with
+%               msg(cons(beta, ys)) on them
+%
+% No algebraic number appears: beta exists only in the statement.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING tower_ok, sturm_sg2
+
+  ys: VAR list[real]
+  F, P, G: VAR list[list[mpoly]]
+  l, g: VAR list[mpoly]
+  c: VAR mpoly
+  R: VAR list[mpoly]
+  sg: VAR SG
+  lo, hi, y0, a, b: VAR rat
+  beta, z: VAR real
+
+  %% ---- normalizing a coefficient list through msg ----------------------------------
+  snorm_eval_cell_ok: LEMMA FORALL l: meval(mpol(snorm_sg(l, msg(ys))))(cons(z, ys))
+    = meval(mpol(l))(cons(z, ys))
+  snorm_lc_cell_ok: LEMMA cons?(snorm_sg(l, msg(ys))) IMPLIES
+    meval(llast(snorm_sg(l, msg(ys))))(ys) /= 0
+  single_eval: LEMMA cons?(g) AND null?(cdr(g)) IMPLIES
+    meval(mpol(g))(cons(z, ys)) = meval(car(g))(ys)
+
+  %% ---- the level, and the polynomial a query runs against --------------------------
+  lvl?(P, ys, lo, hi, beta): bool =
+    memok?(P, msg(ys), P) AND cons?(lives(P)) AND slc?(bk(P), msg(ys), bprod(P))
+    AND lo < hi AND gapf?(P, ys, lo, hi, beta)
+
+  secp_ok: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, P))
+    AND memok?(P, msg(ys), P) AND slc?(bk(P), msg(ys), bprod(P))
+    IMPLIES slc?(bk(P), msg(ys), secp(P, msg(ys), G, lo, hi))
+      AND (FORALL z: meval(mpol(secp(P, msg(ys), G, lo, hi)))(cons(z, ys)) = 0
+             IMPLIES meval(mpol(bprod(P)))(cons(z, ys)) = 0)
+
+  %% one root of the query polynomial between the ends the query found
+  sec_one: LEMMA lvl?(P, ys, lo, hi, beta) AND l = secp(P, msg(ys), P, lo, hi)
+    AND lo <= a AND a < b AND b <= hi
+    AND meval(mpol(l))(cons(a, ys)) /= 0 AND meval(mpol(l))(cons(b, ys)) /= 0
+    AND cnt(bk(P), msg(ys), l, a, b) = 1
+    IMPLIES one?(ys, l, a, b, beta)
+
+  qsec_val: THEOREM lvl?(P, ys, lo, hi, beta) AND qsec(msg(ys), P, lo, hi, c)`ok
+    IMPLIES qsec(msg(ys), P, lo, hi, c)`val = msg(cons(beta, ys))(c)
+
+  %% completeness: at a gap the walk above certified,
+  %% every query is sound.  The member the query runs against vanishes only
+  %% where the live product does, so it is nonzero at the two ends and has
+  %% exactly one root between them, and the count says so (cnt_unique)
+  k: VAR nat
+  y1: VAR rat
+  cnt_unique: LEMMA slc?(k, msg(ys), l) AND ends?(ys, l, y0, y1)
+    AND y0 < z AND z <= y1 AND meval(mpol(l))(cons(z, ys)) = 0
+    AND (FORALL (w: real): y0 < w AND w <= y1 AND meval(mpol(l))(cons(w, ys)) = 0 IMPLIES w = z)
+    IMPLIES cnt(k, msg(ys), l, y0, y1) = 1
+  %% secp returns the product or a member with a root counted in the gap
+  secp_or: LEMMA FORALL G: secp(P, sg, G, lo, hi) = bprod(P)
+    OR cnt(bk(P), sg, secp(P, sg, G, lo, hi), lo, hi) > 0
+  secp_gap: LEMMA lvl?(P, ys, lo, hi, beta) AND l = secp(P, msg(ys), P, lo, hi) IMPLIES
+    ends?(ys, l, lo, hi) AND meval(mpol(l))(cons(beta, ys)) = 0
+    AND cnt(bk(P), msg(ys), l, lo, hi) = 1
+  qsec_ok_complete: THEOREM lvl?(P, ys, lo, hi, beta) IMPLIES qsec(msg(ys), P, lo, hi, c)`ok
+  allok_complete: THEOREM FORALL R: lvl?(P, ys, lo, hi, beta) IMPLIES allok?(msg(ys), P, lo, hi, R)
+
+  allok_agree: LEMMA FORALL R: lvl?(P, ys, lo, hi, beta) AND allok?(msg(ys), P, lo, hi, R)
+    IMPLIES agree(sg_sec(msg(ys), P, lo, hi), msg(cons(beta, ys)), R)
+END cell_ok

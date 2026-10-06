@@ -1,0 +1,70 @@
+thom_lemma: THEORY
+%----------------------------------------------------------------------------
+% Thom's lemma for real polynomials, at the level of coefficient
+% sequences a: [nat -> real] of degree n (a(n) /= 0).
+%
+% dk(a, k) is the k-th formal derivative (poly_deriv iterated); its degree
+% is n - k and its leading coefficient is nonzero. For a sign condition
+% sc: [nat -> Sign3], sat(a, n, sc, i)(x) says that the derivatives
+% i, ..., n all have the prescribed signs at x. The main lemma sat_convex:
+% the set of points satisfying a sign condition on the derivatives i..n is
+% convex (Basu-Pollack-Roy, Prop. 2.27), proved by downward induction on i
+% with NASALib's strict monotonicity lemmas (a polynomial whose derivative
+% keeps a sign on an interval is strictly monotone there) and the fact that
+% a nonzero polynomial cannot vanish on an interval (root separation).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING reals@more_polynomial_props, reals@sign3
+
+  a: VAR [nat -> real]
+  n, k, i, j: VAR nat
+  x, y, z, c: VAR real
+  sc: VAR [nat -> Sign3]
+
+  %% iterated derivative
+  dk(a, k): RECURSIVE [nat -> real] = IF k = 0 THEN a ELSE poly_deriv(dk(a, k - 1)) ENDIF
+  MEASURE k
+  dk_0: LEMMA dk(a, 0) = a
+  dk_succ: LEMMA dk(a, k + 1) = poly_deriv(dk(a, k))
+  dk_lc: LEMMA k <= n AND a(n) /= 0 IMPLIES dk(a, k)(n - k) /= 0
+
+  %% a nonzero polynomial does not vanish on an interval
+  poly_not_zero_interval: LEMMA a(n) /= 0 AND x < z AND
+    (FORALL y: x <= y AND y <= z IMPLIES polynomial(a, n)(y) = 0) IMPLIES FALSE
+
+  %% NASALib's strict monotonicity, in the direction used here
+  poly_inc_on: LEMMA FORALL (u, v: real): n > 0 AND a(n) /= 0 AND x < z AND
+    (FORALL c: x <= c AND c <= z IMPLIES polynomial(poly_deriv(a), n - 1)(c) >= 0) AND
+    x <= u AND u < v AND v <= z IMPLIES polynomial(a, n)(u) < polynomial(a, n)(v)
+  poly_dec_on: LEMMA FORALL (u, v: real): n > 0 AND a(n) /= 0 AND x < z AND
+    (FORALL c: x <= c AND c <= z IMPLIES polynomial(poly_deriv(a), n - 1)(c) <= 0) AND
+    x <= u AND u < v AND v <= z IMPLIES polynomial(a, n)(u) > polynomial(a, n)(v)
+
+  %% a polynomial whose derivative keeps a strict sign on [x, z] cannot have the same
+  %% nonzero sign... precisely: if its signs at x and z agree, the sign is the same in between
+  poly_sign_between: LEMMA n > 0 AND a(n) /= 0 AND x < z AND x <= y AND y <= z AND
+    ((FORALL c: x <= c AND c <= z IMPLIES polynomial(poly_deriv(a), n - 1)(c) > 0) OR
+     (FORALL c: x <= c AND c <= z IMPLIES polynomial(poly_deriv(a), n - 1)(c) < 0)) AND
+    sign3(polynomial(a, n)(x)) = sign3(polynomial(a, n)(z)) IMPLIES
+    sign3(polynomial(a, n)(y)) = sign3(polynomial(a, n)(x))
+
+  %% sign conditions on the derivatives i, ..., n
+  sat(a, n, sc, i)(x): bool = FORALL j: i <= j AND j <= n IMPLIES sign3(polynomial(dk(a, j), n - j)(x)) = sc(j)
+  sat_down: LEMMA i < n IMPLIES
+    (sat(a, n, sc, i)(x) IFF sat(a, n, sc, i + 1)(x) AND sign3(polynomial(dk(a, i), n - i)(x)) = sc(i))
+  sat_top: LEMMA sat(a, n, sc, n)(x) IFF sign3(dk(a, n)(0)) = sc(n)
+
+  sat_at: LEMMA sat(a, n, sc, i)(x) AND i <= j AND j <= n IMPLIES sign3(polynomial(dk(a, j), n - j)(x)) = sc(j)
+  sign3_zero: LEMMA sign3(x) = 0 IMPLIES x = 0
+  sign3_1: LEMMA sign3(x) = 1 IMPLIES x > 0
+  sign3_m1: LEMMA sign3(x) = -1 IMPLIES x < 0
+
+  %% Thom's lemma: the points satisfying a sign condition form a convex set
+  sat_convex_k: LEMMA FORALL (k: nat, a: [nat -> real], n: nat, sc: [nat -> Sign3]): k <= n AND a(n) /= 0 IMPLIES
+    FORALL x, y, z: sat(a, n, sc, n - k)(x) AND sat(a, n, sc, n - k)(z) AND x <= y AND y <= z IMPLIES sat(a, n, sc, n - k)(y)
+  sat_convex: LEMMA a(n) /= 0 AND i <= n AND sat(a, n, sc, i)(x) AND sat(a, n, sc, i)(z) AND x <= y AND y <= z IMPLIES
+    sat(a, n, sc, i)(y)
+
+  %% the sign condition realized at a point
+  sc_at(a, n, x)(j): Sign3 = IF j <= n THEN sign3(polynomial(dk(a, j), n - j)(x)) ELSE 0 ENDIF
+END thom_lemma

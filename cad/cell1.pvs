@@ -1,0 +1,260 @@
+cell1: THEORY
+%----------------------------------------------------------------------------
+% The bottom level by root isolation.
+%
+% A family of univariate polynomials (coefficient lists of constants) is
+% decomposed by the real roots of its members, isolated as algebraic numbers
+% (roots of alg_isolate), sorted without repetition (sortu, by
+% alg_cmp), with a rational sample strictly between consecutive roots (gap,
+% by refining the isolating intervals until they separate) and one beyond
+% each end. svs1 lists the sign vectors of the family at these samples,
+% read with alg_sign; every real point has the vector of one of them
+% (svs1_sound: a root is one of the isolated roots, a non-root lies between
+% consecutive roots or beyond all of them and the vector is constant there,
+% by same_sign of sector_rep), and every listed vector is realized
+% (svs1_complete). This replaces the univariate Tarski trees at level 1,
+% whose product polynomial would have the degree of the whole family.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_fast, alg_sortc, sector_rep, structures@more_list_props[Alg]
+
+  l, f: VAR list[mpoly]
+  F: VAR list[list[mpoly]]
+  a, b: VAR Alg
+  rs, rs1, rs2: VAR list[Alg]
+  x, z, a0, b0: VAR real
+  r: VAR rat
+  i: VAR nat
+  v: VAR list[Sign3]
+
+  %% the value of a polynomial of the bottom level (no variables left)
+  c: VAR mpoly
+  cval(c): RECURSIVE rat =
+    CASES c OF
+      mconst(q): q,
+      mpol(u): IF null?(u) THEN 0 ELSE cval(car(u)) ENDIF
+    ENDCASES
+  MEASURE msize(c)
+  cval_eval: LEMMA cval(c) = meval(c)(null[real])
+
+  %% univariate coefficient lists as Polylists
+  torat(l): RECURSIVE list[rat] =
+    IF null?(l) THEN null[rat] ELSE cons(cval(car(l)), torat(cdr(l))) ENDIF
+  MEASURE length(l)
+  torat_length: LEMMA length(torat(l)) = length(l)
+  torat_nth: LEMMA FORALL l: i < length(l) IMPLIES nth(torat(l), i) = cval(nth(l, i))
+  pl(l): Polylist = IF null?(l) THEN (: 0 :) ELSE torat(l) ENDIF
+
+  %% the negated list
+  len_pos: LEMMA cons?(l) IMPLIES length(l) >= 1
+
+  pl_eval: LEMMA polylist(pl(l))(x) = meval(mpol(l))((: x :))
+
+  %% the sign vector at an algebraic number
+  vec1(F, a): list[Sign3] = map(LAMBDA (u: list[mpoly]): alg_sign(a, pl(u)))(F)
+  vec1_svec: LEMMA vec1(F, a) = svec(F, (: value(a) :))
+
+  %% the roots of the members
+  rootsl(l): list[Alg] = IF deg(pl(l)) > 0 THEN rootsc(pl(l)) ELSE null[Alg] ENDIF
+  allroots(F): RECURSIVE list[Alg] =
+    IF null?(F) THEN null[Alg] ELSE append(rootsl(car(F)), allroots(cdr(F))) ENDIF
+  MEASURE length(F)
+  allroots_complete: LEMMA FORALL F: member(f, F) AND deg(pl(f)) > 0 AND meval(mpol(f))((: x :)) = 0 IMPLIES
+    EXISTS a: member(a, allroots(F)) AND value(a) = x
+
+  %% a member of degree zero is constant; the vector is constant where the
+  %% members of positive degree have no root
+  deg0_const: LEMMA deg(pl(l)) = 0 IMPLIES meval(mpol(l))((: x :)) = meval(mpol(l))((: z :))
+  noroot?(F, a0, b0): bool = FORALL f: member(f, F) AND deg(pl(f)) > 0 IMPLIES
+    FORALL z: a0 <= z AND z <= b0 IMPLIES meval(mpol(f))((: z :)) /= 0
+  noroot_cdr: LEMMA noroot?(cons(l, F), a0, b0) IMPLIES noroot?(F, a0, b0)
+  noroot_car: LEMMA noroot?(cons(l, F), a0, b0) AND deg(pl(l)) > 0 IMPLIES
+    FORALL z: a0 <= z AND z <= b0 IMPLIES meval(mpol(l))((: z :)) /= 0
+  svec_same1: LEMMA FORALL F: a0 <= x AND x <= b0 AND a0 <= z AND z <= b0 AND noroot?(F, a0, b0)
+    IMPLIES svec(F, (: x :)) = svec(F, (: z :))
+
+  %% comparison: disjoint isolating intervals decide at once, otherwise the
+  %% intervals are refined a few times before the algebraic comparison
+  fuel: VAR nat
+  cmpf(fuel, a, b): RECURSIVE Sign3 =
+    IF a`ub < b`lb THEN -1
+    ELSIF b`ub < a`lb THEN 1
+    ELSIF fuel = 0 THEN alg_cmp(a, b)
+    ELSE cmpf(fuel - 1, refine(a), refine(b))
+    ENDIF
+  MEASURE fuel
+  cmpf_def: LEMMA FORALL fuel: FORALL a, b: cmpf(fuel, a, b) = sign3(value(a) - value(b))
+  cmfuel: nat = 8
+  aeq(a, b): bool = cmpf(cmfuel, a, b) = 0
+  alt(a, b): bool = cmpf(cmfuel, a, b) = -1
+  aeq_def: LEMMA aeq(a, b) IFF value(a) = value(b)
+  alt_def: LEMMA alt(a, b) IFF value(a) < value(b)
+
+  %% length at THIS list type does not reduce for assert on its own
+  %% (mpoly_univ's length_cdr is typed for list[mpoly]), and ins's
+  %% termination TCC needs it at list[Alg]
+  len_cdr_alg: LEMMA cons?(rs) IMPLIES length(rs) = 1 + length(cdr(rs))
+
+  %% sorting without repetition
+  ins(a, rs): RECURSIVE list[Alg] =
+    IF null?(rs) THEN (: a :)
+    ELSIF aeq(a, car(rs)) THEN rs
+    ELSIF alt(a, car(rs)) THEN cons(a, rs)
+    ELSE cons(car(rs), ins(a, cdr(rs)))
+    ENDIF
+  MEASURE length(rs)
+  %% the specification: insertion sort by cmpf; sortu evaluates alg_sortc_def's
+  %% sortsep, the same sort with each Sturm chain computed once (sortf_eq),
+  %% with every two neighbours then separated (sepall: the same values, sortu_vl)
+  sortu0(rs): RECURSIVE list[Alg] =
+    IF null?(rs) THEN null[Alg] ELSE ins(car(rs), sortu0(cdr(rs))) ENDIF
+  MEASURE length(rs)
+  sortu(rs): list[Alg] = sortsep(rs)
+  incr?(rs): RECURSIVE bool =
+    IF null?(rs) OR null?(cdr(rs)) THEN TRUE
+    ELSE value(car(rs)) < value(car(cdr(rs))) AND incr?(cdr(rs))
+    ENDIF
+  MEASURE length(rs)
+  vals(rs): set[real] = {z | EXISTS a: member(a, rs) AND value(a) = z}
+  mem_cons_a: LEMMA member(b, cons(a, rs)) IFF (b = a OR member(b, rs))
+  ins_head: LEMMA FORALL rs: cons?(ins(a, rs)) AND (car(ins(a, rs)) = a OR (cons?(rs) AND car(ins(a, rs)) = car(rs)))
+  ins_incr: LEMMA FORALL rs: incr?(rs) IMPLIES incr?(ins(a, rs))
+  ins_vals: LEMMA FORALL rs: vals(ins(a, rs))(z) IFF (z = value(a) OR vals(rs)(z))
+  sortu0_incr: LEMMA FORALL rs: incr?(sortu0(rs))
+  sortu0_vals: LEMMA FORALL rs: vals(sortu0(rs))(z) IFF vals(rs)(z)
+  ca: VAR CA
+  cl: VAR list[CA]
+  mapa_cons: LEMMA map(LAMBDA (e: CA): e`a)(cons(ca, cl)) = cons(ca`a, map(LAMBDA (e: CA): e`a)(cl))
+  insc_map: LEMMA FORALL cl: map(LAMBDA (e: CA): e`a)(insc(ca, cl)) = ins(ca`a, map(LAMBDA (e: CA): e`a)(cl))
+  sortf_eq: LEMMA FORALL rs: sortf(rs) = sortu0(rs)
+  vlist(rs): list[real] = map(LAMBDA (a: Alg): value(a))(rs)
+  vlist_cons: LEMMA vlist(cons(a, rs)) = cons(value(a), vlist(rs))
+  vl: VAR list[real]
+  incrv(vl): RECURSIVE bool =
+    IF null?(vl) OR null?(cdr(vl)) THEN TRUE ELSE car(vl) < car(cdr(vl)) AND incrv(cdr(vl)) ENDIF
+  MEASURE length(vl)
+  incr_v: LEMMA FORALL rs: incr?(rs) = incrv(vlist(rs))
+  memr_cons: LEMMA member(z, cons(x, vl)) IFF (z = x OR member(z, vl))
+  vals_v: LEMMA FORALL rs: vals(rs)(z) IFF member(z, vlist(rs))
+  incr_vl: LEMMA FORALL rs1: FORALL rs2: vlist(rs1) = vlist(rs2) IMPLIES (incr?(rs1) IFF incr?(rs2))
+  vals_vl: LEMMA FORALL rs1: FORALL rs2: vlist(rs1) = vlist(rs2) IMPLIES (vals(rs1)(z) IFF vals(rs2)(z))
+  vl_map: LEMMA FORALL cl: vlist(map(LAMBDA (e: CA): e`a)(cl)) = map(LAMBDA (e: CA): value(e`a))(cl)
+  sortu_vl: LEMMA vlist(sortu(rs)) = vlist(sortu0(rs))
+  sortu_incr: LEMMA FORALL rs: incr?(sortu(rs))
+  sortu_vals: LEMMA FORALL rs: vals(sortu(rs))(z) IFF vals(rs)(z)
+
+  %% a rational strictly between two algebraic numbers: refine the isolating
+  %% intervals until they separate, with a fuel (gapf`ok records success)
+  gapf(fuel, a, b): RECURSIVE [# ok: bool, r: rat #] =
+    IF a`ub < b`lb THEN (# ok := TRUE, r := (a`ub + b`lb) / 2 #)
+    ELSIF fuel = 0 THEN (# ok := FALSE, r := a`ub + 1 #)
+    ELSE gapf(fuel - 1, refine(a), refine(b))
+    ENDIF
+  MEASURE fuel
+  gfuel: nat = 64
+  gapf_between: LEMMA FORALL fuel: FORALL a, b: gapf(fuel, a, b)`ok AND value(a) < value(b) IMPLIES
+    value(a) < gapf(fuel, a, b)`r AND gapf(fuel, a, b)`r < value(b)
+
+  %% the total refinement: for distinct values, bisect
+  %% both intervals until they are disjoint, as alg_order's sepr, and take a
+  %% point of the gap.  It terminates because the widths halve while the
+  %% values keep their positive distance (sepr_step)
+  gapw(a, (b | NOT alg_eq(a, b))): RECURSIVE rat =
+    IF a`ub < b`lb THEN (a`ub + b`lb) / 2
+    ELSIF b`ub < a`lb THEN (b`ub + a`lb) / 2
+    ELSE gapw(refine(a), refine(b)) ENDIF
+  MEASURE mwidth(a, b) BY real_ord_ep(dist(a, b))
+  gapw_inv: LEMMA FORALL (p0, q0: Alg): NOT alg_eq(p0, q0) IMPLIES
+    FORALL (q: [Alg, Alg]): value(q`1) = value(p0) AND value(q`2) = value(q0) IMPLIES
+      (value(q`1) < value(q`2) IMPLIES value(q`1) < gapw(q`1, q`2) AND gapw(q`1, q`2) < value(q`2))
+  gapw_between: LEMMA NOT alg_eq(a, b) AND value(a) < value(b) IMPLIES
+    value(a) < gapw(a, b) AND gapw(a, b) < value(b)
+
+  %% the fuelled refinement first (the fast path, unchanged), the total one
+  %% when it runs out; gapok fails only on equal values
+  gap(a, b): rat =
+    LET g = gapf(gfuel, a, b) IN
+    IF g`ok THEN g`r ELSIF alg_eq(a, b) THEN g`r ELSE gapw(a, b) ENDIF
+  gapok(a, b): bool = gapf(gfuel, a, b)`ok OR NOT alg_eq(a, b)
+  gap_between: LEMMA gapok(a, b) AND value(a) < value(b) IMPLIES value(a) < gap(a, b) AND gap(a, b) < value(b)
+  %% completeness: distinct values always get a point between them
+  gapok_lt: LEMMA value(a) < value(b) IMPLIES gapok(a, b)
+
+  %% the samples: below the first root, every root, between consecutive roots, above the last
+  gaps(rs): RECURSIVE list[Alg] =
+    IF null?(rs) THEN null[Alg]
+    ELSIF null?(cdr(rs)) THEN (: car(rs), rat_alg(car(rs)`ub + 1) :)
+    ELSE cons(car(rs), cons(rat_alg(gap(car(rs), car(cdr(rs)))), gaps(cdr(rs))))
+    ENDIF
+  MEASURE length(rs)
+  samples(rs): list[Alg] =
+    IF null?(rs) THEN (: rat_alg(0) :) ELSE cons(rat_alg(car(rs)`lb - 1), gaps(rs)) ENDIF
+  gaps_ok(rs): RECURSIVE bool =
+    IF null?(rs) OR null?(cdr(rs)) THEN TRUE
+    ELSE gapok(car(rs), car(cdr(rs))) AND gaps_ok(cdr(rs))
+    ENDIF
+  MEASURE length(rs)
+  %% completeness: a strictly increasing list of roots always passes
+  gaps_ok_incr: LEMMA FORALL rs: incr?(rs) IMPLIES gaps_ok(rs)
+
+  gaps_ok_nth: LEMMA FORALL rs: gaps_ok(rs) AND i + 1 < length(rs) IMPLIES
+    gapok(nth(rs, i), nth(rs, i + 1))
+
+  %% an increasing list is increasing by index
+  j, k: VAR nat
+  incr_nth: LEMMA FORALL rs: incr?(rs) AND j < k AND k < length(rs) IMPLIES
+    value(nth(rs, j)) < value(nth(rs, k))
+
+  %% where a point that is not a root sits in the sorted list of roots
+  adj_between: LEMMA FORALL rs: incr?(rs) AND cons?(rs) AND value(car(rs)) < x AND
+    NOT vals(rs)(x) AND (EXISTS a: member(a, rs) AND x < value(a)) IMPLIES
+    EXISTS (i: nat): i + 1 < length(rs) AND value(nth(rs, i)) < x AND x < value(nth(rs, i + 1))
+  adj_norooot: LEMMA FORALL rs: incr?(rs) AND i + 1 < length(rs) AND
+    value(nth(rs, i)) < z AND z < value(nth(rs, i + 1)) IMPLIES NOT vals(rs)(z)
+  gaps_nth: LEMMA FORALL rs: i + 1 < length(rs) IMPLIES
+    member(rat_alg(gap(nth(rs, i), nth(rs, i + 1))), gaps(rs))
+  gaps_mem: LEMMA FORALL rs: member(a, rs) IMPLIES member(a, gaps(rs))
+  gaps_last: LEMMA FORALL rs: cons?(rs) IMPLIES
+    EXISTS a: member(a, gaps(rs)) AND value(a) = last(rs)`ub + 1
+  incr_last: LEMMA FORALL rs: incr?(rs) AND member(a, rs) IMPLIES value(a) <= value(last(rs))
+  incr_first: LEMMA FORALL rs: incr?(rs) AND member(a, rs) IMPLIES value(car(rs)) <= value(a)
+
+  %% membership in a mapped list
+  g: VAR [Alg -> list[Sign3]]
+  map_mem_cell1: LEMMA FORALL rs: member(a, rs) IMPLIES member(g(a), map(g)(rs))
+  map_mem_inv: LEMMA FORALL rs: member(v, map(g)(rs)) IMPLIES EXISTS a: member(a, rs) AND v = g(a)
+
+  %% no root of the family where the isolated roots have no value
+  noroot_vals: LEMMA (FORALL z: a0 <= z AND z <= b0 IMPLIES NOT vals(sortu(allroots(F)))(z))
+    IMPLIES noroot?(F, a0, b0)
+
+  %% outside the roots
+  below_first: LEMMA incr?(rs) AND cons?(rs) AND z < value(car(rs)) IMPLIES NOT vals(rs)(z)
+  above_last: LEMMA incr?(rs) AND cons?(rs) AND value(last(rs)) < z IMPLIES NOT vals(rs)(z)
+  last_mem: LEMMA cons?(rs) IMPLIES member(last(rs), rs)
+
+  %% the vector is constant on a segment free of isolated roots
+  svec_between: LEMMA (FORALL z: ((x <= z AND z <= r) OR (r <= z AND z <= x)) IMPLIES
+      NOT vals(sortu(allroots(F)))(z)) IMPLIES svec(F, (: x :)) = svec(F, (: r :))
+
+  %% the decomposition
+  svs1(F): list[list[Sign3]] = map(LAMBDA (a: Alg): vec1(F, a))(samples(sortu(allroots(F))))
+  svs1ok(F): bool = gaps_ok(sortu(allroots(F)))
+
+  svs1ok_complete: LEMMA svs1ok(F)
+
+  svs1_mem: LEMMA member(a, samples(sortu(allroots(F)))) AND svec(F, (: x :)) = svec(F, (: value(a) :))
+    IMPLIES member(svec(F, (: x :)), svs1(F))
+  svs1_root: LEMMA vals(sortu(allroots(F)))(x) IMPLIES member(svec(F, (: x :)), svs1(F))
+  svs1_low: LEMMA cons?(sortu(allroots(F))) AND x < value(car(sortu(allroots(F)))) IMPLIES
+    member(svec(F, (: x :)), svs1(F))
+  svs1_high: LEMMA cons?(sortu(allroots(F))) AND value(last(sortu(allroots(F)))) < x IMPLIES
+    member(svec(F, (: x :)), svs1(F))
+  svs1_mid: LEMMA svs1ok(F) AND i + 1 < length(sortu(allroots(F))) AND
+    value(nth(sortu(allroots(F)), i)) < x AND x < value(nth(sortu(allroots(F)), i + 1)) IMPLIES
+    member(svec(F, (: x :)), svs1(F))
+  svs1_none: LEMMA null?(sortu(allroots(F))) IMPLIES member(svec(F, (: x :)), svs1(F))
+  svs1_sound: THEOREM svs1ok(F) IMPLIES member(svec(F, (: x :)), svs1(F))
+  svs1_complete: THEOREM member(v, svs1(F)) IMPLIES
+    EXISTS x: v = svec(F, (: x :))
+END cell1

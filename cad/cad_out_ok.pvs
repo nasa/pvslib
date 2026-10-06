@@ -1,0 +1,117 @@
+cad_out_ok: THEORY
+%----------------------------------------------------------------------------
+% The records of a certified tower's cells are right.
+%
+% One level (kids_idx, kids_cover, kids_lvl): at a certified descriptor of a
+% level, the walk's children denote points of the fibre, each carries the
+% stack index of its point (twice the roots below it, plus one at a root),
+% and every stack index up to 2 nroot occurs.  The proof runs along the
+% separators, the root list being the walk's gap roots (rtl_groots).
+%
+% The tree (ctree_mem, ctree_intro): a record of the tree is a child of the
+% top walk with a record of the tree below it, and every such pair gives a
+% record.  col_out_ok proves from these, under the walk's certificate okw_o,
+% that every record's sample lies in the cell its indices name and that over
+% a CAD base (cad_over?) every nonempty cell has a record.
+%
+% The recorded sign vector is F's at the sample (osv_ok).  col_out_ok proves
+% from these that the Collins run's records are its CAD.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_out, od_exact, map_member[KD, list[CRec]], map_member[CRec, CRec],
+    map_member[CRec, ORec], map_member[Sect, list[ORec]], innern_sem
+
+  G, E, F: VAR list[list[mpoly]]
+  od: VAR OD
+  tb: VAR CT
+  Y: VAR list[rat]
+  n, a, u: VAR nat
+  q: VAR list[real]
+  kd: VAR KD
+  TW: VAR Tower
+  TB: VAR list[CT]
+  r: VAR CRec
+  o: VAR ORec
+  lo, hi, y0: VAR rat
+  y: VAR real
+  f: VAR [OD -> bool]
+
+  %% ---- the walk's children, along the separators ------------------------------------------
+  cellsf_kids: LEMMA FORALL Y, n: cellsf_o(f, E, od, tb, Y) = map(LAMBDA kd: f(kd`2))(kids(E, od, tb, Y, n))
+  every_kd: LEMMA FORALL (L: list[KD]): every(LAMBDA (b: bool): b)(map(LAMBDA kd: f(kd`2))(L))
+    AND member(kd, L) IMPLIES f(kd`2)
+  every_kids: LEMMA every(LAMBDA (b: bool): b)(cellsf_o(f, E, od, tb, Y)) AND member(kd, kids(E, od, tb, Y, 0))
+    IMPLIES f(kd`2)
+
+  %% the stack index over the walk's root list for Y
+  six(E, q, Y)(y): nat = 2 * nlt(groots(E, q, Y), y) + IF member(y, groots(E, q, Y)) THEN 1 ELSE 0 ENDIF
+
+  ys: VAR list[real]
+  %% a gap's root lies strictly inside the gap
+  gap_lt: LEMMA memok?(F, msg(ys), F) AND gapok?(F, msg(ys), lo, hi)
+    AND nzat?(F, msg(ys), hi, F) AND gap?(F, msg(ys), lo, hi)
+    IMPLIES lo < secbeta(F, ys, lo, hi) AND secbeta(F, ys, lo, hi) < hi
+
+  %% ---- two points, one gap pattern -------------------------------------------------------------
+  wsep?(F, ys, Y): bool = memok?(F, msg(ys), F) AND sepok?(F, msg(ys), Y)
+
+  gr_nlt_hd: LEMMA cons?(Y) AND wsep?(F, ys, Y) IMPLIES nlt(groots(F, ys, Y), car(Y)) = 0
+
+  %% the level's hypotheses at od, with the walk's family E and a gap test that is exact
+  lvh?(E, od, tb, Y): bool = wf?(od) AND wsep?(E, den(od), Y) AND cons?(lives(E))
+    AND slc?(bk(E), msg(den(od)), bprod(E))
+    AND (FORALL lo, hi: gap_t(E, od, lo, hi, tb) = gap?(E, msg(den(od)), lo, hi))
+
+  R: VAR list[rat]
+  six_hd: LEMMA cons?(Y) AND wsep?(E, q, Y) IMPLIES six(E, q, Y)(car(Y)) = 0
+  six_root: LEMMA wsep?(E, q, cons[rat](lo, cons[rat](hi, R))) AND gap?(E, msg(q), lo, hi)
+    IMPLIES six(E, q, cons[rat](lo, cons[rat](hi, R)))(secbeta(E, q, lo, hi)) = 1
+      AND lo < secbeta(E, q, lo, hi) AND secbeta(E, q, lo, hi) < hi
+  six_gap: LEMMA wsep?(E, q, cons[rat](lo, cons[rat](hi, R))) AND gap?(E, msg(q), lo, hi) AND hi <= y
+    IMPLIES six(E, q, cons[rat](lo, cons[rat](hi, R)))(y) = 2 + six(E, q, cons[rat](hi, R))(y)
+  six_nogap: LEMMA NOT gap?(E, msg(q), lo, hi)
+    IMPLIES six(E, q, cons[rat](lo, cons[rat](hi, R)))(y) = six(E, q, cons[rat](hi, R))(y)
+  osec_ok: LEMMA wf?(od) AND wsep?(E, den(od), cons[rat](lo, cons[rat](hi, R))) AND cons?(lives(E))
+    AND slc?(bk(E), msg(den(od)), bprod(E)) AND gap?(E, msg(den(od)), lo, hi)
+    IMPLIES wf?(osec(od, E, lo, hi)) AND den(osec(od, E, lo, hi)) = cons(secbeta(E, den(od), lo, hi), den(od))
+  lvh_cdr: LEMMA lvh?(E, od, tb, cons[rat](y0, R)) AND cons?(R) IMPLIES lvh?(E, od, tb, R)
+  kids_idx: LEMMA FORALL Y, n: cons?(Y) AND lvh?(E, od, tb, Y) AND member(kd, kids(E, od, tb, Y, n))
+    IMPLIES wf?(kd`2) AND cons?(den(kd`2)) AND cdr(den(kd`2)) = den(od)
+      AND car(Y) <= car(den(kd`2))
+      AND kd`1 = 2 * n + six(E, den(od), Y)(car(den(kd`2)))
+  kids_cover: LEMMA FORALL Y, n: cons?(Y) AND lvh?(E, od, tb, Y)
+    AND 2 * n <= a AND a <= 2 * n + 2 * length(groots(E, den(od), Y))
+    IMPLIES EXISTS kd: member(kd, kids(E, od, tb, Y, n)) AND kd`1 = a
+
+  %% a family with no live member: only separators, all in the one band
+  kids_nolive: LEMMA FORALL Y, n: (FORALL lo, hi: NOT gap_t(E, od, lo, hi, tb)) AND member(kd, kids(E, od, tb, Y, n))
+    IMPLIES kd`1 = 2 * n AND EXISTS y0: member(y0, Y) AND kd`2 = opt(od, y0)
+  kids_first: LEMMA cons?(Y) IMPLIES member((2 * n, opt(od, car(Y))), kids(E, od, tb, Y, n))
+
+  %% one level of the run, at a certified descriptor
+  kids_lvl: LEMMA valid?(tb) AND wf?(od) AND lvok_o(u, G, od, tb) IMPLIES
+    LET E = feff(G, od), Y = seps_t(u, E, od, tb) IN
+        (FORALL kd: member(kd, kids(E, od, tb, Y, 0)) IMPLIES
+           wf?(kd`2) AND cons?(den(kd`2)) AND cdr(den(kd`2)) = den(od)
+           AND sidx(G, den(od), car(den(kd`2))) = kd`1)
+    AND (FORALL a: a <= 2 * nroot(G, den(od)) IMPLIES
+           EXISTS kd: member(kd, kids(E, od, tb, Y, 0)) AND kd`1 = a)
+
+  %% ---- the tree -------------------------------------------------------------------------------
+  mem_app_out_ok: LEMMA FORALL (l1, l2: list[CRec]): member(r, append(l1, l2)) IFF (member(r, l1) OR member(r, l2))
+  lflat_mem: LEMMA FORALL (L: list[list[CRec]]): member(r, lflat(L)) IFF EXISTS (l: list[CRec]): member(l, L) AND member(r, l)
+  ctree_mem: LEMMA cons?(TW) AND cons?(TB) AND member(r, ctree(u, TW, TB, od)) IMPLIES
+    EXISTS kd, (r1: CRec): member(kd, kids(feff(car(TW), od), od, car(TB), seps_t(u, feff(car(TW), od), od, car(TB)), 0))
+      AND member(r1, ctree(u, cdr(TW), cdr(TB), kd`2)) AND r = addr(kd`1)(r1)
+  ctree_intro: LEMMA cons?(TW) AND cons?(TB)
+    AND member(kd, kids(feff(car(TW), od), od, car(TB), seps_t(u, feff(car(TW), od), od, car(TB)), 0))
+    AND member(r, ctree(u, cdr(TW), cdr(TB), kd`2))
+    IMPLIES member(addr(kd`1)(r), ctree(u, TW, TB, od))
+
+  %% ---- the run ----------------------------------------------------------------------------------
+
+  osv_ok: LEMMA wf?(od) IMPLIES osv_of(F, od) = svec(F, den(od))
+
+  omem_app: LEMMA FORALL (l1, l2: list[ORec]): member(o, append(l1, l2)) IFF (member(o, l1) OR member(o, l2))
+  olflat_mem: LEMMA FORALL (L: list[list[ORec]]): member(o, olflat(L)) IFF EXISTS (l: list[ORec]): member(l, L) AND member(o, l)
+END cad_out_ok

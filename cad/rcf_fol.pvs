@@ -1,0 +1,93 @@
+rcf_fol: THEORY
+%----------------------------------------------------------------------------
+% First-order formulas over the reals with polynomial sign atoms, for
+% semi-algebraicity in the sense of first-order definability.
+%
+% Variables are positions in the point list, the head the innermost (as in
+% meval and sem): fex(b) holds at pt iff b holds at cons(x, pt) for some x.
+% An atom fsg(p, s) says that the polynomial p has sign s at the point (s
+% is an int: a datatype field of type Sign3 crashes PVS 8.1's positivity
+% check; for s other than -1, 0, 1 the atom is simply false).
+%
+% mins(p, d) inserts a dummy variable at depth d into the polynomial p, and
+% pdel(xs, d) deletes the entry at depth d of a point, so that
+% meval(mins(p, d))(xs) = meval(p)(pdel(xs, d)) (meval_mins); shiftF does the
+% same for a formula (fsem_shift), one level deeper under each binder.
+% fod?(n)(S): S restricted to points of length n is first-order definable.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_arith, sign_vec
+
+  p, c: VAR mpoly
+  l: VAR list[mpoly]
+  xs, pt: VAR list[real]
+  x: VAR real
+  d: VAR nat
+
+  %% ---- a dummy variable at depth d --------------------------------------------------------
+  pdel(xs, d): RECURSIVE list[real] =
+    IF d = 0 THEN tl(xs) ELSE cons(hd(xs), pdel(tl(xs), d - 1)) ENDIF
+  MEASURE d
+
+  mins(p, d): RECURSIVE mpoly =
+    IF d = 0 THEN mpol((: p :))
+    ELSE CASES p OF
+           mconst(r): p,
+           mpol(cs): IF null?(cs) THEN p
+                     ELSE mpol(cons(mins(car(cs), d - 1), as_list(mins(mpol(cdr(cs)), d)))) ENDIF
+         ENDCASES
+    ENDIF
+  MEASURE msize(p)
+
+  pdel_cons: LEMMA pdel(cons(x, xs), d + 1) = cons(x, pdel(xs, d))
+  meval_mins: LEMMA meval(mins(p, d))(xs) = meval(p)(pdel(xs, d))
+
+  %% ---- formulas -------------------------------------------------------------------------------
+  Fm: DATATYPE
+  BEGIN
+    ftrue: ftrue?
+    fsg(fp: mpoly, fs: int): fsg?
+    fnot(fb: Fm): fnot?
+    fand(fl: Fm, fr: Fm): fand?
+    fex(fe: Fm): fex?
+  END Fm
+
+  phi, psi: VAR Fm
+
+  fsem(phi)(pt): RECURSIVE bool =
+    CASES phi OF
+      ftrue: TRUE,
+      fsg(q, t): sign3(meval(q)(pt)) = t,
+      fnot(b): NOT fsem(b)(pt),
+      fand(a, b): fsem(a)(pt) AND fsem(b)(pt),
+      fex(b): EXISTS x: fsem(b)(cons(x, pt))
+    ENDCASES
+  MEASURE phi BY <<
+
+  t: VAR int
+  fsem_true: LEMMA fsem(ftrue)(pt)
+  fsem_sg: LEMMA fsem(fsg(p, t))(pt) IFF sign3(meval(p)(pt)) = t
+  fsem_not: LEMMA fsem(fnot(phi))(pt) IFF NOT fsem(phi)(pt)
+  fsem_and: LEMMA fsem(fand(phi, psi))(pt) IFF (fsem(phi)(pt) AND fsem(psi)(pt))
+  fsem_ex: LEMMA fsem(fex(phi))(pt) IFF EXISTS x: fsem(phi)(cons(x, pt))
+
+  f_or(phi, psi): Fm = fnot(fand(fnot(phi), fnot(psi)))
+  fsem_or: LEMMA fsem(f_or(phi, psi))(pt) IFF (fsem(phi)(pt) OR fsem(psi)(pt))
+
+  shiftF(phi, d): RECURSIVE Fm =
+    CASES phi OF
+      ftrue: ftrue,
+      fsg(q, t): fsg(mins(q, d), t),
+      fnot(b): fnot(shiftF(b, d)),
+      fand(a, b): fand(shiftF(a, d), shiftF(b, d)),
+      fex(b): fex(shiftF(b, d + 1))
+    ENDCASES
+  MEASURE phi BY <<
+
+  fsem_shift: LEMMA FORALL phi: FORALL d, pt: fsem(shiftF(phi, d))(pt) IFF fsem(phi)(pdel(pt, d))
+
+  %% ---- definable sets ---------------------------------------------------------------------------
+  n: VAR nat
+  S: VAR [list[real] -> bool]
+  fod?(n)(S): bool = EXISTS phi: FORALL pt: length(pt) = n IMPLIES (S(pt) IFF fsem(phi)(pt))
+END rcf_fol

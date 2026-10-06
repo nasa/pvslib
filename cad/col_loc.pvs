@@ -1,0 +1,102 @@
+col_loc: THEORY
+%----------------------------------------------------------------------------
+% THE LOCAL COLLINS LEMMA.
+%
+% collins_loc: if kconst?(G, C) holds (col_pair; colh? gives it) and p1 is in
+% C, then for every eta > 0 there is d > 0 such that over every p in C within
+% d of p1 the stack of G looks like the one over p1 -- the same sign vectors
+% at the roots (rsvl) and on the bands (bsvl), the same number of roots -- and
+% every root is within eta of its partner over p1.
+%
+% Proof: choose eps (eps_ex) with the distinct complex roots over p1 2 eps
+% apart (col_pair's ff_sp), eps <= eta, and eps below the radius where each
+% member keeps the sign it has at a root or band point over p1 where it does
+% not vanish (pers_sm, from mpar's mev_mcont).  Then d with col_real's
+% hypotheses (ff_hyp) and near?(p, p1, eps).  Over such p the roots of G are
+% col_real's real roots (rr_root), so rtl(G, p) is bt mapped over rtl(G, p1)
+% (bt_list, rtl_eq); a member vanishes at a moved root iff it vanished at the
+% old one (bt_van), and keeps its sign where it does not (pers?); the band
+% points move by less than eps (bpts_near) and are roots of no member, so
+% their sign vectors are kept too.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_pair, cad_fibre, cert_all
+
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, p1, xs, ys: VAR list[real]
+  L, L1, L2: VAR list[real]
+  g: VAR list[mpoly]
+  i, j, n: VAR nat
+  a, b, y, y0: VAR real
+  eps, eta: VAR posreal
+  f: VAR [real -> real]
+  sf, sg: VAR [real -> SV]
+
+  %% ---- the roots of the family over C ---------------------------------------------------------
+  %% the value of a member over a point, through its complex polynomial
+  ff_val: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) IMPLIES
+    (meval(mpol(nth(G, i)))(cons(y, p)) = 0 IFF FF(G, p1, p)(i)(real_(y)) = real_(0))
+  dead_val: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND i < length(G) AND NOT LV(G, p1)(i) IMPLIES
+    meval(mpol(nth(G, i)))(cons(y, p)) = 0
+
+  rr_root: LEMMA kconst?(G, C) AND C(p1) AND C(p) IMPLIES
+    (rootat?(G, p)(y) IFF rr?(length(G), LV(G, p1), FF(G, p1, p))(y))
+  rl_p1: LEMMA kconst?(G, C) AND C(p1) IMPLIES sincr?(rtl(G, p1))
+    AND (FORALL y: member(y, rtl(G, p1)) IFF rr?(length(G), LV(G, p1), FF(G, p1, p1))(y))
+
+  %% ---- sign persistence ---------------------------------------------------------------------------
+  pers?(g, y0, p1, eps): bool = FORALL y, p: abs(y - y0) < eps AND near?(p, p1, eps) IMPLIES
+    sign3(meval(mpol(g))(cons(y, p))) = sign3(meval(mpol(g))(cons(y0, p1)))
+  sign3_near: LEMMA FORALL (x: real): abs(x - y) < abs(y) IMPLIES sign3(x) = sign3(y)
+  pers_sm: LEMMA meval(mpol(g))(cons(y0, p1)) /= 0 IMPLIES sm?(LAMBDA eps: pers?(g, y0, p1, eps))
+
+  %% ---- lists ---------------------------------------------------------------------------------------
+  map_map_eq: LEMMA FORALL L: (FORALL a: member(a, L) IMPLIES sf(f(a)) = sg(a)) IMPLIES
+    map(sf)(map(f)(L)) = map(sg)(L)
+  map2_eq: LEMMA FORALL L1, L2: length(L1) = length(L2)
+    AND (FORALL j: j < length(L1) IMPLIES sf(nth(L1, j)) = sg(nth(L2, j))) IMPLIES map(sf)(L1) = map(sg)(L2)
+  svec_eq: LEMMA (FORALL i: i < length(G) IMPLIES
+      sign3(meval(mpol(nth(G, i)))(xs)) = sign3(meval(mpol(nth(G, i)))(ys)))
+    IMPLIES svec(G, xs) = svec(G, ys)
+  bmid_near: LEMMA FORALL L: (FORALL a: member(a, L) IMPLIES abs(f(a) - a) < eps) IMPLIES
+    length(bmid(map(f)(L))) = length(bmid(L)) AND
+    FORALL j: j < length(bmid(L)) IMPLIES abs(nth(bmid(map(f)(L)), j) - nth(bmid(L), j)) < eps
+  bpts_near: LEMMA (FORALL a: member(a, L) IMPLIES abs(f(a) - a) < eps) IMPLIES
+    length(bpts(map(f)(L))) = length(bpts(L)) AND
+    FORALL j: j < length(bpts(L)) IMPLIES abs(nth(bpts(map(f)(L)), j) - nth(bpts(L), j)) < eps
+
+  %% ---- the choice of eps ---------------------------------------------------------------------------
+  ok_eps?(G, p1, eta)(eps): bool =
+        sp?(length(G), LV(G, p1), FF(G, p1, p1), eps) AND eps <= eta
+    AND (FORALL j, i: j < length(rtl(G, p1)) AND i < length(G)
+           AND meval(mpol(nth(G, i)))(cons(nth(rtl(G, p1), j), p1)) /= 0
+           IMPLIES pers?(nth(G, i), nth(rtl(G, p1), j), p1, eps))
+    AND (FORALL j, i: j < length(bpts(rtl(G, p1))) AND i < length(G)
+           AND meval(mpol(nth(G, i)))(cons(nth(bpts(rtl(G, p1)), j), p1)) /= 0
+           IMPLIES pers?(nth(G, i), nth(bpts(rtl(G, p1)), j), p1, eps))
+  bb: VAR bool
+  Q: VAR [posreal -> bool]
+  sm_imp: LEMMA (bb IMPLIES sm?(Q)) IMPLIES sm?(LAMBDA eps: bb IMPLIES Q(eps))
+  sm_pts: LEMMA sm?(LAMBDA eps: FORALL j, i: j < length(L) AND i < length(G)
+    AND meval(mpol(nth(G, i)))(cons(nth(L, j), p1)) /= 0 IMPLIES pers?(nth(G, i), nth(L, j), p1, eps))
+  eps_ex: LEMMA kconst?(G, C) AND C(p1) IMPLIES EXISTS eps: ok_eps?(G, p1, eta)(eps)
+
+  %% ---- the stack over a nearby point ------------------------------------------------------------------
+  bt_G(G, p1, p, eps): [real -> real] = bt(length(G), LV(G, p1), FF(G, p1, p), eps)
+
+  near_rtl: LEMMA kconst?(G, C) AND C(p1) AND C(p)
+    AND hyp?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps) IMPLIES
+    rtl(G, p) = map(bt_G(G, p1, p, eps))(rtl(G, p1))
+  near_sv_root: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND ok_eps?(G, p1, eta)(eps) AND near?(p, p1, eps)
+    AND hyp?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps) AND member(a, rtl(G, p1)) IMPLIES
+    svat(G, p)(bt_G(G, p1, p, eps)(a)) = svat(G, p1)(a)
+  near_sv_band: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND ok_eps?(G, p1, eta)(eps) AND near?(p, p1, eps)
+    AND hyp?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps) AND j < length(bpts(rtl(G, p1))) IMPLIES
+    svat(G, p)(nth(bpts(rtl(G, p)), j)) = svat(G, p1)(nth(bpts(rtl(G, p1)), j))
+
+  collins_loc: THEOREM kconst?(G, C) AND C(p1) IMPLIES FORALL eta: EXISTS (d: posreal): FORALL p:
+    C(p) AND near?(p, p1, d) IMPLIES
+      rsvl(G, p) = rsvl(G, p1) AND bsvl(G, p) = bsvl(G, p1) AND nroot(G, p) = nroot(G, p1)
+      AND (FORALL i: i < nroot(G, p1) IMPLIES abs(rt(G, p, i) - rt(G, p1, i)) < eta)
+END col_loc

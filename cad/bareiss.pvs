@@ -1,0 +1,161 @@
+bareiss: THEORY
+%----------------------------------------------------------------------------
+% bdet is the determinant: meval(bdet(n, M)) = meval(det(n, M))
+% at every point (bdet_eval), so mnorm(bdet(n, M)) = mnorm(det(n, M)) (bdet_det).
+%
+% The elimination of an m-block B with previous pivot p gives v with
+% v * p^(m-1) = det(B) at every point (bar_inv), by induction on m:
+%   - the pivot row: adding row k to row 0 leaves the determinant (rdet_addr);
+%     a zero first column makes it 0 (rdet_zcol);
+%   - one step, with a the pivot and nb the eliminated block: each entry of nb
+%     times p is the entry of Chio's matrix a * c_ij - c_i0 * c_0j, by the
+%     checked divisions (elim_val), so p^(m-1) det(nb) = det(Chio) (rdet_sclm);
+%   - Chio's identity a det(Chio) = a^(m-1) det(C) (chio_id) comes from column
+%     operations: each column j >= 1 replaced by a col_j - c_0j col_0
+%     multiplies the determinant by a (rdet_colop) and makes row 0
+%     (a, 0, ..., 0), whose expansion is a times Chio's determinant;
+%   - with the induction, a^(m-1) (v p^(m-1) - det(C)) = 0 at every point, and
+%     a is not the zero polynomial, so mpoly_dom's cancellation gives
+%     v p^(m-1) = det(C) at every point.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING bareiss_def, mpoly_dom, rdet_lin, det_fast
+
+  R, E: VAR RMat
+  M: VAR MMat
+  n, m, k, i, j, a, b: VAR nat
+  s, c, z: VAR real
+  p, q, u, s0: VAR mpoly
+  r, t: VAR list[mpoly]
+  B, C: VAR list[list[mpoly]]
+  ys: VAR list[real]
+
+  %% ---- real matrices ------------------------------------------------------
+
+  col(R, j)(a): real = R(a, j)
+  setcol_self: LEMMA setcol(R, j, col(R, j)) = R
+
+  %% column j replaced by z col_j - c col_0
+  rdet_colop: LEMMA 0 < j AND j < n IMPLIES
+    rdet(n, setcol(R, j, lc2(z, col(R, j), -c, col(R, 0)))) = z * rdet(n, R)
+
+  %% columns 1..k replaced by R(0,0) col_j - R(0,j) col_0
+  chm(R, k): RMat = LAMBDA (a, b: nat):
+    IF 1 <= b AND b <= k THEN R(0, 0) * R(a, b) - R(0, b) * R(a, 0) ELSE R(a, b) ENDIF
+  rdet_chm: LEMMA k < n IMPLIES rdet(n, chm(R, k)) = R(0, 0) ^ k * rdet(n, R)
+
+  %% Chio's matrix and identity
+  chio(R): RMat = LAMBDA (a, b: nat): R(0, 0) * R(a + 1, b + 1) - R(a + 1, 0) * R(0, b + 1)
+  chio_id: LEMMA n >= 2 IMPLIES R(0, 0) * rdet(n - 1, chio(R)) = R(0, 0) ^ (n - 1) * rdet(n, R)
+
+  %% every entry times s
+  sclm(s, E): RMat = LAMBDA (a, b: nat): s * E(a, b)
+  rdet_sclm: LEMMA rdet(n, sclm(s, E)) = s ^ n * rdet(n, E)
+
+  %% row k added to row 0
+  addr(R, k): RMat = LAMBDA (a, b: nat): IF a = 0 THEN R(0, b) + R(k, b) ELSE R(a, b) ENDIF
+  rdet_addr: LEMMA 0 < k AND k < n IMPLIES rdet(n, addr(R, k)) = rdet(n, R)
+
+  %% a zero first column, and the 1 x 1 determinant
+  rdet_zcol: LEMMA 0 < n AND (FORALL a: a < n IMPLIES R(a, 0) = 0) IMPLIES rdet(n, R) = 0
+  rdet_one: LEMMA rdet(1, R) = R(0, 0)
+
+  %% ---- blocks -------------------------------------------------------------
+
+  %% entry (i, j) of B, zero outside
+  ent(B, i, j): mpoly = IF i < length(B) AND j < length(nth(B, i)) THEN nth(nth(B, i), j) ELSE zero ENDIF
+  bm(B, ys): RMat = LAMBDA (a, b: nat): meval(ent(B, a, b))(ys)
+  bmat(B): MMat = LAMBDA (a, b: nat): ent(B, a, b)
+  %% m rows of m entries
+  blk?(m, B): bool = length(B) = m AND (FORALL i: i < m IMPLIES length(nth(B, i)) = m)
+
+  bm_bmat: LEMMA ev(bmat(B), ys) = bm(B, ys)
+
+  %% first entry, rest, first row and other rows, by nth
+  hd0_nth: LEMMA cons?(r) IMPLIES hd0(r) = nth(r, 0)
+  tl0_len: LEMMA cons?(r) IMPLIES length(tl0(r)) = length(r) - 1
+  hd0_nthp: LEMMA 0 < length(r) IMPLIES hd0(r) = nth(r, 0)
+  tl0_lenp: LEMMA 0 < length(r) IMPLIES length(tl0(r)) = length(r) - 1
+  tl0_nth: LEMMA j + 1 < length(r) IMPLIES nth(tl0(r), j) = nth(r, j + 1)
+  rw0_nth: LEMMA cons?(B) IMPLIES rw0(B) = nth(B, 0)
+  rws_len: LEMMA cons?(B) IMPLIES length(rws(B)) = length(B) - 1
+  rws_nth: LEMMA i + 1 < length(B) IMPLIES nth(rws(B), i) = nth(B, i + 1)
+  %% the entries of a block
+  ent_blk: LEMMA blk?(m, B) AND a < m AND b < m IMPLIES ent(B, a, b) = nth(nth(B, a), b)
+  blk_cons: LEMMA blk?(m, B) AND 0 < m IMPLIES cons?(B)
+
+  %% the checked division
+  bdiv_ok: LEMMA bdiv(u, p)`1 IMPLIES meval(bdiv(u, p)`2)(ys) * meval(p)(ys) = meval(u)(ys)
+
+  %% one row eliminated
+  bent_len: LEMMA length(bent(p, q, s0, r, t)`2) = min(length(r), length(t))
+  bent_val: LEMMA bent(p, q, s0, r, t)`1 AND j < length(r) AND j < length(t) IMPLIES
+    meval(nth(bent(p, q, s0, r, t)`2, j))(ys) * meval(p)(ys) =
+      meval(q)(ys) * meval(nth(t, j))(ys) - meval(s0)(ys) * meval(nth(r, j))(ys)
+
+  %% the other rows eliminated
+  bblock_len: LEMMA length(bblock(p, r, B)`2) = length(B)
+  bblock_nth: LEMMA i < length(B) IMPLIES
+    nth(bblock(p, r, B)`2, i) = bent(p, hd0(r), hd0(nth(B, i)), tl0(r), tl0(nth(B, i)))`2
+  bblock_ok: LEMMA bblock(p, r, B)`1 AND i < length(B) IMPLIES
+    bent(p, hd0(r), hd0(nth(B, i)), tl0(r), tl0(nth(B, i)))`1
+
+  %% the pivot search
+  bpiv_le: LEMMA bpiv(B) <= length(B)
+  bpiv_zero: LEMMA i < bpiv(B) IMPLIES bzero?(hd0(nth(B, i)))
+  bpiv_nz: LEMMA bpiv(B) < length(B) IMPLIES NOT bzero?(hd0(nth(B, bpiv(B))))
+  bzero_zfun: LEMMA bzero?(u) IFF zfun?(u)
+
+  %% row addition
+  radd_len: LEMMA length(radd(r, t)) = min(length(r), length(t))
+  radd_val: LEMMA j < length(r) AND j < length(t) IMPLIES
+    meval(nth(radd(r, t), j))(ys) = meval(nth(r, j))(ys) + meval(nth(t, j))(ys)
+  badd_nth0: LEMMA cons?(B) AND k < length(B) IMPLIES nth(badd(B, k), 0) = radd(nth(B, 0), nth(B, k))
+  badd_nth: LEMMA cons?(B) AND k < length(B) AND 0 < a AND a < length(B) IMPLIES
+    nth(badd(B, k), a) = nth(B, a)
+  badd_blk: LEMMA blk?(m, B) AND k < m IMPLIES blk?(m, badd(B, k))
+  badd_bm: LEMMA blk?(m, B) AND k < m AND a < m AND b < m IMPLIES
+    bm(badd(B, k), ys)(a, b) = addr(bm(B, ys), k)(a, b)
+
+  %% the eliminated block
+  elim_blk: LEMMA blk?(m + 2, C) IMPLIES blk?(m + 1, bblock(p, rw0(C), rws(C))`2)
+  elim_val: LEMMA blk?(m + 2, C) AND bblock(p, rw0(C), rws(C))`1 AND a < m + 1 AND b < m + 1 IMPLIES
+    bm(bblock(p, rw0(C), rws(C))`2, ys)(a, b) * meval(p)(ys) = chio(bm(C, ys))(a, b)
+
+  %% ---- the induction ------------------------------------------------------
+
+  v: VAR mpoly
+
+  %% the pivot as an entry
+  piv_ent: LEMMA blk?(m + 1, C) IMPLIES meval(hd0(rw0(C)))(ys) = bm(C, ys)(0, 0)
+
+  %% no pivot: a zero first column
+  zcol_det: LEMMA blk?(m, B) AND 0 < m AND bpiv(B) >= length(B) IMPLIES rdet(m, bm(B, ys)) = 0
+
+  %% the pivot row added: the same determinant, and a pivot that is not the zero polynomial
+  addk_det: LEMMA blk?(m, B) AND 0 < k AND k < m IMPLIES rdet(m, bm(badd(B, k), ys)) = rdet(m, bm(B, ys))
+  addk_piv: LEMMA blk?(m, B) AND 0 < bpiv(B) AND bpiv(B) < m IMPLIES NOT zfun?(hd0(rw0(badd(B, bpiv(B)))))
+  piv0: LEMMA blk?(m, B) AND 0 < m AND bpiv(B) = 0 IMPLIES NOT zfun?(hd0(rw0(B)))
+
+  %% one step, for a block whose pivot is not the zero polynomial: from the
+  %% eliminated block's invariant (the induction) to the block's
+  step_inv: LEMMA blk?(m + 2, C) AND NOT zfun?(hd0(rw0(C))) AND bblock(p, rw0(C), rws(C))`1 AND
+      (FORALL ys: meval(v)(ys) * meval(hd0(rw0(C)))(ys) ^ m =
+                  rdet(m + 1, bm(bblock(p, rw0(C), rws(C))`2, ys)))
+      IMPLIES FORALL ys: meval(v)(ys) * meval(p)(ys) ^ (m + 1) = rdet(m + 2, bm(C, ys))
+
+  bar_inv: LEMMA FORALL m: FORALL p, B: m >= 1 AND blk?(m, B) AND bar(m, p, B)`1 IMPLIES
+    FORALL ys: meval(bar(m, p, B)`2)(ys) * meval(p)(ys) ^ (m - 1) = rdet(m, bm(B, ys))
+
+  %% ---- the determinant ----------------------------------------------------
+
+  mrowf_len: LEMMA j <= n IMPLIES length(mrowf(M, i, j, n)) = n - j
+  mrowf_nth: LEMMA j + b < n IMPLIES nth(mrowf(M, i, j, n), b) = M(i, j + b)
+  mrowsf_len: LEMMA i <= n IMPLIES length(mrowsf(M, i, n)) = n - i
+  mrowsf_nth: LEMMA i + a < n IMPLIES nth(mrowsf(M, i, n), a) = mrowf(M, i + a, 0, n)
+  mrowsf_blk: LEMMA blk?(n, mrowsf(M, 0, n))
+  mrowsf_ent: LEMMA a < n AND b < n IMPLIES ent(mrowsf(M, 0, n), a, b) = M(a, b)
+
+  bdet_eval: THEOREM meval(bdet(n, M))(ys) = meval(det(n, M))(ys)
+  bdet_det: THEOREM mnorm(bdet(n, M)) = mnorm(det(n, M))
+END bareiss

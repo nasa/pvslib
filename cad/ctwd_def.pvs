@@ -1,0 +1,48 @@
+ctwd_def: THEORY
+%----------------------------------------------------------------------------
+% The Collins tower with derivative-closed free levels, for quantifier
+% elimination with two or more free variables.  Executable.
+%
+% dch(g) is g with its successive formal derivatives in the main variable
+% (lderiv) down to a constant; dclf(G) puts them together for a family, so
+% dclf(G) contains G and is closed under lderiv.  ctwd(F, k, d) is col_tower_def's
+% ctw(F, k) with the lowest d families replaced by their closures: the family
+% below a level is the projection of that level, closed under the derivative
+% when it is one of the lowest d.  Each family then CONTAINS the projection
+% of the next (ctwd's schain?), which is all the CAD theorem needs, and the
+% free levels are closed under the derivative, which makes the free cells'
+% sign conditions separate them (Thom; qe2_sep's ents_sep).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_tower_def
+
+  g: VAR list[mpoly]
+  G, F: VAR list[list[mpoly]]
+  L: VAR list[list[list[mpoly]]]
+  k, d: VAR nat
+
+  %% g and its derivatives
+  dch(g): RECURSIVE list[list[mpoly]] =
+    IF length(g) < 2 THEN (: g :) ELSE cons(g, dch(lderiv(g))) ENDIF
+  MEASURE length(g)
+
+  dflat(L): RECURSIVE list[list[mpoly]] =
+    IF null?(L) THEN null[list[mpoly]] ELSE append(car(L), dflat(cdr(L))) ENDIF
+  MEASURE length(L)
+
+  %% a family with all its members' derivatives
+  dclf(G): list[list[mpoly]] = dflat(map(dch)(G))
+
+  %% the family below F at position k of the tower (positions 1..k, lowest first)
+  dnf(F, k, d): list[list[mpoly]] = IF k - 1 <= d THEN dclf(pdown(F)) ELSE pdown(F) ENDIF
+
+  %% (k = 1 is its own case so that evaluation does not compute dnf(F, 1, d) only to drop it)
+  ctwd(F, k, d): RECURSIVE Tower =
+    IF k = 0 THEN null[list[list[mpoly]]]
+    ELSIF k = 1 THEN (: F :)
+    ELSE append(ctwd(dnf(F, k, d), k - 1, d), (: F :))
+    ENDIF
+  MEASURE k
+  %% every member of degree >= 1 has its formal derivative in G
+  dclx?(G): bool = every(LAMBDA (g: list[mpoly]): length(g) < 2 OR member(lderiv(g), G))(G)
+END ctwd_def

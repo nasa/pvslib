@@ -1,0 +1,162 @@
+walk_transfer: THEORY
+%----------------------------------------------------------------------------
+% Separators exist wherever the walk's certificate holds.
+%
+% cert?(F, sg): the members pass memok? and, when some member is live, the
+% live product's chain passes slc?.  At a point where it holds, the chains of
+% the live members and of their pair products (allch: mch, pch, pchs) have
+% nonzero leading coefficients, so sep_exist's avoidance finds separators
+% at which no chain entry vanishes, and those pass wok? (wok_exist: the
+% separator conditions member by member, gapok_all, leftok_all, rightok_all).
+% conv?(S): a convex set of reals.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sep_exist, walk_ok, loc_const
+
+  F, G: VAR list[list[mpoly]]
+  f, g, e: VAR list[mpoly]
+  cs, c1, c2: VAR list[list[mpoly]]
+  sg, sg1, sg2: VAR SG
+  ys: VAR list[real]
+  Y: VAR list[rat]
+  y: VAR rat
+  x, x0, q, z, a, b: VAR real
+  xs: VAR list[real]
+  v: VAR SV
+  S: VAR [real -> bool]
+  k: VAR nat
+
+  %% ---- every chain the walk builds ---------------------------------------------
+  mch(F, sg, G): RECURSIVE list[list[mpoly]] =
+    IF null?(G) THEN null[list[mpoly]]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN schain(bk(F), sg, strip(car(G)))
+                ELSE null[list[mpoly]] ENDIF,
+                mch(F, sg, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+  %% the chains of the pair products (the coincidence tests)
+  pch(sg, g, G): RECURSIVE list[list[mpoly]] =
+    IF null?(G) THEN null[list[mpoly]]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN schain(ppk(g, car(G)), sg, pprod(g, car(G)))
+                ELSE null[list[mpoly]] ENDIF,
+                pch(sg, g, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+  pchs(sg, G): RECURSIVE list[list[mpoly]] =
+    IF null?(G) THEN null[list[mpoly]]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN pch(sg, car(G), cdr(G)) ELSE null[list[mpoly]] ENDIF,
+                pchs(sg, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+  %% every chain the walk builds: the members' and the pairs'; the PRODUCT's
+  %% chain is a proof device only (sok_sepok), never built
+  allch(F, sg): list[list[mpoly]] =
+    append(mch(F, sg, F), append(pchs(sg, F), IF cons?(lives(F)) THEN (: bprod(F) :) ELSE null[list[mpoly]] ENDIF))
+
+  %% ---- leading coefficients of products, from the members' -----------------------
+  g2: VAR list[mpoly]
+  mmul_length: LEMMA FORALL f: cons?(f) AND length(g) >= 2 IMPLIES
+    length(as_list(mmulx(FALSE, mpol(f), mpol(g)))) = length(f) + length(g) - 1
+  lmul_lc: LEMMA cons?(f) AND cons?(g) IMPLIES
+    earr(lmul(f, g), ys)(dg(f) + dg(g)) = earr(f, ys)(dg(f)) * earr(g, ys)(dg(g))
+  lmul_len: LEMMA length(f) >= 2 AND length(g) >= 2 AND meval(llast(f))(ys) /= 0 AND meval(llast(g))(ys) /= 0
+    IMPLIES length(lmul(f, g)) = length(f) + length(g) - 1 AND meval(llast(lmul(f, g)))(ys) /= 0
+  pair_slc: LEMMA memok?(F, msg(ys), F) AND member(f, F) AND member(g, F)
+    AND length(strip(f)) >= 2 AND length(strip(g)) >= 2
+    IMPLIES slc?(ppk(f, g), msg(ys), pprod(f, g))
+
+  lcok_append: LEMMA lcok?(append(c1, c2), ys) IFF (lcok?(c1, ys) AND lcok?(c2, ys))
+  av_append: LEMMA av?(append(c1, c2), ys, z) IFF (av?(c1, ys, z) AND av?(c2, ys, z))
+
+  chain_lcok: LEMMA slc?(k, msg(ys), f) IMPLIES lcok?(schain(k, msg(ys), f), ys)
+  mch_lcok: LEMMA FORALL G: memok?(F, msg(ys), G) IMPLIES lcok?(mch(F, msg(ys), G), ys)
+
+  %% a member with a main variable that has none on the fibre must not vanish
+  %% there identically, or nzat? fails at every point.  The product's leading
+  %% coefficient already excludes it (cert_nzm): P is then a nonzero
+  %% polynomial and every member divides it.  The executable walks feff(F, od),
+  %% which is the same filter applied syntactically.
+  nzm?(F, sg): bool = FORALL g: member(g, F) AND length(g) >= 2 AND length(strip(g)) < 2
+    IMPLIES length(strip(g)) = 1 AND sg(car(strip(g))) /= 0
+
+  %% the condition the certificate establishes at the sample
+  cert?(F, sg): bool =
+    memok?(F, sg, F) AND (null?(lives(F)) OR slc?(bk(F), sg, bprod(F)))
+
+  pch_lcok: LEMMA FORALL G: memok?(F, msg(ys), F) AND member(g, F) AND length(strip(g)) >= 2
+    AND (FORALL g2: member(g2, G) IMPLIES member(g2, F)) IMPLIES lcok?(pch(msg(ys), g, G), ys)
+  pchs_lcok: LEMMA FORALL G: memok?(F, msg(ys), F) AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    IMPLIES lcok?(pchs(msg(ys), G), ys)
+  slc_lcok: LEMMA slc?(k, msg(ys), f) IMPLIES lcok?((: f :), ys)
+  bprod_allch: LEMMA cons?(lives(F)) IMPLIES member(bprod(F), allch(F, sg))
+  allch_lcok: LEMMA cert?(F, msg(ys)) IMPLIES lcok?(allch(F, msg(ys)), ys)
+  schain_hd: LEMMA member(f, schain(k, sg, f))
+  mch_mem: LEMMA FORALL G: member(g, G) AND length(strip(g)) >= 2 IMPLIES member(strip(g), mch(F, sg, G))
+  %% the product's chain is avoided where every member's is: its roots are theirs
+  av_prod: LEMMA (null?(lives(F)) OR cons?(bprod(F))) AND av?(allch(F, msg(ys)), ys, y) IMPLIES P(F, ys)(y) /= 0
+  slc_cons: LEMMA slc?(k, sg, f) IMPLIES cons?(f)
+
+  %% ---- separators at an arbitrary point -------------------------------------------
+  lo, hi: VAR rat
+  k2: VAR nat
+  %% a member's chain is among the walk's, so a point avoiding them is not its root
+  mem_nz: LEMMA member(g, F) AND length(strip(g)) >= 2 AND av?(mch(F, msg(ys), F), ys, y)
+    IMPLIES meval(mpol(strip(g)))(cons(y, ys)) /= 0
+  root_P: LEMMA member(g, F) AND length(strip(g)) >= 2 AND meval(mpol(strip(g)))(cons(z, ys)) = 0
+    IMPLIES P(F, ys)(z) = 0
+  %% a member with no main variable: its entries are its one coefficient
+  short_val: LEMMA length(strip(g)) < 2 IMPLIES
+    meval(mpol(g))(cons(z, ys)) =
+      IF length(strip(g)) = 1 THEN meval(car(strip(g)))(ys) ELSE 0 ENDIF
+  cert_nzm: LEMMA cert?(F, msg(ys)) IMPLIES nzm?(F, msg(ys))
+  av_nzat: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND nzm?(F, msg(ys))
+    AND memok?(F, msg(ys), G) AND av?(mch(F, msg(ys), G), ys, y)
+    IMPLIES nzat?(F, msg(ys), y, G)
+  %% a count is at most one when the roots are among those of a polynomial counting at most one
+  cnt_le: LEMMA slc?(k, msg(ys), f) AND ends?(ys, f, lo, hi) AND slc?(k2, msg(ys), e) AND ends?(ys, e, lo, hi)
+    AND (FORALL z: meval(mpol(f))(cons(z, ys)) = 0 IMPLIES meval(mpol(e))(cons(z, ys)) = 0)
+    AND cnt(k2, msg(ys), e, lo, hi) <= 1 IMPLIES cnt(k, msg(ys), f, lo, hi) <= 1
+  %% what the product's separators give at one gap
+  gapc?(F, ys, lo, hi): bool = lo < hi AND memok?(F, msg(ys), F) AND nzm?(F, msg(ys))
+    AND slc?(bk(F), msg(ys), bprod(F))
+    AND av?(allch(F, msg(ys)), ys, lo) AND av?(allch(F, msg(ys)), ys, hi)
+    AND cnt(bk(F), msg(ys), bprod(F), lo, hi) <= 1
+  gapc_P: LEMMA gapc?(F, ys, lo, hi) IMPLIES P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    AND av?(mch(F, msg(ys), F), ys, lo) AND av?(mch(F, msg(ys), F), ys, hi)
+  atmost1_all: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND gapc?(F, ys, lo, hi)
+    IMPLIES atmost1?(F, msg(ys), lo, hi, G)
+  %% two members with a root in the gap share it, so their product has count one
+  pair_cnt: LEMMA gapc?(F, ys, lo, hi) AND member(g, F) AND member(g2, F)
+    AND rootin?(F, msg(ys), g, lo, hi) AND rootin?(F, msg(ys), g2, lo, hi)
+    IMPLIES cnt(ppk(g, g2), msg(ys), pprod(g, g2), lo, hi) = 1
+  coin_all: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND gapc?(F, ys, lo, hi) AND member(g, F)
+    IMPLIES coin?(F, msg(ys), lo, hi, g, G)
+  coins_all: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND gapc?(F, ys, lo, hi)
+    IMPLIES coins?(F, msg(ys), lo, hi, G)
+  gapok_all: LEMMA gapc?(F, ys, lo, hi) IMPLIES gapok?(F, msg(ys), lo, hi)
+
+  sok_sepok: LEMMA FORALL Y: memok?(F, msg(ys), F) AND nzm?(F, msg(ys)) AND cons?(lives(F)) AND slc?(bk(F), msg(ys), bprod(F))
+    AND sok?(bk(F), ys, bprod(F), allch(F, msg(ys)), Y)
+    IMPLIES sepok?(F, msg(ys), Y)
+  %% nothing of the product outside [y, ..) means nothing of any member: member by member
+  leftok_all: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND memok?(F, msg(ys), G)
+    AND av?(mch(F, msg(ys), G), ys, y) AND (FORALL z: z <= y IMPLIES P(F, ys)(z) /= 0)
+    IMPLIES leftok?(F, msg(ys), y, G)
+  rightok_all: LEMMA FORALL G: (FORALL g: member(g, G) IMPLIES member(g, F)) AND memok?(F, msg(ys), G)
+    AND av?(mch(F, msg(ys), G), ys, y) AND (FORALL z: z > y IMPLIES P(F, ys)(z) /= 0)
+    IMPLIES rightok?(F, msg(ys), y, G)
+  sok_left: LEMMA memok?(F, msg(ys), F) AND cons?(lives(F)) AND slc?(bk(F), msg(ys), bprod(F)) AND av?(allch(F, msg(ys)), ys, y)
+    AND left(bk(F), msg(ys), bprod(F), y) = 0 IMPLIES leftok?(F, msg(ys), y, F)
+  sok_right: LEMMA memok?(F, msg(ys), F) AND cons?(lives(F)) AND slc?(bk(F), msg(ys), bprod(F)) AND av?(allch(F, msg(ys)), ys, y)
+    AND right(bk(F), msg(ys), bprod(F), y) = 0 IMPLIES rightok?(F, msg(ys), y, F)
+  sok_all: LEMMA FORALL Y: sok?(k, ys, f, cs, Y) AND member(y, Y) IMPLIES av?(cs, ys, y)
+
+  avall?(F, ys, Y): bool = FORALL y: member(y, Y) IMPLIES av?(allch(F, msg(ys)), ys, y)
+
+  wok_exist: THEOREM cert?(F, msg(ys)) IMPLIES
+    EXISTS Y: wok?(F, msg(ys), Y) AND avall?(F, ys, Y)
+
+  %% ---- local constancy, then constancy ---------------------------------------------------
+
+  conv?(S): bool = FORALL a, b, z: S(a) AND S(b) AND a <= z AND z <= b IMPLIES S(z)
+END walk_transfer

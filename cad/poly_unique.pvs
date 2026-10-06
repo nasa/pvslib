@@ -1,0 +1,66 @@
+poly_unique: THEORY
+%----------------------------------------------------------------------------
+% Uniqueness of polynomial division with remainder, over the reals.
+%
+% NASALib's poly_divide computes a quotient and a remainder and proves the
+% defining equation and the degree bound, but not that they are the only pair
+% with those properties. The branching elimination needs exactly that: the
+% symbolic algorithm produces a pseudo-remainder R with b^k G = Q H + R, and
+% the Sturm condition of Sturm@sturm is stated in terms of poly_divide's
+% remainder, so the two must be identified. Uniqueness follows from the fact
+% that a nonzero multiple of H has degree at least that of H.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING reals@more_polynomial_props, Sturm@polynomial_division
+
+  a, b, g, h, q, r, s: VAR [nat -> real]
+  i, j, k, m, n, p: VAR nat
+  x, y, w: VAR real
+  cc: VAR real
+
+  %% coefficients above the nominal degree do not matter
+  trunc(a, n)(i): real = IF i <= n THEN a(i) ELSE 0 ENDIF
+  trunc_same: LEMMA polynomial(trunc(a, n), n)(x) = polynomial(a, n)(x)
+  trunc_eval: LEMMA m >= n IMPLIES polynomial(trunc(a, n), m)(x) = polynomial(a, n)(x)
+
+  %% the leading coefficient of a product
+  prod_top: LEMMA polynomial_prod(a, n, h, m)(n + m) = a(n) * h(m)
+
+  %% a multiple of h of degree below that of h is zero
+  low_degree_zero: LEMMA h(m) /= 0 AND k < m AND
+    (FORALL x: polynomial(a, n)(x) * polynomial(h, m)(x) = polynomial(r, k)(x))
+    IMPLIES polynomial(a, n)(y) = 0
+  low_degree_rem: LEMMA h(m) /= 0 AND k < m AND
+    (FORALL x: polynomial(a, n)(x) * polynomial(h, m)(x) = polynomial(r, k)(x))
+    IMPLIES polynomial(r, k)(y) = 0
+
+  %% the difference of two polynomials, as one polynomial
+  diff(a, n, b, m): [nat -> real] = trunc(a, n) - trunc(b, m)
+  diff_eval: LEMMA polynomial(diff(a, n, b, m), max(n, m))(x) =
+    polynomial(a, n)(x) - polynomial(b, m)(x)
+
+  pdiff_zero: LEMMA polynomial(diff(a, n, b, m), max(n, m))(x) = 0 IMPLIES
+    polynomial(a, n)(x) = polynomial(b, m)(x)
+
+  %% the quotient and remainder of NASALib's division, named
+  pq(g, n, h, (m | h(m) /= 0)): [nat -> real] = poly_divide(g, n)(h, m)(0)`quot
+  pqd(g, n, h, (m | h(m) /= 0)): nat = poly_divide(g, n)(h, m)(0)`qdeg
+  pr(g, n, h, (m | h(m) /= 0)): [nat -> real] = poly_divide(g, n)(h, m)(0)`rem
+  prd(g, n, h, (m | h(m) /= 0)): nat = poly_divide(g, n)(h, m)(0)`rdeg
+
+  pdiv_def: LEMMA h(m) /= 0 IMPLIES
+    polynomial(g, n)(x) = polynomial(pq(g, n, h, m), pqd(g, n, h, m))(x) * polynomial(h, m)(x)
+                          + polynomial(pr(g, n, h, m), prd(g, n, h, m))(x)
+  pdiv_deg: LEMMA h(m) /= 0 AND m > 0 IMPLIES prd(g, n, h, m) < m
+
+  %% uniqueness: any quotient and remainder with a small enough remainder agree
+  %% with poly_divide's, as functions
+  %% the same for a scaled dividend: the remainder of cc times g is cc times
+  %% the remainder of g.  This is the form the pseudo-remainder needs, since
+  %% pseudo-division multiplies the dividend by a power of the leading
+  %% coefficient of the divisor instead of dividing by it.
+  divide_unique_scal: THEOREM h(m) /= 0 AND k < m AND cc /= 0 AND
+    (FORALL x: cc * polynomial(g, n)(x) = polynomial(q, p)(x) * polynomial(h, m)(x) + polynomial(r, k)(x))
+    IMPLIES
+    polynomial(r, k)(w) = cc * polynomial(pr(g, n, h, m), prd(g, n, h, m))(w)
+END poly_unique

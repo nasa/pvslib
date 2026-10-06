@@ -1,0 +1,173 @@
+qe2_ok: THEORY
+%----------------------------------------------------------------------------
+% Quantifier elimination for m >= 2 free variables: the answer over one
+% sector is correct.
+%
+% secoutE_sem (no engine): if every entry whose cell formula holds at p
+% carries the truth value P and the signature of G at p, and some entry's
+% cell formula holds at p, then secoutE holds at p iff P (secsig_sem, and
+% for the members J the cut signature is the signature of the cut G,
+% selv_sigv).  Over one sector of
+% the run: the free cells are tcell(ttake(TW, m - 1), scell(s), A); pushing
+% the sector's record facts down m - 1 levels (desc_all) makes
+% a free cell's fold its meaning (afold_sem), every free cell holding a
+% point is a key (key_cover), a key's record lies over its cell
+% (rec_over), and the free levels' polynomials keep their signs on a free
+% cell (fp_inv), so the signature at the record is the signature at p.  So
+% secout is correct over its sector (secout_sem); part_sem: the lifted
+% sectX picks the sector of p's last coordinate.  qe2cc_ok and qe2cd_ok
+% apply them to the Collins run.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe2_def, qe1_ok, cad_fold_ok, map_member[QE2, SV], map_member[SV, Fm], map_member[QE2, Fm],
+            qe_ldd_ok[list[int]], map_member[list[mpoly], mpoly], map_member[ORec, list[nat]],
+            map_member[list[nat], QE2], map_member[Sect, Fm], map_member[QE2, QE2]
+
+  n, d, j, a: VAR nat
+  m: VAR posnat
+  qb, qs: VAR list[bool]
+  F: VAR list[list[mpoly]]
+  Psi: VAR [SV -> bool]
+  p: VAR mpoly
+  phi: VAR Fm
+  A, A1, A2: VAR list[nat]
+  L: VAR list[ORec]
+  r, r0: VAR ORec
+  s: VAR Sect
+  TW: VAR Tower
+  C: VAR [list[real] -> bool]
+  G: VAR list[mpoly]
+  w: VAR SV
+  e2: VAR QE2
+  es2: VAR list[QE2]
+  cf: VAR [list[nat] -> Fm]
+  P: VAR bool
+  xs, pt, q: VAR list[real]
+  x: VAR real
+
+  %% ---- lifting ----------------------------------------------------------------------------------
+  liftF_sem: LEMMA FORALL d: FORALL xs: length(xs) >= d IMPLIES (qfsem(liftF(phi, d))(xs) IFF qfsem(phi)(dropn(d, xs)))
+  qf_shift: LEMMA FORALL phi: FORALL d: qf?(shiftF(phi, d)) = qf?(phi)
+  qf_liftF: LEMMA FORALL d: qf?(phi) IMPLIES qf?(liftF(phi, d))
+
+  %% ---- the entries (no engine) ------------------------------------------------------------------
+  sigv(G, pt): SV = map(LAMBDA (g: mpoly): sign3(meval(g)(pt)))(G)
+  gatoms_all: LEMMA FORALL G: FORALL w: length(w) = length(G) IMPLIES
+    ((FORALL (f: Fm): member(f, gatoms(G, w)) IMPLIES qfsem(f)(pt)) IFF sigv(G, pt) = w)
+  gatoms_sem: LEMMA FORALL G: FORALL w: length(w) = length(G) IMPLIES
+    (qfsem(f_andl(gatoms(G, w)))(pt) IFF sigv(G, pt) = w)
+  pq: VAR [QE2 -> bool]
+  filter_mem2: LEMMA FORALL es2: member(e2, filter(pq)(es2)) IFF (member(e2, es2) AND pq(e2))
+  every_mem2: LEMMA FORALL es2: every(pq)(es2) AND member(e2, es2) IMPLIES pq(e2)
+  secsig_sem: LEMMA
+    (FORALL e2: member(e2, es2) IMPLIES length(e2`sig) = length(G))
+    AND (FORALL e2: member(e2, es2) AND qfsem(cf(e2`key))(pt) IMPLIES
+       (e2`ev IFF P) AND e2`sig = sigv(G, pt))
+    AND (EXISTS e2: member(e2, es2) AND qfsem(cf(e2`key))(pt))
+    IMPLIES (qfsem(secsig(G, es2, cf))(pt) IFF P)
+
+  %% cutting the signatures down to members J (any J)
+  J: VAR list[nat]
+  selv_len: LEMMA length(selv(J, w)) = length(J)
+  selg_len: LEMMA length(selg(G, J)) = length(J)
+  sigv_len: LEMMA length(sigv(G, pt)) = length(G)
+  selv_sigv: LEMMA FORALL J: selv(J, sigv(G, pt)) = sigv(selg(G, J), pt)
+  secoutJ_sem: LEMMA
+    (FORALL e2: member(e2, es2) IMPLIES length(e2`sig) = length(G))
+    AND (FORALL e2: member(e2, es2) AND qfsem(cf(e2`key))(pt) IMPLIES
+       (e2`ev IFF P) AND e2`sig = sigv(G, pt))
+    AND (EXISTS e2: member(e2, es2) AND qfsem(cf(e2`key))(pt))
+    IMPLIES (qfsem(secsig(selg(G, J), map(prj(J))(es2), cf))(pt) IFF P)
+  secoutE_sem: LEMMA
+    (FORALL e2: member(e2, es2) IMPLIES length(e2`sig) = length(G))
+    AND (FORALL e2: member(e2, es2) AND qfsem(cf(e2`key))(pt) IMPLIES
+       (e2`ev IFF P) AND e2`sig = sigv(G, pt))
+    AND (EXISTS e2: member(e2, es2) AND qfsem(cf(e2`key))(pt))
+    IMPLIES (qfsem(secoutE(G, es2, cf))(pt) IFF P)
+
+  %% ---- towers cut at a level ----------------------------------------------------------------------
+  tdrop(TW, j): RECURSIVE Tower = IF j = 0 OR null?(TW) THEN TW ELSE tdrop(cdr(TW), j - 1) ENDIF
+  MEASURE j
+  tdrop_succ: LEMMA cons?(TW) IMPLIES tdrop(TW, j + 1) = tdrop(cdr(TW), j)
+  ttake_succ: LEMMA cons?(TW) IMPLIES ttake(TW, j + 1) = cons(car(TW), ttake(cdr(TW), j))
+  tcell_split: LEMMA FORALL A1: FORALL TW, C, A2: length(A1) <= length(TW) IMPLIES
+    tcell(TW, C, append(A1, A2)) = tcell(tdrop(TW, length(A1)), tcell(ttake(TW, length(A1)), C, A1), A2)
+  desc_all: LEMMA FORALL A: FORALL TW, C, L: length(A) <= length(TW)
+    AND cad_over?(TW, C) AND recin?(TW, C, F, L) AND reccov?(TW, C, L) AND fsinv?(TW, C, F)
+    IMPLIES cad_over?(tdrop(TW, length(A)), tcell(ttake(TW, length(A)), C, A))
+      AND recin?(tdrop(TW, length(A)), tcell(ttake(TW, length(A)), C, A), F, dnrs(A, L))
+      AND reccov?(tdrop(TW, length(A)), tcell(ttake(TW, length(A)), C, A), dnrs(A, L))
+      AND fsinv?(tdrop(TW, length(A)), tcell(ttake(TW, length(A)), C, A), F)
+  dnrs_mem: LEMMA FORALL A: FORALL L, r: member(r, dnrs(A, L)) IFF
+    EXISTS r0: member(r0, L) AND r0`radr = append(A, r`radr) AND r = r0 WITH [radr := r`radr]
+
+  %% ---- index lists and cut towers ----------------------------------------------------------------
+  liftp_all: LEMMA FORALL d: FORALL xs: meval(liftp(p, d))(xs) = meval(p)(dropn(d, xs))
+  ntake_len: LEMMA FORALL A: FORALL j: j <= length(A) IMPLIES length(ntake(A, j)) = j
+  ntake_app: LEMMA FORALL A1: FORALL A2: ntake(append(A1, A2), length(A1)) = A1
+  ntake_split: LEMMA FORALL A: FORALL j: j <= length(A) IMPLIES EXISTS A2: A = append(ntake(A, j), A2)
+  tdrop_len: LEMMA FORALL TW: FORALL j: j <= length(TW) IMPLIES length(tdrop(TW, j)) = length(TW) - j
+  ttake_len: LEMMA FORALL TW: FORALL j: j <= length(TW) IMPLIES length(ttake(TW, j)) = j
+
+  %% ---- the free cells over a base C ------------------------------------------------------------
+  rec_over: LEMMA recin?(TW, C, F, L) AND member(r, L) AND j <= length(TW) AND ntake(r`radr, j) = A
+    IMPLIES tcell(ttake(TW, j), C, A)(dropn(length(TW) - j, den(r`rsod)))
+  key_cover: LEMMA length(A) <= length(TW) AND cad_over?(TW, C) AND recin?(TW, C, F, L)
+    AND reccov?(TW, C, L) AND fsinv?(TW, C, F) AND tcell(ttake(TW, length(A)), C, A)(pt)
+    IMPLIES EXISTS r: member(r, L) AND ntake(r`radr, length(A)) = A
+  fold_val: LEMMA length(A) <= length(TW) AND length(qb) = length(TW) - length(A)
+    AND cad_over?(TW, C) AND recin?(TW, C, F, L) AND reccov?(TW, C, L) AND fsinv?(TW, C, F)
+    AND tcell(ttake(TW, length(A)), C, A)(pt)
+    IMPLIES (afold(qb, Psi, dnrs(A, L)) IFF sem(qb, F, Psi, pt))
+  G2: VAR list[list[mpoly]]
+  lm: VAR list[mpoly]
+  svec_mem_qe2_ok: LEMMA FORALL G2: member(lm, G2) AND svec(G2, xs) = svec(G2, pt)
+    IMPLIES sign3(meval(mpol(lm))(xs)) = sign3(meval(mpol(lm))(pt))
+  stk_sv: LEMMA delin_cl?(G2, C) AND stk(G2, C, a)(xs) AND stk(G2, C, a)(pt) IMPLIES svec(G2, xs) = svec(G2, pt)
+  gg: VAR mpoly
+  l1, l2: VAR list[mpoly]
+  mem_app_mp: LEMMA FORALL l1: member(gg, append(l1, l2)) IFF (member(gg, l1) OR member(gg, l2))
+  fp_inv: LEMMA FORALL TW: FORALL C, A, j, (p1, p2: list[real]), (g: mpoly):
+    cad_over?(TW, C) AND length(A) + j + 1 = m AND length(A) <= length(TW)
+    AND tcell(ttake(TW, length(A)), C, A)(p1) AND tcell(ttake(TW, length(A)), C, A)(p2)
+    AND member(g, fpl(TW, m, j))
+    IMPLIES sign3(meval(g)(p1)) = sign3(meval(g)(p2))
+
+  %% ---- the entries of a sector ------------------------------------------------------------------
+  f1, f2: VAR [mpoly -> Sign3]
+  map_eq: LEMMA FORALL G: (FORALL gg: member(gg, G) IMPLIES f1(gg) = f2(gg)) IMPLIES map(f1)(G) = map(f2)(G)
+  sigat_len: LEMMA length(sigat(G, n, r)) = length(G)
+  fkeys_mem: LEMMA member(A, fkeys(m, L)) IFF EXISTS r: member(r, L) AND ntake(r`radr, m - 1) = A
+  po: VAR [ORec -> bool]
+  filter_memo: LEMMA FORALL L: member(r, filter(po)(L)) IFF (member(r, L) AND po(r))
+  recof_ok: LEMMA member(A, fkeys(m, L)) IMPLIES member(recof(A, m, L), L) AND ntake(recof(A, m, L)`radr, m - 1) = A
+  ents_mem_qe2_ok: LEMMA member(e2, ents2(m, qb, Psi, G, L)) IFF
+    EXISTS A: member(A, fkeys(m, L)) AND
+      e2 = (# key := A, ev := afold(qb, Psi, dnrs(A, L)), sig := sigat(G, length(qb), recof(A, m, L)) #)
+
+  sig_at_rec: LEMMA length(TW) = m - 1 + length(qb) AND cad_over?(TW, C) AND recin?(TW, C, F, L)
+    AND member(r, L) AND wf?(r`rsod) AND ntake(r`radr, m - 1) = A
+    AND tcell(ttake(TW, m - 1), C, A)(pt)
+    IMPLIES sigat(fpolys(TW, m), length(qb), r) = sigv(fpolys(TW, m), pt)
+
+  secout_sem: LEMMA length(TW) = m - 1 + length(qb) AND cad_over?(TW, scell(s))
+    AND recin?(TW, scell(s), F, L) AND reccov?(TW, scell(s), L) AND fsinv?(TW, scell(s), F)
+    AND (FORALL r: member(r, L) IMPLIES wf?(r`rsod))
+    AND length(pt) = m AND scell(s)(dropn(m - 1, pt))
+    IMPLIES (qfsem(secout(m, qb, Psi, s, TW, L))(pt) IFF sem(qb, F, Psi, pt))
+
+  %% ---- the whole answer ---------------------------------------------------------------------------
+  LF: VAR list[Fm]
+  pf: VAR [Fm -> bool]
+  ff: VAR Fm
+  filter_memf: LEMMA FORALL LF: member(ff, filter(pf)(LF)) IFF (member(ff, LF) AND pf(ff))
+  orl_filter: LEMMA qfsem(f_orl(filter(LAMBDA (f: Fm): f /= ffalse)(LF)))(pt) IFF
+    (EXISTS (f: Fm): member(f, LF) AND qfsem(f)(pt))
+  dropn_one: LEMMA length(pt) = m IMPLIES cons?(dropn(m - 1, pt)) AND cdr(dropn(m - 1, pt)) = null
+  part_sem: LEMMA length(pt) = m IMPLIES
+    (qfsem(IF phi = ffalse THEN ffalse ELSIF phi = ftrue THEN liftF(sectX(s), m - 1)
+           ELSE fand(liftF(sectX(s), m - 1), phi) ENDIF)(pt) IFF
+      (in?(s, car(dropn(m - 1, pt))) AND qfsem(phi)(pt)))
+
+  qsn_cdr: LEMMA n >= 1 IMPLIES cons?(qsn(n)) AND length(cdr(qsn(n))) = n - 1
+END qe2_ok

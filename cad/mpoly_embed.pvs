@@ -1,0 +1,67 @@
+mpoly_embed: THEORY
+%----------------------------------------------------------------------------
+% Evaluation of the deep embedding, its translation into the recursive
+% representation, and the reflection theorem peval_pnorm.
+%
+% The strategy mpoly-eq proves e1<xs> = e2<xs> for polynomial expressions by
+% (1) rewriting each side into peval(E)(xs) with the peval_* lemmas,
+% (2) ground-evaluating pnorm(E1) = pnorm(E2) with the PVS ground evaluator,
+% (3) closing with peval_pnorm.  Nothing in the strategy is trusted: the Lisp
+% printer only produces E1, E2, and every equation is proved.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING PolyExpr, mpoly_norm
+
+  e, e1, e2: VAR PolyExpr
+  c: VAR rat
+  j: VAR posnat
+  n: VAR nat
+  xs: VAR list[real]
+  x: VAR real
+
+  peval(e)(xs): RECURSIVE real =
+    CASES e OF
+      pe_const(c): c,
+      pe_var(j): nth0(xs, j),
+      pe_add(a, b): peval(a)(xs) + peval(b)(xs),
+      pe_sub(a, b): peval(a)(xs) - peval(b)(xs),
+      pe_mul(a, b): peval(a)(xs) * peval(b)(xs),
+      pe_neg(a): - peval(a)(xs),
+      pe_pow(a, k): peval(a)(xs) ^ k
+    ENDCASES
+  MEASURE e BY <<
+
+  % rewrite lemmas used by the strategy (never expand peval on a big term)
+  peval_pconst: LEMMA peval(pe_const(c))(xs) = c
+  peval_pvar: LEMMA peval(pe_var(j))(xs) = nth0(xs, j)
+  peval_padd: LEMMA peval(pe_add(e1, e2))(xs) = peval(e1)(xs) + peval(e2)(xs)
+  peval_psub: LEMMA peval(pe_sub(e1, e2))(xs) = peval(e1)(xs) - peval(e2)(xs)
+  peval_pmul: LEMMA peval(pe_mul(e1, e2))(xs) = peval(e1)(xs) * peval(e2)(xs)
+  peval_pneg: LEMMA peval(pe_neg(e))(xs) = - peval(e)(xs)
+  peval_ppow: LEMMA peval(pe_pow(e, n))(xs) = peval(e)(xs) ^ n
+  nth0_1: LEMMA nth0(cons(x, xs), 1) = x
+  nth0_succ: LEMMA j > 1 IMPLIES nth0(cons(x, xs), j) = nth0(xs, j - 1)
+
+  % translation into the recursive representation
+  pto(e): RECURSIVE mpoly =
+    CASES e OF
+      pe_const(c): mconst(c),
+      pe_var(j): mvar(j),
+      pe_add(a, b): madd(pto(a), pto(b)),
+      pe_sub(a, b): msub(pto(a), pto(b)),
+      pe_mul(a, b): mmul(pto(a), pto(b)),
+      pe_neg(a): mneg(pto(a)),
+      pe_pow(a, k): mpow(pto(a), k)
+    ENDCASES
+  MEASURE e BY <<
+
+  meval_pto: LEMMA meval(pto(e))(xs) = peval(e)(xs)
+
+  pnorm(e): mpoly = mnorm(pto(e))
+
+  peval_pnorm: LEMMA meval(pnorm(e))(xs) = peval(e)(xs)
+
+  % the reflection theorem in the form the strategy instantiates
+  poly_eq_by_norm: LEMMA pnorm(e1) = pnorm(e2) IMPLIES peval(e1)(xs) = peval(e2)(xs)
+
+END mpoly_embed
