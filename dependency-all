@@ -50,6 +50,10 @@ OPTIONS
 
   --zoomed        zoom into the current library when in iterative mode
 
+  --reach-from    only show the libraries reachable from the current library
+                  when in iterative mode. Only the .dep files of these libraries
+                  are needed. It cannot be used with --zoomed
+
   --after=<dir>   process all libraries after <dir>, exclusive
   --before=<dir>  process all libraries before <dir>, exclusive
   --but=<dir1>,..,<dirn>  does not process libraries <dir1>,...,<dirn>
@@ -67,10 +71,14 @@ SEE ALSO
 "
 }
 
-ADDITIONALARGS=
+ADDITIONALARGS=()
+ADDITIONALDGARGS=()
+COLLECTIONLABEL=()
 NOITERATE=
+REACHFROM=
 DRYRUN=
-ZOOMORCENTER="--centered-at='%DIR%'"
+ZOOMORCENTER=
+OUTARG=
 
 while [ $# -gt 0 ]
 do
@@ -85,7 +93,7 @@ do
     -dep|-d|--dependencies)
 	FORCE=--dependencies;;
     --collection-label=*)
-	COLLECTIONLABEL="$COLLECTIONLABEL $1";;
+	COLLECTIONLABEL+=("$1");;
     -no-iterate|--no-iterate)
 	NOITERATE=t;;
     -dry-run|--dry-run)
@@ -93,6 +101,8 @@ do
     -zoomed|--zoomed)
 	ZOOMED=t
 	ZOOMORCENTER="--do='%DIR%' --zoom='%DIR%'";;
+    -reach-from|--reach-from)
+	REACHFROM=t;;
     # valid options
     --after=*|-after=*\
     	|--before=*|-before=*\
@@ -100,7 +110,7 @@ do
     	|--do=*|-do=*\
     	|--from=*|-from=*\
     	|--to=*|-to=*)
-    	ADDITIONALARGS="$ADDITIONALARGS $1";;	
+    	ADDITIONALARGS+=("$1");;
     --after|-after\
     	|--before|-before\
     	|--but|-but\
@@ -114,17 +124,22 @@ do
     		echo "Warning: missing values for $1 option (expected syntax is $1=<values>)"
     	    fi;
     	else
-    	    ADDITIONALARGS="$ADDITIONALARGS $1 $2"
+    	    ADDITIONALARGS+=("$1" "$2")
     	    shift
     	fi;;
     # # invalid options
     # *)
     # 	echo "Warning: omitting unrecognized option $1";;
     *)
-	ADDITIONALDGARGS="$ADDITIONALDGARGS $1";;
+	ADDITIONALDGARGS+=("$1");;
   esac
   shift 
 done
+
+if [ "$ZOOMED" ] && [ "$REACHFROM" ]; then
+    echo "Error: options --zoomed and --reach-from cannot be used together."
+    exit 1
+fi
 
 all_libraries_file="nasalib.all"
 if [ ! -f $all_libraries_file ]; then 
@@ -140,27 +155,50 @@ if [ ! -f $all_libraries_file ]; then
     fi
 fi
 
-if [ "$provethem" ]; then
-    NASALIBPATH=`./pvs-scripts/find-pvslib NASALib --strict --format "<dir>"`
-    ( [ -z $PVS_LIBRARY_PATH ] || [ ! -d $NASALIBPATH ] ) && echo "Cannot find NASALib path" && exit 1;
-    NASALIBDIR=$(echo $NASALIBPATH | sed -nE 's#^.*/([^/]+)$#\1#p')
-    if [ $DRYRUN ]; then
-	echo "-- Dry run --"
-    fi
-    if [ "$NOITERATE" ]; then
-	if [ $DRYRUN ]; then
-	    echo "$NASALIBPATH/pvs-scripts/dependencygraph $FORCE $COLLECTIONLABEL --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=polyline $ADDITIONALDGARGS $all_libraries_file"
-	else
-	    $NASALIBPATH/pvs-scripts/dependencygraph $FORCE $COLLECTIONLABEL --svg --rankdir=TB --collection-label="$NASALIBDIR=NASALib" --collection-label="lib=PVS Prelude" --splines=polyline $ADDITIONALDGARGS $all_libraries_file
-	fi
-    else
-	if [ "$ZOOMED" ]; then
-	    OUTPUTFILE='`echo %DIR%| sed "s#/#-#"`-zoomed'
-	else
-	    OUTPUTFILE='`echo %DIR%| sed "s#/#-#"`'
-	fi
-	$provethem $ADDITIONALARGS --execute "$NASALIBPATH/pvs-scripts/dependencygraph $FORCE $COLLECTIONLABEL $ZOOMORCENTER --svg --rankdir=TB --collection-label=\"$NASALIBDIR=NASALib\" --collection-label=\"lib=PVS Prelude\" --splines=polyline --out=$OUTPUTFILE $ADDITIONALDGARGS $all_libraries_file && mv $OUTPUTFILE.svg %DIR%/" $DRYRUN --act="Plotting" $all_libraries_file
-    fi
-else
+if [ -z "$provethem" ]; then
   echo "The script 'provethem' could not be located. Either define \$PVS_DIR to point to the PVS directory or add the PVS directory to the environment variable \$PATH"
+  exit 1
+fi
+
+NASALIBPATH=`./pvs-scripts/find-pvslib NASALib --strict --quiet --format "{dir}"`
+
+if [ ! -d "$NASALIBPATH" ]; then
+    echo "Cannot find NASALib path"
+    exit 1
+fi
+
+if [ -z "$NOITERATE" ]; then
+    if [ "$REACHFROM" ]; then
+	ZOOMORCENTER="$ZOOMORCENTER --reach-from='%DIR%'"
+    elif [ -z "$ZOOMORCENTER" ]; then
+	ZOOMORCENTER="--centered-at='%DIR%'"
+    fi
+    OUTPUTFILE='`echo %DIR%| sed "s#/#-#"`'
+    if [ "$ZOOMED" ]; then
+	OUTPUTFILE="$OUTPUTFILE-zoomed"
+    fi
+    if [ "$REACHFROM" ]; then
+	OUTPUTFILE="$OUTPUTFILE-reach"
+    fi
+    OUTARG="--out=$OUTPUTFILE"
+fi
+
+dgcommand=("$NASALIBPATH/pvs-scripts/dependencygraph" $FORCE "${COLLECTIONLABEL[@]}" --svg --rankdir=TB --splines=polyline "${ADDITIONALDGARGS[@]}")
+
+if [ "$NOITERATE" ]; then
+    command=("${dgcommand[@]}" "$all_libraries_file")
+else
+    # The shell command is run by provethem for each library, after it
+    # replaces %DIR%. ZOOMORCENTER and OUTARG are not quoted because they
+    # contain %DIR% and backquotes that the shell must expand.
+    shcommand="$(printf '%q ' "${dgcommand[@]}")$ZOOMORCENTER $OUTARG $(printf '%q' "$all_libraries_file") && mv $OUTPUTFILE.svg %DIR%/"
+    command=("$provethem" "${ADDITIONALARGS[@]}" --execute "$shcommand" --action-name=Plotting "$all_libraries_file")
+fi
+
+if [ "$DRYRUN" ]; then
+    echo "About to run:"
+    printf '%q ' "${command[@]}"
+    echo
+else
+    "${command[@]}"
 fi

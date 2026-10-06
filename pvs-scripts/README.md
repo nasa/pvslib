@@ -21,7 +21,7 @@ Runs PVS in batch mode
 ## Synopsis
 
 ```shell
-proveit [ <option> ... ] [ <file>[.pvs] | [<ctxt>]@<thf1>,..,<thfn> ... | <dir> ]
+proveit [ <option> ... ] [ <file>.pvs | [<ctxt>]@<thf1>,..,<thfn> ... | <dir> ]
 ```
 where `<thfi>` has the form  `<th>[.<f1>:..:<fm>]`
 
@@ -44,9 +44,9 @@ $ proveit -a <file>.pvs
 ```
 
 ## Advanced Usage
-In the more general form, a context, a list of theories, and a list of formulas are specified using the syntax `<[ctxt]@thf1,..,thfn>`,  where `<ctxt>` is a directory and each `<thfi>` has the form `<th[.f1:..:fm]>` with `<th>` being a theory and `<f1:..:fn>` a list of formulas in `<th>`.
-Only formulas specified this way are proven by PVS. 
-In this case, the proof status is saved in `<th.f1:..:fm>.summary` in `<ctxt>`. 
+In the more general form, a context, a list of theories, and a list of formulas are specified using the syntax `[<ctxt>]@<thf1>,..,<thfn>`,  where `<ctxt>` is a directory name, possibly empty, and each `<thfi>` has the form `<th>[.<f1>:..:<fm>]` with `<th>` being a theory name and `<f1>:..:<fm>` a list of formulas in `<th>`.
+In this case, `proveit` only attempts to prove the specified formulas. 
+The proof status is saved in `<th>.<f1>:..:<fm>.summary` in `<ctxt>`. 
 
 For example, to prove formulas `<f1>` and `<f2>` in theory `<theory>` in the current context, type: 
 
@@ -57,47 +57,63 @@ $ proveit @<theory>.<f1>:<f2>
 Note that, when the target is a directory (as in the first example in the Typical Usage section), all the files in its ``pvsbin`` subfolder are overwritten.
 
 ## Options
-Options are processed in the order they appear. One letter options can be combined.
+Options are processed in the order they appear. Options marked [+] can be used multiple times and are cumulative. One letter options can be combined.
 
 | Option | Description |
 | --- | --- |
-|`-a \| --all` | equivalent to `-ciq` |
-|`--auto-fix [<num>]` | try sibling proofs on unfinished branches (`<num>` is the maximum acceptable distance between the current branch and the sibling which proof is to be tried; default value is 2) |
-|`-c \| --clean` | remove `.pvscontext` and binary files in the `pvsbin` folder before proving |
-|`-C \| --clean-only` | just remove `.pvscontext` and binary files in the `pvsbin` folder (do not typecheck nor prove) |
-|`--clean-all` | just remove `.pvscontext` and all files in the `pvsbin` folder (do not typecheck nor prove) |
+|`-a \| --all` | equivalent to `-ciq --purge --no-scripts` |
+|[+] `--add-path <path>` | add `<path>` to `PVS_LIBRARY_PATH`, where `<path>` is a colon separated list of directories |
+|`--auto-fix <n>` | try sibling proofs on unfinished branches up to relative distance `<n>` (disabled when `<n>` is 0) |
+|`-c \| --clean` | remove `.pvscontext` and `pvsbin/*.bin` before typechecking and proving |
+|`--clean-all` | remove `.pvscontext`, `pvsbin/*.*`, `orphaned-proofs.prf`, and auto-generated files, and quit |
+|`-C \| --clean-only` | remove `.pvscontext` and `pvsbin/*.bin`, and quit |
+|`--clear-path` | clear `PVS_LIBRARY_PATH` |
 |`-d \| --dir <dir>` | use `<dir>` as default directory of summary files |
-|`--dependencies` | compute theory dependencies and save them in `pvsbin/<file>.dep` |
-|`--default-script <proof script> ` | default ProofLite script to be tried on unfinished branches |
-|`--disable <o1,..,on> ` | disable external oracles `o1,...,on` |
-|`--disable-oracles ` | disable any external oracle |
-|`--enable <o1,..,on>` | enable external oracles `o1,..,on`. Overwrite `--disable` |
-|`.<ext>` | use `<ext>` as default extension of summary files |
+|`--default-proof <step>` | set `<step>` as default proof step to be tried on unfinished branches (replaces the deprecated `--default-script`) |
+|`--no-default-proof` | reset default proof |
+|`-D \| --dependencies` | compute theory dependencies and save them in `<dir>/<file>.dep` |
+|`--no-dependencies` | don't compute theory dependencies |
+|[+] `--disable <o1,..,on>` | disable oracles `<o1>,..,<on>` |
+|`--disable-oracles` | disable all oracles |
+|`--dry-run` | print commands without executing them |
+|`--no-dry-run` | disable dry run |
+|[+] `--enable <o1,..,on>` | only enable oracles `<o1>,..,<on>` |
+|`--enable-oracles` | enable all oracles |
 |`-f \| --force` | force proof reruns (**default**) |
-|`~f \| --no-force` | do not force proof reruns |
+|`--no-force` | don't force proof reruns |
+|`--generate-top` | generate top file if it does not exist |
+|`--no-generate-top` | don't generate top file |
 |`-h \| --help` | print help message |
-|`-i \| --importchain` | prove chain of imported theories (set `--no-scripts`) |
-|`~i \| --no-importchain` | do not prove chain of imported theories (**default**) |
-|`--lisp <lisp>` | specify lisp version; `<lisp>` is one of `allegro`, `cmulisp` |
+|`-i \| --import-chain` | prove chain of imported theories (set `--no-scripts`) |
+|`--no-import-chain` | don't prove chain of imported theories (**default**) |
 |`-l \| --log` | log all information generated by PVS in `<outfile>.log` |
-|`~l \| --no-log` | don't log PVS information (**default**) |
-|`-o \| --out <outfile>` | save the proof status summary in `<outfile>`. |
-|`-p \| --prelude-ext <p1,..,pn>` | load prelude extensions `p1,..,pn` |
-|`~p \| --no-prelude-ext` | don't load any prelude extension |
-|`-q \| --quiet` | print only untried and unfinished proofs per theory, and grand total  |
+|`--no-log` | don't log PVS information (**default**) |
+|`-o \| --out <name>` | save the proof status summary in `<name>.summary` |
+|[+] `--prelude-ext <p1,..,pn>` | load prelude extensions `<p1>,..,<pn>` |
+|`--no-prelude-ext` | clear list of prelude extensions |
+|`--purge` | purge non-default proofs from proved formulas (**default** on directories) |
+|`--no-purge` | don't purge non-default proofs |
+|[+] `--pvs-option <opt>` | pass `<opt>` to PVS, where `<opt>` doesn't have a leading `-`, e.g., `proveit --pvs-option 'image <name>'` |
+|`--no-pvs-option` | clear list of PVS options |
+|`-q \| --quiet` | print only untried and unfinished proofs per theory, and grand total |
 |`-s \| --scripts` | install ProofLite scripts (**default**) |
-|`~s \| --no-scripts` | don't install ProofLite scripts |
+|`--no-scripts` | don't install ProofLite scripts |
+|[+] `--summary-mode <m1,..,mn>` | output alternative summary modes `<m1>,..,<mn>`, where `<mi>` can be `md`, for Markdown, or `csv`, for comma-separated values |
+|`--no-summary-mode` | clear list of alternative summary modes |
 |`--tex` | generate LaTeX proof files in directory `pvstex` |
 |`--no-tex` | don't generate LaTeX proof files (**default**) |
+|`--timeout <secs>` | timeout in seconds for each proof (disabled when `<secs>` is 0) |
 |`--txt` | generate text proof files in directory `pvstxt` |
 |`--no-txt` | don't generate text proof files (**default**) |
-|`-t \| --top <topfile>` | use `<topfile>.pvs` instead of `top.pvs` when the input is a directory |
-|`--timeout <secs>` | timeout in seconds for each proof |
+|`--top <name>` | set name of PVS top file to `<name>` (**default**: `top`) |
 |`--traces` | include proof traces in log file |
 |`--no-traces` | don't include proof traces in log file (**default**) |
-|`-T \| --typecheck-only` | typecheck but do not prove the theory |
+|`--typecheck-prove` | typecheck and prove (**default**) |
+|`-T \| --typecheck-only` | typecheck but do not prove |
 |`-v \| --verbose` | print proof status information per theory and grand total (**default**) |
 |`--version` | print version information and exit |
+|`-w \| --write-scripts` | write proofs as ProofLite scripts into separate files. This option is ignored in typecheck-only mode |
+|`--no-write-scripts` | do not write ProofLite scripts |
 
 # `provethem`
 
@@ -106,52 +122,77 @@ Runs `proveit` on a collection of libraries.
 ## Synopsis
 
 ```shell
-provethem [--help | <option> ...] <file>
+provethem [--help | <option> ...] [<input-file>] [-- <proveit-options>]
 ```
 
-File `<file>` must contain an ordered list of libraries to be processed by `proveit`. 
-If `<file>` is not provided, the file name `all-theories` is assumed.
-Each line in `<file>` must have the form 
+File `<input-file>` is a list of libraries to be processed by `proveit`. 
+If `<input-file>` is not provided, the file name `all-libraries` is assumed (the old default name `all-theories` is deprecated).
+Lines in `<input-file>` have either the form
 ```
-<lib> [: <proveit params>]
+<provethem-options>
 ```
-where `<lib>` is a directory name and `<proveit params>` are parameters to `proveit`. 
-If `<lib>` is empty, options apply to all libraries thenceforth.
+or the form
+```
+<lib> [: <proveit-options>]
+```
+where `<provethem-options>` is a preset list of `provethem` options, `<lib>` is a library directory in the working path, and `<proveit-options>` is a preset list of `proveit` options for library `<lib>`.
+When `<lib>` is empty, `<proveit-options>` apply to all libraries thenceforth.
 
-Output is saved in a text file whose default name has the form `<file><postfix>.grandtotals`.
+Output is saved in a text file whose default name has the form `<input-file><postfix>.grandtotals`.
 The `<postfix>` depends on the options `--do`, `--but`, `--from`, `--to`, `--after`, and `--before` given to the script.
 A different name can be specified using the option `--out`.
-Unless the option `--out` is explicitly use, an output file is not created when the options `--clean-all`, `--clean-bin`, `--execute` or `--dry-run` are given.
+Summaries for each `<lib>` are saved in the directory `summaries`, unless the option `--dir` is provided.
 
 ## Options
 
+Options are processed in the order they appear. Options marked [+] can be used multiple times and are cumulative.
+
+### Library selection
+
+The following options filter the set of libraries to process.
+
 | Option | Description |
 | --- | --- |
-|`--addpath` | add current directory to `PVS_LIBRARY_PATH` (**default** when `--clearpath`) |
 |`--after=<dir>` | prove all libraries after `<dir>`, exclusive |
 |`--before=<dir>` | prove all libraries before `<dir>`, exclusive |
-|`--but=<dir1>,..,<dirn>` | do not process libraries `<dir1>,...,<dirn>` |
-|`--no-color` | do not use colors |
-|`--clean-only` | remove `.pvscontext` and binary files in the `pvsbin` folder but do not prove the libraries |
-|`--clean-all` | remove `.pvscontext` and all files in the `pvsbin` folder but do not prove the libraries |
-|`--clearpath` | clear `PVS_LIBRARY_PATH`  |
-|`--dir <dir>` | use `<dir>` as default directory of summary files |
-|`--do=<dir1>,..,<dirn> ` | process libraries `<dir1>,...,<dirn>` |
-|`--disable <o1,...on>` | disable external oracles `o1,...,on` |
-|`--disable-oracles` | disable any external oracle |
-|`--enable <o1,..,on>` | enable external oracles `o1,...,on`. Overwrite `--disable` |
-|`--ext <ext>` | use `<ext>` as default extension of summary files |
-|`--execute <command>` | execute Unix `<command>` on all libraries; Command may refer to `%DIR%` and `%FILE%` |
-|`--force` | force `provethem` to go even if there is a `proveit` error |
+|[+] `--but=<dir1>,..,<dirn>` | do not process libraries `<dir1>,..,<dirn>` |
+|[+] `--do=<dir1>,..,<dirn>` | process libraries `<dir1>,..,<dirn>` |
 |`--from=<dir>` | prove all libraries from `<dir>`, inclusive |
-|`--lisp <lisp>` | lisp image to be used; `<lisp>` can be `allegro`, `cmulisp`, or `sbcl` |
-|`--log` | log all information generated by PVS in `<file>.log`  |
-|`--out <outfile>` | save output to `<outfile>` |
-|`--test` | process `<file>` but do not call `proveit` |
 |`--to=<dir>` | prove all libraries to `<dir>`, inclusive |
-|`--top <th>` | use `<th>.pvs` instead of `top.pvs` as the top theory   |
-|`--typecheck-only` | typecheck but do not prove the libraries |
-|`--verbose` | print summary information for all theories |
+
+### Behavior
+
+The following options control the behavior of `provethem`. They can also be preset in `<input-file>`.
+
+| Option | Description |
+| --- | --- |
+|`--action-name <name>` | use `<name>` to summarize the `<command>` action (see `--execute`) |
+|`-C \| --clean-only` | remove `.pvscontext` and binary files in the `pvsbin` folder, and quit |
+|`--clean-all` | remove `.pvscontext`, `orphaned-proofs.prf`, and all files in `pvsbin`, and quit |
+|`--color` | use colors (**default**) |
+|`--no-color` | don't use colors |
+|`-d \| --dir <dir>` | use `<dir>` as default directory for generated files (**default**: `summaries`) |
+|`--dry-run` | print commands without executing them |
+|`--no-dry-run` | disable dry run |
+|`--execute <command>` | execute Unix `<command>` on all libraries, interpolating `%DIR%` and `%FILE%` |
+|`-f \| --force` | force `provethem` to go on even if there is a `proveit` error |
+|`-o \| --out <file>` | save output to `<file>` |
+|`-q \| --quiet` | be silent |
+|[+] `--ret-val-label <val>=<label>` | use `<label>` to print the return value `<val>` of `<command>` (see `--execute`) |
+|`-T \| --typecheck-only` | typecheck but do not prove the libraries |
+|`--top <name>` | use `<name>.pvs` instead of `top.pvs` as top theory |
+|`-v \| --verbose` | print summary information for all theories |
+
+### Command line only
+
+The following options can only be used in the command line, i.e., they cannot be preset as `provethem` options in `<input-file>`.
+
+| Option | Description |
+| --- | --- |
+|`--generate-input` | generate `<input-file>` if it doesn't exist. Libraries are ordered according to their dependencies, which are computed by `proveit` and stored in `<dir>/<lib>.dep` |
+|`-h \| --help` | print help message |
+|[+] `--proveit-option <opt>` | pass `<opt>` to `proveit`, where `<opt>` doesn't have a leading `-` |
+|[+] `--pvs-option <opt>` | pass `<opt>` to PVS, where `<opt>` doesn't have a leading `-` |
 |`--version` | print version information and exit |
 
 # `pvsio`
@@ -163,43 +204,52 @@ The PVSio input/output library is implemented via [semantic attachments](http://
 ## Synopsis
 
 ```shell
-$ pvsio <options> [<pvsfile>][@<theory>[:[<function> [<arguments>]]]]
+$ pvsio <option>* [ <file>.pvs | [<ctx>]@<theory>[:[<pvs-function>]] [<pvs-arguments>] ]
 ```
 
 ## Options
 
+Options are processed in the order they appear. Options marked [+] can be used multiple times and are cumulative. One letter options can be combined.
+
 | Option | Description |
 | --- | --- |
-|`-h \| --help` | Print help message |
-|`-p \| --packages <P1>,..,<Pn>` | Load packages (prelude libraries) `<P1>,..,<Pn>` |
-|`-promptin <string> ` | Change prompt `<PVSio>` to `<string>` |
-|`-promptout <string> ` | Change prompt `==>~%` to `<string>` |
-|`-t \| --tccs` | Generate TCCs |
-|`-T \| --timing` | Print timing information for each evaluation |
-|`-v \| --version` | Print PVSio version |
-|`-V \| --verbose` | Print type checking information |
-|`-l \| --lisp allegro\|cmulisp\|sbclisp` | Specify a particular PVS binary to execute PVSio. Use this option only if you know what you are doing. |
+|[+] `--add-path <path>` | add `<path>`, which is a list of directories of the form `<dir1>:..:<dirn>`, to `PVS_LIBRARY_PATH` |
+|`--clear-path` | clear `PVS_LIBRARY_PATH` |
+|`--dry-run` | print commands but don't execute them |
+|`-h \| --help` | print help message |
+|[+] `--prelude-ext <p1,..,pn>` | load prelude extensions `<p1>,..,<pn>` (replaces the deprecated `-p \| --packages`) |
+|`--prompt-in <prompt>` | change input prompt to `<prompt>` (replaces the deprecated `--promptin`) |
+|`--prompt-out <prompt>` | change output prompt to `<prompt>` (replaces the deprecated `--promptout`) |
+|[+] `--pvs-option <opt>` | pass `<opt>` to PVS, where `<opt>` doesn't have a leading `-`, e.g., `pvsio --pvs-option 'image <name>'` |
+|`-t \| --tccs` | generate TCCs |
+|`-T \| --timing` | print timing information for each evaluation |
+|`-v \| --version` | print PVSio version |
+|`-V \| --verbose` | print typechecking information |
 
 ## Typical Usage
-  * Load PVS file `pvsfile.pvs` and start PVSio read-and-eval loop
+  * Load PVS file `<file>.pvs` and start PVSio read-and-eval loop
 ```shell
-$ pvsio <pvsfile.pvs>
+$ pvsio <file>.pvs
 ```
-  * Load PVS theory `<theory>` from file `<theory>.pvs` and start PVSio read-and-eval loop
+  * Load PVS theory `<theory>` from directory `<ctx>` and start PVSio read-and-eval loop
+```shell
+$ pvsio <ctx>@<theory>
+```
+  * Load PVS theory `<theory>` from current directory and start PVSio read-and-eval loop
 ```shell
 $ pvsio @<theory>
 ```
-  * Load PVS theory `<theory>` from file `<theory>.pvs` and ground evaluate function `main`
+  * Load PVS theory `<theory>` from current directory and ground evaluate the PVS function `main`
 ```shell
 $ pvsio @<theory>:
 ```
-  * Load PVS theory `<theory>` from file `<theory>.pvs` and ground evaluate function application `f(a1,...,an)`
+  * Load PVS theory `<theory>` from directory `<ctx>` and ground evaluate the PVS expression `f(a1,..,an)`
 ```shell
-$ pvsio @<theory>:<f> <a1> ... <an>
+$ pvsio <ctx>@<theory>:<f> <a1> ... <an>
 ```
-  * Load PVS theory `<theory>` from file `<file>.pvs` and ground evaluate function application `f(a1,...,an)`
+  * Load PVS theory `<theory>` from directory `<ctx>` and ground evaluate the PVS expression `main(a1,..,an)`
 ```shell
-$ pvsio <file>@<theory>:<f> <a1> ... <an>
+$ pvsio <ctx>@<theory>: <a1> ... <an>
 ```
 
 # `prove-all`
@@ -331,6 +381,7 @@ The scope of the visited libraries can be controlled with the following options
 | Option | Description |
 | --- | --- |
 |`--top=<topfile>` | specify name of the top file directory (default: "top") |
+|`--dir=<outputdir>` | directory of the `.dep` files (default: "summaries") |
 |`--zoom=<dir1>,...,<dirn> ` | zoom into libraries `<dir1>,...,<dirn>` |
 
 ### Visualization
@@ -347,14 +398,14 @@ The scope of the visited libraries can be controlled with the following options
 
 | Option | Description |
 | --- | --- |
-|`--force` | force regeneration of `.dep` files |
+|`--force` | force regeneration of `.dep` files (`<outputdir>/<lib>.dep`) |
 |`--help` | print help message |
 
 ## Description 
 
 This script builds a dot graph of library dependencies. 
 
-If `<file>` is not provided, the file name all-theories is assumed.
+If `<file>` is not provided, the file name `all-libraries` is assumed.
 Particular libraries in `<file>` can be selected using the options: `--do`, `--after`, `--before`, `--from`, `--to`. The option `--but` unselect a list of developments.
 
 If `<outfile>` is not specified, `<file><postfix>` is used. The `<postfix>` depends on library selection option, i.e., `--do`,`--but`,`--from`,`--to`,`--after`,`--before`,`--zoom`.
@@ -366,6 +417,9 @@ The `--reach-from=<lib>@<th>` option allows to print only the theories which are
 Note, also, that `<lib>` will be added to the visible scope if not already part of it.
 Additionally, DependencyGraph will zoom into `<lib>` as if it were mentioned in the `--zoom` option.
 Theories from other libraries are explicitly mentioned in the resulting graph only if they belong to a zoomed library, otherwise only the referenced library is mentioned.
+
+The dependencies of a library `<lib>` are read from `<outputdir>/<lib>.dep` (by default, `summaries/<lib>.dep`), which is generated by `proveit <lib>` or `provethem --do <lib>`.
+Dependency files in the old format (`<lib>/pvsbin/top.dep`) are not supported. If one is found, the script stops with an error.
 
 # `dependency-all`
 
