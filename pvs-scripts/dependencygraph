@@ -30,7 +30,9 @@ OPTIONS
   --pdf                    generate a pdf file 
   --svg                    generate a svg file (default)
   --title=<string>         use <string> as the title of the graph
-  --out=<outfile>          use <outfile> as name of the output file
+  --out=<outfile>          use <outfile> as name of the output file. <outfile> can
+                           include a directory, which must exist. Its extension
+                           (.dot, .pdf, or .svg) selects the output format
 
  SCOPE the scope of the visited libraries can be controlled with the following options
 
@@ -40,12 +42,17 @@ OPTIONS
   --from=<dir>             process all libraries from <dir>, inclusive
   --before=<dir>           process all libraries before <dir>, exclusive
   --to=<dir>               process all libraries to <dir>, inclusive
-  --reach-from=<lib>[@<th>] only print every reachable theory from <lib> or <lib@th>
-  --centered-at=<lib>[@<th>] only print elements related to <lib> 
+  --reach-from=<lib>[@<th>] only print the elements reachable from <lib> or <lib>@<th>.
+                           Only the .dep files of the reachable libraries are read
+  --centered-at=<lib>[@<th>] only print the elements reachable from <lib> or <lib>@<th>
+                           and the elements that reach it. The .dep files of all the
+                           selected libraries are read
+                           For both options, <lib>@<th> zooms into <lib>
 
  FINE-GRAINED CONTROL
 
   --top=<topfile>          specify name of the top file directory (default: "top")
+  --dir=<outputdir>        directory of .dep files (default: "summaries")
   --zoom=<dir1>,...,<dirn> zoom into libraries <dir1>,...,<dirn>
 
  VISUALIZATION
@@ -73,7 +80,7 @@ OPTIONS
 
  EXTRAS
 
-  --dependencies           force regeneration of .dep files
+  --dependencies           force regeneration of .dep files (<outputdir>/<lib>.dep)
   --help                   print this message
 
 DESCRIPTION
@@ -91,6 +98,10 @@ DESCRIPTION
   When the option --zoom is used, the specified developments are zoomed such 
   that the each theory in those developments in represented by a node in the 
   dependency graph.
+
+  The .dep files are read from <outputdir>. A .dep file in the old format
+  (<lib>/pvsbin/<topfile>.dep) is not supported. Regenerate it with either
+  'proveit <lib>' or 'provethem --do <lib>', or use --dependencies.
   
 EOF
   exit;
@@ -106,6 +117,9 @@ sub trim($)
 
 my $graph = Graph->new; 
 
+# Collection of each library, as specified in .dep files, i.e., [<collection>]<path>/<lib>
+my %lib_collection;
+
 sub collection_label($){
   my $lib = shift;
 
@@ -113,7 +127,9 @@ sub collection_label($){
   
   my $result = $lib;
 
-  if ($fullpath) {
+  if (!$fullpath && $lib_collection{$lib}) {
+    $result = $lib_collection{$lib};
+  } elsif ($fullpath) {
     if ($lib =~ /^(.*\/[^\/]+)\/[^\/]+$/){
       $result = $1;
     } else {
@@ -260,6 +276,99 @@ sub register_importing {
   return $pivot_theory_found;
 }
 
+# Parse a library specification [<collection>]<path>/<lib>, where [<collection>] is optional
+# and <path> is possibly empty. Returns <path>/<lib> and records its collection.
+sub parse_libspec($) {
+  my $spec = trim(shift);
+  my $collection = '';
+  if ($spec =~ /^\[([^\]]*)\](.*)$/) {
+    $collection = trim($1);
+    $spec = trim($2);
+  }
+  $lib_collection{$spec} = $collection if $collection;
+  return $spec;
+}
+
+# Parse a theory reference in a .dep file: either a local theory name <theory>
+# or an external theory [<collection>]<path>/<lib>@<theory>. Returns (<path>/<lib>,<theory>).
+sub parse_theoryref {
+  my ($ref,$curlib) = @_;
+  if ($ref =~ /^(.+)@([^@]+)$/) {
+    return (parse_libspec($1),trim($2));
+  }
+  return ($curlib,$ref);
+}
+
+sub old_depfile_error {
+  my ($lib,$file) = @_;
+  die "Error: $file uses an old dependency file format, which is no longer supported.\n".
+      "Regenerate the dependency file with either 'proveit $lib' or 'provethem --do $lib'.\n";
+}
+
+# Process the .dep file of a library and register all importings. The format of a .dep file is
+#   <lib>:<localtheory>,..,<localtheory>          (first line: local theories of <lib>)
+#   <localtheory>:<theory>,..,<theory>            (theories imported by each local theory)
+#   <extlib>:<theory>,..,<theory>                 (theories imported from external libraries)
+# where libraries are specified as [<collection>]<path>/<lib> and theories are either local
+# names or [<collection>]<path>/<lib>@<theory>. Blank lines and comments (#) are ignored.
+# Returns true if the pivot theory has been found. If $imported is given (array ref),
+# the external libraries imported by the library are added to it.
+sub process_depfile {
+  my ($lib,$depfile,$imported) = @_;
+  my $pivot_theory_found;
+  my $current_library;
+  my %local_theories;
+  my $external = 0;
+
+  open(my $fh,'<',$depfile) or die "Error: cannot open $depfile ($!)\n";
+  while (my $line = <$fh>) {
+    $line =~ s/#.*$//;
+    $line = trim($line);
+    next if !$line;
+    if (($line =~ tr/://) != 1) {
+      old_depfile_error($lib,$depfile) if !defined($current_library);
+      die "Error: $depfile appears to be corrupted (line $.). Regenerate it with either ".
+	  "'proveit $lib' or 'provethem --do $lib'.\n";
+    }
+    my ($key,$vals) = split(/:/,$line,2);
+    $key = trim($key);
+    my @values = grep { $_ ne '' } map { trim($_) } split(/,/,$vals);
+    if (!defined($current_library)) {
+      # First section: local theories of the library
+      $current_library = parse_libspec($key);
+      %local_theories = map { $_ => 1 } @values;
+      print "[process_depfile] current_library $current_library\n" if $debug;
+    } elsif (!$external && $local_theories{$key}) {
+      # Second section: importings of local theories
+      print "[process_depfile] from $key\n" if $debug;
+      foreach my $to (@values) {
+	print "[process_depfile] to $to \n" if $debug;
+	my ($toLibrary,$toTheory) = parse_theoryref($to,$current_library);
+	$pivot_theory_found = register_importing($current_library,$key,$toLibrary,$toTheory) || $pivot_theory_found;
+      }
+    } else {
+      # Last section: theories imported from external libraries (edges are already registered)
+      $external = 1;
+      my $extlib = parse_libspec($key);
+      push(@$imported,$extlib) if $imported;
+    }
+  }
+  close($fh);
+  old_depfile_error($lib,$depfile) if !defined($current_library);
+  return $pivot_theory_found;
+}
+
+# Name of the .dep file of library $lib in directory $depdir
+sub depfile_name {
+  my ($depdir,$lib) = @_;
+  my $base = basename($lib);
+  (my $dashed = $lib) =~ s/\//-/g;
+  foreach my $name ($lib,$dashed,$base) {
+    return "$depdir/$name.dep" if -f "$depdir/$name.dep";
+  }
+  return "$depdir/$lib.dep";
+}
+
 # Every vertex in the TARGET graph receive the attributes
 # that it holds in the SOURCE graph.
 #
@@ -290,6 +399,7 @@ GetOptions('dot'=>\$dot,
            'from=s'=>\$from,
 	   'help'=>\$help,
 	   'top=s'=>\$top,
+	   'dir=s'=>\$depdir,
            'to=s'=>\$to,
 	   'dependencies'=>\$force,
 	   'full-path'=>\$fullpath,
@@ -305,6 +415,7 @@ die("Error: unkonwn value for splines: $splines.\n") if $splines && ($splines ne
 die("Error: options --reach-from and --centered-at cannot be set simultaneausly.\n") if ($reach_from && $centered_at);
 
 $splines="spline" if !$splines;
+$depdir="summaries" if !$depdir;
 $rankdir="LR" if !$rankdir;
 $do = join(',',@do);
 $but = join(',',@but);
@@ -353,6 +464,7 @@ open (INFILE,$file) || die "File $file doesn't exist\n";
 # Compute graph name and output file name.
 #
 my $graphName;
+my $outdir = '';
 if ($out) {
 
   print "out $out\n" if $debug;
@@ -362,7 +474,9 @@ if ($out) {
   print "[main] base '$base'\n" if $debug;
   print "[main] path '$path'\n" if $debug;
   print "[main] type '$type'\n" if $debug;
-    
+
+  $outdir = $path if $path ne './';
+  die "Error: directory $outdir of option --out not found\n" if $outdir && ! -d $outdir;
   $graphName=$base;
   if ($type eq ".pdf") {
     $pdf = 1;
@@ -391,7 +505,12 @@ if ($out) {
 }
 $graphName =~ s/@/AT/g;
 
-$out = $path . $graphName;
+# A theory in --reach-from or --centered-at is only visible when its library is zoomed
+if ($pivot_theory && !grep { lib_name($_) eq $pivot_library } @zoomlist) {
+  push(@zoomlist,$pivot_library);
+}
+
+$out = $outdir . $graphName;
 
 # Process input file (all-libraries by default)
 #
@@ -444,7 +563,32 @@ if ($top) {
 
 print "\ntargets @targets \n" if $debug;
 
+# Target in @targets that corresponds to library specification <path>/<lib> in a .dep file.
+# The longest matching target is returned, or undef if there is none.
+sub target_of_libspec {
+  my $spec = shift;
+  my $result;
+  foreach my $target (@targets) {
+    if (($spec eq $target || $spec =~ /\/\Q$target\E$/) &&
+	(!defined($result) || length($target) > length($result))) {
+      $result = $target;
+    }
+  }
+  return $result;
+}
+
 my @libraries=@targets;
+my %visited;
+
+# With --reach-from, only the .dep files of the libraries reachable from the pivot
+# library are processed. The other libraries cannot be in the graph.
+if ($reach_from) {
+  @libraries = grep { lib_name($_) eq lib_name($pivot_library) } @targets;
+  die "Error: library $pivot_library in option --reach-from is not in the selected libraries.\n".
+      "(HINT: Doublecheck spelling and values for --do, --from, --to, --but options.)\n"
+      if !@libraries;
+  $visited{$_} = 1 foreach @libraries;
+}
 
 
 # for each library in the list of targets (@libraries) process its .dep file.
@@ -455,56 +599,36 @@ while (@libraries) {
 
   push(@nodes,$lib);
 
-  if ($force || ! -f "$lib/pvsbin/$topfile.dep" ) {
+  my $depfile = depfile_name($depdir,$lib);
+  my $olddepfile = "$lib/pvsbin/$topfile.dep";
+  if (!$force && ! -f $depfile && -f $olddepfile) {
+    old_depfile_error($lib,$olddepfile);
+  }
+  if ($force || ! -f $depfile) {
     if ($force) {
-      print "Generating $lib/pvsbin/$topfile.dep... ";
-    } elsif (! -f "$lib/pvsbin/$topfile.dep") {
-      print "File $lib/pvsbin/$topfile.dep not found. Generating it... ";
+      print "Generating $depfile... ";
+    } else {
+      print "File $depfile not found. Generating it... ";
     }
-    my $prove_it_result = `proveit --dependencies -T -i -q $lib/$topfile`;      
+    mkdir $depdir if ! -d $depdir;
+    my $prove_it_result = `proveit --typecheck-only --dependencies --dir $depdir --top $topfile -q $lib`;
     die("Error: could not generate dep file (reported error: $!)\n")
       if !defined($prove_it_result);
     print "done.\n";
+    $depfile = depfile_name($depdir,$lib);
   }
 
-  my $current_library = "";
-
-  my $pivot_theory_found;
-  if (-f "$lib/pvsbin/$topfile.dep") {
-    open(FILE,"$lib/pvsbin/$topfile.dep");
-    while($line = <FILE>) {
-      if ($current_library eq "") {
-        if ($line =~/^([^,]+)\/[^,]+,/) {
-          $current_library = $1;
-        } else {
-          die "ERROR cannot recognize path for lib $lib when processing $lib/pvsbin/$topfile.dep.\n";
-        }
-        print "[main] first line: current_library $current_library\n" if $debug;
-      } elsif ($line =~/(.+):(.*)/) {
-        # The lines that contains a colon register importing relations between theories.
-        if ($2) {
-          print "[main] from $1\n" if $debug;
-          my $from=$1;
-          my $tos=$2;
-          @tolist = split /,/,$tos;
-          foreach $to (@tolist) {
-            print "[main] to $to \n" if $debug;
-            if($from =~/(.+)\/([^\/]+)/) {
-              my $fromLibrary=$1;
-              my $fromTheory=$2;
-              if($to =~/(.+)\/([^\/]+)/) {
-                my $toLibrary=$1;
-                my $toTheory=$2;
-                $pivot_theory_found = register_importing($fromLibrary,$fromTheory,$toLibrary,$toTheory) || $pivot_theory_found;
-              }
-            }
-          }	    
-        }
+  die "File $depfile not found\n" if ! -f $depfile;
+  my @imported;
+  my $pivot_theory_found = process_depfile($lib,$depfile,\@imported);
+  if ($reach_from) {
+    foreach my $extlib (@imported) {
+      my $target = target_of_libspec($extlib);
+      if ($target && !$visited{$target}) {
+	$visited{$target} = 1;
+	push(@libraries,$target);
       }
-    } 
-    close FILE;
-  } else {
-    die "File $lib/pvsbin/$topfile.dep not found\n";
+    }
   }
   print "[main] pivot_theory_found: '$pivot_theory_found'\n" if $debug;
   print "[main] ((\$reach_from || \$centered_at) && (\$lib eq \$pivot_library) && !\$pivot_theory_found): '$test'\n" if $debug;
@@ -513,8 +637,9 @@ while (@libraries) {
   print "[main] lib $lib pivot_library $pivot_library\n" if $debug;
   if (($reach_from || $centered_at) && ($lib eq $pivot_library) && !$pivot_theory_found) {
     my $option_name = "--reach-from";
-    $option_name = "--centered_at" if $centered_at;
-    die("ERROR in $option_name option value: element '$pivot_from' is not visible.\n".
+    $option_name = "--centered-at" if $centered_at;
+    my $pivot_value = $reach_from || $centered_at;
+    die("ERROR in $option_name option value: element '$pivot_value' is not visible.\n".
 	"(HINT: Doublecheck spelling and values for --do, --from, --to, --but, -zoom options ".
 	"and check if the .dep files are up-to-date.)\n");
   } else {
@@ -578,7 +703,7 @@ if ($svg) {
   my $outext = "svg";
   die "To produce $out.$outext, install Graphviz and add it to PATH\n" if !`which dot`;
   rename "$out.$outext", "$out.$outext.bak" if -f "$out.$outext";
-  my $dotresult = `dot -T$outext $out.dot -o $out.$outext`;
+  my $dotresult = `dot -T$outext "$out.dot" -o "$out.$outext"`;
   die("Error: could not generate dot file (reported error: $!)\n")
     if !defined($dotresult);
   print "File $out.$outext has been generated\n";
@@ -588,7 +713,7 @@ if ($pdf) {
   my $outext = "pdf";
   die "To produce $out.$outext, install Graphviz and add it to PATH\n" if !`which dot`;
   rename "$out.$outext", "$out.$outext.bak" if -f "$out.$outext";
-  my $dotresult = `dot -T$outext $out.dot -o $out.$outext`;
+  my $dotresult = `dot -T$outext "$out.dot" -o "$out.$outext"`;
   die("Error: could not generate dot file (reported error: $!)\n")
     if !defined($dotresult);
   print "File $out.$outext has been generated\n";
@@ -596,4 +721,4 @@ if ($pdf) {
 
 # Clean
 #
-`rm $out.dot` if !$dot;
+unlink "$out.dot" if !$dot;

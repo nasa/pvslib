@@ -1,5 +1,6 @@
 // npx tsc --downlevelIteration dependency-graph.ts
 import * as fs from 'fs';
+import * as path from 'path';
 import * as Handlebars from "handlebars";
 import * as fsPromise from 'fs/promises'; 
 import * as Color from 'color';
@@ -15,14 +16,32 @@ class CommaSeparatedList {
 
 const argsDefinitions = [
   { name: 'do', type: (csl: string) => new CommaSeparatedList(csl) },
-  { name: 'out', type: String }
+  { name: 'out', type: String },
+  { name: 'dir', type: String, defaultValue: 'summaries' },
+  { name: 'top', type: String, defaultValue: 'top' }
 ];
 
 const args = commandLineArgs(argsDefinitions);
 
 const librariesToProcess: Array<string> = args.do.elems;
+const depDir: string = args.dir;
+const topName: string = args.top;
 
-const outputFileName = (args.out)?`./${args.out}.html`:`./${librariesToProcess}.html`;
+// Output file. By default, <lib1>,..,<libn>.html in the current directory. The option --out <out>
+// can be an absolute or relative path, with or without the .html extension, or a directory, in which
+// case the default file name is used in that directory.
+const outputFileName = outputFilePath(args.out);
+const outputBaseName = path.basename(outputFileName);
+
+function outputFilePath(out: string | undefined): string {
+  const defaultName = `${librariesToProcess}.html`;
+  if (!out) return path.resolve(defaultName);
+  if (out.endsWith(path.sep) || out.endsWith("/") ||
+      (fs.existsSync(out) && fs.statSync(out).isDirectory())) {
+    return path.resolve(out, defaultName);
+  }
+  return path.resolve(out.endsWith(".html") ? out : `${out}.html`);
+}
 
 console.log("Generating graph for libraries: " + librariesToProcess);
 
@@ -204,6 +223,9 @@ const collectionLabels: Map<string,string> = new Map<string,string>();
 
 collectionLabels.set("pvslib-gitlab__master_", "NASALib");
 collectionLabels.set("lib", "PVSPrelude");
+
+// Collection of each library (<path>/<lib>), as specified in .dep files, i.e., [<collection>]<path>/<lib>
+const libCollections: Map<string,string> = new Map<string,string>();
 
 generateHTML();
 
@@ -450,7 +472,7 @@ async function generateHTML() {
           var exportValue = JSON.stringify(nodes, undefined, 2);
           const file = new Blob([exportValue], { type: 'text/plain' });
           link.href = URL.createObjectURL(file);
-          link.download = "${outputFileName}.json";
+          link.download = "${outputBaseName}.json";
           link.click();
           URL.revokeObjectURL(link.href);
         }
@@ -597,8 +619,8 @@ div.outerBorder {
   var libraryToProcess: string;
   for (libraryToProcess of librariesToProcess) {
 
-    const dependencyFile = `./${libraryToProcess}/pvsbin/top.dep`;
-    await readDependencyFile(dependencyFile, edges, nodes, lastNodeId);
+    const dependencyFile = dependencyFileName(libraryToProcess);
+    await readDependencyFile(libraryToProcess, dependencyFile, edges, nodes, lastNodeId);
     lastNodeId = nodes.size;
     // console.log("generateHTML " + nodes.size); // debug
 
@@ -611,13 +633,17 @@ div.outerBorder {
   const theoriesInfo = new Array<{ id: number; label: string; title: string; group: string; }>();
 
   nodes.forEach((theoryId: number, fullyQualifiedTheoryName: String) => {
-    var splitTheoryName = fullyQualifiedTheoryName.split("/");
-    var theory_name = splitTheoryName[splitTheoryName.length - 1];
-    var collection: string = splitTheoryName[splitTheoryName.length - 3];
+    // Node names have the form <path>/<lib>@<theory>
+    const atIndex = fullyQualifiedTheoryName.lastIndexOf("@");
+    const libPath = fullyQualifiedTheoryName.substring(0, atIndex);
+    var theory_name = fullyQualifiedTheoryName.substring(atIndex + 1);
+    var splitLibPath = libPath.split("/");
+    const libName = splitLibPath[splitLibPath.length - 1];
+    var collection: string = libCollections.get(libPath) ??
+      (splitLibPath.length > 1 ? splitLibPath[splitLibPath.length - 2] : "");
     if (collectionLabels.has(collection)) {
       collection = collectionLabels.get(collection)!;
     }
-    const libName = splitTheoryName[splitTheoryName.length - 2];
     var fullyQualifiedLibName = collection + "/" + libName;
     var libIndex: number = -1;
     if (libraries.has(fullyQualifiedLibName)) {
@@ -688,36 +714,110 @@ div.outerBorder {
     totalTheoriesCount: theoriesInfo.length
   });
 
+  fs.mkdirSync(path.dirname(outputFileName), { recursive: true });
   fs.writeFileSync(outputFileName, html, { encoding: 'utf-8' });
   console.log(`Written to ${outputFileName}`);
 }
 
-async function readDependencyFile(dependencyFile: string, edges: Array<{ from: number; to: number}>, nodes: Map<String, number>, lastNodeId: number) {
+function depFileError(lib: string, msg: string): never {
+  console.error(`Error: ${msg}`);
+  console.error(`Regenerate the dependency file with either 'proveit ${lib}' or 'provethem --do ${lib}'.`);
+  process.exit(1);
+}
+
+// Name of the .dep file of library lib, i.e., <depDir>/<lib>.dep
+function dependencyFileName(lib: string): string {
+  const candidates = [lib, lib.replace(/\//g, "-"), path.basename(lib)];
+  for (const name of candidates) {
+    const file = path.join(depDir, `${name}.dep`);
+    if (fs.existsSync(file)) return file;
+  }
+  const oldFile = path.join(lib, "pvsbin", `${topName}.dep`);
+  if (fs.existsSync(oldFile)) {
+    depFileError(lib, `${oldFile} uses an old dependency file format, which is no longer supported.`);
+  }
+  depFileError(lib, `dependency file ${path.join(depDir, `${lib}.dep`)} not found.`);
+}
+
+// Parse a library specification [<collection>]<path>/<lib>. Returns <path>/<lib> and records its collection.
+function parseLibSpec(spec: string): string {
+  const match = spec.trim().match(/^\[([^\]]*)\](.*)$/);
+  if (match) {
+    const libPath = match[2].trim();
+    if (match[1].trim()) libCollections.set(libPath, match[1].trim());
+    return libPath;
+  }
+  return spec.trim();
+}
+
+// Parse a theory reference: either a local theory <theory> or [<collection>]<path>/<lib>@<theory>.
+// Returns the node name <path>/<lib>@<theory>.
+function parseTheoryRef(ref: string, currentLibrary: string): string {
+  const atIndex = ref.lastIndexOf("@");
+  if (atIndex >= 0) {
+    return `${parseLibSpec(ref.substring(0, atIndex))}@${ref.substring(atIndex + 1).trim()}`;
+  }
+  return `${currentLibrary}@${ref}`;
+}
+
+// The format of a .dep file is
+//   <lib>:<localtheory>,..,<localtheory>          (first line: local theories of <lib>)
+//   <localtheory>:<theory>,..,<theory>            (theories imported by each local theory)
+//   <extlib>:<theory>,..,<theory>                 (theories imported from external libraries)
+// where libraries are specified as [<collection>]<path>/<lib> and theories are either local
+// names or [<collection>]<path>/<lib>@<theory>. Blank lines and comments (#) are ignored.
+async function readDependencyFile(lib: string, dependencyFile: string, edges: Array<{ from: number; to: number}>, nodes: Map<String, number>, lastNodeId: number) {
   var data: Array<{ theory: string; imports: Array<string>; }> = [];
 
+  var currentLibrary: string | undefined = undefined;
+  var localTheories: Set<string> = new Set();
+  var external: boolean = false;
+  var lineNumber: number = 0;
+
   const file = await fsPromise.open(dependencyFile, 'r');
-  for await (const line of file.readLines()) {
-    if (line.includes(":")) {
-      var tokens = line.split(':');
-      var theory = tokens[0];
-      var deps : string = tokens[1];
-      var importings = deps.split(",");
+  for await (const rawLine of file.readLines()) {
+    lineNumber++;
+    const line = rawLine.replace(/#.*$/, "").trim();
+    if (line.length == 0) continue;
+    const tokens = line.split(':');
+    if (tokens.length != 2) {
+      if (currentLibrary === undefined) {
+        depFileError(lib, `${dependencyFile} uses an old dependency file format, which is no longer supported.`);
+      }
+      depFileError(lib, `${dependencyFile} appears to be corrupted (line ${lineNumber}).`);
+    }
+    const key = tokens[0].trim();
+    const values = tokens[1].split(",").map((v) => v.trim()).filter((v) => v.length > 0);
+    if (currentLibrary === undefined) {
+      // First section: local theories of the library
+      currentLibrary = parseLibSpec(key);
+      localTheories = new Set(values);
+    } else if (!external && localTheories.has(key)) {
+      // Second section: importings of local theories
+      const theory = `${currentLibrary}@${key}`;
+      const importings = values.map((v) => parseTheoryRef(v, currentLibrary!));
       // console.log(`theory: ${theory} deps ${importings}`); //debug
       data.push({
           theory, imports: importings
       });
+    } else {
+      // Last section: theories imported from external libraries (edges are already registered)
+      external = true;
+      parseLibSpec(key);
     }
+  }
+  if (currentLibrary === undefined) {
+    depFileError(lib, `${dependencyFile} uses an old dependency file format, which is no longer supported.`);
   }
 
   var theoryDeps: { theory: string; imports: Array<string>};
 
-  const tabuList: Array<string> = [ "top" ];
+  const tabuList: Array<string> = [ topName ];
 
   for (theoryDeps of data) {
     var pivotTheory = theoryDeps.theory;
     // console.log(`Analyzing ${theoryDeps.theory} IMPORTING ${theoryDeps.imports}`); //debug
-    var splitTheoryName = pivotTheory.split("/");
-    if(! tabuList.includes(splitTheoryName[splitTheoryName.length-1])) {
+    if(! tabuList.includes(pivotTheory.substring(pivotTheory.lastIndexOf("@") + 1))) {
       var pivotTheoryId: number = -1;
       if(nodes.has(pivotTheory))
         pivotTheoryId = nodes.get(pivotTheory)!;
@@ -728,21 +828,18 @@ async function readDependencyFile(dependencyFile: string, edges: Array<{ from: n
       }
       var dep: string;
       for (dep of theoryDeps.imports){
-        if(dep.length>0){
-          var dep_id = -1;
-          if(nodes.has(dep))
-            dep_id = nodes.get(dep)!;
-          else {
-            dep_id = lastNodeId++;
-            // console.log(`Adding theory: ${dep} id ${dep_id}`); //debug
-            nodes.set(dep,dep_id);
-          }
-          edges.push({ from: pivotTheoryId, to: dep_id });
+        var dep_id = -1;
+        if(nodes.has(dep))
+          dep_id = nodes.get(dep)!;
+        else {
+          dep_id = lastNodeId++;
+          // console.log(`Adding theory: ${dep} id ${dep_id}`); //debug
+          nodes.set(dep,dep_id);
         }
+        edges.push({ from: pivotTheoryId, to: dep_id });
       }
     }
   }
 
   // console.log("read dep file " + nodes.size);
 }
-
