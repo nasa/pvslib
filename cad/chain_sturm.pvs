@@ -1,0 +1,125 @@
+chain_sturm: THEORY
+%----------------------------------------------------------------------------
+% The symbolic sequence is a Sturm sequence.
+%
+% Sturm@sturm states its theorems about a triple (p, n, m): p(i) is a real
+% coefficient array, n(i) its degree, and m the last index, subject to
+% constructed_sturm_sequence?.  This theory reads the chain of coefficient
+% lists that branch_prs computes as such a triple at a valuation ys, and
+% proves the six conditions:
+%
+%   1 every element before the last has a nonzero leading coefficient
+%   2 the degrees strictly decrease
+%   3 the second element is the derivative of the first
+%   4 the last element is the zero polynomial of degree zero
+%   5 each element from the third on is a negative multiple of the remainder
+%     of the two before it
+%   6 there are at least three elements
+%
+% Condition 5 is where the symbolic step is finally cashed in: sturm_step
+% supplies the multiple for a divisor of degree at least one, and for a
+% divisor of degree zero (a nonzero constant, which can only be the last
+% nonzero element) both sides are the zero polynomial.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING branch_prs, Sturm@sturm
+
+  cs: VAR list[list[mpoly]]
+  l, l0, a, b: VAR list[mpoly]
+  ys: VAR list[real]
+  i, j, k, u: VAR nat
+  x: VAR real
+
+  %% small facts about the array of a list
+  dg_cons: LEMMA cons?(l) IMPLIES dg(l) = length(l) - 1
+  dg_null: LEMMA dg(null[mpoly]) = 0
+  earr_null_chain_sturm: LEMMA earr(null[mpoly], ys)(i) = 0
+  arr_lc: LEMMA cons?(l) IMPLIES earr(l, ys)(dg(l)) = meval(llast(l))(ys)
+  lc_arr: LEMMA cons?(l) AND meval(llast(l))(ys) /= 0 IMPLIES earr(l, ys)(dg(l)) /= 0
+  poly_null: LEMMA polynomial(earr(null[mpoly], ys), dg(null[mpoly]))(x) = 0
+
+  %% a strictly decreasing step is a strictly decreasing sequence
+  strict_dec: LEMMA FORALL (f: [nat -> nat], n: nat):
+    (FORALL (u: nat): u + 1 < n IMPLIES f(u + 1) < f(u)) IMPLIES
+    FORALL (jj: nat): FORALL (ii: nat): ii < jj AND jj < n IMPLIES f(jj) < f(ii)
+
+  %% normalizing does not change the polynomial
+  snorm_poly_at: LEMMA
+    polynomial(earr(select(snorm(l), ys), ys), dg(select(snorm(l), ys)))(x) =
+    polynomial(earr(l, ys), dg(l))(x)
+  snorm_poly: LEMMA
+    polynomial(earr(select(snorm(l), ys), ys), dg(select(snorm(l), ys))) =
+    polynomial(earr(l, ys), dg(l))
+
+  %% the zero polynomial, as a polynomial
+  poly_zero_arr: LEMMA FORALL (cc: real, n: nat): polynomial(cc * (LAMBDA (i: nat): 0), n)(x) = 0
+  poly_both_zero: LEMMA FORALL (aa: [nat -> real], n: nat, bb: [nat -> real], m: nat):
+    (FORALL (z: real): polynomial(aa, n)(z) = 0) AND
+    (FORALL (z: real): polynomial(bb, m)(z) = 0)
+    IMPLIES polynomial(aa, n) = polynomial(bb, m)
+
+  %% a divisor of degree zero ends the sequence
+  step_zero: LEMMA cons?(b) AND length(b) = 1 IMPLIES snext(a, b, ys) = null[mpoly]
+
+  %% the step, as the fifth condition states it
+  okb(b, ys): bool = cons?(b) AND meval(llast(b))(ys) /= 0
+  step_cond: LEMMA okb(b, ys) IMPLIES
+    EXISTS (c: posreal):
+      polynomial(earr(snext(a, b, ys), ys), dg(snext(a, b, ys))) =
+      polynomial(-c * pr(earr(a, ys), dg(a), earr(b, ys), dg(b)),
+                 prd(earr(a, ys), dg(a), earr(b, ys), dg(b)))
+
+  %% the chain as the data Sturm@sturm expects
+  nthl(cs, i): list[mpoly] = IF i < length(cs) THEN nth(cs, i) ELSE null[mpoly] ENDIF
+  carr(cs, ys)(i): [nat -> real] = earr(nthl(cs, i), ys)
+  cdeg(cs)(i): nat = dg(nthl(cs, i))
+
+  %% the full chain: the polynomial, its derivative, then the sequence
+  fchain(k, l0, ys): list[list[mpoly]] = cons(l0, rchain(k, l0, lderiv(l0), ys))
+
+  %% the hypotheses under which the chain is a Sturm sequence: the polynomial
+  %% is not constant in the eliminated variable, its leading coefficient does
+  %% not vanish at ys, and the step count is large enough
+  fok(k, l0, ys): bool = length(l0) >= 2 AND meval(llast(l0))(ys) /= 0 AND length(l0) <= k
+
+  fc_len: LEMMA length(fchain(k, l0, ys)) = 1 + length(rchain(k, l0, lderiv(l0), ys))
+  fc_0: LEMMA nthl(fchain(k, l0, ys), 0) = l0
+  fc_succ: LEMMA i + 1 < length(fchain(k, l0, ys)) IMPLIES
+    nthl(fchain(k, l0, ys), i + 1) = nth(rchain(k, l0, lderiv(l0), ys), i)
+  fc_1: LEMMA fok(k, l0, ys) IMPLIES nthl(fchain(k, l0, ys), 1) = lderiv(l0)
+  fc_m: LEMMA fok(k, l0, ys) IMPLIES length(fchain(k, l0, ys)) - 1 >= 2
+  fc_last: LEMMA fok(k, l0, ys) IMPLIES
+    null?(nthl(fchain(k, l0, ys), length(fchain(k, l0, ys)) - 1))
+  fc_cons: LEMMA fok(k, l0, ys) AND i < length(fchain(k, l0, ys)) - 1 IMPLIES
+    cons?(nthl(fchain(k, l0, ys), i))
+  fc_lc: LEMMA fok(k, l0, ys) AND i < length(fchain(k, l0, ys)) - 1 IMPLIES
+    meval(llast(nthl(fchain(k, l0, ys), i)))(ys) /= 0
+  fc_dec: LEMMA fok(k, l0, ys) AND i + 1 < length(fchain(k, l0, ys)) - 1 IMPLIES
+    length(nthl(fchain(k, l0, ys), i + 1)) < length(nthl(fchain(k, l0, ys), i))
+  fc_step: LEMMA fok(k, l0, ys) AND i + 2 <= length(fchain(k, l0, ys)) - 1 IMPLIES
+    nthl(fchain(k, l0, ys), i + 2) =
+      snext(nthl(fchain(k, l0, ys), i), nthl(fchain(k, l0, ys), i + 1), ys)
+
+  %% the six conditions
+  c1: LEMMA fok(k, l0, ys) AND i < length(fchain(k, l0, ys)) - 1 IMPLIES
+    carr(fchain(k, l0, ys), ys)(i)(cdeg(fchain(k, l0, ys))(i)) /= 0
+  c2: LEMMA fok(k, l0, ys) AND i < j AND j < length(fchain(k, l0, ys)) - 1 IMPLIES
+    cdeg(fchain(k, l0, ys))(i) > cdeg(fchain(k, l0, ys))(j)
+  c3: LEMMA fok(k, l0, ys) IMPLIES
+    carr(fchain(k, l0, ys), ys)(1) = poly_deriv(carr(fchain(k, l0, ys), ys)(0)) AND
+    cdeg(fchain(k, l0, ys))(1) = cdeg(fchain(k, l0, ys))(0) - 1
+  c4: LEMMA fok(k, l0, ys) IMPLIES
+    cdeg(fchain(k, l0, ys))(length(fchain(k, l0, ys)) - 1) = 0 AND
+    carr(fchain(k, l0, ys), ys)(length(fchain(k, l0, ys)) - 1)(0) = 0
+  c5: LEMMA fok(k, l0, ys) AND j > 1 AND j <= length(fchain(k, l0, ys)) - 1 IMPLIES
+    LET c = fchain(k, l0, ys),
+        pd = poly_divide(carr(c, ys)(j - 2), cdeg(c)(j - 2))
+                        (carr(c, ys)(j - 1), cdeg(c)(j - 1))(0) IN
+    EXISTS (cc: posreal):
+      polynomial(carr(c, ys)(j), cdeg(c)(j)) = polynomial(-cc * pd`rem, pd`rdeg)
+
+  %% the chain of branch_prs is a Sturm sequence
+  fchain_sturm: THEOREM fok(k, l0, ys) IMPLIES
+    constructed_sturm_sequence?(carr(fchain(k, l0, ys), ys), cdeg(fchain(k, l0, ys)),
+                                length(fchain(k, l0, ys)) - 1)
+END chain_sturm

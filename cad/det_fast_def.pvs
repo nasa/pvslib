@@ -1,0 +1,144 @@
+det_fast_def: THEORY
+%----------------------------------------------------------------------------
+% The determinant with every minor computed once.
+% Executable.
+%
+% ring_det's det is the Laplace expansion along the first row, which
+% recomputes the minors: n! products, so a principal subresultant
+% coefficient of two degree-7 polynomials (a 13 x 13 determinant) is out of
+% reach.  detf computes the same polynomial from the bottom row up: for every
+% set S of m columns (an increasing list) the determinant of the submatrix of
+% the last m rows and the columns S is the expansion along that submatrix's
+% first row, whose minors are the entries for the sets one smaller (dtab) --
+% n 2^n products.  det_fast proves detf(n, M) = det(n, M).
+%
+% The minors are looked up in a trie (2026-10-02): a column
+% set S of size m is the path of its n membership bits (dbits), so a lookup
+% costs O(n) steps instead of a scan of all C(n, m - 1) entries of the table
+% below (dlook, 87% of decide8's time on a degree-8 problem).  dtabt and
+% dxrowt are dtab and dxrow with the trie; detf0 is the former detf, kept as
+% the specification (det_fast: detf_eq, detf0_det).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING ring_det
+
+  n, m, r, b: VAR nat
+  M: VAR MMat
+  S: VAR list[nat]
+
+  lo: VAR nat
+
+  %% the increasing lists of m numbers from lo to n - 1
+  dsubs(lo, n, m): RECURSIVE list[list[nat]] =
+    IF m = 0 THEN (: null[nat] :)
+    ELSIF n <= lo THEN null[list[nat]]
+    ELSE append(map(LAMBDA (S: list[nat]): cons(lo, S))(dsubs(lo + 1, n, m - 1)), dsubs(lo + 1, n, m))
+    ENDIF
+  MEASURE IF lo <= n THEN n - lo ELSE 0 ENDIF
+
+  %% lo, lo + 1, ..., n - 1
+  dcols(lo, n): RECURSIVE list[nat] = IF n <= lo THEN null[nat] ELSE cons(lo, dcols(lo + 1, n)) ENDIF
+  MEASURE IF lo <= n THEN n - lo ELSE 0 ENDIF
+
+  %% S without its b-th member
+  drem(S, b): RECURSIVE list[nat] =
+    IF null?(S) THEN S ELSIF b = 0 THEN cdr(S) ELSE cons(car(S), drem(cdr(S), b - 1)) ENDIF
+  MEASURE length(S)
+
+  %% equality of column sets, executable (the ground evaluator's = on these
+  %% lists fails between lists of different lengths: "Equality unknown between
+  %% types NULL and CONS")
+  S1, S2: VAR list[nat]
+  dleq(S1, S2): RECURSIVE bool =
+    IF null?(S1) THEN null?(S2) ELSIF null?(S2) THEN FALSE
+    ELSE car(S1) = car(S2) AND dleq(cdr(S1), cdr(S2)) ENDIF
+  MEASURE length(S1)
+
+  %% a table of determinants by column set
+  DEnt: TYPE = [list[nat], mpoly]
+  T: VAR list[DEnt]
+  dlook(S, T): RECURSIVE mpoly =
+    IF null?(T) THEN mconst(0) ELSIF dleq(car(T)`1, S) THEN car(T)`2 ELSE dlook(S, cdr(T)) ENDIF
+  MEASURE length(T)
+
+  %% the first-row expansion of the submatrix of rows r, r + 1, ... and columns S, from
+  %% position b on, its minors read from the table T of row r + 1
+  dxrow(M, r, S, T, b): RECURSIVE mpoly =
+    IF b >= length(S) THEN mconst(0)
+    ELSE madd(mmul(mmul(msgn(b), M(r, nth(S, b))), dlook(drem(S, b), T)), dxrow(M, r, S, T, b + 1))
+    ENDIF
+  MEASURE IF b <= length(S) THEN length(S) - b ELSE 0 ENDIF
+
+  %% the determinants of the sets of m columns below n at row n - m
+  dtab(n, M, (m: upto(n))): RECURSIVE list[DEnt] =
+    IF m = 0 THEN (: (null[nat], mconst(1)) :)
+    ELSE LET T = dtab(n, M, m - 1) IN
+         map(LAMBDA (S: list[nat]): (S, dxrow(M, n - m, S, T, 0)))(dsubs(0, n, m))
+    ENDIF
+  MEASURE m
+
+  %% the former detf: the specification of detf (det_fast's detf_eq)
+  detf0(n, M): mpoly = dlook(dcols(0, n), dtab(n, M, n))
+
+  %% ---- the trie of a table ----------------------------------------------------------------
+  %% a binary trie: the path of a key is its list of bits, TRUE = take, FALSE = skip
+  DTrie: DATATYPE
+  BEGIN
+    tnil: tnil?
+    tnode(tval: mpoly, tskip: DTrie, ttake: DTrie): tnode?
+  END DTrie
+
+  bs, bs2: VAR list[bool]
+  v: VAR mpoly
+  t: VAR DTrie
+  c: VAR nat
+
+  %% the membership bits of an increasing column set S on the columns c, c + 1, ..., n - 1
+  dbits(S, c, n): RECURSIVE list[bool] =
+    IF n <= c THEN null[bool]
+    ELSIF cons?(S) AND car(S) = c THEN cons(TRUE, dbits(cdr(S), c + 1, n))
+    ELSE cons(FALSE, dbits(S, c + 1, n)) ENDIF
+  MEASURE IF c <= n THEN n - c ELSE 0 ENDIF
+
+  tlook(bs, t): RECURSIVE mpoly =
+    IF tnil?(t) THEN mconst(0)
+    ELSIF null?(bs) THEN tval(t)
+    ELSIF car(bs) THEN tlook(cdr(bs), ttake(t))
+    ELSE tlook(cdr(bs), tskip(t)) ENDIF
+  MEASURE length(bs)
+
+  tv(t): mpoly = IF tnode?(t) THEN tval(t) ELSE mconst(0) ENDIF
+  ts(t): DTrie = IF tnode?(t) THEN tskip(t) ELSE tnil ENDIF
+  tt(t): DTrie = IF tnode?(t) THEN ttake(t) ELSE tnil ENDIF
+
+  tins(bs, v, t): RECURSIVE DTrie =
+    IF null?(bs) THEN tnode(v, ts(t), tt(t))
+    ELSIF car(bs) THEN tnode(tv(t), ts(t), tins(cdr(bs), v, tt(t)))
+    ELSE tnode(tv(t), tins(cdr(bs), v, ts(t)), tt(t)) ENDIF
+  MEASURE length(bs)
+
+  %% the trie of a table on the columns below n; an earlier entry wins, as in dlook
+  tbuild(n, T): RECURSIVE DTrie =
+    IF null?(T) THEN tnil ELSE tins(dbits(car(T)`1, 0, n), car(T)`2, tbuild(n, cdr(T))) ENDIF
+  MEASURE length(T)
+
+  TT: VAR DTrie
+
+  %% dxrow with the minors read from the trie TT of the sets below n one smaller
+  dxrowt(n, M, r, S, TT, b): RECURSIVE mpoly =
+    IF b >= length(S) THEN mconst(0)
+    ELSE madd(mmul(mmul(msgn(b), M(r, nth(S, b))), tlook(dbits(drem(S, b), 0, n), TT)),
+              dxrowt(n, M, r, S, TT, b + 1))
+    ENDIF
+  MEASURE IF b <= length(S) THEN length(S) - b ELSE 0 ENDIF
+
+  %% dtab with the table below turned into a trie once
+  dtabt(n, M, (m: upto(n))): RECURSIVE list[DEnt] =
+    IF m = 0 THEN (: (null[nat], mconst(1)) :)
+    ELSE LET TT = tbuild(n, dtabt(n, M, m - 1)) IN
+         map(LAMBDA (S: list[nat]): (S, dxrowt(n, M, n - m, S, TT, 0)))(dsubs(0, n, m))
+    ENDIF
+  MEASURE m
+
+  detf(n, M): mpoly = dlook(dcols(0, n), dtabt(n, M, n))
+END det_fast_def

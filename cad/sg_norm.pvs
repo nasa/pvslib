@@ -1,0 +1,63 @@
+sg_norm: THEORY
+%----------------------------------------------------------------------------
+% Evaluation by a sign function.
+%
+% The branch trees (branch_tree) decide the signs of the coefficients they meet
+% by branching; their value at a valuation ys is select(t, ys). To evaluate
+% per cell instead of building the joint tree, the same computations are
+% written directly against a sign function sg: [mpoly -> Sign3] that stands
+% for the signs of the cell. msg(ys) is the sign function of a point; every
+% function X_sg here agrees with the branch-tree semantics at msg(ys)
+% (X_sg_at), and reads sg only on the list X_rd it returns, so two sign
+% functions that agree on that list give the same value (X_det). This file
+% has the normalization of a coefficient list, the base of everything.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING branch_norm, sign_vec
+
+  SG: TYPE = [mpoly -> Sign3]
+  msg(ys: list[real]): SG = LAMBDA (c: mpoly): sign3(meval(c)(ys))
+
+  l: VAR list[mpoly]
+  sg, sg1, sg2: VAR SG
+  ys: VAR list[real]
+  c: VAR mpoly
+  R, R1, R2: VAR list[mpoly]
+
+  agree(sg1, sg2, R): bool = FORALL c: member(c, R) IMPLIES sg1(c) = sg2(c)
+  agree_null: LEMMA agree(sg1, sg2, null[mpoly])
+  agree_cons: LEMMA agree(sg1, sg2, cons(c, R)) IFF (sg1(c) = sg2(c) AND agree(sg1, sg2, R))
+  agree_append: LEMMA agree(sg1, sg2, append(R1, R2)) IFF (agree(sg1, sg2, R1) AND agree(sg1, sg2, R2))
+  agree_sym: LEMMA agree(sg1, sg2, R) IMPLIES agree(sg2, sg1, R)
+
+  %% the leading coefficient's sign, as the trees read it
+  lcs(l, sg): Sign3 = IF null?(l) THEN 0 ELSE sg(mnorm(llast(l))) ENDIF
+
+  p: VAR mpoly
+  SL: TYPE = [# slist: list[mpoly], ssign: Sign3 #]
+  IMPORTING branch_tree[SL]
+
+  %% the sign of a normalized polynomial is the sign of the polynomial
+  msign_mnorm: LEMMA branch_tree[SL].msign(mnorm(p), ys) = branch_tree[SL].msign(p, ys)
+
+  lcs_at: LEMMA lcs(l, msg(ys)) = IF null?(l) THEN 0 ELSE sign3(meval(llast(l))(ys)) ENDIF
+
+  %% normalization: drop the leading coefficients whose sign is zero
+  snorm_sg(l, sg): RECURSIVE list[mpoly] =
+    IF null?(l) THEN null[mpoly]
+    ELSIF lcs(l, sg) = 0 THEN snorm_sg(lbut(l), sg)
+    ELSE l
+    ENDIF
+  MEASURE length(l)
+  snorm_rd(l, sg): RECURSIVE list[mpoly] =
+    IF null?(l) THEN null[mpoly]
+    ELSIF lcs(l, sg) = 0 THEN cons(mnorm(llast(l)), snorm_rd(lbut(l), sg))
+    ELSE (: mnorm(llast(l)) :)
+    ENDIF
+  MEASURE length(l)
+
+  snorm_sg_at: LEMMA snorm_sg(l, msg(ys)) = select(snorm(l), ys)
+  snorm_det: LEMMA FORALL l: agree(sg1, sg2, snorm_rd(l, sg1)) IMPLIES
+    snorm_sg(l, sg2) = snorm_sg(l, sg1) AND snorm_rd(l, sg2) = snorm_rd(l, sg1)
+  snorm_sg_lc: LEMMA cons?(snorm_sg(l, sg)) IMPLIES lcs(snorm_sg(l, sg), sg) /= 0
+END sg_norm

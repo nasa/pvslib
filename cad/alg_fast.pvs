@@ -1,0 +1,34 @@
+alg_fast: THEORY
+%----------------------------------------------------------------------------
+% Root isolation with the Sturm chain computed once (for speed).
+%
+% iso of alg_isolate counts the roots of every bisection interval with
+% nroots_h, which recomputes the Sturm chain of the polynomial at each call;
+% for the polynomials the CAD projection produces (degree 20 and more, large
+% coefficients) the chain dominates. isoc takes the chain as an argument
+% that is constrained to be chain(pl), so the evaluator computes it once;
+% isoc_iso says it is iso, and rootsc is roots.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_isolate
+
+  pl: VAR Polylist
+  lb, ub: VAR rat
+
+  nroots_hc(pl | deg(pl) > 0, (ch: (Eq_computed_remainder?(ipoly(pl), deg(pl))) | ch = chain(pl)),
+            lb, (ub | lb < ub)): nat =
+    nrh(ipoly(pl), deg(pl), lb, ub, ch)
+
+  isoc(pl | deg(pl) > 0, (ch: (Eq_computed_remainder?(ipoly(pl), deg(pl))) | ch = chain(pl)),
+       lb, (ub | lb < ub)): RECURSIVE list[Alg] =
+    LET n = nroots_hc(pl, ch, lb, ub) IN
+    IF n = 0 THEN null
+    ELSIF n = 1 AND polylist(pl)(ub) = 0 THEN (: shrink(pl, ub, ub - lb) :)
+    ELSIF n = 1 AND polylist(pl)(lb) /= 0 THEN (: (# p := pl, lb := lb, ub := ub #) :)
+    ELSE append(isoc(pl, ch, lb, (lb + ub) / 2), isoc(pl, ch, (lb + ub) / 2, ub)) ENDIF
+  MEASURE rwd(lb, ub) BY real_ord_ep(mrd(pl))
+  isoc_iso: LEMMA deg(pl) > 0 AND lb < ub IMPLIES isoc(pl, chain(pl), lb, ub) = iso(pl, lb, ub)
+
+  rootsc(pl | deg(pl) > 0): list[Alg] = isoc(pl, chain(pl), -rbound(pl), rbound(pl))
+  rootsc_roots: LEMMA deg(pl) > 0 IMPLIES rootsc(pl) = roots(pl)
+END alg_fast

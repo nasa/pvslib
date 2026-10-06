@@ -1,0 +1,85 @@
+cad_fibre: THEORY
+%----------------------------------------------------------------------------
+% One fibre: the stack index of a point and the sign vector it sees.
+%
+% Over p, with roots r_0 < ... < r_{m-1} (rtl), the fibre is cut into 2m+1
+% pieces: the band below r_0 (index 0), r_0 (index 1), the band between r_0
+% and r_1 (index 2), ..., the band above r_{m-1} (index 2m).  sidx(G, p, y) is
+% the index of the piece holding y: twice the number of roots below y, plus
+% one if y is a root.  rsvl lists the sign vectors at the roots, bsvl the
+% sign vectors at one fixed point of each band (bpts: r_0 - 1, the midpoints,
+% r_{m-1} + 1).
+%
+% sidx_root / sidx_band: wherever the certificate holds, the sign vector at y
+% is the entry of rsvl or bsvl that y's index names.  So the family is
+% sign-invariant on every piece of the fibre, and two fibres with the same
+% rsvl and bsvl have the same sign vector at every index.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_roots
+
+  G: VAR list[list[mpoly]]
+  p: VAR list[real]
+  L, R: VAR list[real]
+  a, b, y, z, w: VAR real
+  i, j: VAR nat
+  f: VAR [real -> SV]
+
+  %% ---- a root-free interval keeps the sign vector -----------------------------------------
+  svec_rf: LEMMA certz?(G, p) AND a <= b
+    AND (FORALL z: a <= z AND z <= b IMPLIES NOT rootat?(G, p)(z))
+    IMPLIES svec(G, cons(a, p)) = svec(G, cons(b, p))
+
+  %% ---- counting the members below y --------------------------------------------------------
+  nlt(L, y): RECURSIVE nat =
+    IF null?(L) THEN 0 ELSIF car(L) < y THEN 1 + nlt(cdr(L), y) ELSE nlt(cdr(L), y) ENDIF
+  MEASURE length(L)
+
+  len_cons_fibre: LEMMA length(cons(a, L)) = 1 + length(L)
+  nlt_le: LEMMA FORALL L: nlt(L, y) <= length(L)
+  nlt_mono: LEMMA FORALL L: y <= z IMPLIES nlt(L, y) <= nlt(L, z)
+  nlt_strict: LEMMA FORALL L: y <= w AND w < z AND member(w, L) IMPLIES nlt(L, y) < nlt(L, z)
+  nlt_zero: LEMMA FORALL L: (FORALL w: member(w, L) IMPLIES y <= w) IMPLIES nlt(L, y) = 0
+  nlt_pos: LEMMA FORALL L: nlt(L, y) > 0 IMPLIES EXISTS w: member(w, L) AND w < y
+  nlt_below: LEMMA sincr?(cons(a, L)) AND y <= a IMPLIES nlt(cons(a, L), y) = 0
+  notmem_below: LEMMA sincr?(cons(a, L)) AND y < a IMPLIES NOT member(y, cons(a, L))
+  above_head: LEMMA sincr?(cons(a, L)) AND nlt(L, y) > 0 IMPLIES a < y
+  nth_nlt: LEMMA FORALL L: sincr?(L) AND member(y, L)
+    IMPLIES nlt(L, y) < length(L) AND nth(L, nlt(L, y)) = y
+
+  %% ---- one point in each band --------------------------------------------------------------
+  bmid(L): RECURSIVE list[real] =
+    IF null?(L) THEN null[real]
+    ELSIF null?(cdr(L)) THEN (: car(L) + 1 :)
+    ELSE cons((car(L) + car(cdr(L))) / 2, bmid(cdr(L)))
+    ENDIF
+  MEASURE length(L)
+  bpts(L): list[real] = IF null?(L) THEN (: 0 :) ELSE cons(car(L) - 1, bmid(L)) ENDIF
+
+  bmid_len: LEMMA FORALL L: length(bmid(L)) = length(L)
+  bpts_len: LEMMA length(bpts(L)) = length(L) + 1
+  bmid_idx: LEMMA FORALL L, a, j: sincr?(cons(a, L)) AND j <= length(L) IMPLIES
+    NOT member(nth(bmid(cons(a, L)), j), cons(a, L)) AND nlt(cons(a, L), nth(bmid(cons(a, L)), j)) = j + 1
+  bpts_idx: LEMMA sincr?(L) AND j <= length(L) IMPLIES
+    NOT member(nth(bpts(L), j), L) AND nlt(L, nth(bpts(L), j)) = j
+
+  %% ---- the stack index and the sign vectors of the pieces -----------------------------------
+  sidx(G, p, y): nat = 2 * nlt(rtl(G, p), y) + IF member(y, rtl(G, p)) THEN 1 ELSE 0 ENDIF
+
+  svat(G, p)(y): SV = svec(G, cons(y, p))
+  rsvl(G, p): list[SV] = map(svat(G, p))(rtl(G, p))
+  bsvl(G, p): list[SV] = map(svat(G, p))(bpts(rtl(G, p)))
+
+  nth_mapf: LEMMA FORALL L, j: j < length(L) IMPLIES
+    length(map(f)(L)) = length(L) AND nth(map(f)(L), j) = f(nth(L, j))
+
+  %% not both 2n + 1 and 2i: the index says whether y is a root
+  odd_even_sidx: LEMMA FORALL (n: nat): 2 * n + 1 /= 2 * i
+
+  sidx_root: LEMMA certz?(G, p) AND sidx(G, p, y) = 2 * i + 1 IMPLIES
+    i < nroot(G, p) AND rt(G, p, i) = y AND length(rsvl(G, p)) = nroot(G, p)
+    AND svec(G, cons(y, p)) = nth(rsvl(G, p), i)
+  sidx_band: LEMMA certz?(G, p) AND sidx(G, p, y) = 2 * i IMPLIES
+    i <= nroot(G, p) AND length(bsvl(G, p)) = nroot(G, p) + 1
+    AND svec(G, cons(y, p)) = nth(bsvl(G, p), i)
+END cad_fibre

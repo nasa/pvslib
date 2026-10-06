@@ -1,0 +1,88 @@
+qe_mrg: THEORY
+%----------------------------------------------------------------------------
+% qe_mrg_def's merged answers are right.
+%
+%   lowS / uppS   what lowX / uppX say (lowX_sem, uppX_sem, by cmpX_ok)
+%   in_lu         a sector is the points between its two ends
+%   adj?          s1 follows s: x is past the end of s iff it is not before
+%                 the start of s1, and both ends only move right
+%   chain?        every two neighbours in a list are adj?; sects_chain: the
+%                 sectors of a sorted root list are a chain
+%   cls_sem       a closed run says x is in it (a one-sector run through
+%                 sectX_ok)
+%   mrg_sem       the invariant of mrg's walk: the runs it emits hold at x iff
+%                 x is in the open run (from its start up to pv) or in a sector
+%                 still to come whose value is TRUE
+%   mrgX_sem      so mrgX holds at x iff x is in a sector with value TRUE
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_mrg_def, qe_ep, qe_fm
+
+  s, s1, pv: VAR Sect
+  ss: VAR list[Sect]
+  vs: VAR list[bool]
+  rs: VAR list[Alg]
+  on: VAR bool
+  lo, a, b: VAR Fm
+  x, y: VAR real
+  ys, pt: VAR list[real]
+
+  lowS(s)(x): bool =
+    CASES s OF
+      below(h): TRUE,
+      at(p): x >= value(p),
+      mid(l, h): x > value(l),
+      above(l): x > value(l),
+      whole: TRUE
+    ENDCASES
+  uppS(s)(x): bool =
+    CASES s OF
+      below(h): x < value(h),
+      at(p): x <= value(p),
+      mid(l, h): x < value(h),
+      above(l): TRUE,
+      whole: TRUE
+    ENDCASES
+
+  lowX_sem: LEMMA qfsem(lowX(s))(cons(x, ys)) IFF lowS(s)(x)
+  uppX_sem: LEMMA qfsem(uppX(s))(cons(x, ys)) IFF uppS(s)(x)
+  fand2_sem: LEMMA qfsem(fand2(a, b))(pt) IFF (qfsem(a)(pt) AND qfsem(b)(pt))
+  in_lu: LEMMA in?(s, x) IFF (lowS(s)(x) AND uppS(s)(x))
+
+  adj?(s, s1): bool =
+    FORALL x: (NOT uppS(s)(x) IMPLIES lowS(s1)(x)) AND (uppS(s)(x) IMPLIES uppS(s1)(x))
+              AND (lowS(s1)(x) IMPLIES lowS(s)(x))
+  chain?(ss): RECURSIVE bool =
+    IF null?(ss) OR null?(cdr(ss)) THEN TRUE ELSE adj?(car(ss), car(cdr(ss))) AND chain?(cdr(ss)) ENDIF
+  MEASURE length(ss)
+
+  gsects_car: LEMMA cons?(rs) IMPLIES cons?(gsects(rs)) AND car(gsects(rs)) = at(car(rs))
+  gsects_chain: LEMMA FORALL rs: incr?(rs) IMPLIES chain?(gsects(rs))
+  sects_chain: LEMMA incr?(rs) IMPLIES chain?(sects(rs))
+
+  %% x is in a sector of ss whose value in vs is TRUE
+  anyT(ss, vs)(x): RECURSIVE bool =
+    IF null?(ss) OR null?(vs) THEN FALSE
+    ELSE (car(vs) AND in?(car(ss), x)) OR anyT(cdr(ss), cdr(vs))(x)
+    ENDIF
+  MEASURE length(ss)
+
+  L: VAR list[Fm]
+  ex_cons: LEMMA (EXISTS a: member(a, cons(b, L)) AND qfsem(a)(pt)) IFF
+    (qfsem(b)(pt) OR EXISTS a: member(a, L) AND qfsem(a)(pt))
+
+  one: VAR bool
+  cls_sem: LEMMA (one IMPLIES (qfsem(lo)(cons(x, ys)) IFF lowS(pv)(x))) IMPLIES
+    (qfsem(cls(one, lo, pv))(cons(x, ys)) IFF (qfsem(lo)(cons(x, ys)) AND uppS(pv)(x)))
+
+  cls_ex: LEMMA (one IMPLIES FORALL y: qfsem(lo)(cons(y, ys)) IFF lowS(pv)(y)) IMPLIES
+    ((EXISTS a: a = cls(one, lo, pv) AND qfsem(a)(cons(x, ys))) IFF (qfsem(lo)(cons(x, ys)) AND uppS(pv)(x)))
+
+  mrg_sem: LEMMA FORALL ss: FORALL vs, on, one, lo, pv:
+    chain?(ss) AND (on AND cons?(ss) IMPLIES adj?(pv, car(ss)))
+    AND (on IMPLIES FORALL y: lowS(pv)(y) IMPLIES qfsem(lo)(cons(y, ys)))
+    AND (on AND one IMPLIES FORALL y: qfsem(lo)(cons(y, ys)) IFF lowS(pv)(y))
+    IMPLIES ((EXISTS a: member(a, mrg(ss, vs, on, one, lo, pv)) AND qfsem(a)(cons(x, ys)))
+             IFF ((on AND qfsem(lo)(cons(x, ys)) AND uppS(pv)(x)) OR anyT(ss, vs)(x)))
+  mrgX_sem: LEMMA chain?(ss) IMPLIES (qfsem(mrgX(ss, vs))(cons(x, ys)) IFF anyT(ss, vs)(x))
+END qe_mrg

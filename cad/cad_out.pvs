@@ -1,0 +1,75 @@
+cad_out: THEORY
+%----------------------------------------------------------------------------
+% A CAD as data: the records of a tower's cells.
+% Executable.
+%
+% At a descriptor od (a sample point, exact: rational, algebraic or built
+% from sections), the walk of a level passes separators Y; its cells are
+% the separators (bands) and the gaps that hold a root (sections).  kids
+% lists them in increasing order with their stack indices: the band of a
+% separator gets twice the number of root gaps before it, the section of a
+% gap one more.  ctree follows the kids through the tower, collecting one
+% record per path: the stack indices and the sample descriptor at the top.
+% A band that holds several separators gets a record for each (same indices,
+% different samples); every cell gets at least one.
+% srecs does that for one sector and records F's sign vector at each
+% sample, read by the descriptor's own sign oracle; col_out runs it on every
+% sector of the Collins run.
+%
+% cad_out_ok proves the records of a certified tower right, and col_out_ok
+% that the Collins run's records are its CAD: every record's sample lies in
+% the cell its sector and indices name, every nonempty cell has a record,
+% and the recorded sign vector is F's at the sample.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_run, towern_od
+
+  P, F: VAR list[list[mpoly]]
+  TW: VAR Tower
+  TB: VAR list[CT]
+  od: VAR OD
+  tb: VAR CT
+  Y: VAR list[rat]
+  n, u: VAR nat
+  s: VAR Sect
+
+  KD: TYPE = [nat, OD]
+  kids(P, od, tb, Y, n): RECURSIVE list[KD] =
+    IF null?(Y) THEN null[KD]
+    ELSE cons[KD]((2 * n, opt(od, car(Y))),
+           IF null?(cdr(Y)) THEN null[KD]
+           ELSIF gap_t(P, od, car(Y), car(cdr(Y)), tb)
+             THEN cons[KD]((2 * n + 1, osec(od, P, car(Y), car(cdr(Y)))), kids(P, od, tb, cdr(Y), n + 1))
+           ELSE kids(P, od, tb, cdr(Y), n)
+           ENDIF)
+    ENDIF
+  MEASURE length(Y)
+
+  CRec: TYPE = [# adr: list[nat], sod: OD #]
+  addr(a: nat)(r: CRec): CRec = r WITH [adr := cons(a, r`adr)]
+
+  %% concatenation of a list of lists
+  lflat(L: list[list[CRec]]): RECURSIVE list[CRec] =
+    IF null?(L) THEN null[CRec] ELSE append(car(L), lflat(cdr(L))) ENDIF
+  MEASURE length(L)
+
+  ctree(u, TW, TB, od): RECURSIVE list[CRec] =
+    IF null?(TW) OR null?(TB) THEN (: (# adr := null[nat], sod := od #) :)
+    ELSE LET P = feff(car(TW), od) IN
+      lflat(map(LAMBDA (k: KD): map(addr(k`1))(ctree(u, cdr(TW), cdr(TB), k`2)))
+               (kids(P, od, car(TB), seps_t(u, P, od, car(TB)), 0)))
+    ENDIF
+  MEASURE length(TW)
+
+  %% the record of one cell of the run: sector, stack indices, sample, sign vector of F
+  ORec: TYPE = [# rsec: Sect, radr: list[nat], rsod: OD, rsv: SV #]
+  osv_of(F, od): SV = map(LAMBDA (f: list[mpoly]): osg(od)(mpol(f)))(F)
+
+  srecs(u, F, s, TW): list[ORec] =
+    map(LAMBDA (r: CRec): (# rsec := s, radr := r`adr, rsod := r`sod, rsv := osv_of(F, r`sod) #))
+       (ctree(u, TW, tables(u, TW, odS(s)), odS(s)))
+
+  olflat(L: list[list[ORec]]): RECURSIVE list[ORec] =
+    IF null?(L) THEN null[ORec] ELSE append(car(L), olflat(cdr(L))) ENDIF
+  MEASURE length(L)
+END cad_out

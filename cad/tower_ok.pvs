@@ -1,0 +1,76 @@
+tower_ok: THEORY
+%----------------------------------------------------------------------------
+% The bounded Tarski query through a sign oracle IS the sign at the section.
+%
+% tq_b(k, sg, l0, g, lo, hi) counts sign changes of the Tarski chain of l0 and
+% g at the two ends of a gap, reading every entry through sg.  At sg = msg(ys)
+% the chain is tarski_chain's tchain, a constructed_sturm_sequence? in the
+% five-argument sense of Tarski@sturmtarski (tchain_sturm), so NASALib's
+% sturm_tarski makes the count
+%
+%     #{ roots of l0 in [lo, hi] with g > 0 } - #{ ... with g < 0 }
+%
+% provided l0 does not vanish at lo or hi (sturm_tarski_ends; NASALib's own
+% sturm_tarski asked it of every entry of the chain).  When the gap holds
+% exactly ONE root beta of l0 and no other root in [lo, hi], l0 is nonzero at
+% the ends, the first set is {beta} or empty and so is the second, and the
+% count is the sign of g at beta:
+%
+%   tower: s3(tq_b(k, msg(ys), l0, g, lo, hi)) = sign3(g(beta, ys))
+%
+% This is what lets a level of the decision below the outermost have
+% SECTIONS without any algebraic number: the oracle at the section of a gap
+% is a function of the oracle one level up.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING tower_def, walk_ok, sturm_tarski_ends
+
+  ys: VAR list[real]
+  l0, g: VAR list[mpoly]
+  cs: VAR list[list[mpoly]]
+  k, i: VAR nat
+  lo, hi, y0: VAR rat
+  beta, z: VAR real
+
+  %% an entry of ANY chain, read through msg
+  entry_gen: LEMMA sent(msg(ys), nthl(cs, i), y0)
+    = sign3(polynomial(carr(cs, ys)(i), cdeg(cs)(i))(y0))
+
+  tchain_len: LEMMA tok(k, l0, g, ys) IMPLIES length(tchain(k, l0, g, ys)) >= 3
+  tlen_at: LEMMA tok(k, l0, g, ys) IMPLIES
+    tlen(k, msg(ys), l0, g) = length(tchain(k, l0, g, ys)) - 2
+
+  tvar_nsc: LEMMA tok(k, l0, g, ys) IMPLIES tvar(k, msg(ys), l0, g, y0) =
+    number_sign_changes(LAMBDA (i: nat):
+        polynomial(carr(tchain(k, l0, g, ys), ys)(i), cdeg(tchain(k, l0, g, ys))(i))(y0),
+      length(tchain(k, l0, g, ys)) - 2)`num
+
+  %% the first entry of the chain, evaluated, is l0
+  tchain_first: LEMMA tok(k, l0, g, ys) IMPLIES
+    polynomial(carr(tchain(k, l0, g, ys), ys)(0), cdeg(tchain(k, l0, g, ys))(0))(y0)
+      = meval(mpol(l0))(cons(y0, ys))
+
+  %% the count as NASALib states it
+  lc0: LEMMA tok(k, l0, g, ys) IMPLIES earr(l0, ys)(dg(l0)) /= 0
+
+  tq_nsol: LEMMA tok(k, l0, g, ys) AND lo < hi
+    AND meval(mpol(l0))(cons(lo, ys)) /= 0 AND meval(mpol(l0))(cons(hi, ys)) /= 0
+    IMPLIES tq_b(k, msg(ys), l0, g, lo, hi) =
+      NSol(earr(l0, ys), dg(l0), earr(g, ys), dg(g), >, lo, hi, TRUE, TRUE)
+      - NSol(earr(l0, ys), dg(l0), earr(g, ys), dg(g), <, lo, hi, TRUE, TRUE)
+
+  %% with one root in the gap each set is that root or nothing
+  one?(ys, l0, lo, hi, beta): bool =
+    lo < beta AND beta < hi AND meval(mpol(l0))(cons(beta, ys)) = 0
+    AND (FORALL z: lo <= z AND z <= hi AND meval(mpol(l0))(cons(z, ys)) = 0 IMPLIES z = beta)
+
+  nsol_gt: LEMMA tok(k, l0, g, ys) AND one?(ys, l0, lo, hi, beta) IMPLIES
+    NSol(earr(l0, ys), dg(l0), earr(g, ys), dg(g), >, lo, hi, TRUE, TRUE)
+      = IF meval(mpol(g))(cons(beta, ys)) > 0 THEN 1 ELSE 0 ENDIF
+  nsol_lt: LEMMA tok(k, l0, g, ys) AND one?(ys, l0, lo, hi, beta) IMPLIES
+    NSol(earr(l0, ys), dg(l0), earr(g, ys), dg(g), <, lo, hi, TRUE, TRUE)
+      = IF meval(mpol(g))(cons(beta, ys)) < 0 THEN 1 ELSE 0 ENDIF
+
+  tower: THEOREM tok(k, l0, g, ys) AND lo < hi AND one?(ys, l0, lo, hi, beta)
+    IMPLIES s3(tq_b(k, msg(ys), l0, g, lo, hi)) = sign3(meval(mpol(g))(cons(beta, ys)))
+END tower_ok

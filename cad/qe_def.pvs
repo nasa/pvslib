@@ -1,0 +1,98 @@
+qe_def: THEORY
+%----------------------------------------------------------------------------
+% Quantifier elimination for one free variable: the answer from the sectors
+% of the line.  Executable.
+%
+% An entry (QEnt) is a sector of the line of the free variable x, the truth
+% value of the bound quantifiers at its sample and the projection set Q's
+% sign vector there; qent makes one from a sector's tower (scval, osv_of),
+% and qe1c_def, the Collins QE for one free variable, lists one per sector.
+% minJ picks, without proof, a small set J of indices into Q (dropping the
+% longest members first); sep1? checks that sectors with the same signs on J
+% have the same value.  If so, out is the disjunction, over the sign vectors
+% on J of the TRUE sectors, of the conjunction of those signs -- a
+% quantifier-free formula in x (qf).  If not, out is the disjunction of the
+% TRUE sectors' descriptions sectX (qe_ep_def: quantifier-free when the
+% run-time check on each boundary passes), and qf records whether it is.
+% qe1_sm replaces that by qe1_mo, the TRUE sectors with neighbours merged into
+% intervals, when that is smaller (2026-09-30).  qe1_ok proves
+% the answers correct, qe1_full quantifier-free.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_ldd[list[int]], qe_mrg_def, cad_out
+
+  u, n: VAR nat
+  qb: VAR list[bool]
+  Q: VAR list[list[mpoly]]
+  Psi: VAR [SV -> bool]
+  J, K: VAR list[nat]
+  w: VAR list[int]
+
+  QER: TYPE = [# ok: bool, qf: bool, out: Fm #]
+  qbad: QER = (# ok := FALSE, qf := FALSE, out := ftrue #)
+
+  %% one sector of the free variable: the sector, the value there, Q's signs there
+  QEnt: TYPE = [# esec: Sect, ev: bool, esig: SV #]
+  es: VAR list[QEnt]
+
+  sigJ(J, (v: SV)): list[int] = map(LAMBDA (j: nat): IF j < length(v) THEN nth(v, j) ELSE 2 ENDIF)(J)
+
+  sep1?(J, es): bool =
+    every(LAMBDA (e1: QEnt): every(LAMBDA (e2: QEnt): sigJ(J, e1`esig) = sigJ(J, e2`esig) IMPLIES e1`ev = e2`ev)(es))(es)
+
+  %% minJ (no proof needed): drop indices greedily while the signs still separate
+  nlist(n): RECURSIVE list[nat] = IF n = 0 THEN null[nat] ELSE append(nlist(n - 1), (: n - 1 :)) ENDIF
+  MEASURE n
+  jprune(K, J, es): RECURSIVE list[nat] =
+    IF null?(J) THEN K
+    ELSIF sep1?(append(K, cdr(J)), es) THEN jprune(K, cdr(J), es)
+    ELSE jprune(append(K, (: car(J) :)), cdr(J), es)
+    ENDIF
+  MEASURE length(J)
+  %% candidates longest first, so that low-degree members are the ones kept
+  qlen(Q)(j: nat): nat = IF j < length(Q) THEN length(nth(Q, j)) ELSE 0 ENDIF
+  lenord(Q, n): RECURSIVE list[nat] =
+    IF n = 0 THEN null[nat]
+    ELSE append(filter(LAMBDA (j: nat): qlen(Q)(j) = n)(nlist(length(Q))), lenord(Q, n - 1))
+    ENDIF
+  MEASURE n
+  maxlen(Q): RECURSIVE nat = IF null?(Q) THEN 0 ELSE max(length(car(Q)), maxlen(cdr(Q))) ENDIF
+  MEASURE length(Q)
+  minJ(Q, es): list[nat] = jprune(null[nat], lenord(Q, maxlen(Q)), es)
+
+  %% the sign conditions w on the members J of Q
+  atomsF(Q, J, w): RECURSIVE list[Fm] =
+    IF null?(J) OR null?(w) THEN null[Fm]
+    ELSE cons(IF car(J) < length(Q) THEN fsg(mpol(nth(Q, car(J))), car(w)) ELSE ffalse ENDIF,
+              atomsF(Q, cdr(J), cdr(w)))
+    ENDIF
+  MEASURE length(J)
+  sig1F(Q, J, w): Fm = f_andl(atomsF(Q, J, w))
+
+  %% the output from the sectors' entries es and an index set J (any J: the
+  %% check sep1? decides whether the sign conditions on J are used)
+  qe1_sJ(Q, es, J): QER =
+    LET ts = filter(LAMBDA (e: QEnt): e`ev)(es) IN
+    IF every(LAMBDA (j: nat): j < length(Q))(J) AND sep1?(J, es)
+      THEN (# ok := TRUE, qf := TRUE,
+              out := f_orl(map(LAMBDA (w: list[int]): sig1F(Q, J, w))
+                              (ldd(map(LAMBDA (e: QEnt): sigJ(J, e`esig))(ts)))) #)
+    ELSE LET o = f_orl(map(LAMBDA (e: QEnt): sectX(e`esec))(ts)) IN (# ok := TRUE, qf := qf?(o), out := o #)
+    ENDIF
+  qe1_s(Q, es): QER = qe1_sJ(Q, es, minJ(Q, es))
+
+  %% the TRUE sectors with neighbours merged (qe_mrg_def's mrgX), when the
+  %% entries' sectors are those of Q's sorted roots;
+  %% qe1_sm takes it when it is quantifier-free and has fewer sign atoms
+  qe1_mo(Q, es): Fm =
+    LET ss = map(LAMBDA (e: QEnt): e`esec)(es) IN
+    IF ss = sects(rts(Q)) THEN mrgX(ss, map(LAMBDA (e: QEnt): e`ev)(es))
+    ELSE f_orl(map(LAMBDA (e: QEnt): sectX(e`esec))(filter(LAMBDA (e: QEnt): e`ev)(es)))
+    ENDIF
+  qe1_sm(Q, es): QER =
+    LET r = qe1_s(Q, es), mo = qe1_mo(Q, es) IN
+    IF qf?(mo) AND natoms(mo) < natoms(r`out) THEN (# ok := TRUE, qf := TRUE, out := mo #) ELSE r ENDIF
+
+  qent(u, qb, Psi, Q)(c: SC): QEnt =
+    (# esec := c`ssec, ev := scval(u, qb, Psi)(c), esig := osv_of(Q, odS(c`ssec)) #)
+END qe_def

@@ -1,0 +1,65 @@
+cvl: THEORY
+%----------------------------------------------------------------------------
+% The cell value list of a level.
+%
+% Fix a point vs, the effective family G of a level there, separators Y whose
+% walk passes (wok?), and any truth function T of the level's variable.  The
+% cell value list reads T at every separator of Y and at the root of every
+% gap that holds one (secbeta: the unique root of the gap, epsilon-chosen),
+% in the order of the walk -- the shape of the executable's cellsf_o.
+%
+%   cvl_all   if T does not change across a root-free interval around a
+%             separator (rfc?), the list holds exactly the values T takes:
+%             cover puts every y either in such an interval or at the root
+%             of a gap
+%   bfold_cvl so the fold of the list is the quantifier over T
+% Nothing here knows about towers: the level below supplies T.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cover
+
+  G: VAR list[list[mpoly]]
+  vs: VAR list[real]
+  Y: VAR list[rat]
+  T: VAR [real -> bool]
+  q, b0: VAR bool
+  lo, hi, y0: VAR rat
+  y, beta: VAR real
+
+  %% ---- the root of a gap -------------------------------------------------------------
+  secbeta(G, vs, lo, hi): real = epsilon(LAMBDA (beta: real): gapf?(G, vs, lo, hi, beta))
+  secbeta_gapf: LEMMA (EXISTS beta: gapf?(G, vs, lo, hi, beta)) IMPLIES gapf?(G, vs, lo, hi, secbeta(G, vs, lo, hi))
+  secbeta_unique: LEMMA gapf?(G, vs, lo, hi, beta) IMPLIES secbeta(G, vs, lo, hi) = beta
+
+  %% ---- the list ------------------------------------------------------------------------
+  cvl(T, G, vs, Y): RECURSIVE list[bool] =
+    IF null?(Y) THEN null[bool]
+    ELSE LET v1 = T(car(Y)) IN
+      IF null?(cdr(Y)) THEN (: v1 :)
+      ELSE cons(v1, IF gap?(G, msg(vs), car(Y), car(cdr(Y)))
+                      THEN cons(T(secbeta(G, vs, car(Y), car(cdr(Y)))), cvl(T, G, vs, cdr(Y)))
+                    ELSE cvl(T, G, vs, cdr(Y)) ENDIF)
+      ENDIF
+    ENDIF
+  MEASURE length(Y)
+
+  %% T does not change on a root-free interval of G's product around a separator
+  rfc?(T, G, vs, Y): bool = FORALL y0, y: member(y0, Y) AND P(G, vs)(y0) /= 0
+    AND rootfree?(G, vs, y0, y) IMPLIES (T(y) IFF T(y0))
+
+  b1: VAR bool
+  bs: VAR list[bool]
+  mem_null_b: LEMMA NOT member(b0, null[bool])
+  mem_cons_b: LEMMA member(b0, cons(b1, bs)) IFF (b0 = b1 OR member(b0, bs))
+
+  cvl_sound: LEMMA FORALL Y: member(b0, cvl(T, G, vs, Y)) IMPLIES EXISTS y: b0 = T(y)
+  cvl_sep: LEMMA FORALL Y: member(y0, Y) IMPLIES member(T(y0), cvl(T, G, vs, Y))
+  cvl_sec: LEMMA FORALL Y: adj?(Y, lo, hi) AND gap?(G, msg(vs), lo, hi)
+    IMPLIES member(T(secbeta(G, vs, lo, hi)), cvl(T, G, vs, Y))
+
+  cvl_all: THEOREM wok?(G, msg(vs), Y) AND rfc?(T, G, vs, Y) IMPLIES
+    (member(b0, cvl(T, G, vs, Y)) IFF EXISTS y: b0 = T(y))
+
+  bfold_cvl: THEOREM wok?(G, msg(vs), Y) AND rfc?(T, G, vs, Y) IMPLIES
+    (bfold(q, cvl(T, G, vs, Y)) IFF IF q THEN (FORALL y: T(y)) ELSE (EXISTS y: T(y)) ENDIF)
+END cvl

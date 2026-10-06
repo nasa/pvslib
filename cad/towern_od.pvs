@@ -1,0 +1,277 @@
+towern_od: THEORY
+%----------------------------------------------------------------------------
+% Towers on ORACLE DESCRIPTORS and chain tables, executable part: the value
+% of the inner quantifiers at a
+% sector (innern_o, scval) and the certificate of a tower (okn_o), which the
+% Collins decisions (decc_def, decb_def) and the QE answer (qe_def) use.
+%
+% towern_def's tower with the oracle replaced by a descriptor:
+%   a separator y0 over od     opt(od, y0)   a rational point stays one
+%   a section (lo, hi] over od osec(od, ..)  over a rational point it is ONE
+%                                            algebraic coordinate: an Alg of
+%                                            the specialized member, signs by
+%                                            alg_sign2 (proved); the
+%                                            certificate is alg? (one root in
+%                                            the gap).  A rational root makes
+%                                            it a rational point (2026-09-30,
+%                                            ratx).  Over anything else the
+%                                            tower query sg_sec of tower_def.
+% Chains: one table per level per sector, built along the leftmost cell path
+% (tables), used at every cell whose oracle agrees with the recorded signs of
+% the chain's reads (walk_od).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_od, towern_def, rd_norm, qsec_rd, ztrunc, alg_rat_def, cad_decide, sect_inv
+
+  od, od2: VAR OD
+  tb2: VAR CT
+  F, P: VAR list[list[mpoly]]
+  G: VAR list[list[mpoly]]
+  f, g: VAR list[mpoly]
+  TW: VAR Tower
+  TB: VAR list[CT]
+  tb: VAR CT
+  qs: VAR list[bool]
+  Y: VAR list[rat]
+  rys: VAR list[rat]
+  lo, hi, y0: VAR rat
+  k: VAR nat
+  %% the escalation parameter: the separator searches
+  %% run with fuel sfuel2 + u
+  u: VAR nat
+  Psi: VAR [SV -> bool]
+  s: VAR Sect
+  R: VAR list[mpoly]
+
+  %% ---- the section descriptor -----------------------------------------------------
+  %% the live member with a root in the gap, over the rational point rys (a
+  %% member constant at rys is skipped: nroots wants a positive degree)
+  secp_n(P, rys, G, lo, hi): RECURSIVE list[mpoly] =
+    IF null?(G) THEN bprod(P)
+    ELSIF length(strip(car(G))) >= 2 AND lo < hi
+          AND deg(partial_eval(mpol(strip(car(G))), rys)) > 0
+          AND nroots(partial_eval(mpol(strip(car(G))), rys), lo, hi) > 0
+      THEN strip(car(G))
+    ELSE secp_n(P, rys, cdr(G), lo, hi)
+    ENDIF
+  MEASURE length(G)
+
+  %% a section over a rational point whose root is rational is a rational
+  %% point (alg_rat_def's ratx): its signs are evaluations
+  osec(od, P, lo, hi): OD =
+    CASES od OF
+      pt(rys): LET l0 = secp_n(P, rys, P, lo, hi),
+                   a = (# p := partial_eval(mpol(l0), rys), lb := lo, ub := hi #) IN
+               IF alg?(a) THEN
+                 LET x = ratx(a) IN
+                 IF cons?(x`r) THEN pt(cons(car(x`r), rys)) ELSE mix(null[rat], x`b, rys) ENDIF
+               ELSE sec(od, P, lo, hi) ENDIF
+      ELSE sec(od, P, lo, hi)
+    ENDCASES
+
+  %% ---- the effective family at a cell ---------------------------------------------------
+  %% a member all of whose coefficients vanish at the cell's oracle is zero on
+  %% the whole fibre: it is left out of the walk and its sign 0 is put back
+  %% (ins0).  Every other member is walked as the cell sees it: without the
+  %% top coefficients that vanish there (ztrunc's tz, 2026-09-27), so that a
+  %% leading coefficient vanishing at a cell -- a degree drop -- no longer
+  %% fails the walk's leading-coefficient conditions
+  feff(F, od): list[list[mpoly]] =
+    map(LAMBDA (g: list[mpoly]): tz(osg(od), strip(g)))
+       (filter(LAMBDA (g: list[mpoly]): NOT zero_at?(osg(od), strip(g)))(F))
+
+  %% ---- the reads through the table -----------------------------------------------------
+  ird_t(k, (sg: SG), f, tb): RECURSIVE list[mpoly] =
+    IF null?(tb) THEN i_rd(k, sg, f)
+    ELSIF car(tb)`k = k AND leq(car(tb)`f, f) AND agrees?(sg, car(tb)`rd, car(tb)`sgs)
+      THEN car(tb)`rd
+    ELSE ird_t(k, sg, f, cdr(tb))
+    ENDIF
+  MEASURE length(tb)
+  %% the reads of the members of the EFFECTIVE family P, through the table
+  %% (walk_rd's mi_rd with the table's chains)
+  mi_rd_t(P, od, G, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN ird_t(bk(P), osg(od), strip(car(G)), tb)
+                ELSIF length(strip(car(G))) = 1 THEN (: car(strip(car(G))) :)
+                ELSE null[mpoly] ENDIF,
+                mi_rd_t(P, od, cdr(G), tb))
+    ENDIF
+  MEASURE length(G)
+  pi_rd_t(od, g, G, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN ird_t(ppk(g, car(G)), osg(od), pprod(g, car(G)), tb)
+                ELSE null[mpoly] ENDIF,
+                pi_rd_t(od, g, cdr(G), tb))
+    ENDIF
+  MEASURE length(G)
+  pairs_rd_t(od, G, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN pi_rd_t(od, car(G), cdr(G), tb) ELSE null[mpoly] ENDIF,
+                pairs_rd_t(od, cdr(G), tb))
+    ENDIF
+  MEASURE length(G)
+  %% the level's intrinsic reads at a cell: every coefficient of every member
+  %% (their signs decide the effective family) and the walk's reads on the
+  %% effective family P, the members as the cell sees them.  The product's
+  %% leading coefficient is the one of the members the walk RUNS ON: the
+  %% product of all of F vanishes identically wherever a member does
+  wi_rd_t(F, od, tb): list[mpoly] =
+    LET P = feff(F, od) IN
+    append(crd(F), append(mi_rd_t(P, od, P, tb), append(pairs_rd_t(od, P, tb),
+      IF cons?(lives(P)) THEN (: llast(bprod(P)) :) ELSE null[mpoly] ENDIF)))
+  e_rd_t(k, od, f, Y, tb): list[mpoly] = ents_rd(chain_t(k, osg(od), f, tb), Y)
+  me_rd_t(P, od, G, Y, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN e_rd_t(bk(P), od, strip(car(G)), Y, tb)
+                ELSE null[mpoly] ENDIF,
+                append(ents_rd((: car(G) :), Y), me_rd_t(P, od, cdr(G), Y, tb)))
+    ENDIF
+  MEASURE length(G)
+  pe_rd_t(od, g, G, Y, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN e_rd_t(ppk(g, car(G)), od, pprod(g, car(G)), Y, tb)
+                ELSE null[mpoly] ENDIF,
+                pe_rd_t(od, g, cdr(G), Y, tb))
+    ENDIF
+  MEASURE length(G)
+  pairse_rd_t(od, G, Y, tb): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN pe_rd_t(od, car(G), cdr(G), Y, tb) ELSE null[mpoly] ENDIF,
+                pairse_rd_t(od, cdr(G), Y, tb))
+    ENDIF
+  MEASURE length(G)
+  %% the entry reads of the walk on an effective family P, and on F's
+  we_rd_p(P, od, Y, tb): list[mpoly] = append(me_rd_t(P, od, P, Y, tb), pairse_rd_t(od, P, Y, tb))
+  we_rd_t(F, od, Y, tb): list[mpoly] = we_rd_p(feff(F, od), od, Y, tb)
+
+  %% ---- the tables of a tower, along the leftmost cell path ------------------------------
+  tables(u, TW, od): RECURSIVE list[CT] =
+    IF null?(TW) THEN null[CT]
+    ELSE LET P = feff(car(TW), od), tb = tblof(P, osg(od)) IN
+         cons(tb, IF null?(cdr(TW)) THEN null[CT]
+                  ELSE tables(u, cdr(TW), opt(od, car(seps_t(u, P, od, tb)))) ENDIF)
+    ENDIF
+  MEASURE length(TW)
+
+  ins0(F, od, (v: SV)): RECURSIVE SV =
+    IF null?(F) THEN null[Sign3]
+    ELSIF zero_at?(osg(od), strip(car(F))) THEN cons(0, ins0(cdr(F), od, v))
+    ELSIF null?(v) THEN null[Sign3]
+    ELSE cons(car(v), ins0(cdr(F), od, cdr(v)))
+    ENDIF
+  MEASURE length(F)
+  svs_o(u, F, od, tb): SVL = map(LAMBDA (v: SV): ins0(F, od, v))(svs_t(u, feff(F, od), od, tb))
+
+  %% ---- the value ------------------------------------------------------------------------
+  cellsf_o((f: [OD -> bool]), P, od, tb, Y): RECURSIVE list[bool] =
+    IF null?(Y) THEN null[bool]
+    ELSE LET v1 = f(opt(od, car(Y))) IN
+      IF null?(cdr(Y)) THEN (: v1 :)
+      ELSE LET rest = cellsf_o(f, P, od, tb, cdr(Y)) IN
+        cons(v1, IF gap_t(P, od, car(Y), car(cdr(Y)), tb)
+                   THEN cons(f(osec(od, P, car(Y), car(cdr(Y)))), rest)
+                 ELSE rest ENDIF)
+      ENDIF
+    ENDIF
+  MEASURE length(Y)
+
+  innern_o(u, qs, TW, TB, Psi, od): RECURSIVE bool =
+    IF null?(TW) OR null?(qs) OR null?(TB) THEN FALSE
+    ELSIF null?(cdr(TW)) THEN qfold(car(qs), svs_o(u, car(TW), od, car(TB)), Psi)
+    ELSE LET P = feff(car(TW), od) IN
+         bfold(car(qs), cellsf_o(LAMBDA (od2: OD): innern_o(u, cdr(qs), cdr(TW), cdr(TB), Psi, od2),
+                                 P, od, car(TB), seps_t(u, P, od, car(TB))))
+    ENDIF
+  MEASURE length(TW)
+
+  %% ---- the certificate ---------------------------------------------------------------------
+  %% the reads of the level's walk at od: intrinsic and entry reads, through the table
+  wr_t(u, F, od, tb): list[mpoly] =
+    LET P = feff(F, od) IN append(wi_rd_t(F, od, tb), we_rd_p(P, od, seps_t(u, P, od, tb), tb))
+
+  %% a rational point and a mix are exact: their oracle IS msg of the point
+  exact?(od): bool = pt?(od) OR mix?(od)
+  sub1_rd(R, y0): list[mpoly] = map(LAMBDA (c: mpoly): sub1(as_list(c), y0))(R)
+
+  %% every answer the oracle of od gives on R is right (2026-09-27): a
+  %% separator passes the question down (sub1); a section answers by bounded
+  %% Tarski queries through the oracle below it, each of which must be sound
+  %% (allok?) and whose own reads must be answered right in turn.  Before
+  %% this, only the queries of the walk directly below a section were
+  %% checked, so at four quantifiers a separator or a section below a section
+  %% used unchecked answers.
+  okqs(od, R): RECURSIVE bool =
+    CASES od OF
+      sec(od1, P, lo, hi):
+        allok?(osg(od1), P, lo, hi, R) AND
+        (exact?(od1) OR okqs(od1, dedup1(qs_rd(osg(od1), P, lo, hi, R)))),
+      sp(od1, y0): exact?(od1) OR okqs(od1, dedup1(sub1_rd(R, y0)))
+      ELSE TRUE
+    ENDCASES
+  MEASURE od BY <<
+
+  %% the walk of a level at od: its reads are answered right and it passes
+  lvok_o(u, F, od, tb): bool =
+    LET P = feff(F, od) IN
+    (exact?(od) OR okqs(od, dedup1(wr_t(u, F, od, tb)))) AND wok_t(P, od, seps_t(u, P, od, tb), tb)
+
+  %% at a cell of the level: the intrinsic reads of the walk below are members
+  %% of the level's family
+  cellok_o(F, P, od2, tb2): bool = clok?(P, map(rd_norm)(wi_rd_t(F, od2, tb2)))
+
+  %% every level's walk passes at every cell of the tree, and the closure holds
+  okn_o(u, TW, TB, od): RECURSIVE bool =
+    IF null?(TW) OR null?(TB) THEN FALSE
+    ELSE lvok_o(u, car(TW), od, car(TB)) AND
+      (null?(cdr(TW)) OR
+        (cons?(cdr(TB)) AND
+         (LET P = feff(car(TW), od), F = car(cdr(TW)), tb = car(TB), tb2 = car(cdr(TB)),
+              Y = seps_t(u, P, od, tb) IN
+          every(LAMBDA (b: bool): b)
+               (cellsf_o(LAMBDA (od2: OD): cellok_o(F, car(TW), od2, tb2) AND okn_o(u, cdr(TW), cdr(TB), od2),
+                         P, od, tb, Y)))))
+    ENDIF
+  MEASURE length(TW)
+
+  %% ---- the closure of the tower ------------------------------------------------------------
+  cellsr_o((fr: [OD -> Tower]), P, od, tb, Y): RECURSIVE Tower =
+    IF null?(Y) THEN null[list[list[mpoly]]]
+    ELSE LET r1 = fr(opt(od, car(Y))) IN
+      IF null?(cdr(Y)) THEN r1
+      ELSE LET rest = cellsr_o(fr, P, od, tb, cdr(Y)) IN
+        zipapp(r1, IF gap_t(P, od, car(Y), car(cdr(Y)), tb)
+                     THEN zipapp(fr(osec(od, P, car(Y), car(cdr(Y)))), rest)
+                   ELSE rest ENDIF)
+      ENDIF
+    ENDIF
+  MEASURE length(Y)
+
+  %% the reads of the level below at every cell, one family per level, merged
+  treads_o(u, TW, TB, od): RECURSIVE Tower =
+    IF null?(TW) OR null?(cdr(TW)) OR null?(TB) OR null?(cdr(TB)) THEN null[list[list[mpoly]]]
+    ELSE LET P = feff(car(TW), od), F = car(cdr(TW)), tb = car(TB), tb2 = car(cdr(TB)), Y = seps_t(u, P, od, tb) IN
+      cellsr_o(LAMBDA (od2: OD): cons(map(LAMBDA (c: mpoly): as_list(rd_norm(c)))(wi_rd_t(F, od2, tb2)), treads_o(u, cdr(TW), cdr(TB), od2)),
+               P, od, tb, Y)
+    ENDIF
+  MEASURE length(TW)
+
+  %% ---- the outermost level ---------------------------------------------------------------------
+  %% a root that is rational is a rational point (alg_rat_def's ratx);
+  %% otherwise the algebraic sample's isolating interval is
+  %% refined 32 times first, so that alg_isign's interval enclosure decides
+  %% the signs there
+  odS(s): OD =
+    IF at?(s) THEN LET x = ratx(sect_inv.pt(s)) IN
+                   IF cons?(x`r) THEN pt((: car(x`r) :)) ELSE mix(null[rat], x`b, null[rat]) ENDIF
+    ELSE pt((: sval(s) :)) ENDIF
+
+  %% a sector with its closed tower and tables, computed once and used by
+  %% both the certificate and the value
+  SC: TYPE = [# ssec: Sect, stw: Tower, stb: list[CT] #]
+
+  %% the certificate of one sector: the tower's certificate, and on an open
+  %% sector the top family's reads invariant
+  %% the value of the inner quantifiers at the sector's sample
+  scval(u, qs, Psi)(sc: SC): bool = innern_o(u, qs, sc`stw, sc`stb, Psi, odS(sc`ssec))
+END towern_od

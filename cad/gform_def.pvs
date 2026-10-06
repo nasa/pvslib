@@ -1,0 +1,101 @@
+gform_def: THEORY
+%----------------------------------------------------------------------------
+% First-order formulas over the reals with PVS's own connectives, and their
+% decision.  Executable.
+%
+% Gm mirrors how formulas are written in PVS: TRUE, FALSE, the six
+% comparisons of two polynomials, NOT, AND, OR, IMPLIES, IFF, FORALL and
+% EXISTS (each binding one real; variables are positions in the point list,
+% the innermost first, as in rcf_fol).  gsem(g)(pt) is its meaning written
+% with those same connectives, so that unfolding gsem on a formula's code
+% gives back the formula's shape.  g2f translates into rcf_fol's Fm (true,
+% sign atoms, not, and, exists); qfval evaluates a quantifier-free Fm; and
+%   decide_g(g) = qfval(qelim(g2f(g), 0))(null)
+% decides a closed formula: qelim_def's qelim removes its quantifiers from
+% the inside out (qe8, decide8).  gform_ok proves decide_g(g) IFF
+% gsem(g)(null), and the same with free variables for quantifier
+% elimination.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qelim_def
+
+  Gm: DATATYPE
+  BEGIN
+    gtrue: gtrue?
+    gfalse: gfalse?
+    geq(eq1: mpoly, eq2: mpoly): geq?
+    gne(ne1: mpoly, ne2: mpoly): gne?
+    glt(lt1: mpoly, lt2: mpoly): glt?
+    gle(le1: mpoly, le2: mpoly): gle?
+    ggt(gt1: mpoly, gt2: mpoly): ggt?
+    gge(ge1: mpoly, ge2: mpoly): gge?
+    gnot(gn: Gm): gnot?
+    gand(ga1: Gm, ga2: Gm): gand?
+    gor(go1: Gm, go2: Gm): gor?
+    gimp(gi1: Gm, gi2: Gm): gimp?
+    giff(gf1: Gm, gf2: Gm): giff?
+    gall(gu: Gm): gall?
+    gex(ge: Gm): gex?
+  END Gm
+
+  g: VAR Gm
+  phi: VAR Fm
+  pt: VAR list[real]
+  m: VAR nat
+
+  gsem(g)(pt): RECURSIVE bool =
+    CASES g OF
+      gtrue: TRUE,
+      gfalse: FALSE,
+      geq(p, q): meval(p)(pt) = meval(q)(pt),
+      gne(p, q): meval(p)(pt) /= meval(q)(pt),
+      glt(p, q): meval(p)(pt) < meval(q)(pt),
+      gle(p, q): meval(p)(pt) <= meval(q)(pt),
+      ggt(p, q): meval(p)(pt) > meval(q)(pt),
+      gge(p, q): meval(p)(pt) >= meval(q)(pt),
+      gnot(a): NOT gsem(a)(pt),
+      gand(a, b): gsem(a)(pt) AND gsem(b)(pt),
+      gor(a, b): gsem(a)(pt) OR gsem(b)(pt),
+      gimp(a, b): gsem(a)(pt) IMPLIES gsem(b)(pt),
+      giff(a, b): gsem(a)(pt) IFF gsem(b)(pt),
+      gall(a): FORALL (x: real): gsem(a)(cons(x, pt)),
+      gex(a): EXISTS (x: real): gsem(a)(cons(x, pt))
+    ENDCASES
+  MEASURE g BY <<
+
+  g2f(g): RECURSIVE Fm =
+    CASES g OF
+      gtrue: ftrue,
+      gfalse: ffalse,
+      geq(p, q): fsg(msub(p, q), 0),
+      gne(p, q): fnot(fsg(msub(p, q), 0)),
+      glt(p, q): fsg(msub(p, q), -1),
+      gle(p, q): fnot(fsg(msub(p, q), 1)),
+      ggt(p, q): fsg(msub(p, q), 1),
+      gge(p, q): fnot(fsg(msub(p, q), -1)),
+      gnot(a): fnot(g2f(a)),
+      gand(a, b): fand(g2f(a), g2f(b)),
+      gor(a, b): f_or(g2f(a), g2f(b)),
+      gimp(a, b): f_or(fnot(g2f(a)), g2f(b)),
+      giff(a, b): fand(f_or(fnot(g2f(a)), g2f(b)), f_or(fnot(g2f(b)), g2f(a))),
+      gall(a): fnot(fex(fnot(g2f(a)))),
+      gex(a): fex(g2f(a))
+    ENDCASES
+  MEASURE g BY <<
+
+  %% the value of a quantifier-free formula (fex counts as FALSE: never reached)
+  qfval(phi)(pt): RECURSIVE bool =
+    CASES phi OF
+      ftrue: TRUE,
+      fsg(q, t): sign3(meval(q)(pt)) = t,
+      fnot(b): NOT qfval(b)(pt),
+      fand(a, b): qfval(a)(pt) AND qfval(b)(pt),
+      fex(b): FALSE
+    ENDCASES
+  MEASURE phi BY <<
+
+  decide_g(g): bool = qfval(qelim(g2f(g), 0))(null)
+
+  %% quantifier elimination with m free variables
+  qe_g(g, m): Fm = qelim(g2f(g), m)
+END gform_def

@@ -1,0 +1,246 @@
+walk_def: THEORY
+%----------------------------------------------------------------------------
+% The lifting as a WALK over rational separators, through a sign oracle.
+%
+% Stated for an arbitrary oracle sg, and split the way its correctness needs
+% it split:
+%
+%   walk(F, sg, Y)   reads a vector at every separator of Y and one more for
+%                    each gap in which some live member has a root; there a
+%                    member is zero exactly when cnt says it has a root in
+%                    that gap
+%   wok?(F, sg, Y)   everything the walk needs from Y, all decided through
+%                    sg, MEMBER BY MEMBER (2026-09-22: the
+%                    chain of the product of the live members was the wall at
+%                    four variables, 504 s for a degree-21 product): the
+%                    separators increase and no live member vanishes at one,
+%                    every live member has at most one root in a gap, two
+%                    members with a root in the same gap have THE SAME root --
+%                    their pair product has one distinct root there -- nothing
+%                    lies outside (left and right are zero for every member),
+%                    and each leading coefficient the counts rely on is nonzero
+%   seps(F, sg)      a SEARCH for such a Y by widening and bisection.  It is
+%                    not part of the trusted argument: walk_ok proves the walk
+%                    correct for ANY Y that passes wok?, however it was found.
+%
+% The walk runs on the LIVE members of the family (lives: the members with
+% the main variable), their product stripped of structurally zero top
+% coefficients (bprod) and the bound bk on their Sturm chains; fib(F, ys) is
+% the fibre set, the sign vectors F realizes over ys.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sturm_sg, sector_rep
+
+  sg: VAR SG
+  F, G: VAR list[list[mpoly]]
+  f, g: VAR list[mpoly]
+  Y: VAR list[rat]
+  lo, hi, y0: VAR rat
+  n: VAR nat
+
+  %% ---- the vectors --------------------------------------------------------
+  vec_sg(F, sg, y0): SV = map(LAMBDA (g: list[mpoly]): sent(sg, g, y0))(F)
+
+  %% ---- per-member conditions --------------------------------------------------
+  %% a member all of whose coefficients vanish under sg is identically zero
+  %% on the fibre; the EXECUTABLE level (towern_od) walks the members that
+  %% are not and re-inserts their 0 signs, so the trusted walk below assumes
+  %% nothing about it
+  zero_at?(sg, g): RECURSIVE bool =
+    IF null?(g) THEN TRUE ELSE sg(car(g)) = 0 AND zero_at?(sg, cdr(g)) ENDIF
+  MEASURE length(g)
+
+  %% a member contributes nothing unless it actually has the main variable
+  live?(f): bool = length(f) > 1
+
+  %% The product must be taken over the LIVE members only.  A member with no
+  %% main variable contributes a constant to the fibre, but it also makes the
+  %% product vanish IDENTICALLY wherever that constant is zero -- and on
+  %% x^2 + y^2 - 2 the second member IS x^2 - 2, zero at exactly the sections.
+  %% Measured without this: the widening of the separator search ran out of
+  %% fuel at b = 2^24 with nothing between (: -16777216, 16777216 :).
+  lives(F): RECURSIVE list[list[mpoly]] =
+    IF null?(F) THEN null[list[mpoly]]
+    ELSIF live?(car(F)) THEN cons(car(F), lives(cdr(F)))
+    ELSE lives(cdr(F))
+    ENDIF
+  MEASURE length(F)
+
+  %% lmul pads: nn(l1, l2) is max(dg l1 + dg l2, dg(lmul(l1, l2))), and
+  %% measured, prodl of the one live member of x^2 + y^2 - 2 comes back as
+  %% (: x^2-2, 0, 1, 0 :) -- a STRUCTURAL trailing zero.  llast is then
+  %% mconst(0) and the leading-coefficient check refuses, correctly, because dg is 3 where the real
+  %% degree is 2.  Dropping structurally-zero trailing coefficients changes
+  %% no value at any valuation.
+  %% Structurally zero AFTER normalization.  With coefficients in one variable
+  %% the padding of lmul is mconst(0); one level up it is multiplied by an
+  %% mpol and comes back as mpol((: 0, ..., 0 :)), which the syntactic test
+  %% mconst?(u) AND mc(u) = 0 misses (measured on ex_three: bprod's llast was
+  %% such a term, slc? refused and wok? was FALSE).
+  zc?(u: mpoly): bool = mconst?(mnorm(u)) AND mc(mnorm(u)) = 0
+
+  strip(f): RECURSIVE list[mpoly] =
+    IF null?(f) THEN null[mpoly]
+    ELSIF zc?(llast(f)) THEN strip(lbut(f))
+    ELSE f
+    ENDIF
+  MEASURE length(f)
+
+  bprod(F): list[mpoly] = strip(prodl(lives(F)))
+
+  %% the chain fuel: at least as long as the product and every live member.
+  %% It was length(bprod(F)) + 2, which multiplies the whole family out at
+  %% every root count (4,668 products, 14 of 31 s in one sector's
+  %% tower).  Any bound serves: the certificates check slc?(bk(F), .., bprod(F))
+  %% and the members against it at run time.
+  lsumk(F): RECURSIVE nat = IF null?(F) THEN 0 ELSE length(car(F)) + lsumk(cdr(F)) ENDIF
+  MEASURE length(F)
+  bk(F): nat = lsumk(lives(F)) + 2
+
+  %% the count of a live member in a gap
+  mcnt(F, sg, g, lo, hi): int = cnt(bk(F), sg, strip(g), lo, hi)
+  rootin?(F, sg, g, lo, hi): bool = length(strip(g)) >= 2 AND mcnt(F, sg, g, lo, hi) > 0
+
+  sgn_sg(F, sg, g, lo, hi): Sign3 =
+    IF rootin?(F, sg, g, lo, hi) THEN 0 ELSE sent(sg, g, lo) ENDIF
+
+  sec_sg(F, sg, lo, hi): SV =
+    map(LAMBDA (g: list[mpoly]): sgn_sg(F, sg, g, lo, hi))(F)
+
+  %% a gap holds a root of some member
+  gap?(F, sg, lo, hi): bool = some(LAMBDA (g: list[mpoly]): rootin?(F, sg, g, lo, hi))(F)
+
+  walk(F, sg, Y): RECURSIVE SVL =
+    IF null?(Y) THEN null[SV]
+    ELSIF null?(cdr(Y)) THEN (: vec_sg(F, sg, car(Y)) :)
+    ELSE LET r1: rat = car(Y), r2: rat = car(cdr(Y)) IN
+         cons(vec_sg(F, sg, r1),
+              IF gap?(F, sg, r1, r2)
+                THEN cons(sec_sg(F, sg, r1, r2), walk(F, sg, cdr(Y)))
+              ELSE walk(F, sg, cdr(Y))
+              ENDIF)
+    ENDIF
+  MEASURE length(Y)
+
+  memok?(F, sg, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR slc?(bk(F), sg, strip(car(G))))
+         AND memok?(F, sg, cdr(G))
+    ENDIF
+  MEASURE length(G)
+
+  %% no live member vanishes at y0
+  nzat?(F, sg, y0, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(car(G)) < 2 OR sent(sg, car(G), y0) /= 0)
+         AND nzat?(F, sg, y0, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  %% every live member has at most one root in the gap
+  atmost1?(F, sg, lo, hi, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR mcnt(F, sg, car(G), lo, hi) <= 1)
+         AND atmost1?(F, sg, lo, hi, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  %% the pair product and its chain bound
+  pprod(f, g): list[mpoly] = lmul(strip(f), strip(g))
+  ppk(f, g): nat = length(pprod(f, g)) + 2
+  %% g and every member of G with a root in the gap have the same root there
+  coin?(F, sg, lo, hi, g, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (NOT rootin?(F, sg, g, lo, hi) OR NOT rootin?(F, sg, car(G), lo, hi)
+          OR (slc?(ppk(g, car(G)), sg, pprod(g, car(G)))
+              AND cnt(ppk(g, car(G)), sg, pprod(g, car(G)), lo, hi) = 1))
+         AND coin?(F, sg, lo, hi, g, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  coins?(F, sg, lo, hi, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE coin?(F, sg, lo, hi, car(G), cdr(G)) AND coins?(F, sg, lo, hi, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  %% one gap
+  gapok?(F, sg, lo, hi): bool =
+    lo < hi AND nzat?(F, sg, lo, F) AND atmost1?(F, sg, lo, hi, F) AND coins?(F, sg, lo, hi, F)
+
+  %% increasing, no separator a root of a live member, every gap holding at
+  %% most one distinct root
+  sepok?(F, sg, Y): RECURSIVE bool =
+    IF null?(Y) THEN TRUE
+    ELSIF null?(cdr(Y)) THEN nzat?(F, sg, car(Y), F)
+    ELSE gapok?(F, sg, car(Y), car(cdr(Y))) AND sepok?(F, sg, cdr(Y))
+    ENDIF
+  MEASURE length(Y)
+
+  rlast(Y: (cons?[rat])): RECURSIVE rat =
+    IF null?(cdr(Y)) THEN car(Y) ELSE rlast(cdr(Y)) ENDIF
+  MEASURE length(Y)
+
+  %% nothing outside [car(Y), rlast(Y)], member by member
+  leftok?(F, sg, y0, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR left(bk(F), sg, strip(car(G)), y0) = 0)
+         AND leftok?(F, sg, y0, cdr(G))
+    ENDIF
+  MEASURE length(G)
+  rightok?(F, sg, y0, G): RECURSIVE bool =
+    IF null?(G) THEN TRUE
+    ELSE (length(strip(car(G))) < 2 OR right(bk(F), sg, strip(car(G)), y0) = 0)
+         AND rightok?(F, sg, y0, cdr(G))
+    ENDIF
+  MEASURE length(G)
+
+  %% the product's leading coefficient is checked (one sign) but its chain is
+  %% never built: the counts are per member and per pair; the product is a
+  %% proof device (walk_ok's P, walk_transfer's sep_exist)
+  wok?(F, sg, Y): bool =
+    cons?(Y) AND memok?(F, sg, F) AND
+    (null?(lives(F)) OR
+      (slc?(bk(F), sg, bprod(F)) AND sepok?(F, sg, Y)
+       AND leftok?(F, sg, car(Y), F) AND rightok?(F, sg, rlast(Y), F)))
+
+  %% ---- the search for separators (untrusted) ---------------------------------
+  %% a point in (lo, hi) at which no live member vanishes
+  spick(F, sg, lo, hi, n): RECURSIVE rat =
+    LET m: rat = (lo + hi) / 2 IN
+    IF n = 0 OR nzat?(F, sg, m, F) THEN m
+    ELSE spick(F, sg, lo, m, n - 1)
+    ENDIF
+  MEASURE n
+
+  %% bisect until every gap holds at most one distinct root
+  sint(F, sg, lo, hi, n): RECURSIVE list[rat] =
+    IF n = 0 OR (atmost1?(F, sg, lo, hi, F) AND coins?(F, sg, lo, hi, F)) THEN null[rat]
+    ELSE LET m: rat = spick(F, sg, lo, hi, n) IN
+         append(append(sint(F, sg, lo, m, n - 1), (: m :)),
+                sint(F, sg, m, hi, n - 1))
+    ENDIF
+  MEASURE n
+
+  swide(F, sg, (b: posrat), n): RECURSIVE posrat =
+    IF n = 0 THEN b
+    ELSIF nzat?(F, sg, -b, F) AND nzat?(F, sg, b, F)
+          AND leftok?(F, sg, -b, F) AND rightok?(F, sg, b, F)
+      THEN b
+    ELSE swide(F, sg, 2 * b, n - 1)
+    ENDIF
+  MEASURE n
+
+  sfuel2: nat = 24
+
+  seps(F, sg): list[rat] =
+    IF null?(lives(F)) THEN (: 0 :)
+    ELSE LET b: posrat = swide(F, sg, 1, sfuel2) IN
+         cons(-b, append(sint(F, sg, -b, b, sfuel2), (: b :)))
+    ENDIF
+
+  %% THE LIFTING and its runtime check
+  svs_w(F, sg): SVL = walk(F, sg, seps(F, sg))
+
+  z: VAR real
+  v: VAR SV
+  ys: VAR list[real]
+  %% the realizable sign vectors over the fibre above ys
+  fib(F, ys)(v): bool = EXISTS z: v = svec(F, cons(z, ys))
+END walk_def

@@ -1,0 +1,41 @@
+cpoly_der: THEORY
+%----------------------------------------------------------------------------
+% The formal derivative of a complex polynomial function.
+%
+% cder(a) is the derivative of a coefficient sequence; cder?(P, D) says D is
+% the derivative of the polynomial function P, computed from any
+% coefficient witness of P (padded with zeros above its bound, so the
+% witness is unique: cder_unique).  The product rule is needed only for a
+% linear factor (cder_lin: ((z - y) G)' = G + (z - y) G'), and from it for a
+% power of one (cder_pow: ((z - y)^(m+1) Q)' = (z - y)^m ((m+1) Q + (z - y) Q')).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cpoly_div
+
+  a, b: VAR sequence[complex]
+  n, m, i: VAR nat
+  z, y: VAR complex
+  P, Q, D, E, G, DG, DQ: VAR [complex -> complex]
+
+  cder(a)(i): complex = real_(i + 1) * a(i + 1)
+
+  %% D is the derivative of P
+  cder?(P, D): bool = EXISTS a, n:
+    (FORALL z: P(z) = cpolynomial(pad(a, n), n)(z)) AND (FORALL z: D(z) = cpolynomial(cder(pad(a, n)), n)(z))
+
+  pad_pad: LEMMA n <= m IMPLIES pad(pad(a, n), m) = pad(a, n)
+  cder_pad: LEMMA n <= m IMPLIES cpolynomial(cder(pad(a, n)), m)(z) = cpolynomial(cder(pad(a, n)), n)(z)
+  cder_exists: LEMMA cpol?(P, n) IMPLIES EXISTS D: cder?(P, D) AND cpol?(D, n)
+  cder_unique: LEMMA cder?(P, D) AND cder?(P, E) IMPLIES FORALL z: D(z) = E(z)
+  cder_ext: LEMMA cder?(P, D) AND (FORALL z: Q(z) = P(z)) AND (FORALL z: E(z) = D(z)) IMPLIES cder?(Q, E)
+
+  %% the product rule with a linear factor
+  cder_lin: LEMMA cder?(G, DG) IMPLIES cder?(cmul(clin(y), G), cadd(G, cmul(clin(y), DG)))
+
+  %% powers of a linear factor
+  cpw(y, m)(z): complex = cpow(z - y)(m)
+  cpw_succ: LEMMA cpw(y, m + 1)(z) = (z - y) * cpw(y, m)(z)
+  cpw_lead: LEMMA clead?(cpw(y, m), m, real_(1))
+  cder_pow: LEMMA FORALL m: cder?(Q, DQ) IMPLIES
+    cder?(cmul(cpw(y, m + 1), Q), LAMBDA z: cpw(y, m)(z) * (real_(m + 1) * Q(z) + (z - y) * DQ(z)))
+END cpoly_der

@@ -1,0 +1,70 @@
+cad_projn: THEORY
+%----------------------------------------------------------------------------
+% The executable N-reducta projection gives Collins' hypothesis.
+%
+% projn_ok: if every member of cad_projn_def's projn(G) has one sign on C,
+% then colh?(G, C) holds -- so (col_stack) G is delineable over C when C is
+% connected.  Every polynomial colh? asks about is in pjall(G):
+%   kept_kd   a reductum colh? keeps is one kd keeps (a coefficient that
+%             normalizes to a nonzero constant is nonzero everywhere, nzc_nz)
+%   pj1_mem, pj2_mem, pj3_mem   its coefficient, its psc with the derivative
+%             and its psc with the kept reducta of later members are there,
+%             the psc in normal form (pscg_eq, through bareiss' bdet_det)
+%             (a leading coefficient that is not identically zero does not
+%             normalize to 0, zc_z)
+% and clean only normalizes (meval_mnorm) and drops constants, which have one
+% sign everywhere (clean_cinv); a normal form has the signs of the polynomial
+% (cinv_norm).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_projn_def, col_stack, bareiss
+
+  g, h: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  u, v: VAR mpoly
+  U, V, W: VAR list[mpoly]
+  K, K1, K2: VAR list[nat]
+  k, j, n, i, i1, i2, k1, k2: VAR nat
+
+  %% ---- syntactic checks ----------------------------------------------------------------------
+  nzc_nz: LEMMA nzc?(u) IMPLIES nzall?(u)
+  zc_z: LEMMA zcst?(u) IMPLIES zall?(u)
+
+  %% ---- membership in lists ---------------------------------------------------------------------
+  mem_app: LEMMA FORALL U: member(u, append(U, V)) IFF member(u, U) OR member(u, V)
+  kd_mem: LEMMA FORALL n: n <= length(g) AND k < n
+    AND (FORALL j: k < j AND j < n IMPLIES NOT nzall?(nth(g, j))) IMPLIES member(k, kd(g, n))
+  kept_kd: LEMMA kept?(g, k) IMPLIES member(k, kd(g, length(g)))
+  pscs_mem: LEMMA FORALL n: j < n IMPLIES member(pscg(g, h, j), pscs(g, h, n))
+
+  memmap: LEMMA FORALL K: member(k, K) IMPLIES member(cf(g, k), map(LAMBDA (k: nat): cf(g, k))(K))
+  pscg_eq: LEMMA 2 * j <= dg(g) + dg(h) IMPLIES pscg(g, h, j) = mnorm(psc(g, h, j))
+  pj1_mem: LEMMA kept?(g, k) IMPLIES member(nth(g, k), pj1(g))
+  pj2k_mem: LEMMA FORALL K: member(k, K) AND k < length(g) AND NOT zall?(nth(g, k)) AND j + 2 <= k IMPLIES
+    member(mnorm(psc(rdc(g, k), lderiv(rdc(g, k)), j)), pj2k(g, K))
+  pj2_mem: LEMMA kept?(g, k) AND NOT zall?(nth(g, k)) AND j + 2 <= k IMPLIES
+    member(mnorm(psc(rdc(g, k), lderiv(rdc(g, k)), j)), pj2(g))
+  pj3k_mem: LEMMA FORALL K2: k1 < length(g) AND member(k2, K2) AND k2 < length(h) AND NOT zall?(nth(h, k2))
+    AND j < k1 AND j < k2 IMPLIES member(mnorm(psc(rdc(g, k1), rdc(h, k2), j)), pj3k(g, k1, h, K2))
+  pj3kk_mem: LEMMA FORALL K1: member(k1, K1) AND k1 < length(g) AND NOT zall?(nth(g, k1))
+    AND member(k2, K2) AND k2 < length(h) AND NOT zall?(nth(h, k2)) AND j < k1 AND j < k2 IMPLIES
+    member(mnorm(psc(rdc(g, k1), rdc(h, k2), j)), pj3kk(g, K1, h, K2))
+  pj3_mem: LEMMA kept?(g, k1) AND kept?(h, k2) AND NOT zall?(nth(g, k1)) AND NOT zall?(nth(h, k2))
+    AND j < k1 AND j < k2 IMPLIES member(mnorm(psc(rdc(g, k1), rdc(h, k2), j)), pj3(g, h))
+
+  pjr_mem: LEMMA FORALL G: member(h, G) AND member(u, pj3(g, h)) IMPLIES member(u, pjr(g, G))
+  pjall_own: LEMMA FORALL G: i < length(G) AND (member(u, pj1(nth(G, i))) OR member(u, pj2(nth(G, i))))
+    IMPLIES member(u, pjall(G))
+  pjall_pair: LEMMA FORALL G: FORALL i1, i2: i1 < i2 AND i2 < length(G) AND member(u, pj3(nth(G, i1), nth(G, i2)))
+    IMPLIES member(u, pjall(G))
+
+  %% ---- normalization and constants -----------------------------------------------------------
+  cinv_const: LEMMA mconst?(mnorm(u)) IMPLIES cinv?(u, C)
+  cinv_norm: LEMMA cinv?(mnorm(u), C) IMPLIES cinv?(u, C)
+  pmem_member: LEMMA FORALL V: pmem(u, V) IFF member(u, V)
+  clean_cinv: LEMMA FORALL U: FORALL V: (FORALL v: member(v, clean(U, V)) IMPLIES cinv?(v, C)) IMPLIES
+    (FORALL u: member(u, U) IMPLIES cinv?(u, C)) AND (FORALL v: member(v, V) IMPLIES cinv?(v, C))
+
+  projn_ok: THEOREM (FORALL u: member(u, projn(G)) IMPLIES cinv?(u, C)) IMPLIES colh?(G, C)
+END cad_projn

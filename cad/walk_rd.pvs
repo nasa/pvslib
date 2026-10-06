@@ -1,0 +1,205 @@
+walk_rd: THEORY
+%----------------------------------------------------------------------------
+% What the walk READS, and that it reads nothing else.
+%
+% The walk consults the parameters only through the oracle, and what it
+% consults is a simple function of the separators.  The reads come in two
+% kinds, and the split is the whole point:
+%
+%   INTRINSIC  wi_rd(F, sg)     the construction reads of each chain
+%                               (rchain_rd) and every chain entry's leading
+%                               coefficient.  No separator occurs in them.
+%   ENTRY      we_rd(F, sg, Y)  every chain entry and every member with a
+%                               separator substituted for the main variable.
+%
+% walk_det: two oracles that agree on both lists walk alike and pass or fail
+% wok? alike.  The decision certifies the intrinsic reads on a sector (they
+% are few: on ex_line they add NOTHING to the projection) and never the entry
+% reads, which no constant separator could make invariant; those are handled
+% by continuity in walk_transfer.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_def
+
+  sg, sg1, sg2: VAR SG
+  F, G: VAR list[list[mpoly]]
+  f, g: VAR list[mpoly]
+  cs: VAR list[list[mpoly]]
+  Y, Y2: VAR list[rat]
+  y0, y1, lo, hi: VAR rat
+  k, i: VAR nat
+  u: VAR mpoly
+
+  %% ---- the lists ----------------------------------------------------------
+  ent_rd(cs, y0): list[mpoly] = map(LAMBDA (c: list[mpoly]): sub1(c, y0))(cs)
+
+  ents_rd(cs, Y): RECURSIVE list[mpoly] =
+    IF null?(Y) THEN null[mpoly]
+    ELSE append(ent_rd(cs, car(Y)), ents_rd(cs, cdr(Y)))
+    ENDIF
+  MEASURE length(Y)
+
+  lc_rd(cs): list[mpoly] = map(LAMBDA (c: list[mpoly]): llast(c))(cs)
+
+  %% one polynomial
+  i_rd(k, sg, f): list[mpoly] =
+    append(rchain2_rd(k, f, lderiv(f), mconst(1), 0, sg), lc_rd(schain(k, sg, f)))
+  e_rd(k, sg, f, Y): list[mpoly] = ents_rd(schain(k, sg, f), Y)
+
+  %% the members.  A member with no main variable after stripping is read as
+  %% its one coefficient: that is the intrinsic read that sees its sign.
+  mi_rd(F, sg, G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN i_rd(bk(F), sg, strip(car(G)))
+                ELSIF length(strip(car(G))) = 1 THEN (: car(strip(car(G))) :)
+                ELSE null[mpoly] ENDIF,
+                mi_rd(F, sg, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+
+  me_rd(F, sg, G, Y): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN e_rd(bk(F), sg, strip(car(G)), Y)
+                ELSE null[mpoly] ENDIF,
+                append(ents_rd((: car(G) :), Y), me_rd(F, sg, cdr(G), Y)))
+    ENDIF
+  MEASURE length(G)
+
+  %% the chain reads of the pair products (the coincidence tests)
+  pi_rd(sg, g, G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN i_rd(ppk(g, car(G)), sg, pprod(g, car(G)))
+                ELSE null[mpoly] ENDIF,
+                pi_rd(sg, g, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+  pairs_rd(sg, G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN pi_rd(sg, car(G), cdr(G)) ELSE null[mpoly] ENDIF,
+                pairs_rd(sg, cdr(G)))
+    ENDIF
+  MEASURE length(G)
+  pe_rd(sg, g, G, Y): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN e_rd(ppk(g, car(G)), sg, pprod(g, car(G)), Y)
+                ELSE null[mpoly] ENDIF,
+                pe_rd(sg, g, cdr(G), Y))
+    ENDIF
+  MEASURE length(G)
+  pairse_rd(sg, G, Y): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(IF length(strip(car(G))) >= 2 THEN pe_rd(sg, car(G), cdr(G), Y) ELSE null[mpoly] ENDIF,
+                pairse_rd(sg, cdr(G), Y))
+    ENDIF
+  MEASURE length(G)
+  wi_rd(F, sg): list[mpoly] =
+    append(mi_rd(F, sg, F), append(pairs_rd(sg, F), IF cons?(lives(F)) THEN (: llast(bprod(F)) :) ELSE null[mpoly] ENDIF))
+  we_rd(F, sg, Y): list[mpoly] = append(me_rd(F, sg, F, Y), pairse_rd(sg, F, Y))
+
+  %% ---- membership -----------------------------------------------------------
+  ent_mem: LEMMA FORALL cs: member(f, cs) IMPLIES member(sub1(f, y0), ent_rd(cs, y0))
+  ents_mem: LEMMA FORALL Y: member(y0, Y) AND member(u, ent_rd(cs, y0))
+    IMPLIES member(u, ents_rd(cs, Y))
+  lc_mem: LEMMA FORALL cs: member(f, cs) IMPLIES member(llast(f), lc_rd(cs))
+  nthl_mem: LEMMA FORALL cs, i: i < length(cs) IMPLIES member(nthl(cs, i), cs)
+
+  agree_ent: LEMMA agree(sg1, sg2, ents_rd(cs, Y)) AND member(y0, Y) AND i < length(cs)
+    IMPLIES sent(sg2, nthl(cs, i), y0) = sent(sg1, nthl(cs, i), y0)
+  agree_lc: LEMMA agree(sg1, sg2, lc_rd(cs)) AND i < length(cs)
+    IMPLIES sg2(llast(nthl(cs, i))) = sg1(llast(nthl(cs, i)))
+
+  %% ---- one polynomial ---------------------------------------------------------
+  schain_len2: LEMMA length(schain(k, sg, f)) >= 2
+  i_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES
+    schain(k, sg2, f) = schain(k, sg1, f) AND i_rd(k, sg2, f) = i_rd(k, sg1, f)
+  e_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES e_rd(k, sg2, f, Y) = e_rd(k, sg1, f, Y)
+  slen_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES slen(k, sg2, f) = slen(k, sg1, f)
+  svar_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) AND agree(sg1, sg2, e_rd(k, sg1, f, Y))
+    AND member(y0, Y) IMPLIES svar(k, sg2, f, y0) = svar(k, sg1, f, y0)
+  shi_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES shi(k, sg2, f) = shi(k, sg1, f)
+  slo_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES slo(k, sg2, f) = slo(k, sg1, f)
+  slc_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) IMPLIES (slc?(k, sg2, f) IFF slc?(k, sg1, f))
+  slc_det1: LEMMA agree(sg1, sg2, (: llast(f) :)) IMPLIES (slc?(k, sg2, f) IFF slc?(k, sg1, f))
+  cnt_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) AND agree(sg1, sg2, e_rd(k, sg1, f, Y))
+    AND member(y0, Y) AND member(y1, Y) IMPLIES cnt(k, sg2, f, y0, y1) = cnt(k, sg1, f, y0, y1)
+  left_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) AND agree(sg1, sg2, e_rd(k, sg1, f, Y))
+    AND member(y0, Y) IMPLIES left(k, sg2, f, y0) = left(k, sg1, f, y0)
+  right_det: LEMMA agree(sg1, sg2, i_rd(k, sg1, f)) AND agree(sg1, sg2, e_rd(k, sg1, f, Y))
+    AND member(y0, Y) IMPLIES right(k, sg2, f, y0) = right(k, sg1, f, y0)
+
+  %% ---- the members ---------------------------------------------------------------
+  mi_mem: LEMMA FORALL G: member(g, G) AND length(strip(g)) >= 2 AND agree(sg1, sg2, mi_rd(F, sg1, G))
+    IMPLIES agree(sg1, sg2, i_rd(bk(F), sg1, strip(g)))
+  me_mem: LEMMA FORALL G: member(g, G) AND length(strip(g)) >= 2 AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    IMPLIES agree(sg1, sg2, e_rd(bk(F), sg1, strip(g), Y))
+  me_own: LEMMA FORALL G: member(g, G) AND agree(sg1, sg2, me_rd(F, sg1, G, Y)) AND member(y0, Y)
+    IMPLIES sent(sg2, g, y0) = sent(sg1, g, y0)
+
+  %% ---- the per-member conditions are determined by the reads ------------------------
+  rootin_det: LEMMA member(g, G) AND agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (rootin?(F, sg2, g, lo, hi) IFF rootin?(F, sg1, g, lo, hi))
+  some_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (some(LAMBDA (g: list[mpoly]): rootin?(F, sg2, g, lo, hi))(G)
+             IFF some(LAMBDA (g: list[mpoly]): rootin?(F, sg1, g, lo, hi))(G))
+  nzat_det: LEMMA FORALL G: agree(sg1, sg2, me_rd(F, sg1, G, Y)) AND member(y0, Y)
+    IMPLIES (nzat?(F, sg2, y0, G) IFF nzat?(F, sg1, y0, G))
+  atmost1_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (atmost1?(F, sg2, lo, hi, G) IFF atmost1?(F, sg1, lo, hi, G))
+  coin_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND agree(sg1, sg2, pi_rd(sg1, g, G)) AND agree(sg1, sg2, pe_rd(sg1, g, G, Y))
+    AND (rootin?(F, sg2, g, lo, hi) IFF rootin?(F, sg1, g, lo, hi))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (coin?(F, sg2, lo, hi, g, G) IFF coin?(F, sg1, lo, hi, g, G))
+  coin_norootin: LEMMA FORALL G: NOT rootin?(F, sg, g, lo, hi) IMPLIES coin?(F, sg, lo, hi, g, G)
+  coins_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND agree(sg1, sg2, pairs_rd(sg1, G)) AND agree(sg1, sg2, pairse_rd(sg1, G, Y))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (coins?(F, sg2, lo, hi, G) IFF coins?(F, sg1, lo, hi, G))
+  leftok_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND member(y0, Y) IMPLIES (leftok?(F, sg2, y0, G) IFF leftok?(F, sg1, y0, G))
+  rightok_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G)) AND agree(sg1, sg2, me_rd(F, sg1, G, Y))
+    AND member(y0, Y) IMPLIES (rightok?(F, sg2, y0, G) IFF rightok?(F, sg1, y0, G))
+
+  sgn_det: LEMMA member(g, G) AND agree(sg1, sg2, mi_rd(F, sg1, G))
+    AND agree(sg1, sg2, me_rd(F, sg1, G, Y)) AND member(lo, Y) AND member(hi, Y)
+    IMPLIES sgn_sg(F, sg2, g, lo, hi) = sgn_sg(F, sg1, g, lo, hi)
+
+  mapeq: LEMMA FORALL (G: list[list[mpoly]], h1, h2: [list[mpoly] -> Sign3]):
+    (FORALL g: member(g, G) IMPLIES h1(g) = h2(g)) IMPLIES map(h1)(G) = map(h2)(G)
+
+  vec_det: LEMMA agree(sg1, sg2, me_rd(F, sg1, F, Y)) AND member(y0, Y)
+    IMPLIES vec_sg(F, sg2, y0) = vec_sg(F, sg1, y0)
+  sec_det: LEMMA agree(sg1, sg2, mi_rd(F, sg1, F)) AND agree(sg1, sg2, me_rd(F, sg1, F, Y))
+    AND member(lo, Y) AND member(hi, Y)
+    IMPLIES sec_sg(F, sg2, lo, hi) = sec_sg(F, sg1, lo, hi)
+  memok_det: LEMMA FORALL G: agree(sg1, sg2, mi_rd(F, sg1, G))
+    IMPLIES (memok?(F, sg2, G) IFF memok?(F, sg1, G))
+
+  %% ---- the walk --------------------------------------------------------------------
+  wagree?(F, sg1, sg2, Y): bool =
+    agree(sg1, sg2, wi_rd(F, sg1)) AND agree(sg1, sg2, we_rd(F, sg1, Y))
+
+  gapok_det: LEMMA wagree?(F, sg1, sg2, Y) AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (gapok?(F, sg2, lo, hi) IFF gapok?(F, sg1, lo, hi))
+  wa_mem: LEMMA wagree?(F, sg1, sg2, Y) IMPLIES
+    agree(sg1, sg2, mi_rd(F, sg1, F)) AND agree(sg1, sg2, me_rd(F, sg1, F, Y))
+
+  gap_det: LEMMA wagree?(F, sg1, sg2, Y) AND member(lo, Y) AND member(hi, Y)
+    IMPLIES (gap?(F, sg2, lo, hi) IFF gap?(F, sg1, lo, hi))
+
+  sub?(Y2, Y): bool = FORALL (y: rat): member(y, Y2) IMPLIES member(y, Y)
+  sub_cdr: LEMMA cons?(Y2) AND sub?(Y2, Y) IMPLIES sub?(cdr(Y2), Y) AND member(car(Y2), Y)
+  sub_refl: LEMMA sub?(Y, Y)
+
+  walk_det2: LEMMA FORALL Y2: wagree?(F, sg1, sg2, Y) AND sub?(Y2, Y)
+    IMPLIES walk(F, sg2, Y2) = walk(F, sg1, Y2)
+  sepok_det2: LEMMA FORALL Y2: wagree?(F, sg1, sg2, Y) AND sub?(Y2, Y)
+    IMPLIES (sepok?(F, sg2, Y2) IFF sepok?(F, sg1, Y2))
+  rlast_mem: LEMMA FORALL (Y: (cons?[rat])): member(rlast(Y), Y)
+
+  walk_det: THEOREM wagree?(F, sg1, sg2, Y) IMPLIES
+    walk(F, sg2, Y) = walk(F, sg1, Y) AND (wok?(F, sg2, Y) IFF wok?(F, sg1, Y))
+END walk_rd

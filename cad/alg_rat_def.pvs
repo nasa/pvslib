@@ -1,0 +1,45 @@
+alg_rat_def: THEORY
+%----------------------------------------------------------------------------
+% A rational value for an algebraic number, when it has one.  Executable.
+%
+% ratx(a) returns r = (: q :) when it finds a rational q that is a root of
+% a`p in [a`lb, a`ub] -- then q = value(a), since a isolates one root
+% (alg_rat's ratx_r) -- and r = null otherwise, together with b, the number
+% to use when there is none: a itself, or a refined 32 times when the search
+% refined it (value(b) = value(a), alg_rat's ratx_b).  The candidates need no
+% proof (the check decides): the root of a linear a`p, then the rationals with
+% denominators 16, ..., 1 nearest the middle of b's interval.  The engine's
+% samples use it (towern_od's odS and osec): a sector or section whose
+% coordinate is rational becomes a rational point, where signs are
+% evaluations, not Sturm sign-variation counts at an isolating interval.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_def
+
+  a: VAR Alg
+  rs: VAR list[rat]
+  n: VAR nat
+
+  %% the first candidate that is a root of a`p in a's interval
+  qroot(a, rs): RECURSIVE list[rat] =
+    IF null?(rs) THEN null[rat]
+    ELSIF polylist(a`p)(car(rs)) = 0 AND a`lb <= car(rs) AND car(rs) <= a`ub THEN (: car(rs) :)
+    ELSE qroot(a, cdr(rs))
+    ENDIF
+  MEASURE length(rs)
+
+  %% the root of a linear polynomial
+  lin1(q: Polylist): list[rat] =
+    IF length(q) = 2 AND nth(q, 1) /= 0 THEN (: -nth(q, 0) / nth(q, 1) :) ELSE null[rat] ENDIF
+  %% the rational with denominator q nearest the middle of a's interval
+  qmid(a, (q: posnat)): rat = floor(q * (a`lb + a`ub) / 2 + 1/2) / q
+  qmids(a, n): RECURSIVE list[rat] = IF n = 0 THEN null[rat] ELSE cons(qmid(a, n), qmids(a, n - 1)) ENDIF
+  MEASURE n
+
+  RX: TYPE = [# r: list[rat], b: Alg #]
+  ratx(a): RX =
+    LET r1 = qroot(a, lin1(a`p)) IN
+    IF cons?(r1) THEN (# r := r1, b := a #)
+    ELSE LET b = refine_n(a, 32) IN (# r := qroot(b, qmids(b, 16)), b := b #)
+    ENDIF
+END alg_rat_def

@@ -1,0 +1,74 @@
+walk_count: THEORY
+%----------------------------------------------------------------------------
+% Counting facts for the completeness of the walk's search.
+%
+% At an exact oracle msg(ys) the walk's bisection stops a gap when every
+% live member has at most one root there and any two members with a root
+% there share it (atmost1?, coins?).  Both hold as soon as the product of
+% the live members has at most one distinct root in the gap (stop_ok), with
+% no condition on the chains at the ends -- only the members must not
+% vanish there, which the search checks (nzat?, equivalent to the product
+% not vanishing: nzat_P_iff).  And a Sturm count is at least the number of
+% distinct roots one can list (cnt_ge) and at most the total count
+% (cnt_le_total): what bounds the probes of the search.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_fuel, walk_transfer, cell_ok
+
+  F, G: VAR list[list[mpoly]]
+  f, g, g2: VAR list[mpoly]
+  ys: VAR list[real]
+  k, r, j, j2: VAR nat
+  lo, hi, q, y0: VAR rat
+  z, w: VAR real
+
+  %% ---- counts and roots ------------------------------------------------------------------
+  cnt_ge: LEMMA slc?(k, msg(ys), f) IMPLIES
+    FORALL r: FORALL (zs: [nat -> real]), hi:
+      lo < hi AND meval(mpol(f))(cons(lo, ys)) /= 0 AND meval(mpol(f))(cons(hi, ys)) /= 0
+      AND (FORALL j: j < r IMPLIES lo < zs(j) AND zs(j) <= hi AND meval(mpol(f))(cons(zs(j), ys)) = 0)
+      AND (FORALL j, j2: j < j2 AND j2 < r IMPLIES zs(j) < zs(j2))
+      IMPLIES cnt(k, msg(ys), f, lo, hi) >= r
+
+  cnt_le_total: LEMMA slc?(k, msg(ys), f) AND ends?(ys, f, lo, hi)
+    IMPLIES cnt(k, msg(ys), f, lo, hi) <= total(k, msg(ys), f)
+
+  %% two distinct roots in a gap make the count at least two
+  cnt_two_roots: LEMMA slc?(k, msg(ys), f) AND ends?(ys, f, lo, hi)
+    AND lo < z AND z <= hi AND meval(mpol(f))(cons(z, ys)) = 0
+    AND lo < w AND w <= hi AND meval(mpol(f))(cons(w, ys)) = 0 AND z /= w
+    IMPLIES cnt(k, msg(ys), f, lo, hi) >= 2
+
+  %% ---- the members do not vanish exactly where the product does not -------------------------
+  P_nzat: LEMMA FORALL G: P(F, ys)(y0) /= 0 AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    IMPLIES nzat?(F, msg(ys), y0, G)
+  nzat_P_iff: LEMMA nzat?(F, msg(ys), y0, F) IFF P(F, ys)(y0) /= 0
+
+  %% ---- the stop test of the bisection ----------------------------------------------------------
+  gap1?(F, ys, lo, hi): bool = cert?(F, msg(ys)) AND lo < hi
+    AND P(F, ys)(lo) /= 0 AND P(F, ys)(hi) /= 0
+    AND (cons?(lives(F)) IMPLIES cnt(bk(F), msg(ys), bprod(F), lo, hi) <= 1)
+
+  %% a live member is nonzero at the ends and its roots are the product's
+  mem_ends: LEMMA gap1?(F, ys, lo, hi) AND member(g, F) AND length(strip(g)) >= 2
+    IMPLIES cons?(lives(F)) AND slc?(bk(F), msg(ys), strip(g)) AND ends?(ys, strip(g), lo, hi)
+      AND slc?(bk(F), msg(ys), bprod(F)) AND ends?(ys, bprod(F), lo, hi)
+  %% the product has at most one distinct root in the gap
+  gap1_one: LEMMA gap1?(F, ys, lo, hi) AND cons?(lives(F))
+    AND lo < z AND z <= hi AND P(F, ys)(z) = 0
+    AND lo < w AND w <= hi AND P(F, ys)(w) = 0 IMPLIES z = w
+
+  atmost1_gap1: LEMMA FORALL G: gap1?(F, ys, lo, hi) AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    IMPLIES atmost1?(F, msg(ys), lo, hi, G)
+  pair_gap1: LEMMA gap1?(F, ys, lo, hi) AND member(g, F) AND member(g2, F)
+    AND rootin?(F, msg(ys), g, lo, hi) AND rootin?(F, msg(ys), g2, lo, hi)
+    IMPLIES slc?(ppk(g, g2), msg(ys), pprod(g, g2)) AND cnt(ppk(g, g2), msg(ys), pprod(g, g2), lo, hi) = 1
+  coin_gap1: LEMMA FORALL G: gap1?(F, ys, lo, hi) AND member(g, F)
+    AND (FORALL g2: member(g2, G) IMPLIES member(g2, F))
+    IMPLIES coin?(F, msg(ys), lo, hi, g, G)
+  coins_gap1: LEMMA FORALL G: gap1?(F, ys, lo, hi) AND (FORALL g: member(g, G) IMPLIES member(g, F))
+    IMPLIES coins?(F, msg(ys), lo, hi, G)
+
+  stop_ok: THEOREM gap1?(F, ys, lo, hi)
+    IMPLIES atmost1?(F, msg(ys), lo, hi, F) AND coins?(F, msg(ys), lo, hi, F)
+END walk_count

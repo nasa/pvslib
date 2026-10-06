@@ -1,0 +1,58 @@
+sg_chain2: THEORY
+%----------------------------------------------------------------------------
+% The Sturm chains with the reduced step (for speed).
+%
+% rchain2_sg is rchain_sg of sg_chain with the step of sturm_step2: the
+% recursion carries the divisor of the next step (the leading coefficient
+% of the element before the pair, and one more than the degree drop before
+% it).  At msg(ys) the chain is, element by element, a positive multiple of
+% the chain of branch_prs (rchain2_prop), so the leading signs and the
+% degrees agree; it depends on the sign function only through its reads
+% (rchain2_det).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sturm_step2, sg_chain
+
+  k, e, i: VAR nat
+  l1, l2, m1, m2: VAR list[mpoly]
+  cc: VAR mpoly
+  cs, cs2: VAR list[list[mpoly]]
+  sg, sg1, sg2: VAR SG
+  ys: VAR list[real]
+  c1, c2: VAR posreal
+
+  %% the next element and the divisor after it
+  snext2_sg(l1, (l2 | cons?(l2)), cc, e, sg): list[mpoly] = snorm_sg(sstep2(l1, l2, cc, e, sg), sg)
+  snext2_rd(l1, (l2 | cons?(l2)), cc, e, sg): list[mpoly] =
+    append(sstep2_rd(l1, l2, cc, e, sg), snorm_rd(sstep2(l1, l2, cc, e, sg), sg))
+  nexp(l1, l2): nat = IF dg(l1) >= dg(l2) THEN dg(l1) - dg(l2) + 1 ELSE 0 ENDIF
+
+  %% the remainder chain
+  rchain2_sg(k, l1, l2, cc, e, sg): RECURSIVE list[list[mpoly]] =
+    IF cons?(l2) AND k > 0
+    THEN cons(l2, rchain2_sg(k - 1, l2, snext2_sg(l1, l2, cc, e, sg), llast(l2), nexp(l1, l2), sg))
+    ELSE (: null[mpoly] :)
+    ENDIF
+  MEASURE k
+  rchain2_rd(k, l1, l2, cc, e, sg): RECURSIVE list[mpoly] =
+    IF cons?(l2) AND k > 0
+    THEN append(snext2_rd(l1, l2, cc, e, sg),
+                rchain2_rd(k - 1, l2, snext2_sg(l1, l2, cc, e, sg), llast(l2), nexp(l1, l2), sg))
+    ELSE null[mpoly]
+    ENDIF
+  MEASURE k
+
+  %% chains proportional element by element
+  chprop(cs, cs2, ys): bool = length(cs) = length(cs2) AND
+    FORALL i: i < length(cs) IMPLIES EXISTS (c: posreal): prop(nth(cs, i), nth(cs2, i), c, ys)
+  chprop_cons: LEMMA prop(l1, m1, c1, ys) AND chprop(cs, cs2, ys) IMPLIES
+    chprop(cons(l1, cs), cons(m1, cs2), ys)
+  snext2_prop: LEMMA cons?(l2) AND blc(l2, ys) /= 0 AND prop(l1, m1, c1, ys) AND prop(l2, m2, c2, ys) IMPLIES
+    EXISTS (c: posreal): prop(snext2_sg(l1, l2, cc, e, msg(ys)), snext(m1, m2, ys), c, ys)
+  rchain2_prop: LEMMA FORALL k: FORALL l1, l2, m1, m2, cc, e, c1, c2:
+    prop(l1, m1, c1, ys) AND prop(l2, m2, c2, ys) AND (cons?(l2) IMPLIES blc(l2, ys) /= 0) IMPLIES
+    chprop(rchain2_sg(k, l1, l2, cc, e, msg(ys)), rchain(k, m1, m2, ys), ys)
+  rchain2_det: LEMMA FORALL k: FORALL l1, l2, cc, e: agree(sg1, sg2, rchain2_rd(k, l1, l2, cc, e, sg1)) IMPLIES
+    rchain2_sg(k, l1, l2, cc, e, sg2) = rchain2_sg(k, l1, l2, cc, e, sg1) AND
+    rchain2_rd(k, l1, l2, cc, e, sg2) = rchain2_rd(k, l1, l2, cc, e, sg1)
+END sg_chain2

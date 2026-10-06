@@ -1,0 +1,45 @@
+subres2: THEORY
+%----------------------------------------------------------------------------
+% The full subresultant polynomial, not just its leading coefficient.
+%
+% subres builds psc(f, g, j), the PRINCIPAL subresultant coefficient, as the
+% determinant of a matrix whose last column carries degree j.  Root counting
+% by Sturm needs the whole subresultant Sres_j: it counts sign changes of
+% CHAIN ENTRIES, and an entry is a polynomial, whose sign at -infinity and
+% +infinity is its leading coefficient's sign times (-1)^degree.
+%
+% Sres_j is the same determinant with the last column ranging over degrees
+% 0..j, so one generalized matrix sresm2 covers both (sresm(f,g,j) is
+% sresm2(f,g,j,j)); sresc(f, g, j, k) is the coefficient of x^k in Sres_j,
+% and evaluation commutes with it (sresc_eval).
+%
+% NASALib's Sturm uses compute_remainder_seq, a pseudo-remainder sequence over
+% integer coefficient arrays, NOT the subresultant chain.  Relating the two is
+% the classical subresultant/PRS correspondence, not proved here; in the
+% NON-DEFECTIVE case (each step drops degree by exactly one) the two coincide
+% up to explicitly known factors.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING subres
+
+  f, g: VAR list[mpoly]
+  ys: VAR list[real]
+
+  %% the j-th subresultant matrix with its last column at degree k
+  sresm2(f, g, (j: nat), (k: nat)): MMat =
+    LAMBDA (a, b: nat):
+      LET p = dg(f), q = dg(g),
+          side = p + q - 2 * j,
+          d = IF j = 0 OR b < side - 1 THEN p + q - j - 1 - b ELSE k ENDIF
+      IN IF a < q - j THEN coef_at(f, d - (q - j - 1 - a))
+         ELSE coef_at(g, d - (p - j - 1 - (a - (q - j))))
+         ENDIF
+
+  %% its determinant: the coefficient of x^k in Sres_j
+  sresc(f, g, (j: nat | 2 * j <= dg(f) + dg(g)), (k: nat)): mpoly =
+    det(dg(f) + dg(g) - 2 * j, sresm2(f, g, j, k))
+
+  %% and evaluation commutes, as for psc
+  sresc_eval: LEMMA FORALL (j: nat), (k: nat): 2 * j <= dg(f) + dg(g) IMPLIES
+    meval(sresc(f, g, j, k))(ys) = rdet(dg(f) + dg(g) - 2 * j, ev(sresm2(f, g, j, k), ys))
+END subres2

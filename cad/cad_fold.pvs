@@ -1,0 +1,58 @@
+cad_fold: THEORY
+%----------------------------------------------------------------------------
+% Deciding sentences from a CAD given by its records.
+% Executable.
+%
+% A sentence over F with quantifiers qs (outermost first) and a Boolean
+% combination Psi of sign conditions is folded over the records: the outer
+% quantifier over the sectors, each inner one over the stack indices of the
+% next level, and Psi read on the recorded sign vector at the leaf.  dnr(a, L)
+% is the part of L in the cell of next index a, one level down; secr(s, L)
+% the part in sector s.  A CAD computed once (col_found's records) decides
+% every such sentence with the same variables and polynomials (cad_fold_ok,
+% col_found_ok).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_out
+
+  L: VAR list[ORec]
+  r: VAR ORec
+  a: VAR nat
+  s: VAR Sect
+  qs: VAR list[bool]
+  Psi: VAR [SV -> bool]
+
+  ix0(A: list[nat]): nat = IF null?(A) THEN 0 ELSE car(A) ENDIF
+
+  %% the records of the cell with next index a, their addresses shortened
+  dnr(a, L): RECURSIVE list[ORec] =
+    IF null?(L) THEN null[ORec]
+    ELSIF cons?(car(L)`radr) AND car(car(L)`radr) = a
+      THEN cons(car(L) WITH [radr := cdr(car(L)`radr)], dnr(a, cdr(L)))
+    ELSE dnr(a, cdr(L))
+    ENDIF
+  MEASURE length(L)
+
+  %% the records of sector s
+  secr(s, L): RECURSIVE list[ORec] =
+    IF null?(L) THEN null[ORec]
+    ELSIF car(L)`rsec = s THEN cons(car(L), secr(s, cdr(L)))
+    ELSE secr(s, cdr(L))
+    ENDIF
+  MEASURE length(L)
+
+  %% the inner quantifiers over the stack indices; Psi at the leaf
+  afold(qs, Psi, L): RECURSIVE bool =
+    IF null?(qs) THEN cons?(L) AND Psi(car(L)`rsv)
+    ELSIF car(qs) THEN every(LAMBDA r: afold(cdr(qs), Psi, dnr(ix0(r`radr), L)))(L)
+    ELSE some(LAMBDA r: afold(cdr(qs), Psi, dnr(ix0(r`radr), L)))(L)
+    ENDIF
+  MEASURE length(qs)
+
+  %% the outer quantifier over the sectors
+  cfold(qs, Psi, L): bool =
+    IF null?(qs) THEN FALSE
+    ELSIF car(qs) THEN every(LAMBDA r: afold(cdr(qs), Psi, secr(r`rsec, L)))(L)
+    ELSE some(LAMBDA r: afold(cdr(qs), Psi, secr(r`rsec, L)))(L)
+    ENDIF
+END cad_fold

@@ -1,0 +1,61 @@
+qe_thom: THEORY
+%----------------------------------------------------------------------------
+% On one fiber, a derivative-closed family separates the stack cells.
+%
+% dcl?(G): G contains the formal derivative lderiv(g) of each of its members
+% g with a main variable, so also every lder(g, j), j < length(g).  Over a
+% base point p the fiber polynomial of g is earr(g, p) at its actual degree
+% n (fiber_deg); its j-th derivative is the fiber polynomial of lder(g, j)
+% (earr_lder, from earr_deriv), and truncating at n - j changes nothing
+% (eval_deg, from NASALib's extend_polynomial).  If y1 <= y2 have the same
+% sign vector on G, then g, g', ..., g^(n) have the same signs at y1 and y2,
+% so by Thom's lemma (thom_lemma's sat_convex) g keeps its sign on
+% [y1, y2] (fiber_const).  A root r of G in [y1, y2] (rootat?: a root of a
+% member not identically zero on the fiber) would make that sign 0 and g
+% vanish on an interval (poly_not_zero_interval), so there is none
+% (fiber_noroot), and y1, y2 have the same stack index (fiber_sidx).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING thom_lemma, cad_stkc
+
+  G: VAR list[list[mpoly]]
+  g, h: VAR list[mpoly]
+  p, x1, x2: VAR list[real]
+  y, y1, y2, r, z: VAR real
+  i, j, n: VAR nat
+  a: VAR [nat -> real]
+  L: VAR list[real]
+
+  dcl?(G): bool = FORALL g: member(g, G) AND length(g) >= 2 IMPLIES member(lderiv(g), G)
+
+  lder(g, j): RECURSIVE list[mpoly] = IF j = 0 THEN g ELSE lderiv(lder(g, j - 1)) ENDIF
+  MEASURE j
+
+  %% ---- the members lder(g, j) --------------------------------------------------------------
+  lder_len: LEMMA FORALL j: j <= length(g) IMPLIES length(lder(g, j)) = length(g) - j
+  lder_mem: LEMMA FORALL j: dcl?(G) AND member(g, G) AND j < length(g) IMPLIES member(lder(g, j), G)
+  earr_lder: LEMMA FORALL j: earr(lder(g, j), p) = dk(earr(g, p), j)
+
+  %% ---- the fiber polynomial at its actual degree ---------------------------------------------
+  dk_above: LEMMA FORALL j: (FORALL i: i > n IMPLIES a(i) = 0) IMPLIES
+    (FORALL i: i + j > n IMPLIES dk(a, j)(i) = 0)
+  eval_deg: LEMMA j <= n AND n < length(g) AND (FORALL i: i > n IMPLIES earr(g, p)(i) = 0) IMPLIES
+    meval(mpol(lder(g, j)))(cons(y, p)) = polynomial(dk(earr(g, p), j), n - j)(y)
+  fiber_deg: LEMMA (EXISTS z: meval(mpol(g))(cons(z, p)) /= 0) IMPLIES
+    EXISTS n: n < length(g) AND earr(g, p)(n) /= 0 AND (FORALL i: i > n IMPLIES earr(g, p)(i) = 0)
+
+  %% ---- one fiber ------------------------------------------------------------------------------
+  svec_mem_eq: LEMMA FORALL G: svec(G, x1) = svec(G, x2) AND member(h, G) IMPLIES
+    sign3(meval(mpol(h))(x1)) = sign3(meval(mpol(h))(x2))
+  fiber_const: LEMMA dcl?(G) AND member(g, G) AND (EXISTS z: meval(mpol(g))(cons(z, p)) /= 0)
+    AND svec(G, cons(y1, p)) = svec(G, cons(y2, p)) AND y1 <= y AND y <= y2
+    IMPLIES sign3(meval(mpol(g))(cons(y, p))) = sign3(meval(mpol(g))(cons(y1, p)))
+  fiber_noroot: LEMMA dcl?(G) AND svec(G, cons(y1, p)) = svec(G, cons(y2, p)) AND y1 < y2
+    AND y1 <= r AND r <= y2 IMPLIES NOT rootat?(G, p)(r)
+  nlt_same: LEMMA FORALL L: (FORALL r: member(r, L) IMPLIES NOT (y1 <= r AND r < y2)) AND y1 <= y2
+    IMPLIES nlt(L, y1) = nlt(L, y2)
+  fiber_sidx_lt: LEMMA dcl?(G) AND rl?(G, p)(rtl(G, p)) AND svec(G, cons(y1, p)) = svec(G, cons(y2, p))
+    AND y1 < y2 IMPLIES sidx(G, p, y1) = sidx(G, p, y2)
+  fiber_sidx: LEMMA dcl?(G) AND rl?(G, p)(rtl(G, p)) AND svec(G, cons(y1, p)) = svec(G, cons(y2, p))
+    IMPLIES sidx(G, p, y1) = sidx(G, p, y2)
+END qe_thom

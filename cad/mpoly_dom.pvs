@@ -1,0 +1,68 @@
+mpoly_dom: THEORY
+%----------------------------------------------------------------------------
+% No zero divisors among polynomials: when p is not the zero
+% function and p * q is, q is (cancel).  bareiss needs it to cancel a pivot,
+% a polynomial that is not zero but may vanish at some points.
+%
+% One variable: the top coefficient of a product is the product of the top
+% coefficients (prod_top_mpoly_dom), so a product of nonzero univariate polynomials is
+% not the zero function (poly_nodiv, through NASALib's polynomials).  Several
+% variables, by induction on msize(p) + msize(q): a coefficient c of p (in the
+% head variable) that is not the zero function makes every coefficient of q
+% vanish wherever c does not (mpoly_coefs' bridge and poly_nodiv), so c times
+% that coefficient is the zero function, and the induction gives that the
+% coefficient is; then so is q (zfun_mpol).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_unique
+
+  p, q: VAR mpoly
+  l, l1, l2: VAR list[mpoly]
+  xs, ys: VAR list[real]
+  a, b: VAR sequence[real]
+  n, m, i, j, k: VAR nat
+  x: VAR real
+
+  %% the zero function
+  zfun?(p): bool = FORALL xs: meval(p)(xs) = 0
+
+  zfun_eq: LEMMA zfun?(p) IFF eq_fun?(p, zero)
+  zfun_mnorm: LEMMA zfun?(p) IFF mnorm(p) = zero
+
+  %% one variable
+  prod_top_mpoly_dom: LEMMA polynomial_prod(a, n, b, m)(n + m) = a(n) * b(m)
+
+  %% the highest index up to n with a nonzero coefficient
+  top_index: LEMMA i <= n AND a(i) /= 0 IMPLIES
+    EXISTS k: k <= n AND a(k) /= 0 AND (FORALL j: k < j AND j <= n IMPLIES a(j) = 0)
+
+  poly_nodiv: LEMMA (FORALL x: polynomial(a, n)(x) * polynomial(b, m)(x) = 0) AND
+      i <= n AND a(i) /= 0 AND j <= m IMPLIES b(j) = 0
+
+  %% the empty valuation reads every variable as 0
+  meval_nil: LEMMA meval(p)(null) = meval(p)(cons(0, null))
+
+  %% a polynomial in the head variable is the zero function exactly when every
+  %% coefficient is
+  zfun_mpol: LEMMA zfun?(mpol(l)) IFF (FORALL i: i < length(l) IMPLIES zfun?(nth(l, i)))
+
+  %% p * q the zero function: so is the product of any coefficient of p and any
+  %% coefficient of q (poly_nodiv at every valuation of the other variables)
+  coef_pair: LEMMA i < length(l1) AND j < length(l2) AND zfun?(mmul(mpol(l1), mpol(l2)))
+    IMPLIES zfun?(mmul(nth(l1, i), nth(l2, j)))
+
+  %% the induction step for two polynomials in the head variable
+  cancel_step: LEMMA
+    (FORALL p, q: msize(p) + msize(q) < msize(mpol(l1)) + msize(mpol(l2)) AND
+       NOT zfun?(p) AND zfun?(mmul(p, q)) IMPLIES zfun?(q)) AND
+    NOT zfun?(mpol(l1)) AND zfun?(mmul(mpol(l1), mpol(l2)))
+    IMPLIES zfun?(mpol(l2))
+
+  %% the induction on msize(p) + msize(q)
+  cancel_n: LEMMA FORALL n: FORALL p, q:
+    msize(p) + msize(q) <= n AND NOT zfun?(p) AND zfun?(mmul(p, q)) IMPLIES zfun?(q)
+
+  cancel: THEOREM NOT zfun?(p) AND zfun?(mmul(p, q)) IMPLIES zfun?(q)
+
+  cancel_pow: COROLLARY NOT zfun?(p) AND zfun?(mmul(mpow(p, n), q)) IMPLIES zfun?(q)
+END mpoly_dom

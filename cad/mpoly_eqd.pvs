@@ -1,0 +1,59 @@
+mpoly_eqd: THEORY
+%----------------------------------------------------------------------------
+% Decidable equality of polynomials and coefficient lists, for execution.
+%
+% The ground evaluator compares values of a non-primitive type by a generic
+% Lisp equality that fails on two lists of different lengths when the
+% shorter comes first ("Equality unknown between types NULL and CONS"), so
+% the executable procedures never write l1 = l2 on lists of
+% polynomials. meq and leq decide the equality by structural recursion
+% (meq_eq, leq_eq).  memb, memb1 and dedup1 decide membership and remove
+% duplicates with them (memb1_member, dedup1_member).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sign_vec
+
+  p, q: VAR mpoly
+  l, l2: VAR list[mpoly]
+
+  meq(p, q): RECURSIVE bool =
+    CASES p OF
+      mconst(a): mconst?(q) AND a = mc(q),
+      mpol(u): mpol?(q) AND
+               (IF null?(u) THEN null?(coeffs(q))
+                ELSE cons?(coeffs(q)) AND meq(car(u), car(coeffs(q))) AND
+                     meq(mpol(cdr(u)), mpol(cdr(coeffs(q))))
+                ENDIF)
+    ENDCASES
+  MEASURE msize(p)
+  meq_eq: LEMMA FORALL p: FORALL q: meq(p, q) IFF p = q
+
+  leq(l, l2): RECURSIVE bool =
+    IF null?(l) THEN null?(l2)
+    ELSE cons?(l2) AND meq(car(l), car(l2)) AND leq(cdr(l), cdr(l2))
+    ENDIF
+  MEASURE length(l)
+
+  P: VAR list[list[mpoly]]
+  pz: VAR mpoly
+  Rz: VAR list[mpoly]
+  %% membership with the equality at the concrete type (the ground evaluator
+  %% cannot compare lists of different lengths through the generic member)
+  memb(l, P): RECURSIVE bool =
+    IF null?(P) THEN FALSE ELSIF leq(car(P), l) THEN TRUE ELSE memb(l, cdr(P)) ENDIF
+  MEASURE length(P)
+
+  memb1(pz, Rz): RECURSIVE bool =
+    IF null?(Rz) THEN FALSE ELSIF meq(car(Rz), pz) THEN TRUE ELSE memb1(pz, cdr(Rz)) ENDIF
+  MEASURE length(Rz)
+  memb1_member: LEMMA FORALL Rz: memb1(pz, Rz) IFF member(pz, Rz)
+  dedup1(Rz): RECURSIVE list[mpoly] =
+    IF null?(Rz) THEN null[mpoly]
+    ELSIF memb1(car(Rz), cdr(Rz)) THEN dedup1(cdr(Rz))
+    ELSE cons(car(Rz), dedup1(cdr(Rz)))
+    ENDIF
+  MEASURE length(Rz)
+  dedup1_member: LEMMA FORALL Rz: member(pz, dedup1(Rz)) IFF member(pz, Rz)
+
+  leq_eq: LEMMA FORALL l: FORALL l2: leq(l, l2) IFF l = l2
+END mpoly_eqd

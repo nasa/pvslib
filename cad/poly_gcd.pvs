@@ -1,0 +1,50 @@
+poly_gcd: THEORY
+%----------------------------------------------------------------------------
+% The common roots of two rational polynomials are the roots of their gcd,
+% for a fast exact test "does q vanish at an algebraic
+% number" (alg_zero's zero_at).
+%
+% pmod reduces a modulo b by steps a - (lc a / lc b) x^(deg a - deg b) b;
+% each step keeps the value of a at every root of b (pmod_root), whether or
+% not the fuel lets it finish.  pgcd runs Euclid's algorithm on monic
+% remainders; when it ends (ok) with (g, 0), a point is a common root of a
+% and b exactly when it is a root of g (pgcd_root).  Only this is used, so
+% no termination or degree argument is needed: the fuel is a bound and a
+% run out of fuel says so.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_def
+
+  a, b, pl: VAR Polylist
+  x: VAR real
+  fuel: VAR nat
+
+  %% the zero polynomial, and the leading coefficient of a nonzero one
+  zp?(pl): bool = deg(pl) = 0 AND nth(pl, 0) = 0
+  lcf(pl | NOT zp?(pl)): nzrat = nth(pl, deg(pl))
+  pdeg0: LEMMA deg(pl) = 0 IMPLIES polylist(pl)(x) = nth(pl, 0)
+  zp_eval: LEMMA zp?(pl) IMPLIES polylist(pl)(x) = 0
+
+  %% a made monic (no root changes)
+  pmonic(pl): Polylist = IF zp?(pl) THEN pl ELSE pdiv(pl, lcf(pl)) ENDIF
+  pmonic_root: LEMMA polylist(pmonic(pl))(x) = 0 IFF polylist(pl)(x) = 0
+
+  %% a modulo b
+  pmod(fuel, a, (b | NOT zp?(b))): RECURSIVE Polylist =
+    IF fuel = 0 OR zp?(a) OR deg(a) < deg(b) THEN a
+    ELSE pmod(fuel - 1, pminus(a, pprod(pmonom(lcf(a) / lcf(b), deg(a) - deg(b)), b)), b)
+    ENDIF
+  MEASURE fuel
+  pmod_root: LEMMA FORALL fuel: FORALL a: NOT zp?(b) AND polylist(b)(x) = 0 IMPLIES
+    polylist(pmod(fuel, a, b))(x) = polylist(a)(x)
+
+  %% Euclid
+  pgcd(fuel, a, b): RECURSIVE [# ok: bool, g: Polylist #] =
+    IF zp?(b) THEN (# ok := TRUE, g := a #)
+    ELSIF fuel = 0 THEN (# ok := FALSE, g := a #)
+    ELSE pgcd(fuel - 1, b, pmonic(pmod(deg(a) + 1, a, b)))
+    ENDIF
+  MEASURE fuel
+  pgcd_root: LEMMA FORALL fuel: FORALL a, b: pgcd(fuel, a, b)`ok IMPLIES
+    ((polylist(a)(x) = 0 AND polylist(b)(x) = 0) IFF polylist(pgcd(fuel, a, b)`g)(x) = 0)
+END poly_gcd

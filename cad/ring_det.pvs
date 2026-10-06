@@ -1,0 +1,67 @@
+ring_det: THEORY
+%----------------------------------------------------------------------------
+% The determinant of a matrix of polynomials.
+%
+% A matrix is a function of two indices into mpoly; only the entries below
+% the size matter.  det is the Laplace expansion along the first row, a
+% structural recursion on the size that the ground evaluator runs, and
+% rdet is the same recursion over the reals.  det_eval says evaluating the
+% determinant at a valuation of the parameters is the real determinant of
+% the evaluated matrix, since meval is a ring homomorphism; this is what
+% makes every determinant built later --- resultants, subresultants ---
+% specialize.  NASALib's matrices@matrix_det defines its determinant through
+% elementary matrices and proves nothing about expansions or kernels, so the
+% theory here is self-contained.
+% [Corrected 2026-09-29: that is wrong.  NASALib's det (matrix_props) is a
+% first-row Laplace expansion, with row multilinearity, det_mult,
+% det_transpose and invertible_det proved; there is no adjugate or kernel.
+% The theory here is self-contained by choice, not by necessity.]
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_arith
+
+  MMat: TYPE = [nat, nat -> mpoly]
+  RMat: TYPE = [nat, nat -> real]
+  M: VAR MMat
+  R: VAR RMat
+  n, i, j, a, b: VAR nat
+  ys: VAR list[real]
+  p: VAR mpoly
+
+  %% the matrix with row i and column j removed
+  minor(M, i, j): MMat =
+    LAMBDA (a, b: nat): M(IF a < i THEN a ELSE a + 1 ENDIF, IF b < j THEN b ELSE b + 1 ENDIF)
+  rminor(R, i, j): RMat =
+    LAMBDA (a, b: nat): R(IF a < i THEN a ELSE a + 1 ENDIF, IF b < j THEN b ELSE b + 1 ENDIF)
+
+  %% the sign of a position in the expansion
+  msgn(j): mpoly = IF even?(j) THEN mconst(1) ELSE mconst(-1) ENDIF
+  rsgn(j): real = IF even?(j) THEN 1 ELSE -1 ENDIF
+
+  %% the expansion along the first row from column j on, one recursion: the
+  %% determinant of an n-matrix is its expansion from column 0
+  detl(n, M, j): RECURSIVE mpoly =
+    IF n = 0 THEN mconst(1)
+    ELSIF j >= n THEN mconst(0)
+    ELSE madd(mmul(mmul(msgn(j), M(0, j)), detl(n - 1, minor(M, 0, j), 0)), detl(n, M, j + 1))
+    ENDIF
+  MEASURE lex2(n, IF j <= n THEN n - j ELSE 0 ENDIF)
+  det(n, M): mpoly = detl(n, M, 0)
+
+  rdetl(n, R, j): RECURSIVE real =
+    IF n = 0 THEN 1
+    ELSIF j >= n THEN 0
+    ELSE rsgn(j) * R(0, j) * rdetl(n - 1, rminor(R, 0, j), 0) + rdetl(n, R, j + 1)
+    ENDIF
+  MEASURE lex2(n, IF j <= n THEN n - j ELSE 0 ENDIF)
+  rdet(n, R): real = rdetl(n, R, 0)
+
+  %% the evaluated matrix
+  ev(M, ys): RMat = LAMBDA (a, b: nat): meval(M(a, b))(ys)
+  ev_minor: LEMMA ev(minor(M, i, j), ys) = rminor(ev(M, ys), i, j)
+  meval_msgn: LEMMA meval(msgn(j))(ys) = rsgn(j)
+
+  detl_eval: LEMMA FORALL (n, j: nat, M: MMat, ys: list[real]):
+    meval(detl(n, M, j))(ys) = rdetl(n, ev(M, ys), j)
+  det_eval: THEOREM meval(det(n, M))(ys) = rdet(n, ev(M, ys))
+END ring_det

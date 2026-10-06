@@ -1,0 +1,106 @@
+sep_exist: THEORY
+%----------------------------------------------------------------------------
+% Separators exist at EVERY point.
+%
+% The decision finds separators at a sector's sample by search, and checks
+% them.  The transfer theorem needs them at every other point of the sector
+% too, where nothing is computed: there they are shown to EXIST.
+%
+% Given a polynomial f in the main variable whose leading coefficient is
+% nonzero at ys, and a finite list cs of polynomials to AVOID (each null, or
+% with nonzero leading coefficient at ys), there is an increasing list of
+% rationals Y such that
+%
+%   - no polynomial of cs vanishes at any separator            (av?)
+%   - every gap holds at most one root of f                    (cnt <= 1)
+%   - no root of f lies below the first or above the last      (left, right)
+%
+% No root bound and no enumeration of roots is used.  The outer separators
+% come from induction on the unbounded counts (left_step, right_step: moving
+% past a root lowers the count), the inner ones from induction on the bounded
+% count (cnt_two: a count of two gives two roots, a rational strictly between
+% them splits the count into two smaller positive ones).  The rationals are
+% found by density inside an interval on which the polynomials to avoid have
+% no root, which exists because a polynomial with a nonzero coefficient is
+% not constant on an interval and is continuous.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sturm_sg2, walk_rd
+
+  ys: VAR list[real]
+  f, e: VAR list[mpoly]
+  cs: VAR list[list[mpoly]]
+  k, n: VAR nat
+  a, b, z: VAR real
+  y0, y1, lo, hi: VAR rat
+  Y, Y2: VAR list[rat]
+
+  lcok?(cs, ys): bool = FORALL e: member(e, cs) AND cons?(e) IMPLIES meval(llast(e))(ys) /= 0
+  av?(cs, ys, z): bool = FORALL e: member(e, cs) AND cons?(e) IMPLIES meval(mpol(e))(cons(z, ys)) /= 0
+
+  lcok_cons: LEMMA lcok?(cons(e, cs), ys) IFF
+    ((cons?(e) IMPLIES meval(llast(e))(ys) /= 0) AND lcok?(cs, ys))
+  av_cons: LEMMA av?(cons(e, cs), ys, z) IFF
+    ((cons?(e) IMPLIES meval(mpol(e))(cons(z, ys)) /= 0) AND av?(cs, ys, z))
+  av_mem: LEMMA av?(cs, ys, z) AND member(e, cs) AND cons?(e)
+    IMPLIES meval(mpol(e))(cons(z, ys)) /= 0
+
+  %% ---- a rational that avoids finitely many polynomials ---------------------
+  nonroot: LEMMA cons?(e) AND meval(llast(e))(ys) /= 0 AND a < b IMPLIES
+    EXISTS (c: real): a < c AND c < b AND meval(mpol(e))(cons(c, ys)) /= 0
+
+  %% a continuous function nonzero at x0 keeps its sign near x0
+  fr: VAR [real -> real]
+  x0: VAR real
+  cont_sign: LEMMA continuous?(fr) AND fr(x0) /= 0 IMPLIES
+    EXISTS (d: posreal): FORALL z: abs(z - x0) < d IMPLIES sign3(fr(z)) = sign3(fr(x0))
+
+  nz_interval: LEMMA cons?(e) AND meval(llast(e))(ys) /= 0 AND a < b IMPLIES
+    EXISTS (a1, b1: real): a <= a1 AND a1 < b1 AND b1 <= b AND
+      FORALL z: a1 < z AND z < b1 IMPLIES meval(mpol(e))(cons(z, ys)) /= 0
+
+  avoid_int: LEMMA FORALL cs: lcok?(cs, ys) IMPLIES FORALL a, b: a < b IMPLIES
+    EXISTS (a1, b1: real): a <= a1 AND a1 < b1 AND b1 <= b AND
+      FORALL z: a1 < z AND z < b1 IMPLIES av?(cs, ys, z)
+
+  avoid: THEOREM lcok?(cs, ys) AND a < b IMPLIES
+    EXISTS (m: rat): a < m AND m < b AND av?(cs, ys, m)
+
+  %% ---- the separators ----------------------------------------------------------
+  sok?(k, ys, f, cs, Y): RECURSIVE bool =
+    IF null?(Y) THEN TRUE
+    ELSIF null?(cdr(Y)) THEN av?(cs, ys, car(Y))
+    ELSE car(Y) < car(cdr(Y)) AND av?(cs, ys, car(Y))
+         AND cnt(k, msg(ys), f, car(Y), car(cdr(Y))) <= 1
+         AND sok?(k, ys, f, cs, cdr(Y))
+    ENDIF
+  MEASURE length(Y)
+
+  sok_av: LEMMA cons?(Y) AND sok?(k, ys, f, cs, Y) IMPLIES av?(cs, ys, car(Y))
+
+  %% a gap that already holds at most one root needs no inner separator
+  fill0: LEMMA lo < hi AND av?(cs, ys, lo) AND cons?(Y2) AND car(Y2) = hi
+    AND sok?(k, ys, f, cs, Y2) AND cnt(k, msg(ys), f, lo, hi) <= 1
+    IMPLIES EXISTS Y: cons?(Y) AND car(Y) = lo AND sok?(k, ys, f, cs, Y)
+      AND rlast(Y) = rlast(Y2)
+
+  %% inner separators, by induction on the bounded count
+  fill: LEMMA slc?(k, msg(ys), f) AND lcok?(cs, ys) AND member(f, cs) IMPLIES
+    FORALL n: FORALL lo, hi, Y2:
+      lo < hi AND av?(cs, ys, lo) AND cons?(Y2) AND car(Y2) = hi
+      AND sok?(k, ys, f, cs, Y2) AND cnt(k, msg(ys), f, lo, hi) <= n
+      IMPLIES EXISTS Y: cons?(Y) AND car(Y) = lo AND sok?(k, ys, f, cs, Y)
+        AND rlast(Y) = rlast(Y2)
+
+  %% outer separators, by induction on the unbounded counts
+  lo_exist: LEMMA slc?(k, msg(ys), f) AND lcok?(cs, ys) AND member(f, cs) IMPLIES
+    FORALL n: FORALL y0: av?(cs, ys, y0) AND left(k, msg(ys), f, y0) <= n
+      IMPLIES EXISTS lo: lo <= y0 AND av?(cs, ys, lo) AND left(k, msg(ys), f, lo) = 0
+  hi_exist: LEMMA slc?(k, msg(ys), f) AND lcok?(cs, ys) AND member(f, cs) IMPLIES
+    FORALL n: FORALL y1: av?(cs, ys, y1) AND right(k, msg(ys), f, y1) <= n
+      IMPLIES EXISTS hi: y1 <= hi AND av?(cs, ys, hi) AND right(k, msg(ys), f, hi) = 0
+
+  sep_exist: THEOREM slc?(k, msg(ys), f) AND lcok?(cs, ys) AND member(f, cs) IMPLIES
+    EXISTS Y: cons?(Y) AND sok?(k, ys, f, cs, Y)
+      AND left(k, msg(ys), f, car(Y)) = 0 AND right(k, msg(ys), f, rlast(Y)) = 0
+END sep_exist

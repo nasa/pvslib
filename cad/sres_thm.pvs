@@ -1,0 +1,88 @@
+sres_thm: THEORY
+%----------------------------------------------------------------------------
+% THE SUBRESULTANT THEOREM, in the form Collins' projection needs.
+%
+% For real coefficient arrays A (degree p, A(p) /= 0) and B (degree q,
+% B(q) /= 0), with F = rp(A, p) and G = rp(B, q) as complex polynomials:
+%
+%   sres_ccd   for k <= min(p, q):  F and G have a common divisor of degree k
+%              (ccd?)  iff  the principal subresultant coefficients psc_j,
+%              j < k, all vanish (rdet of sylj(A, p, B, q, j)).
+%
+% So the zero pattern of the psc determines the degree of the gcd.  The two
+% halves:
+%   sres_zero  a common divisor h of degree k > j gives the kernel vector
+%              (G/h, -F/h) of the j-th matrix (kvec), so its determinant is 0
+%   sres_nz    if h has degree k and there is none of degree k + 1, a kernel
+%              vector of the k-th matrix would give u F + v G of degree < k,
+%              hence u (F/h) = -v (G/h) with no common root of the cofactors,
+%              so G/h | u (ccoprime) while deg u < deg G/h: u = v = 0
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sres_rows
+
+  A, B: VAR [nat -> real]
+  p, q, j, k, a, i: VAR nat
+  gb, fb: VAR [nat -> complex]
+  z: VAR complex
+
+  %% a polynomial with real coefficients
+  rp_lead: LEMMA A(p) /= 0 IMPLIES clead?(rp(A, p), p, real_(A(p)))
+
+  %% the kernel vector of a common divisor: the coefficients of G/h, then of -F/h
+  kvec(gb, fb, p, q, j, k)(a): complex =
+    IF a < q - j THEN pad(gb, msub(q, k))(q - j - 1 - a)
+    ELSIF a < p + q - 2 * j THEN -pad(fb, msub(p, k))(p - j - 1 - (a - (q - j)))
+    ELSE real_(0) ENDIF
+
+  kvec_up: LEMMA j < k AND k <= q IMPLIES
+    up(kvec(gb, fb, p, q, j, k), q, j)(z) = cpolynomial(gb, q - k)(z)
+  kvec_vp: LEMMA j < k AND k <= p AND k <= q IMPLIES
+    vp(kvec(gb, fb, p, q, j, k), p, q, j)(z) = -cpolynomial(fb, p - k)(z)
+  kvec_lead: LEMMA j < k AND k <= q IMPLIES kvec(gb, fb, p, q, j, k)(k - j - 1) = gb(q - k)
+
+  %% ---- the polynomials of a kernel vector ------------------------------------------------------
+  c: VAR [nat -> complex]
+  e: VAR [nat -> complex]
+  n: VAR nat
+  up_cpol: LEMMA cpol?(up(c, q, j), msub(q, j))
+  vp_cpol: LEMMA cpol?(vp(c, p, q, j), msub(p, j))
+  up_low: LEMMA j < q IMPLIES cpol?(up(c, q, j), q - j - 1)
+  up_top: LEMMA cz?(up(c, q, q))
+  up_zero: LEMMA j <= q AND cz?(up(c, q, j)) IMPLIES FORALL a: a < q - j IMPLIES c(a) = real_(0)
+  vp_zero: LEMMA j <= p AND j <= q AND cz?(vp(c, p, q, j)) IMPLIES
+    FORALL a: q - j <= a AND a < p + q - 2 * j IMPLIES c(a) = real_(0)
+  low_cpol: LEMMA 0 < j AND j <= n + 1 IMPLIES
+    cpol?(LAMBDA z: cpolynomial(LAMBDA i: IF i < j THEN e(i) ELSE real_(0) ENDIF, n)(z), j - 1)
+  low_zero: LEMMA cz?(LAMBDA z: cpolynomial(LAMBDA i: IF i < 0 THEN e(i) ELSE real_(0) ENDIF, n)(z))
+
+  %% ---- the k-th matrix when the common divisor has degree exactly k --------------------------
+  r: VAR [nat -> complex]
+  f1, g1: VAR [complex -> complex]
+  ca, cb: VAR complex
+  %% the combination factors through the common divisor
+  nz_fact: LEMMA (FORALL z: rp(A, p)(z) = cprod(r, k)(z) * f1(z)) AND
+    (FORALL z: rp(B, q)(z) = cprod(r, k)(z) * g1(z)) IMPLIES
+    comb(c, A, p, B, q, k)(z) = cprod(r, k)(z) * cadd(cmul(up(c, q, k), f1), cmul(vp(c, p, q, k), g1))(z)
+  %% so for a kernel vector u f1 + v g1 = 0
+  nz_S0: LEMMA k <= p AND k <= q AND k < p + q AND ckernel?(p + q - 2 * k, c, sylj(A, p, B, q, k))
+    AND (FORALL z: rp(A, p)(z) = cprod(r, k)(z) * f1(z)) AND (FORALL z: rp(B, q)(z) = cprod(r, k)(z) * g1(z))
+    AND clead?(f1, p - k, ca) AND clead?(g1, q - k, cb)
+    IMPLIES cz?(cadd(cmul(up(c, q, k), f1), cmul(vp(c, p, q, k), g1)))
+  %% and with coprime cofactors u = v = 0
+  nz_uv: LEMMA k <= p AND k <= q AND clead?(f1, p - k, ca) AND clead?(g1, q - k, cb)
+    AND (FORALL z: g1(z) = real_(0) IMPLIES f1(z) /= real_(0))
+    AND cz?(cadd(cmul(up(c, q, k), f1), cmul(vp(c, p, q, k), g1)))
+    IMPLIES cz?(up(c, q, k)) AND cz?(vp(c, p, q, k))
+
+  sres_zero: THEOREM A(p) /= 0 AND B(q) /= 0 AND ccd?(rp(A, p), rp(B, q), k) AND j < k
+    IMPLIES rdet(p + q - 2 * j, sylj(A, p, B, q, j)) = 0
+
+  sres_nz: THEOREM A(p) /= 0 AND B(q) /= 0 AND ccd?(rp(A, p), rp(B, q), k)
+    AND NOT ccd?(rp(A, p), rp(B, q), k + 1)
+    IMPLIES rdet(p + q - 2 * k, sylj(A, p, B, q, k)) /= 0
+
+  sres_ccd: THEOREM A(p) /= 0 AND B(q) /= 0 AND k <= p AND k <= q IMPLIES
+    (ccd?(rp(A, p), rp(B, q), k) IFF
+     FORALL j: j < k IMPLIES rdet(p + q - 2 * j, sylj(A, p, B, q, j)) = 0)
+END sres_thm

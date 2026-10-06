@@ -1,0 +1,63 @@
+prem_arr: THEORY
+%----------------------------------------------------------------------------
+% The symbolic pseudo-remainder, seen as NASALib's remainder.
+%
+% mpoly_pdiv computes a pseudo-quotient and pseudo-remainder of two coefficient
+% lists over mpoly, satisfying  b^k L = Q G + R  with length(R) < length(G),
+% where b is the leading coefficient of G.  The fifth condition of
+% Sturm@sturm's constructed_sturm_sequence? is instead stated with the
+% remainder of NASALib's poly_divide, which divides by the leading
+% coefficient.  For each valuation ys of the parameters, this theory
+% identifies the two: the pseudo-remainder is exactly b^k times poly_divide's
+% remainder.  The proof is uniqueness of division for a scaled dividend
+% (poly_unique) applied to mpoly_pdiv's identity, read through the
+% evaluation homomorphism earr of mpoly_real.
+%
+% The divisor is required to have length at least two, that is, degree at
+% least one in the eliminated variable.  That is not a restriction for the
+% remainder sequence: the divisor of the last step is the last nonzero
+% element, whose degree is above that of the zero polynomial that closes the
+% sequence, so every divisor along the way has degree at least one.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_real
+
+  l, l1, l2: VAR list[mpoly]
+  ys: VAR list[real]
+  x, w: VAR real
+  i: VAR nat
+
+  %% a nonempty list, from its length
+  len_cons: LEMMA length(l) >= 1 IMPLIES cons?(l)
+
+  %% a degree bound that is always a nat
+  dg(l): nat = IF null?(l) THEN 0 ELSE length(l) - 1 ENDIF
+  earr_eval_dg: LEMMA polynomial(earr(l, ys), dg(l))(x) = meval(mpol(l))(cons(x, ys))
+
+  %% the leading coefficient of the divisor at ys, and the pseudo-division power
+  blc(l2, ys): real = meval(llast(l2))(ys)
+  bpow(l1, l2, ys): real = blc(l2, ys) ^ pk(l1, l2)
+  bpow_nz: LEMMA blc(l2, ys) /= 0 IMPLIES bpow(l1, l2, ys) /= 0
+
+  %% the pseudo-quotient and pseudo-remainder as coefficient lists
+  pquo(l1, (l2 | cons?(l2))): list[mpoly] = as_list(pquo_rem(l1, l2)`quo)
+  prem(l1, (l2 | cons?(l2))): list[mpoly] = pquo_rem(l1, l2)`rem
+  prem_short: LEMMA cons?(l2) IMPLIES length(prem(l1, l2)) < length(l2)
+
+  %% the divisor is nonzero at ys exactly when its leading coefficient is
+  earr_lead: LEMMA cons?(l2) IMPLIES earr(l2, ys)(length(l2) - 1) = blc(l2, ys)
+
+  %% mpoly_pdiv's identity, one valuation at a time, as real polynomials
+  prem_eval: LEMMA length(l2) >= 2 IMPLIES
+    bpow(l1, l2, ys) * polynomial(earr(l1, ys), dg(l1))(x) =
+      polynomial(earr(pquo(l1, l2), ys), dg(pquo(l1, l2)))(x)
+        * polynomial(earr(l2, ys), length(l2) - 1)(x)
+      + polynomial(earr(prem(l1, l2), ys), length(l2) - 2)(x)
+
+  %% the identification: the pseudo-remainder is b^k times NASALib's remainder
+  prem_arr: THEOREM length(l2) >= 2 AND blc(l2, ys) /= 0 IMPLIES
+    polynomial(earr(prem(l1, l2), ys), length(l2) - 2)(w) =
+      bpow(l1, l2, ys)
+        * polynomial(pr(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1),
+                     prd(earr(l1, ys), dg(l1), earr(l2, ys), length(l2) - 1))(w)
+END prem_arr

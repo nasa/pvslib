@@ -1,0 +1,58 @@
+qelim_def: THEORY
+%----------------------------------------------------------------------------
+% Quantifier elimination for every first-order formula over the reals
+% (rcf_fol's Fm, quantifiers anywhere, not only in front).  Executable.
+%
+% A quantifier-free formula M is encoded as the input of the prenex
+% procedures: its sign atoms, in order, as the family encF(M) (each polynomial
+% as its coefficient list, mpoly_def's as_list) and its Boolean structure as
+% encB(M, i), a BF over the atoms' indices from i on (ftrue as
+% bnot(batom(0, 2)): no polynomial has sign 2).  qelim(phi, m) removes the
+% quantifiers of phi from the inside out, for points with m coordinates:
+% under fex the body is first made quantifier-free (at m + 1); then the one
+% existential quantifier is eliminated by qe8 (the Collins run) with m free
+% variables, or, when there are none (m = 0, a sentence), decided by decide8
+% and replaced by ftrue or ffalse.  qelim_ok proves that the result is
+% quantifier-free and holds exactly where phi does, at every point with m
+% coordinates.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe8_def, cad_decide8_def
+
+  M, phi: VAR Fm
+  i, m: VAR nat
+
+  atomsF(M): RECURSIVE list[mpoly] =
+    CASES M OF
+      ftrue: null[mpoly],
+      fsg(p, t): (: p :),
+      fnot(b): atomsF(b),
+      fand(a, b): append(atomsF(a), atomsF(b)),
+      fex(b): atomsF(b)
+    ENDCASES
+  MEASURE M BY <<
+
+  encB(M, i): RECURSIVE BF =
+    CASES M OF
+      ftrue: bnot(batom(0, 2)),
+      fsg(p, t): batom(i, t),
+      fnot(b): bnot(encB(b, i)),
+      fand(a, b): band(encB(a, i), encB(b, i + length(atomsF(a)))),
+      fex(b): encB(b, i)
+    ENDCASES
+  MEASURE M BY <<
+
+  encF(M): list[list[mpoly]] = map(as_list)(atomsF(M))
+
+  qelim(phi, m): RECURSIVE Fm =
+    CASES phi OF
+      ftrue: ftrue,
+      fsg(p, t): fsg(p, t),
+      fnot(b): fnot(qelim(b, m)),
+      fand(a, b): fand(qelim(a, m), qelim(b, m)),
+      fex(b): LET Q = qelim(b, m + 1) IN
+              IF m = 0 THEN IF decide8((: FALSE :), encF(Q), encB(Q, 0))`val THEN ftrue ELSE ffalse ENDIF
+              ELSE qe8(m, (: FALSE :), encF(Q), encB(Q, 0))`out ENDIF
+    ENDCASES
+  MEASURE phi BY <<
+END qelim_def

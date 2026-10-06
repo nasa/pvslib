@@ -1,0 +1,88 @@
+col_eff: THEORY
+%----------------------------------------------------------------------------
+% The effective reductum of a member over a set where the projection is
+% sign-invariant.
+%
+% edeg(g, p) is the degree of g over the point p: the largest k with a
+% nonzero coefficient value earr(g, p)(k), or -1 when g vanishes identically
+% on the fibre (edeg_pos, edeg_neg, edeg_eq).  Under colh?(G, C) it is the
+% same at every point of C (col_edeg): the coefficients above it vanish at
+% one point, so none of them is nonzero everywhere, so the reducta down to it
+% are kept, so their leading coefficients have one sign on C.
+%
+% Over p, a member with edeg(g, p) = k >= 0 is the real polynomial with
+% coefficient array earr(rdc(g, k), p) of exact degree k (mev_rdc, mev_rp,
+% lead_rdc); one with edeg < 0 is identically zero (mev_zero).  The roots of
+% the family over p are the roots of its members of degree >= 0 (rootat_ed).
+% The psc of the projection evaluate to sres_rows' determinants of those
+% arrays (psc1_ev, psc2_ev; sresc_ev2 for the subresultant coefficients), so
+% on C their zero patterns are those at any one point (col_psc1, col_psc2).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_def, sres_eval, croot_lsc, cad_roots
+
+  g, f, h: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, q: VAR list[real]
+  i, i1, i2, j, k, k1, k2, m: VAR nat
+  y: VAR real
+
+  %% ---- reducta -------------------------------------------------------------------------------
+  rdc_nth: LEMMA FORALL g: FORALL k, i: k < length(g) AND i <= k IMPLIES nth(rdc(g, k), i) = nth(g, i)
+  earr_rdc: LEMMA k < length(g) IMPLIES earr(rdc(g, k), p)(i) = IF i <= k THEN earr(g, p)(i) ELSE 0 ENDIF
+
+  %% ---- the effective degree ------------------------------------------------------------------
+  ed(g, p, k): RECURSIVE int =
+    IF k = 0 THEN -1 ELSIF earr(g, p)(k - 1) /= 0 THEN k - 1 ELSE ed(g, p, k - 1) ENDIF
+  MEASURE k
+  edeg(g, p): int = ed(g, p, length(g))
+
+  ed_props: LEMMA FORALL k:
+       (ed(g, p, k) = -1 AND FORALL j: j < k IMPLIES earr(g, p)(j) = 0)
+    OR (0 <= ed(g, p, k) AND ed(g, p, k) < k AND earr(g, p)(ed(g, p, k)) /= 0
+        AND FORALL j: ed(g, p, k) < j AND j < k IMPLIES earr(g, p)(j) = 0)
+  edeg_neg: LEMMA edeg(g, p) < 0 IMPLIES edeg(g, p) = -1 AND FORALL j: earr(g, p)(j) = 0
+  edeg_pos: LEMMA edeg(g, p) = k IMPLIES
+    k < length(g) AND earr(g, p)(k) /= 0 AND FORALL j: k < j IMPLIES earr(g, p)(j) = 0
+  edeg_eq: LEMMA k < length(g) AND earr(g, p)(k) /= 0 AND (FORALL j: k < j IMPLIES earr(g, p)(j) = 0)
+    IMPLIES edeg(g, p) = k
+  edeg_eq_neg: LEMMA (FORALL j: earr(g, p)(j) = 0) IMPLIES edeg(g, p) = -1
+
+  %% ---- one effective degree on C ------------------------------------------------------------
+  sign3_zero_col_eff: LEMMA sign3(y) = 0 IFF y = 0
+  sign3_eq_zero: LEMMA FORALL (x: real): sign3(x) = sign3(y) IMPLIES (x = 0 IFF y = 0)
+  col_kept: LEMMA edeg(g, q) < k AND k < length(g) IMPLIES kept?(g, k)
+  col_kept_top: LEMMA edeg(g, q) = k IMPLIES kept?(g, k)
+  col_edeg: LEMMA colh?(G, C) AND i < length(G) AND C(p) AND C(q) IMPLIES
+    edeg(nth(G, i), p) = edeg(nth(G, i), q)
+
+  %% ---- the member over a point ---------------------------------------------------------------
+  lead_rdc: LEMMA edeg(g, p) = k IMPLIES earr(rdc(g, k), p)(k) /= 0
+  mev_rdc: LEMMA edeg(g, p) = k IMPLIES meval(mpol(g))(cons(y, p)) = polynomial(earr(rdc(g, k), p), k)(y)
+  mev_rp: LEMMA edeg(g, p) = k IMPLIES real_(meval(mpol(g))(cons(y, p))) = rp(earr(rdc(g, k), p), k)(real_(y))
+  mev_zero: LEMMA edeg(g, p) < 0 IMPLIES meval(mpol(g))(cons(y, p)) = 0
+  mev_nz: LEMMA edeg(g, p) = k IMPLIES EXISTS y: meval(mpol(g))(cons(y, p)) /= 0
+
+  rootat_ed: LEMMA rootat?(G, p)(y) IFF
+    EXISTS i: i < length(G) AND edeg(nth(G, i), p) >= 0 AND meval(mpol(nth(G, i)))(cons(y, p)) = 0
+
+  %% ---- the projection's psc over a point ------------------------------------------------------
+  psc1_ev: LEMMA k < length(g) AND j + 2 <= k IMPLIES
+    meval(psc(rdc(g, k), lderiv(rdc(g, k)), j))(p) =
+      rdet(k + (k - 1) - 2 * j, sylj(earr(rdc(g, k), p), k, poly_deriv(earr(rdc(g, k), p)), k - 1, j))
+  psc2_ev: LEMMA k1 < length(f) AND k2 < length(h) AND j < k1 AND j < k2 IMPLIES
+    meval(psc(rdc(f, k1), rdc(h, k2), j))(p) =
+      rdet(k1 + k2 - 2 * j, sylj(earr(rdc(f, k1), p), k1, earr(rdc(h, k2), p), k2, j))
+  sresc_ev2: LEMMA k1 < length(f) AND k2 < length(h) AND 0 < k AND 2 * k < k1 + k2 AND i <= k IMPLIES
+    meval(sresc(rdc(f, k1), rdc(h, k2), k, i))(p) =
+      sresv(earr(rdc(f, k1), p), k1, earr(rdc(h, k2), p), k2, k)(i)
+
+  %% ---- their zero patterns on C ---------------------------------------------------------------
+  col_psc1: LEMMA colh?(G, C) AND i < length(G) AND C(p) AND C(q) AND edeg(nth(G, i), q) = k AND 1 <= k
+    IMPLIES psc_same?(earr(rdc(nth(G, i), k), q), earr(rdc(nth(G, i), k), p), k)
+  col_psc2: LEMMA colh?(G, C) AND i1 < i2 AND i2 < length(G) AND C(p) AND C(q)
+    AND edeg(nth(G, i1), q) = k1 AND edeg(nth(G, i2), q) = k2 AND j < k1 AND j < k2 IMPLIES
+    (rdet(k1 + k2 - 2 * j, sylj(earr(rdc(nth(G, i1), k1), p), k1, earr(rdc(nth(G, i2), k2), p), k2, j)) = 0 IFF
+     rdet(k1 + k2 - 2 * j, sylj(earr(rdc(nth(G, i1), k1), q), k1, earr(rdc(nth(G, i2), k2), q), k2, j)) = 0)
+END col_eff

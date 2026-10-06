@@ -18,7 +18,7 @@ the final stable release for [PVS 7.1](http://pvs.csl.sri.com/).
 
 # Libraries
 
-Currently, NASALib consists of 62 top-level libraries, containing about 38K proven formulas in total.
+Currently, NASALib consists of 63 top-level libraries, containing about 41K proven formulas in total.
 
 | Library  | Description | 
 | --- | --- | 
@@ -29,6 +29,7 @@ Currently, NASALib consists of 62 top-level libraries, containing about 38K prov
 | [ASP](./ASP/README.md) | Denotational semantics of Answer Set Programming |
 | [aviation](./aviation/README.md) | Support definitions and properties for aviation-related formalizations |
 | [Bernstein](./Bernstein/README.md) | Formalization of multivariate Bernstein polynomials |
+| [cad](./cad/README.md) | Cylindrical algebraic decomposition, a decision procedure for the first-order theory of the reals, and quantifier elimination |
 | [CCG](./CCG/README.md) | Formalization of diverse termination criteria |
 | [complex](./complex/README.md) | Complex numbers |
 | [complex_ax](./complex_ax/README.md) | Axiomatic formalization of complex numbers |
@@ -97,6 +98,7 @@ NASALib provides several proof producing strategies and oracles.
 | --- | --- | --- | --- |
 |`affine`, `aa-numerical` | Evaluation of multivariate polynomials with variables on interval domains | `affine_arith@strategies` | [Affine](https://shemesh.larc.nasa.gov/fm/pvs/Affine/)|
 |`bernstein` | Multivariate polynomial global optimization using Bernstein polynomials | `Bernstein@strategies` | [Bernstein](https://shemesh.larc.nasa.gov/fm/pvs/Bernstein/)|
+|`cad`, `cad-qe` | Deciding first-order formulas over the reals in any number of variables, and eliminating their quantifiers, by cylindrical algebraic decomposition | `cad@pvs_cad` | [cad](./cad/README.md)|
 |`interval`, `numerical` | Reasoning about real-valued expression using interval arithmetic | `interval_arith@strategies` | [Interval](https://shemesh.larc.nasa.gov/fm/pvs/Interval/)|
 |`era_numerical` | Evaluation of real-valued expressions using exact real arithmetic | `exact_real_arith@strategies` | [examples](https://github.com/nasa/pvslib/blob/master/exact_real_arith/examples/era_examples.pvs) |
 |`riemann` | Numerical integration | `Riemann@strategies` | [examples](https://github.com/nasa/pvslib/blob/master/Riemann/examples/riemann_examples.pvs) |

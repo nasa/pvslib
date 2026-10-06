@@ -1,0 +1,153 @@
+sect_inv: THEORY
+%----------------------------------------------------------------------------
+% The sectors of a sorted root list.
+%
+% The sectors of a sorted root list rs are made explicit (Sect: below the
+% first root, at a root, between two consecutive roots, above the last root,
+% or the whole line when there is no root), each with its sample point (the
+% samples of cell1); sects_cover says every real point is in some sector.
+% clr and its variants refine an algebraic number's isolating interval until
+% the polynomial has no other root in it (clr_free, clrx_free).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cell1
+
+  ql: VAR Polylist
+  a, b: VAR Alg
+  x, z, r: VAR real
+  fuel, i: VAR nat
+  rs: VAR list[Alg]
+  lb, ub: VAR rat
+
+  %% root counting on a closed interval with the chain given
+  nroots_c(ql | deg(ql) > 0, (ch: (Eq_computed_remainder?(ipoly(ql), deg(ql))) | ch = chain(ql)),
+           lb, (ub | lb < ub)): nat =
+    rcf(ipoly(ql), deg(ql), lb, ub, ch)
+  nroots_c_def: LEMMA deg(ql) > 0 AND lb < ub IMPLIES nroots_c(ql, chain(ql), lb, ub) = nroots(ql, lb, ub)
+
+  %% clearing an end root: refine its isolating interval until the
+  %% polynomial has no root there, or its only root there is the end root
+  clr(fuel, a, (ql | deg(ql) > 0), (ch: (Eq_computed_remainder?(ipoly(ql), deg(ql))) | ch = chain(ql))):
+    RECURSIVE [# ok: bool, a: Alg #] =
+    LET n = nroots_c(ql, ch, a`lb, a`ub) IN
+    IF n = 0 THEN (# ok := TRUE, a := a #)
+    ELSIF n = 1 AND zero_at(a, ql) THEN (# ok := TRUE, a := a #)
+    ELSIF fuel = 0 THEN (# ok := FALSE, a := a #)
+    ELSE clr(fuel - 1, refine(a), ql, ch)
+    ENDIF
+  MEASURE fuel
+  clr_inv: LEMMA FORALL fuel: FORALL a: deg(ql) > 0 IMPLIES
+    clr(fuel, a, ql, chain(ql))`a`p = a`p AND value(clr(fuel, a, ql, chain(ql))`a) = value(a) AND
+    a`lb <= clr(fuel, a, ql, chain(ql))`a`lb AND clr(fuel, a, ql, chain(ql))`a`ub <= a`ub
+  clr_free: LEMMA FORALL fuel: FORALL a: deg(ql) > 0 AND clr(fuel, a, ql, chain(ql))`ok IMPLIES
+    FORALL z: clr(fuel, a, ql, chain(ql))`a`lb <= z AND z <= clr(fuel, a, ql, chain(ql))`a`ub AND
+      z /= value(a) IMPLIES polylist(ql)(z) /= 0
+
+  %% separating two roots: refine both until the intervals are disjoint
+  c, d: VAR CA
+  ifuel: nat = 64
+
+  %% ---- the total forms.  The fuelled searches above
+  %% run first; when they run out these finish the job, so the free tests
+  %% below always decide.
+
+  %% clearing an end root that IS a root of ql: refine until it is the only
+  %% root of ql in its interval (distinct roots of ql are farther apart than
+  %% mrd(ql), so the halving widths pass below it)
+  clr1_step: LEMMA deg(ql) > 0 AND zero_at(a, ql) AND NOT nroots(ql, a`lb, a`ub) <= 1 IMPLIES
+    real_ord_ep(mrd(ql))(rwidth(refine(a)), rwidth(a))
+  clr1(a, (ql | deg(ql) > 0 AND zero_at(a, ql))): RECURSIVE Alg =
+    IF nroots(ql, a`lb, a`ub) <= 1 THEN a ELSE clr1(refine(a), ql) ENDIF
+  MEASURE rwidth(a) BY real_ord_ep(mrd(ql))
+  clr1_inv: LEMMA FORALL (pl0: Polylist): deg(ql) > 0 IMPLIES
+    FORALL a: a`p = pl0 AND zero_at(a, ql) IMPLIES
+      clr1(a, ql)`p = pl0 AND value(clr1(a, ql)) = value(a) AND
+      a`lb <= clr1(a, ql)`lb AND clr1(a, ql)`ub <= a`ub AND nroots(ql, clr1(a, ql)`lb, clr1(a, ql)`ub) <= 1
+
+  %% alg_sign's sep only narrows the interval
+  sep_sub: LEMMA FORALL (pl0: Polylist): deg(pl0) > 0 AND deg(ql) > 0 IMPLIES
+    FORALL a: a`p = pl0 AND NOT zero_at(a, ql) IMPLIES a`lb <= sep(a, ql)`lb AND sep(a, ql)`ub <= a`ub
+
+  %% the total clearing: sep (alg_sign) when the end root is not a root of ql
+  clrw(a, (ql | deg(ql) > 0)): Alg = IF zero_at(a, ql) THEN clr1(a, ql) ELSE sep(a, ql) ENDIF
+  clrw_inv: LEMMA deg(ql) > 0 IMPLIES
+    clrw(a, ql)`p = a`p AND value(clrw(a, ql)) = value(a) AND
+    a`lb <= clrw(a, ql)`lb AND clrw(a, ql)`ub <= a`ub
+  clrw_free: LEMMA deg(ql) > 0 IMPLIES
+    FORALL z: clrw(a, ql)`lb <= z AND z <= clrw(a, ql)`ub AND z /= value(a) IMPLIES polylist(ql)(z) /= 0
+
+  %% the fuelled clearing, then the total one
+  clrx(a, (ql | deg(ql) > 0), (ch: (Eq_computed_remainder?(ipoly(ql), deg(ql))) | ch = chain(ql))): Alg =
+    LET c = clr(ifuel, a, ql, ch) IN IF c`ok THEN c`a ELSE clrw(c`a, ql) ENDIF
+  clrx_inv: LEMMA deg(ql) > 0 IMPLIES
+    clrx(a, ql, chain(ql))`p = a`p AND value(clrx(a, ql, chain(ql))) = value(a) AND
+    a`lb <= clrx(a, ql, chain(ql))`lb AND clrx(a, ql, chain(ql))`ub <= a`ub
+  clrx_free: LEMMA deg(ql) > 0 IMPLIES
+    FORALL z: clrx(a, ql, chain(ql))`lb <= z AND z <= clrx(a, ql, chain(ql))`ub AND z /= value(a)
+      IMPLIES polylist(ql)(z) /= 0
+  clrx_free_lb: LEMMA deg(ql) > 0 AND polylist(ql)(clrx(a, ql, chain(ql))`lb) = 0 IMPLIES
+    clrx(a, ql, chain(ql))`lb = value(a)
+  clrx_free_ub: LEMMA deg(ql) > 0 AND polylist(ql)(clrx(a, ql, chain(ql))`ub) = 0 IMPLIES
+    clrx(a, ql, chain(ql))`ub = value(a)
+
+  %% the sectors of a sorted root list, with their samples
+  Sect: DATATYPE
+  BEGIN
+    below(hi: Alg): below?
+    at(pt: Alg): at?
+    mid(lo: Alg, hi: Alg): mid?
+    above(lo: Alg): above?
+    whole: whole?
+  END Sect
+  s: VAR Sect
+  sample(s): Alg =
+    CASES s OF
+      below(h): rat_alg(h`lb - 1),
+      at(p): p,
+      mid(l, h): rat_alg(gap(l, h)),
+      above(l): rat_alg(l`ub + 1),
+      whole: rat_alg(0)
+    ENDCASES
+
+  P: VAR list[list[mpoly]]
+  l: VAR list[mpoly]
+  %% the sign function of a sector: at a root by alg_sign, elsewhere the
+  %% sample is rational and the polynomials are evaluated directly
+  sval(s | NOT at?(s)): rat =
+    CASES s OF below(h): h`lb - 1, mid(l, h): gap(l, h), above(l): l`ub + 1, whole: 0 ELSE 0 ENDCASES
+  sval_sample: LEMMA NOT at?(s) IMPLIES value(sample(s)) = sval(s)
+  rts(P): list[Alg] = sortu(allroots(P))
+
+  in?(s, x): bool =
+    CASES s OF
+      below(h): x < value(h),
+      at(p): x = value(p),
+      mid(l, h): value(l) < x AND x < value(h),
+      above(l): value(l) < x,
+      whole: TRUE
+    ENDCASES
+  gsects(rs): RECURSIVE list[Sect] =
+    IF null?(rs) THEN null[Sect]
+    ELSIF null?(cdr(rs)) THEN (: at(car(rs)), above(car(rs)) :)
+    ELSE cons(at(car(rs)), cons(mid(car(rs), car(cdr(rs))), gsects(cdr(rs))))
+    ENDIF
+  MEASURE length(rs)
+  sects(rs): list[Sect] = IF null?(rs) THEN (: whole :) ELSE cons(below(car(rs)), gsects(rs)) ENDIF
+  gsects_at: LEMMA FORALL rs: member(a, rs) IMPLIES member(at(a), gsects(rs))
+  gsects_mid: LEMMA FORALL rs: i + 1 < length(rs) IMPLIES member(mid(nth(rs, i), nth(rs, i + 1)), gsects(rs))
+  gsects_above: LEMMA FORALL rs: cons?(rs) IMPLIES member(above(last(rs)), gsects(rs))
+  sects_cover: LEMMA incr?(rs) IMPLIES EXISTS s: member(s, sects(rs)) AND in?(s, x)
+  %% the sample is in its sector (mid needs the gap to have separated the roots)
+  sect_ok(s): bool = CASES s OF mid(l, h): gapok(l, h) ELSE TRUE ENDCASES
+  sample_in: LEMMA sect_ok(s) AND (mid?(s) IMPLIES value(lo(s)) < value(hi(s))) IMPLIES in?(s, value(sample(s)))
+  gsects_ok: LEMMA FORALL rs: incr?(rs) AND gaps_ok(rs) AND member(s, gsects(rs)) IMPLIES
+    sect_ok(s) AND (mid?(s) IMPLIES value(lo(s)) < value(hi(s)))
+  sects_ok: LEMMA FORALL rs: incr?(rs) AND gaps_ok(rs) AND member(s, sects(rs)) IMPLIES
+    sect_ok(s) AND (mid?(s) IMPLIES value(lo(s)) < value(hi(s)))
+
+  %% the check: a polynomial keeps its sign on a sector
+  %% a Polylist as a coefficient list of constants, to use the IVT of sector_rep
+  pmc(ql): list[mpoly] = map(mconst)(ql)
+  torat_pmc: LEMMA FORALL ql: torat(pmc(ql)) = ql
+  pmc_eval: LEMMA cons?(ql) IMPLIES polylist(ql)(x) = pf(pmc(ql), null[real])(x)
+END sect_inv

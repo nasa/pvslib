@@ -1,0 +1,89 @@
+col_real: THEORY
+%----------------------------------------------------------------------------
+% The real roots over a nearby point, from the complex picture.  Abstract:
+% members i < m (those with lv(i)),
+% complex polynomial functions F1(i) over p1 and Fp(i) over p, and eps with
+%   cnj?   conjugates of roots are roots (real coefficients), over p1 and p
+%   up?    every root over p is within eps of a root of the same member over p1
+%   lo?    every root over p1 has a root of the same member over p within eps
+%   one?   a member has at most one root over p within eps of a root over p1
+%   sh?    a common root of two members over p1 has a common root over p
+%          within eps
+%   sp?    distinct roots of the members over p1 are at least 2 eps apart.
+% Then a real root a over p1 has exactly one real root bt(a) of the family over
+% p within eps (bt_ok, bt_unique): the root of a member near a is real because
+% its conjugate is in the same disc, and two members vanishing at a share it
+% (sh?).  Every real root over p is some bt(a) (bt_onto: its partner over p1 is
+% real, or it would be within eps of a root and of its conjugate); a member
+% vanishes at bt(a) over p iff it vanishes at a over p1 (bt_van); bt is
+% increasing (bt_mono).  So bt maps the sorted roots over p1 onto the sorted
+% roots over p (bt_list).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad_roots, croot_lsc
+
+  m, i, i1, i2: VAR nat
+  lv: VAR [nat -> bool]
+  F, F1, Fp: VAR [nat -> [complex -> complex]]
+  eps: VAR posreal
+  z, w, z1, z2: VAR complex
+  a, b, x, y: VAR real
+  L: VAR list[real]
+
+  %% ---- the hypotheses ------------------------------------------------------------------------
+  cnj?(m, lv, F): bool = FORALL i, z: i < m AND lv(i) AND F(i)(z) = real_(0) IMPLIES F(i)(conjugate(z)) = real_(0)
+  up?(m, lv, F1, Fp, eps): bool = FORALL i, z: i < m AND lv(i) AND Fp(i)(z) = real_(0) IMPLIES
+    EXISTS w: F1(i)(w) = real_(0) AND abs(z - w) < eps
+  lo?(m, lv, F1, Fp, eps): bool = FORALL i, w: i < m AND lv(i) AND F1(i)(w) = real_(0) IMPLIES
+    EXISTS z: Fp(i)(z) = real_(0) AND abs(z - w) < eps
+  one?(m, lv, F1, Fp, eps): bool = FORALL i, w, z1, z2: i < m AND lv(i) AND F1(i)(w) = real_(0)
+    AND Fp(i)(z1) = real_(0) AND Fp(i)(z2) = real_(0) AND abs(z1 - w) < eps AND abs(z2 - w) < eps
+    IMPLIES z1 = z2
+  sh?(m, lv, F1, Fp, eps): bool = FORALL i1, i2, w: i1 < m AND i2 < m AND lv(i1) AND lv(i2)
+    AND F1(i1)(w) = real_(0) AND F1(i2)(w) = real_(0) IMPLIES
+    EXISTS z: Fp(i1)(z) = real_(0) AND Fp(i2)(z) = real_(0) AND abs(z - w) < eps
+  sp?(m, lv, F1, eps): bool = FORALL i1, i2, z1, z2: i1 < m AND i2 < m AND lv(i1) AND lv(i2)
+    AND F1(i1)(z1) = real_(0) AND F1(i2)(z2) = real_(0) AND z1 /= z2 IMPLIES abs(z1 - z2) >= 2 * eps
+
+  hyp?(m, lv, F1, Fp, eps): bool = cnj?(m, lv, F1) AND cnj?(m, lv, Fp) AND up?(m, lv, F1, Fp, eps)
+    AND lo?(m, lv, F1, Fp, eps) AND one?(m, lv, F1, Fp, eps) AND sh?(m, lv, F1, Fp, eps) AND sp?(m, lv, F1, eps)
+
+  %% the real roots of the family
+  rr?(m, lv, F)(y): bool = EXISTS i: i < m AND lv(i) AND F(i)(real_(y)) = real_(0)
+
+  %% ---- complex facts ---------------------------------------------------------------------------
+  cabs_real: LEMMA abs(real_(x) - real_(y)) = abs(x - y)
+  cabs_conj: LEMMA abs(conjugate(z) - real_(x)) = abs(z - real_(x))
+  conj_fix: LEMMA conjugate(z) = z IMPLIES z = real_(Re(z))
+  ctri: LEMMA abs(z1 - z2) <= abs(z1 - z) + abs(z - z2)
+
+  %% ---- the matching ----------------------------------------------------------------------------
+  %% a member's root near a real root of it is real
+  real_near: LEMMA hyp?(m, lv, F1, Fp, eps) AND i < m AND lv(i) AND F1(i)(real_(a)) = real_(0) IMPLIES
+    EXISTS y: Fp(i)(real_(y)) = real_(0) AND abs(y - a) < eps
+  %% a root over p near a root over p1 is near it for every member vanishing there
+  near_same: LEMMA hyp?(m, lv, F1, Fp, eps) AND i < m AND lv(i) AND Fp(i)(z) = real_(0)
+    AND i2 < m AND lv(i2) AND F1(i2)(w) = real_(0) AND abs(z - w) < eps IMPLIES F1(i)(w) = real_(0)
+
+  bt(m, lv, Fp, eps)(a): real = epsilon! (y: real): rr?(m, lv, Fp)(y) AND abs(y - a) < eps
+
+  bt_unique: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, F1)(a) AND rr?(m, lv, Fp)(x) AND rr?(m, lv, Fp)(y)
+    AND abs(x - a) < eps AND abs(y - a) < eps IMPLIES x = y
+  bt_ok: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, F1)(a) IMPLIES
+    rr?(m, lv, Fp)(bt(m, lv, Fp, eps)(a)) AND abs(bt(m, lv, Fp, eps)(a) - a) < eps
+  bt_eq: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, F1)(a) AND rr?(m, lv, Fp)(y) AND abs(y - a) < eps
+    IMPLIES bt(m, lv, Fp, eps)(a) = y
+  bt_onto: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, Fp)(y) IMPLIES
+    EXISTS a: rr?(m, lv, F1)(a) AND bt(m, lv, Fp, eps)(a) = y
+  bt_van: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, F1)(a) AND i < m AND lv(i) IMPLIES
+    (Fp(i)(real_(bt(m, lv, Fp, eps)(a))) = real_(0) IFF F1(i)(real_(a)) = real_(0))
+  bt_mono: LEMMA hyp?(m, lv, F1, Fp, eps) AND rr?(m, lv, F1)(a) AND rr?(m, lv, F1)(b) AND a < b IMPLIES
+    bt(m, lv, Fp, eps)(a) < bt(m, lv, Fp, eps)(b)
+
+  %% ---- sorted lists ----------------------------------------------------------------------------
+  mem_map_col_real: LEMMA FORALL L: FORALL (f: [real -> real]): member(y, map(f)(L)) IFF EXISTS a: member(a, L) AND y = f(a)
+  bt_sincr: LEMMA FORALL L: hyp?(m, lv, F1, Fp, eps) AND sincr?(L) AND (FORALL a: member(a, L) IMPLIES rr?(m, lv, F1)(a))
+    IMPLIES sincr?(map(bt(m, lv, Fp, eps))(L))
+  bt_list: LEMMA hyp?(m, lv, F1, Fp, eps) AND sincr?(L) AND (FORALL a: member(a, L) IFF rr?(m, lv, F1)(a)) IMPLIES
+    sincr?(map(bt(m, lv, Fp, eps))(L)) AND (FORALL y: member(y, map(bt(m, lv, Fp, eps))(L)) IFF rr?(m, lv, Fp)(y))
+END col_real

@@ -1,0 +1,114 @@
+alg_sortc_def: THEORY
+%----------------------------------------------------------------------------
+% Sorting real algebraic numbers with each Sturm chain computed once.
+% Executable.
+%
+% Measured 2026-09-30 on (EXISTS x1, x2, x3: xi^2 <= 1, x1 + x2 + x3 >= c):
+% 96% of the outer closure's time was cell1's sortu, and in it refine:
+% every bisection step counts roots with nroots, which recomputes the Sturm
+% chain of the polynomial (a remainder sequence with integer content gcds),
+% so a comparison of two overlapping isolating intervals rebuilt both chains
+% at every step, and equal roots (shared by several members) went on to
+% alg_cmp's comparisons with rationals, which refine again.
+%
+% Here an algebraic number travels with its chain (CA: the field ch is
+% constrained to be chain(a`p), so the evaluator computes it once, in mkca),
+% refc bisects with it, and cmpc compares: disjoint intervals at once,
+% otherwise up to kfuel bisections, then equality by the common roots of
+% the two polynomials (eqg: the roots of their gcd, poly_gcd, in the common
+% part of the intervals), then bisection until the intervals separate, with
+% alg_cmp after sfuelc steps.  sortf is cell1's insertion sort with one
+% comparison per step.  alg_sortc proves cmpc = sign3(value - value), and
+% cell1 that sortf is its insertion sort (sortf_eq), so sortu can be sortf.
+% sepcc separates two numbers by bisection with the chains; sortsep
+% separates every two neighbours of the sorted list once (sepall), so that
+% later separations find disjoint intervals at once.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_order
+
+  a, b: VAR Alg
+  pl: VAR Polylist
+  lb, ub: VAR rat
+  fuel: VAR nat
+
+  %% root count with the chain given; constrained to be chain(pl)
+  nrc(pl | deg(pl) > 0, (ch: (Eq_computed_remainder?(ipoly(pl), deg(pl))) | ch = chain(pl)),
+      lb, (ub | lb < ub)): nat =
+    rcf(ipoly(pl), deg(pl), lb, ub, ch)
+
+  %% an algebraic number with the chain of its polynomial
+  CA: TYPE = [# a: Alg, ch: {sl: (Eq_computed_remainder?(ipoly(a`p), deg(a`p))) | sl = chain(a`p)} #]
+  c, d: VAR CA
+  mkca(a): CA = (# a := a, ch := chain(a`p) #)
+
+  %% one bisection step, as refine, with the chain
+  refc(c): CA =
+    IF nrc(c`a`p, c`ch, c`a`lb, mid(c`a)) = 1
+      THEN (# a := c`a WITH [ub := mid(c`a)], ch := c`ch #)
+      ELSE (# a := c`a WITH [lb := mid(c`a)], ch := c`ch #)
+    ENDIF
+
+  %% equality: a common root of the two polynomials in both intervals
+  eqg(a, b): bool =
+    LET lo = max(a`lb, b`lb), hi = min(a`ub, b`ub),
+        r = pgcd(length(a`p) + length(b`p) + 2, a`p, b`p) IN
+    IF hi < lo THEN FALSE
+    ELSIF NOT r`ok OR zp?(r`g) THEN alg_eq(a, b)
+    ELSIF deg(r`g) = 0 THEN FALSE
+    ELSIF lo = hi THEN polylist(r`g)(lo) = 0
+    ELSE nroots(r`g, lo, hi) >= 1
+    ENDIF
+
+  %% different values: bisect until the intervals separate (alg_cmp when the fuel ends)
+  sepc(fuel, c, d): RECURSIVE bool =
+    IF c`a`ub < d`a`lb THEN TRUE
+    ELSIF d`a`ub < c`a`lb THEN FALSE
+    ELSIF fuel = 0 THEN alg_cmp(c`a, d`a) = -1
+    ELSE sepc(fuel - 1, refc(c), refc(d))
+    ENDIF
+  MEASURE fuel
+
+  kfuel: nat = 8
+  sfuelc: nat = 128
+
+  %% separating two numbers by bisection, with the chains
+  SR: TYPE = [# ok: bool, sa: CA, sb: CA #]
+  sepcc(fuel, c, d): RECURSIVE SR =
+    IF c`a`ub < d`a`lb THEN (# ok := TRUE, sa := c, sb := d #)
+    ELSIF fuel = 0 THEN (# ok := FALSE, sa := c, sb := d #)
+    ELSE sepcc(fuel - 1, refc(c), refc(d))
+    ENDIF
+  MEASURE fuel
+
+  %% every two neighbours of a list with disjoint intervals (each pair
+  %% separated with the chains; a pair that does not separate within the fuel
+  %% is left as it is)
+  sepall(L: list[CA]): RECURSIVE list[CA] =
+    IF null?(L) OR null?(cdr(L)) THEN L
+    ELSE LET s = sepcc(sfuelc, car(L), car(cdr(L))) IN cons(s`sa, sepall(cons(s`sb, cdr(cdr(L)))))
+    ENDIF
+  MEASURE length(L)
+
+  cmpc(fuel, c, d): RECURSIVE Sign3 =
+    IF c`a`ub < d`a`lb THEN -1
+    ELSIF d`a`ub < c`a`lb THEN 1
+    ELSIF fuel = 0 THEN IF eqg(c`a, d`a) THEN 0 ELSIF sepc(sfuelc, c, d) THEN -1 ELSE 1 ENDIF
+    ELSE cmpc(fuel - 1, refc(c), refc(d))
+    ENDIF
+  MEASURE fuel
+
+  %% insertion without repetition, one comparison per step
+  insc(c, (L: list[CA])): RECURSIVE list[CA] =
+    IF null?(L) THEN (: c :)
+    ELSE LET k = cmpc(kfuel, c, car(L)) IN
+      IF k = 0 THEN L ELSIF k = -1 THEN cons(c, L) ELSE cons(car(L), insc(c, cdr(L))) ENDIF
+    ENDIF
+  MEASURE length(L)
+  sortcc(L: list[CA]): RECURSIVE list[CA] =
+    IF null?(L) THEN null[CA] ELSE insc(car(L), sortcc(cdr(L))) ENDIF
+  MEASURE length(L)
+  sortf(rs: list[Alg]): list[Alg] = map(LAMBDA (c: CA): c`a)(sortcc(map(mkca)(rs)))
+  %% sorted, then neighbours separated: what cell1's sortu evaluates
+  sortsep(rs: list[Alg]): list[Alg] = map(LAMBDA (c: CA): c`a)(sepall(sortcc(map(mkca)(rs))))
+END alg_sortc_def

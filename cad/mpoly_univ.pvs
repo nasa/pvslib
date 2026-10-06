@@ -1,0 +1,104 @@
+mpoly_univ: THEORY
+%----------------------------------------------------------------------------
+% The univariate view in the main variable: coefficients, leading
+% coefficient, derivative, and partial evaluation to a Sturm Polylist.
+%
+% coef(p, i) is the coefficient of x^i where x is the main variable (a term of
+% the level below); meval_coef states the evaluation is NASALib's polynomial
+% with these coefficients evaluated at the tail.  mderiv is the formal
+% derivative in the main variable; meval_mderiv connects it to poly_deriv and
+% mderiv_is_deriv to the analytic derivative (analysis@polynomial_deriv).
+% partial_eval(p)(ys), for a rational valuation ys of the tail variables,
+% is the univariate rational polynomial p(., ys) as a Sturm Polylist; this
+% is the bridge that lets the Sturm/Tarski engine run on a specialized
+% multivariate polynomial.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_coefs, Sturm@polylist, structures@array2list[rat],
+            analysis@polynomial_deriv, analysis@deriv_domain, structures@more_list_props[mpoly]
+
+  p, h: VAR mpoly
+  l, t: VAR list[mpoly]
+  xs, ys: VAR list[real]
+  rs: VAR list[rat]
+  x: VAR real
+  i, k: VAR nat
+  c: VAR rat
+
+  %% coefficients of the main variable
+
+  coef(p, i): mpoly =
+    CASES p OF
+      mconst(c): IF i = 0 THEN p ELSE zero ENDIF,
+      mpol(l): IF i < length(l) THEN nth(l, i) ELSE zero ENDIF
+    ENDCASES
+
+  coef_beyond: LEMMA i > deg(p) IMPLIES coef(p, i) = zero
+
+  % the coefficient function of p at the tail valuation ys
+  cf(p, ys): sequence[real] = LAMBDA (i: nat): meval(coef(p, i))(ys)
+
+  cf_coefs: LEMMA mpol?(p) IMPLIES cf(p, ys) = coefs(coeffs(p), ys)
+
+  meval_coef: LEMMA meval(p)(cons(x, ys)) = polynomial(cf(p, ys), deg(p))(x)
+
+  %% derivative in the main variable
+
+  deriv_list(l, k): RECURSIVE list[mpoly] =
+    CASES l OF
+      null: null,
+      cons(h, t): cons(mscal(k, h), deriv_list(t, k + 1))
+    ENDCASES
+  MEASURE l BY <<
+
+  mderiv(p): mpoly =
+    CASES p OF
+      mconst(c): zero,
+      mpol(l): IF null?(l) THEN zero ELSE mpol(deriv_list(cdr(l), 1)) ENDIF
+    ENDCASES
+
+  length0_null: LEMMA null?(l) IFF length(l) = 0
+  length_cdr_mpoly_univ: LEMMA cons?(l) IMPLIES length(l) = 1 + length(cdr(l))
+  deriv_list_length: LEMMA length(deriv_list(l, k)) = length(l)
+  deriv_list_nth: LEMMA i < length(l) IMPLIES nth(deriv_list(l, k), i) = mscal(k + i, nth(l, i))
+  deg_mderiv: LEMMA deg(mderiv(p)) = IF deg(p) = 0 THEN 0 ELSE deg(p) - 1 ENDIF
+  cf_mderiv: LEMMA cf(mderiv(p), ys) = poly_deriv(cf(p, ys))
+
+  meval_mderiv: LEMMA meval(mderiv(p))(cons(x, ys)) =
+    IF deg(p) = 0 THEN 0 ELSE polynomial(poly_deriv(cf(p, ys)), deg(p) - 1)(x) ENDIF
+
+  mderiv_derivable: LEMMA derivable?(LAMBDA (x: real): meval(p)(cons(x, ys)))
+  mderiv_is_deriv: LEMMA
+    deriv(LAMBDA (x: real): meval(p)(cons(x, ys))) = LAMBDA (x: real): meval(mderiv(p))(cons(x, ys))
+
+  %% partial evaluation to a univariate rational polynomial
+
+  % rational valuations evaluate rationally
+  rat_closure: LEMMA FORALL (a, b, d: real):
+    rational_pred(a) AND rational_pred(b) AND rational_pred(d) IMPLIES rational_pred(a + b * d)
+  rat_list_every: LEMMA every(LAMBDA (r: real): rational_pred(r))(rs)
+  rat_list_every_num: LEMMA
+    every[number](LAMBDA (x: number): number_field_pred(x) AND real_pred(x) AND rational_pred(x))(rs)
+  meval_rat_every: LEMMA every(LAMBDA (r: real): rational_pred(r))(xs) IMPLIES rational_pred(meval(p)(xs))
+  meval_rat: LEMMA rational_pred(meval(p)(rs))
+
+  % the Sturm Polylist of the univariate polynomial p(., ys)
+  partial_list(l, rs): RECURSIVE list[rat] =
+    CASES l OF
+      null: null,
+      cons(h, t): cons(meval(h)(rs), partial_list(t, rs))
+    ENDCASES
+  MEASURE l BY <<
+
+  partial_list_length: LEMMA length(partial_list(l, rs)) = length(l)
+  partial_list_nth: LEMMA i < length(l) IMPLIES nth(partial_list(l, rs), i) = meval(nth(l, i))(rs)
+
+  partial_eval(p, rs): Polylist =
+    CASES p OF
+      mconst(c): (: c :),
+      mpol(l): IF null?(l) THEN (: 0 :) ELSE partial_list(l, rs) ENDIF
+    ENDCASES
+
+  partial_eval_polylist: LEMMA polylist(partial_eval(p, rs))(x) = meval(p)(cons(x, rs))
+
+END mpoly_univ

@@ -1,0 +1,130 @@
+qe2_def: THEORY
+%----------------------------------------------------------------------------
+% Quantifier elimination for m >= 2 free variables: the answer over one
+% sector.  Executable.
+%
+% The free variables are the m outer variables of the run (the point is
+% (: y1, ..., ym :), y1 innermost, ym the variable of the run's sectors), the
+% bound quantifiers qb the inner ones; the run's cells come as records
+% (cad_out).  Over a sector s the free cells are the records' first m - 1
+% stack indices (fkeys); a free cell's value is the fold of the bound
+% quantifiers over its records (afold), and its signature is the signs, at
+% one of its records' samples, of the free levels' polynomials of s's tower
+% (fpolys, lifted to the free point).
+% secout(s): FALSE if no free cell of s is TRUE, TRUE if all are, the
+% disjunction of the TRUE signatures' sign conditions if equal signatures
+% mean equal values (sep2?), and otherwise the disjunction of the TRUE cells'
+% formulas (cellF; correct, not quantifier-free); the signatures are first cut
+% down to members min2J of G that still separate (largest first, as minJ does
+% for one free variable).  The Collins QE (qe2cc_def, qe2cd_def) answers by
+% the disjunction over the sectors of sectX(s) on ym (lifted past
+% y1..y(m-1), liftF) and secout(s).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_def, cad_fold
+
+  n, d, j: VAR nat
+  m: VAR posnat
+  qb: VAR list[bool]
+  Psi: VAR [SV -> bool]
+  p: VAR mpoly
+  phi: VAR Fm
+  A: VAR list[nat]
+  L: VAR list[ORec]
+  s: VAR Sect
+  TW: VAR Tower
+  G: VAR list[mpoly]
+  w: VAR SV
+
+  %% ---- lists and lifting -----------------------------------------------------------------------
+  qsn(n): RECURSIVE list[bool] = IF n = 0 THEN null[bool] ELSE cons(TRUE, qsn(n - 1)) ENDIF
+  MEASURE n
+  qsn_len: LEMMA length(qsn(n)) = n
+  liftp(p, d): RECURSIVE mpoly = IF d = 0 THEN p ELSE mins(liftp(p, d - 1), 0) ENDIF
+  MEASURE d
+  liftF(phi, d): RECURSIVE Fm = IF d = 0 THEN phi ELSE shiftF(liftF(phi, d - 1), 0) ENDIF
+  MEASURE d
+  ntake(A, j): RECURSIVE list[nat] =
+    IF j = 0 OR null?(A) THEN null[nat] ELSE cons(car(A), ntake(cdr(A), j - 1)) ENDIF
+  MEASURE j
+  ttake(TW, j): RECURSIVE Tower =
+    IF j = 0 OR null?(TW) THEN null[list[list[mpoly]]] ELSE cons(car(TW), ttake(cdr(TW), j - 1)) ENDIF
+  MEASURE j
+  dnrs(A, L): RECURSIVE list[ORec] = IF null?(A) THEN L ELSE dnrs(cdr(A), dnr(car(A), L)) ENDIF
+  MEASURE length(A)
+
+  %% ---- the free cells of a sector -------------------------------------------------------------
+  %% family j of TW (level j + 2, j < m - 1), lifted from the point of length j + 2 to length m
+  fpl(TW, m, j): RECURSIVE list[mpoly] =
+    IF null?(TW) OR j + 1 >= m THEN null[mpoly]
+    ELSE append(map(LAMBDA (g: list[mpoly]): liftp(mpol(g), m - j - 2))(car(TW)), fpl(cdr(TW), m, j + 1))
+    ENDIF
+  MEASURE length(TW)
+  fpolys(TW, m): list[mpoly] = fpl(TW, m, 0)
+
+  QE2: TYPE = [# key: list[nat], ev: bool, sig: SV #]
+  e2: VAR QE2
+  es2: VAR list[QE2]
+
+  orec0: ORec = (# rsec := whole, radr := null[nat], rsod := pt(null[rat]), rsv := null[Sign3] #)
+  recof(A, m, L): ORec =
+    LET R = filter(LAMBDA (r: ORec): ntake(r`radr, m - 1) = A)(L) IN IF cons?(R) THEN car(R) ELSE orec0 ENDIF
+  %% the signs of G (polynomials on the free point) at a record's sample (a point nb longer)
+  sigat(G, (nb: nat), (r: ORec)): SV = map(LAMBDA (g: mpoly): osg(r`rsod)(liftp(g, nb)))(G)
+
+  fkeys(m, L): list[list[nat]] = ldd(map(LAMBDA (r: ORec): ntake(r`radr, m - 1))(L))
+  ents2(m, qb, Psi, G, L): list[QE2] =
+    map(LAMBDA (A: list[nat]): (# key := A, ev := afold(qb, Psi, dnrs(A, L)),
+                                  sig := sigat(G, length(qb), recof(A, m, L)) #))(fkeys(m, L))
+
+  sep2?(es2): bool =
+    every(LAMBDA (a1: QE2): every(LAMBDA (a2: QE2): a1`sig = a2`sig IMPLIES a1`ev = a2`ev)(es2))(es2)
+  gatoms(G, w): RECURSIVE list[Fm] =
+    IF null?(G) OR null?(w) THEN null[Fm] ELSE cons(fsg(car(G), car(w)), gatoms(cdr(G), cdr(w))) ENDIF
+  MEASURE length(G)
+
+  %% the answer from the entries es, the polynomials G of their signatures, and a
+  %% formula cf(A) for each free cell (a function of these only)
+  secsig(G, es2, (cf: [list[nat] -> Fm])): Fm =
+    LET ts = filter(LAMBDA (a: QE2): a`ev)(es2) IN
+    IF null?(ts) THEN ffalse
+    ELSIF every(LAMBDA (a: QE2): a`ev)(es2) THEN ftrue
+    ELSIF sep2?(es2) THEN f_orl(map(LAMBDA (v: SV): f_andl(gatoms(G, v)))(ldd(map(LAMBDA (a: QE2): a`sig)(ts))))
+    ELSE f_orl(map(LAMBDA (a: QE2): cf(a`key))(ts))
+    ENDIF
+
+  %% the members J of G and of the signatures (an index past the end is the zero polynomial)
+  J, K: VAR list[nat]
+  selv1(w)(j: nat): Sign3 = IF j < length(w) THEN nth(w, j) ELSE 0 ENDIF
+  selv(J, w): SV = map(selv1(w))(J)
+  selg1(G)(j: nat): mpoly = IF j < length(G) THEN nth(G, j) ELSE mconst(0) ENDIF
+  selg(G, J): list[mpoly] = map(selg1(G))(J)
+  prj(J)(e2): QE2 = e2 WITH [sig := selv(J, e2`sig)]
+
+  %% min2J (no proof needed): drop members greedily, largest first, while the signatures
+  %% still separate
+  jprune2(K, J, es2): RECURSIVE list[nat] =
+    IF null?(J) THEN K
+    ELSIF sep2?(map(prj(append(K, cdr(J))))(es2)) THEN jprune2(K, cdr(J), es2)
+    ELSE jprune2(append(K, (: car(J) :)), cdr(J), es2)
+    ENDIF
+  MEASURE length(J)
+  gsz(G)(j: nat): nat = IF j < length(G) THEN msize(nth(G, j)) ELSE 0 ENDIF
+  szord(G, n): RECURSIVE list[nat] =
+    IF n = 0 THEN null[nat]
+    ELSE append(filter(LAMBDA (j: nat): gsz(G)(j) = n)(nlist(length(G))), szord(G, n - 1)) ENDIF
+  MEASURE n
+  maxsz(G): RECURSIVE nat = IF null?(G) THEN 0 ELSE max(msize(car(G)), maxsz(cdr(G))) ENDIF
+  MEASURE length(G)
+  min2J(G, es2): list[nat] = jprune2(null[nat], szord(G, maxsz(G)), es2)
+
+  %% the answer on the members min2J of G, if they still separate
+  secoutE(G, es2, (cf: [list[nat] -> Fm])): Fm =
+    LET J = min2J(G, es2) IN
+    IF sep2?(map(prj(J))(es2)) THEN secsig(selg(G, J), map(prj(J))(es2), cf) ELSE secsig(G, es2, cf) ENDIF
+
+  %% the answer on the free points over sector s (TW its tower, L its records)
+  secout(m, qb, Psi, s, TW, L): Fm =
+    LET G = fpolys(TW, m) IN
+    secoutE(G, ents2(m, qb, Psi, G, L), LAMBDA (A: list[nat]): cellF(ttake(TW, m - 1), sectF(s), A))
+END qe2_def

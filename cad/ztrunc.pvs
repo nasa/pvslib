@@ -1,0 +1,55 @@
+ztrunc: THEORY
+%----------------------------------------------------------------------------
+% Degree drops at a cell (2026-09-27).
+%
+% A member whose leading coefficient vanishes at a cell, while the member
+% itself does not, has LOWER degree over that cell: (2x^2-1)y^2 + 4x^2 y + x^2
+% is 2y + 1/2 over x = 1/sqrt(2).  The walk's conditions (memok?, slc?) ask
+% for a nonzero leading coefficient, so such a cell used to fail the
+% certificate, and every decision on the formula with it.  Here is the
+% member as the cell sees it:
+%
+%   tz(sg, l)   the coefficient list l with its top coefficients removed for
+%               as long as the oracle sg says they vanish
+%
+% At a point ws whose oracle is right (msg(ws)) the truncated list has the
+% same value as l at every point above ws (tz_eval), its top coefficient is
+% nonzero (tz_top), it is empty exactly when l is zero there (tz_null), and it
+% is decided by the signs of l's coefficients (tz_agree), which are reads of
+% every certificate (crd).  The executable effective family (towern_od's
+% feff) and the semantic one (zfam's zf) both walk tz(sg, strip(g)).
+%
+%   crd(F)      every coefficient of every member (moved here from zfam, so
+%               that the executable reads can list it)
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_def
+
+  sg, sg1, sg2: VAR SG
+  l: VAR list[mpoly]
+  c: VAR mpoly
+  ws: VAR list[real]
+  z: VAR real
+  F: VAR list[list[mpoly]]
+
+  tz(sg, l): RECURSIVE list[mpoly] =
+    IF null?(l) THEN null[mpoly]
+    ELSE LET r = tz(sg, cdr(l)) IN
+      IF null?(r) AND sg(car(l)) = 0 THEN null[mpoly] ELSE cons(car(l), r) ENDIF
+    ENDIF
+  MEASURE length(l)
+
+  tz_nil: LEMMA tz(sg, null[mpoly]) = null[mpoly]
+  tz_cons: LEMMA tz(sg, cons(c, l)) =
+    IF null?(tz(sg, l)) AND sg(c) = 0 THEN null[mpoly] ELSE cons(c, tz(sg, l)) ENDIF
+
+  tz_null: LEMMA FORALL l: null?(tz(sg, l)) IFF zero_at?(sg, l)
+  tz_agree: LEMMA FORALL l: agree(sg1, sg2, l) IMPLIES tz(sg1, l) = tz(sg2, l)
+  tz_top: LEMMA FORALL l: cons?(tz(sg, l)) IMPLIES sg(llast(tz(sg, l))) /= 0
+  tz_eval: LEMMA FORALL l: meval(mpol(tz(msg(ws), l)))(cons(z, ws)) = meval(mpol(l))(cons(z, ws))
+
+  %% ---- the coefficients of a family -----------------------------------------------------
+  crd(F): RECURSIVE list[mpoly] =
+    IF null?(F) THEN null[mpoly] ELSE append(strip(car(F)), crd(cdr(F))) ENDIF
+  MEASURE length(F)
+END ztrunc

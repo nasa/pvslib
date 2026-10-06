@@ -1,0 +1,106 @@
+bareiss_def: THEORY
+%----------------------------------------------------------------------------
+% Determinants by fraction-free elimination (Bareiss), executable.
+%
+% detf (det_fast_def) builds a table of 2^n minors (n 2^n products), out of reach from side 20
+% on: AM-GM in four variables needs side-23 determinants.  bdet eliminates
+% instead, in O(n^3) polynomial operations.  bar(m, p, B) works on the block
+% B, m rows of m entries whose previous pivot is p:
+%   - when the first entry of the first row is the zero polynomial, the first
+%     row whose first entry is not is added to it, which keeps the determinant
+%     (bareiss' rdet_addr) and makes the pivot nonzero; with no such row
+%     the first column is zero and so is the determinant;
+%   - every entry of another row s becomes (a * s_j - s_0 * r_j) / p, with a
+%     and r the pivot and its row, and the elimination goes on in the block
+%     without the pivot's row and column, with a as p.
+% Each division is mex (mpoly_gcd_def, not proved), accepted only when the
+% quotient times p has the normal form of the numerator (bdiv).  When a check
+% fails, bdet falls back to detf.  So bdet(n, M) is always the determinant
+% (bareiss: bdet_det); the checks decide only the speed.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING det_fast_def, mpoly_gcd_def
+
+  p, a, u, s0: VAR mpoly
+  r, s: VAR list[mpoly]
+  B: VAR list[list[mpoly]]
+  n, m, i, k, j: VAR nat
+  M: VAR MMat
+
+  %% first entry and rest of a row, total
+  hd0(r): mpoly = IF null?(r) THEN zero ELSE car(r) ENDIF
+  tl0(r): list[mpoly] = IF null?(r) THEN null ELSE cdr(r) ENDIF
+  %% first row and other rows of a block, total
+  rw0(B): list[mpoly] = IF null?(B) THEN null ELSE car(B) ENDIF
+  rws(B): list[list[mpoly]] = IF null?(B) THEN null ELSE cdr(B) ENDIF
+
+  %% u / p, checked: TRUE and the quotient when the quotient times p has the
+  %% normal form of u; dividing by one is u itself
+  bdiv(u, p): [bool, mpoly] =
+    IF meq(p, one) THEN (TRUE, mnorm(u))
+    ELSE LET q = mex(u, p) IN (meq(mnorm(mmul(q, p)), mnorm(u)), q) ENDIF
+
+  %% the eliminated entries of a row s with first entry s0, under the pivot a
+  %% and the rest r of its row: (a * s_j - s0 * r_j) / p
+  bent(p, a, s0, r, s): RECURSIVE [bool, list[mpoly]] =
+    IF null?(r) OR null?(s) THEN (TRUE, null)
+    ELSE LET d = bdiv(msub(mmul(a, car(s)), mmul(s0, car(r))), p),
+             t = bent(p, a, s0, cdr(r), cdr(s))
+         IN (d`1 AND t`1, cons(d`2, t`2))
+    ENDIF
+  MEASURE length(r)
+
+  %% every other row B eliminated under the pivot row r
+  bblock(p, r, B): RECURSIVE [bool, list[list[mpoly]]] =
+    IF null?(B) THEN (TRUE, null)
+    ELSE LET e = bent(p, hd0(r), hd0(car(B)), tl0(r), tl0(car(B))),
+             t = bblock(p, r, cdr(B))
+         IN (e`1 AND t`1, cons(e`2, t`2))
+    ENDIF
+  MEASURE length(B)
+
+  %% u is the zero polynomial (its normal form is the constant 0)
+  bzero?(u): bool = LET v = mnorm(u) IN mconst?(v) AND mc(v) = 0
+
+  %% the index of the first row whose first entry is not the zero polynomial,
+  %% or length(B) when there is none
+  bpiv(B): RECURSIVE nat =
+    IF null?(B) THEN 0 ELSIF bzero?(hd0(car(B))) THEN 1 + bpiv(cdr(B)) ELSE 0 ENDIF
+  MEASURE length(B)
+
+  %% the sum of two rows, entry by entry
+  radd(r, s): RECURSIVE list[mpoly] =
+    IF null?(r) OR null?(s) THEN null ELSE cons(mnorm(madd(car(r), car(s))), radd(cdr(r), cdr(s))) ENDIF
+  MEASURE length(r)
+
+  %% row k added to row 0 (k < length(B))
+  badd(B, (k: nat | k < length(B))): list[list[mpoly]] = cons(radd(rw0(B), nth(B, k)), rws(B))
+
+  %% the elimination of the m-block B with previous pivot p: TRUE when every
+  %% division checked, and the value
+  bar(m, p, B): RECURSIVE [bool, mpoly] =
+    IF m = 0 THEN (TRUE, one)
+    ELSIF m = 1 THEN (TRUE, hd0(rw0(B)))
+    ELSE LET k = bpiv(B) IN
+      IF k >= length(B) THEN (TRUE, zero)
+      ELSE LET C = IF k = 0 THEN B ELSE badd(B, k) ENDIF,
+               nb = bblock(p, rw0(C), rws(C)),
+               rec = bar(m - 1, hd0(rw0(C)), nb`2)
+           IN (nb`1 AND rec`1, rec`2)
+      ENDIF
+    ENDIF
+  MEASURE m
+
+  %% row a of the n x n matrix M from column j on, and its rows from a on
+  mrowf(M, i, j, n): RECURSIVE list[mpoly] =
+    IF n <= j THEN null ELSE cons(M(i, j), mrowf(M, i, j + 1, n)) ENDIF
+  MEASURE IF j <= n THEN n - j ELSE 0 ENDIF
+  mrowsf(M, i, n): RECURSIVE list[list[mpoly]] =
+    IF n <= i THEN null ELSE cons(mrowf(M, i, 0, n), mrowsf(M, i + 1, n)) ENDIF
+  MEASURE IF i <= n THEN n - i ELSE 0 ENDIF
+
+  %% the determinant of the n x n matrix M by elimination, or by detf when a
+  %% division did not check
+  bdet(n, M): mpoly =
+    LET r = bar(n, one, mrowsf(M, 0, n)) IN IF r`1 THEN r`2 ELSE detf(n, M) ENDIF
+END bareiss_def

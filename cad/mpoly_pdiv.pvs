@@ -1,0 +1,109 @@
+mpoly_pdiv: THEORY
+%----------------------------------------------------------------------------
+% Pseudo-division in the main variable.
+%
+% For coefficient lists L (dividend) and G (divisor, non-empty, with leading
+% coefficient b = llast(G)), pquo_rem(L, G) returns quo and rem with
+%
+%     b^pk(L, G) * L  =  quo * G + rem      (as functions, meval)
+%     length(rem) < length(G)
+%
+% where pk(L, G) = length(L) - length(G) + 1 when L is at least as long as G
+% and 0 otherwise.  No division by coefficients takes place, so the
+% coefficients stay polynomials (rational when the inputs are rational): this
+% is Collins's pseudo-remainder, the primitive of remainder sequences.
+%
+% The one reduction step is  L' = b * lbut(L) - x^(n-m) * a * lbut(G)
+% (a = llast(L), n = length(L) - 1, m = length(G) - 1), whose top
+% coefficient b*a - a*b is dropped syntactically, so length(L') = n and the
+% recursion is on length(L).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_univ
+
+  p, q, c, h: VAR mpoly
+  r: VAR rat
+  l, l1, l2, t: VAR list[mpoly]
+  xs: VAR list[real]
+  i, k, n: VAR nat
+
+  %% list-level operations at coefficient level
+
+  % multiply every coefficient by c (c lives at the coefficient level)
+  lscal(c, l): list[mpoly] = as_list(mmulx(TRUE, c, mpol(l)))
+
+  % k zero coefficients in front: multiplication by x^k
+  shiftl(k, l): RECURSIVE list[mpoly] =
+    IF k = 0 THEN l ELSE cons(zero, shiftl(k - 1, l)) ENDIF
+  MEASURE k
+
+  % all but the last coefficient, and the last coefficient
+  lbut(l): RECURSIVE list[mpoly] =
+    CASES l OF null: null, cons(h, t): IF null?(t) THEN null ELSE cons(h, lbut(t)) ENDIF ENDCASES
+  MEASURE l BY <<
+  llast(l): RECURSIVE mpoly =
+    CASES l OF null: zero, cons(h, t): IF null?(t) THEN h ELSE llast(t) ENDIF ENDCASES
+  MEASURE l BY <<
+
+  lsub(l1, l2): list[mpoly] = as_list(msub(mpol(l1), mpol(l2)))
+
+  %% lengths
+
+  mmulx_t_mpol: LEMMA mpol?(q) IMPLIES mpol?(mmulx(TRUE, p, q))
+  mmulx_t_length: LEMMA length(as_list(mmulx(TRUE, p, q))) = length(as_list(q))
+  lscal_length: LEMMA length(lscal(c, l)) = length(l)
+  shiftl_length: LEMMA length(shiftl(k, l)) = k + length(l)
+  lbut_length: LEMMA length(lbut(l)) = IF null?(l) THEN 0 ELSE length(l) - 1 ENDIF
+  mscal_mpol: LEMMA mpol?(p) IMPLIES mpol?(mscal(r, p)) AND length(coeffs(mscal(r, p))) = length(coeffs(p))
+  madd_length: LEMMA length(as_list(madd(p, q))) = max(length(as_list(p)), length(as_list(q)))
+  lsub_length: LEMMA length(lsub(l1, l2)) = max(length(l1), length(l2))
+
+  %% evaluation
+
+  pow_plus: LEMMA FORALL (x: real, i, j: nat): x ^ (i + j) = x ^ i * x ^ j
+
+  meval_lscal: LEMMA meval(mpol(lscal(c, l)))(xs) = meval(c)(tl(xs)) * meval(mpol(l))(xs)
+  meval_shiftl: LEMMA meval(mpol(shiftl(k, l)))(xs) = hd(xs) ^ k * meval(mpol(l))(xs)
+  meval_lsub: LEMMA meval(mpol(lsub(l1, l2)))(xs) = meval(mpol(l1))(xs) - meval(mpol(l2))(xs)
+  meval_lbut: LEMMA cons?(l) IMPLIES
+    meval(mpol(l))(xs) = meval(mpol(lbut(l)))(xs) + meval(llast(l))(tl(xs)) * hd(xs) ^ (length(l) - 1)
+
+  %% the reduction step
+
+  pstep(l1, (l2 | cons?(l2) AND length(l2) <= length(l1))): list[mpoly] =
+    lsub(lscal(llast(l2), lbut(l1)),
+         shiftl(length(l1) - length(l2), lscal(llast(l1), lbut(l2))))
+
+  pstep_length: LEMMA cons?(l2) AND length(l2) <= length(l1) IMPLIES length(pstep(l1, l2)) = length(l1) - 1
+
+  meval_pstep: LEMMA cons?(l2) AND length(l2) <= length(l1) IMPLIES
+    meval(mpol(pstep(l1, l2)))(xs) =
+      meval(llast(l2))(tl(xs)) * meval(mpol(l1))(xs)
+      - hd(xs) ^ (length(l1) - length(l2)) * meval(llast(l1))(tl(xs)) * meval(mpol(l2))(xs)
+
+  %% pseudo-division
+
+  % c * x^k as a term of the main level
+  monom_main(c, k): mpoly = mpol(shiftl(k, (: c :)))
+  meval_monom_main: LEMMA meval(monom_main(c, k))(xs) = meval(c)(tl(xs)) * hd(xs) ^ k
+
+  pk(l1, l2): nat = IF length(l1) < length(l2) THEN 0 ELSE length(l1) - length(l2) + 1 ENDIF
+
+  QR: TYPE = [# quo: mpoly, rem: list[mpoly] #]
+
+  pquo_rem(l1, (l2 | cons?(l2))): RECURSIVE QR =
+    IF length(l1) < length(l2) THEN (# quo := zero, rem := l1 #)
+    ELSE LET d = length(l1) - length(l2),
+             qr = pquo_rem(pstep(l1, l2), l2) IN
+         (# quo := madd(monom_main(mmul(llast(l1), mpow(llast(l2), d)), d), qr`quo),
+            rem := qr`rem #)
+    ENDIF
+  MEASURE length(l1)
+
+  pquo_rem_rem_length: LEMMA cons?(l2) IMPLIES length(pquo_rem(l1, l2)`rem) < length(l2)
+
+  pquo_rem_eval: THEOREM cons?(l2) IMPLIES
+    meval(llast(l2))(tl(xs)) ^ pk(l1, l2) * meval(mpol(l1))(xs) =
+      meval(pquo_rem(l1, l2)`quo)(xs) * meval(mpol(l2))(xs) + meval(mpol(pquo_rem(l1, l2)`rem))(xs)
+
+END mpoly_pdiv

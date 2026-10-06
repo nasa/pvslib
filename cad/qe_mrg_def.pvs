@@ -1,0 +1,70 @@
+qe_mrg_def: THEORY
+%----------------------------------------------------------------------------
+% Merged answers in one free variable.  Executable.
+%
+% The sectors of a sorted root list come in order: below r0, at r0,
+% (r0, r1), at r1, ..., above r(n-1).  A run of consecutive sectors is one
+% interval: x is in it iff x is not below the start of its first sector
+% (lowX) and not above the end of its last (uppX).  mrgX(ss, vs), for the
+% sectors ss with truth values vs, is the disjunction over the maximal runs
+% of TRUE values of those interval conditions (a run of one sector is that
+% sector's description sectX): the disjunction of the TRUE sectors'
+% descriptions with neighbours merged.  natoms counts sign atoms, to
+% compare answers by size.  qe_mrg proves mrgX right.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING qe_ep_def
+
+  s, pv: VAR Sect
+  ss: VAR list[Sect]
+  vs: VAR list[bool]
+  on: VAR bool
+  a, b, lo: VAR Fm
+
+  %% x is not below the start of s
+  lowX(s): Fm =
+    CASES s OF
+      below(h): ftrue,
+      at(p): f_or(cmpX(p, 1), cmpX(p, 0)),
+      mid(l, h): cmpX(l, 1),
+      above(l): cmpX(l, 1),
+      whole: ftrue
+    ENDCASES
+  %% x is not above the end of s
+  uppX(s): Fm =
+    CASES s OF
+      below(h): cmpX(h, -1),
+      at(p): f_or(cmpX(p, -1), cmpX(p, 0)),
+      mid(l, h): cmpX(h, -1),
+      above(l): ftrue,
+      whole: ftrue
+    ENDCASES
+  %% a conjunction without ftrue conjuncts
+  fand2(a, b): Fm = IF a = ftrue THEN b ELSIF b = ftrue THEN a ELSE fand(a, b) ENDIF
+
+  %% the formula of a closed run: one sector is described as itself, a longer
+  %% run by its two ends
+  cls(on, lo, pv): Fm = IF on THEN sectX(pv) ELSE fand2(lo, uppX(pv)) ENDIF
+  %% the runs, left to right: on when a run is open, one when it is one sector
+  %% long, lo its lower bound, pv the sector before ss
+  mrg(ss, vs, on, (one: bool), lo, pv): RECURSIVE list[Fm] =
+    IF null?(ss) OR null?(vs) THEN IF on THEN (: cls(one, lo, pv) :) ELSE null[Fm] ENDIF
+    ELSIF car(vs) THEN
+      IF on THEN mrg(cdr(ss), cdr(vs), TRUE, FALSE, lo, car(ss))
+      ELSE mrg(cdr(ss), cdr(vs), TRUE, TRUE, lowX(car(ss)), car(ss)) ENDIF
+    ELSIF on THEN cons(cls(one, lo, pv), mrg(cdr(ss), cdr(vs), FALSE, FALSE, ftrue, car(ss)))
+    ELSE mrg(cdr(ss), cdr(vs), FALSE, FALSE, ftrue, car(ss))
+    ENDIF
+  MEASURE length(ss)
+  mrgX(ss, vs): Fm = f_orl(mrg(ss, vs, FALSE, FALSE, ftrue, whole))
+
+  natoms(a): RECURSIVE nat =
+    CASES a OF
+      ftrue: 0,
+      fsg(q, t): 1,
+      fnot(c): natoms(c),
+      fand(c, d): natoms(c) + natoms(d),
+      fex(c): natoms(c)
+    ENDCASES
+  MEASURE a BY <<
+END qe_mrg_def

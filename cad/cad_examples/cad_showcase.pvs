@@ -1,0 +1,264 @@
+cad_showcase: THEORY
+%----------------------------------------------------------------------------
+% WHAT pvs_cad CAN DO -- the strategies (cad) and (cad-qe) on formulas as
+% people write them.  Each lemma's comment says what it shows, the proof
+% (the one saved in cad_showcase.prf) and how long it takes (wall clock on one
+% machine, including PVS checking the proof): Parts I and III take one
+% command; Part II (skeep) and one (cad) call (goals_only: (skeep) twice);
+% Part IV (skeep), (split) and, on each side, (flatten), (cad-qe) and (cad *)
+% (qe_then_cad: (skeep), (cad-qe -1), (cad *)).
+%
+%   IMPORTING pvs_cad   is all a theory needs.
+%
+% Part I    sentences decided by (cad): existence, alternations of FORALL
+%           and EXISTS, quantifiers inside AND / OR / IMPLIES / IFF / NOT,
+%           grouped binders FORALL (x, y: real), binders over posreal,
+%           nnreal, negreal, npreal and nzreal.
+% Part II   (cad) inside a proof, on chosen formulas of the sequent:
+%           (cad 2), (cad -1), (cad -2), (cad (-1 3)), (cad (1 2)),
+%           (cad +), (cad -), (cad *); other real terms with no bound
+%           variable in them (f(x), sqrt(x), length(l) once x and l are
+%           constants of the sequent) become unknown reals.
+% Part III  the verified CAD engine alone: (cad :cad-only? t), (cad-direct).
+% Part IV   quantifier elimination: (cad-qe 1) on a goal, (cad-qe -1) on a
+%           hypothesis; the answer it prints is quoted in the comment.
+%
+% Behind every answer is a theorem: (cad) instantiates decide8_correct (the
+% Collins CAD, cad_decide8) or decide_g_ok (formulas of any shape,
+% gform_ok) -- or, when one point settles the goal, instantiates that point
+% and checks it by evaluation (none of the examples below goes that way);
+% (cad-qe) instantiates qe8_correct or qe_g_ok.  The algorithms run inside
+% PVS's ground evaluator; their correctness is proved, not assumed.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING cad@pvs_cad
+  %% =========================================================================================
+  %% PART I.  SENTENCES: (cad)
+  %% =========================================================================================
+
+  %% The quadratic formula, as an existence statement over all coefficients.
+  %%   proof: (cad)  [4 s]
+  quadratic_formula: LEMMA FORALL (a, b, c: real): EXISTS (x: real):
+    a /= 0 AND b^2 >= 4*a*c IMPLIES a*x^2 + b*x + c = 0
+
+  %% x^5 - x - 1 has a real root, though no formula in radicals gives it
+  %% (Abel-Ruffini); the root is found and handled as an exact algebraic number.
+  %%   proof: (cad)  [1 s]
+  quintic_root: LEMMA EXISTS (x: real): x^5 - x - 1 = 0
+
+  %% Every cubic x^3 + p x + q has a real root (every real cubic takes this
+  %% form after dividing by its leading coefficient and shifting x).
+  %%   proof: (cad)  [2 s]
+  cubic_root: LEMMA FORALL (p, q: real): EXISTS (x: real): x^3 + p*x + q = 0
+
+  %% Continuity of x^2 at 0, the epsilon-delta way: three alternating
+  %% quantifiers, written with posreal binders and an implication inside.
+  %%   proof: (cad)  [2 s]
+  sq_continuous: LEMMA FORALL (e: posreal): EXISTS (d: posreal): FORALL (x: real):
+    -d < x AND x < d IMPLIES x^2 < e
+
+  %% Between two reals there is a third: the quantifier sits inside an
+  %% implication.
+  %%   proof: (cad)  [1 s]
+  density_showcase: LEMMA FORALL (x, y: real): x < y IMPLIES EXISTS (z: real): x < z AND z < y
+
+  %% The line y = 2x - 1 touches the parabola y = x^2 at exactly one point.
+  %%   proof: (cad)  [2 s]
+  tangent_unique: LEMMA EXISTS (x: real): x^2 = 2*x - 1 AND FORALL (y: real): y^2 = 2*y - 1 IMPLIES y = x
+
+  %% Two unit circles whose centres are one unit apart meet.
+  %%   proof: (cad)  [2 s]
+  two_circles: LEMMA EXISTS (x, y: real): x^2 + y^2 = 1 AND (x - 1)^2 + y^2 = 1
+
+  %% A negation: not every real has an inverse (0 has none).
+  %%   proof: (cad)  [2 s]
+  zero_no_inverse: LEMMA NOT (FORALL (x: real): EXISTS (y: real): x*y = 1)
+
+  %% A theorem about every monic quadratic x^2 + b x + c at once: it has a
+  %% real root exactly when its discriminant b^2 - 4c is nonnegative (an IFF
+  %% with a quantifier on one side).
+  %%   proof: (cad)  [1 s]
+  root_iff_disc: LEMMA FORALL (b, c: real): (EXISTS (x: real): x^2 + b*x + c = 0) IFF b^2 >= 4*c
+
+  %% Four alternating quantifiers.
+  %%   proof: (cad)  [2 s]
+  four_alternations: LEMMA FORALL (x: real): EXISTS (y: real): FORALL (z: real): EXISTS (w: real):
+    w > x + y + z
+
+  %% An inequality in three variables.
+  %%   proof: (cad)  [3 s]
+  three_squares: LEMMA FORALL (x, y, z: real): x^2 + y^2 + z^2 >= x*y + y*z + z*x
+
+  %% The Motzkin polynomial is nonnegative, although it is not a sum of
+  %% squares -- a plain sum-of-squares certificate cannot prove it.
+  %%   proof: (cad)  [2 s]
+  motzkin: LEMMA FORALL (x, y: real): x^4*y^2 + x^2*y^4 - 3*x^2*y^2 + 1 >= 0
+
+  %% Four variables: the box [-1, 1]^3 against the plane x1 + x2 + x3 = c.
+  %%   proof: (cad)  [6 s]
+  box_plane: LEMMA FORALL (c: real): EXISTS (x1, x2, x3: real):
+    (x1^2 <= 1 AND x2^2 <= 1 AND x3^2 <= 1 AND x1 + x2 + x3 >= c) OR c > 3
+
+  %% A quantifier inside OR: either a has a square root, or every square lies
+  %% above it.
+  %%   proof: (cad)  [1 s]
+  root_or_above: LEMMA FORALL (a: real): (EXISTS (x: real): x^2 = a) OR (FORALL (x: real): x^2 > a)
+
+  %% Binders over the subtypes of the reals: every nonnegative number has a
+  %% nonnegative square root (nnreal),
+  %%   proof: (cad)  [2 s]
+  nn_sqrt: LEMMA FORALL (x: nnreal): EXISTS (y: nnreal): y^2 = x
+
+  %% every negative number has a negative cube root (negreal),
+  %%   proof: (cad)  [1 s]
+  neg_cube_root: LEMMA FORALL (x: negreal): EXISTS (y: negreal): y^3 = x
+
+  %% every nonpositive number has a nonnegative opposite (npreal),
+  %%   proof: (cad)  [1 s]
+  np_opposite: LEMMA FORALL (x: npreal): EXISTS (y: nnreal): x + y = 0
+
+  %% and every nonzero real has an inverse (nzreal; compare zero_no_inverse).
+  %%   proof: (cad)  [2 s]
+  nz_inverse: LEMMA FORALL (x: nzreal): EXISTS (y: real): x * y = 1
+
+  %% =========================================================================================
+  %% PART II.  INSIDE A PROOF: (cad n), (cad (..)), (cad +), (cad -), (cad *)
+  %% =========================================================================================
+
+  P, Q: VAR bool
+  f, g: VAR [real -> real]
+  l: VAR list[real]
+
+  %% (cad 2): the second goal is a sentence -- every real has a cube root.
+  %%   proof: (then (skeep) (cad 2))  [1 s]
+  cube_roots: LEMMA P OR (FORALL (x: real): EXISTS (y: real): y^3 = x)
+
+  %% (cad -1): a false hypothesis closes any goal.
+  %%   proof: (then (skeep) (cad -1))  [2 s]
+  false_hyp: LEMMA (EXISTS (x: real): x^2 + 1 < 0) IMPLIES Q
+
+  %% (cad -2): the second hypothesis is the false one.
+  %%   proof: (then (skeep) (cad -2))  [1 s]
+  false_second: LEMMA P AND (EXISTS (x: real): x^2 < x - 1) IMPLIES Q
+
+  %% (cad (-1 3)): one hypothesis and one goal out of several.
+  %%   proof: (then (skeep) (cad (-1 3)))  [2 s]
+  pick_two: LEMMA FORALL (x, y: real): x > 2 AND y < x IMPLIES (y > 100 OR x = 7 OR x^2 > 4)
+
+  %% (cad (1 2)): neither goal holds alone; together they do.
+  %%   proof: (then (skeep) (cad (1 2)))  [2 s]
+  together: LEMMA FORALL (x: real): x^2 - 3*x + 2 >= 0 OR (1 < x AND x < 2)
+
+  %% (cad +): the goals alone suffice; the hypothesis about f is not needed.
+  %%   proof: (then (skeep) (skeep) (cad +))  [2 s]
+  goals_only: LEMMA (FORALL (z: real): f(z) >= z) IMPLIES FORALL (x: real): x^2 + 1 > x OR f(x) < 0
+
+  %% (cad -): the hypotheses contradict each other, so the goal g(x) = 5, about
+  %% an unknown function, is not needed.
+  %%   proof: (then (skeep) (cad -))  [2 s]
+  hyps_only: LEMMA FORALL (x, y: real): x + y > 2 AND x < 1 AND y < 1 IMPLIES g(x) = 5
+
+  %% (cad *): f(x) and length(l) are unknown reals.
+  %%   proof: (then (skeep) (cad *))  [3 s]
+  unknown_terms: LEMMA FORALL (x: real): f(x) > x^2 AND length(l) = 3 IMPLIES f(x) + length(l) > 2
+
+  %% (cad *): sqrt(x) is an unknown real, known to be nonnegative from its type.
+  %%   proof: (then (skeep) (cad *))  [3 s]
+  sqrt_bound: LEMMA FORALL (x: nnreal): sqrt(x) * sqrt(x) = x AND x > 4 IMPLIES sqrt(x) > 2
+
+  %% (cad *): a quantified hypothesis -- a quadratic with no real root has a
+  %% negative discriminant.
+  %%   proof: (then (skeep) (cad *))  [3 s]
+  no_root_disc: LEMMA FORALL (b, c: real): (FORALL (z: real): z^2 + b*z + c > 0) IMPLIES b^2 < 4*c
+
+  %% (cad *): a hypothesis with a quantifier inside an implication.
+  %%   proof: (then (skeep) (cad *))  [1 s]
+  only_zero_root: LEMMA FORALL (a: real): ((EXISTS (t: real): t^2 = a) IMPLIES a = 0) IMPLIES a <= 0
+
+  %% =========================================================================================
+  %% PART III.  THE VERIFIED CAD ENGINE ALONE: (cad :cad-only? t), (cad-direct)
+  %% =========================================================================================
+
+  %% The answer comes only from the Collins CAD (no witness search).
+  %%   proof: (cad :cad-only? t)  [2 s]
+  circle_cad_only: LEMMA FORALL (x: real): EXISTS (y: real): x^2 + y^2 = 1 OR x^2 > 1
+
+  %% The decision alone, without the witness search.
+  %%   proof: (cad-direct)  [4 s]
+  box_plane_direct: LEMMA FORALL (c: real): EXISTS (x1, x2, x3: real):
+    (x1^2 <= 1 AND x2^2 <= 1 AND x3^2 <= 1 AND x1 + x2 + x3 >= c) OR c > 3
+
+  %% =========================================================================================
+  %% PART IV.  QUANTIFIER ELIMINATION: (cad-qe)
+  %% =========================================================================================
+
+  %% The answers are quoted compactly: (cad-qe) prints 4*c + (-1)*b^2 = 0 OR
+  %% 4*c + (-1)*b^2 < 0 where the comment says 4c - b^2 <= 0 (captured on
+  %% 4 October 2026).
+
+  a, b, c, d, m, x: VAR real
+
+  %% When does t^2 + b t + c have a real root?
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [12 s]
+  %%   (cad-qe) answers: c < 0 OR c = 0 OR (c > 0 AND 4c - b^2 <= 0)
+  qe_root: LEMMA (EXISTS (t: real): t^2 + b*t + c = 0) IFF b^2 >= 4*c
+
+  %% When is t^2 + b t + c positive everywhere?
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [11 s]
+  %%   (cad-qe) answers: c > 0 AND 4c - b^2 > 0
+  qe_positive: LEMMA (FORALL (t: real): t^2 + b*t + c > 0) IFF b^2 < 4*c
+
+  %% The shadow of the unit disc on the x-axis.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [9 s]
+  %%   (cad-qe) answers: 4x^2 - 4 <= 0
+  qe_shadow: LEMMA (EXISTS (y: real): x^2 + y^2 <= 1) IFF x^2 <= 1
+
+  %% For which slopes m does the line y = m t + 2 meet the unit circle?
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [9 s]
+  %%   (cad-qe) answers: 12 - 4m^2 <= 0
+  qe_line_circle: LEMMA (EXISTS (t: real): t^2 + (m*t + 2)^2 = 1) IFF m^2 >= 3
+
+  %% A linear equation a t = b, two free variables.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [10 s]
+  %%   (cad-qe) answers: (b < 0 AND a /= 0) OR b = 0 OR (b > 0 AND a /= 0)
+  qe_linear: LEMMA (EXISTS (t: real): a*t = b) IFF (a /= 0 OR b = 0)
+
+  %% Two unit circles, centres d apart, meet exactly when |d| <= 2.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [10 s]
+  %%   (cad-qe) answers: d^2/4 - 1 <= 0
+  qe_kissing: LEMMA (EXISTS (s, t: real): s^2 + t^2 = 1 AND (s - d)^2 + t^2 = 1) IFF d^2 <= 4
+
+  %% t^3 + a t is increasing exactly when a >= 0.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [11 s]
+  %%   (cad-qe) answers: a = 0 OR a > 0
+  qe_monotone: LEMMA (FORALL (s, t: real): s < t IMPLIES s^3 + a*s < t^3 + a*t) IFF a >= 0
+
+  %% Two distinct real roots exactly when the discriminant is positive.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [19 s]
+  %%   (cad-qe) answers: c < 0 OR (c = 0 AND 4c - b^2 < 0) OR (c > 0 AND 4c - b^2 < 0)
+  qe_two_roots: LEMMA (EXISTS (s, t: real): s < t AND s^2 + b*s + c = 0 AND t^2 + b*t + c = 0)
+    IFF b^2 > 4*c
+
+  %% A posreal binder: a has a positive square root exactly when a > 0.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [7 s]
+  %%   (cad-qe) answers: a > 0
+  qe_pos_root: LEMMA (EXISTS (t: posreal): t^2 = a) IFF a > 0
+
+  %% Quantifiers inside AND: a has a square root and a cube root.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [9 s]
+  %%   (cad-qe) answers: a = 0 OR a > 0
+  qe_both_roots: LEMMA ((EXISTS (t: real): t^2 = a) AND (EXISTS (s: real): s^3 = a)) IFF a >= 0
+
+  %% (cad-qe -1) inside a proof: the hypothesis loses its quantifier, then
+  %% (cad *) finishes.
+  %%   proof: (then (skeep) (cad-qe -1) (cad *))  [6 s]
+  %%   (cad-qe) answers: b < 0 OR b = 0 OR (b > 0 AND 4b - a^2 <= 0)
+  qe_then_cad: LEMMA FORALL (a, b: real): (EXISTS (t: real): t^2 + a*t + b = 0) AND b > 0
+    IMPLIES a^2 >= 4*b
+
+  %% Three free variables: the general quadratic.
+  %%   proof: (skeep), (split); on each side (flatten), (cad-qe -1) or (cad-qe 1), (cad *)  [23 s]
+  %%   (cad-qe) answers: a case split on the signs of c, a and 4ac - b^2, 9 cases
+  qe_general_quadratic: LEMMA (EXISTS (t: real): a*t^2 + b*t + c = 0) IFF
+    ((a /= 0 AND b^2 >= 4*a*c) OR (a = 0 AND (b /= 0 OR c = 0)))
+END cad_showcase

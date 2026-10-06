@@ -1,0 +1,52 @@
+sg_chain: THEORY
+%----------------------------------------------------------------------------
+% The Sturm chains by a sign function.
+%
+% rchain of branch_prs is defined at a valuation ys and normalizes every
+% chain element by the signs of its coefficients there (select(snorm(l),
+% ys)).  Here the same function takes a sign function sg instead: rchain_sg
+% is the pseudo-remainder chain normalized by sg, and tchain_sg the chain of
+% the Tarski query.  Each agrees with the valuation's at msg(ys) (_at) and
+% depends on sg only on the polynomials it reads (_rd, _det).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING sg_norm, tarski_chain
+
+  k: VAR nat
+  l, l0, l1, l2, g: VAR list[mpoly]
+  sg, sg1, sg2: VAR SG
+  ys: VAR list[real]
+
+  snext_sg(l1, (l2 | cons?(l2)), sg): list[mpoly] = snorm_sg(sstep(l1, l2), sg)
+  snext_rd(l1, (l2 | cons?(l2)), sg): list[mpoly] = snorm_rd(sstep(l1, l2), sg)
+  snext_sg_at: LEMMA cons?(l2) IMPLIES snext_sg(l1, l2, msg(ys)) = snext(l1, l2, ys)
+
+  %% the remainder chain
+  rchain_sg(k, l1, l2, sg): RECURSIVE list[list[mpoly]] =
+    IF cons?(l2) AND k > 0
+    THEN cons(l2, rchain_sg(k - 1, l2, snext_sg(l1, l2, sg), sg))
+    ELSE (: null[mpoly] :)
+    ENDIF
+  MEASURE k
+  rchain_rd(k, l1, l2, sg): RECURSIVE list[mpoly] =
+    IF cons?(l2) AND k > 0
+    THEN append(snext_rd(l1, l2, sg), rchain_rd(k - 1, l2, snext_sg(l1, l2, sg), sg))
+    ELSE null[mpoly]
+    ENDIF
+  MEASURE k
+  rchain_sg_at: LEMMA FORALL k: FORALL l1, l2: rchain_sg(k, l1, l2, msg(ys)) = rchain(k, l1, l2, ys)
+  rchain_det: LEMMA FORALL k: FORALL l1, l2: agree(sg1, sg2, rchain_rd(k, l1, l2, sg1)) IMPLIES
+    rchain_sg(k, l1, l2, sg2) = rchain_sg(k, l1, l2, sg1) AND
+    rchain_rd(k, l1, l2, sg2) = rchain_rd(k, l1, l2, sg1)
+
+  %% the Tarski chain of a polynomial and a query
+  tsnd_sg(g, l0, sg): list[mpoly] = snorm_sg(lmul(g, lderiv(l0)), sg)
+  tsnd_rd(g, l0, sg): list[mpoly] = snorm_rd(lmul(g, lderiv(l0)), sg)
+  tchain_sg(k, l0, g, sg): list[list[mpoly]] = cons(l0, rchain_sg(k, l0, tsnd_sg(g, l0, sg), sg))
+  tchain_rd(k, l0, g, sg): list[mpoly] =
+    append(tsnd_rd(g, l0, sg), rchain_rd(k, l0, tsnd_sg(g, l0, sg), sg))
+  tchain_sg_at: LEMMA tchain_sg(k, l0, g, msg(ys)) = tchain(k, l0, g, ys)
+  tchain_det: LEMMA agree(sg1, sg2, tchain_rd(k, l0, g, sg1)) IMPLIES
+    tchain_sg(k, l0, g, sg2) = tchain_sg(k, l0, g, sg1) AND
+    tchain_rd(k, l0, g, sg2) = tchain_rd(k, l0, g, sg1)
+END sg_chain

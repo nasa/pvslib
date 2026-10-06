@@ -1,0 +1,184 @@
+col_pair: THEORY
+%----------------------------------------------------------------------------
+% The complex picture near a point of C: the hypotheses of col_real hold for
+% the members of G, between
+% p1 and every point of C near p1.
+%
+% FF(G, p1, p)(i) is member i over p as a complex polynomial, with the degree
+% it has over p1 (ex); LV(G, p1)(i) says member i is not identically zero over
+% p1.  Under kconst?(G, C), over every p in C the member has that degree with a
+% nonzero leading coefficient (ff_lead), and:
+%   ff_up / ff_lo  its roots move continuously (croot_lsc's rp_near / rp_lsc,
+%                  with the coefficients eventually close, ca_close)
+%   ff_one         one root per disc (croot_disc's disc_one; as many distinct
+%                  roots over p as over p1, from the equal common-divisor
+%                  degrees kdist?, kc_kdist)
+%   ff_sh          common roots persist: with kappa the degree of the common
+%                  divisors (the same over p as over p1, ff_pat), the common
+%                  roots are the roots of S_kappa (sres_roots) when kappa is
+%                  below both degrees, and then rp_lsc on S_kappa's
+%                  coefficients (subres2's sresc, continuous) finds one over p;
+%                  when kappa is a degree the smaller polynomial divides the
+%                  other (ccd_full); when kappa = 0 there are no common roots
+%   ff_sp          for every small eps the distinct roots over p1 are 2 eps
+%                  apart
+% ff_hyp collects them: col_real's hyp? holds eventually near p1 in C.
+%
+% 2026-10-02: the lemmas take kconst?(G, C) -- the
+% effective degrees are constant on C, and so are the degrees of the common
+% divisors of each member with its derivative (kdist?) and of each pair --
+% instead of colh?(G, C), which is the only thing they used of it
+% (colh_kconst).  cad_projb gets kconst? on the base cells of a smaller,
+% bottom-step projection where colh? does not hold.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_eff, col_real, croot_disc, ev_near
+
+  G: VAR list[list[mpoly]]
+  C: VAR [list[real] -> bool]
+  p, p1, q: VAR list[real]
+  l: VAR list[mpoly]
+  i, i1, i2, j, k, n, n1, n2: VAR nat
+  eps, delta: VAR posreal
+  z, w, c, d: VAR complex
+  F, H: VAR [complex -> complex]
+
+  %% ---- the members as complex polynomials -------------------------------------------------------
+  gi(G, i): list[mpoly] = IF i < length(G) THEN nth(G, i) ELSE null[mpoly] ENDIF
+  ex(G, p1, i): nat = IF edeg(gi(G, i), p1) >= 0 THEN edeg(gi(G, i), p1) ELSE 0 ENDIF
+  ca(G, p1, p, i): [nat -> real] = earr(rdc(gi(G, i), ex(G, p1, i)), p)
+  FF(G, p1, p)(i): [complex -> complex] = rp(ca(G, p1, p, i), ex(G, p1, i))
+  LV(G, p1)(i): bool = i < length(G) AND edeg(gi(G, i), p1) >= 0
+
+  lv_ex: LEMMA LV(G, p1)(i) IMPLIES edeg(gi(G, i), p1) = ex(G, p1, i) AND i < length(G)
+
+  %% ---- what the lemmas below use of colh?(G, C) ------------------------------------------------
+  colh_lv: LEMMA colh?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) IMPLIES edeg(gi(G, i), p) = ex(G, p1, i)
+  colh_lead: LEMMA colh?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) IMPLIES ca(G, p1, p, i)(ex(G, p1, i)) /= 0
+
+  %% the effective degrees, and the degrees of the common divisors of each member with
+  %% its derivative and of each pair, are the same at every point of C
+  kconst?(G, C): bool =
+        (FORALL i, p, q: i < length(G) AND C(p) AND C(q) IMPLIES edeg(nth(G, i), p) = edeg(nth(G, i), q))
+    AND (FORALL i, p1, p: C(p1) AND C(p) AND LV(G, p1)(i) AND ex(G, p1, i) >= 1 IMPLIES
+           kdist?(ca(G, p1, p1, i), ca(G, p1, p, i), ex(G, p1, i)))
+    AND (FORALL i1, i2, p1, p, k: C(p1) AND C(p) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+           AND k <= ex(G, p1, i1) AND k <= ex(G, p1, i2) IMPLIES
+           (ccd?(FF(G, p1, p)(i1), FF(G, p1, p)(i2), k) IFF ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k)))
+
+  colh_kconst: LEMMA colh?(G, C) IMPLIES kconst?(G, C)
+  kc_edeg: LEMMA kconst?(G, C) AND i < length(G) AND C(p) AND C(q) IMPLIES edeg(nth(G, i), p) = edeg(nth(G, i), q)
+  kc_kdist: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) AND ex(G, p1, i) >= 1 IMPLIES
+    kdist?(ca(G, p1, p1, i), ca(G, p1, p, i), ex(G, p1, i))
+
+  lv_C: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) IMPLIES edeg(gi(G, i), p) = ex(G, p1, i)
+  ff_lead: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) IMPLIES ca(G, p1, p, i)(ex(G, p1, i)) /= 0
+
+  %% ---- coefficients are eventually close ---------------------------------------------------------
+  earr_close: LEMMA ev?(C, p1, LAMBDA p: FORALL j: j <= n IMPLIES abs(earr(l, p1)(j) - earr(l, p)(j)) <= delta)
+  ca_close: LEMMA ev?(C, p1, LAMBDA p: rclose?(ca(G, p1, p1, i), ca(G, p1, p, i), n, delta))
+
+  %% ---- the distinct roots over p1 ------------------------------------------------------------------
+  RL(G, p1, i): list[complex] =
+    epsilon! (L: list[complex]): dist?(L) AND FORALL z: FF(G, p1, p1)(i)(z) = real_(0) IFF member(z, L)
+  rl_ok: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i) IMPLIES
+    dist?(RL(G, p1, i)) AND FORALL z: FF(G, p1, p1)(i)(z) = real_(0) IFF member(z, RL(G, p1, i))
+
+  %% ---- one member ------------------------------------------------------------------------------------
+  ff_up: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i) IMPLIES
+    ev?(C, p1, LAMBDA p: FORALL z: FF(G, p1, p)(i)(z) = real_(0) IMPLIES
+                 EXISTS w: FF(G, p1, p1)(i)(w) = real_(0) AND abs(z - w) < eps)
+  ff_lo: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i) IMPLIES
+    ev?(C, p1, LAMBDA p: FORALL w: FF(G, p1, p1)(i)(w) = real_(0) IMPLIES
+                 EXISTS z: FF(G, p1, p)(i)(z) = real_(0) AND abs(z - w) < eps)
+  ff_one: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i) AND sep?(RL(G, p1, i), eps)
+    AND (FORALL w: FF(G, p1, p1)(i)(w) = real_(0) IMPLIES
+           EXISTS z: FF(G, p1, p)(i)(z) = real_(0) AND abs(z - w) < eps)
+    IMPLIES FORALL w, z, c: FF(G, p1, p1)(i)(w) = real_(0) AND FF(G, p1, p)(i)(z) = real_(0)
+      AND FF(G, p1, p)(i)(c) = real_(0) AND abs(z - w) < eps AND abs(c - w) < eps IMPLIES z = c
+
+  %% ---- common divisors ---------------------------------------------------------------------------------
+  ccd_max: LEMMA FORALL n: ccd?(F, H, 0) AND NOT ccd?(F, H, n) IMPLIES
+    EXISTS k: k < n AND ccd?(F, H, k) AND NOT ccd?(F, H, k + 1)
+  ccd_one: LEMMA clead?(F, n1, c) AND clead?(H, n2, d) AND F(w) = real_(0) AND H(w) = real_(0) IMPLIES ccd?(F, H, 1)
+  ccd_full: LEMMA clead?(F, n, c) AND ccd?(F, H, n) AND F(z) = real_(0) IMPLIES H(z) = real_(0)
+  ccd_full2: LEMMA clead?(H, n, c) AND ccd?(F, H, n) AND H(z) = real_(0) IMPLIES F(z) = real_(0)
+
+  ff_pat: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+    AND k <= ex(G, p1, i1) AND k <= ex(G, p1, i2) IMPLIES
+    (ccd?(FF(G, p1, p)(i1), FF(G, p1, p)(i2), k) IFF ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k))
+
+  %% ---- common roots persist ------------------------------------------------------------------------------
+  shp?(G, p1, p, i1, i2, eps): bool = FORALL w:
+    FF(G, p1, p1)(i1)(w) = real_(0) AND FF(G, p1, p1)(i2)(w) = real_(0) IMPLIES
+    EXISTS z: FF(G, p1, p)(i1)(z) = real_(0) AND FF(G, p1, p)(i2)(z) = real_(0) AND abs(z - w) < eps
+
+  %% the subresultant S_kappa and its coefficients over p
+  sk_rp: LEMMA FORALL (A, B: [nat -> real]), (n1, n2: nat): Sk(A, n1, B, n2, k)(z) = rp(sresv(A, n1, B, n2, k), k)(z)
+  U: VAR [nat -> mpoly]
+  mp_close: LEMMA ev?(C, p1, LAMBDA p: FORALL j: j <= n IMPLIES abs(meval(U(j))(p1) - meval(U(j))(p)) <= delta)
+  sv(G, p1, p, i1, i2, k): [nat -> real] =
+    sresv(ca(G, p1, p, i1), ex(G, p1, i1), ca(G, p1, p, i2), ex(G, p1, i2), k)
+  sv_close: LEMMA LV(G, p1)(i1) AND LV(G, p1)(i2) AND 0 < k AND k < ex(G, p1, i1) AND k < ex(G, p1, i2) IMPLIES
+    ev?(C, p1, LAMBDA p: rclose?(sv(G, p1, p1, i1, i2, k), sv(G, p1, p, i1, i2, k), k, delta))
+
+  %% the cases of kappa
+  sh_none: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2)
+    AND NOT ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), 1)
+    IMPLIES ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+  sh_full1: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+    AND ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), ex(G, p1, i1))
+    IMPLIES ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+  sh_full2: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+    AND ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), ex(G, p1, i2))
+    IMPLIES ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+  sh_mid1: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+    AND 0 < k AND k < ex(G, p1, i1) AND k < ex(G, p1, i2)
+    AND ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k) AND NOT ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k + 1)
+    AND FF(G, p1, p1)(i1)(w) = real_(0) AND FF(G, p1, p1)(i2)(w) = real_(0) IMPLIES
+    ev?(C, p1, LAMBDA p: EXISTS z: FF(G, p1, p)(i1)(z) = real_(0) AND FF(G, p1, p)(i2)(z) = real_(0)
+                           AND abs(z - w) < eps)
+  sh_mid: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2
+    AND 0 < k AND k < ex(G, p1, i1) AND k < ex(G, p1, i2)
+    AND ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k) AND NOT ccd?(FF(G, p1, p1)(i1), FF(G, p1, p1)(i2), k + 1)
+    IMPLIES ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+
+  ff_sh_lt: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) AND i1 < i2 IMPLIES
+    ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+  ff_sh: LEMMA kconst?(G, C) AND C(p1) AND LV(G, p1)(i1) AND LV(G, p1)(i2) IMPLIES
+    ev?(C, p1, LAMBDA p: shp?(G, p1, p, i1, i2, eps))
+
+  %% ---- separation, and the whole hypothesis --------------------------------------------------------------
+  %% all the roots over p1, in one list
+  AR(G, p1, n): RECURSIVE list[complex] =
+    IF n = 0 THEN null[complex]
+    ELSE append(IF LV(G, p1)(n - 1) THEN RL(G, p1, n - 1) ELSE null[complex] ENDIF, AR(G, p1, n - 1))
+    ENDIF
+  MEASURE n
+  CL, CL2: VAR list[complex]
+  mem_app_col_pair: LEMMA FORALL CL: member(z, append(CL, CL2)) IFF member(z, CL) OR member(z, CL2)
+  ar_mem: LEMMA kconst?(G, C) AND C(p1) IMPLIES FORALL n: FORALL i, z:
+    i < n AND LV(G, p1)(i) AND FF(G, p1, p1)(i)(z) = real_(0) IMPLIES member(z, AR(G, p1, n))
+  sm_pairs: LEMMA sm?(LAMBDA eps: FORALL (a, b: nat): a < length(CL) AND b < length(CL)
+    AND nth(CL, a) /= nth(CL, b) IMPLIES abs(nth(CL, a) - nth(CL, b)) >= 2 * eps)
+  ff_sep: LEMMA kconst?(G, C) AND C(p1) AND sp?(length(G), LV(G, p1), FF(G, p1, p1), eps) AND LV(G, p1)(i)
+    IMPLIES sep?(RL(G, p1, i), eps)
+
+  ff_sp: LEMMA kconst?(G, C) AND C(p1) IMPLIES sm?(LAMBDA eps: sp?(length(G), LV(G, p1), FF(G, p1, p1), eps))
+  bb: VAR bool
+  P: VAR [list[real] -> bool]
+  ev_imp: LEMMA (bb IMPLIES ev?(C, p1, P)) IMPLIES ev?(C, p1, LAMBDA p: bb IMPLIES P(p))
+  up_all: LEMMA kconst?(G, C) AND C(p1) IMPLIES
+    ev?(C, p1, LAMBDA p: up?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps))
+  lo_all: LEMMA kconst?(G, C) AND C(p1) IMPLIES
+    ev?(C, p1, LAMBDA p: lo?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps))
+  sh_all: LEMMA kconst?(G, C) AND C(p1) IMPLIES
+    ev?(C, p1, LAMBDA p: sh?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps))
+  one_from: LEMMA kconst?(G, C) AND C(p1) AND C(p) AND sp?(length(G), LV(G, p1), FF(G, p1, p1), eps)
+    AND lo?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps)
+    IMPLIES one?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps)
+  cnj_ff: LEMMA cnj?(length(G), LV(G, p1), FF(G, p1, p))
+
+  ff_hyp: LEMMA kconst?(G, C) AND C(p1) AND sp?(length(G), LV(G, p1), FF(G, p1, p1), eps) IMPLIES
+    ev?(C, p1, LAMBDA p: hyp?(length(G), LV(G, p1), FF(G, p1, p1), FF(G, p1, p), eps))
+END col_pair

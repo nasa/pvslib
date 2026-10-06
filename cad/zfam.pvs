@@ -1,0 +1,73 @@
+zfam: THEORY
+%----------------------------------------------------------------------------
+% The EFFECTIVE family at a point and its reads.
+%
+% A member all of whose coefficients vanish at the point ws is identically
+% zero over it: its sign is 0 at every point above, it carries no chain, and
+% it would defeat the walk's conditions (the product vanishes identically).
+% The executable walks feff(F, od); the semantic side walks
+%
+%   zf(F, ws)    the members NOT zero_at? msg(ws), each as ws sees it: without
+%                the top coefficients that vanish at ws (ztrunc's tz,
+%                2026-09-27), so a degree drop at ws is walked as the lower
+%                degree it is
+%   insz         puts the zeros back into a sign vector of zf(F, ws)
+%                (svec_insz, fib_zf)
+%   crd(F)       every coefficient of every member (their signs decide zf;
+%                defined in ztrunc)
+%   wrs(F, ws)   crd(F) ++ the walk's intrinsic reads on zf(F, ws): what the
+%                executable's wi_rd_t lists
+%   certz?       cert? of zf(F, ws)
+%   rdz?(F, G, p)  the certificate at p holds and every read of the F-walk
+%                there is, after rd_norm, a MEMBER of the family G above
+%                (the executable's clok?)
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING walk_transfer, rd_norm, ztrunc
+
+  F, G, H: VAR list[list[mpoly]]
+  g: VAR list[mpoly]
+  l: VAR list[mpoly]
+  ws, ws0, ws1, xs, p, p1, p2: VAR list[real]
+  v, w: VAR SV
+  z, y, x, x0, q, a, b: VAR real
+  y0: VAR rat
+  S: VAR [real -> bool]
+  r, c: VAR mpoly
+  R: VAR list[mpoly]
+  sg1, sg2: VAR SG
+
+  %% ---- identically zero members ------------------------------------------------------
+  zero_at_list: LEMMA FORALL l: zero_at?(msg(ws), l) IMPLIES meval(mpol(l))(cons(z, ws)) = 0
+  zero_at_eval: LEMMA zero_at?(msg(ws), strip(g)) IMPLIES meval(mpol(g))(cons(z, ws)) = 0
+  zero_at_agree: LEMMA FORALL l: agree(sg1, sg2, l) IMPLIES (zero_at?(sg1, l) IFF zero_at?(sg2, l))
+
+  zf(F, ws): list[list[mpoly]] =
+    map(LAMBDA (g: list[mpoly]): tz(msg(ws), strip(g)))
+       (filter(LAMBDA (g: list[mpoly]): NOT zero_at?(msg(ws), strip(g)))(F))
+  zf_null: LEMMA zf(null[list[mpoly]], ws) = null[list[mpoly]]
+  zf_cons: LEMMA zf(cons(g, F), ws) =
+    IF zero_at?(msg(ws), strip(g)) THEN zf(F, ws) ELSE cons(tz(msg(ws), strip(g)), zf(F, ws)) ENDIF
+  h: VAR list[mpoly]
+  zf_mem: LEMMA FORALL F: member(h, zf(F, ws)) IFF
+    (EXISTS g: member(g, F) AND NOT zero_at?(msg(ws), strip(g)) AND h = tz(msg(ws), strip(g)))
+
+  insz(F, ws, v): RECURSIVE SV =
+    IF null?(F) THEN null[Sign3]
+    ELSIF zero_at?(msg(ws), strip(car(F))) THEN cons(0, insz(cdr(F), ws, v))
+    ELSIF null?(v) THEN null[Sign3]
+    ELSE cons(car(v), insz(cdr(F), ws, cdr(v)))
+    ENDIF
+  MEASURE length(F)
+
+  svec_insz: LEMMA FORALL F: svec(F, cons(z, ws)) = insz(F, ws, svec(zf(F, ws), cons(z, ws)))
+  fib_zf: LEMMA fib(F, ws)(v) IFF EXISTS w: fib(zf(F, ws), ws)(w) AND v = insz(F, ws, w)
+
+  %% ---- the reads and the certificate ------------------------------------------------------
+  wrs(F, ws): list[mpoly] = append(crd(F), wi_rd(zf(F, ws), msg(ws)))
+  certz?(F, ws): bool = cert?(zf(F, ws), msg(ws))
+
+  %% ---- the reads of the level below are members of the family above --------------------
+  rdz?(F, G, p): bool =
+    certz?(F, p) AND FORALL r: member(r, wrs(F, p)) IMPLIES member(as_list(rd_norm(r)), G)
+END zfam

@@ -1,0 +1,69 @@
+cad_projb_def: THEORY
+%----------------------------------------------------------------------------
+% A smaller projection for the bottom step, executable.
+%
+% For the family G one level above the line, keep for each member g only
+%   kt(g)            the degree of its top coefficient that does not
+%                    normalize to 0 (-1 if there is none) and that
+%                    coefficient,
+%   fpsc(f, f', ..)  the first psc_j(f, f') (j <= kt(g) - 2) that does not
+%                    normalize to 0, with f the reductum of degree kt(g),
+% and for each pair of members only the first psc_j(f, h) (j below both
+% degrees) that does not normalize to 0.  On a set where these are nonzero
+% the effective degrees and the degrees of the common divisors are constant
+% (cad_projb's kconst_nz), which is what Collins' delineability proof uses
+% (col_stack's kcol_stack); Collins' operator keeps every psc and every
+% reductum because on lower-dimensional cells of R^2 and up some of them can
+% vanish everywhere, which cannot happen on an open interval of the line.
+%
+% projb is normalized, without constants and repetitions (cad_projn_def's
+% clean); pdownb(G) is the family it gives, split into mpoly_gcd_def's basis
+% (meant to be squarefree and pairwise coprime; neither is proved nor checked)
+% when the product check confirms the factorization (mpoly_cert_def's fsplit).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING col_tower_def
+
+  g, h: VAR list[mpoly]
+  G: VAR list[list[mpoly]]
+  n, j: VAR nat
+
+  %% the degree of the top coefficient below n that does not normalize to 0, or -1
+  ktop(g, n): RECURSIVE int =
+    IF n = 0 THEN -1 ELSIF zcst?(cf(g, n - 1)) THEN ktop(g, n - 1) ELSE n - 1 ENDIF
+  MEASURE n
+  kt(g): int = ktop(g, length(g))
+
+  %% the first psc_i(g, h), j <= i < n, that does not normalize to 0, as a list of at most one
+  fpsc(g, h, j, n): RECURSIVE list[mpoly] =
+    IF n <= j THEN null[mpoly]
+    ELSE LET q = pscg(g, h, j) IN IF zcst?(q) THEN fpsc(g, h, j + 1, n) ELSE (: q :) ENDIF
+    ENDIF
+  MEASURE IF j <= n THEN n - j ELSE 0 ENDIF
+
+  %% a member's part: its top coefficient, and the first psc with its derivative
+  pb1(g): list[mpoly] =
+    IF kt(g) < 0 THEN null[mpoly]
+    ELSE cons(cf(g, kt(g)),
+              IF kt(g) >= 2 THEN fpsc(rdc(g, kt(g)), lderiv(rdc(g, kt(g))), 0, kt(g) - 1)
+              ELSE null[mpoly] ENDIF)
+    ENDIF
+
+  %% a pair's part
+  pb2(g, h): list[mpoly] =
+    IF kt(g) < 1 OR kt(h) < 1 THEN null[mpoly]
+    ELSE fpsc(rdc(g, kt(g)), rdc(h, kt(h)), 0, min(kt(g), kt(h))) ENDIF
+
+  %% one member against the later ones, and the whole family
+  pbr(g, G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly] ELSE append(pb2(g, car(G)), pbr(g, cdr(G))) ENDIF
+  MEASURE length(G)
+  pball(G): RECURSIVE list[mpoly] =
+    IF null?(G) THEN null[mpoly]
+    ELSE append(pb1(car(G)), append(pbr(car(G), cdr(G)), pball(cdr(G))))
+    ENDIF
+  MEASURE length(G)
+
+  projb(G): list[mpoly] = clean(pball(G), null[mpoly])
+  pdownb(G): list[list[mpoly]] = fam(fsplit(projb(G)))
+END cad_projb_def

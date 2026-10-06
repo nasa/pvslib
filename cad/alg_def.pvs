@@ -1,0 +1,81 @@
+alg_def: THEORY
+%----------------------------------------------------------------------------
+% Real algebraic numbers as isolating intervals.
+%
+% An algebraic number is a rational polynomial p together with a rational
+% interval [lb, ub] containing exactly one real root of p; alg? decides this
+% with nroots, so the representation is checkable by evaluation. value(a) is
+% that root (defined with `the` on the singleton root set; never computed,
+% only reasoned about). refine(a) halves the interval keeping the root, so
+% every later procedure can shrink an isolating interval as far as it needs.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING alg_count
+
+  alg: TYPE = [# p: Polylist, lb: rat, ub: rat #]
+  a, b: VAR alg
+  x, z: VAR real
+  r: VAR rat
+  n: VAR nat
+
+  %% the representation invariant, decided by the Sturm counter
+  alg?(a): bool = deg(a`p) > 0 AND a`lb < a`ub AND nroots(a`p, a`lb, a`ub) = 1
+  Alg: TYPE = (alg?)
+
+  roots_singleton: LEMMA alg?(a) IMPLIES singleton?(roots_in(a`p, a`lb, a`ub))
+
+  value(a: Alg): real = the(roots_in(a`p, a`lb, a`ub))
+
+  value_root: LEMMA alg?(a) IMPLIES polylist(a`p)(value(a)) = 0
+  value_in: LEMMA alg?(a) IMPLIES a`lb <= value(a) AND value(a) <= a`ub
+  value_unique: LEMMA alg?(a) AND roots_in(a`p, a`lb, a`ub)(x) IMPLIES x = value(a)
+  value_char: LEMMA alg?(a) IMPLIES (value(a) = x IFF roots_in(a`p, a`lb, a`ub)(x))
+  %% the same polynomial and any isolating interval of the same root give the same value
+  value_eq: LEMMA alg?(a) AND alg?(b) AND a`p = b`p AND
+    roots_in(b`p, b`lb, b`ub)(value(a)) IMPLIES value(b) = value(a)
+
+  %% width and midpoint
+  width(a): rat = a`ub - a`lb
+  mid(a): rat = (a`lb + a`ub) / 2
+
+  %% a rational number as an algebraic number: root of x - r in [r - 1, r + 1]
+  rat_alg(r): alg = (# p := (: -r, 1 :), lb := r - 1, ub := r + 1 #)
+  rat_alg_poly: LEMMA polylist((: -r, 1 :))(x) = x - r
+  rat_alg_deg: LEMMA deg((: -r, 1 :)) = 1
+  rat_alg_alg: LEMMA alg?(rat_alg(r))
+  rat_alg_value: LEMMA value(rat_alg(r)) = r
+
+  %% the root is in the left half [lb, mid]: a zero at lb or at mid, or a sign
+  %% change between them, decides at once (the root is the only one in
+  %% [lb, ub]); otherwise the root count.  Measured 2026-10-01: the count
+  %% recomputes the Sturm chain of p at every bisection, which
+  %% was most of the outer closure's time on a quadratic three-quantifier QE
+  lhalf?(a: Alg): bool =
+    LET l = polylist(a`p)(a`lb), m = polylist(a`p)(mid(a)) IN
+    l = 0 OR m = 0 OR (l < 0 AND m > 0) OR (l > 0 AND m < 0) OR nroots(a`p, a`lb, mid(a)) = 1
+  half_one: LEMMA alg?(a) AND a`lb <= x AND x <= mid(a) AND polylist(a`p)(x) = 0 IMPLIES
+    nroots(a`p, a`lb, mid(a)) = 1
+  lhalf_def: LEMMA alg?(a) IMPLIES (lhalf?(a) IFF nroots(a`p, a`lb, mid(a)) = 1)
+
+  %% one bisection step: keep the half that contains the root
+  refine(a: Alg): alg =
+    IF lhalf?(a) THEN a WITH [ub := mid(a)] ELSE a WITH [lb := mid(a)] ENDIF
+
+  %% if the left half does not isolate the root, the root is strictly right of the midpoint
+  refine_lo: LEMMA alg?(a) AND nroots(a`p, a`lb, mid(a)) /= 1 IMPLIES value(a) > mid(a)
+  %% and if it does, the root is in it
+  refine_hi: LEMMA alg?(a) AND nroots(a`p, a`lb, mid(a)) = 1 IMPLIES value(a) <= mid(a)
+  refine_contains: LEMMA alg?(a) IMPLIES roots_in(a`p, refine(a)`lb, refine(a)`ub)(value(a))
+  refine_p: LEMMA alg?(a) IMPLIES refine(a)`p = a`p
+  refine_sub: LEMMA alg?(a) IMPLIES a`lb <= refine(a)`lb AND refine(a)`ub <= a`ub
+  refine_width: LEMMA alg?(a) IMPLIES width(refine(a)) = width(a) / 2
+  refine_alg: LEMMA alg?(a) IMPLIES alg?(refine(a))
+  refine_value: LEMMA alg?(a) IMPLIES value(refine(a)) = value(a)
+
+  %% n bisection steps
+  refine_n(a: Alg, n): RECURSIVE Alg =
+    IF n = 0 THEN a ELSE refine(refine_n(a, n - 1)) ENDIF
+  MEASURE n
+
+  refine_n_value: LEMMA alg?(a) IMPLIES value(refine_n(a, n)) = value(a)
+END alg_def

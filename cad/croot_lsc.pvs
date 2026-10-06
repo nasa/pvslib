@@ -1,0 +1,94 @@
+croot_lsc: THEORY
+%----------------------------------------------------------------------------
+% The roots of a real polynomial of fixed degree move continuously with its
+% coefficients, in both directions.
+%
+% For a real coefficient array A of exact degree n (A(n) /= 0) and the
+% complex polynomial rp(A, n) of sres_rows:
+%   rp_near     (upper semicontinuity, croot_near's croot_root_near) every root of
+%               rp(B, n), B close to A, is near a root of rp(A, n)
+%   rp_lsc      (lower semicontinuity) every root of rp(A, n) has a root of
+%               rp(B, n) near it: otherwise rp(B, n) = B(n) cprod(s, n) is
+%               at least |B(n)| eps^n there (cprod_far), but its value tends
+%               to rp(A, n)'s, which is 0 (cpoly_diff_bound)
+%   rp_list     the distinct roots form a list (dist_seq over cfact's roots)
+%   rp_conj     the conjugate of a root is a root (real coefficients)
+%   rp_cder     rp(poly_deriv(A), n - 1) is the derivative of rp(A, n)
+%   ccd_same    two arrays of degree n whose psc_j(A, A') (j < n - 1) vanish
+%               for the same j have common divisors of (F, F') of the same
+%               degrees (sres_ccd)
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING croot_near, cpoly_dist, sres_thm, complex@cpolynomial_real
+
+  A, B: VAR [nat -> real]
+  n, i, j, k: VAR nat
+  z, w, y: VAR complex
+  x: VAR real
+  r: VAR [nat -> complex]
+  L, LA, LB: VAR list[complex]
+  eps: VAR posreal
+
+  %% B is within delta of A in the coefficients of degree at most n
+  rclose?(A, B, n, (delta: real)): bool = FORALL i: i <= n IMPLIES abs(A(i) - B(i)) <= delta
+
+  %% ---- the roots of a product of linear factors ----------------------------------------------
+  cprod_at: LEMMA FORALL n: i < n IMPLIES cprod(r, n)(r(i)) = real_(0)
+  cprod_root: LEMMA FORALL n: cprod(r, n)(z) = real_(0) IMPLIES EXISTS i: i < n AND z = r(i)
+
+  %% ---- real coefficients -------------------------------------------------------------------
+  rp_real: LEMMA rp(A, n)(real_(x)) = real_(polynomial(A, n)(x))
+  rp_conj: LEMMA rp(A, n)(z) = real_(0) IMPLIES rp(A, n)(conjugate(z)) = real_(0)
+
+  %% ---- the distinct roots form a list --------------------------------------------------------
+  dist_seq: LEMMA FORALL n: EXISTS L: dist?(L) AND FORALL z: member(z, L) IFF EXISTS i: i < n AND r(i) = z
+  rp_list: LEMMA A(n) /= 0 IMPLIES
+    EXISTS L: dist?(L) AND FORALL z: rp(A, n)(z) = real_(0) IFF member(z, L)
+
+  %% ---- continuity of the roots ---------------------------------------------------------------
+  rp_near: LEMMA A(n) /= 0 IMPLIES EXISTS (delta: posreal): FORALL B, z:
+    rclose?(A, B, n, delta) AND rp(B, n)(z) = real_(0) IMPLIES
+    EXISTS w: rp(A, n)(w) = real_(0) AND abs(z - w) < eps
+
+  cabs_sym: LEMMA abs(z - w) = abs(w - z)
+  lsc_arith: LEMMA FORALL (K, X: posreal, d: real): 0 <= d AND d <= X / (2 * K) IMPLIES K * d < X
+  %% the bound behind rp_lsc, with delta explicit
+  lsc_core: LEMMA FORALL (d: real): n > 0 AND A(n) /= 0 AND rp(A, n)(w) = real_(0) AND 0 <= d
+    AND d <= abs(A(n)) / 2 AND d <= (abs(A(n)) / 2 * eps ^ n) / (2 * ((n + 1) * (abs(w) + 2) ^ n))
+    AND rclose?(A, B, n, d)
+    IMPLIES EXISTS z: rp(B, n)(z) = real_(0) AND abs(z - w) < eps
+
+  rp_lsc: LEMMA A(n) /= 0 AND rp(A, n)(w) = real_(0) IMPLIES EXISTS (delta: posreal): FORALL B:
+    rclose?(A, B, n, delta) IMPLIES EXISTS z: rp(B, n)(z) = real_(0) AND abs(z - w) < eps
+
+  %% ---- the derivative, and the number of distinct roots --------------------------------------
+  rp_cder: LEMMA n >= 1 IMPLIES cder?(rp(A, n), rp(poly_deriv(A), n - 1))
+
+  %% the psc of (A, A') vanish for the same j as those of (B, B')
+  psc_same?(A, B, n): bool = FORALL j: j < n - 1 IMPLIES
+    (rdet(n + (n - 1) - 2 * j, sylj(A, n, poly_deriv(A), n - 1, j)) = 0 IFF
+     rdet(n + (n - 1) - 2 * j, sylj(B, n, poly_deriv(B), n - 1, j)) = 0)
+
+  %% equal psc patterns: equal common-divisor degrees with the derivative (sres_ccd)
+  ccd_same: LEMMA A(n) /= 0 AND B(n) /= 0 AND n >= 1 AND psc_same?(A, B, n) AND k <= n - 1 IMPLIES
+    (ccd?(rp(A, n), rp(poly_deriv(A), n - 1), k) IFF ccd?(rp(B, n), rp(poly_deriv(B), n - 1), k))
+
+  %% ---- the same common-divisor degrees (2026-10-02) -------------------
+  %% the common divisors of A and A' have the same
+  %% degrees as those of B and B'.  psc_same? gives it (psc_kdist); so does a single
+  %% nonzero psc above identically zero ones (cad_projb), where psc_same? may fail
+  kdist?(A, B, n): bool = FORALL k: k <= n - 1 IMPLIES
+    (ccd?(rp(A, n), rp(poly_deriv(A), n - 1), k) IFF ccd?(rp(B, n), rp(poly_deriv(B), n - 1), k))
+  kdist_ccd: LEMMA A(n) /= 0 AND B(n) /= 0 AND n >= 1 AND kdist?(A, B, n) AND k <= n - 1 IMPLIES
+    (ccd?(rp(A, n), rp(poly_deriv(A), n - 1), k) IFF ccd?(rp(B, n), rp(poly_deriv(B), n - 1), k))
+  psc_kdist: LEMMA A(n) /= 0 AND B(n) /= 0 AND n >= 1 AND psc_same?(A, B, n) IMPLIES kdist?(A, B, n)
+  kdist_sym: LEMMA kdist?(A, B, n) IMPLIES kdist?(B, A, n)
+  kdist_le: LEMMA A(n) /= 0 AND B(n) /= 0 AND n >= 1 AND kdist?(A, B, n)
+    AND dist?(LA) AND (FORALL z: rp(A, n)(z) = real_(0) IFF member(z, LA))
+    AND dist?(LB) AND (FORALL z: rp(B, n)(z) = real_(0) IFF member(z, LB))
+    IMPLIES length(LB) <= length(LA)
+  kdist_same: LEMMA A(n) /= 0 AND B(n) /= 0 AND n >= 1 AND kdist?(A, B, n)
+    AND dist?(LA) AND (FORALL z: rp(A, n)(z) = real_(0) IFF member(z, LA))
+    AND dist?(LB) AND (FORALL z: rp(B, n)(z) = real_(0) IFF member(z, LB))
+    IMPLIES length(LA) = length(LB)
+END croot_lsc

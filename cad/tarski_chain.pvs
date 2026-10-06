@@ -1,0 +1,95 @@
+tarski_chain: THEORY
+%----------------------------------------------------------------------------
+% The chain of a Tarski query, symbolically.
+%
+% A Tarski query TQ(p, g) counts the roots of p weighted by the sign of g, and
+% Tarski@sturmtarski computes it from a chain whose second element is
+% g * p' rather than p'.  Everything else is the same pseudo-remainder
+% recursion, so this theory reuses rchain and its structure lemmas and only
+% replaces the second element: tsnd is the product of g with the derivative
+% of p, normalized at the valuation so that the pseudo-division has a nonzero
+% leading coefficient.  mpoly_prod says the product denotes NASALib's
+% polynomial_prod and snorm_arr says normalizing does not move the array, so
+% the second element has exactly the array and the degree the predicate asks
+% for.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING chain_sturm, snorm_arr, Tarski@sturmtarski
+
+  l0, l1, g: VAR list[mpoly]
+  ys: VAR list[real]
+  k, i, u: VAR nat
+  x: VAR real
+
+  %% a chain starting from an arbitrary second element
+  gok(k, l0, l1, ys): bool = cons?(l0) AND meval(llast(l0))(ys) /= 0 AND
+                             cons?(l1) AND meval(llast(l1))(ys) /= 0 AND length(l1) < k
+  gchain(k, l0, l1, ys): list[list[mpoly]] = cons(l0, rchain(k, l0, l1, ys))
+
+  gc_len: LEMMA length(gchain(k, l0, l1, ys)) = 1 + length(rchain(k, l0, l1, ys))
+  gc_0: LEMMA nthl(gchain(k, l0, l1, ys), 0) = l0
+  gc_succ: LEMMA i + 1 < length(gchain(k, l0, l1, ys)) IMPLIES
+    nthl(gchain(k, l0, l1, ys), i + 1) = nth(rchain(k, l0, l1, ys), i)
+  gc_1: LEMMA gok(k, l0, l1, ys) IMPLIES nthl(gchain(k, l0, l1, ys), 1) = l1
+  gc_m: LEMMA gok(k, l0, l1, ys) IMPLIES length(gchain(k, l0, l1, ys)) - 1 >= 2
+  gc_last: LEMMA gok(k, l0, l1, ys) IMPLIES
+    null?(nthl(gchain(k, l0, l1, ys), length(gchain(k, l0, l1, ys)) - 1))
+  gc_cons: LEMMA gok(k, l0, l1, ys) AND i < length(gchain(k, l0, l1, ys)) - 1 IMPLIES
+    cons?(nthl(gchain(k, l0, l1, ys), i))
+  gc_lc: LEMMA gok(k, l0, l1, ys) AND i < length(gchain(k, l0, l1, ys)) - 1 IMPLIES
+    meval(llast(nthl(gchain(k, l0, l1, ys), i)))(ys) /= 0
+  gc_dec: LEMMA gok(k, l0, l1, ys) AND i >= 1 AND i + 1 < length(gchain(k, l0, l1, ys)) - 1 IMPLIES
+    length(nthl(gchain(k, l0, l1, ys), i + 1)) < length(nthl(gchain(k, l0, l1, ys), i))
+  gc_step: LEMMA gok(k, l0, l1, ys) AND i + 2 <= length(gchain(k, l0, l1, ys)) - 1 IMPLIES
+    nthl(gchain(k, l0, l1, ys), i + 2) =
+      snext(nthl(gchain(k, l0, l1, ys), i), nthl(gchain(k, l0, l1, ys), i + 1), ys)
+  %% the second element of the Tarski chain: g times the derivative, normalized
+  tsnd(g, l0, ys): list[mpoly] = select(snorm(lmul(g, lderiv(l0))), ys)
+  tok(k, l0, g, ys): bool = length(l0) >= 2 AND meval(llast(l0))(ys) /= 0 AND
+                            cons?(g) AND meval(llast(g))(ys) /= 0 AND
+                            length(l0) + length(g) <= k
+
+  lmul_top: LEMMA tok(k, l0, g, ys) IMPLIES
+    earr(lmul(g, lderiv(l0)), ys)(dg(g) + dg(l0) - 1) /= 0
+  lmul_zero: LEMMA tok(k, l0, g, ys) AND i > dg(g) + dg(l0) - 1 IMPLIES
+    earr(lmul(g, lderiv(l0)), ys)(i) = 0
+  tsnd_cons: LEMMA tok(k, l0, g, ys) IMPLIES cons?(tsnd(g, l0, ys))
+  tsnd_dg: LEMMA tok(k, l0, g, ys) IMPLIES dg(tsnd(g, l0, ys)) = dg(g) + dg(l0) - 1
+  tsnd_lc: LEMMA tok(k, l0, g, ys) IMPLIES meval(llast(tsnd(g, l0, ys)))(ys) /= 0
+  tsnd_arr: LEMMA tok(k, l0, g, ys) IMPLIES
+    earr(tsnd(g, l0, ys), ys) =
+      polynomial_prod(earr(g, ys), dg(g), poly_deriv(earr(l0, ys)), dg(l0) - 1)
+  tsnd_short: LEMMA tok(k, l0, g, ys) IMPLIES length(tsnd(g, l0, ys)) < k
+  tok_gok: LEMMA tok(k, l0, g, ys) IMPLIES gok(k, l0, tsnd(g, l0, ys), ys)
+
+  %% the Tarski chain and the six conditions of Tarski@sturmtarski
+  tchain(k, l0, g, ys): list[list[mpoly]] = gchain(k, l0, tsnd(g, l0, ys), ys)
+
+  u1: LEMMA tok(k, l0, g, ys) AND i < length(tchain(k, l0, g, ys)) - 1 IMPLIES
+    carr(tchain(k, l0, g, ys), ys)(i)(cdeg(tchain(k, l0, g, ys))(i)) /= 0
+  u2: LEMMA tok(k, l0, g, ys) AND 1 <= i AND i < u AND u <= length(tchain(k, l0, g, ys)) - 2 IMPLIES
+    cdeg(tchain(k, l0, g, ys))(i) > cdeg(tchain(k, l0, g, ys))(u)
+  u3: LEMMA tok(k, l0, g, ys) IMPLIES cdeg(tchain(k, l0, g, ys))(0) > 0
+  u4: LEMMA tok(k, l0, g, ys) IMPLIES
+    carr(tchain(k, l0, g, ys), ys)(1) =
+      polynomial_prod(earr(g, ys), dg(g), poly_deriv(carr(tchain(k, l0, g, ys), ys)(0)),
+                      cdeg(tchain(k, l0, g, ys))(0) - 1)
+  u5: LEMMA tok(k, l0, g, ys) IMPLIES
+    cdeg(tchain(k, l0, g, ys))(1) = dg(g) + cdeg(tchain(k, l0, g, ys))(0) - 1
+  u6: LEMMA tok(k, l0, g, ys) IMPLIES
+    cdeg(tchain(k, l0, g, ys))(length(tchain(k, l0, g, ys)) - 1) = 0 AND
+    carr(tchain(k, l0, g, ys), ys)(length(tchain(k, l0, g, ys)) - 1)(0) = 0
+  u7: LEMMA tok(k, l0, g, ys) AND u > 1 AND u <= length(tchain(k, l0, g, ys)) - 1 IMPLIES
+    LET c = tchain(k, l0, g, ys),
+        pd = poly_divide(carr(c, ys)(u - 2), cdeg(c)(u - 2))
+                        (carr(c, ys)(u - 1), cdeg(c)(u - 1))(0) IN
+    EXISTS (cc: posreal):
+      polynomial(carr(c, ys)(u), cdeg(c)(u)) = polynomial(-cc * pd`rem, pd`rdeg)
+  u8: LEMMA tok(k, l0, g, ys) IMPLIES
+    length(tchain(k, l0, g, ys)) - 1 >= 2 AND earr(g, ys)(dg(g)) /= 0
+
+  tchain_sturm: THEOREM tok(k, l0, g, ys) IMPLIES
+    constructed_sturm_sequence?(carr(tchain(k, l0, g, ys), ys), cdeg(tchain(k, l0, g, ys)),
+                                earr(g, ys), dg(g), length(tchain(k, l0, g, ys)) - 1)
+
+END tarski_chain

@@ -1,0 +1,52 @@
+sturm_step2: THEORY
+%----------------------------------------------------------------------------
+% The reduced chain step, by a sign function (for speed).
+%
+% The step of sturm_step multiplies the pseudo-remainder by -b^k, which
+% squares the coefficient growth along a chain. sstep2 divides the
+% pseudo-remainder instead: by cc^e, where the chain (sg_chain2) supplies
+% cc = the leading coefficient of the element before l1 and e = one more
+% than the degree drop before it (Collins's reduced sequence, in which
+% these divisions are exact). The quotient is used only when lexact
+% confirms it, with the sign that makes the result a negative multiple of
+% the remainder, read off the sign function: sgn(cc^e) and sgn(b^k). When
+% the division is not exact or a sign is unknown the step falls back to
+% sstep. So the element is, at msg(ys), a positive multiple of the element
+% of sturm_step (sstep2_prop), which is all the Sturm and Tarski counts
+% depend on; and it depends on sg only through two reads (sstep2_det).
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_div, earr_ops, sg_norm
+
+  l1, l2, q, r: VAR list[mpoly]
+  d, cc: VAR mpoly
+  e, i: VAR nat
+  sg, sg1, sg2: VAR SG
+  ys: VAR list[real]
+  s: VAR Sign3
+
+  %% the sign of a power from the sign of its base
+  sgp(s, e): RECURSIVE Sign3 = IF e = 0 THEN 1 ELSE s * sgp(s, e - 1) ENDIF
+  MEASURE e
+  sgp_at: LEMMA FORALL (x: real): sgp(sign3(x), e) = sign3(x ^ e)
+
+  %% the step
+  sstep2(l1, (l2 | cons?(l2)), cc, e, sg): list[mpoly] =
+    LET r = map(mnorm)(prem(l1, l2)), dn = mnorm(mpow(cc, e)), q = ldivl(r, dn),
+        sd = sgp(sg(mnorm(cc)), e), sb = sgp(lcs(l2, sg), pk(l1, l2)) IN
+    IF sd /= 0 AND sb /= 0 AND lexact(dn, q, r)
+    THEN IF sd * sb = -1 THEN q ELSE lscal(mconst(-1), q) ENDIF
+    ELSE sstep(l1, l2)
+    ENDIF
+  sstep2_rd(l1, (l2 | cons?(l2)), cc, e, sg): list[mpoly] = (: mnorm(cc), mnorm(llast(l2)) :)
+
+  %% what the check gives
+  lexact_earr: LEMMA FORALL q, r, i: lexact(d, q, r) IMPLIES
+    earr(q, ys)(i) * meval(d)(ys) = earr(r, ys)(i)
+  ldivl_len: LEMMA length(ldivl(r, d)) = length(r)
+
+  sstep2_prop: LEMMA cons?(l2) AND blc(l2, ys) /= 0 IMPLIES
+    EXISTS (c: posreal): prop(sstep2(l1, l2, cc, e, msg(ys)), sstep(l1, l2), c, ys)
+  sstep2_det: LEMMA cons?(l2) AND agree(sg1, sg2, sstep2_rd(l1, l2, cc, e, sg1)) IMPLIES
+    sstep2(l1, l2, cc, e, sg2) = sstep2(l1, l2, cc, e, sg1)
+END sturm_step2

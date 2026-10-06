@@ -1,0 +1,58 @@
+mpoly_div: THEORY
+%----------------------------------------------------------------------------
+% Exact division at the coefficient level (for speed).
+%
+% The subresultant-style chain step divides every coefficient of a
+% pseudo-remainder by a polynomial d in the parameters. mdiv(fuel, p, d) is
+% the quotient of p by d when the division is exact and any polynomial
+% otherwise; lexact(d, q, r) checks, coefficient by coefficient, that
+% d * q = r after normalization. Nothing here is proved about mdiv: the step
+% uses the quotient only when lexact confirms it, and its correctness
+% (sturm_step2) rests on that check alone. The fuel bounds the recursion; a
+% bound that runs out makes lexact fail, never the step wrong.
+%----------------------------------------------------------------------------
+BEGIN
+  IMPORTING mpoly_eqd, mpoly_pdiv
+
+  p, d, h: VAR mpoly
+  l, m, q, r: VAR list[mpoly]
+  fuel: VAR nat
+
+  %% the quotient attempt: constant divisors scale, a divisor constant in
+  %% the main variable divides the coefficients, and otherwise one term of
+  %% the quotient is taken from the leading coefficients and the recursion
+  %% continues on the syntactic difference (the leading term is dropped)
+  mdiv(fuel, p, d): RECURSIVE mpoly =
+    IF fuel = 0 THEN zero
+    ELSE CASES d OF
+      mconst(c): IF c = 0 THEN zero ELSE mscal(1 / c, p) ENDIF,
+      mpol(m):
+        IF null?(m) THEN zero
+        ELSIF null?(cdr(m)) THEN mdiv(fuel - 1, p, car(m))
+        ELSE CASES p OF
+          mconst(a): zero,
+          mpol(l):
+            IF length(l) < length(m) THEN zero
+            ELSE LET qc = mdiv(fuel - 1, llast(l), llast(m)),
+                     k = length(l) - length(m),
+                     rest = lsub(lbut(l), shiftl(k, lscal(qc, lbut(m)))) IN
+                 madd(monom_main(qc, k), mdiv(fuel - 1, mpol(rest), d))
+            ENDIF
+        ENDCASES
+        ENDIF
+    ENDCASES
+    ENDIF
+  MEASURE fuel
+
+  %% enough fuel for exact divisions
+  dfuel(p, d): nat = 2 * (msize(p) + msize(d)) + 2
+
+  %% the quotient list and the check
+  ldivl(r, d): list[mpoly] = map(LAMBDA h: mdiv(dfuel(h, d), h, d))(r)
+
+  lexact(d, q, r): RECURSIVE bool =
+    IF null?(q) THEN null?(r)
+    ELSE cons?(r) AND meq(mnorm(mmul(d, car(q))), mnorm(car(r))) AND lexact(d, cdr(q), cdr(r))
+    ENDIF
+  MEASURE length(q)
+END mpoly_div
