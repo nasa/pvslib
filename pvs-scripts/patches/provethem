@@ -225,7 +225,7 @@ sub generate_all_libraries($) {
 	# Only take into considerations folders that have at least one pvs file
 	if ( scalar @files_in_subdir > 0) {
 	  # look into the dep file to check dependencies
-	  my $depfile = "$depdir/$libdir.dep";
+	  my $depfile = depfile_name($depdir,$libdir);
 	  my $topfile = "$libdir/$topname.pvs";
 	  if (! -f $topfile && ! $force2) {
 	      print "File $topfile not found. It could be generated, but it takes time\n";
@@ -666,11 +666,36 @@ sub iterate_command_libs($){
   return($return_value);
 }
 
-my @current_wspaths;
+my %lib_order;   # library name -> position in the input file
+
+# Name of the .dep file of library $lib in directory $depdir. The .dep file of
+# a sub-library <lib>/<sublib> is <depdir>/<lib>-<sublib>.dep.
+sub depfile_name {
+  my ($depdir,$lib) = @_;
+  (my $name = $lib) =~ s/\/+$//;
+  $name =~ s/^(?:\.\/+)+//;
+  $name =~ s/\/+/-/g;
+  return "$depdir/$name.dep";
+}
+
+sub load_lib_order {
+  my $pos = 0;
+  open(my $fh, '<', $file) or return;
+  while (<$fh>) {
+    s/\#.*$//;
+    my $line = trim($_);
+    next if !$line || $line =~ /^-/;
+    my $lib = trim((split /:/, $line)[0] // '');
+    next if !$lib;
+    $lib =~ s/\/$//;
+    $lib_order{$lib} //= $pos++;
+  }
+  close($fh);
+}
 
 sub check_dependencies {
   my ($depdir,$deplib) = @_;
-  my $depfile = "$depdir/$deplib.dep";
+  my $depfile = depfile_name($depdir,$deplib);
   my $localws;
   my $localbase;
 
@@ -697,10 +722,13 @@ sub check_dependencies {
 	if (!$localws) {
 	  $localws = $wspath;
 	  $localbase = $base;
-	  push @current_wspaths, $localws;
 	} elsif ($localbase eq $base) {
-	  print "*** Warning (provethem): Library $path is either missing or out of order. It should appear before $deplib in $file\n"
-	      if !grep { $_ eq $wspath } @current_wspaths;
+	  my $deppos = $lib_order{$path};
+	  if (!defined $deppos) {
+	    print "*** Warning (provethem): Library $path is missing from $file. It should appear before $deplib\n";
+	  } elsif ($deppos >= $lib_order{$deplib}) {
+	    print "*** Warning (provethem): Library $path is out of order. It should appear before $deplib in $file\n";
+	  }
 	}
       }
     }
@@ -719,6 +747,8 @@ sub iterate_proveit_libs($) {
   $ret_val_labels{'15'}="FAIL - terminated";
 
   $no_printout="t";
+
+  load_lib_order();
 
   #
 

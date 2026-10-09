@@ -725,18 +725,17 @@ function depFileError(lib: string, msg: string): never {
   process.exit(1);
 }
 
-// Name of the .dep file of library lib, i.e., <depDir>/<lib>.dep
+// Name of the .dep file of library lib, i.e., <depDir>/<lib>.dep. The .dep file of
+// a sub-library <lib>/<sublib> is <depDir>/<lib>-<sublib>.dep.
 function dependencyFileName(lib: string): string {
-  const candidates = [lib, lib.replace(/\//g, "-"), path.basename(lib)];
-  for (const name of candidates) {
-    const file = path.join(depDir, `${name}.dep`);
-    if (fs.existsSync(file)) return file;
-  }
+  const name = lib.replace(/\/+$/, "").replace(/^(?:\.\/+)+/, "").replace(/\/+/g, "-");
+  const file = path.join(depDir, `${name}.dep`);
+  if (fs.existsSync(file)) return file;
   const oldFile = path.join(lib, "pvsbin", `${topName}.dep`);
   if (fs.existsSync(oldFile)) {
     depFileError(lib, `${oldFile} uses an old dependency file format, which is no longer supported.`);
   }
-  depFileError(lib, `dependency file ${path.join(depDir, `${lib}.dep`)} not found.`);
+  depFileError(lib, `dependency file ${file} not found.`);
 }
 
 // Parse a library specification [<collection>]<path>/<lib>. Returns <path>/<lib> and records its collection.
