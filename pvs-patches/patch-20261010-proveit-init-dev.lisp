@@ -1,5 +1,6 @@
 ;;
 ;; proveit-init.lisp
+;; Release: ProofLite-8.1-20261009
 ;;
 ;; Contact: Cesar Munoz (cesar.a.munoz@nasa.gov)
 ;;          Mariano Moscato (mariano.m.moscato@nasa.gov)
@@ -12,11 +13,9 @@
 ;; Rights Reserved.
 ;;
 
-(setf sb-ext:*muffled-warnings* 'sb-kernel:redefinition-warning)
-
 (in-package :pvs)
 
-(defparameter *proveit-debug* t)
+(defparameter *proveit-debug* nil)
 
 ;; Split string given a character
 (defun split (str char)
