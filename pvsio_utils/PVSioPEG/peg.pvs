@@ -25,6 +25,27 @@ BEGIN
       state WITH [ `scaffold := cons(new_tier,cdr(state`scaffold)) ]
     ENDIF
 
+  length_cdr_tiers : LEMMA
+    FORALL (l:list[ASTTier] | cons?(l)): length(cdr(l)) = length(l)-1
+
+  add_item_eq : LEMMA
+    FORALL (item:Item,state:PegState | success?(state`status)):
+      add_item(item)(state)`last_token = state`last_token AND
+      add_item(item)(state)`scopes = state`scopes AND
+      length(add_item(item)(state)`scaffold) = length(state`scaffold)
+
+  add_item_last_token : LEMMA
+    FORALL (item:Item,state:PegState | success?(state`status)):
+      add_item(item)(state)`last_token = state`last_token
+
+  add_item_scopes : LEMMA
+    FORALL (item:Item,state:PegState | success?(state`status)):
+      add_item(item)(state)`scopes = state`scopes
+
+  add_item_scaffold : LEMMA
+    FORALL (item:Item,state:PegState | success?(state`status)):
+      length(add_item(item)(state)`scaffold) = length(state`scaffold)
+
   open_wrk_level(state:PegState) : {next_state : PegState | length(next_state`scaffold) > 0} =
     LET new_tier = new_tier(state) IN
     state WITH [ `scaffold := cons(new_tier,state`scaffold) ]
@@ -116,6 +137,25 @@ BEGIN
       length(next_state`scaffold) >= length(state`scaffold) AND
       depth_scopes(next_state) >= depth_scopes(state)
 
+  % Validity of a state only depends on its last token and its scopes
+  valid_pegstate_eq : LEMMA
+    FORALL (peg:PEG,str:string,state1,state2:PegState):
+      state1`last_token = state2`last_token AND
+      state1`scopes = state2`scopes IMPLIES
+      (valid_pegstate?(peg,str)(state1) IFF valid_pegstate?(peg,str)(state2))
+
+  % Postcondition of peg_parse: the position never moves back and, on success,
+  % the scope stack and the number of working levels are unchanged
+  parse_next?(state:PegState)(next_state:PegState) : bool =
+    current_pos(next_state)`nxt_pos >= current_pos(state)`nxt_pos AND
+    (success?(next_state`status) IMPLIES
+       next_state`scopes = state`scopes AND
+       length(next_state`scaffold) = length(state`scaffold))
+
+  % Number of scopes at the current position
+  current_depth(state:PegState) : nat =
+    depth_scopes(state`scopes,current_pos(state)`nxt_pos)
+
   depth_scopes_pegstate : JUDGEMENT
     depth_scopes(state:PegState | sorted_scopes?(state`scopes)) HAS_TYPE
       {n : upto(length(state`scopes)) |
@@ -132,6 +172,30 @@ BEGIN
       pos`nxt_pos = scope`pos`nxt_pos AND  % This take advantange that scopes are sorted
       (rule = scope`rule OR in_sorted_scopes(cdr(scopes))(rule,pos))
     MEASURE length(scopes)
+
+  % In a valid state, all scopes are at or before the current position
+  scopes_le_current : LEMMA
+    FORALL (peg:PEG,state:PegState):
+      valid_scopes?(peg)(state) IMPLIES
+      FORALL (k:below(length(state`scopes))):
+        nth(state`scopes,k)`pos`nxt_pos <= current_pos(state)`nxt_pos
+
+  % A scope at or after all the scopes of a sorted list, and different from all of
+  % them, can be added on top
+  sorted_cons_scope : LEMMA
+    FORALL (scope:Scope,scopes:(sorted_scopes?)):
+      (FORALL (k:below(length(scopes))):
+         nth(scopes,k)`pos`nxt_pos <= scope`pos`nxt_pos AND
+         NOT same_scope?(scope,nth(scopes,k))) IMPLIES
+      sorted_scopes?(cons(scope,scopes))
+
+  % Opening a scope for a rule of the PEG that is not open at the current position
+  % keeps the state valid
+  push_scope_valid : LEMMA
+    FORALL (peg:PEG,str:string,rule:Rule,state:(valid_pegstate?(peg,str))):
+      some?(peg_find_rule(peg)(rule)) AND
+      NOT member_scope_rules?(state`scopes)(rule,current_pos(state)`nxt_pos) IMPLIES
+      valid_pegstate?(peg,str)(push_scope(rule)(state))
 
   set_fail_status(state:PegState) : PegState =
     state WITH [ `status := Failure(state`failed_items) ]
@@ -200,11 +264,53 @@ BEGIN
       add_item(item)(close_wrk_level(state))
     ENDIF
 
+  build_item_eq : LEMMA
+    FORALL (opt_ast:Maybe[AST],state:PegState | success?(state`status) AND length(state`scaffold) > 0):
+      build_item(opt_ast)(state)`last_token = state`last_token AND
+      build_item(opt_ast)(state)`scopes = state`scopes AND
+      length(build_item(opt_ast)(state)`scaffold) = length(state`scaffold)-1
+
   peg_abort(msg:string,opt_loc:Maybe[Location])(state:PegState) : PegState =
     LET loc = IF none?(opt_loc) THEN current_loc(state)
 	      ELSE val(opt_loc)
 	      ENDIF IN
     state WITH [ `status := Aborted(msg,loc) ]
+
+  % Failure results keep the state valid and do not move the position
+  set_fail_status_next : LEMMA
+    FORALL (peg:PEG,str:string,state:PegState,s:(valid_pegstate?(peg,str))):
+      current_pos(s)`nxt_pos >= current_pos(state)`nxt_pos IMPLIES
+      valid_pegstate?(peg,str)(set_fail_status(s)) AND
+      parse_next?(state)(set_fail_status(s))
+
+  peg_abort_next : LEMMA
+    FORALL (peg:PEG,str:string,state:PegState,s:(valid_pegstate?(peg,str)),
+            msg:string,opt_loc:Maybe[Location]):
+      current_pos(s)`nxt_pos >= current_pos(state)`nxt_pos IMPLIES
+      valid_pegstate?(peg,str)(peg_abort(msg,opt_loc)(s)) AND
+      parse_next?(state)(peg_abort(msg,opt_loc)(s))
+
+  peg_failed_item_next : LEMMA
+    FORALL (peg:PEG,str:string,state:PegState,s:(valid_pegstate?(peg,str)),
+            label:ReportingLabel,opt_loc:Maybe[Location]):
+      current_pos(s)`nxt_pos >= current_pos(state)`nxt_pos IMPLIES
+      valid_pegstate?(peg,str)(peg_failed_item(label,opt_loc)(s)) AND
+      parse_next?(state)(peg_failed_item(label,opt_loc)(s))
+
+  % After a successful parse from push_scope(rule)(state), pop_scope restores the scopes
+  pop_push_scope : LEMMA
+    FORALL (rule:Rule,state,s2:PegState):
+      parse_next?(push_scope(rule)(state))(s2) AND success?(s2`status) IMPLIES
+      length(s2`scopes) > 0 AND
+      pop_scope(s2)`scopes = state`scopes AND
+      length(pop_scope(s2)`scaffold) = length(state`scaffold) AND
+      current_pos(pop_scope(s2))`nxt_pos >= current_pos(state)`nxt_pos
+
+  % parse_next? composes through a successful intermediate state
+  parse_next_trans : LEMMA
+    FORALL (s1,s2,s3:PegState):
+      parse_next?(s1)(s2) AND success?(s2`status) AND parse_next?(s2)(s3) IMPLIES
+      parse_next?(s1)(s3)
 
 
   IMPORTING orders@orders_nat,
@@ -212,7 +318,7 @@ BEGIN
 
   peg_parse(peg:PEG,pegex:PEGex,str:string,lookup:bool)
            (state:(valid_pegstate?(peg,str)) | success?(state`status))
-    : RECURSIVE { next_state : (valid_pegstate?(peg,str)) | valid_next_pegstate?(state)(next_state) } =
+    : RECURSIVE { next_state : (valid_pegstate?(peg,str)) | parse_next?(state)(next_state) } =
     % status is always Success at the beginning of the recursion
     CASES pegex OF
       PegEmpty : state,
@@ -244,7 +350,7 @@ BEGIN
 	    end_pos = mpos`pos,
 	    loc     = mk_loc(current_scope(state),current_pos(state),end_pos) IN
 	  % Fail also if no char is consumed
-	  IF NOT success(mpos) OR end_pos`nxt_pos = current_pos(state)`nxt_pos THEN
+	  IF NOT success(mpos) OR end_pos`nxt_pos <= current_pos(state)`nxt_pos THEN
 	    IF lookup OR NOT reporting_label?(label) THEN
 	       set_fail_status(state)
 	    ELSE
@@ -265,7 +371,7 @@ BEGIN
 	IF none?(opt_rule) THEN
 	  peg_abort("Undefined rule ("+rule+")",None)(state)
 	ELSIF in_sorted_scopes(state`scopes)(rule,current_pos(state)) OR
-	      depth_scopes(state) = length(peg) THEN
+	      current_depth(state) >= length(peg) THEN
 	  peg_abort("Possible left recursion ("+rule+")",None)(state)
 	ELSE
 	  LET state1 = push_scope(rule)(state),
@@ -319,8 +425,13 @@ BEGIN
 	  set_fail_status(state)
 	ENDIF
     ENDCASES
-  MEASURE ((length(state`scopes)-depth_scopes(state))::nat,
-           (pegex,(length(str)-current_pos(state)`nxt_pos)::nat)) BY lt_lex2(lt_nat,lt_lex2(<<,lt_nat))
+  % The measure decreases on every recursive call: the input is consumed, or the
+  % position is the same and a new scope is open at the current position, or the
+  % position and the scopes are the same and the expression is smaller
+  MEASURE ((length(str)-current_pos(state)`nxt_pos)::nat,
+           ((IF current_depth(state) <= length(peg) THEN length(peg)-current_depth(state)
+             ELSE 0 ENDIF)::nat,
+            pegex)) BY lt_lex2(lt_nat,lt_lex2(lt_nat,<<))
 
   peg_parse(peg:PEG,pegex:PEGex,str:string) : PegState =
     peg_parse(peg,pegex,str,FALSE)(init_state)
