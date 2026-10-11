@@ -12,7 +12,7 @@ It consists of a collection of formal development (i.e.,
 # Release
 
 The branch [master](https://github.com/nasa/pvslib) points to the
-current development pre-release of NASALib for [PVS8.0](https://github.com/SRI-CSL/PVS). The release
+current development pre-release of NASALib for [PVS8.1](https://github.com/SRI-CSL/PVS). The release
 [NASALib v7.1.1](https://github.com/nasa/pvslib/releases/tag/v7.1.1-PVS7.1) is
 the final stable release for [PVS 7.1](http://pvs.csl.sri.com/).
 
@@ -38,7 +38,7 @@ Currently, NASALib consists of 63 top-level libraries, containing about 41K prov
 | [digraphs](./digraphs/README.md) | Directed graphs: circuits, maximal subtrees, paths, DAGs |
 | [dL](./dL/README.md) | Differential Dynamic Logic |
 | [exact_real_arith](./exact_real_arith/README.md) | Exact real arithmetic including trig functions |
-| [examples](./examples/README.md) | Examples of application of the functionality provided by NASALib |
+| [examples](./examples/README.md) | Examples of application of the functionality provided by NASALib. Some libraries have their examples in their own directory `<lib>/examples` (see [examples](./examples/README.md)) |
 | [extended_nnreal](./extended_nnreal/README.md) | Extended non-negative reals |
 | [fast_approx](./fast_approx/README.md) | Approximations of standard numerical functions |
 | [fault_tolerance](./fault_tolerance/README.md) | Fault tolerance protocols |

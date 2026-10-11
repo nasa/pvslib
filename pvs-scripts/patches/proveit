@@ -115,6 +115,7 @@ reset_vars() {
     THFS=
     LISPAUTOFIX=0
     LISPPURGE=nil
+    USER_LISPPURGE=
     PVSTIMEOUT=
     LISPDEFAULTPROOFSTEP=nil
 }
@@ -123,16 +124,30 @@ strip_ext() {
   echo "$1" | sed -e "s/\(.*\)\..*/\1/g"
 }
 
+# Set variable $1 to value $2, unless the user set $1 with an explicit option.
+# When $3 is not empty, the setting comes from an explicit option (-a): set $1 and
+# mark it as explicit.
+default_opt() {
+    if [ -n "$3" ]; then
+	eval "$1=\$2; USER_$1=y"
+    elif [ -z "$(eval echo \$USER_$1)" ]; then
+	eval "$1=\$2"
+    fi
+}
+
+# Options of -a, which are also the default options for a directory.
+# all_opt user: the user gave -a.
+# all_opt: defaults for a directory, which don't override explicit options.
 all_opt() {
     if [ -z "$VERBOSE" ]; then
 	QUIET=y
     fi
     if [ -z "$CLEAN" ]; then
-	CLEAN=y
+	default_opt CLEAN y $1
     fi
-    LISPIMPORTCHAIN=t
-    LISPSCRIPTS=nil
-    LISPPURGE=t
+    default_opt LISPIMPORTCHAIN t $1
+    default_opt LISPSCRIPTS nil $1
+    default_opt LISPPURGE t $1
 }
 
 # Return dir name without expanding links
@@ -385,7 +400,9 @@ DESCRIPTION
 
   \$ proveit <dir>
      Prove all theories imported in <dir>/top.pvs. The output files of a
-     sub-library <lib>/<sublib> have the base name <lib>-<sublib>
+     sub-library <lib>/<sublib> have the base name <lib>-<sublib>. For a
+     directory, the default options are those of -a. An option that you give
+     explicitly, for example -s, overrides the default
 
   \$ proveit <file.pvs>
      Prove all theories in <file>.pvs
@@ -805,10 +822,12 @@ while [ $# -gt 0 ]; do
 	    LISPGENERATETOP=nil;;
 	-C|--clean-only)
 	    ONLYBINARIES=y
-	    CLEAN=only;;
+	    CLEAN=only
+	    USER_CLEAN=y;;
 	--clean-all)
 	    ONLYBINARIES=
-	    CLEAN=only;;
+	    CLEAN=only
+	    USER_CLEAN=y;;
 	--clear-path)
 	    PVS_LIBRARY_PATH=;;
 	--add-path)
@@ -880,9 +899,11 @@ while [ $# -gt 0 ]; do
 	    DISABLEDORACLES=
 	    ENABLEDORACLES=;;
 	--purge)
-	    LISPPURGE=t;;
+	    LISPPURGE=t
+	    USER_LISPPURGE=y;;
 	--no-purge)
-	    LISPPURGE=nil;;
+	    LISPPURGE=nil
+	    USER_LISPPURGE=y;;
 	--auto-fix)
 	    shift
 	    if echo $1 | grep -qE '^(0|[1-9][0-9]*)$'; then
@@ -930,28 +951,35 @@ while [ $# -gt 0 ]; do
 	--no-default-proof)
 	    LISPDEFAULTPROOFSTEP=nil;;
 	-a|--all)
-	    all_opt;;
+	    all_opt user;;
 	-c|--clean)
-	    CLEAN=y;;
+	    CLEAN=y
+	    USER_CLEAN=y;;
 	--no-clean)
-	    CLEAN=;;
+	    CLEAN=
+	    USER_CLEAN=y;;
 	-f|--force)
 	    LISPFORCE=t;;
 	--no-force)
 	    LISPFORCE=nil;;
 	-i|--import-chain)
 	    LISPSCRIPTS=nil
-	    LISPIMPORTCHAIN=t;;
+	    LISPIMPORTCHAIN=t
+	    USER_LISPSCRIPTS=y
+	    USER_LISPIMPORTCHAIN=y;;
 	--no-import-chain)
-	    LISPIMPORTCHAIN=nil;;
+	    LISPIMPORTCHAIN=nil
+	    USER_LISPIMPORTCHAIN=y;;
 	-w|--write-scripts)
 	    LISPWRITESCRIPTS=t;;
 	--no-write-scripts)
 	    LISPWRITESCRIPTS=nil;;
 	-s|--scripts)
-	    LISPSCRIPTS=t;;
+	    LISPSCRIPTS=t
+	    USER_LISPSCRIPTS=y;;
 	--no-scripts)
-	    LISPSCRIPTS=nil;;
+	    LISPSCRIPTS=nil
+	    USER_LISPSCRIPTS=y;;
 	--typecheck-prove)
 	    LISPTYPECHECKONLY=nil;;
         -T|--typecheck-only)
@@ -1000,25 +1028,30 @@ while [ $# -gt 0 ]; do
 	    for opt in $opts; do
 		case "$opt" in
 		    a)
-			all_opt;;
+			all_opt user;;
 		    c)
-			CLEAN=y;;
+			CLEAN=y
+			USER_CLEAN=y;;
 		    C)
 			ONLYBINARIES=y
-			CLEAN=only;;
+			CLEAN=only
+			USER_CLEAN=y;;
 		    D)
 			DEPENDENCIES=y;;
 		    f)
 			LISPFORCE=t;;
 		    i)
 			LISPSCRIPTS=nil
-			LISPIMPORTCHAIN=t;;
+			LISPIMPORTCHAIN=t
+			USER_LISPSCRIPTS=y
+			USER_LISPIMPORTCHAIN=y;;
 		    l)
 			LOG=y;;
 		    q)
 			QUIET=y;;
 		    s)
-			LISPSCRIPTS=t;;
+			LISPSCRIPTS=t
+			USER_LISPSCRIPTS=y;;
 		    T)
 			LISPTYPECHECKONLY=t;;
 		    v)
