@@ -247,6 +247,36 @@ PP? is set to nil."
   ""
   "")
 
+;; Terms that instantiate the lemma in formula LFN, so that the right side of its
+;; IFF is the formula FN. A variable that the match does not give is "_".
+;; Returns NIL if the lemma is not FORALL ...: A IFF B, or if B does not match FN.
+(defun dl-rhs-inst-terms (lfn fn)
+  (let ((body (extra-get-formula lfn))
+	(goal (extra-get-formula fn))
+	(bvs  nil))
+    (loop while (forall-expr? body)
+	  do (setq bvs (append bvs (bindings body))
+		   body (expression body)))
+    (when (and bvs goal
+	       (application? body)
+	       (name-expr? (operator body))
+	       (memq (id (operator body)) '(IFF <=>)))
+      (let ((sub (call-match (args2 body) goal nil nil)))
+	(unless (eq sub 'fail)
+	  (loop for bv in bvs
+		for pair = (find bv sub :key #'(lambda (p)
+						 (let ((k (car p)))
+						   (if (name-expr? k) (declaration k) k))))
+		collect (if pair (cdr pair) "_")))))))
+
+(defhelper dl-inst-rhs__ (lfn fn)
+  (let ((terms (dl-rhs-inst-terms lfn fn)))
+    (if terms
+	(inst lfn :terms terms)
+      (skip)))
+  "Instantiates the lemma in LFN so that the right side of its IFF is FN."
+  "Instantiating ~a with a match of its right side against ~a")
+
 (defhelper dl-lemma__ (lem dlfnum fnum &optional
 			   (finishing-step (skip)) inst-terms equiv? side ftest (pp? t) dont-fail? debug)
   (let (#+extra-debug
@@ -306,7 +336,13 @@ PP? is set to nil."
 	  (try
 	   (branch
 	    (then@
-	     (with-tccs (inst? nfn! :where fn! :polarity? neq) :tcc-step (assert))
+	     ;; PVS 8.1: INST? with :polarity? finds no instance in a lemma with IFF.
+	     ;; Then instantiate the lemma with a match of the right side of the IFF
+	     ;; against the DDL sequent (dl-inst-rhs__). The ELSE is inside WITH-TCCS,
+	     ;; because WITH-TCCS changes the sequent also when INST? fails.
+	     (with-tccs (else (inst? nfn! :where fn! :polarity? neq)
+			      (dl-inst-rhs__$ nfn! fn!))
+			:tcc-step (assert))
 	     (when insts (inst nfn! :terms insts))
 	     (relabel lbs nfn!)
 	     (if equiv?
@@ -322,6 +358,9 @@ PP? is set to nil."
 		(then@
 		  (repeat (expand* (gamma_ delta_)))
 		  finishing-step
+		  ;; PVS 8.1: REPLACES leaves (A IFF FALSE) in NFN!, and SPLIT
+		  ;; does not split it. ASSERT simplifies it to A.
+		  (assert nfn!)
 		  (split nfn!))
 		(unless dont-fail? (fail)))))
 	    ((skip) ;; Main branch - nothing to do
