@@ -139,7 +139,7 @@
 				    (expand "val" *is_val_not_in_map?*)
 				    (expand "env_c" *is_val_not_in_map?*)
 				    (expand "env_nat_shift" *is_val_not_in_map?*)))))
-		     (dl-distinct-vars *is_val_not_in_map?*)))
+		     (then (dl-distinct-vars) (reveal dl-distinct!) (assert *is_val_not_in_map?*) (hide dl-distinct!))))
 	    ;; if FLABEL still contains the expression defined in *is_val_not_in_map?*,
 	    ;; the expression is replaced by the calculated definition,
 	    ;; otherwise the formula *is_val_not_in_map?* is hidden. @M3
