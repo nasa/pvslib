@@ -10,6 +10,9 @@
     "dl_true_or" "dl_or_true" "dl_false_or" "dl_or_false"
     "dl_true_implies" "dl_implies_true" "dl_false_implies" "dl_implies_false"
     "dl_forall_bool" "dl_exists_bool"
+    "dl_eq_refl" "dl_le_refl" "dl_ge_refl"
+    "dl_allruns_true" "dl_someruns_false"
+    "dl_allruns_st_true" "dl_someruns_st_false"
     "dl_assignb" "dl_assignd" "dl_anyb" "dl_anyd" "dl_composeb" "dl_composed"
     "dl_choiceb" "dl_choiced" "dl_testb" "dl_testd"))
 
@@ -54,15 +57,22 @@
     (with-fresh-labels
      (pairwise-dv! ($*n))
      (for nil (expand "pairwise_distinct_vars?" pairwise-dv!))
-     (nor nil (expand "distinct_var?" pairwise-dv!))
+     (for nil (expand "distinct_var?" pairwise-dv!))
      (flatten pairwise-dv!)
-     (assert)))
+     ;; The distinct-variable facts keep the label PAIRWISE-DV!. They are labeled DL-DISTINCT!
+     ;; and hidden after ASSERT, so that they do not change the formula numbers of the sequent.
+     ;; Use (reveal dl-distinct!) when a step needs them.
+     (relabel dl-distinct! pairwise-dv!)
+     (assert)
+     (hide dl-distinct!)))
    ("dlvar_index(%{name_})"
     (with-fresh-labels
      (dlvar-idx! ($*n))
      (let ((qfnum (list 'quote dlvar-idx!))
-	   (names (loop for expr in '($*j)
-			when (is-const-decl-expr (argument expr))
+	   ;; $*j can hold lists of expressions when the pattern matches several occurrences
+	   (names (loop for expr in (mapcan #'(lambda (e) (if (listp e) (copy-list e) (list e)))
+					    (copy-list '($*j)))
+			when (and (application? expr) (is-const-decl-expr (argument expr)))
 			collect (id (argument expr)))))
        (mapstep (lambda (name) `(expand ,name ,qfnum)) names))
      (assert)))
@@ -83,7 +93,9 @@
 	  (replaces -1)
 	  (when lemma (lemma lemma))
 	  (dl-distinct-vars)
+	  (reveal dl-distinct!)
 	  (flatten)
+	  (dl-distinct-vars)
 	  (assert)))
       (printf "Error: Either mapexpr_inj doesn't appear in ~a or its argument is not a list literal~%" fnum)))
   "Tries to prove a formula in FNUM assuming it has the form mapexpr_inj((: ... :)). Uses LEMMA if provided."
@@ -1482,11 +1494,15 @@ sequent is pretty-printed unless PP? is set to nil."
        (expand "iterate_left")
        (expand "for")
        (for@ nil (expand "for_it"))
+       (for@ nil (expand "ddt"))
        (for@ nil (expand "nth"))
        (for@ nil (expand* :names rels))
        (expand "qb_eval")
        (expand* :names ops)
-       (expand* "val" "cnst")
+       (expand* "val" "cnst" "DLBOOL")
+       ;; The expansion of ddt can introduce terms dlvar_index(v) for constants v.
+       (dl-distinct-vars)
+       (reveal dl-distinct!)
        (flatten)
        ;; #TODO finishing steps proposed because of issue #24, double-check it works in the rest of the cases.
        (ground)
@@ -1499,7 +1515,7 @@ sequent is pretty-printed unless PP? is set to nil."
   (let ((dlseq (is-dl-seq fnum))
 	(fn    (car dlseq)))
     (quietly
-     (install-rewrites ("exponentitation.expt" "exponentitation.^"))
+     (install-rewrites :rewrites ("exponentiation.expt" "exponentiation.^"))
      (when fn
        (with-fresh-labels
 	((fn! fn))
@@ -1528,12 +1544,15 @@ sequent is pretty-printed unless PP? is set to nil."
 	(fn    (car dlseq)))
     (when fn
       (quietly
-       (dl-distinct-vars)
        (with-fresh-labels@
 	((fn! fn))
+	(dl-distinct-vars)
+	(reveal dl-distinct!)
 	(for@ nil
 	      (else (dl-auto__$ fn!)
 		    (dl-flatten fn! :pp? nil)))
+	;; The loop above can introduce terms dlvar_index(v) for constants v.
+	(dl-distinct-vars fn!)
 	(when level
 	  (let ((dlseq (cdr (is-dl-seq fn!))))
 	    (when dlseq
