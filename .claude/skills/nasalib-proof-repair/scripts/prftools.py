@@ -51,7 +51,12 @@ def sexp_end(t, i):
                     i += 1
                 i += 1
         elif c == '|':
-            i = t.index('|', i + 1)
+            # A |...| symbol; a backslash escapes the next character (|\|-| is the symbol |-)
+            i += 1
+            while t[i] != '|':
+                if t[i] == '\\':
+                    i += 1
+                i += 1
         elif c == '(':
             depth += 1
         elif c == ')':
@@ -81,7 +86,11 @@ def children(t, s, e):
             out.append((i, j + 1))
             i = j + 1
         elif c == '|':
-            j = t.index('|', i + 1)
+            j = i + 1
+            while t[j] != '|':
+                if t[j] == '\\':
+                    j += 1
+                j += 1
             out.append((i, j + 1))
             i = j + 1
         elif c in ' \n\t\r':
