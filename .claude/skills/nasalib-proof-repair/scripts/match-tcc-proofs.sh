@@ -24,7 +24,7 @@ cd "$LIBDIR" || exit 2
   (let ((all (with-open-file (s "$CAND") (let ((*package* (find-package :pvs))) (read s))))
         (res nil))
     (dolist (e (cdr all))
-      (when (search "$SUB" (string (car e)))
+      (when (search "$SUB" (string (car e)) :test #'char-equal)
         (dolist (p (cddr e)) (pushnew (nth 3 p) res :test #'equal))))
     (nreverse res)))
 (format t "~%MATCH candidates: ~a~%" (length *cands*))

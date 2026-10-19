@@ -6,7 +6,7 @@ NASALib is a collection of formal developments for the PVS theorem prover, maint
 
 ## Available Skills
 
-- `/nasalib-fixer` - Diagnose and fix broken PVS proofs. Use this skill when:
+- `/nasalib-proof-repair` - Prove libraries and repair broken PVS proofs. Use this skill when:
   - `proveit` reports proof failures
   - You see `.trf` trace files with `-BAD` suffix
   - A proof is marked as "unfinished" or needs repair after a PVS version upgrade
@@ -29,4 +29,5 @@ Libraries are listed in dependency order in `nasalib.all`. When fixing proofs, w
 
 ## Proof Tracking
 
-Record fixed proofs in `PVS81-PROOF-FIXES.md` to track progress and document fix patterns.
+Describe each proof fix in the commit message of its library: which proofs changed and why.
+Add new fix patterns to the catalog in `.claude/skills/nasalib-proof-repair/SKILL.md`.

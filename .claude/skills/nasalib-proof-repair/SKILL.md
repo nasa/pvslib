@@ -53,7 +53,7 @@ grep -a -c 'proved - incomplete' summaries/<lib>.summary
 
 ### Check the dependencies of a library
 
-To see which libraries a library depends on (for example, to decide where it goes in `nasalib.all`), run `./type-all --do <lib>` in the NASALib directory. It typechecks the library and writes `summaries/<lib>.dep`, with the imported libraries. A library can only come after all the libraries in its `.dep` file. If the typecheck stops at `get-referenced-declaration* - no judgement` (see "Known PVS bugs"), load the inactive patch for that run only: `proveit --pvs-option "L <nasalib>/pvs-patches/patch-20261009-get-referenced-declaration.lisp" --dependencies --import-chain --typecheck-only --dir summaries <lib>`.
+To see which libraries a library depends on (for example, to decide where it goes in `nasalib.all`), run `./typecheck-all --do <lib>` in the NASALib directory. It typechecks the library and writes `summaries/<lib>.dep`, with the imported libraries. A library can only come after all the libraries in its `.dep` file. The patch `pvs-patches/patch-20261231-get-referenced-declaration.lisp` keeps the typecheck from stopping at `get-referenced-declaration* - no judgement` (see "Known PVS bugs").
 
 ### 3. Start a PVS server for the library
 
@@ -168,6 +168,26 @@ Steps such as `INST?`, `INST`, `DECOMPOSE-EQUALITY`, `REWRITE`, `NAME`, `CASE`, 
 - Since PVS commit `85fbcec0`, a numeral has the candidate type `real` during typechecking. A LET binding without a type, a record literal, or an `IF` with a numeral can get the type `real` or `numfield`. Add the type: `LET thisdeg: nat = ...`, `(IF ... ENDIF)::nat` (for example, in a MEASURE).
 - `NAME "x" "<expr>"` gives `x` the type of the expression. If later steps need a subtype, write `(NAME "x" "<expr> :: T")` and prove the new TCC of the NAME (`digraphs/circuit_decomp_.shrink_repeat`).
 
+### A name in a proof step does not uniquely resolve
+
+The trace shows `<name> does not uniquely resolve - one of: ...` and then `Restoring the state.`. A server trial (`nlp-try`) stops the whole rerun at this step.
+
+- Write the theory actuals in the step text. In `dL_Liveness_examples/dubins_ex` (`S1_is_a_staging_set`, `S2_is_a_staging_set`), `deriv(LAMBDA (xx: (D)): fs(0)(xx), c)` got the candidates `derivatives_def[nzreal]` and `derivatives_def[real]`. Here `D` is a skolem constant from the ODE semantics. The fix: `deriv[(D)](LAMBDA (xx: (D)): fs(0)(xx), c)`, in every step text of the proof that contains this term.
+
+### Two terms differ only in a type instance
+
+Example: the goal has `length[nat](l)` and a hypothesis has `length[real](l)`. ASSERT and REPLACE treat the two terms as different terms.
+
+- Find the origin of each instance. Follow the term back to the step, the lemma instance, or the literal that introduced it. To print the instance and the type of a term, load `cmp.lisp` and use `(LISP (SHOW-APPS fnum "id"))` or `(LISP (SHOW-NAMES fnum "id"))`.
+- Fix the mismatch at that origin. Give the type where the term or the lemma is instantiated:
+  - a typed lemma instance: `(LEMMA "length_null[nat]")`
+  - a typed term in INST or CASE: `alpha := null[nat]`, not `alpha := null`
+  - an explicit actual in the `.pvs` file (rule 3 applies)
+- Try `REPLACE` before you change the proof tree. In `bool_expr_SA_props.val_cnst_SA`, `(REPLACE -4 1)` with the hypothesis `length[real](zero_vec(1 + i)) = 1 + i` (from `TYPEPRED`) rewrote `length[nat](zero_vec(1 + i))` in the goal. ASSERT did not use that hypothesis.
+- Do not add a helper lemma of the form `f[T1](x) = f[T2](x)`. Such a lemma closes one goal, but the mismatch stays in the sequent, and other branches fail on it again.
+- Helper lemmas are useful for other repairs. This rule is only about type mismatches.
+- Example: `dL_Liveness_examples/bool_expr_SA_props`. `alpha := null` in an INST got the `list[real]` instance. Each INST with this literal made a TCC "every nat". The fix: `alpha := null[nat]` in the INST term.
+
 ### Labels and names
 
 - A formula label written as a symbol (`NEWHIGHNAME`) no longer refers to the label `"newhighname"`. Write the label as a string (`Sturm`).
@@ -250,10 +270,12 @@ To limit the time of a Lisp call: `(handler-case (sb-ext:with-timeout 20 (rerun-
 - **Do not search for proofs with a regular expression on the name.** A name also occurs in the dependency lists of other entries. Use `prftools.py get`.
 - **Kill leftover processes.** When a time limit (`perl -e 'alarm N; exec ...'`) stops proveit, its PVS process keeps running. Stop it with `pkill -f 'pvs -raw -E \(proveit\)'`. Do not stop the PVS processes of VS Code.
 - **PVS server ports.** VS Code PVS sessions listen on ports 23456 and up (six sessions used 23456 to 23461). `pvs -raw -port N` takes the next free port when N is in use, and prints `Listening on 127.0.0.1:<port>`. Before you send `pvs-cli.sh --port N` commands, check with `lsof -nP -iTCP -sTCP:LISTEN | grep sbcl` and the server log that port N is your server. Otherwise you change the workspace of the user's VS Code session. A server started with `nohup ... &` exits at once, because its REPL reads end-of-file: keep its input open, for example `tail -f /dev/null | pvs -raw -port N &`.
-- **Shell traps (zsh).** `set -- $x` does not split words. `echo ====` is an error. `cp` can be `cp -i`: use `command cp -f`. A removal with a variable path (`rm -f $D/x`) is blocked: write `"${D:?}"/x`.
+- **Shell traps (zsh).** `set -- $x` does not split words. `echo ====` is an error. `cp` can be `cp -i`: use `command cp -f`. Never remove files with a path built from a variable (`rm -f $D/x`, `rm "$a/x"`): if the variable is empty or wrong, the command removes other files. `cd` into the directory with a literal path, then remove literal relative names, or use `proveit --clean-all`.
 
 ## Known PVS bugs
 
-**A batch run that hangs.** If a library takes much longer than usual, look at the end of `summaries/<lib>.summary` and `summaries/<lib>.log` for `debugger invoked`. When a `.prf` file refers to a judgement that no longer exists, PVS stops at `(break "get-referenced-declaration* - no judgement")` while it loads the proofs, and the batch run waits forever (since PVS commit `1a274a35`). Stop only the processes of your run, and tell the user. Do not edit the `.prf` file as a workaround: a stale reference is normal after a judgement is removed, and the user wants PVS fixed. The report, an example, and a patch are in the PVS repository, in `bug-reports/missing-judgement-break/`. In October 2026, this stopped `pvsio_utils/PVSioCSV`, because `csv_reader.prf` refers to `substring_lisp_j`.
+**A batch run that hangs.** Until PVS dev contains the fix, the patch `pvs-patches/patch-20261231-get-referenced-declaration.lisp` prevents this hang. If a library takes much longer than usual, look at the end of `summaries/<lib>.summary` and `summaries/<lib>.log` for `debugger invoked`. When a `.prf` file refers to a judgement that no longer exists, PVS stops at `(break "get-referenced-declaration* - no judgement")` while it loads the proofs, and the batch run waits forever (since PVS commit `1a274a35`). Stop only the processes of your run, and tell the user. Do not edit the `.prf` file as a workaround: a stale reference is normal after a judgement is removed, and the user wants PVS fixed. The report, an example, and a patch are in the PVS repository, in `bug-reports/missing-judgement-break/`. In October 2026, this stopped `pvsio_utils/PVSioCSV`, because `csv_reader.prf` refers to `substring_lisp_j`.
+
+**NIL entries in the dependency lists of proofs.** PVS writes `NIL` entries in the dependency lists of non-TCC proofs in `.prf` files, when the dependencies of a proof contain skolem constants. Until PVS dev contains the fix, the patch `pvs-patches/patch-20261231-proof-refers-to-nil.lisp` prevents this. The report is in `bug-reports/missing-judgement-break/` of the PVS repository. A `.prf` file that loses its `NIL` entries in a run is a normal change.
 
 **Field applications with the wrong type.** Some field applications `r`f` get the type `real` instead of the type of the field. The decision procedures then see two different terms, and ASSERT loses facts. The cause is PVS commit `85fbcec0`. The report, a minimal example, and a proposed fix are in the PVS repository, in `bug-reports/field-application-type/`. Until PVS is fixed, give LET bindings explicit types, or use `REPLACE` in proofs.
