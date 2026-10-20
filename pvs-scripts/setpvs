@@ -1,99 +1,207 @@
 #!/bin/bash
 
-usage() {
-    echo "$0 [<version>]
+PVS_PREFIX=pvs
+NASALIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-The script uses symbolic links to allow for multiple versions of PVS
-to live in the same computer. However, only one of those versions can be
-used at a given time.
+# Enable case-insensitive globbing (works on both Linux and Mac)
+shopt -s nocaseglob
 
-Set the environment variable \$PVS_BASE to the root of your PVS directories.
-Each PVS directory should be named PVS-<version>.
-If you have a file ~/.pvs.lisp, put in in PVS-<version>/pvs.lisp
-Define the following environment variables:
-export PVS_DIR=\$PVS_BASE/PVS
-export PATH=\$PVS_DIR/nasalib/pvs-scripts:\$PVS_DIR:\$PATH
-export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib
-export PVSEMACS=<absolute directory to Emacs application>"
-    exit 1
+# Extract version from path by removing prefix (case-insensitive)
+extract_version() {
+    echo "$1" | awk -v prefix="$PVS_PREFIX" 'BEGIN{IGNORECASE=1} {sub(".*" prefix "-", ""); print}'
 }
 
-while [ $# -gt 0 ]
-do
-    case $1 in
-	-h|-help|--help)    
-	    usage;;
-	-*)
-	    echo "Error: unknown option $1"
-	    echo "Type setpvs -h for help"
-	    exit 1;;
-	*) version=$1;;
-    esac
-    shift 
-done 
+if [[ "$1" =~ --?help ]]; then
+  echo "Usage: setpvs [OPTION|VERSION]"
+  echo ""
+  echo "Set the environment variable \$PVS_BASE to the root of your PVS directories."
+  echo "Each PVS directory should be named $PVS_PREFIX-<version>."
+  echo "If you have a file ~/.pvs.lisp, put in in $PVS_PREFIX-<version>/pvs.lisp"
+  echo ""
+  echo "Options:"
+  echo "  --list, -list          List all available PVS versions with numbers"
+  echo "  -n, --number NUM       Select PVS version by number from the list"
+  echo "  -v, --verbose          Show detailed info for the current/selected version"
+  echo "  --help, -help          Display this help message"
+  echo ""
+  echo "Examples:"
+  echo "  setpvs --list          # Show all versions"
+  echo "  setpvs 7.1             # Select version 7.1 by name"
+  echo "  setpvs -n 3            # Select version by number (from --list)"
+  echo ""
+  echo "Define the following environment variables:"
+  echo "export PVS_DIR=\$PVS_BASE/$PVS_PREFIX"
+  echo "export PATH=$NASALIB_DIR/pvs-scripts:\$PVS_DIR:\$PATH"
+  echo "export PVS_LIBRARY_PATH=$NASALIB_DIR"
+  echo "export PVSEMACS=<absdirtoemacs>"
+  exit
+fi
+
+report_existing_pvs_versions(){
+    highlighted=$(tput smso)$(tput setaf 5)
+    normal=$(tput sgr0)
+
+    current_version=$(extract_version "$(readlink $PVS_BASE/$PVS_PREFIX 2>/dev/null)")
+
+    # First pass: find the maximum name length
+    max_len=0
+    for dirname in $PVS_BASE/$PVS_PREFIX-*; do
+	if [[ -d "$dirname" ]]; then
+	    pvsvername=$(extract_version "$dirname")
+	    name_len=${#pvsvername}
+	    [ $name_len -gt $max_len ] && max_len=$name_len
+	fi
+    done
+
+    echo "*** PVS versions found at $PVS_BASE :"
+    num=1
+    for dirname in $PVS_BASE/$PVS_PREFIX-*; do
+	color=$normal
+	gitrepo=
+	pvsvername=$(extract_version "$dirname")
+	gitinfo=
+	if [[ -d "$dirname" ]]; then
+	    pushd "$dirname" > /dev/null 2>&1
+	    gitrepo=$(git remote get-url $(git remote 2>/dev/null | head -1) 2>/dev/null)
+	    [[ -n "$gitrepo" && ! "$gitrepo" =~ \.git$ ]] && gitrepo="${gitrepo}.git"
+	    if [[ ! -z "$gitrepo" ]]; then
+		gitcommit=$(git rev-parse --short HEAD 2>/dev/null)
+		gitbranch=$(git branch 2>/dev/null | sed -n '/\* /s///p')
+		gitinfo="$gitrepo - $gitcommit - $gitbranch"
+	    else
+		gitinfo="standalone"
+	    fi
+	    [ "$pvsvername" = "$current_version" ] && color=$highlighted
+	    printf "${color}%2d. %-${max_len}s  %s${normal}\n" "$num" "$pvsvername" "$gitinfo"
+	    popd  > /dev/null 2>&1
+	    num=$((num + 1))
+	fi;
+    done
+}
+
+get_version_by_number(){
+    local target_num=$1
+    local num=1
+    for dirname in $PVS_BASE/$PVS_PREFIX-*; do
+	if [[ -d "$dirname" ]]; then
+	    if [ "$num" -eq "$target_num" ]; then
+		extract_version "$dirname"
+		return 0
+	    fi
+	    num=$((num + 1))
+	fi
+    done
+    return 1
+}
+
+report_current_version(){
+    local current_version=$(extract_version "$(readlink $PVS_BASE/$PVS_PREFIX 2>/dev/null)")
+    if [ -z "$current_version" ]; then
+	echo "*** Current version of PVS hasn't been set"
+	return 1
+    fi
+
+    local dirname="$PVS_BASE/$PVS_PREFIX-$current_version"
+    local gitinfo=
+
+    if [[ -d "$dirname" ]]; then
+	pushd "$dirname" > /dev/null 2>&1
+	local gitrepo=$(git remote get-url $(git remote 2>/dev/null | head -1) 2>/dev/null)
+	    [[ -n "$gitrepo" && ! "$gitrepo" =~ \.git$ ]] && gitrepo="${gitrepo}.git"
+	if [[ ! -z "$gitrepo" ]]; then
+	    local gitcommit=$(git rev-parse --short HEAD 2>/dev/null)
+	    local gitbranch=$(git branch 2>/dev/null | sed -n '/\* /s///p')
+	    gitinfo="$gitrepo - $gitcommit - $gitbranch"
+	else
+	    gitinfo="standalone"
+	fi
+	popd > /dev/null 2>&1
+    fi
+
+    echo "*** Current PVS version: $current_version"
+    echo "    Path: $dirname"
+    echo "    Git:  $gitinfo"
+}
+
+ARG_PATTERN__LIST="-[-]?list"
+ARG_PATTERN__NUMBER="-[-]?n(umber)?"
+ARG_PATTERN__VERBOSE="-[-]?v(erbose)?"
+
+verbose=false
+
+# Parse arguments
+args=()
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" =~ $ARG_PATTERN__VERBOSE ]]; then
+    verbose=true
+  else
+    args+=("$1")
+  fi
+  shift
+done
+set -- "${args[@]}"
 
 if [ ! -d "$PVS_BASE" ]; then
-    usage
-elif [ -z "$version" ]; then
-    echo "*** PVS versions in $PVS_BASE:"
-    ls -1d $PVS_BASE/PVS-* 2>/dev/null | sed -e "s/.*PVS-//g"
-    ls -1d $PVS_BASE/pvs-* 2>/dev/null | sed -e "s/.*pvs-//g"
-    if [ ! -L $PVS_BASE/PVS ]; then
-	echo "*** Current version of PVS hasn't been set"
+  echo "Set variable \$PVS_BASE to the root of your PVS directories."
+  echo "Each PVS directory should be name $PVS_PREFIX-<version>."
+elif [[ "$1" =~ $ARG_PATTERN__LIST ]]; then
+  report_existing_pvs_versions
+  if [ ! -L $PVS_BASE/$PVS_PREFIX ]; then
+    echo "Current version of PVS hasn't been set"
+  fi
+elif [[ "$1" =~ $ARG_PATTERN__NUMBER ]]; then
+  if [ -z "$2" ]; then
+    echo "Error: -n/--number requires a number argument"
+    exit 1
+  fi
+  version=$(get_version_by_number "$2")
+  if [ -z "$version" ]; then
+    echo "Error: No PVS version found at position $2"
+    echo "Use 'setpvs --list' to see available versions"
+    exit 1
+  fi
+  # Reuse the logic below by setting $1 to the version
+  set -- "$version"
+elif [ -z "$1" ]; then
+  if $verbose; then
+    report_current_version
+  elif [ ! -L $PVS_BASE/$PVS_PREFIX ]; then
+    echo "*** Current version of PVS hasn't been set"
+  else
+    echo "*** Current PVS version: $(extract_version "$(readlink $PVS_BASE/$PVS_PREFIX)")"
+  fi
+fi
+
+if [ ! -z "$1" ] && [[ ! "$1" =~ $ARG_PATTERN__LIST ]]; then
+  if [ -e $PVS_BASE/$PVS_PREFIX -a ! -L $PVS_BASE/$PVS_PREFIX ]; then
+    echo "Directory or file $PVS_BASE/$PVS_PREFIX already exists"
+  elif [ ! -d "$PVS_BASE/$PVS_PREFIX-$1" ]; then
+    echo "Directory $PVS_BASE/$PVS_PREFIX-$1 doesn't exist"
+  else
+  if [ ! -f  "$PVS_BASE/$PVS_PREFIX-$1/pvs.lisp" ]; then
+    touch "$PVS_BASE/$PVS_PREFIX-$1"/pvs.lisp
+  fi
+  if [ -L "$PVS_BASE/$PVS_PREFIX" ]; then
+    rm -f "$PVS_BASE/$PVS_PREFIX"
+  fi
+    ln -f -s "$PVS_BASE/$PVS_PREFIX-$1" $PVS_BASE/$PVS_PREFIX
+    rm -f ~/.pvs.*
+    rm -f $PVS_BASE/$PVS_PREFIX/src/*fasl
+    ln -f -s "$PVS_BASE/$PVS_PREFIX-$1"/pvs.lisp ~/.pvs.lisp
+    if [ -d "$PVS_BASE/$PVS_PREFIX/nasalib/pvs-patches" ]; then
+	rm -f $PVS_BASE/$PVS_PREFIX/nasalib/pvs-patches/*fasl
+    fi
+    if $verbose; then
+      report_current_version
     else
-	lspvs=`ls -l $PVS_BASE/PVS | sed -e "s/.* -> //g"`
-	echo "*** Current PVS version ($lspvs):"
-	if [[ $lspvs =~ "PVS" ]] ; then
-	    echo $lspvs | sed -e "s/.*PVS-//g"
-	elif [[ $lspvs =~ "pvs" ]] ; then
-	    echo $lspvs | sed -e "s/.*pvs-//g"
-	fi
+      echo "PVS set to version $1"
     fi
-    exit 1
-elif [ -e $PVS_BASE/PVS -a ! -L $PVS_BASE/PVS ]; then
-    echo "Directory or file $PVS_BASE/PVS already exists"
-    exit 1
-fi
-
-pvs_dir=
-lspvs=`ls -d $PVS_BASE/PVS-* $PVS_BASE/pvs-* 2>/dev/null`
-if [[ $lspvs =~ PVS-$version ]] ; then
-    if [ -d "$PVS_BASE/PVS-$version" ]; then
-	pvs_dir="$PVS_BASE/PVS-$version"
+    if [ -z "$PVS_DIR" ]; then
+      echo "Define the following environment variables:"
+      echo "export PVS_DIR=\$PVS_BASE/$PVS_PREFIX"
+      echo "export PATH=$NASALIB_DIR/pvs-scripts:\$PVS_DIR:\$PATH"
+      echo "export PVS_LIBRARY_PATH=$NASALIB_DIR"
+      echo "export PVSEMACS=<absdirtoemacs>"
     fi
-elif [[ $lspvs =~ pvs-$version ]] ; then
-    if [ -d "$PVS_BASE/pvs-$version" ]; then
-	pvs_dir="$PVS_BASE/pvs-$version"
-    fi
-fi
-if [ -z "$pvs_dir" ]; then
-    echo "Neither directory $PVS_BASE/PVS-$version nor $PVS_BASE/pvs-$version found"
-    exit 1
-fi
-
-if [ ! -f  $pvs_dir/pvs.lisp ]; then
-    touch $pvs_dir/pvs.lisp
-fi
-if [ -L $PVS_BASE/PVS ]; then
-    rm -f $PVS_BASE/PVS
-fi
-ln -f -s $pvs_dir $PVS_BASE/PVS
-rm -f ~/.pvs.*
-rm -f $PVS_BASE/PVS/src/*fasl
-ln -f -s $pvs_dir/pvs.lisp ~/.pvs.lisp
-if [ -d "$PVS_BASE/PVS/nasalib/pvs-patches" ]; then
-    rm -f $PVS_BASE/PVS/nasalib/pvs-patches/*fasl
-fi
-if [ -d "$PVS_BASE/PVS/nasalib" ]; then
-    pushd $PVS_BASE/PVS/nasalib > /dev/null; ./install-scripts; popd > /dev/null
-fi
-echo
-echo "PVS set to version $version"
-echo   
-if [ -z "$PVS_DIR" ]; then
-    echo "Define the following environment variables:"
-    echo "export PVS_DIR=\$PVS_BASE/PVS"
-    echo "export PATH=\$PVS_DIR/nasalib/pvs-scripts:\$PVS_DIR:\$PATH"
-    echo "export PVS_LIBRARY_PATH=\$PVS_DIR/nasalib"
-    echo "export PVSEMACS=<absolute dir to emacs>"
+  fi
 fi
