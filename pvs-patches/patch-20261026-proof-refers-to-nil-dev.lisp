@@ -8,9 +8,6 @@
 ;; - prove*-int does not store skolem constants in refers-to.
 ;; - sexp of a proof-info removes nil entries, as sexp of a tcc-proof-info does.
 ;; See PVS bug-reports/missing-judgement-break.
-;;
-;; The date 20261231 is after the build date of the current dev, so the patch is loaded.
-;; When dev contains this fix, rename the patch with a date before the PVS build date.
 (in-package :pvs)
 
 (defun prove*-int (proofstate)

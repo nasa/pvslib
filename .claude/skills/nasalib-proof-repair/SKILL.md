@@ -53,7 +53,7 @@ grep -a -c 'proved - incomplete' summaries/<lib>.summary
 
 ### Check the dependencies of a library
 
-To see which libraries a library depends on (for example, to decide where it goes in `nasalib.all`), run `./typecheck-all --do <lib>` in the NASALib directory. It typechecks the library and writes `summaries/<lib>.dep`, with the imported libraries. A library can only come after all the libraries in its `.dep` file. The patch `pvs-patches/patch-20261231-get-referenced-declaration.lisp` keeps the typecheck from stopping at `get-referenced-declaration* - no judgement` (see "Known PVS bugs").
+To see which libraries a library depends on (for example, to decide where it goes in `nasalib.all`), run `./typecheck-all --do <lib>` in the NASALib directory. It typechecks the library and writes `summaries/<lib>.dep`, with the imported libraries. A library can only come after all the libraries in its `.dep` file. In PVS builds without the fix, a patch in `pvs-patches/` keeps the typecheck from stopping at `get-referenced-declaration* - no judgement` (see "Known PVS bugs").
 
 ### 3. Start a PVS server for the library
 
@@ -64,6 +64,8 @@ export PVS_DIR=/path/to/PVS NASALIB=/path/to/nasalib
 scripts/pvs-server.sh start nasalib/<lib>     # picks a free port from 23500 up
 scripts/srv.sh nasalib/<lib> '(nlp-typecheck "<file>")'
 ```
+
+Sometimes `pvs-server.sh start` does not return, although the server works. To make sure that the server works, send `scripts/srv.sh nasalib/<lib> '(fboundp (quote nlp-try))'`. If the server answers `T`, stop the start script that hangs, and send `nlp-typecheck` as a separate call.
 
 Stop the server when you finish the library (`scripts/pvs-server.sh stop nasalib/<lib>`), before the final `prove-all`. Then start a new server for the next library. A typecheck in the server rewrites `.prf` files in a cosmetic way (`"shostak"` becomes `SHOSTAK`, invalid dependency entries are dropped). That is normal: the final `prove-all` writes the files again.
 
@@ -150,6 +152,13 @@ Steps such as `INST?`, `INST`, `DECOMPOSE-EQUALITY`, `REWRITE`, `NAME`, `CASE`, 
 - The rerun gives the stored subproofs to the subgoals **by position**, also to a subgoal that closes by itself. When a new subgoal comes first, insert a first branch such as `["(PROPAX)"]`, and relabel the old branches (`set-children` relabels for you). Example: `graphs/complem.t_close_TCC1` (`BDDSIMP`).
 - Many new subgoals in `digraphs` were the trivial TCC `FORALL (vc: ...): vert(G)(vc`v)`. For many trivial TCCs of one kind, use auto-fix (see Tools).
 
+### A step makes fewer subgoals than before
+
+The rerun also gives the stored subproofs by position when a step makes fewer subgoals. For example, a step made 2 subgoals and now makes 1. Then the remaining subgoal gets the first stored subproof, and that subproof can be the obsolete one.
+
+- Find which stored subproof belongs to the remaining subgoal. Keep that subproof, and remove the other one.
+- Example: `dL/dL_LTL_examples/return_to_safe_temporal_example.return_to_Csr`. The inner `DL-GROUND` made 2 subgoals with PVS 7.1, and makes 1 with PVS 8.1. The new auto-rewrites remove the subgoal that `(ASSERT) (GRIND)` closed. The fix keeps the second branch.
+
 ### A REWRITE has no matching instance
 
 - Most often a LET binding has an imprecise inferred type. Give the binding a type in the `.pvs` file: `LET x: [nat->int] = ...` (needs the user's approval). Example: `Tarski/hutch.pvs`.
@@ -203,6 +212,7 @@ Most example theories keep their proofs as ProofLite scripts, in `%|-` comments 
 - A datatype got a new constructor, so `INDUCT` makes more cases (`affine_arith`).
 - `SKOLETIN*` can make more subgoals than before.
 - An existence TCC `EXISTS (x: below(3)): TRUE`: close it with `(INST 1 "0")` (`Tarski/system_solvers.TQlist_lem`).
+- The list of hidden formulas changed, so `(REVEAL -n)` reveals a different formula. Find the hidden formula that the proof needs, and use its new index. In `nominal/aux_first_order_AC_unification.solve_ac_rhs_is_temp`, `(REVEAL -33)` became `(REVEAL -32)`. Make sure that the revealed formula is the intended one.
 - New TCCs whose stored proof is only `(SUBTYPE-TCC) (POSTPONE)`: write a real proof. Sometimes the TCC needs a stronger return type, such as `{d: DNF | cons?(d)}` (`Tarski/dnf_polynomials`).
 
 ### When to stop
@@ -224,6 +234,7 @@ Stop and report to the user when:
 | `server-tools.lisp` | functions for `srv.sh`: `nlp-typecheck`, `nlp-reload`, `nlp-formulas`, `nlp-status` (status in this session only), `nlp-try`, `nlp-save` |
 | `prove-libs.sh AFTER OUTDIR [UNTIL]` | prove libraries in order, commit each passing library, stop at the first failure |
 | `prftools.py` | read and edit `.prf` files by structure: `list`, `get`, `show`, `set`, `build`, `nodes`, `set-children`, `merge` |
+| `prf-scripts.py FILE.prf` | print one line for each entry of a `.prf` file: the formula name and its default script, in upper case and without spaces. It reads the old and the new `.prf` format. Use it to compare the entry lists and the scripts of two versions of a file |
 | `try-proof.sh LIBDIR THEORY FORMULA < LIST` | set a proof (a Python list of steps) and prove that formula only; print the status and the open goals |
 | `print-tccs.sh LIBDIR FILE THEORY SUBSTRING` | print the statements of the formulas whose names contain SUBSTRING |
 | `match-tcc-proofs.sh LIBDIR FILE THEORY OLD.prf SUBSTRING` | try every candidate proof from OLD.prf on every unproved matching formula; save what works |
@@ -265,17 +276,19 @@ To limit the time of a Lisp call: `(handler-case (sb-ext:with-timeout 20 (rerun-
 ## Pitfalls
 
 - **proveit can drop entries from a .prf file.** A run on some formulas (`@theory.f`) can save a `.prf` file without the entries of other declarations. Keep a copy of the `.prf` file before each change. After a series of trials, prove the whole file and compare the formula count with the copy. To restore lost entries, use `prftools.py merge CURRENT COPY OUT --skip '<renumbered TCCs>'`.
+- **`prftools.py` cannot read some old-format `.prf` files.** Examples are the `.prf` files of the dL example libraries before PVS 8.1. To compare entry lists, use `scripts/prf-scripts.py`, which reads both formats. If neither tool reads a file, compare the files byte by byte.
 - **Edit by structure, not by line numbers.** Line numbers change after each edit and each proveit save. `prftools.py` finds nodes by their step. A step can be broken across lines in the file (`(REWRITE\n "lemma")`), so match whitespace-insensitively.
 - **A formula can have several stored proofs.** Change only the default proof (the index after the formula name). `prftools.py` does that.
 - **Do not search for proofs with a regular expression on the name.** A name also occurs in the dependency lists of other entries. Use `prftools.py get`.
 - **Kill leftover processes.** When a time limit (`perl -e 'alarm N; exec ...'`) stops proveit, its PVS process keeps running. Stop it with `pkill -f 'pvs -raw -E \(proveit\)'`. Do not stop the PVS processes of VS Code.
 - **PVS server ports.** VS Code PVS sessions listen on ports 23456 and up (six sessions used 23456 to 23461). `pvs -raw -port N` takes the next free port when N is in use, and prints `Listening on 127.0.0.1:<port>`. Before you send `pvs-cli.sh --port N` commands, check with `lsof -nP -iTCP -sTCP:LISTEN | grep sbcl` and the server log that port N is your server. Otherwise you change the workspace of the user's VS Code session. A server started with `nohup ... &` exits at once, because its REPL reads end-of-file: keep its input open, for example `tail -f /dev/null | pvs -raw -port N &`.
 - **Shell traps (zsh).** `set -- $x` does not split words. `echo ====` is an error. `cp` can be `cp -i`: use `command cp -f`. Never remove files with a path built from a variable (`rm -f $D/x`, `rm "$a/x"`): if the variable is empty or wrong, the command removes other files. `cd` into the directory with a literal path, then remove literal relative names, or use `proveit --clean-all`.
+- **Wait loops.** A loop that waits on `pgrep -f "<text>"` never ends, because `pgrep -f` also finds the command line of the loop itself. Wait on a marker file or on the PID of the process.
 
 ## Known PVS bugs
 
-**A batch run that hangs.** Until PVS dev contains the fix, the patch `pvs-patches/patch-20261231-get-referenced-declaration.lisp` prevents this hang. If a library takes much longer than usual, look at the end of `summaries/<lib>.summary` and `summaries/<lib>.log` for `debugger invoked`. When a `.prf` file refers to a judgement that no longer exists, PVS stops at `(break "get-referenced-declaration* - no judgement")` while it loads the proofs, and the batch run waits forever (since PVS commit `1a274a35`). Stop only the processes of your run, and tell the user. Do not edit the `.prf` file as a workaround: a stale reference is normal after a judgement is removed, and the user wants PVS fixed. The report, an example, and a patch are in the PVS repository, in `bug-reports/missing-judgement-break/`. In October 2026, this stopped `pvsio_utils/PVSioCSV`, because `csv_reader.prf` refers to `substring_lisp_j`.
+**A batch run that hangs.** In PVS builds without the fix, a patch in `pvs-patches/` prevents this hang. If a library takes much longer than usual, look at the end of `summaries/<lib>.summary` and `summaries/<lib>.log` for `debugger invoked`. When a `.prf` file refers to a judgement that no longer exists, PVS stops at `(break "get-referenced-declaration* - no judgement")` while it loads the proofs, and the batch run waits forever (since PVS commit `1a274a35`). Stop only the processes of your run, and tell the user. Do not edit the `.prf` file as a workaround: a stale reference is normal after a judgement is removed, and the user wants PVS fixed. The report, an example, and a patch are in the PVS repository, in `bug-reports/missing-judgement-break/`. In October 2026, this stopped `pvsio_utils/PVSioCSV`, because `csv_reader.prf` refers to `substring_lisp_j`.
 
-**NIL entries in the dependency lists of proofs.** PVS writes `NIL` entries in the dependency lists of non-TCC proofs in `.prf` files, when the dependencies of a proof contain skolem constants. Until PVS dev contains the fix, the patch `pvs-patches/patch-20261231-proof-refers-to-nil.lisp` prevents this. The report is in `bug-reports/missing-judgement-break/` of the PVS repository. A `.prf` file that loses its `NIL` entries in a run is a normal change.
+**NIL entries in the dependency lists of proofs.** PVS writes `NIL` entries in the dependency lists of non-TCC proofs in `.prf` files, when the dependencies of a proof contain skolem constants. In PVS builds without the fix, a patch in `pvs-patches/` prevents this. The report is in `bug-reports/missing-judgement-break/` of the PVS repository. A `.prf` file that loses its `NIL` entries in a run is a normal change.
 
 **Field applications with the wrong type.** Some field applications `r`f` get the type `real` instead of the type of the field. The decision procedures then see two different terms, and ASSERT loses facts. The cause is PVS commit `85fbcec0`. The report, a minimal example, and a proposed fix are in the PVS repository, in `bug-reports/field-application-type/`. Until PVS is fixed, give LET bindings explicit types, or use `REPLACE` in proofs.
