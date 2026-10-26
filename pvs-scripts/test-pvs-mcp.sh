@@ -149,8 +149,8 @@ enable_pvs_in_settings() {
             # Update existing enabledMcpjsonServers
             sed -i.bak 's/"enabledMcpjsonServers": \[\([^]]*\)\]/"enabledMcpjsonServers": [\1, "pvs"]/g' "$file"
         else
-            # Add new enabledMcpjsonServers field before closing brace
-            sed -i.bak '$ s/^}/  "enabledMcpjsonServers": ["pvs"]\n}/' "$file"
+            # Add new enabledMcpjsonServers field before closing brace, with a comma after the previous field
+            perl -0pi.bak -e 's/\s*\}\s*\z//; $_ .= (/\{\z/ ? "" : ",") . "\n  \"enabledMcpjsonServers\": [\"pvs\"]\n}\n"' "$file"
         fi
         rm -f "$file.bak"
     else

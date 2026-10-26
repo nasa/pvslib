@@ -5,9 +5,6 @@
 ;; debugger, so the run waits forever. This patch returns nil instead: the callers drop
 ;; missing references, and a rerun of the proof recomputes them.
 ;; See PVS bug-reports/missing-judgement-break.
-;;
-;; The date 20261231 is after the build date of the current dev, so the patch is loaded.
-;; When dev contains this fix, rename the patch with a date before the PVS build date.
 (in-package :pvs)
 (defun get-referenced-declaration* (id class &optional type theory-id lib-ref)
   (unless (find-class class nil)
