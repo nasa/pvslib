@@ -13,6 +13,7 @@ The NASALib also provides a collection of scripts that automates several tasks.
 * [`test-pvs-mcp`](#test-pvs-mcp) - Tests and configures the PVS MCP server for Claude Code.
 * [`pvs-cli`](#pvs-cli) - Command-line interface for interactive PVS theorem proving.
 * [`replay-trace.py`](#replay-tracepy) - Replays proof traces to detect where proofs diverge between PVS versions.
+* [`pvs-build-info`](#pvs-build-info) - Displays build information for a PVS installation.
 
 # `proveit`
 
@@ -744,4 +745,56 @@ $ ./replay-trace.py --timeout 600 trace.trf
 Disable colored output:
 ```shell
 $ ./replay-trace.py --no-color trace.trf
+```
+
+# `pvs-build-info`
+
+Displays build information for a PVS installation.
+
+When working with multiple PVS installations or troubleshooting version-related issues, this script queries the PVS binary directly and reports its build metadata including version, build date, installation path, Lisp implementation, and git commit information.
+
+## Typical Usage
+
+### Query the default PVS installation
+
+```shell
+$ pvs-build-info
+```
+
+This uses the `pvs` command found in your `PATH`. The output includes:
+
+```
+PVS Build Information
+======================
+Version:     8.1
+Build Date:  2026-10-20 14:49:49 -0500
+Path:        /Users/example/pvs/pvs-8.1/
+Lisp:        2.6.9
+
+Git Information
+---------------
+Commit:      56cb14ed
+Branch:      dev    56cb14ed [behind 6] Adjusted subst-mod-params* (theory) for mod-decl handling
+Description: pvs8.1-100-g56cb14ed
+Commit Date: 2026-10-16 11:07:26 -0700
+```
+
+### Query a specific PVS installation
+
+Use `--bin` to specify a particular PVS installation directory:
+
+```shell
+$ pvs-build-info --bin /path/to/pvs-8.0
+```
+
+This is useful when comparing builds or when the desired PVS is not in your `PATH`.
+
+### Check if PVS is accessible
+
+If no PVS is found, the script exits with an error:
+
+```shell
+$ pvs-build-info
+Error: pvs is not accessible in PATH
+Use --bin DIR to specify the PVS installation directory
 ```

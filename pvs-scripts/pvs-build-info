@@ -1,0 +1,82 @@
+#!/bin/sh
+#
+# pvs-build-info - Print build information for a PVS installation
+#
+# Usage: pvs-build-info [-h|--help] [--bin DIR]
+
+set -e
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [-h|--help] [--bin DIR]
+
+Print build information for the current accessible PVS installation.
+
+Options:
+  -h, --help      Show this help message and exit
+  --bin DIR       Path to PVS installation directory (uses pvs in PATH if not specified)
+
+The information displayed is produced by the PVS binary itself and includes:
+  - PVS version and build date
+  - Installation path
+  - Lisp implementation used
+  - Git commit information (if available)
+EOF
+}
+
+PVS_CMD=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        --bin)
+            if [ -z "$2" ] || [ "${2#-}" != "$2" ]; then
+                echo "Error: --bin requires a directory argument" >&2
+                exit 1
+            fi
+            PVS_CMD="$2/pvs"
+            shift 2
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            usage >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Determine which pvs to use
+if [ -z "$PVS_CMD" ]; then
+    if ! command -v pvs >/dev/null 2>&1; then
+        echo "Error: pvs is not accessible in PATH" >&2
+        echo "Use --bin DIR to specify the PVS installation directory" >&2
+        exit 1
+    fi
+    PVS_CMD="pvs"
+else
+    if [ ! -x "$PVS_CMD" ]; then
+        echo "Error: $PVS_CMD is not executable or does not exist" >&2
+        exit 1
+    fi
+fi
+
+# Run PVS with the Lisp expression to extract build info
+"$PVS_CMD" -raw -E '(let ((info (pvs-meta-info)))
+  (flet ((g (k) (cdr (assoc k info :test (function string=)))))
+    (format t "~%PVS Build Information~%======================~%Version:     ~a~%Build Date:  ~a~%Path:        ~a~%Lisp:        ~a~%"
+            (g "pvs-version")
+            (or (g "build-date") "N/A")
+            (g "pvs-path")
+            (g "lisp-version"))
+    (let ((vc (g "version-control")))
+      (when vc
+        (format t "~%Git Information~%---------------~%Commit:      ~a~%Branch:      ~a~%Description: ~a~%Commit Date: ~a~%"
+                (cdr (assoc "short-hash" vc :test (function string=)))
+                (cdr (assoc "branch-info" vc :test (function string=)))
+                (cdr (assoc "description" vc :test (function string=)))
+                (cdr (assoc "commit-date" vc :test (function string=))))))
+    (terpri)))
+(uiop:quit)'
